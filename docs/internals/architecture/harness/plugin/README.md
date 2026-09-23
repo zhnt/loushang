@@ -10,8 +10,10 @@
   are implementation evidence.
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
-  Coding Worker canaries. The remaining platform gaps are summarized by
-  `architecture.md` and tracked in the lifecycle plan.
+  Coding Worker canaries. PLC9D1/D2 add local-candidate Package GC operator
+  projection and dark reservation/fence mechanics; physical artifact GC remains
+  absent. The remaining platform gaps are summarized by `architecture.md` and
+  tracked in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
@@ -51,6 +53,12 @@ Neither may silently override a narrower implemented owner contract.
 - [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
   owns the Resource/Skill catalog convergence and the rule that mechanisms may
   be Plugin components while individual Skills remain Resources.
+- [PLC9D1 Package GC Operator Projection Contract](plugin-lifecycle-plc9d1-contract.md)
+  bounds the current internal GC/cleanup read-model candidate; it does not
+  authorize physical deletion or claim PLC9D completion.
+- [PLC9D2 Dark Package GC Reservation Contract](plugin-lifecycle-plc9d2-contract.md)
+  bounds opt-in reference fencing and durable reservation replay; no Product or
+  Store deletion route is active.
 
 ## Frozen Contracts
 

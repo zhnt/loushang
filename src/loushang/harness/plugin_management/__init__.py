@@ -98,6 +98,12 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementOperationEventV1,
     PluginManagementOperationResultV1,
 )
+from loushang.harness.plugin_management.package_gc import (
+    PLUGIN_PACKAGE_GC_OPERATOR_PROJECTION_VERSION,
+    PluginPackageGcOperatorProjectionV1,
+    PluginPackageGcOperatorRowV1,
+    PluginPackageGcReadModel,
+)
 from loushang.harness.plugin_management.package_lifecycle import (
     PLUGIN_PACKAGE_GC_CANDIDATE_VERSION,
     PluginCleanupTaskSnapshotV1,
@@ -237,6 +243,7 @@ __all__ = [
     "PLUGIN_MIGRATION_FENCE_VERSION",
     "PLUGIN_PACKAGE_REVISION_REF_VERSION",
     "PLUGIN_PACKAGE_GC_CANDIDATE_VERSION",
+    "PLUGIN_PACKAGE_GC_OPERATOR_PROJECTION_VERSION",
     "PLUGIN_PACKAGE_LIFECYCLE_EVENT_VERSION",
     "PLUGIN_PACKAGE_PIN_RELEASE_VERSION",
     "PLUGIN_PACKAGE_PIN_VERSION",
@@ -329,6 +336,9 @@ __all__ = [
     "PluginMigrationFenceV1",
     "PluginPackageRevisionRefV1",
     "PluginPackageGcCandidateV1",
+    "PluginPackageGcOperatorProjectionV1",
+    "PluginPackageGcOperatorRowV1",
+    "PluginPackageGcReadModel",
     "PluginPackageLifecycleError",
     "PluginPackageLifecycleEventV1",
     "PluginPackageLifecycleLedger",

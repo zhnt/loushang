@@ -9,6 +9,14 @@
   [Plugin Lifecycle PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md).
 - PLC9B.0 refinement:
   [Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md).
+- PLC9D1 refinement:
+  [Package GC Operator Projection Contract](plugin-lifecycle-plc9d1-contract.md)
+  adds an internal all-revision read model over existing retention evidence.
+  It grants no Store deletion or GC reservation authority.
+- PLC9D2 refinement:
+  [Dark Package GC Reservation Contract](plugin-lifecycle-plc9d2-contract.md)
+  adds a durable, opt-in reference-writer fence. It is not composed by a
+  Product and grants no Store deletion authority.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -385,6 +393,7 @@ implemented.
 | Instance runtime | `src/loushang/harness/plugin_management/instance_runtime.py::PluginInstanceRuntimeLedger` | Durable Instance activation, lease-family, drain, revocation, and retirement state | Retain; do not replace with Worker/process state |
 | Security retirement acceptance | `src/loushang/harness/plugin_management/security_acceptance.py::PluginInstanceSecurityRetirementJournal` | Durable acceptance evidence for security retirement | Retain; keep distinct from graceful retirement and generic management auth |
 | Package retention and cleanup | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Durable pins, cleanup leases/attempts/repair decisions, recovery barrier, retention snapshots, and GC candidates | Retain as lifecycle evidence; PLC9D must add deletion execution/result without weakening candidate recheck |
+| Dark GC reservation and reference fence | `src/loushang/harness/plugin_management/package_gc_reservation.py::PluginPackageGcReservationJournal` and `src/loushang/harness/plugin_management/gc_fence.py::PluginPackageGcReferenceGatePort` | PLC9D2 journals exact reservation/cancellation, replays active fences, and guards opt-in desired/Instance/Package reference writers in one lock order | Retain dark; D3 needs Product-wide writer binding and downgrade exclusion before Store-owned rooted deletion; a reservation alone is not authorization |
 | Coding Product composition | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycle` | Product adapter composes the generic ledgers under one workspace identity and coordination lock | Retain as an outer Product adapter until common application ports replace Product-specific call sites; it must not become a second generic owner |
 | Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
 | Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, migration, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and forward/reverse skew remains observable |
@@ -835,8 +844,9 @@ publication outside those exact canaries.
 
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
-| Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D adds operator projection and exact deletion execution without releasing debt implicitly |
-| GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain and recheck immediately before exact revision deletion; desired absence alone is insufficient |
+| Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state without a mutation port | Retain as internal read-only evidence; future executable GC must add an exclusive reservation, Store-owned rooted deletion, and a durable result/debt receipt |
+| GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
 | Continuity destructive commit | `src/loushang/harness/continuity/mutation.py::AuthorizedContinuityDeletionLease._commit_complete_and_release` over the source-owned `PreparedContinuityDeletion.commit` port, prepared by `src/loushang/harness/continuity/plugin_provider.py::PluginContinuityProvider._prepare_delete` | Calls the source/data-domain candidate commit first, validates its receipt, then asks the Product authority to settle | Retain the plan -> authorization -> source commit -> receipt settlement order for any future domain deletion contract |
@@ -879,7 +889,8 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- executable artifact-GC owner/receipt;
+- executable artifact-GC owner and Store result/debt receipt (PLC9D1/D2 add
+  only the operator projection and dark reservation/fence mechanics);
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

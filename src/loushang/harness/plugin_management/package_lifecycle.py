@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -14,6 +15,10 @@ from loushang.harness.journal import (
     append_jsonl_record,
     journal_file_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
 )
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyReleaseV1,
@@ -212,9 +217,9 @@ class PluginPackageRetentionSnapshotV1:
     gc_candidate: PluginPackageGcCandidateV1 | None
 
     def __post_init__(self) -> None:
-        if self.desired_installations != tuple(sorted(self.desired_installations)) or len(
-            self.desired_installations
-        ) != len(set(self.desired_installations)):
+        if self.desired_installations != tuple(
+            sorted(self.desired_installations)
+        ) or len(self.desired_installations) != len(set(self.desired_installations)):
             raise ValueError(
                 "Plugin Package desired Installations must be sorted and unique"
             )
@@ -232,9 +237,7 @@ class PluginPackageRetentionSnapshotV1:
         ):
             if values != tuple(sorted(values)) or len(values) != len(set(values)):
                 raise ValueError(f"Plugin Package {name} must be sorted and unique")
-        if not set(self.terminal_failure_cleanup_ids).issubset(
-            self.open_cleanup_ids
-        ):
+        if not set(self.terminal_failure_cleanup_ids).issubset(self.open_cleanup_ids):
             raise ValueError("Terminal cleanup failure must retain its lease")
         blocked = any(
             (
@@ -246,9 +249,7 @@ class PluginPackageRetentionSnapshotV1:
                 self.terminal_failure_cleanup_ids,
             )
         )
-        if (self.gc_candidate is not None) != (
-            self.recovery_complete and not blocked
-        ):
+        if (self.gc_candidate is not None) != (self.recovery_complete and not blocked):
             raise ValueError("Plugin Package GC candidate contradicts retention")
         if (
             self.gc_candidate is not None
@@ -277,7 +278,9 @@ class PluginPackageLifecycleSnapshotV1:
             and self.recovery_barrier.startup_id != self.startup_id
         ):
             raise ValueError("Plugin Package recovery barrier startup does not match")
-        if self.open_pins != tuple(sorted(self.open_pins, key=lambda item: item.pin_id)):
+        if self.open_pins != tuple(
+            sorted(self.open_pins, key=lambda item: item.pin_id)
+        ):
             raise ValueError("Open Plugin Package pins must be sorted")
         if len({item.pin_id for item in self.open_pins}) != len(self.open_pins):
             raise ValueError("Open Plugin Package pins must be unique")
@@ -290,7 +293,9 @@ class PluginPackageLifecycleSnapshotV1:
         ):
             raise ValueError("Plugin cleanup task snapshots must be unique")
         if self.packages != tuple(
-            sorted(self.packages, key=lambda item: _package_sort_key(item.package_revision))
+            sorted(
+                self.packages, key=lambda item: _package_sort_key(item.package_revision)
+            )
         ):
             raise ValueError("Plugin Package retention snapshots must be sorted")
         if len({item.package_revision for item in self.packages}) != len(self.packages):
@@ -360,6 +365,7 @@ class PluginPackageLifecycleLedger:
         desired_state: PluginPackageDesiredStateSourcePort,
         instance_runtime: PluginPackageInstanceRuntimeSourcePort,
         retirement_sets: PluginPackageRetirementSetSourcePort,
+        gc_gate: PluginPackageGcReferenceGatePort | None = None,
     ) -> None:
         self._path = Path(path)
         _require_nonempty(startup_id, name="Plugin Package startup id")
@@ -367,6 +373,7 @@ class PluginPackageLifecycleLedger:
         self._desired_state = desired_state
         self._instance_runtime = instance_runtime
         self._retirement_sets = retirement_sets
+        self._gc_gate = gc_gate
         paths = {
             self._path.resolve(),
             desired_state.path.resolve(),
@@ -383,6 +390,19 @@ class PluginPackageLifecycleLedger:
         return self._path
 
     @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return self._gc_gate
+
+    def gc_reservation_graph_bound_to(
+        self, gate: PluginPackageGcReferenceGatePort
+    ) -> bool:
+        return (
+            self._gc_gate is gate
+            and getattr(self._desired_state, "gc_gate", None) is gate
+            and getattr(self._instance_runtime, "gc_gate", None) is gate
+        )
+
+    @property
     def startup_id(self) -> str:
         return self._startup_id
 
@@ -391,6 +411,21 @@ class PluginPackageLifecycleLedger:
         """Durable Instance authority backing every package cleanup handoff."""
 
         return self._instance_runtime.path
+
+    @property
+    def gc_reservation_peer_journal_paths(self) -> tuple[Path, ...]:
+        operation_path = getattr(
+            self._instance_runtime, "management_operation_journal_path", None
+        )
+        if not isinstance(operation_path, Path):
+            raise TypeError("GC reservation requires the exact Instance runtime owner")
+        return (
+            self._path,
+            self._desired_state.path,
+            self._instance_runtime.path,
+            self._retirement_sets.path,
+            operation_path,
+        )
 
     def acquire_pin(
         self,
@@ -410,12 +445,16 @@ class PluginPackageLifecycleLedger:
             idempotency_key=idempotency_key,
             holder_reference=holder_reference,
         )
-        with self._exclusive_lock():
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(self._exclusive_lock())
             replayed = self._load_and_replay_unlocked()
             repeated = self._existing_operation(replayed, pin)
             if repeated is not None:
                 if repeated.pin != pin:
-                    raise _conflict(self._path, "Plugin Package pin identity was reused")
+                    raise _conflict(
+                        self._path, "Plugin Package pin identity was reused"
+                    )
                 mutable = replayed.pins[pin.pin_id]
                 if mutable.release is not None:
                     raise _transition_error(
@@ -425,6 +464,12 @@ class PluginPackageLifecycleLedger:
                 return pin
             if pin.pin_id in replayed.pins:
                 raise _conflict(self._path, "Plugin Package pin id was reused")
+            if package_revision in reserved:
+                raise PluginPackageLifecycleError(
+                    "Plugin Package Revision is reserved for GC",
+                    code="plugin_package_gc_reserved",
+                    path=self._path,
+                )
             self._append_and_apply_unlocked(replayed, pin)
             return pin
 
@@ -610,10 +655,13 @@ class PluginPackageLifecycleLedger:
                     self._path,
                     "Plugin cleanup repair sequence is not contiguous",
                 )
-            if _derive_cleanup_state(
-                tuple(current.attempts),
-                tuple(current.repair_decisions),
-            ) != "terminal_failure":
+            if (
+                _derive_cleanup_state(
+                    tuple(current.attempts),
+                    tuple(current.repair_decisions),
+                )
+                != "terminal_failure"
+            ):
                 raise _transition_error(
                     self._path,
                     "Plugin cleanup repair requires terminal failure",
@@ -1065,10 +1113,13 @@ def _apply_event(
             raise _corrupt(path, "Plugin cleanup repair has no task")
         if decision.repair_sequence != len(current_cleanup.repair_decisions) + 1:
             raise _corrupt(path, "Plugin cleanup repair is not contiguous")
-        if _derive_cleanup_state(
-            tuple(current_cleanup.attempts),
-            tuple(current_cleanup.repair_decisions),
-        ) != "terminal_failure":
+        if (
+            _derive_cleanup_state(
+                tuple(current_cleanup.attempts),
+                tuple(current_cleanup.repair_decisions),
+            )
+            != "terminal_failure"
+        ):
             raise _corrupt(path, "Plugin cleanup repair transition is invalid")
         current_cleanup.repair_decisions.append(decision)
     else:
@@ -1149,17 +1200,17 @@ def _validate_cleanup_evidence(
     )
     if len(repairs) > len(terminal_attempts):
         raise ValueError("Plugin cleanup repair has no terminal attempt")
-    if any(
-        attempt.disposition == "succeeded" for attempt in attempts[:-1]
-    ):
+    if any(attempt.disposition == "succeeded" for attempt in attempts[:-1]):
         raise ValueError("Successful Plugin cleanup attempt must be final")
     for index, terminal_attempt in enumerate(terminal_attempts):
         has_later_attempt = terminal_attempt.attempt < len(attempts)
         repair = repairs[index] if index < len(repairs) else None
         if has_later_attempt and (repair is None or repair.action != "retry"):
             raise ValueError("Plugin cleanup retry lacks a repair decision")
-        if repair is not None and repair.action == "safe_abandon" and (
-            has_later_attempt or index != len(repairs) - 1
+        if (
+            repair is not None
+            and repair.action == "safe_abandon"
+            and (has_later_attempt or index != len(repairs) - 1)
         ):
             raise ValueError("Safe-abandoned Plugin cleanup cannot continue")
 
@@ -1267,8 +1318,7 @@ def _retention_snapshot(
             family.family_id
             for family in sources.runtime_snapshot.open_families
             if any(
-                member.package_revision == package_revision
-                for member in family.members
+                member.package_revision == package_revision for member in family.members
             )
         )
     )
@@ -1286,9 +1336,7 @@ def _retention_snapshot(
         if current.task.package_revision == package_revision
     )
     open_cleanup_ids = tuple(
-        sorted(
-            item.task.cleanup_id for item in cleanup_snapshots if item.lease_open
-        )
+        sorted(item.task.cleanup_id for item in cleanup_snapshots if item.lease_open)
     )
     terminal_failure_cleanup_ids = tuple(
         sorted(
@@ -1373,8 +1421,7 @@ def _instance_coordination_at(
             state = "ACTIVE"
         elif (
             event.retirement_intent is not None
-            and event.retirement_intent.instance_revision_ref
-            == instance_revision_ref
+            and event.retirement_intent.instance_revision_ref == instance_revision_ref
         ):
             state = "DRAINING"
             coordination_id = event.retirement_intent.retirement_id
@@ -1440,8 +1487,10 @@ def _require_nonempty(value: str, *, name: str) -> None:
 
 
 def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 

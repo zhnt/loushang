@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 from collections.abc import Callable
@@ -29,13 +30,22 @@ from loushang.harness.plugin_management.instance_records import (
     PluginInstanceRevocationV1,
 )
 from loushang.harness.plugin_management.instance_runtime import (
+    PluginInstanceRuntimeError,
     PluginInstanceRuntimeLedger,
     PluginInstanceRuntimeSnapshotV1,
 )
-from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.ledger import (
+    PluginDesiredStateLedger,
+    PluginLifecycleError,
+)
 from loushang.harness.plugin_management.operations import (
     PluginManagementAction,
     PluginManagementCommandV1,
+)
+from loushang.harness.plugin_management.package_gc import PluginPackageGcReadModel
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationError,
+    PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageGcCandidateV1,
@@ -71,6 +81,39 @@ from loushang.harness.plugin_management.retirement_sets import (
 )
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+
+def test_plc9d1_gc_projection_cannot_import_store_or_deletion_authority() -> None:
+    source = Path("src/loushang/harness/plugin_management/package_gc.py")
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    imported = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    assert imported <= {
+        "__future__",
+        "dataclasses",
+        "typing",
+        "loushang.harness.plugin_management.package_lifecycle",
+        "loushang.harness.plugin_management.records",
+    }
+    assert not any(isinstance(node, ast.Import) for node in ast.walk(tree))
+
+
+def test_plc9d2_gc_reservation_has_no_store_or_deletion_import() -> None:
+    source = Path("src/loushang/harness/plugin_management/package_gc_reservation.py")
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    imported = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    assert not any(
+        module is not None and module.startswith("loushang.harness.resources.packages")
+        for module in imported
+    )
+    assert not any(
+        isinstance(node, ast.Import)
+        and any(alias.name in {"os", "shutil"} for alias in node.names)
+        for node in ast.walk(tree)
+    )
 
 
 def test_continuity_publication_security_close_hands_off_package_cleanup(
@@ -518,6 +561,16 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
         ).state
         == "terminal_failure"
     )
+    operator_row = PluginPackageGcReadModel(context.packages).snapshot().packages[0]
+    assert "terminal_cleanup_failure" in operator_row.blocker_codes
+    assert operator_row.candidate is None
+    host_status = next(
+        item
+        for item in operator_row.to_dict()["cleanupTasks"]
+        if item["cleanupId"] == host_task.cleanup_id
+    )
+    assert host_status["state"] == "terminal_failure"
+    assert host_status["lastResultCode"] == "cleanup.host-terminal"
     abandon = PluginCleanupRepairDecisionV1.create(
         cleanup_id=host_task.cleanup_id,
         repair_sequence=1,
@@ -530,6 +583,13 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
     abandoned = context.packages.record_repair_decision(abandon)
     assert abandoned.state == "safe_abandoned"
     assert not abandoned.lease_open
+    operator_row = PluginPackageGcReadModel(context.packages).snapshot().packages[0]
+    assert "terminal_cleanup_failure" not in operator_row.blocker_codes
+    assert "cleanup_lease" not in operator_row.blocker_codes
+    assert any(
+        item["state"] == "safe_abandoned" and item["lastRepairAction"] == "safe_abandon"
+        for item in operator_row.to_dict()["cleanupTasks"]
+    )
 
 
 def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
@@ -587,6 +647,10 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     with pytest.raises(PluginPackageLifecycleError) as caught:
         context.packages.gc_candidates()
     assert caught.value.code == "plugin_package_recovery_incomplete"
+    operator = PluginPackageGcReadModel(context.packages)
+    before_recovery = operator.snapshot()
+    assert not before_recovery.recovery_complete
+    assert before_recovery.packages[0].blocker_codes == ("startup_recovery",)
     context.packages.complete_startup_recovery(
         operation_id="recover-a",
         idempotency_key="recover-request-a",
@@ -594,6 +658,12 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     )
     candidate = context.packages.gc_candidates()[0]
     assert context.packages.recheck_gc_candidate(candidate) == candidate
+    ready = operator.snapshot()
+    assert ready.packages[0].candidate == candidate
+    assert ready.packages[0].blocker_codes == ()
+    assert ready.to_dict()["packages"][0]["candidate"]["candidateId"] == (
+        candidate.candidate_id
+    )
 
     pin = context.packages.acquire_pin(
         prepared.active.package_revision,
@@ -605,11 +675,175 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     with pytest.raises(PluginPackageLifecycleError) as caught:
         context.packages.recheck_gc_candidate(candidate)
     assert caught.value.code == "invalid_plugin_package_lifecycle_transition"
+    pinned = operator.snapshot().packages[0]
+    assert pinned.candidate is None
+    assert pinned.blocker_codes == ("retention_pin",)
     context.packages.release_pin(_pin_release(pin, suffix="late"))
     replacement = context.packages.gc_candidates()[0]
     assert replacement.package_revision == candidate.package_revision
     assert replacement.package_journal_revision > candidate.package_journal_revision
     assert replacement.candidate_id != candidate.candidate_id
+
+
+def test_gc_reservation_fences_new_references_and_survives_restart(
+    tmp_path: Path,
+) -> None:
+    journal = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    context = _context(tmp_path, gc_gate=journal)
+    key = _key("plugin.a")
+    context.service.submit(_command(key, "install", revision=0, operation=1))
+    context.service.submit(_command(key, "remove", revision=1, operation=2))
+    context.packages.complete_startup_recovery(
+        operation_id="recover-gc",
+        idempotency_key="recover-gc-request",
+        recovery_reference="recovery:gc",
+    )
+    candidate = context.packages.gc_candidates()[0]
+    reservation = journal.reserve(
+        candidate,
+        lifecycle=context.packages,
+        operation_id="reserve-gc",
+        idempotency_key="reserve-gc-request",
+    )
+    assert (
+        journal.reserve(
+            candidate,
+            lifecycle=context.packages,
+            operation_id="reserve-gc",
+            idempotency_key="reserve-gc-request",
+        )
+        == reservation
+    )
+    with pytest.raises(PluginPackageGcReservationError) as competing:
+        journal.reserve(
+            candidate,
+            lifecycle=context.packages,
+            operation_id="reserve-competing",
+            idempotency_key="reserve-competing-request",
+        )
+    assert competing.value.code == "plugin_package_gc_conflict"
+
+    with pytest.raises(PluginPackageLifecycleError) as pin_error:
+        context.packages.acquire_pin(
+            candidate.package_revision,
+            pin_kind="forensic_retention",
+            operation_id="pin-during-gc",
+            idempotency_key="pin-during-gc-request",
+            holder_reference="forensic:gc",
+        )
+    assert pin_error.value.code == "plugin_package_gc_reserved"
+    with pytest.raises(PluginLifecycleError) as install_error:
+        context.desired.commit(_mutation(key, "install", revision=2, operation=3))
+    assert install_error.value.code == "plugin_package_gc_reserved"
+    with pytest.raises(PluginLifecycleError) as service_error:
+        context.service.submit(_command(key, "install", revision=2, operation=4))
+    assert service_error.value.code == "plugin_package_gc_reserved"
+
+    # A legacy writer without the injected gate can still select the revision.
+    # The bound runtime refuses to turn that stale selection into a new Instance.
+    legacy_writer = PluginDesiredStateLedger(context.desired.path)
+    legacy_writer.commit(_mutation(key, "install", revision=2, operation=5))
+    legacy_writer.commit(_mutation(key, "enable", revision=3, operation=6))
+    with pytest.raises(
+        PluginInstanceRuntimeError, match="reserved for GC"
+    ) as runtime_error:
+        context.runtime.activate_current(
+            key,
+            operation_id="activate-during-gc",
+            idempotency_key="activate-during-gc-request",
+            direct_host_reference="host:gc",
+        )
+    assert runtime_error.value.code == "plugin_package_gc_reserved"
+
+    with journal.path.open("ab") as handle:
+        handle.write(b'{"eventVersion":')
+    reopened = PluginPackageGcReservationJournal(journal.path)
+    assert reopened.snapshot().active == (reservation,)
+    restarted = _context(tmp_path, startup_id="startup-reopened", gc_gate=reopened)
+    with pytest.raises(PluginPackageLifecycleError) as restarted_error:
+        restarted.packages.acquire_pin(
+            candidate.package_revision,
+            pin_kind="dependency_lock",
+            operation_id="pin-after-restart",
+            idempotency_key="pin-after-restart-request",
+            holder_reference="dependency:gc",
+        )
+    assert restarted_error.value.code == "plugin_package_gc_reserved"
+    cancelled = reopened.cancel(
+        reservation.reservation_id,
+        operation_id="cancel-gc",
+        idempotency_key="cancel-gc-request",
+        reason_code="operator.cancelled",
+    )
+    assert (
+        reopened.cancel(
+            reservation.reservation_id,
+            operation_id="cancel-gc",
+            idempotency_key="cancel-gc-request",
+            reason_code="operator.cancelled",
+        )
+        == cancelled
+    )
+    assert reopened.snapshot().active == ()
+    restarted.packages.acquire_pin(
+        candidate.package_revision,
+        pin_kind="dependency_lock",
+        operation_id="pin-after-cancel",
+        idempotency_key="pin-after-cancel-request",
+        holder_reference="dependency:gc",
+    )
+    with pytest.raises(PluginPackageLifecycleError):
+        reopened.reserve(
+            candidate,
+            lifecycle=restarted.packages,
+            operation_id="reserve-stale",
+            idempotency_key="reserve-stale-request",
+        )
+
+
+def test_gc_reservation_refuses_unbound_graph(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    key = _key("plugin.a")
+    context.service.submit(_command(key, "install", revision=0, operation=1))
+    context.service.submit(_command(key, "remove", revision=1, operation=2))
+    context.packages.complete_startup_recovery(
+        operation_id="recover-gc",
+        idempotency_key="recover-gc-request",
+        recovery_reference="recovery:gc",
+    )
+    journal = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    with pytest.raises(PluginPackageGcReservationError) as caught:
+        journal.reserve(
+            context.packages.gc_candidates()[0],
+            lifecycle=context.packages,
+            operation_id="reserve-unbound",
+            idempotency_key="reserve-unbound-request",
+        )
+    assert caught.value.code == "plugin_package_gc_graph_unbound"
+    assert not journal.path.exists()
+
+
+def test_gc_reservation_corruption_fails_closed_for_bound_writers(
+    tmp_path: Path,
+) -> None:
+    journal = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    context = _context(tmp_path, gc_gate=journal)
+    journal.path.write_bytes(b"{}\n")
+    key = _key("plugin.a")
+    with pytest.raises(PluginPackageGcReservationError) as desired_error:
+        context.desired.commit(_mutation(key, "install", revision=0, operation=1))
+    with pytest.raises(PluginPackageGcReservationError) as pin_error:
+        context.packages.acquire_pin(
+            _package(key.plugin_id, "a"),
+            pin_kind="dependency_lock",
+            operation_id="pin-corrupt",
+            idempotency_key="pin-corrupt-request",
+            holder_reference="dependency:corrupt",
+        )
+    assert desired_error.value.code == "plugin_package_gc_journal_corrupt"
+    assert pin_error.value.code == "plugin_package_gc_journal_corrupt"
+    assert context.desired.snapshot().inventory_revision == 0
+    assert context.packages.snapshot().journal_revision == 0
 
 
 def test_security_cleanup_uses_revocation_without_graceful_target(
@@ -789,11 +1023,17 @@ class _FailOnceRuntime:
         return self._runtime.release_family(release)
 
 
-def _context(tmp_path: Path, *, startup_id: str = "startup-1") -> _Context:
+def _context(
+    tmp_path: Path,
+    *,
+    startup_id: str = "startup-1",
+    gc_gate: PluginPackageGcReservationJournal | None = None,
+) -> _Context:
     operation_path = tmp_path / "operations.jsonl"
     desired = PluginDesiredStateLedger(
         tmp_path / "desired.jsonl",
         instance_id_factory=_instance_id_factory(),
+        gc_gate=gc_gate,
     )
     intents = PluginRetirementIntentLedger(tmp_path / "intents.jsonl")
     sets = PluginRetirementSetLedger(
@@ -817,6 +1057,7 @@ def _context(tmp_path: Path, *, startup_id: str = "startup-1") -> _Context:
         retirement_intents=intents,
         retirement_sets=sets,
         security_acceptances=security_acceptances,
+        gc_gate=gc_gate,
     )
     packages = PluginPackageLifecycleLedger(
         tmp_path / "packages.jsonl",
@@ -824,6 +1065,7 @@ def _context(tmp_path: Path, *, startup_id: str = "startup-1") -> _Context:
         desired_state=desired,
         instance_runtime=runtime,
         retirement_sets=sets,
+        gc_gate=gc_gate,
     )
     return _Context(
         desired,
