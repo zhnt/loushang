@@ -16,7 +16,7 @@ import zipfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
@@ -27,7 +27,11 @@ from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
+)
 from loushang.harness.plugin_management.package_product import (
+    PackageProductGcAdmissionError,
     PluginManagementPackageDesiredStateAdapter,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
@@ -2258,7 +2262,10 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     tmp_path: Path,
 ) -> None:
     fixture = _manifest_retention_handoff_fixture(tmp_path)
-    ledger = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl")
+    gc_gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    ledger = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gc_gate
+    )
     service = PluginManagementService(
         desired_state=ledger,
         operation_journal_path=tmp_path / "product-operations.jsonl",
@@ -2271,6 +2278,7 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         actor_id="product-runtime",
         policy_revision="product-policy:1",
         gc_bindings=gc_bindings,
+        gc_gate=gc_gate,
     )
 
     result = adapter.commit(fixture.request.desired_request)
@@ -2302,6 +2310,67 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     assert conflict.disposition == "rejected"
     assert conflict.failure is not None
     assert conflict.failure.observed_inventory_revision == 1
+
+
+def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    class ReservedGate:
+        reserved = frozenset[PluginPackageRevisionRefV1]()
+
+        @contextmanager
+        def guard(self) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+            yield self.reserved
+
+    gate = ReservedGate()
+    ledger = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    service = PluginManagementService(
+        desired_state=ledger,
+        operation_journal_path=tmp_path / "product-operations.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
+    projector = _ManifestDesiredRevisionProjection(ledger)
+    first = PluginManagementPackageDesiredStateAdapter(
+        management=service,
+        revisions=projector,
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+        gc_bindings=bindings,
+        gc_gate=gate,
+    )
+    with pytest.raises(ValueError, match="management gate differ"):
+        replace(first, gc_gate=ReservedGate())
+    first.commit(fixture.request.desired_request)
+    original = projector.project(fixture.request.desired_request)
+    gate.reserved = frozenset({original})
+
+    class AlternateProjection(_ManifestDesiredRevisionProjection):
+        def project(
+            self, request: PackageDesiredStateCommitRequestV1
+        ) -> PluginPackageRevisionRefV1:
+            return replace(
+                super().project(request),
+                package_source_identity="https://packages.example.test/alias.whl",
+            )
+
+    alias_request = PackageDesiredStateCommitRequestV1.create(
+        fixture.request.admission_request,
+        command_id="manifest-desired-alias",
+        command_fingerprint=sha256(b"manifest-desired-alias").hexdigest(),
+        expected_inventory_revision=1,
+    )
+    alias_adapter = replace(
+        first, revisions=AlternateProjection(ledger)
+    )
+    with pytest.raises(PackageProductGcAdmissionError) as blocked:
+        alias_adapter.commit(alias_request)
+    assert blocked.value.code == "package_product_gc_root_reserved"
+    assert ledger.snapshot().inventory_revision == 1
+    assert len(bindings.records()) == 1
 
 
 def test_plc9a2_retention_owner_repairs_release_before_settlement_crash(

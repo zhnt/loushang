@@ -34,3 +34,12 @@ or authorize deletion. The POSIX integration regression builds actual
 published root/dependency Store refs and a committed set, then proves exact
 resolution and missing/ambiguous/alias refusal. Product-wide composition and
 a durable result/debt coordinator remain open.
+
+The PLC9B desired handoff adapter now holds the same reference gate as its
+management owner from projection through the committed crosswalk append. It
+rejects a second logical revision for a physical root whose existing binding
+is reserved. This closes the live alias race for that adapter only. A crash
+after the management desired commit but before the crosswalk append can still
+leave an unrecorded root claim; a durable precommit claim and conservative
+recovery check are required before any Product GC execution. Product still has
+no PLC9B transaction caller, so this is not an end-to-end acceptance claim.
