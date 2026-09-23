@@ -357,8 +357,11 @@ Neither may silently override a narrower implemented owner contract.
   POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
-  fixture supplies those roots, so Product mapping of real Coding state and a
-  production pre-fence launch barrier remain required.
+  fixture supplies those roots and now uses a concrete Linux pre-fence owner:
+  process-held liveness locks and a root-directory launch barrier reject live
+  old processes before snapshot and refuse new old registrations after fence.
+  Product mapping of real Coding state and registration of every legacy
+  CLI/RPC/Session/supervisor launch remain required.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.

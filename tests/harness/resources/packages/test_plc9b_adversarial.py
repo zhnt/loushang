@@ -151,7 +151,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
     PackagePosixEpochCutoverCoordination,
-    PackagePreFenceRegistrationSnapshotV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
@@ -169,6 +168,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
     PackagePosixOfflineRestoreMaterializer,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+    PackagePosixPreFenceRegistrationError,
+    PackagePosixPreFenceRegistrationOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
     PackageProductRetentionSettlementOwner,
@@ -4291,15 +4294,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         store_id=store_id,
         domain_roots=domain_roots,
     )
-    class _PreFenceScope:
-        @contextmanager
-        def exclusive_quiescence(self, *, store_id: str):
-            yield PackagePreFenceRegistrationSnapshotV1(
-                store_id=store_id,
-                owner_revision=1,
-                active_registration_ids=(),
-            )
-
+    pre_fence = PackagePosixPreFenceRegistrationOwner(
+        authority, store_id=store_id, fences=fences
+    )
     cutover_root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4318,7 +4315,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             epoch_journal=fences,
             coordination=PackagePosixEpochCutoverCoordination(
                 leases=cutover_registry,
-                pre_fence=_PreFenceScope(),
+                pre_fence=pre_fence,
             ),
             snapshots=snapshots,
         )
@@ -4337,6 +4334,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None
+    with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
+        pre_fence.register(startup_id="legacy:after-cutover")
+    assert old_launch.value.code == "package_runtime_epoch_unsupported"
     snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
     assert snapshot_evidence is not None
     assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
