@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 from collections.abc import Callable
@@ -37,6 +38,7 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementAction,
     PluginManagementCommandV1,
 )
+from loushang.harness.plugin_management.package_gc import PluginPackageGcReadModel
 from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageGcCandidateV1,
     PluginPackageLifecycleError,
@@ -71,6 +73,22 @@ from loushang.harness.plugin_management.retirement_sets import (
 )
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+
+def test_plc9d1_gc_projection_cannot_import_store_or_deletion_authority() -> None:
+    source = Path("src/loushang/harness/plugin_management/package_gc.py")
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    imported = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    assert imported <= {
+        "__future__",
+        "dataclasses",
+        "typing",
+        "loushang.harness.plugin_management.package_lifecycle",
+        "loushang.harness.plugin_management.records",
+    }
+    assert not any(isinstance(node, ast.Import) for node in ast.walk(tree))
 
 
 def test_continuity_publication_security_close_hands_off_package_cleanup(
@@ -518,6 +536,16 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
         ).state
         == "terminal_failure"
     )
+    operator_row = PluginPackageGcReadModel(context.packages).snapshot().packages[0]
+    assert "terminal_cleanup_failure" in operator_row.blocker_codes
+    assert operator_row.candidate is None
+    host_status = next(
+        item
+        for item in operator_row.to_dict()["cleanupTasks"]
+        if item["cleanupId"] == host_task.cleanup_id
+    )
+    assert host_status["state"] == "terminal_failure"
+    assert host_status["lastResultCode"] == "cleanup.host-terminal"
     abandon = PluginCleanupRepairDecisionV1.create(
         cleanup_id=host_task.cleanup_id,
         repair_sequence=1,
@@ -530,6 +558,13 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
     abandoned = context.packages.record_repair_decision(abandon)
     assert abandoned.state == "safe_abandoned"
     assert not abandoned.lease_open
+    operator_row = PluginPackageGcReadModel(context.packages).snapshot().packages[0]
+    assert "terminal_cleanup_failure" not in operator_row.blocker_codes
+    assert "cleanup_lease" not in operator_row.blocker_codes
+    assert any(
+        item["state"] == "safe_abandoned" and item["lastRepairAction"] == "safe_abandon"
+        for item in operator_row.to_dict()["cleanupTasks"]
+    )
 
 
 def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
@@ -587,6 +622,10 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     with pytest.raises(PluginPackageLifecycleError) as caught:
         context.packages.gc_candidates()
     assert caught.value.code == "plugin_package_recovery_incomplete"
+    operator = PluginPackageGcReadModel(context.packages)
+    before_recovery = operator.snapshot()
+    assert not before_recovery.recovery_complete
+    assert before_recovery.packages[0].blocker_codes == ("startup_recovery",)
     context.packages.complete_startup_recovery(
         operation_id="recover-a",
         idempotency_key="recover-request-a",
@@ -594,6 +633,12 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     )
     candidate = context.packages.gc_candidates()[0]
     assert context.packages.recheck_gc_candidate(candidate) == candidate
+    ready = operator.snapshot()
+    assert ready.packages[0].candidate == candidate
+    assert ready.packages[0].blocker_codes == ()
+    assert ready.to_dict()["packages"][0]["candidate"]["candidateId"] == (
+        candidate.candidate_id
+    )
 
     pin = context.packages.acquire_pin(
         prepared.active.package_revision,
@@ -605,6 +650,9 @@ def test_gc_candidate_requires_every_source_zero_and_revision_recheck(
     with pytest.raises(PluginPackageLifecycleError) as caught:
         context.packages.recheck_gc_candidate(candidate)
     assert caught.value.code == "invalid_plugin_package_lifecycle_transition"
+    pinned = operator.snapshot().packages[0]
+    assert pinned.candidate is None
+    assert pinned.blocker_codes == ("retention_pin",)
     context.packages.release_pin(_pin_release(pin, suffix="late"))
     replacement = context.packages.gc_candidates()[0]
     assert replacement.package_revision == candidate.package_revision

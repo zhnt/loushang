@@ -66,6 +66,9 @@
   mechanics/rejection, C5.4 Linux Coding Product canary, and C5.5b/c Windows
   LPAC containment and Coding Product canary. Both canaries are explicit and
   default-dark; Current remains the default and unlisted routes remain closed.
+  [PLC9D1](plugin-lifecycle-plc9d1-contract.md) is a local candidate for an
+  internal, read-only Package GC/cleanup-debt projection. It does not reserve
+  or delete an artifact and does not close PLC9D.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
