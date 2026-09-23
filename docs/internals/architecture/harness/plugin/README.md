@@ -379,7 +379,11 @@ Neither may silently override a narrower implemented owner contract.
   bytes against the loaded settings layers, and snapshots a private Source-only
   projection; transient session Source overrides and unmapped Source keys
   refuse. The independent reader verifies it after the projection source is
-  deleted. The snapshot owner rejects overlapping whole-tree roots and accepts
+  deleted. The native Session fixture also restores that exact nine-domain
+  bundle through the POSIX offline-restore owner, starts an isolated legacy
+  runtime, replays the request, and verifies the B root and fence survive
+  restoration and cleanup. This is recovery evidence, not default activation.
+  The snapshot owner rejects overlapping whole-tree roots and accepts
   colocated roots only with exact top-level member coverage, including declared
   shared members. This completes the nine-domain native fixture geometry, not
   a default Coding cutover or Plugin entry switch.

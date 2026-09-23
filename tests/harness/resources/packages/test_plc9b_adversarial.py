@@ -4547,6 +4547,107 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             fences=fences,
             store_id=store_id,
         )
+        if entrypoint == "session" and not with_dependency:
+            restore_root = tmp_path / "isolated-offline-restore"
+            restore_root.mkdir(mode=0o700)
+            activation_root = tmp_path / "isolated-legacy-activation"
+            activation_root.mkdir(mode=0o700)
+            b_marker = plugin_root / "epoch-b.json"
+            b_marker.write_bytes(b'{"epoch":"B"}\n')
+            materializer = PackagePosixOfflineRestoreMaterializer(
+                snapshot_root,
+                restore_root,
+                current_b_authority_root=plugin_root,
+                store_id=store_id,
+            )
+            restore_request = PackageOfflineRestoreRequestV1.create(
+                current_fence=fence,
+                genesis_fence=fence,
+                snapshot_evidence=snapshot_evidence,
+                restore_namespace_id=sha256(b"real-coding-pre-b-restore").hexdigest(),
+                legacy_runtime_version="1.9.0",
+            )
+            coordination = PackagePosixEpochCutoverCoordination(
+                leases=registry,
+                pre_fence=pre_fence,
+            )
+            script = f"""
+import os
+import pathlib
+import time
+
+if pathlib.Path("store_bytes/installed/state.json").read_bytes() != b'{{"legacy":1}}\\n':
+    raise SystemExit(41)
+try:
+    pathlib.Path({str(plugin_root)!r}, "epoch-b.json").read_bytes()
+except OSError:
+    pass
+else:
+    raise SystemExit(42)
+descriptor = int(os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_FD"))
+token = os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_TOKEN")
+os.write(descriptor, f"ready:{{token}}\\n".encode())
+os.close(descriptor)
+while True:
+    time.sleep(60)
+"""
+            activation = PackageLinuxLegacyRuntimeActivationOwner(
+                restore_root,
+                activation_root,
+                current_b_authority_root=plugin_root,
+                store_id=store_id,
+                legacy_runtime_version=restore_request.legacy_runtime_version,
+                command=("/usr/bin/python3", "-I", "-S", "-c", script),
+            )
+            restore_owner = PackageOfflineRestoreOwner(
+                store_id=store_id,
+                epoch_journal=fences,
+                coordination=coordination,
+                snapshots=snapshots,
+                materialization=materializer,
+                activation=activation,
+            )
+            fence_bytes = (control_root / "epoch.jsonl").read_bytes()
+            restored = None
+            try:
+                restored = restore_owner.restore(restore_request)
+                assert restored == restore_owner.restore(restore_request)
+                assert restored.disposition == "restored"
+                assert restored.materialization is not None
+                assert restored.activation is not None
+                assert restored.materialization.legacy_snapshot_exact
+                assert restored.materialization.b_namespace_unreachable
+                assert restored.activation.exclusive_old_runtime
+                assert b_marker.read_bytes() == b'{"epoch":"B"}\n'
+                restored_payload = (
+                    restore_root / restore_request.restore_namespace_id / "payload"
+                )
+                assert (
+                    restored_payload / "store_bytes" / "installed" / "state.json"
+                ).read_bytes() == b'{"legacy":1}\n'
+                assert (
+                    restored_payload
+                    / "source_configuration"
+                    / "coding-source-configuration.json"
+                ).read_bytes() == (
+                    snapshot_root
+                    / snapshot_evidence.snapshot.snapshot_id
+                    / "payload"
+                    / "source_configuration"
+                    / "coding-source-configuration.json"
+                ).read_bytes()
+            finally:
+                if restored is not None and restored.activation is not None:
+                    activation.deactivate(restored.activation)
+                if restored is not None and restored.materialization is not None:
+                    materializer.discard(restored.materialization)
+                b_marker.unlink()
+            assert not (
+                restore_root / restore_request.restore_namespace_id
+            ).exists()
+            assert not (activation_root / "active-runtime.json").exists()
+            assert (control_root / "epoch.jsonl").read_bytes() == fence_bytes
+            assert fences.current(store_id) == fence
         handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
         session = None
         try:
