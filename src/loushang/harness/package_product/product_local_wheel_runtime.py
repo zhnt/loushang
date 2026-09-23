@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import stat
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import cast
@@ -134,6 +135,7 @@ from loushang.harness.resources.packages.product_root_target import (
 )
 from loushang.harness.resources.packages.product_runtime import (
     PackageProductRuntimeBindingV1,
+    PackageProductRuntimeRequestV1,
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
@@ -431,6 +433,91 @@ def compose_posix_local_wheel_product(
     )
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PosixLocalWheelProductRuntimeFactory:
+    """Bind one Session to Product-supplied owners of a fenced local Store."""
+
+    expected_session_id: str
+    expected_cwd: Path
+    state_root: Path
+    plugin_store_root: Path
+    policy: PackageProductLocalWheelPolicy
+    environment: PackageResolutionEnvironmentV1
+    acquisition_budgets: PackageAcquisitionBudgetV1
+    inspection_budgets: PackageInspectionBudgetV1
+    closure_budgets: PackageClosureBudgetV1
+    root_store_identity: str
+    dependency_store_identity: str
+    registry: PackageEpochRuntimeLeaseRegistry
+    admission_request: PackageEpochRuntimeAdmissionRequestV1
+    management: PluginManagementService
+    desired_state: PluginDesiredStateLedger
+    gc_bindings: PluginPackageGcBindingJournal
+    gc_gate: PluginPackageGcReservationJournal
+    actor_id: str
+    desired_policy_revision: str
+    recovery_identity: str
+    _cwd_identity: tuple[int, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.expected_session_id, str) or not self.expected_session_id:
+            raise ValueError("Package Product Session identity is required")
+        cwd = self.expected_cwd
+        if not isinstance(cwd, Path) or not cwd.is_absolute() or ".." in cwd.parts:
+            raise ValueError("Package Product workspace must be absolute")
+        resolved = cwd.resolve(strict=True)
+        metadata = resolved.stat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("Package Product workspace must be a directory")
+        object.__setattr__(self, "expected_cwd", resolved)
+        object.__setattr__(self, "_cwd_identity", (metadata.st_dev, metadata.st_ino))
+
+    def create(
+        self, request: PackageProductRuntimeRequestV1
+    ) -> PackageProductRuntimeBindingV1:
+        if not isinstance(request, PackageProductRuntimeRequestV1):
+            raise TypeError("Package Product runtime request is required")
+        if (
+            request.product_id != self.policy.product_id
+            or request.session_id != self.expected_session_id
+            or request.cwd != str(self.expected_cwd)
+            or self._current_cwd_identity() != self._cwd_identity
+        ):
+            raise ValueError("Package Product Session or workspace identity changed")
+        binding = compose_posix_local_wheel_product(
+            state_root=self.state_root,
+            plugin_store_root=self.plugin_store_root,
+            policy=self.policy,
+            environment=self.environment,
+            acquisition_budgets=self.acquisition_budgets,
+            inspection_budgets=self.inspection_budgets,
+            closure_budgets=self.closure_budgets,
+            root_store_identity=self.root_store_identity,
+            dependency_store_identity=self.dependency_store_identity,
+            registry=self.registry,
+            admission_request=self.admission_request,
+            management=self.management,
+            desired_state=self.desired_state,
+            gc_bindings=self.gc_bindings,
+            gc_gate=self.gc_gate,
+            actor_id=self.actor_id,
+            desired_policy_revision=self.desired_policy_revision,
+            recovery_identity=self.recovery_identity,
+        )
+        if self._current_cwd_identity() != self._cwd_identity:
+            raise ValueError("Package Product workspace changed during composition")
+        return binding
+
+    def _current_cwd_identity(self) -> tuple[int, int] | None:
+        try:
+            metadata = self.expected_cwd.stat()
+        except OSError:
+            return None
+        if not stat.S_ISDIR(metadata.st_mode):
+            return None
+        return metadata.st_dev, metadata.st_ino
+
+
 def _require_private_directory(path: Path) -> None:
     if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
         raise ValueError("Package private state root must be absolute")
@@ -472,4 +559,4 @@ def _directory_identity(path: Path) -> str | None:
         os.close(fd)
 
 
-__all__ = ["compose_posix_local_wheel_product"]
+__all__ = ["PosixLocalWheelProductRuntimeFactory", "compose_posix_local_wheel_product"]

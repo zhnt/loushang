@@ -26,6 +26,7 @@ import pytest
 
 from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductRuntimeFactory,
     compose_posix_local_wheel_product,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
@@ -4329,9 +4330,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     recovery_identity="product-runtime-recovery",
                 )
 
-            runtime = compose()
-            activation = runtime.lifecycle
             if entrypoint == "session":
+                from loushang.harness.resources.packages.product_runtime import (
+                    PackageProductRuntimeRequestV1,
+                )
+
                 workspace = tmp_path / "workspace"
                 workspace.mkdir(mode=0o700)
                 session_manager = asyncio.run(
@@ -4341,12 +4344,79 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                         persist=False,
                     )
                 )
+                factory = PosixLocalWheelProductRuntimeFactory(
+                    expected_session_id=(
+                        session_manager.get_header().conversation_id
+                    ),
+                    expected_cwd=workspace,
+                    state_root=state_root,
+                    plugin_store_root=plugin_root,
+                    policy=policy,
+                    environment=environment,
+                    acquisition_budgets=PackageAcquisitionBudgetV1(
+                        max_transport_bytes=256 * 1024,
+                        max_requests=1,
+                        max_redirects=0,
+                        max_wall_time_ms=1000,
+                    ),
+                    inspection_budgets=PackageInspectionBudgetV1(),
+                    closure_budgets=PackageClosureBudgetV1(),
+                    root_store_identity="product-runtime-root-store",
+                    dependency_store_identity="product-runtime-dependency-store",
+                    registry=registry,
+                    admission_request=admission_request,
+                    management=management,
+                    desired_state=desired,
+                    gc_bindings=bindings,
+                    gc_gate=gate,
+                    actor_id="product-runtime",
+                    desired_policy_revision="product-policy:1",
+                    recovery_identity="product-runtime-recovery",
+                )
+                for rejected_request in (
+                    PackageProductRuntimeRequestV1(
+                        product_id="other",
+                        session_id=session_manager.get_header().conversation_id,
+                        cwd=str(workspace),
+                    ),
+                    PackageProductRuntimeRequestV1(
+                        product_id="coding",
+                        session_id="foreign-session",
+                        cwd=str(workspace),
+                    ),
+                    PackageProductRuntimeRequestV1(
+                        product_id="coding",
+                        session_id=session_manager.get_header().conversation_id,
+                        cwd=str(source_root),
+                    ),
+                ):
+                    with pytest.raises(ValueError, match="identity changed"):
+                        factory.create(rejected_request)
+                moved_workspace = tmp_path / "moved-workspace"
+                workspace.rename(moved_workspace)
+                workspace.mkdir(mode=0o700)
+                try:
+                    with pytest.raises(ValueError, match="identity changed"):
+                        factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                cwd=str(workspace),
+                            )
+                        )
+                finally:
+                    workspace.rmdir()
+                    moved_workspace.rename(workspace)
+                assert not (state_root / "lifecycle.jsonl").exists()
+                created = []
 
                 class ProductFactory:
                     def create(self, request):
-                        assert request.product_id == "coding"
-                        assert request.cwd == str(workspace)
-                        return runtime
+                        binding = factory.create(request)
+                        created.append(binding)
+                        return binding
 
                 session = create_agent_session(
                     session_manager=session_manager,
@@ -4371,6 +4441,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
                     ),
                 )
+                assert len(created) == 1
+                runtime = created[0]
+                activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
                 outcome = asyncio.run(
                     session.execute_package_lifecycle(
@@ -4396,6 +4469,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 assert refused_by_session["path"] == ""
                 assert desired.snapshot().inventory_revision == 1
             else:
+                runtime = compose()
+                activation = runtime.lifecycle
                 runtime.activate()
                 direct_outcome = activation.route(
                     PackageProductLifecycleIntentV1(
@@ -4584,6 +4659,15 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
+            if entrypoint == "session":
+                with pytest.raises(ValueError, match="Store identity changed"):
+                    factory.create(
+                        PackageProductRuntimeRequestV1(
+                            product_id="coding",
+                            session_id=session_manager.get_header().conversation_id,
+                            cwd=str(workspace),
+                        )
+                    )
             with pytest.raises(PackageProductActivationError) as changed_root:
                 activation.route(
                     PackageProductLifecycleIntentV1(

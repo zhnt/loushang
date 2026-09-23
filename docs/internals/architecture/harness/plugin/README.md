@@ -349,7 +349,9 @@ Neither may silently override a narrower implemented owner contract.
   covers changed-Source refusal. The composition refuses a moved Store root.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
-  materializer. Default Coding does not select that factory; this is not a
+  materializer. The concrete POSIX factory pins Product, Session, and
+  workspace identity before composing the supplied fenced Store owners.
+  Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
