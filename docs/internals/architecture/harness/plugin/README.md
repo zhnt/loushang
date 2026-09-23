@@ -354,6 +354,14 @@ Neither may silently override a narrower implemented owner contract.
   committed-set journals, binds bulk-update targets durably, and reports
   unknown or legacy-unverified installed Sources as check failures. Coding has
   not yet supplied this binding through its runtime factory.
+  Coding bootstrap now refuses an explicitly supplied Package Product runtime
+  factory when its composition requests legacy Plugins, its Catalog policy
+  includes Package resources, configured Package roots/sources are present,
+  or an initial Product composition or peer materializer is supplied.
+  Only an explicit minimal composition with the canonical read-only Catalog
+  policy can exercise the factory before those legacy inputs are migrated; it
+  constructs and exposes no legacy Package materializer. Default Coding
+  remains on its existing path.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,

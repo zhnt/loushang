@@ -1820,7 +1820,10 @@ def test_cli_preserves_scope_for_every_typed_single_source_action() -> None:
     ]
 
 
-def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) -> None:
+@pytest.mark.parametrize("without_materializer", (False, True))
+def test_startup_routes_missing_plugin_before_sync_materializer(
+    tmp_path: Path, without_materializer: bool
+) -> None:
     source = "https://example.test/acme.whl"
     activation, transaction = _activation(tmp_path)
     activation.activate()
@@ -1837,14 +1840,14 @@ def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) 
 
     class Materializer:
         def get_record(self, _source: str) -> None:
-            return None
+            raise AssertionError("Product startup consulted a legacy record")
 
         def materialize_remote_source_sync(self, value: str) -> object:
             raise AssertionError(f"legacy startup materializer used for {value}")
 
     result = PackageSourceResolver(
         settings_manager=Settings(),
-        materializer=Materializer(),  # type: ignore[arg-type]
+        materializer=(None if without_materializer else Materializer()),  # type: ignore[arg-type]
         session_id="session:test",
         product_lifecycle=activation,
         product_lifecycle_mode="enforced",

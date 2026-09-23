@@ -224,9 +224,14 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
 
 def test_create_agent_session_activates_and_reuses_package_product_runtime(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from typing import Any, cast
 
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.product_plan import CODING_PRODUCT_ID
     from loushang.coding.session_manager import SessionManager
@@ -268,10 +273,20 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
                 mode="enforced",
             )
 
+    def forbid_default_materializer(_manager: object) -> None:
+        raise AssertionError("Product runtime constructed a legacy materializer")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", forbid_default_materializer
+    )
     session = create_agent_session(
         session_manager=manager,
         model=_model(),
         package_product_runtime_factory=cast(Any, Factory()),
+        composition_set="coding-minimal",
+        resource_catalog_source_policy=(
+            CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+        ),
     )
     try:
         assert lifecycle.active
@@ -283,8 +298,138 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
         assert session.package_product_lifecycle_mode == "enforced"
         assert session._package_controller.product_lifecycle is lifecycle
         assert session._package_controller.product_inventory is inventory
+        assert session._package_controller.get_package_materializer() is None
     finally:
         asyncio.run(session.dispose())
+
+
+@pytest.mark.parametrize("composition_set_id", (None, "coding-minimal"))
+def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    composition_set_id: str | None,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    calls = {"legacy_assembly": 0, "factory": 0}
+
+    def legacy_assembly(*_args: object, **_kwargs: object) -> None:
+        calls["legacy_assembly"] += 1
+        raise AssertionError("legacy Plugin assembly was reached")
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            calls["factory"] += 1
+            raise AssertionError("Product factory was reached before exclusion")
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "prepare_managed_coding_base_plugin_assembly",
+        legacy_assembly,
+    )
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+            composition_set=composition_set_id,
+        )
+    assert calls == {"legacy_assembly": 0, "factory": 0}
+
+
+def test_package_product_runtime_rejects_supplied_peer_materializer(
+    tmp_path: Path,
+) -> None:
+    from typing import Any, cast
+
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory saw a peer materializer")
+
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            composition_set="coding-minimal",
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
+            package_materializer=cast(Any, object()),
+            package_product_runtime_factory=cast(Any, Factory()),
+        )
+
+
+@pytest.mark.parametrize(
+    "configured_input", ("package_roots", "plugin_sources", "package_sources")
+)
+def test_package_product_runtime_rejects_configured_legacy_sources_before_effects(
+    tmp_path: Path,
+    configured_input: str,
+) -> None:
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.source import PackageSourceConfig
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    configured_value = (
+        (PackageSourceConfig(source=str(tmp_path / "package")),)
+        if configured_input == "package_sources"
+        else (str(tmp_path / "package"),)
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(**{configured_input: configured_value})  # type: ignore[arg-type]
+        )
+    )
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory was reached before exclusion")
+
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=services,
+            composition_set="coding-minimal",
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+        )
 
 
 def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
