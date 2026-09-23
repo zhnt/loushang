@@ -20,6 +20,13 @@ an interrupted deletion with no result remains unsettled and can be retried
 by a future coordinator. A retry can settle `already_absent` when the Store
 completed deletion before the first result append.
 
+The append requires the exact Store settlement record, not just its ID. A
+typed success with a different Store identity, stable ref, or tree identity
+is refused as `plugin_package_gc_result_mismatch`. A regression first showed
+that the previous ID-only append accepted a validly shaped result naming a
+different Store. This binds the accounting entry to its target; it still
+cannot prove that physical deletion happened.
+
 The future executor must hold the Product reservation gate while resolving
 the target, recording the deletion start, fencing the committed set and Store,
 calling the exact Store owner, and appending this result or debt. The journal

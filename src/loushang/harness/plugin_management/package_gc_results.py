@@ -30,6 +30,9 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
     PackageStoreGcResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementRecordV1,
+)
 
 GcAttemptDisposition = Literal["succeeded", "retryable_failure"]
 
@@ -211,7 +214,7 @@ class PluginPackageGcResultJournal:
         self,
         start: PluginPackageGcDeletionStartV2,
         *,
-        settlement_id: str,
+        settlement: PackageStoreSettlementRecordV1,
         operation_id: str,
         idempotency_key: str,
         store_result: PackageStoreGcResultV1 | None = None,
@@ -219,6 +222,20 @@ class PluginPackageGcResultJournal:
     ) -> PluginPackageGcAttemptV1:
         if not isinstance(start, PluginPackageGcDeletionStartV2):
             raise TypeError("Exact GC deletion start is required")
+        if not isinstance(settlement, PackageStoreSettlementRecordV1):
+            raise TypeError("Exact Store settlement is required")
+        settlement_id = settlement.settlement_id
+        if store_result is not None and (
+            not isinstance(store_result, PackageStoreGcResultV1)
+            or store_result
+            != PackageStoreGcResultV1.create(
+                settlement, disposition=store_result.disposition
+            )
+        ):
+            raise self._error(
+                "GC Store result disagrees with the exact settlement",
+                "plugin_package_gc_result_mismatch",
+            )
         with journal_file_lock(self._path, "exclusive"):
             records = self._load_unlocked()
             self._validate_start_records(records, start)

@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -57,6 +58,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
+    PackageStoreGcResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
@@ -318,7 +322,7 @@ def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) ->
     journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
     failed = journal.record(
         start,
-        settlement_id=settlement.settlement_id,
+        settlement=settlement,
         operation_id="gc-attempt-1",
         idempotency_key="gc-attempt-1-request",
         error_code="store.transient_failure",
@@ -332,7 +336,7 @@ def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) ->
     with pytest.raises(PluginPackageGcResultError) as reused_key:
         reopened.record(
             start,
-            settlement_id=settlement.settlement_id,
+            settlement=settlement,
             operation_id="gc-attempt-conflicting",
             idempotency_key="gc-attempt-1-request",
             error_code="store.other_failure",
@@ -344,7 +348,7 @@ def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) ->
     assert result.disposition == "already_absent"
     succeeded = reopened.record(
         start,
-        settlement_id=settlement.settlement_id,
+        settlement=settlement,
         operation_id="gc-attempt-2",
         idempotency_key="gc-attempt-2-request",
         store_result=result,
@@ -356,7 +360,7 @@ def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) ->
     )
     assert reopened.record(
         start,
-        settlement_id=settlement.settlement_id,
+        settlement=settlement,
         operation_id="gc-attempt-2",
         idempotency_key="gc-attempt-2-request",
         store_result=result,
@@ -364,12 +368,53 @@ def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) ->
     with pytest.raises(PluginPackageGcResultError) as terminal:
         reopened.record(
             start,
-            settlement_id=settlement.settlement_id,
+            settlement=settlement,
             operation_id="gc-attempt-3",
             idempotency_key="gc-attempt-3-request",
             error_code="store.retry_after_success",
         )
     assert terminal.value.code == "plugin_package_gc_result_terminal"
+
+
+def test_store_gc_result_refuses_a_different_store_identity(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    other_store_result = PackageStoreGcResultV1.create(
+        SimpleNamespace(
+            settlement_id=settlement.settlement_id,
+            store_identity="other-store",
+            receipt=settlement.receipt,
+            tree_identity=settlement.tree_identity,
+        ),
+        disposition="deleted",
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    with pytest.raises(PluginPackageGcResultError) as mismatch:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-1",
+            idempotency_key="gc-attempt-1-request",
+            store_result=other_store_result,
+        )
+    assert mismatch.value.code == "plugin_package_gc_result_mismatch"
+    assert journal.attempts(start) == ()
 
 
 def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
