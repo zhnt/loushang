@@ -160,6 +160,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
     PackagePosixEpochCutoverRequestV1,
     PackagePosixEpochCutoverResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
+    PackagePosixEpochSnapshotOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
@@ -4272,6 +4275,22 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     for directory in (authority, legacy_root, epochs_root):
         directory.mkdir(mode=0o700)
     (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    source_root = tmp_path / "pre-b-domains"
+    source_root.mkdir(mode=0o700)
+    domain_roots = {"store_bytes": legacy_root}
+    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+        if domain == "store_bytes":
+            continue
+        domain_root = source_root / domain
+        domain_root.mkdir(mode=0o700)
+        domain_roots[domain] = domain_root
+    snapshot_root = tmp_path / "pre-b-snapshots"
+    snapshot_root.mkdir(mode=0o700)
+    snapshots = PackagePosixEpochSnapshotOwner(
+        snapshot_root,
+        store_id=store_id,
+        domain_roots=domain_roots,
+    )
     class _PreFenceScope:
         @contextmanager
         def exclusive_quiescence(self, *, store_id: str):
@@ -4301,7 +4320,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 leases=cutover_registry,
                 pre_fence=_PreFenceScope(),
             ),
-            snapshots=_ManifestEpochCutoverSnapshots(),
+            snapshots=snapshots,
         )
         cutover_request = PackagePosixEpochCutoverRequestV1.create(
             store_id=store_id,
@@ -4318,6 +4337,16 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None
+    snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
+    assert snapshot_evidence is not None
+    assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "store_bytes"
+        / "state.json"
+    ).read_bytes() == b'{"legacy":1}\n'
     plugin_root = epochs_root / cutover_request.namespace_id
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC

@@ -353,9 +353,12 @@ Neither may silently override a narrower implemented owner contract.
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime
-  lease/quiescence owner and reopens that registry for Session admission. Its
-  pre-fence and snapshot providers remain test doubles; production providers
-  remain required.
+  lease/quiescence owner and reopens that registry for Session admission. A
+  POSIX snapshot owner now publishes a durable, restore-compatible bundle from
+  nine explicitly configured pre-B domain roots; an independent reader still
+  verifies the evidence after the old source roots disappear. The integration
+  fixture supplies those roots, so Product mapping of real Coding state and a
+  production pre-fence launch barrier remain required.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.
