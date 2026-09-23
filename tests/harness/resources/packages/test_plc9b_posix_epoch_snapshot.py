@@ -212,6 +212,55 @@ def test_snapshot_copies_only_explicit_shared_member_alias(
     )
 
 
+def test_snapshot_derives_legacy_root_pointer_from_verified_store_identity(
+    tmp_path: Path,
+) -> None:
+    _, snapshot_root, legacy_root, domains = _snapshot_fixture(tmp_path)
+    with pytest.raises(ValueError, match="root name does not match"):
+        PackagePosixEpochSnapshotOwner(
+            snapshot_root,
+            store_id=_STORE_ID,
+            domain_roots=domains,
+            legacy_root_pointer_name="different-root",
+        )
+    owner = PackagePosixEpochSnapshotOwner(
+        snapshot_root,
+        store_id=_STORE_ID,
+        domain_roots=domains,
+        legacy_root_pointer_name=legacy_root.name,
+    )
+    identity = _directory_identity(legacy_root)
+    receipt = owner.capture(
+        store_id=_STORE_ID,
+        legacy_root_identity=identity,
+        quiescence_receipt_id=_QUIESCENCE_ID,
+    )
+    pointer = (
+        snapshot_root
+        / receipt.snapshot_id
+        / "payload"
+        / "legacy_root_pointer"
+        / "legacy-root-pointer.json"
+    )
+    assert pointer.read_bytes() == canonical_json_bytes(
+        {
+            "legacyRootIdentity": identity,
+            "legacyRootName": legacy_root.name,
+            "recordVersion": 1,
+            "storeId": _STORE_ID,
+        }
+    )
+    (domains["legacy_root_pointer"] / "unaccounted.json").write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="pointer source must be empty"):
+        owner.capture(
+            store_id=_STORE_ID,
+            legacy_root_identity=identity,
+            quiescence_receipt_id=_QUIESCENCE_ID,
+        )
+    shutil.rmtree(domains["legacy_root_pointer"])
+    assert owner.snapshot(receipt.receipt_id) is not None
+
+
 def test_snapshot_is_durable_and_reopen_validates_complete_domains(
     tmp_path: Path,
 ) -> None:

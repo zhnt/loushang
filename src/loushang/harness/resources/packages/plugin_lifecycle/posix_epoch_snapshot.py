@@ -3,7 +3,8 @@
 The Product supplies one private source for each required pre-B domain.
 Whole-tree sources must be disjoint. Explicit top-level member selections may
 share one directory only when their union covers it exactly; Product policy
-still decides which state belongs to each domain.
+still decides which state belongs to each domain. An optional Product-declared
+legacy root name yields one pointer record from the verified Store identity.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
     _rename_directory_noreplace,
     _strict_json_object,
     _supports_posix_rooted_io,
+    _TreeEntry,
     _TreeInspection,
     _validate_entry_name,
     _validated_limit,
@@ -60,6 +62,7 @@ _PAYLOAD_NAME = "payload"
 _STATE_MANIFEST_NAME = "state-manifest.json"
 _EVIDENCE_SUFFIX = ".evidence.json"
 _LOCK_NAME = ".epoch-snapshot.lock"
+_LEGACY_ROOT_POINTER_NAME = "legacy-root-pointer.json"
 _MAX_EVIDENCE_BYTES = 64 * 1024
 
 
@@ -177,6 +180,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         domain_roots: Mapping[str, str | Path],
         domain_members: Mapping[str, tuple[str, ...] | None] | None = None,
         shared_members: tuple[PackagePosixSnapshotSharedMemberV1, ...] = (),
+        legacy_root_pointer_name: str | None = None,
         maximum_entries: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_ENTRIES,
         maximum_bytes: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_BYTES,
         maximum_depth: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_DEPTH,
@@ -194,6 +198,16 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
             domain: _validated_root_path(domain_roots[domain], name=domain)
             for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
         }
+        if legacy_root_pointer_name is not None:
+            if type(legacy_root_pointer_name) is not str:
+                raise TypeError("Package snapshot legacy root name is invalid")
+            try:
+                _validate_entry_name(legacy_root_pointer_name)
+            except (OSError, UnicodeError) as exc:
+                raise ValueError("Package snapshot legacy root name is invalid") from exc
+            if self._domain_roots["store_bytes"].name != legacy_root_pointer_name:
+                raise ValueError("Package snapshot legacy root name does not match")
+        self._legacy_root_pointer_name = legacy_root_pointer_name
         if domain_members is not None and set(domain_members) != set(
             PACKAGE_PRE_B_SNAPSHOT_DOMAINS
         ):
@@ -370,6 +384,18 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                 for domain, source in sources.items()
             }
             self._require_shared_member_inspections(inspections)
+            pointer_contents = None
+            if self._legacy_root_pointer_name is not None:
+                if inspections["legacy_root_pointer"].entries:
+                    raise ValueError("Package snapshot pointer source must be empty")
+                pointer_contents = canonical_json_bytes(
+                    {
+                        "legacyRootIdentity": legacy_root_identity,
+                        "legacyRootName": self._legacy_root_pointer_name,
+                        "recordVersion": 1,
+                        "storeId": self._store_id,
+                    }
+                )
             os.mkdir(stage_name, mode=0o700, dir_fd=snapshot.descriptor)
             stage_metadata = os.stat(
                 stage_name,
@@ -393,13 +419,29 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                             _copy_tree(
                                 source.descriptor, target_fd, inspections[domain]
                             )
+                            expected_entries = inspections[domain].entries
+                            if domain == "legacy_root_pointer" and pointer_contents is not None:
+                                _write_new_file(
+                                    target_fd,
+                                    _LEGACY_ROOT_POINTER_NAME,
+                                    pointer_contents,
+                                )
+                                expected_entries = (
+                                    _TreeEntry(
+                                        logical_path=_LEGACY_ROOT_POINTER_NAME,
+                                        kind="file",
+                                        mode=0o600,
+                                        content_digest=sha256(pointer_contents).hexdigest(),
+                                        byte_count=len(pointer_contents),
+                                    ),
+                                )
                             copied_domain = _inspect_tree(
                                 target_fd,
                                 maximum_entries=self._maximum_entries,
                                 maximum_bytes=self._maximum_bytes,
                                 maximum_depth=self._maximum_depth - 1,
                             )
-                            if copied_domain.entries != inspections[domain].entries:
+                            if copied_domain.entries != expected_entries:
                                 raise OSError("Package snapshot domain changed during copy")
                             os.fchmod(
                                 target_fd,
