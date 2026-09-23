@@ -225,6 +225,7 @@ from loushang.harness.resources.packages.product_lifecycle import (
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
+    PackageProductWheelExecutionFactory,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
@@ -3759,7 +3760,10 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
         kernel=fixture.kernel,
-        execution=lambda _request, _current: fixture.execution,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
         recovery_identity="manifest-product-transaction-recovery",
         closure=fixture.closure_owner,
         pins=fixture.pin_owner,
@@ -3845,7 +3849,10 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
     handoff = _FailOnceProductHandoff(product.finalizer)
     transaction = PackageProductLifecycleTransaction(
         kernel=fixture.kernel,
-        execution=lambda _request, _current: fixture.execution,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
         recovery_identity="manifest-product-handoff-recovery",
         closure=fixture.closure_owner,
         pins=fixture.pin_owner,
@@ -3878,6 +3885,57 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
     assert product.journal.records()[-1].receipt is not None
     assert product.journal.records()[-1].receipt.state == "settled"
     assert handoff.calls == 2
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_refuses_non_wheel_source_without_store_fallback(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source="https://packages.example.test/acme_plugin-1.0.tar.gz",
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, product_ingress=ingress
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
+        recovery_identity="manifest-product-non-wheel-refusal",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel, transaction=transaction
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint="cli", ingress=ingress, admission=admission
+    )
+
+    refused = router.route(route)
+    before = fixture.lifecycle_journal.records()
+    assert refused.disposition == "rejected"
+    assert refused.failure is not None
+    assert refused.failure.code == "package_artifact_type_rejected"
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
+    assert product.desired.snapshot().inventory_revision == 0
+    assert router.route(route) == refused
+    assert fixture.lifecycle_journal.records() == before
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")

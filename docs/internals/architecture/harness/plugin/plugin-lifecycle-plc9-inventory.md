@@ -400,7 +400,10 @@
   transaction-pin, staging-set, commit, and Product handoff owners behind the
   B5 router. Local Linux-native tests send each of the five transport
   provenances through a real rooted Store, durable Package owner, and desired
-  state ledger. Product projects the installable revision from the exact
+  state ledger. A route-bound wheel execution factory derives operation,
+  attempt, filename, and environment evidence for each request; unsupported
+  non-wheel Sources receive a durable refusal before Source or Store access.
+  Product projects the installable revision from the exact
   committed-set root and refuses a handoff with a changed scope. The Product
   router requires a committed-handoff capability at
   composition, and committed replay completes a handoff interrupted before its

@@ -6,8 +6,15 @@ coordinates the accepted Package owners; it has no legacy materializer path.
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import urlsplit
 
+from loushang.harness.resources.packages.plugin_lifecycle.closure import (
+    PackageClosureBudgetV1,
+    PackageResolutionEnvironmentV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
     VerifiedPackageClosureCandidate,
 )
@@ -25,6 +32,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecycleRequestV2,
     PackageLifecycleStatusV1,
+    canonicalize_source_identity,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
+    PackageArtifactExecutionRequestV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
     PackageStagingSetExecutionResult,
@@ -52,6 +63,11 @@ _CLOSURE_PHASES = frozenset(
         "transaction_pinned",
     }
 )
+_WHEEL_BASENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\.whl\Z")
+
+
+class _ProductWheelSourceUnavailable(ValueError):
+    pass
 
 
 class PackageProductExecutionPort(Protocol):
@@ -60,6 +76,61 @@ class PackageProductExecutionPort(Protocol):
         request: PackageProductRouteRequestV1,
         current: PackageLifecycleStatusV1,
     ) -> PackageClosureExecutionRequestV2: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductWheelExecutionFactory:
+    """Bind each routed operation to one wheel-only closure execution request."""
+
+    environment: PackageResolutionEnvironmentV1
+    budgets: PackageClosureBudgetV1
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.environment, PackageResolutionEnvironmentV1):
+            raise TypeError("Package Product resolution environment is required")
+        if not isinstance(self.budgets, PackageClosureBudgetV1):
+            raise TypeError("Package Product closure budgets are required")
+
+    def __call__(
+        self,
+        request: PackageProductRouteRequestV1,
+        current: PackageLifecycleStatusV1,
+    ) -> PackageClosureExecutionRequestV2:
+        if not isinstance(request, PackageProductRouteRequestV1) or not isinstance(
+            current, PackageLifecycleStatusV1
+        ):
+            raise TypeError("Package Product route and status are required")
+        classification = current.classification
+        if (
+            classification is None
+            or classification.decision != "plugin_bound"
+            or current.operation_id != request.ingress.operation_id
+            or classification.canonical_source_identity
+            != canonicalize_source_identity(request.ingress.source_locator)
+            or request.ingress.resolution_environment_fingerprint
+            != self.environment.fingerprint
+        ):
+            raise PackageProductRouteContractError(
+                "Package Product wheel execution changed route identity"
+            )
+        source = classification.canonical_source_identity
+        parsed = urlsplit(source)
+        path = parsed.path if parsed.scheme and parsed.netloc else source
+        filename = path.rsplit("/", 1)[-1]
+        if _WHEEL_BASENAME.fullmatch(filename) is None:
+            raise _ProductWheelSourceUnavailable(
+                "Package Product Source is not a wheel artifact"
+            )
+        return PackageClosureExecutionRequestV2(
+            artifact=PackageArtifactExecutionRequestV1(
+                operation_id=current.operation_id,
+                request_fingerprint=current.request_fingerprint,
+                expected_attempt_epoch=current.attempt_epoch,
+                wheel_filename=filename,
+            ),
+            resolution_environment=self.environment,
+            budgets=self.budgets,
+        )
 
 
 class PackageProductClosurePort(Protocol):
@@ -178,7 +249,10 @@ class PackageProductLifecycleTransaction:
             return current
         if lifecycle_request.action != "install":
             return self._reject(current, code="package_route_unavailable")
-        execution = self._execution(request, current)
+        try:
+            execution = self._execution(request, current)
+        except _ProductWheelSourceUnavailable:
+            return self._reject(current, code="package_artifact_type_rejected")
         if not isinstance(execution, PackageClosureExecutionRequestV2):
             raise PackageProductRouteContractError(
                 "Package Product execution factory returned invalid evidence"
@@ -320,4 +394,7 @@ class PackageProductLifecycleTransaction:
         )
 
 
-__all__ = ["PackageProductLifecycleTransaction"]
+__all__ = [
+    "PackageProductLifecycleTransaction",
+    "PackageProductWheelExecutionFactory",
+]
