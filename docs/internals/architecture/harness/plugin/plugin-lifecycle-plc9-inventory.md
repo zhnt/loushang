@@ -411,7 +411,9 @@
   composition, and committed replay completes a handoff interrupted before its
   first journal event. An admitted startup recovery can also scan durable
   committed requests and complete that pre-journal handoff under the shared
-  epoch guard before activation; its Product factory binding is still pending.
+  epoch guard before activation. Ordinary startup recovery now also runs only
+  after a preflight epoch admission and under that guard, with a second
+  admission check before activation; its Product factory binding is still pending.
   A Linux rooted runtime-lease registry candidate now journals registration,
   release, and explicit orphan repair while holding per-lease OS liveness locks.
   Its complete active snapshot can feed the existing runtime-admission owner;

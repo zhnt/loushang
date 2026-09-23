@@ -97,8 +97,11 @@ _ENTRYPOINTS: tuple[PackageProductEntrypoint, ...] = (
 @dataclass
 class _Recovery:
     events: list[str]
+    guard: _EpochGuard | None = None
 
     def recover(self) -> None:
+        if self.guard is not None:
+            assert self.guard.entered == 1
         self.events.append("recovered")
 
 
@@ -422,6 +425,173 @@ def test_admitted_recovery_runs_under_epoch_guard_before_activation(
     assert activation.active
 
 
+def test_pre_admission_recovery_runs_under_epoch_guard(tmp_path: Path) -> None:
+    events: list[str] = []
+    guard = _EpochGuard()
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events, guard=guard),
+        transaction_guard=guard,
+    )
+
+    activation.activate()
+    assert events == ["recovered"]
+    assert guard.entered == 0
+
+
+def test_startup_recovery_holds_file_epoch_guard(tmp_path: Path) -> None:
+    lock_path = tmp_path / "recovery-coordination"
+    events: list[str] = []
+
+    class FileGuardRecovery(_Recovery):
+        def recover(self) -> None:
+            with pytest.raises(JournalLockUnavailable):
+                with journal_file_lock(lock_path, "exclusive", blocking=False):
+                    pytest.fail("cutover entered during Product startup recovery")
+            super().recover()
+
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "recovery-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=PackageProductFileEpochTransactionGuard(
+            store_id=request.store_id, coordination_lock=lock_path
+        ),
+        recoveries=(FileGuardRecovery(events),),
+    )
+
+    activation.activate()
+    assert events == ["recovered"]
+    with journal_file_lock(lock_path, "exclusive", blocking=False):
+        pass
+
+
+def test_epoch_guard_refusal_prevents_pre_admission_recovery(tmp_path: Path) -> None:
+    events: list[str] = []
+
+    def refuse() -> None:
+        raise RuntimeError("epoch cutover holds exclusive lock")
+
+    guard = _EpochGuard(on_enter=refuse)
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events),
+        transaction_guard=guard,
+    )
+
+    with pytest.raises(RuntimeError, match="epoch cutover"):
+        activation.activate()
+    assert events == []
+    assert not activation.active
+
+
+def test_epoch_guard_release_failure_does_not_publish_activation(tmp_path: Path) -> None:
+    class ReleaseFailureGuard(_EpochGuard):
+        @contextmanager
+        def shared_runtime(self, *, store_id: str):
+            with _EpochGuard.shared_runtime(self, store_id=store_id):
+                yield
+            raise RuntimeError("epoch guard release failed")
+
+    events: list[str] = []
+    guard = ReleaseFailureGuard()
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events),
+        transaction_guard=guard,
+    )
+
+    with pytest.raises(RuntimeError, match="release failed"):
+        activation.activate()
+    assert events == ["recovered"]
+    assert not activation.active
+
+
+def test_stale_epoch_refuses_before_pre_admission_recovery(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "stale-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, leases = _epoch_admission(tmp_path)
+    foreign = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:foreign",
+        runtime_epoch=request.runtime_epoch,
+        store_root_identity=request.store_root_identity,
+        registration_receipt_id="8" * 64,
+    )
+    leases.snapshot_value = PackageEpochLeaseSnapshotV1.create(
+        store_id=request.store_id,
+        owner_revision=2,
+        active_leases=(foreign,),
+    )
+    events: list[str] = []
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=_EpochGuard(),
+        recoveries=(_Recovery(events),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_runtime_epoch_unsupported"
+    assert events == []
+    assert not activation.active
+
+
+def test_recovery_cannot_publish_a_changed_lease_snapshot(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "changing-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, leases = _epoch_admission(tmp_path)
+
+    class ChangedLeaseRecovery:
+        def recover(self) -> None:
+            foreign = PackageEpochRuntimeLeaseV1.create(
+                runtime_id="runtime:foreign",
+                runtime_epoch=request.runtime_epoch,
+                store_root_identity=request.store_root_identity,
+                registration_receipt_id="8" * 64,
+            )
+            leases.snapshot_value = PackageEpochLeaseSnapshotV1.create(
+                store_id=request.store_id,
+                owner_revision=2,
+                active_leases=(*leases.snapshot_value.active_leases, foreign),
+            )
+
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=_EpochGuard(),
+        recoveries=(ChangedLeaseRecovery(),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_runtime_epoch_unsupported"
+    assert not activation.active
+
+
 def test_admitted_recovery_failure_keeps_product_inactive(tmp_path: Path) -> None:
     owner = PackageLifecycleOwner(
         journal=PackageLifecycleJournal(tmp_path / "failed-admitted-recovery.jsonl"),
@@ -658,8 +828,13 @@ def test_epoch_change_after_initial_admission_is_refused_inside_transaction_guar
     )
     transaction = _Transaction(owner)
     admission, request, leases = _epoch_admission(tmp_path)
+    guard_entries = 0
 
     def replace_lease() -> None:
+        nonlocal guard_entries
+        guard_entries += 1
+        if guard_entries != 2:
+            return
         foreign = PackageEpochRuntimeLeaseV1.create(
             runtime_id="runtime:cutover",
             runtime_epoch=request.runtime_epoch,

@@ -8,7 +8,7 @@ single pathless routing port to Product transports.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from hashlib import sha256
 from threading import Lock
 from typing import Protocol, TypeVar, cast
@@ -153,22 +153,23 @@ class PackageProductLifecycleActivation:
         return self._binding_id
 
     def activate(self) -> PackageEpochRuntimeAdmissionReceiptV1:
-        """Recover every owner, then atomically expose the admitted composition."""
+        """Admit, recover, and publish under one guarded runtime epoch."""
 
         with self._lock:
             if self._receipt is not None:
                 return self._receipt
-            for recovery in self._recoveries:
-                recovery.recover()
-            guard: AbstractContextManager[None] = (
-                self._transaction_guard.shared_runtime(
-                    store_id=self._admission_request.store_id
-                )
-                if self._admitted_recoveries
-                else nullcontext()
-            )
-            with guard:
+            with self._transaction_guard.shared_runtime(
+                store_id=self._admission_request.store_id
+            ):
+                preflight = self._admit()
+                for recovery in self._recoveries:
+                    recovery.recover()
                 receipt = self._admit()
+                if receipt != preflight:
+                    raise PackageProductActivationError(
+                        "Package runtime epoch changed during recovery",
+                        code="package_runtime_epoch_unsupported",
+                    )
                 for admitted_recovery in self._admitted_recoveries:
                     admitted_recovery.recover(receipt)
             self._receipt = receipt
