@@ -647,6 +647,20 @@ class PackageStoreSettlementJournal:
                     "Package Store ref has multiple physical settlements",
                     code="package_store_gc_settlement_ambiguous",
                 )
+            if any(
+                isinstance(item, PackageStoreSettlementRecordV1)
+                and item != settlement
+                and item.store_identity == settlement.store_identity
+                and (
+                    item.final_name == settlement.final_name
+                    or item.tree_identity == settlement.tree_identity
+                )
+                for item in events
+            ):
+                raise self._error(
+                    "Package Store physical root is aliased",
+                    code="package_store_gc_settlement_ambiguous",
+                )
             existing = next(
                 (
                     item for item in events

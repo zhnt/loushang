@@ -100,7 +100,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     VerifiedArtifactRefV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PACKAGE_COMMITTED_SET_JOURNAL_CODEC,
     PackageCommittedSetJournal,
+    PackageCommittedSetJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
@@ -1790,6 +1792,36 @@ class _ManifestCommitAdmissionFixture:
     pin_receipt: PackageTransactionPinReceiptV1
     commit_owner: PackageCommitLifecycleOwner
     admission_owner: PackageCommitAdmissionOwner
+
+
+def test_committed_set_gc_tombstone_blocks_exact_root_republication(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_commit_admission_fixture(tmp_path)
+    (record,) = fixture.committed_sets.records()
+    marker = fixture.committed_sets.tombstone(record)
+    assert fixture.committed_sets.tombstone(record) == marker
+    assert fixture.committed_sets.is_tombstoned(record.committed_set.root_ref.ref_id)
+    old_record = json.loads(
+        fixture.committed_sets.path.read_text(encoding="utf-8").splitlines()[-1]
+    )
+    with pytest.raises(ValueError):
+        PACKAGE_COMMITTED_SET_JOURNAL_CODEC.decode_record(old_record)
+    restarted = PackageCommittedSetJournal(fixture.committed_sets.path)
+    with pytest.raises(PackageCommittedSetJournalError) as caught:
+        restarted.publish(
+            record.closure_lock,
+            request_fingerprint=record.committed_set.request_fingerprint,
+            product_id=record.committed_set.product_id,
+            scope_id=record.committed_set.scope_id,
+            installation_id=record.committed_set.installation_id,
+            plugin_id=record.committed_set.plugin_id,
+            classification_fingerprint=(
+                record.committed_set.classification_fingerprint
+            ),
+        )
+    assert caught.value.code == "package_committed_set_gc_tombstoned"
+    assert restarted.records() == (record,)
 
 
 def _manifest_commit_admission_fixture(
