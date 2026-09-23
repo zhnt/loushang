@@ -1666,6 +1666,21 @@ def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
         return owner_id
 
 
+def _dispose_unbound_package_product_runtime(
+    factory: PackageProductRuntimeFactoryPort | None, error: BaseException
+) -> None:
+    """Retire Product authority that was not transferred to a Session."""
+
+    if factory is None:
+        return
+    dispose = getattr(factory, "dispose_unbound_runtime", None)
+    if callable(dispose):
+        try:
+            dispose()
+        except BaseException:
+            error.add_note("Package Product runtime cleanup also failed")
+
+
 def create_agent_session(
     *,
     session_manager: SessionManager,
@@ -1697,37 +1712,43 @@ def create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
-    return _create_agent_session(
-        session_manager=session_manager,
-        model=model,
-        stream_fn=stream_fn,
-        system_prompt=system_prompt,
-        thinking_level=thinking_level,
-        tools=tools,
-        tool_registry=tool_registry,
-        allowed_tool_names=allowed_tool_names,
-        active_tool_names=active_tool_names,
-        no_tools=no_tools,
-        composition_set=resolve_coding_composition_set(
-            "coding-standard" if composition_set is None else composition_set
-        ),
-        services=services,
-        output_capture_factory=output_capture_factory,
-        agent_factory=agent_factory,
-        session_start_event=session_start_event,
-        package_materializer=package_materializer,
-        package_product_runtime_factory=package_product_runtime_factory,
-        resource_catalog_source_policy=resource_catalog_source_policy,
-        append_system_prompt=append_system_prompt,
-        extension_flag_values=extension_flag_values,
-        approval_resolver=approval_resolver,
-        tool_policy_evaluator=tool_policy_evaluator,
-        enable_multiagent=enable_multiagent,
-        sandbox_workspace_writable=True,
-        lsp_definitions=lsp_definitions,
-        lsp_baseline_environment=lsp_baseline_environment,
-        lsp_read_text=lsp_read_text,
-    )
+    try:
+        return _create_agent_session(
+            session_manager=session_manager,
+            model=model,
+            stream_fn=stream_fn,
+            system_prompt=system_prompt,
+            thinking_level=thinking_level,
+            tools=tools,
+            tool_registry=tool_registry,
+            allowed_tool_names=allowed_tool_names,
+            active_tool_names=active_tool_names,
+            no_tools=no_tools,
+            composition_set=resolve_coding_composition_set(
+                "coding-standard" if composition_set is None else composition_set
+            ),
+            services=services,
+            output_capture_factory=output_capture_factory,
+            agent_factory=agent_factory,
+            session_start_event=session_start_event,
+            package_materializer=package_materializer,
+            package_product_runtime_factory=package_product_runtime_factory,
+            resource_catalog_source_policy=resource_catalog_source_policy,
+            append_system_prompt=append_system_prompt,
+            extension_flag_values=extension_flag_values,
+            approval_resolver=approval_resolver,
+            tool_policy_evaluator=tool_policy_evaluator,
+            enable_multiagent=enable_multiagent,
+            sandbox_workspace_writable=True,
+            lsp_definitions=lsp_definitions,
+            lsp_baseline_environment=lsp_baseline_environment,
+            lsp_read_text=lsp_read_text,
+        )
+    except BaseException as error:
+        _dispose_unbound_package_product_runtime(
+            package_product_runtime_factory, error
+        )
+        raise
 
 
 def create_agent_session_from_services(
@@ -1759,11 +1780,17 @@ def create_agent_session_from_services(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
-    extension_flag_values = (
-        agent_services.extension_runner.get_flag_values()
-        if agent_services.extension_runner is not None
-        else None
-    )
+    try:
+        extension_flag_values = (
+            agent_services.extension_runner.get_flag_values()
+            if agent_services.extension_runner is not None
+            else None
+        )
+    except BaseException as error:
+        _dispose_unbound_package_product_runtime(
+            package_product_runtime_factory, error
+        )
+        raise
     return create_agent_session_result(
         session_manager=session_manager,
         model=model,
@@ -1824,7 +1851,13 @@ def create_agent_session_result(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
-    resolved_services = services or create_services()
+    try:
+        resolved_services = services or create_services()
+    except BaseException as error:
+        _dispose_unbound_package_product_runtime(
+            package_product_runtime_factory, error
+        )
+        raise
     session = create_agent_session(
         session_manager=session_manager,
         model=model,

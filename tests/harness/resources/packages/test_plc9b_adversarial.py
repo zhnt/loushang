@@ -4753,6 +4753,17 @@ while True:
                 )
                 assert len(created) == 1
                 runtime = created[0]
+                if entrypoint == "session" and not with_dependency:
+                    with pytest.raises(ValueError, match="already used"):
+                        factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=session_manager.get_header().conversation_id,
+                                cwd=str(workspace),
+                            )
+                        )
+                    factory.dispose_unbound_runtime()
+                    assert registry.snapshot(store_id=store_id).active_leases
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
                 transport_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")

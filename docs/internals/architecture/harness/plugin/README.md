@@ -362,7 +362,9 @@ Neither may silently override a narrower implemented owner contract.
   failed factory activation or post-activation Session construction releases
   it, and successful Session disposal releases it after cleanup completes. A
   failed disposal retains the lease for safe retry or operator repair. The
-  Product caller remains responsible for failures before factory activation. A
+  POSIX factory issues only one binding per lease, and Coding bootstrap
+  releases an unbound lease if startup refuses before activation. The Product
+  caller owns failures while constructing the factory itself. A
   POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration

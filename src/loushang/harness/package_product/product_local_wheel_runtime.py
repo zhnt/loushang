@@ -12,6 +12,7 @@ import stat
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 from typing import cast
 
 from loushang.harness.package_product.product_local_wheel_inventory import (
@@ -462,6 +463,11 @@ class PosixLocalWheelProductRuntimeFactory:
     desired_policy_revision: str
     recovery_identity: str
     _cwd_identity: tuple[int, int] = field(init=False, repr=False)
+    _create_lock: Lock = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
+    _create_started: bool = field(default=False, init=False, repr=False, compare=False)
+    _binding_issued: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if (
@@ -525,34 +531,44 @@ class PosixLocalWheelProductRuntimeFactory:
             or admission_request.store_root_identity != switch.fenced_root_identity
         ):
             raise ValueError("Package Product POSIX cutover evidence changed")
-        binding = compose_posix_local_wheel_product(
-            state_root=self.state_root,
-            plugin_store_root=self.plugin_store_root,
-            policy=self.policy,
-            environment=self.environment,
-            acquisition_budgets=self.acquisition_budgets,
-            inspection_budgets=self.inspection_budgets,
-            closure_budgets=self.closure_budgets,
-            root_store_identity=self.root_store_identity,
-            dependency_store_identity=self.dependency_store_identity,
-            registry=registry,
-            admission_request=admission_request,
-            management=self.management,
-            desired_state=self.desired_state,
-            gc_bindings=self.gc_bindings,
-            gc_gate=self.gc_gate,
-            actor_id=self.actor_id,
-            desired_policy_revision=self.desired_policy_revision,
-            recovery_identity=self.recovery_identity,
-        )
-        if self._current_cwd_identity() != self._cwd_identity:
-            raise ValueError("Package Product workspace changed during composition")
-        return replace(binding, on_dispose=self.runtime_lease.release)
+        with self._create_lock:
+            if self._create_started:
+                raise ValueError("Package Product runtime factory already used")
+            object.__setattr__(self, "_create_started", True)
+            binding = compose_posix_local_wheel_product(
+                state_root=self.state_root,
+                plugin_store_root=self.plugin_store_root,
+                policy=self.policy,
+                environment=self.environment,
+                acquisition_budgets=self.acquisition_budgets,
+                inspection_budgets=self.inspection_budgets,
+                closure_budgets=self.closure_budgets,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                registry=registry,
+                admission_request=admission_request,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if self._current_cwd_identity() != self._cwd_identity:
+                raise ValueError("Package Product workspace changed during composition")
+            bound = replace(binding, on_dispose=self.runtime_lease.release)
+            object.__setattr__(self, "_binding_issued", True)
+            return bound
 
     def dispose_unbound_runtime(self) -> None:
         """Release the lease if Session bootstrap rejects before binding exists."""
 
-        self.runtime_lease.release()
+        with self._create_lock:
+            if self._binding_issued:
+                return
+            object.__setattr__(self, "_create_started", True)
+            self.runtime_lease.release()
 
     def _current_cwd_identity(self) -> tuple[int, int] | None:
         try:
