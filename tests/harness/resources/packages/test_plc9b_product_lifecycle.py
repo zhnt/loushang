@@ -98,6 +98,14 @@ class _CommittingTransaction:
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
 
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
@@ -129,6 +137,14 @@ class _InvalidTransaction:
     @property
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
+
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert current.disposition == "committed"
 
     def execute(
         self,
@@ -465,6 +481,30 @@ def test_execution_binding_rejects_transaction_from_a_different_owner(
 
     assert not owner.journal.path.exists()
     assert not foreign.journal.path.exists()
+
+
+def test_execution_binding_rejects_missing_committed_handoff(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "missing-handoff.jsonl"),
+        classification_authority=_ClassificationAuthority(),
+        enabled=True,
+    )
+
+    class MissingFinalizer:
+        owner_binding_id = owner.binding_id
+
+        def execute(
+            self,
+            _request: PackageProductRouteRequestV1,
+            *,
+            current: PackageLifecycleStatusV1,
+        ) -> PackageLifecycleStatusV1:
+            return current
+
+    with pytest.raises(PackageProductRouteContractError, match="handoff"):
+        PackageProductLifecycleExecutionBinding(owner, MissingFinalizer())
 
 
 def test_router_rechecks_mutable_transaction_owner_before_execution(

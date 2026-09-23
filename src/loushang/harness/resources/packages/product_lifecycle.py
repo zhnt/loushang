@@ -94,6 +94,13 @@ class PackageProductLifecycleTransactionPort(Protocol):
         current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1: ...
 
+    def finalize_committed(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None: ...
+
 
 class PackageProductRouteContractError(RuntimeError):
     """A configured transaction Port violated the Product routing contract."""
@@ -115,6 +122,10 @@ class PackageProductLifecycleExecutionBinding:
         if transaction_owner != self.owner.binding_id:
             raise PackageProductRouteContractError(
                 "Package Product transaction is bound to a different owner"
+            )
+        if not callable(getattr(self.transaction, "finalize_committed", None)):
+            raise PackageProductRouteContractError(
+                "Package Product transaction lacks a committed handoff"
             )
 
 
@@ -209,8 +220,6 @@ class PackageProductLifecycleRouter:
                 "Committed Package Product route changed transaction authority"
             )
         finalizer = getattr(self._transaction, "finalize_committed", None)
-        if finalizer is None:
-            return
         if not callable(finalizer) or finalizer(request, current=status) is not None:
             raise PackageProductRouteContractError(
                 "Package Product handoff finalizer returned invalid evidence"

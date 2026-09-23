@@ -1506,6 +1506,14 @@ class _ManifestProductTransaction:
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
 
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,

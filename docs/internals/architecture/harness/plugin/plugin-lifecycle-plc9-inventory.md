@@ -400,7 +400,8 @@
   transaction-pin, staging-set, commit, and Product handoff owners behind the
   B5 router. Local Linux-native tests send each of the five transport
   provenances through a real rooted Store, durable Package owner, and desired
-  state ledger. Committed replay completes a handoff interrupted before its
+  state ledger. The Product router requires a committed-handoff capability at
+  composition, and committed replay completes a handoff interrupted before its
   first journal event. A direct-materializer route and a changed execution
   identity reach neither Source nor Store. This is not a Coding production
   cutover: no Windows native transaction acceptance exists, and the legacy
