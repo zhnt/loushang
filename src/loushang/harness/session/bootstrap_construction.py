@@ -30,6 +30,7 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleOperationPort,
 )
 from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
     PackageProductRuntimeRequestV1,
     activate_package_product_runtime,
@@ -561,6 +562,15 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             bootstrap_capability_runtime
         )
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
+        package_runtime: PackageProductRuntimeBindingV1 | None = None
+
+        def bind_package_runtime(session: SessionT) -> SessionT:
+            if package_runtime is not None and package_runtime.on_dispose is not None:
+                bind = getattr(session, "_bind_package_product_runtime", None)
+                if not callable(bind):
+                    raise TypeError("Package Product Session cannot own its runtime")
+                bind(package_runtime)
+            return session
 
         def create_session(
             agent: AgentT,
@@ -605,18 +615,20 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     ],
                     session_factory,
                 )
-                return legacy_factory(
-                    bootstrap_capability_runtime,
-                    agent,
-                    bundle,
-                    extension_runtime,
-                    registry,
-                    active,
-                    prompt,
-                    mode,
-                    product_lifecycle,
-                    product_inventory,
-                    product_lifecycle_mode,
+                return bind_package_runtime(
+                    legacy_factory(
+                        bootstrap_capability_runtime,
+                        agent,
+                        bundle,
+                        extension_runtime,
+                        registry,
+                        active,
+                        prompt,
+                        mode,
+                        product_lifecycle,
+                        product_inventory,
+                        product_lifecycle_mode,
+                    )
                 )
             factory_with_side_question = cast(
                 Callable[
@@ -639,19 +651,21 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 session_factory,
             )
             assert side_question_binding is not None
-            return factory_with_side_question(
-                bootstrap_capability_runtime,
-                side_question_binding,
-                agent,
-                bundle,
-                extension_runtime,
-                registry,
-                active,
-                prompt,
-                mode,
-                product_lifecycle,
-                product_inventory,
-                product_lifecycle_mode,
+            return bind_package_runtime(
+                factory_with_side_question(
+                    bootstrap_capability_runtime,
+                    side_question_binding,
+                    agent,
+                    bundle,
+                    extension_runtime,
+                    registry,
+                    active,
+                    prompt,
+                    mode,
+                    product_lifecycle,
+                    product_inventory,
+                    product_lifecycle_mode,
+                )
             )
 
         try:
@@ -737,6 +751,13 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             )
         except BaseException as error:
+            if package_runtime is not None:
+                try:
+                    package_runtime.dispose_runtime()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        f"Package Product runtime cleanup also failed: {cleanup_error}"
+                    )
             for side_question_binding in reversed(session_side_question_bindings):
                 try:
                     side_question_binding.dispose()

@@ -357,7 +357,12 @@ Neither may silently override a narrower implemented owner contract.
   integration fixture runs the native cutover owner with the durable runtime
   lease/quiescence owner and reopens that registry for Session admission. A
   Product-facing lease helper binds the registered runtime to that exact fence
-  and releases the lease if admission construction fails. A
+  and releases the lease if admission construction fails. The explicit POSIX
+  factory now transfers that lease through its runtime binding to the Session:
+  failed factory activation or post-activation Session construction releases
+  it, and successful Session disposal releases it after cleanup completes. A
+  failed disposal retains the lease for safe retry or operator repair. The
+  Product caller remains responsible for failures before factory activation. A
   POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
@@ -433,8 +438,9 @@ Neither may silently override a narrower implemented owner contract.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports
-  unknown or legacy-unverified installed Sources as check failures. Coding has
-  not yet supplied this binding through its runtime factory.
+  unknown or legacy-unverified installed Sources as check failures. Coding
+  supplies this binding only through the explicit minimal Product factory
+  composition, not its default bootstrap.
   Coding bootstrap now refuses an explicitly supplied Package Product runtime
   factory when its composition requests legacy Plugins, its Catalog policy
   includes Package resources, configured Package roots/sources are present,

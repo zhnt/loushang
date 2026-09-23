@@ -136,6 +136,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistry,
+    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
@@ -4670,8 +4671,7 @@ while True:
                     closure_budgets=PackageClosureBudgetV1(),
                     root_store_identity="product-runtime-root-store",
                     dependency_store_identity="product-runtime-dependency-store",
-                    registry=registry,
-                    admission_request=admission_request,
+                    runtime_lease=runtime_lease,
                     cutover_result=cutover_result,
                     management=management,
                     desired_state=desired,
@@ -5142,6 +5142,9 @@ while True:
         finally:
             if session is not None:
                 asyncio.run(session.dispose())
+                with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
+                    registry.snapshot(store_id=store_id)
+                assert released.value.code == "package_epoch_lease_absent"
             runtime_lease.release()
     finally:
         file_io.cleanup()

@@ -1889,6 +1889,10 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
             reserve_tokens=1_111,
             compact_percent=61.0,
         )
+        released_runtime: list[str] = []
+        session._package_product_runtime_binding = SimpleNamespace(  # type: ignore[assignment]
+            dispose_runtime=lambda: released_runtime.append("released")
+        )
 
         def fail_capability_disposal() -> None:
             raise RuntimeError("capability disposal failed")
@@ -1904,6 +1908,7 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
 
         assert session.footer.disposed is True
         assert disposed_transcripts == ["failure-session"]
+        assert released_runtime == []
 
     asyncio.run(scenario())
 
