@@ -207,3 +207,39 @@ def test_package_lifecycle_uses_typed_product_collections_with_compat_scope() ->
         "check_package_updates",
         "update_packages",
     ]
+
+
+@pytest.mark.parametrize(
+    "lifecycle_request",
+    (
+        PackageLifecycleRequest(install=("acme",), scope="project"),
+        PackageLifecycleRequest(check_updates=True, scope="project"),
+        PackageLifecycleRequest(update_all=True, scope="project"),
+    ),
+)
+def test_product_bound_cli_refuses_missing_typed_executor_without_legacy_fallback(
+    lifecycle_request: PackageLifecycleRequest,
+) -> None:
+    class ProductSession:
+        package_product_binding_id = "product:binding"
+        package_product_lifecycle_mode = "enforced"
+
+        def __init__(self) -> None:
+            self.legacy_calls: list[str] = []
+
+        async def install_package(self, source: str, *, scope: str) -> object:
+            self.legacy_calls.append(f"install:{scope}:{source}")
+            return {"lifecycle": "installed"}
+
+        async def check_package_updates(self) -> object:
+            self.legacy_calls.append("check")
+            return []
+
+        async def update_packages(self) -> object:
+            self.legacy_calls.append("update-all")
+            return []
+
+    session = ProductSession()
+    with pytest.raises(PackageLifecycleError, match="Product.*executor"):
+        asyncio.run(run_package_lifecycle(session, lifecycle_request))
+    assert session.legacy_calls == []

@@ -349,7 +349,9 @@ Neither may silently override a narrower implemented owner contract.
   covers changed-Source refusal. The composition refuses a moved Store root.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
-  materializer. The concrete POSIX factory pins Product, Session, and
+  materializer. The same native fixture now also commits through shared CLI
+  and RPC install transports with Product-bound Session evidence. The concrete
+  POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime
@@ -383,6 +385,9 @@ Neither may silently override a narrower implemented owner contract.
   `install` intents; a real POSIX Store/Product fixture commits both root-only
   and dependency-Wheel cases through that resolver. A separately accepted
   non-Plugin owner remains an activation gate.
+  Shared CLI now requires its typed source or collection executor whenever a
+  Session declares a Package Product binding; a missing executor cannot fall
+  back to legacy Package methods.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports

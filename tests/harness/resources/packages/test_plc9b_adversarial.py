@@ -4201,7 +4201,9 @@ def test_product_transaction_commits_configured_local_dependency(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
-@pytest.mark.parametrize("entrypoint", ("cli", "session", "startup"))
+@pytest.mark.parametrize(
+    "entrypoint", ("cli", "session", "cli_transport", "rpc_transport", "startup")
+)
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
     with_dependency: bool,
@@ -4220,6 +4222,12 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         resolve_coding_package_epoch_layout,
     )
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.cli.package_lifecycle import (
+        PackageLifecycleRequest,
+        run_package_lifecycle,
+    )
+    from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
+    from loushang.harness.host.rpc.output import RpcOutput
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
@@ -4430,7 +4438,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 )
 
             committed_operation_id = "operation:product-runtime"
-            if entrypoint == "session":
+            if entrypoint in {"session", "cli_transport", "rpc_transport"}:
                 from loushang.harness.resources.packages.product_runtime import (
                     PackageProductRuntimeRequestV1,
                 )
@@ -4546,15 +4554,45 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 runtime = created[0]
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
-                outcome = asyncio.run(
-                    session.execute_package_lifecycle(
-                        "install",
-                        str(source),
-                        entrypoint="session",
-                        operation_id="operation:product-runtime",
-                        scope="project",
+                if entrypoint == "cli_transport":
+                    cli_result = asyncio.run(
+                        run_package_lifecycle(
+                            session,
+                            PackageLifecycleRequest(
+                                install=(str(source),), scope="project"
+                            ),
+                        )
                     )
-                )
+                    outcome = cli_result.outputs[0]["record"]
+                    assert isinstance(outcome, dict)
+                    committed_operation_id = str(outcome["operationId"])
+                elif entrypoint == "rpc_transport":
+                    rpc_output = io.StringIO()
+                    rpc = RpcPackageCommands(
+                        runtime=object(),
+                        get_session=lambda: session,
+                        output=RpcOutput(rpc_output),
+                    )
+                    asyncio.run(
+                        dict(rpc.bindings())["install_package"](
+                            "request:product-runtime",
+                            {"source": str(source), "scope": "project"},
+                        )
+                    )
+                    response = json.loads(rpc_output.getvalue())
+                    assert response["success"] is True
+                    outcome = response["data"]["record"]
+                    committed_operation_id = str(outcome["operationId"])
+                else:
+                    outcome = asyncio.run(
+                        session.execute_package_lifecycle(
+                            "install",
+                            str(source),
+                            entrypoint="session",
+                            operation_id="operation:product-runtime",
+                            scope="project",
+                        )
+                    )
                 assert outcome["lifecycle"] == "installed"
                 assert outcome["path"] == ""
                 refused_by_session = asyncio.run(
