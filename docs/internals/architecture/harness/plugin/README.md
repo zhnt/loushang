@@ -378,8 +378,11 @@ Neither may silently override a narrower implemented owner contract.
   `install_package` call commits through the transaction, while its public
   `materialize_package`, `update_package`, `remove_package`, and
   `uninstall_package_async` calls refuse Plugin-bound targets without a legacy
-  materializer. Default Session composition and remaining CLI/RPC/supervisor
-  launch coverage still need a one-time switch.
+  materializer. The real CLI/RPC transport fixture also proves durable Product
+  refusals for these four commands: materialize/update reach the unavailable
+  transaction route, while remove/uninstall stop at indeterminate target
+  classification. Default Session composition, further transport coverage, and
+  supervisor launch still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

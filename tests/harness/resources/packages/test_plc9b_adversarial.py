@@ -4223,6 +4223,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
+        PackageLifecycleError,
         PackageLifecycleRequest,
         run_package_lifecycle,
     )
@@ -4554,6 +4555,31 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 runtime = created[0]
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
+                transport_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
+                refusal_codes = {
+                    "materialize": "package_route_unavailable",
+                    "update": "package_route_unavailable",
+                    "remove": "package_target_classification_indeterminate",
+                    "uninstall": "package_target_classification_indeterminate",
+                }
+
+                def assert_product_refusal(action: str, prior_count: int) -> None:
+                    new_records = transport_journal.records()[prior_count:]
+                    assert any(
+                        record.request.action == action
+                        and record.status.failure is not None
+                        and record.status.failure.code == refusal_codes[action]
+                        for record in new_records
+                    ), [
+                        (
+                            record.request.action,
+                            record.status.failure.code
+                            if record.status.failure is not None
+                            else None,
+                        )
+                        for record in new_records
+                    ]
+
                 if entrypoint == "cli_transport":
                     cli_result = asyncio.run(
                         run_package_lifecycle(
@@ -4566,6 +4592,20 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     outcome = cli_result.outputs[0]["record"]
                     assert isinstance(outcome, dict)
                     committed_operation_id = str(outcome["operationId"])
+                    for action in ("materialize", "update", "remove", "uninstall"):
+                        prior_count = len(transport_journal.records())
+                        with pytest.raises(
+                            PackageLifecycleError, match=refusal_codes[action]
+                        ):
+                            asyncio.run(
+                                run_package_lifecycle(
+                                    session,
+                                    PackageLifecycleRequest(
+                                        **{action: (str(source),)}, scope="project"
+                                    ),
+                                )
+                            )
+                        assert_product_refusal(action, prior_count)
                 elif entrypoint == "rpc_transport":
                     rpc_output = io.StringIO()
                     rpc = RpcPackageCommands(
@@ -4583,6 +4623,23 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     assert response["success"] is True
                     outcome = response["data"]["record"]
                     committed_operation_id = str(outcome["operationId"])
+                    for command in (
+                        "materialize_package",
+                        "update_package",
+                        "remove_package",
+                        "uninstall_package",
+                    ):
+                        prior_count = len(transport_journal.records())
+                        asyncio.run(
+                            dict(rpc.bindings())[command](
+                                f"request:product-runtime:{command}",
+                                {"source": str(source), "scope": "project"},
+                            )
+                        )
+                        refusal = json.loads(rpc_output.getvalue().splitlines()[-1])
+                        assert refusal["command"] == command
+                        assert refusal["success"] is False
+                        assert_product_refusal(command.removesuffix("_package"), prior_count)
                 elif entrypoint == "session":
                     outcome = asyncio.run(
                         session.install_package(str(source), scope="project")
