@@ -356,6 +356,8 @@ Neither may silently override a narrower implemented owner contract.
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime
   lease/quiescence owner and reopens that registry for Session admission. A
+  Product-facing lease helper binds the registered runtime to that exact fence
+  and releases the lease if admission construction fails. A
   POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration

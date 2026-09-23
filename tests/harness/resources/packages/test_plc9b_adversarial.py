@@ -4228,6 +4228,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
+    from loushang.harness.resources.packages.product_epoch_guard import (
+        register_package_product_runtime_lease,
+    )
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
@@ -4587,18 +4590,25 @@ while True:
             assert not (activation_root / "active-runtime.json").exists()
             assert (control_root / "epoch.jsonl").read_bytes() == fence_bytes
             assert fences.current(store_id) == fence
-        handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        if entrypoint == "session" and not with_dependency:
+            with pytest.raises(ValueError, match="runtime version"):
+                register_package_product_runtime_lease(
+                    registry,
+                    fence=fence,
+                    runtime_id="runtime:product",
+                    runtime_version="",
+                    runtime_protocol_epoch=2,
+                )
+        runtime_lease = register_package_product_runtime_lease(
+            registry,
+            fence=fence,
+            runtime_id="runtime:product",
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+        )
         session = None
         try:
-            admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
-                fence=fence,
-                runtime_id=handle.lease.runtime_id,
-                runtime_version="2.0.0",
-                runtime_protocol_epoch=2,
-                runtime_epoch=handle.lease.runtime_epoch,
-                store_root_identity=handle.lease.store_root_identity,
-                lease_id=handle.lease.lease_id,
-            )
+            admission_request = runtime_lease.admission_request
             def compose(
                 selected_desired: PluginDesiredStateLedger = desired,
             ):
@@ -5132,7 +5142,7 @@ while True:
         finally:
             if session is not None:
                 asyncio.run(session.dispose())
-            handle.release()
+            runtime_lease.release()
     finally:
         file_io.cleanup()
         os.close(root_fd)
