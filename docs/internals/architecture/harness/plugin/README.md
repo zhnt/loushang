@@ -381,8 +381,11 @@ Neither may silently override a narrower implemented owner contract.
   materializer. The real CLI/RPC transport fixture also proves durable Product
   refusals for these four commands: materialize/update reach the unavailable
   transaction route, while remove/uninstall stop at indeterminate target
-  classification. Default Session composition, further transport coverage, and
-  supervisor launch still need a one-time switch.
+  classification. Synchronous Session `uninstall_package` now routes an enforced
+  Product binding before consulting the legacy synchronous-refresh gate; its
+  real-Store refusal is durable even when catalog refresh is async-only.
+  Default Session composition, further transport coverage, and supervisor
+  launch still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

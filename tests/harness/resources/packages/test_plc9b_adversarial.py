@@ -4670,6 +4670,23 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     )
                     assert all(item["lifecycle"] == "failed" for item in rejected)
                     assert all(item["path"] == "" for item in rejected)
+                    legacy_refresh_checks = []
+
+                    def legacy_refresh_available() -> bool:
+                        legacy_refresh_checks.append(True)
+                        return False
+
+                    session._package_controller.supports_synchronous_refresh = (
+                        legacy_refresh_available
+                    )
+                    sync_refusal = session.uninstall_package(
+                        str(source), scope="project"
+                    )
+                    assert sync_refusal["lifecycle"] == "failed"
+                    assert sync_refusal["errorCode"] == (
+                        "package_target_classification_indeterminate"
+                    )
+                    assert legacy_refresh_checks == []
                 refused_by_session = asyncio.run(
                     session.execute_package_lifecycle(
                         "install",
