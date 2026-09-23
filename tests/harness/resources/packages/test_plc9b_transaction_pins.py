@@ -17,6 +17,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinRequestV1,
     PackageTransactionPinTargetV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.transaction_retention import (
+    PackageJournaledTransactionRetentionOwner,
+    PackageTransactionRetentionError,
+)
 
 OPERATION_ID = "operation-transaction-pin"
 REQUEST_FINGERPRINT = "9" * 64
@@ -101,6 +105,35 @@ def _acquired(
         lease_id="lease-transaction-pin",
         lease_revision=3,
     )
+
+
+def test_journaled_retention_owner_replays_exact_pin_and_release(
+    tmp_path: Path,
+) -> None:
+    journal = PackageTransactionPinJournal(tmp_path / "transaction-pins.jsonl")
+    owner = PackageJournaledTransactionRetentionOwner(journal=journal)
+    request = _request()
+
+    acquired = owner.acquire(request)
+    restarted = PackageJournaledTransactionRetentionOwner(
+        journal=PackageTransactionPinJournal(journal.path)
+    )
+    assert restarted.acquire(request) == acquired
+    assert len(journal.records()) == 1
+
+    with pytest.raises(PackageTransactionRetentionError):
+        restarted.acquire(_request(recovery_identity="changed-recovery"))
+    assert len(journal.records()) == 1
+
+    released = restarted.release(acquired, transition_evidence_ref="d" * 64)
+    assert released.state == "released"
+    assert owner.release(acquired, transition_evidence_ref="d" * 64) == released
+    assert len(journal.records()) == 2
+    with pytest.raises(PackageTransactionRetentionError):
+        owner.acquire(request)
+    with pytest.raises(PackageTransactionRetentionError):
+        owner.release(acquired, transition_evidence_ref="e" * 64)
+    assert len(journal.records()) == 2
 
 
 def test_pin_request_derives_exact_canonical_targets_from_verified_plan() -> None:

@@ -196,6 +196,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinReceiptV1,
     PackageTransactionPinRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.transaction_retention import (
+    PackageJournaledTransactionRetentionOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
@@ -217,6 +220,9 @@ from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleIntentV1,
+)
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
 )
@@ -227,6 +233,10 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductPublishAttemptV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+)
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+    PackageProductLocalWheelPolicy,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
@@ -1601,12 +1611,16 @@ def _b2_owner(
     cleanup_debt: bool = False,
     crash_after_phase: PackageLifecyclePhase | None = None,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
 ):
     lifecycle_journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
     kernel = (
         PackageLifecycleOwner(
             journal=lifecycle_journal,
-            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            classification_authority=(
+                classification_authority
+                or _Authority(_facts("explicit_plugin_intent"))
+            ),
             enabled=True,
         )
         if crash_after_phase is None
@@ -1643,7 +1657,9 @@ def _b2_owner(
     )
     artifact_owner = PackageArtifactLifecycleOwner(
         kernel=kernel,
-        classification_recheck=_StableClassificationRecheck(),
+        classification_recheck=(
+            classification_authority or _StableClassificationRecheck()
+        ),
         acquisition_owner=PackageAcquisitionOwner(
             source_authority=source_authority,
             quarantine_store=store,
@@ -1694,6 +1710,7 @@ def _b3d_owner(
     closure_builder: _LegacyClosureBuilder | None = None,
     crash_after_phase: PackageLifecyclePhase | None = None,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
 ):
     components = _b2_owner(
         tmp_path,
@@ -1703,6 +1720,7 @@ def _b3d_owner(
         payloads=payloads,
         crash_after_phase=crash_after_phase,
         configured_source_authority=configured_source_authority,
+        classification_authority=classification_authority,
     )
     (
         kernel,
@@ -3389,6 +3407,8 @@ def _manifest_native_adoption_fixture(
     product_ingress: PackageLifecycleIngressRequestV2 | None = None,
     product_root_target: bool = False,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    journaled_transaction_retention: bool = False,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3410,6 +3430,7 @@ def _manifest_native_adoption_fixture(
         crash_after_phase=crash_after_phase,
         root_payload=root_payload,
         configured_source_authority=configured_source_authority,
+        classification_authority=classification_authority,
     )
     classified = kernel.submit(
         product_ingress or _request(
@@ -3501,7 +3522,11 @@ def _manifest_native_adoption_fixture(
     pin_owner = PackageTransactionPinLifecycleOwner(
         kernel=kernel,
         closure_plans=resolution_journal,
-        retention=retention,
+        retention=(
+            PackageJournaledTransactionRetentionOwner(journal=pin_journal)
+            if journaled_transaction_retention
+            else retention
+        ),
         pin_journal=pin_journal,
     )
     dependency_settlements = PackageStoreSettlementJournal(
@@ -3538,7 +3563,9 @@ def _manifest_native_adoption_fixture(
     staging_owner = PackageStagingSetLifecycleOwner(
         kernel=kernel,
         classification_recheck=(
-            staging_classification_recheck or _StableClassificationRecheck()
+            staging_classification_recheck
+            or classification_authority
+            or _StableClassificationRecheck()
         ),
         closure_plans=resolution_journal,
         pin_journal=pin_journal,
@@ -3932,20 +3959,36 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
     payload = _wheel_bytes()
     source.write_bytes(payload)
     admission = _manifest_product_admission()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(source),
+                requested_package="acme==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(payload).hexdigest(),
+            ),
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=_closure_environment().fingerprint,
+        authority_id="coding-local-source:manifest",
+    )
     ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
-        _request(
-            source=str(source),
-            environment_fingerprint=_closure_environment().fingerprint,
+        policy.create(
+            PackageProductLifecycleIntentV1(
+                operation_id="manifest-operation",
+                action="install",
+                source=str(source),
+                scope="project",
+            )
         ),
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     local_source = _PinnedLocalSourceAuthority(
-        PackagePinnedLocalWheelSourceAuthority(
-            source_root=source_root,
-            allowed_digests={str(source): sha256(payload).hexdigest()},
-            policy_revision=ingress.policy_revision,
-            authority_id="coding-local-source:manifest",
-        )
+        policy.source_authority()
     )
     fixture = _manifest_native_adoption_fixture(
         tmp_path,
@@ -3953,6 +3996,8 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         product_ingress=ingress,
         product_root_target=True,
         configured_source_authority=local_source,
+        journaled_transaction_retention=True,
+        classification_authority=policy,
     )
     product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
@@ -3981,9 +4026,19 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
     )
 
     assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert committed.classification is not None
+    assert (
+        committed.classification.basis_facts.facts[0].owner_revision
+        == policy.authority_revision
+    )
     assert local_source.authorize_calls == 1
+    assert fixture.retention.physical_acquisitions == 0
     assert fixture.root_settlements.records()
     assert fixture.committed_sets.current(committed.operation_id) is not None
+    assert tuple(record.receipt.state for record in fixture.pin_journal.records()) == (
+        "acquired",
+        "released",
+    )
     assert product.desired.snapshot().inventory_revision == 1
     source_evidence = fixture.evidence_journal.find(
         operation_id=committed.operation_id,
