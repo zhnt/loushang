@@ -412,6 +412,12 @@
   first journal event. An admitted startup recovery can also scan durable
   committed requests and complete that pre-journal handoff under the shared
   epoch guard before activation; its Product factory binding is still pending.
+  A Linux rooted runtime-lease registry candidate now journals registration,
+  release, and explicit orphan repair while holding per-lease OS liveness locks.
+  Its complete active snapshot can feed the existing runtime-admission owner;
+  the rooted Product guard shares its epoch coordination lock. Coding runtime
+  registration, Product factory ownership of the admitted root/guard, pre-fence
+  legacy-runtime quiescence, and a Windows-native lease owner remain pending.
   A direct-materializer route and a changed execution
   identity reach neither Source nor Store. This is not a Coding production
   cutover: no Windows native transaction acceptance exists, and the legacy
