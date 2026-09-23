@@ -76,6 +76,8 @@
   no executable Product GC command or durable deletion result/debt receipt.
   [PLC9D3b](plugin-lifecycle-plc9d3b-contract.md) closes the Store re-publication
   counterexample with a durable exact-ref tombstone; it does not authorize GC.
+  [PLC9D3c](plugin-lifecycle-plc9d3c-contract.md) adds read-only exact root
+  resolution across Product handoff, committed set, and Store settlement.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

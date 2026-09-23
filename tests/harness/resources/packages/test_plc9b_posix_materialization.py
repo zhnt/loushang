@@ -4,27 +4,48 @@ import io
 import json
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 import loushang.harness.resources.packages.plugin_lifecycle.posix_materialization as posix_materialization
+from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingV1,
+    _binding_id,
+)
+from loushang.harness.plugin_management.package_gc_target import (
+    PluginPackageGcTargetError,
+    resolve_plugin_package_gc_root_target,
+)
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     ResolvedPackageRequirementV1,
     VerifiedClosurePlanNodeV2,
     VerifiedClosurePlanV2,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
+    package_operation_fingerprint,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
+    DependencyClosureLockV2,
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PackagePhysicalStagingError,
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageDesiredStateCommitRequestV1,
+    _desired_request_identity,
+    _fingerprint,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
@@ -55,6 +76,168 @@ OPERATION_ID = "operation-posix-materialization"
 REQUEST_FINGERPRINT = "9" * 64
 CLASSIFICATION_FINGERPRINT = "8" * 64
 ENVIRONMENT_FINGERPRINT = "7" * 64
+
+
+def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
+    tmp_path: Path,
+) -> None:
+    dependency_request, dependency_candidate, request, candidate, _, _ = (
+        _requests_and_candidates()
+    )
+    dependency_root = tmp_path / "dependency-store"
+    root = tmp_path / "root-store"
+    dependency_root.mkdir(mode=0o700)
+    root.mkdir(mode=0o700)
+    dependency_store = PosixPackageDependencyMaterializationStore(
+        dependency_root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "dependency-settlements.jsonl"
+        ),
+    )
+    root_settlements = PackageStoreSettlementJournal(
+        tmp_path / "root-settlements.jsonl"
+    )
+    root_store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=root_settlements,
+    )
+    dependency_ref = dependency_store.stage_dependency(
+        dependency_request, dependency_candidate
+    ).stable_ref
+    root_ref = root_store.stage_root(request, candidate).stable_ref
+    assert isinstance(dependency_ref, VerifiedArtifactRefV1)
+    assert isinstance(root_ref, PluginRevisionRefV1)
+    plan = VerifiedClosurePlanV2.create(
+        operation_id=request.operation_id,
+        attempt_epoch=request.attempt_epoch,
+        root_node_id=request.node_id,
+        resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
+        nodes=(request.plan_node, dependency_request.plan_node),
+        max_depth=1,
+    )
+    assert plan.fingerprint == request.verified_plan_fingerprint
+    closure = DependencyClosureLockV2.create(
+        plan,
+        stable_refs={
+            request.node_id: root_ref,
+            dependency_request.node_id: dependency_ref,
+        },
+    )
+    committed_sets = PackageCommittedSetJournal(tmp_path / "committed-sets.jsonl")
+    committed = committed_sets.publish(
+        closure,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        classification_fingerprint=CLASSIFICATION_FINGERPRINT,
+    )
+    command_id = "gc-target-install"
+    command_fingerprint = sha256(command_id.encode()).hexdigest()
+    operation_fingerprint = package_operation_fingerprint(
+        request.operation_id, REQUEST_FINGERPRINT
+    )
+    identity = _desired_request_identity(
+        command_id=command_id,
+        command_fingerprint=command_fingerprint,
+        expected_inventory_revision=0,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+        request_version=1,
+    )
+    desired_request = PackageDesiredStateCommitRequestV1(
+        desired_request_id=_fingerprint(identity),
+        command_id=command_id,
+        command_fingerprint=command_fingerprint,
+        expected_inventory_revision=0,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+    )
+    package_revision = PluginPackageRevisionRefV1(
+        plugin_id="plugin-test",
+        plugin_version=root_ref.version,
+        package_content_digest=root_ref.artifact_digest,
+        dependency_lock_digest=closure.lock_digest,
+        package_source_identity=request.plan_node.canonical_source_identity,
+    )
+    binding = PluginPackageGcBindingV1(
+        record_revision=1,
+        binding_id=_binding_id(desired_request, package_revision, 1),
+        request=desired_request,
+        package_revision=package_revision,
+        desired_transition_revision=1,
+    )
+    sets = committed_sets.records()
+    settlements = root_settlements.records()
+    target = resolve_plugin_package_gc_root_target(
+        package_revision,
+        bindings=(binding,),
+        committed_sets=sets,
+        settlements=settlements,
+    )
+    assert target.settlement_id == settlements[0].settlement_id
+
+    for evidence, expected_code in (
+        ({"bindings": ()}, "plugin_package_gc_binding_unavailable"),
+        ({"committed_sets": ()}, "plugin_package_gc_set_unavailable"),
+        ({"settlements": ()}, "plugin_package_gc_settlement_unavailable"),
+        (
+            {"settlements": (settlements[0], settlements[0])},
+            "plugin_package_gc_settlement_unavailable",
+        ),
+    ):
+        with pytest.raises(PluginPackageGcTargetError) as caught:
+            resolve_plugin_package_gc_root_target(
+                package_revision,
+                bindings=evidence.get("bindings", (binding,)),
+                committed_sets=evidence.get("committed_sets", sets),
+                settlements=evidence.get("settlements", settlements),
+            )
+        assert caught.value.code == expected_code
+
+    mismatched = replace(package_revision, package_source_identity="other-source")
+    alias = PluginPackageGcBindingV1(
+        record_revision=2,
+        binding_id=_binding_id(desired_request, mismatched, 1),
+        request=desired_request,
+        package_revision=mismatched,
+        desired_transition_revision=1,
+    )
+    with pytest.raises(PluginPackageGcTargetError) as aliased:
+        resolve_plugin_package_gc_root_target(
+            package_revision,
+            bindings=(binding, alias),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert aliased.value.code == "plugin_package_gc_root_aliased"
+    with pytest.raises(PluginPackageGcTargetError) as source_changed:
+        resolve_plugin_package_gc_root_target(
+            mismatched,
+            bindings=(alias,),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert source_changed.value.code == "plugin_package_gc_set_mismatch"
 
 
 def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(

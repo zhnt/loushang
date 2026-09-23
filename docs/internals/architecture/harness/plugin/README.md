@@ -12,7 +12,7 @@
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
   dark reservation; D3a/D3b add a writer seal, private Store deletion primitive,
-  and exact-ref re-publication fence.
+  exact-ref re-publication fence, and read-only root target resolution.
   Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
   tracked in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
@@ -65,6 +65,9 @@ Neither may silently override a narrower implemented owner contract.
   remaining gates before executable GC or PLC9D completion.
 - [PLC9D3b Store GC Re-publication Fence](plugin-lifecycle-plc9d3b-contract.md)
   prevents a deleted Store ref from being staged again; Product GC remains dark.
+- [PLC9D3c Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
+  checks the desired handoff, committed set, and physical Store settlement
+  without granting deletion authority.
 
 ## Frozen Contracts
 

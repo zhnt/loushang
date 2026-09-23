@@ -27,6 +27,11 @@
   adds a Store-owned exact-ref tombstone before rooted deletion. Store replay
   excludes previous codecs and refuses re-staging, but no Product GC command
   or settled result/debt receipt exists.
+- PLC9D3c refinement:
+  [Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
+  joins the Product handoff, committed set, and exact Store settlement only
+  when all identities and aliases are proven. It is a read-only checker, not
+  an atomic capture or deletion authority.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
