@@ -351,9 +351,11 @@ Neither may silently override a narrower implemented owner contract.
   the Product factory Port and commits a local Wheel without a legacy
   materializer. The same native fixture now also commits through shared CLI
   and RPC install transports with Product-bound Session evidence. The checked-in
-  `coding.base` files also pass the PLC9B Wheel verifier when
-  assembled into a test Wheel; Product Store publication, verified runtime
-  reopening, and default selection of that package remain unimplemented. The
+  `coding.base` files pass the PLC9B Wheel verifier when assembled into a test
+  Wheel. A real Coding Session now also installs that checked-in package through
+  the Product transaction and reads its manifest, declaration, Prompt, and
+  Skill members from the selected Store root after enablement; production
+  artifact preparation and default selection remain unimplemented. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired

@@ -602,6 +602,7 @@ def _package_wheel_bytes(
     project: str,
     version: str,
     *,
+    extra_files: dict[str, bytes] | None = None,
     requires_dist: tuple[str, ...] = (),
     requires_python: str | None = None,
 ) -> bytes:
@@ -623,6 +624,7 @@ def _package_wheel_bytes(
         ),
         f"{dist_info}/METADATA": metadata,
     }
+    files.update(extra_files or {})
     rows = [
         (name, _record_digest(payload), str(len(payload)))
         for name, payload in files.items()
@@ -4209,6 +4211,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
+    from loushang.coding._base_plugin import coding_base_plugin_root
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -4235,10 +4238,24 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
-    source = source_root / WHEEL_FILENAME
+    checked_in_base = entrypoint == "session" and not with_dependency
+    base_files: dict[str, bytes] = {}
+    if checked_in_base:
+        base_root = coding_base_plugin_root()
+        base_files = {
+            f"coding_base/{path.relative_to(base_root).as_posix()}": path.read_bytes()
+            for path in base_root.rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        }
+    source = source_root / (
+        "coding_base-1-py3-none-any.whl" if checked_in_base else WHEEL_FILENAME
+    )
     payload = _package_wheel_bytes(
-        "acme-plugin",
-        "1.0",
+        "coding-base" if checked_in_base else "acme-plugin",
+        "1" if checked_in_base else "1.0",
+        extra_files=base_files,
         requires_dist=("dependency==2.0",) if with_dependency else (),
     )
     source.write_bytes(payload)
@@ -4254,8 +4271,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         bindings=(
             PackageProductLocalWheelBindingV1(
                 source_identity=str(source),
-                requested_package="acme-plugin==1.0",
-                plugin_id="acme.plugin",
+                requested_package=(
+                    "coding-base==1" if checked_in_base else "acme-plugin==1.0"
+                ),
+                plugin_id="coding.base" if checked_in_base else "acme.plugin",
                 artifact_digest=sha256(payload).hexdigest(),
             ),
         ),
@@ -5152,7 +5171,7 @@ while True:
                 )
                 with pytest.raises(PackageProductRuntimeReadError) as disabled:
                     runtime.read_selected_plugin_file(
-                        key, "acme_plugin/__init__.py", max_bytes=4096
+                        key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert disabled.value.code == "package_product_root_not_selected"
                 enabled = management.submit(
@@ -5173,9 +5192,15 @@ while True:
                 assert enabled.result is not None
                 assert enabled.result.disposition == "succeeded"
                 expected_inventory_revision = 2
-                assert runtime.read_selected_plugin_file(
-                    key, "acme_plugin/__init__.py", max_bytes=4096
-                ) == b"VALUE = 1\n"
+                for logical_path in (
+                    "coding_base/plugin.json",
+                    "coding_base/declarations/plugin.json",
+                    "coding_base/prompts/standard.md",
+                    "coding_base/skills/standard/SKILL.md",
+                ):
+                    assert runtime.read_selected_plugin_file(
+                        key, logical_path, max_bytes=64 * 1024
+                    ) == base_files[logical_path]
                 reopened = PackageProductSelectedRootReader(
                     product_id=policy.product_id,
                     scope_id=policy.project_scope_id,
@@ -5194,8 +5219,8 @@ while True:
                     gc_gate=gate,
                 )
                 assert reopened.read_selected_file(
-                    key, "acme_plugin/__init__.py", max_bytes=4096
-                ) == b"VALUE = 1\n"
+                    key, "coding_base/plugin.json", max_bytes=4096
+                ) == base_files["coding_base/plugin.json"]
                 foreign_key = PluginInstallationKeyV1(
                     product_id=key.product_id,
                     installation_scope=key.installation_scope,
@@ -5204,7 +5229,7 @@ while True:
                 )
                 with pytest.raises(PackageProductRuntimeReadError) as foreign:
                     runtime.read_selected_plugin_file(
-                        foreign_key, "acme_plugin/__init__.py", max_bytes=4096
+                        foreign_key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert foreign.value.code == "package_product_root_scope_changed"
                 with pytest.raises(PackageProductRuntimeReadError) as no_crosswalk:
@@ -5223,7 +5248,7 @@ while True:
                         root_store=root_store,
                         gc_gate=gate,
                     ).read_selected_file(
-                        key, "acme_plugin/__init__.py", max_bytes=4096
+                        key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
             before_swap = lifecycle_journal.records()
@@ -5236,7 +5261,7 @@ while True:
 
                 with pytest.raises(PackagePhysicalStagingError) as swapped:
                     runtime.read_selected_plugin_file(
-                        key, "acme_plugin/__init__.py", max_bytes=4096
+                        key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
@@ -5271,7 +5296,7 @@ while True:
 
                     with pytest.raises(PackageProductRuntimeActivationError) as closed:
                         runtime.read_selected_plugin_file(
-                            key, "acme_plugin/__init__.py", max_bytes=4096
+                            key, "coding_base/plugin.json", max_bytes=4096
                         )
                     assert closed.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
