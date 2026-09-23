@@ -37,6 +37,10 @@
   adds a Package-owner tombstone for one exact committed set/root ref and
   excludes previous codecs. The future executor must sequence it after a
   Product deletion start and before the Store tombstone.
+- PLC9D3e refinement:
+  [Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
+  adds a journal for exact-start Store results and retryable errors; no
+  coordinator has yet proven that a result follows actual Store mutation.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all

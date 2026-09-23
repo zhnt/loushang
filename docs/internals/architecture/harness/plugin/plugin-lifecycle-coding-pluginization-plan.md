@@ -80,6 +80,8 @@
   resolution across Product handoff, committed set, and Store settlement.
   [PLC9D3d](plugin-lifecycle-plc9d3d-contract.md) fences the committed-set
   owner against a new alias of a root ref after GC starts.
+  [PLC9D3e](plugin-lifecycle-plc9d3e-contract.md) records typed Store success
+  or retryable debt, but no Product executor calls it yet.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

@@ -15,6 +15,13 @@ from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingV1,
     _binding_id,
 )
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcDeletionStartV2,
+)
+from loushang.harness.plugin_management.package_gc_results import (
+    PluginPackageGcResultError,
+    PluginPackageGcResultJournal,
+)
 from loushang.harness.plugin_management.package_gc_target import (
     PluginPackageGcTargetError,
     resolve_plugin_package_gc_root_target,
@@ -287,6 +294,82 @@ def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     )
     other_store.stage_dependency(dependency_request, dependency_candidate)
     assert len(settlements.records()) == 2
+
+
+def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    failed = journal.record(
+        start,
+        settlement_id=settlement.settlement_id,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code="store.transient_failure",
+    )
+    assert failed.disposition == "retryable_failure"
+    reopened = PluginPackageGcResultJournal(journal.path)
+    assert reopened.attempts(start) == (failed,)
+    with pytest.raises(PluginPackageGcResultError) as wrong_start:
+        reopened.attempts(replace(start, operation_id="different-deletion-start"))
+    assert wrong_start.value.code == "plugin_package_gc_result_conflict"
+    with pytest.raises(PluginPackageGcResultError) as reused_key:
+        reopened.record(
+            start,
+            settlement_id=settlement.settlement_id,
+            operation_id="gc-attempt-conflicting",
+            idempotency_key="gc-attempt-1-request",
+            error_code="store.other_failure",
+        )
+    assert reused_key.value.code == "plugin_package_gc_result_conflict"
+
+    store._store.delete_settlement(settlement)
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "already_absent"
+    succeeded = reopened.record(
+        start,
+        settlement_id=settlement.settlement_id,
+        operation_id="gc-attempt-2",
+        idempotency_key="gc-attempt-2-request",
+        store_result=result,
+    )
+    assert succeeded.disposition == "succeeded"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (
+        failed,
+        succeeded,
+    )
+    assert reopened.record(
+        start,
+        settlement_id=settlement.settlement_id,
+        operation_id="gc-attempt-2",
+        idempotency_key="gc-attempt-2-request",
+        store_result=result,
+    ) == succeeded
+    with pytest.raises(PluginPackageGcResultError) as terminal:
+        reopened.record(
+            start,
+            settlement_id=settlement.settlement_id,
+            operation_id="gc-attempt-3",
+            idempotency_key="gc-attempt-3-request",
+            error_code="store.retry_after_success",
+        )
+    assert terminal.value.code == "plugin_package_gc_result_terminal"
 
 
 def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
