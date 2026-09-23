@@ -17,6 +17,7 @@ from loushang.harness.cli.package_lifecycle import (
 )
 from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
 from loushang.harness.host.rpc.output import RpcOutput
+from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
 )
@@ -54,6 +55,9 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductUpdateCheckV1,
     PackageProductUpdateManifestReceiptV1,
     PackageProductUpdateTargetV1,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductFileEpochTransactionGuard,
 )
 from loushang.harness.resources.packages.product_inventory import (
     PackageProductUpdateManifestError,
@@ -450,6 +454,50 @@ def test_admitted_recovery_failure_keeps_product_inactive(tmp_path: Path) -> Non
     assert raised.value.code == "package_product_recovery_incomplete"
     assert guard.entered == 0
     assert not activation.active
+
+
+def test_product_transaction_holds_file_epoch_guard_through_effects(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "file-guard-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    lock_path = tmp_path / "file-guard-coordination"
+
+    class ProbeTransaction(_Transaction):
+        def execute(
+            self,
+            request: PackageProductRouteRequestV1,
+            *,
+            current: PackageLifecycleStatusV1,
+        ) -> PackageLifecycleStatusV1:
+            with pytest.raises(JournalLockUnavailable):
+                with journal_file_lock(lock_path, "exclusive", blocking=False):
+                    pytest.fail("cutover entered during Product transaction")
+            return super().execute(request, current=current)
+
+    admission, request, _leases = _epoch_admission(tmp_path)
+    transaction = ProbeTransaction(owner)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=transaction,
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=PackageProductFileEpochTransactionGuard(
+            store_id=request.store_id, coordination_lock=lock_path
+        ),
+    )
+
+    activation.activate()
+    outcome = activation.route(_intent(), entrypoint="cli")
+    assert outcome.handled
+    assert transaction.calls == ["cli"]
+    with journal_file_lock(lock_path, "exclusive", blocking=False):
+        pass
 
 
 def _intent(operation_id: str = "operation:test") -> PackageProductLifecycleIntentV1:
