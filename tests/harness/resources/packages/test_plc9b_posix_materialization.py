@@ -494,10 +494,38 @@ def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
     victim.unlink()
     victim.symlink_to(outside)
 
-    with pytest.raises(PackagePhysicalStagingError):
+    with pytest.raises(PackagePhysicalStagingError) as collision:
         store._store.delete_settlement(settlement)
+    assert collision.value.retryable is False
     assert outside.read_bytes() == b"preserve"
     assert published.is_dir()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    debt = journal.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code=collision.value.code,
+        terminal=True,
+    )
+    assert debt.disposition == "terminal_failure"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (debt,)
+    with pytest.raises(PluginPackageGcResultError) as blocked:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-2",
+            idempotency_key="gc-attempt-2-request",
+            error_code="store.retry_without_repair",
+        )
+    assert blocked.value.code == "plugin_package_gc_result_terminal"
 
 
 def test_posix_store_gc_retries_after_partial_file_removal(

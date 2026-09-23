@@ -1,4 +1,4 @@
-"""Durable PLC9D Store-deletion attempt results and retryable debt.
+"""Durable PLC9D Store-deletion attempt results and failure debt.
 
 This ledger records evidence returned by a Store owner. It does not perform
 deletion or authorize a caller to invent a successful Store result.
@@ -34,7 +34,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.store_settlements impo
     PackageStoreSettlementRecordV1,
 )
 
-GcAttemptDisposition = Literal["succeeded", "retryable_failure"]
+GcAttemptDisposition = Literal["succeeded", "retryable_failure", "terminal_failure"]
 
 
 class PluginPackageGcResultError(RuntimeError):
@@ -67,7 +67,9 @@ class PluginPackageGcAttemptV1:
             or not self.deletion_start_operation_id
             or not self.operation_id
             or not self.idempotency_key
-            or self.disposition not in {"succeeded", "retryable_failure"}
+            or self.disposition not in {
+                "succeeded", "retryable_failure", "terminal_failure"
+            }
             or self.record_version != 1
         ):
             raise ValueError("Package GC attempt identity is invalid")
@@ -79,7 +81,7 @@ class PluginPackageGcAttemptV1:
             ):
                 raise ValueError("Successful Package GC requires one Store result")
         elif self.store_result is not None or not self.error_code:
-            raise ValueError("Retryable Package GC failure requires one error code")
+            raise ValueError("Package GC failure requires one error code")
         if self.attempt_id != _attempt_id(self):
             raise ValueError("Package GC attempt identity does not match")
 
@@ -94,11 +96,16 @@ class PluginPackageGcAttemptV1:
         idempotency_key: str,
         store_result: PackageStoreGcResultV1 | None,
         error_code: str | None,
+        terminal: bool = False,
     ) -> PluginPackageGcAttemptV1:
         if settlement_id not in start.target_settlement_ids:
             raise ValueError("GC attempt is outside the deletion start")
+        if type(terminal) is not bool or (terminal and store_result is not None):
+            raise ValueError("Terminal GC failure requires an error, not a Store result")
         disposition: GcAttemptDisposition = (
-            "succeeded" if store_result is not None else "retryable_failure"
+            "succeeded"
+            if store_result is not None
+            else "terminal_failure" if terminal else "retryable_failure"
         )
         values = [
             start.reservation_id,
@@ -219,6 +226,7 @@ class PluginPackageGcResultJournal:
         idempotency_key: str,
         store_result: PackageStoreGcResultV1 | None = None,
         error_code: str | None = None,
+        terminal: bool = False,
     ) -> PluginPackageGcAttemptV1:
         if not isinstance(start, PluginPackageGcDeletionStartV2):
             raise TypeError("Exact GC deletion start is required")
@@ -247,6 +255,7 @@ class PluginPackageGcResultJournal:
                 idempotency_key=idempotency_key,
                 store_result=store_result,
                 error_code=error_code,
+                terminal=terminal,
             )
             by_operation = next(
                 (item for item in records if item.operation_id == operation_id), None
@@ -267,13 +276,13 @@ class PluginPackageGcResultJournal:
                     )
                 return by_operation
             if any(
-                item.disposition == "succeeded"
+                item.disposition in {"succeeded", "terminal_failure"}
                 and item.reservation_id == start.reservation_id
                 and item.settlement_id == settlement_id
                 for item in records
             ):
                 raise self._error(
-                    "GC settlement already succeeded",
+                    "GC settlement is terminal",
                     "plugin_package_gc_result_terminal",
                 )
             if any(
@@ -330,7 +339,7 @@ class PluginPackageGcResultJournal:
                     raise ValueError("GC result journal chain is invalid")
                 operations.add(item.operation_id)
                 keys.add(item.idempotency_key)
-                if item.disposition == "succeeded":
+                if item.disposition in {"succeeded", "terminal_failure"}:
                     settled.add(target)
             return records
         except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
