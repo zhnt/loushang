@@ -22,6 +22,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotEvidenceStore,
     PackagePosixEpochSnapshotOwner,
+    PackagePosixSnapshotSharedMemberV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
     PackagePosixOfflineRestoreMaterializer,
@@ -153,6 +154,55 @@ def test_snapshot_partitions_colocated_domain_members_exactly(
     assert (payload / "desired_state" / "desired.jsonl").read_bytes() == b"desired\n"
     assert (payload / "instance_state" / "instance.jsonl").read_bytes() == b"instance\n"
     assert not (payload / "desired_state" / "instance.jsonl").exists()
+    shutil.rmtree(source_root)
+    assert (
+        PackagePosixEpochSnapshotEvidenceStore(
+            snapshot_root, store_id=_STORE_ID
+        ).snapshot(receipt.receipt_id)
+        is not None
+    )
+
+
+def test_snapshot_copies_only_explicit_shared_member_alias(
+    tmp_path: Path,
+) -> None:
+    snapshot_root = tmp_path / "snapshots"
+    source_root = tmp_path / "sources"
+    snapshot_root.mkdir(mode=0o700)
+    source_root.mkdir(mode=0o700)
+    domains = {}
+    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+        path = source_root / domain
+        path.mkdir(mode=0o700)
+        domains[domain] = path
+    shared = domains["binding_history"]
+    (shared / "package-lock.json").write_bytes(b'{"version":4}\n')
+    domains["lock_history"] = shared
+    members: dict[str, tuple[str, ...] | None] = {
+        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+    }
+    members["binding_history"] = ("package-lock.json",)
+    members["lock_history"] = ("package-lock.json",)
+    alias = PackagePosixSnapshotSharedMemberV1(
+        source_root=shared,
+        member_name="package-lock.json",
+        domains=("binding_history", "lock_history"),
+    )
+    owner = PackagePosixEpochSnapshotOwner(
+        snapshot_root,
+        store_id=_STORE_ID,
+        domain_roots=domains,
+        domain_members=members,
+        shared_members=(alias,),
+    )
+    receipt = owner.capture(
+        store_id=_STORE_ID,
+        legacy_root_identity=_directory_identity(domains["store_bytes"]),
+        quiescence_receipt_id=_QUIESCENCE_ID,
+    )
+    payload = snapshot_root / receipt.snapshot_id / "payload"
+    for domain in alias.domains:
+        assert (payload / domain / alias.member_name).read_bytes() == b'{"version":4}\n'
     shutil.rmtree(source_root)
     assert (
         PackagePosixEpochSnapshotEvidenceStore(

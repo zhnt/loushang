@@ -161,6 +161,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotOwner,
+    PackagePosixSnapshotSharedMemberV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
@@ -4220,6 +4221,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import (
         resolve_coding_package_epoch_layout,
+        resolve_coding_package_pre_b_store_members,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4299,7 +4301,13 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     ):
         directory.mkdir(mode=0o700)
     assert legacy_root == legacy_layout.package_root
-    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_root / "installed").mkdir(mode=0o700)
+    (legacy_root / "installed" / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_root / "plugin-revisions").mkdir(mode=0o700)
+    (legacy_root / "package-lock.json").write_bytes(
+        b'{"version":4,"packages":[],"pluginBindings":[],"pluginBindingHeads":[]}\n'
+    )
+    (legacy_root / "package-lock.json.lock").write_bytes(b"")
     (legacy_layout.root / "desired-state.jsonl").write_bytes(b"")
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
@@ -4314,8 +4322,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
+    package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
     domain_roots = {
         "store_bytes": legacy_root,
+        "binding_history": legacy_root,
+        "lock_history": legacy_root,
         "desired_state": legacy_layout.root,
     }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
@@ -4328,6 +4339,21 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         snapshot_root,
         store_id=store_id,
         domain_roots=domain_roots,
+        domain_members={
+            domain: package_members.domain_members().get(domain)
+            for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+        },
+        shared_members=(
+            (
+                PackagePosixSnapshotSharedMemberV1(
+                    source_root=package_members.source_root,
+                    member_name="package-lock.json",
+                    domains=("binding_history", "lock_history"),
+                ),
+            )
+            if package_members.binding_history
+            else ()
+        ),
     )
     pre_fence = PackagePosixPreFenceRegistrationOwner(
         authority, store_id=store_id, fences=fences
@@ -4382,8 +4408,26 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / snapshot_evidence.snapshot.snapshot_id
         / "payload"
         / "store_bytes"
+        / "installed"
         / "state.json"
     ).read_bytes() == b'{"legacy":1}\n'
+    for domain in ("binding_history", "lock_history"):
+        assert (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / domain
+            / "package-lock.json"
+        ).read_bytes() == (
+            b'{"version":4,"packages":[],"pluginBindings":[],"pluginBindingHeads":[]}\n'
+        )
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "lock_history"
+        / "package-lock.json.lock"
+    ).read_bytes() == b""
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC

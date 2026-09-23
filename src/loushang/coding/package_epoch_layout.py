@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,6 +67,90 @@ class CodingPackageEpochLayoutV1:
         return self.epochs_root / namespace_id
 
 
+@dataclass(frozen=True, slots=True)
+class CodingPackagePreBStoreMembersV1:
+    """Exact old Package-root members, including its combined lock/binding file."""
+
+    source_root: Path
+    store_bytes: tuple[str, ...]
+    binding_history: tuple[str, ...]
+    lock_history: tuple[str, ...]
+    mapping_version: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.source_root, Path)
+            or not self.source_root.is_absolute()
+            or ".." in self.source_root.parts
+        ):
+            raise ValueError("Coding pre-B Package source root is invalid")
+        if self.mapping_version != 1:
+            raise ValueError("Unsupported Coding pre-B Package source mapping")
+        if self.binding_history not in {(), ("package-lock.json",)}:
+            raise ValueError("Coding Package binding history mapping is invalid")
+        expected_lock = (
+            (*self.binding_history, "package-lock.json.lock")
+            if "package-lock.json.lock" in self.lock_history
+            else self.binding_history
+        )
+        if self.lock_history != expected_lock:
+            raise ValueError("Coding Package lock history mapping is invalid")
+        if self.store_bytes != tuple(sorted(set(self.store_bytes))) or not set(
+            self.store_bytes
+        ) <= {"installed", "plugin-revisions"}:
+            raise ValueError("Coding Package Store member mapping is invalid")
+
+    def domain_members(self) -> dict[str, tuple[str, ...]]:
+        return {
+            "store_bytes": self.store_bytes,
+            "binding_history": self.binding_history,
+            "lock_history": self.lock_history,
+        }
+
+
+def resolve_coding_package_pre_b_store_members(
+    lifecycle: CodingPluginLifecycleStateLayout,
+) -> CodingPackagePreBStoreMembersV1:
+    """Partition the deployed Package root; refuse unaccounted old members."""
+
+    resolve_coding_package_epoch_layout(lifecycle)
+    root = lifecycle.package_root
+    try:
+        metadata = root.lstat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("Coding pre-B Package root is not a directory")
+        names = set(os.listdir(root))
+        if names - {
+            "installed",
+            "plugin-revisions",
+            "package-lock.json",
+            "package-lock.json.lock",
+        }:
+            raise ValueError("Coding pre-B Package root has unmapped members")
+        for name in names:
+            member = (root / name).lstat()
+            expected = (
+                stat.S_ISDIR if name in {"installed", "plugin-revisions"}
+                else stat.S_ISREG
+            )
+            if not expected(member.st_mode) or (
+                stat.S_ISREG(member.st_mode) and member.st_nlink != 1
+            ):
+                raise ValueError("Coding pre-B Package member is unsafe")
+    except OSError as exc:
+        raise ValueError("Coding pre-B Package source is unavailable") from exc
+    return CodingPackagePreBStoreMembersV1(
+        source_root=root,
+        store_bytes=tuple(sorted(names & {"installed", "plugin-revisions"})),
+        binding_history=(("package-lock.json",) if "package-lock.json" in names else ()),
+        lock_history=tuple(
+            name
+            for name in ("package-lock.json", "package-lock.json.lock")
+            if name in names
+        ),
+    )
+
+
 def resolve_coding_package_epoch_layout(
     lifecycle: CodingPluginLifecycleStateLayout,
 ) -> CodingPackageEpochLayoutV1:
@@ -93,4 +179,9 @@ def resolve_coding_package_epoch_layout(
     )
 
 
-__all__ = ["CodingPackageEpochLayoutV1", "resolve_coding_package_epoch_layout"]
+__all__ = [
+    "CodingPackageEpochLayoutV1",
+    "CodingPackagePreBStoreMembersV1",
+    "resolve_coding_package_epoch_layout",
+    "resolve_coding_package_pre_b_store_members",
+]

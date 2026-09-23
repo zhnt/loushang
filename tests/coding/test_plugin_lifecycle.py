@@ -31,7 +31,10 @@ from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
-from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package_epoch_layout import (
+    resolve_coding_package_epoch_layout,
+    resolve_coding_package_pre_b_store_members,
+)
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.plugin_management import (
@@ -90,6 +93,28 @@ def _lifecycle(root: Path):
     lifecycle.reconcile_retirements()
     lifecycle.complete_startup_recovery()
     return lifecycle
+
+
+def test_coding_pre_b_package_mapping_rejects_unmapped_member(
+    tmp_path: Path,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session", cwd=tmp_path / "workspace"
+    )
+    layout.package_root.mkdir(parents=True, mode=0o700)
+    (layout.package_root / "installed").mkdir(mode=0o700)
+    (layout.package_root / "plugin-revisions").mkdir(mode=0o700)
+    (layout.package_root / "package-lock.json").write_bytes(b"{}\n")
+    (layout.package_root / "package-lock.json.lock").write_bytes(b"")
+    mapping = resolve_coding_package_pre_b_store_members(layout)
+    assert mapping.domain_members() == {
+        "store_bytes": ("installed", "plugin-revisions"),
+        "binding_history": ("package-lock.json",),
+        "lock_history": ("package-lock.json", "package-lock.json.lock"),
+    }
+    (layout.package_root / "unknown-state").write_bytes(b"unaccounted")
+    with pytest.raises(ValueError, match="unmapped members"):
+        resolve_coding_package_pre_b_store_members(layout)
 
 
 @pytest.mark.skipif(

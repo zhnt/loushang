@@ -364,13 +364,16 @@ Neither may silently override a narrower implemented owner contract.
   old processes before snapshot and refuse new old registrations after fence.
   The cutover fixture now uses Coding's existing legacy Package directory as
   the POSIX legacy root, with a sibling epoch namespace, and snapshots its
-  actual lifecycle state root. Other pre-B domains still use fixture roots;
-  Product mapping of their real Coding state remains required. The snapshot
-  owner rejects overlapping whole-tree roots and now accepts colocated roots
-  only with explicit, disjoint top-level member lists covering every source
-  member. Coding still needs a versioned, complete mapping for its combined
-  lock/binding file, settings Sources, and other old state before a real default
-  cutover.
+  actual lifecycle state root. Its Package-root mapping now partitions deployed
+  `installed` and `plugin-revisions` Store data from `package-lock.json` binding
+  and lock history, and refuses any unaccounted top-level member. The combined
+  JSON file is explicitly copied into both history domains. Beyond the actual
+  lifecycle state root, remaining pre-B domains still use fixture roots;
+  Product mapping of their real Coding state remains
+  required. The snapshot owner rejects overlapping whole-tree roots and accepts
+  colocated roots only with exact top-level member coverage, including declared
+  shared members. Coding still needs a versioned, complete mapping for settings
+  Sources and other old state before a real default cutover.
   On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base

@@ -13,6 +13,7 @@ import secrets
 import stat
 from collections.abc import Mapping
 from contextlib import ExitStack
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
@@ -44,6 +45,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
     _rename_directory_noreplace,
     _strict_json_object,
     _supports_posix_rooted_io,
+    _TreeInspection,
     _validate_entry_name,
     _validated_limit,
     _validated_root_path,
@@ -59,6 +61,30 @@ _STATE_MANIFEST_NAME = "state-manifest.json"
 _EVIDENCE_SUFFIX = ".evidence.json"
 _LOCK_NAME = ".epoch-snapshot.lock"
 _MAX_EVIDENCE_BYTES = 64 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class PackagePosixSnapshotSharedMemberV1:
+    """Product-declared one physical member serving multiple logical domains."""
+
+    source_root: Path
+    member_name: str
+    domains: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source_root, Path) or type(self.member_name) is not str:
+            raise TypeError("Package snapshot shared member is invalid")
+        _validated_root_path(self.source_root, name="shared source")
+        try:
+            _validate_entry_name(self.member_name)
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("Package snapshot shared member is invalid") from exc
+        if (
+            len(self.domains) < 2
+            or self.domains != tuple(sorted(set(self.domains)))
+            or not set(self.domains) <= set(PACKAGE_PRE_B_SNAPSHOT_DOMAINS)
+        ):
+            raise ValueError("Package snapshot shared member domains are invalid")
 
 
 class PackagePosixEpochSnapshotEvidenceStore:
@@ -150,6 +176,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         store_id: str,
         domain_roots: Mapping[str, str | Path],
         domain_members: Mapping[str, tuple[str, ...] | None] | None = None,
+        shared_members: tuple[PackagePosixSnapshotSharedMemberV1, ...] = (),
         maximum_entries: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_ENTRIES,
         maximum_bytes: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_BYTES,
         maximum_depth: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_DEPTH,
@@ -187,6 +214,23 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                         "Package snapshot domain members are invalid"
                     ) from exc
             self._domain_members[domain] = members
+        if type(shared_members) is not tuple:
+            raise TypeError("Package snapshot shared members must be a tuple")
+        self._shared_members = shared_members
+        self._shared_aliases: dict[tuple[Path, str], tuple[str, ...]] = {}
+        for alias in shared_members:
+            if not isinstance(alias, PackagePosixSnapshotSharedMemberV1):
+                raise TypeError("Package snapshot shared member is invalid")
+            key = alias.source_root, alias.member_name
+            selected = (self._domain_members[domain] for domain in alias.domains)
+            if key in self._shared_aliases or any(
+                self._domain_roots[domain] != alias.source_root
+                or members is None
+                or alias.member_name not in members
+                for domain, members in zip(alias.domains, selected, strict=True)
+            ):
+                raise ValueError("Package snapshot shared member mapping is invalid")
+            self._shared_aliases[key] = alias.domains
         if any(
             _paths_overlap(self._snapshot_root, source)
             for source in self._domain_roots.values()
@@ -239,17 +283,43 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         grouped: dict[Path, list[str]] = {}
         for domain, path in self._domain_roots.items():
             grouped.setdefault(path, []).append(domain)
-        for domains in grouped.values():
+        for path, domains in grouped.items():
             if len(domains) == 1 and self._domain_members[domains[0]] is None:
                 continue
-            selected = tuple(
-                name
-                for domain in domains
-                for name in (self._domain_members[domain] or ())
-            )
+            by_name: dict[str, list[str]] = {}
+            for domain in domains:
+                for name in self._domain_members[domain] or ():
+                    by_name.setdefault(name, []).append(domain)
+            duplicates = {
+                (path, name): tuple(sorted(owners))
+                for name, owners in by_name.items()
+                if len(owners) > 1
+            }
+            expected_aliases = {
+                key: owners
+                for key, owners in self._shared_aliases.items()
+                if key[0] == path
+            }
             observed = set(os.listdir(sources[domains[0]].descriptor))
-            if len(set(selected)) != len(selected) or set(selected) != observed:
+            if duplicates != expected_aliases or set(by_name) != observed:
                 raise ValueError("Package snapshot source member coverage is incomplete")
+
+    def _require_shared_member_inspections(
+        self, inspections: Mapping[str, _TreeInspection]
+    ) -> None:
+        for alias in self._shared_members:
+            observed = []
+            for domain in alias.domains:
+                observed.append(
+                    tuple(
+                        entry
+                        for entry in inspections[domain].entries
+                        if entry.logical_path == alias.member_name
+                        or entry.logical_path.startswith(alias.member_name + "/")
+                    )
+                )
+            if not observed[0] or any(item != observed[0] for item in observed[1:]):
+                raise OSError("Package snapshot shared member changed")
 
     def capture(
         self,
@@ -299,6 +369,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                 )
                 for domain, source in sources.items()
             }
+            self._require_shared_member_inspections(inspections)
             os.mkdir(stage_name, mode=0o700, dir_fd=snapshot.descriptor)
             stage_metadata = os.stat(
                 stage_name,
@@ -478,4 +549,5 @@ def _require_domains(payload_fd: int) -> None:
 __all__ = [
     "PackagePosixEpochSnapshotEvidenceStore",
     "PackagePosixEpochSnapshotOwner",
+    "PackagePosixSnapshotSharedMemberV1",
 ]
