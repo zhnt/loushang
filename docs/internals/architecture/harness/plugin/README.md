@@ -346,9 +346,11 @@ Neither may silently override a narrower implemented owner contract.
   and GC owners, digest-pinned Source, journaled transaction pins, and native
   Package Stores. Native end-to-end tests cover root-only and dependency-Wheel
   commits through this composition; a separate real-Store/Product fixture
-  covers changed-Source refusal. The composition refuses a moved Store root. No
-  Coding entrypoint calls this composition yet; it is not a completed Product
-  cutover, Windows composition, or PLC9D execution claim.
+  covers changed-Source refusal. The composition refuses a moved Store root.
+  An explicit minimal Coding Session now exercises this real binding through
+  the Product factory Port and commits a local Wheel without a legacy
+  materializer. Default Coding does not select that factory; this is not a
+  completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports

@@ -45,6 +45,7 @@ from loushang.harness.plugin_management.package_product import (
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.operations import PackageOperationsRuntime
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
@@ -224,7 +225,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
-from loushang.harness.resources.packages.operations import PackageOperationsRuntime
 from loushang.harness.resources.packages.product_activation import (
     PackageProductActivationError,
 )
@@ -4189,10 +4189,20 @@ def test_product_transaction_commits_configured_local_dependency(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
+@pytest.mark.parametrize("entrypoint", ("cli", "session"))
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
     with_dependency: bool,
+    entrypoint: str,
 ) -> None:
+    from loushang.ai.model import Capabilities, Model
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
     source = source_root / WHEEL_FILENAME
@@ -4279,6 +4289,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             store_id=store_id,
         )
         handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        session = None
         try:
             admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
                 fence=fence,
@@ -4319,20 +4330,85 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 )
 
             runtime = compose()
-            runtime.activate()
             activation = runtime.lifecycle
-            outcome = activation.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id="operation:product-runtime",
-                    action="install",
-                    source=str(source),
-                    scope="project",
-                ),
-                entrypoint="cli",
-            )
-            assert outcome.handled
-            assert outcome.record is not None
-            assert outcome.record.lifecycle == "installed"
+            if entrypoint == "session":
+                workspace = tmp_path / "workspace"
+                workspace.mkdir(mode=0o700)
+                session_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "sessions",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+
+                class ProductFactory:
+                    def create(self, request):
+                        assert request.product_id == "coding"
+                        assert request.cwd == str(workspace)
+                        return runtime
+
+                session = create_agent_session(
+                    session_manager=session_manager,
+                    model=Model(
+                        id="plc9b-test",
+                        name="PLC9B",
+                        provider="test",
+                        endpoint="anthropic-messages",
+                        capabilities=Capabilities(
+                            reasoning=True,
+                            input=("text",),
+                            context_window=128000,
+                            max_tokens=4096,
+                        ),
+                    ),
+                    services=create_services(
+                        settings_manager=SettingsManager(ControlConfig())
+                    ),
+                    package_product_runtime_factory=ProductFactory(),
+                    composition_set="coding-minimal",
+                    resource_catalog_source_policy=(
+                        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                    ),
+                )
+                assert session._package_controller.get_package_materializer() is None
+                outcome = asyncio.run(
+                    session.execute_package_lifecycle(
+                        "install",
+                        str(source),
+                        entrypoint="session",
+                        operation_id="operation:product-runtime",
+                        scope="project",
+                    )
+                )
+                assert outcome["lifecycle"] == "installed"
+                assert outcome["path"] == ""
+                refused_by_session = asyncio.run(
+                    session.execute_package_lifecycle(
+                        "install",
+                        "https://packages.example.test/unknown.whl",
+                        entrypoint="rpc",
+                        operation_id="operation:session-refused",
+                        scope="project",
+                    )
+                )
+                assert refused_by_session["lifecycle"] == "failed"
+                assert refused_by_session["path"] == ""
+                assert desired.snapshot().inventory_revision == 1
+            else:
+                runtime.activate()
+                direct_outcome = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:product-runtime",
+                        action="install",
+                        source=str(source),
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+                assert direct_outcome.handled
+                assert direct_outcome.record is not None
+                assert direct_outcome.record.lifecycle == "installed"
             assert desired.snapshot().inventory_revision == 1
             committed_set = PackageCommittedSetJournal(
                 state_root / "committed-sets.jsonl"
@@ -4522,6 +4598,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert lifecycle_journal.records() == before_swap
             assert desired.snapshot().inventory_revision == 1
         finally:
+            if session is not None:
+                asyncio.run(session.dispose())
             handle.release()
     finally:
         file_io.cleanup()
