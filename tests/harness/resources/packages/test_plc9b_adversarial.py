@@ -51,6 +51,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AcquiredPackageCandidate,
     AuthenticatedSourceEnvelopeV1,
+    AuthenticatedSourceStreamPort,
     BoundedAcquisitionSinkPort,
     PackageAcquisitionBudgetV1,
     PackageAcquisitionError,
@@ -122,6 +123,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionRequestV1,
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
+    PackagePinnedLocalWheelSourceAuthority,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
     PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
@@ -1278,6 +1282,20 @@ class _SourceAuthority:
         return self.stream
 
 
+@dataclass
+class _PinnedLocalSourceAuthority:
+    delegate: PackagePinnedLocalWheelSourceAuthority
+    authorize_calls: int = 0
+    stream: None = None
+    clock: None = None
+
+    def authorize(
+        self, request: PackageAcquisitionRequestV1
+    ) -> AuthenticatedSourceStreamPort:
+        self.authorize_calls += 1
+        return self.delegate.authorize(request)
+
+
 class _CleanupDebtWheelVerifier(PackageWheelVerifier):
     def __init__(self, store: PackageQuarantineStore) -> None:
         super().__init__()
@@ -1582,6 +1600,7 @@ def _b2_owner(
     supported_tags: frozenset[str] | None = None,
     cleanup_debt: bool = False,
     crash_after_phase: PackageLifecyclePhase | None = None,
+    configured_source_authority: _PinnedLocalSourceAuthority | None = None,
 ):
     lifecycle_journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
     kernel = (
@@ -1611,12 +1630,16 @@ def _b2_owner(
     clock = (
         _Clock() if case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"} else None
     )
-    source_authority = _SourceAuthority(
-        case_id=case_id,
-        secret=secret,
-        payload=payload,
-        payloads=payloads,
-        clock=clock,
+    source_authority = (
+        configured_source_authority
+        if configured_source_authority is not None
+        else _SourceAuthority(
+            case_id=case_id,
+            secret=secret,
+            payload=payload,
+            payloads=payloads,
+            clock=clock,
+        )
     )
     artifact_owner = PackageArtifactLifecycleOwner(
         kernel=kernel,
@@ -1670,6 +1693,7 @@ def _b3d_owner(
     resolver: _NoDependencyResolver | _ManifestResolver | None = None,
     closure_builder: _LegacyClosureBuilder | None = None,
     crash_after_phase: PackageLifecyclePhase | None = None,
+    configured_source_authority: _PinnedLocalSourceAuthority | None = None,
 ):
     components = _b2_owner(
         tmp_path,
@@ -1678,6 +1702,7 @@ def _b3d_owner(
         payload=root_payload or _wheel_bytes(),
         payloads=payloads,
         crash_after_phase=crash_after_phase,
+        configured_source_authority=configured_source_authority,
     )
     (
         kernel,
@@ -3166,7 +3191,7 @@ class _ManifestNativeAdoptionFixture:
     fence_journal: PackageEpochFenceJournal
     fence_reader: _ManifestAdoptionFenceReader
     legacy_state: _ManifestAdoptionLegacyStateOwner
-    source_authority: _SourceAuthority
+    source_authority: _SourceAuthority | _PinnedLocalSourceAuthority
     quarantine: PackageQuarantineStore
     resolver: _NoDependencyResolver
     retention: _TransactionPinRetentionOwner
@@ -3363,6 +3388,7 @@ def _manifest_native_adoption_fixture(
     ) = None,
     product_ingress: PackageLifecycleIngressRequestV2 | None = None,
     product_root_target: bool = False,
+    configured_source_authority: _PinnedLocalSourceAuthority | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3383,6 +3409,7 @@ def _manifest_native_adoption_fixture(
         secret=secret,
         crash_after_phase=crash_after_phase,
         root_payload=root_payload,
+        configured_source_authority=configured_source_authority,
     )
     classified = kernel.submit(
         product_ingress or _request(
@@ -3893,6 +3920,82 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     assert fixture.source_authority.authorize_calls == 1
     assert product.desired.snapshot() == desired
     assert product.journal.records() == handoff_before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_uses_pinned_local_source_and_real_store(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    source = source_root / WHEEL_FILENAME
+    payload = _wheel_bytes()
+    source.write_bytes(payload)
+    admission = _manifest_product_admission()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=str(source),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    local_source = _PinnedLocalSourceAuthority(
+        PackagePinnedLocalWheelSourceAuthority(
+            source_root=source_root,
+            allowed_digests={str(source): sha256(payload).hexdigest()},
+            policy_revision=ingress.policy_revision,
+            authority_id="coding-local-source:manifest",
+        )
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path,
+        secret="unused-local-source-secret",
+        product_ingress=ingress,
+        product_root_target=True,
+        configured_source_authority=local_source,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
+        recovery_identity="manifest-local-product-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel, transaction=transaction
+        )
+    )
+
+    committed = router.route(
+        PackageProductRouteRequestV1(
+            entrypoint="cli", ingress=ingress, admission=admission
+        )
+    )
+
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert local_source.authorize_calls == 1
+    assert fixture.root_settlements.records()
+    assert fixture.committed_sets.current(committed.operation_id) is not None
+    assert product.desired.snapshot().inventory_revision == 1
+    source_evidence = fixture.evidence_journal.find(
+        operation_id=committed.operation_id,
+        attempt_epoch=committed.attempt_epoch,
+        node_id="root",
+        kind="authenticated_source",
+    )
+    assert source_evidence is not None
+    assert isinstance(
+        source_evidence.evidence, PackageAuthenticatedSourceEvidenceV1
+    )
+    assert source_evidence.evidence.envelope.origin_kind == "local"
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
