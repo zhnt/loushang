@@ -409,7 +409,10 @@
   committed-set root and refuses a handoff with a changed scope. The Product
   router requires a committed-handoff capability at
   composition, and committed replay completes a handoff interrupted before its
-  first journal event. A direct-materializer route and a changed execution
+  first journal event. An admitted startup recovery can also scan durable
+  committed requests and complete that pre-journal handoff under the shared
+  epoch guard before activation; its Product factory binding is still pending.
+  A direct-materializer route and a changed execution
   identity reach neither Source nor Store. This is not a Coding production
   cutover: no Windows native transaction acceptance exists, and the legacy
   materializer callers listed below remain live.

@@ -210,6 +210,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
     PackageWindowsOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.product_composition import (
+    PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
 )
 from loushang.harness.resources.packages.product_handoff import (
@@ -3880,6 +3881,13 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     with pytest.raises(ValueError, match="committed set"):
         product.revisions.project(forged_desired)
     handoff_before = product.journal.records()
+    recovered = PackageCommittedProductHandoffRecovery(
+        product_id="coding",
+        kernel=fixture.kernel,
+        journal=product.journal,
+        finalizer=product.finalizer,
+    ).recover(admission)
+    assert recovered == ()
     assert router.route(route) == committed
     assert fixture.lifecycle_journal.records() == before
     assert fixture.source_authority.authorize_calls == 1
@@ -3939,6 +3947,13 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
     assert product.desired.snapshot().inventory_revision == 0
     lifecycle_before = fixture.lifecycle_journal.records()
 
+    recovered = PackageCommittedProductHandoffRecovery(
+        product_id="coding",
+        kernel=fixture.kernel,
+        journal=product.journal,
+        finalizer=product.finalizer,
+    ).recover(admission)
+    assert recovered == (committed.operation_id,)
     assert router.route(route) == committed
     assert fixture.lifecycle_journal.records() == lifecycle_before
     assert product.desired.snapshot().inventory_revision == 1

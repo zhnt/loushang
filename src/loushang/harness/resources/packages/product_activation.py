@@ -74,6 +74,14 @@ class PackageProductRecoveryPort(Protocol):
     def recover(self) -> object: ...
 
 
+class PackageProductAdmittedRecoveryPort(Protocol):
+    """Recovery that mutates Product state only under the admitted epoch."""
+
+    def recover(
+        self, admission: PackageEpochRuntimeAdmissionReceiptV1
+    ) -> object: ...
+
+
 class PackageProductEpochTransactionGuardPort(Protocol):
     """Cross-process read guard paired with cutover's exclusive quiescence."""
 
@@ -98,6 +106,7 @@ class PackageProductLifecycleActivation:
         admission_request: PackageEpochRuntimeAdmissionRequestV1,
         transaction_guard: PackageProductEpochTransactionGuardPort,
         recoveries: tuple[PackageProductRecoveryPort, ...] = (),
+        admitted_recoveries: tuple[PackageProductAdmittedRecoveryPort, ...] = (),
     ) -> None:
         if not isinstance(product_id, str) or not product_id:
             raise ValueError("Package Product id must be non-empty")
@@ -117,6 +126,11 @@ class PackageProductLifecycleActivation:
             raise TypeError("Package Product epoch transaction guard is required")
         if any(not callable(getattr(item, "recover", None)) for item in recoveries):
             raise TypeError("Package Product recovery owner is invalid")
+        if any(
+            not callable(getattr(item, "recover", None))
+            for item in admitted_recoveries
+        ):
+            raise TypeError("Package Product admitted recovery owner is invalid")
         self._product_id = product_id
         self._binding_id = binding_id
         self._router = router
@@ -125,6 +139,7 @@ class PackageProductLifecycleActivation:
         self._admission_request = admission_request
         self._transaction_guard = transaction_guard
         self._recoveries = tuple(recoveries)
+        self._admitted_recoveries = tuple(admitted_recoveries)
         self._receipt: PackageEpochRuntimeAdmissionReceiptV1 | None = None
         self._lock = Lock()
 
@@ -145,7 +160,15 @@ class PackageProductLifecycleActivation:
                 return self._receipt
             for recovery in self._recoveries:
                 recovery.recover()
-            receipt = self._admit()
+            if self._admitted_recoveries:
+                with self._transaction_guard.shared_runtime(
+                    store_id=self._admission_request.store_id
+                ):
+                    receipt = self._admit()
+                    for admitted_recovery in self._admitted_recoveries:
+                        admitted_recovery.recover(receipt)
+            else:
+                receipt = self._admit()
             self._receipt = receipt
             return receipt
 
@@ -380,6 +403,7 @@ __all__ = [
     "PACKAGE_PRODUCT_OUTCOME_VERSION",
     "PACKAGE_PRODUCT_RECORD_VERSION",
     "PackageProductActivationError",
+    "PackageProductAdmittedRecoveryPort",
     "PackageProductEpochTransactionGuardPort",
     "PackageProductIngressFactoryPort",
     "PackageProductLifecycleActivation",

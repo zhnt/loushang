@@ -235,6 +235,16 @@ class _EpochGuard:
 
 
 @dataclass
+class _AdmittedRecovery:
+    guard: _EpochGuard
+    receipts: list[object] = field(default_factory=list)
+
+    def recover(self, receipt: object) -> None:
+        assert self.guard.entered == 1
+        self.receipts.append(receipt)
+
+
+@dataclass
 class _Inventory:
     binding_id: str
     sources: tuple[str, ...] = ()
@@ -378,6 +388,68 @@ def _activation(
         recoveries=(() if recovery is None else (recovery,)),
     )
     return activation, transaction
+
+
+def test_admitted_recovery_runs_under_epoch_guard_before_activation(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "admitted-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    guard = _EpochGuard()
+    recovery = _AdmittedRecovery(guard)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        admitted_recoveries=(recovery,),
+    )
+
+    receipt = activation.activate()
+    assert recovery.receipts == [receipt]
+    assert guard.entered == 0
+    assert activation.active
+
+
+def test_admitted_recovery_failure_keeps_product_inactive(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "failed-admitted-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    guard = _EpochGuard()
+
+    class FailingRecovery:
+        def recover(self, receipt: object) -> None:
+            assert guard.entered == 1
+            raise PackageProductActivationError(
+                "Package recovery failed", code="package_product_recovery_incomplete"
+            )
+
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        admitted_recoveries=(FailingRecovery(),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_product_recovery_incomplete"
+    assert guard.entered == 0
+    assert not activation.active
 
 
 def _intent(operation_id: str = "operation:test") -> PackageProductLifecycleIntentV1:
