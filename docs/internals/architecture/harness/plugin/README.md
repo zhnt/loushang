@@ -14,8 +14,10 @@
   dark reservation; D3a--D3e add writer and Store/committed-set fences, a
   private deletion primitive, read-only root target resolution, and a dark
   result/debt journal. D3f connects those owners in an internal POSIX-tested
-  root-GC executor; Product ingress, Windows execution evidence, shared
-  dependency GC, private-data confirmation, and backup projection remain open.
+  root-GC executor. D3g adds an explicit Product command over an exact GC
+  candidate and an explicit root Store method; default Product/transport
+  composition, Windows execution evidence, shared dependency GC, private-data
+  confirmation, and backup projection remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
@@ -78,6 +80,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D3f Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md)
   connects reservation, exact root deletion, and durable result in a
   POSIX-tested internal coordinator; Product ingress remains closed.
+- [PLC9D3g Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
+  reserves an exact candidate and executes its root settlement under one
+  Product gate; default management and transport routes remain closed.
 
 ## Frozen Contracts
 

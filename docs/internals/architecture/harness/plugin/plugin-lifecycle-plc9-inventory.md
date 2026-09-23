@@ -43,7 +43,13 @@
   [Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
   adds a journal for exact-start Store results, retryable errors, and
   non-retryable Store collisions, with exact-settlement result matching; no
-  coordinator has yet proven that a result follows actual Store mutation.
+  coordinator was activated by this slice.
+- PLC9D3f/D3g refinement:
+  [Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md) and
+  [Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
+  join the exact candidate, reservation, root Store deletion, and durable
+  result in a POSIX-tested Product owner graph. The command is explicitly
+  composed; no default management or transport route selects it.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -915,7 +921,7 @@ publication outside those exact canaries.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
-| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state without a mutation port | Retain as internal read-only evidence; D2/D3a add a reservation and dark deletion primitive, but executable GC still needs an exact Product/Store binding and durable result/debt receipt |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state; D3f/D3g add explicit POSIX-tested Product execution, but this projection does not yet join GC result/debt | Retain as internal read-only evidence; default Product/transport selection, operator result/repair, and Windows native execution remain open |
 | GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
@@ -959,8 +965,8 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- executable artifact-GC owner and Store result/debt receipt (PLC9D3a adds
-  a dark exact Store primitive and writer fence, but no Product deletion route);
+- default Product/transport selection of the explicit D3g artifact-GC command,
+  operator result/debt repair, and Windows native Product execution evidence;
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

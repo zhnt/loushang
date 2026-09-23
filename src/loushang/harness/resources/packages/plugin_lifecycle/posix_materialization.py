@@ -157,6 +157,12 @@ class PosixPackagePluginRootMaterializationStore:
         return self._store.read_settlement_file(
             settlement, logical_path, max_bytes=max_bytes
         )
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Delete only an exact root settlement through this Store owner."""
+
+        return self._store.delete_settlement(settlement)
 
     def authorize_adoption(
         self,

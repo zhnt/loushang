@@ -4215,6 +4215,9 @@ def test_product_transaction_commits_configured_local_dependency(
         "gc_collision",
         "gc_invalid_id",
         "gc_prior_result",
+        "gc_command",
+        "gc_command_stale",
+        "gc_command_unsealed",
     ),
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
@@ -4951,6 +4954,9 @@ while True:
                 "gc_collision",
                 "gc_invalid_id",
                 "gc_prior_result",
+                "gc_command",
+                "gc_command_stale",
+                "gc_command_unsealed",
             }:
                 from loushang.harness.package_product.product_runtime import (
 
@@ -5444,6 +5450,9 @@ while True:
                 "gc_collision",
                 "gc_invalid_id",
                 "gc_prior_result",
+                "gc_command",
+                "gc_command_stale",
+                "gc_command_unsealed",
             }:
                 _assert_product_root_gc_after_install(
                     tmp_path=tmp_path,
@@ -5460,6 +5469,13 @@ while True:
                     collide_before_delete=entrypoint == "gc_collision",
                     invalid_attempt_id=entrypoint == "gc_invalid_id",
                     prior_result_conflict=entrypoint == "gc_prior_result",
+                    via_product_command=entrypoint in {
+                        "gc_command",
+                        "gc_command_stale",
+                        "gc_command_unsealed",
+                    },
+                    stale_product_command=entrypoint == "gc_command_stale",
+                    unsealed_product_command=entrypoint == "gc_command_unsealed",
                 )
                 return
             expected_inventory_revision = 1
@@ -8101,6 +8117,9 @@ def _assert_product_root_gc_after_install(
     collide_before_delete: bool,
     invalid_attempt_id: bool,
     prior_result_conflict: bool,
+    via_product_command: bool,
+    stale_product_command: bool,
+    unsealed_product_command: bool,
 ) -> None:
     from loushang.harness.plugin_management.continuity_adapter import (
         PluginContinuitySecurityRetirementJournal,
@@ -8117,6 +8136,8 @@ def _assert_product_root_gc_after_install(
         PluginPackageGcResultJournal,
     )
     from loushang.harness.plugin_management.package_lifecycle import (
+        PluginPackageGcCandidateV1,
+        PluginPackageLifecycleError,
         PluginPackageLifecycleLedger,
     )
     from loushang.harness.plugin_management.records import (
@@ -8130,6 +8151,8 @@ def _assert_product_root_gc_after_install(
     )
     from loushang.harness.package_product.product_gc_executor import (
         PackageProductGcExecutionError,
+        PackageProductRootGcApplication,
+        PackageProductRootGcCommandV1,
         PackageProductRootGcExecutor,
     )
 
@@ -8187,14 +8210,17 @@ def _assert_product_root_gc_after_install(
     )
     (candidate,) = packages.gc_candidates()
     assert candidate.package_revision == package_revision
-    reservation = gate.reserve(
-        candidate,
-        lifecycle=packages,
-        operation_id="operation:gc-reserve",
-        idempotency_key="request:gc-reserve",
-    )
-    for owner in (desired, instances, packages):
-        owner.seal_gc_writer_epoch()
+    reservation = None
+    if not via_product_command:
+        reservation = gate.reserve(
+            candidate,
+            lifecycle=packages,
+            operation_id="operation:gc-reserve",
+            idempotency_key="request:gc-reserve",
+        )
+    if not unsealed_product_command:
+        for owner in (desired, instances, packages):
+            owner.seal_gc_writer_epoch()
 
     root_settlements = PackageStoreSettlementJournal(
         state_root / "root-settlements.jsonl"
@@ -8216,9 +8242,59 @@ def _assert_product_root_gc_after_install(
             state_root / "committed-sets.jsonl"
         ),
         root_settlements=root_settlements,
-        root_store=root_store._store,
+        root_store=root_store,
         results=results,
     )
+    if via_product_command:
+        with pytest.raises(ValueError, match="one bound owner graph"):
+            PackageProductRootGcApplication(
+                gate=PluginPackageGcReservationJournal(gate.path),
+                lifecycle=packages,
+                executor=executor,
+            )
+        application = PackageProductRootGcApplication(
+            gate=gate, lifecycle=packages, executor=executor
+        )
+        if stale_product_command:
+            candidate = PluginPackageGcCandidateV1.create(
+                package_revision=candidate.package_revision,
+                desired_inventory_revision=candidate.desired_inventory_revision + 1,
+                instance_runtime_revision=candidate.instance_runtime_revision,
+                package_journal_revision=candidate.package_journal_revision,
+                recovery_barrier_id=candidate.recovery_barrier_id,
+            )
+        command = PackageProductRootGcCommandV1(
+            candidate=candidate,
+            reservation_operation_id="operation:gc-reserve",
+            reservation_idempotency_key="request:gc-reserve",
+            attempt_operation_id="operation:gc-delete",
+            attempt_idempotency_key="request:gc-delete",
+        )
+        if unsealed_product_command:
+            with pytest.raises(PackageProductGcExecutionError) as unsealed:
+                application.execute(command)
+            assert unsealed.value.code == "plugin_package_gc_writer_epoch_unsealed"
+            assert gate.snapshot().active == ()
+            assert (plugin_root / settlement.final_name).is_dir()
+            assert not results.path.exists()
+            return
+        if stale_product_command:
+            with pytest.raises(PluginPackageLifecycleError):
+                application.execute(command)
+            assert gate.snapshot().active == ()
+            assert (plugin_root / settlement.final_name).is_dir()
+            assert not root_settlements.is_tombstoned(
+                settlement.receipt.stable_ref.ref_id
+            )
+            assert not executor.committed_sets.is_tombstoned(
+                settlement.receipt.stable_ref.ref_id
+            )
+            assert not results.path.exists()
+            return
+        attempt = application.execute(command)
+        assert application.execute(command) == attempt
+        (reservation,) = gate.snapshot().active
+    assert reservation is not None
     if prior_result_conflict:
         prior_start = PluginPackageGcDeletionStartV2(
             journal_revision=1,
@@ -8329,7 +8405,7 @@ def _assert_product_root_gc_after_install(
         )
         executor = replace(
             executor,
-            root_store=restarted_store._store,
+            root_store=restarted_store,
             results=PluginPackageGcResultJournal(results.path),
         )
         attempt = executor.execute(
@@ -8337,7 +8413,7 @@ def _assert_product_root_gc_after_install(
             operation_id="operation:gc-retry",
             idempotency_key="request:gc-retry",
         )
-    else:
+    elif not via_product_command:
         attempt = executor.execute(
             reservation.reservation_id,
             operation_id="operation:gc-delete",

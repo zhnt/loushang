@@ -20,6 +20,7 @@ from loushang.harness.plugin_management.package_gc_target import (
     resolve_plugin_package_gc_root_target,
 )
 from loushang.harness.plugin_management.package_lifecycle import (
+    PluginPackageGcCandidateV1,
     PluginPackageLifecycleLedger,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
@@ -47,6 +48,29 @@ class PackageProductGcRootStorePort(Protocol):
     def delete_settlement(
         self, settlement: PackageStoreSettlementRecordV1
     ) -> PackageStoreGcResultV1: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductRootGcCommandV1:
+    """An exact operator candidate, separate from Plugin removal."""
+
+    candidate: PluginPackageGcCandidateV1
+    reservation_operation_id: str
+    reservation_idempotency_key: str
+    attempt_operation_id: str
+    attempt_idempotency_key: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.candidate, PluginPackageGcCandidateV1):
+            raise TypeError("Exact Package GC candidate is required")
+        for value in (
+            self.reservation_operation_id,
+            self.reservation_idempotency_key,
+            self.attempt_operation_id,
+            self.attempt_idempotency_key,
+        ):
+            if type(value) is not str or not value:
+                raise ValueError("Package GC command identities are required")
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,8 +200,53 @@ class PackageProductRootGcExecutor:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class PackageProductRootGcApplication:
+    """Product command over the exact candidate/reservation/Store owners."""
+
+    gate: PluginPackageGcReservationJournal
+    lifecycle: PluginPackageLifecycleLedger
+    executor: PackageProductRootGcExecutor
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.gate, PluginPackageGcReservationJournal)
+            or not isinstance(self.lifecycle, PluginPackageLifecycleLedger)
+            or not isinstance(self.executor, PackageProductRootGcExecutor)
+            or self.executor.gate is not self.gate
+            or self.executor.lifecycle is not self.lifecycle
+            or not self.lifecycle.gc_reservation_graph_bound_to(self.gate)
+        ):
+            raise ValueError("Package GC Product command requires one bound owner graph")
+
+    def execute(
+        self, command: PackageProductRootGcCommandV1
+    ) -> PluginPackageGcAttemptV1:
+        if not isinstance(command, PackageProductRootGcCommandV1):
+            raise TypeError("Exact Package GC Product command is required")
+        with self.gate.guard():
+            if not self.lifecycle.gc_writer_epoch_sealed():
+                raise PackageProductGcExecutionError(
+                    "Package GC writer epoch is not sealed",
+                    code="plugin_package_gc_writer_epoch_unsealed",
+                )
+            reservation = self.gate.reserve(
+                command.candidate,
+                lifecycle=self.lifecycle,
+                operation_id=command.reservation_operation_id,
+                idempotency_key=command.reservation_idempotency_key,
+            )
+            return self.executor.execute(
+                reservation.reservation_id,
+                operation_id=command.attempt_operation_id,
+                idempotency_key=command.attempt_idempotency_key,
+            )
+
+
 __all__ = [
     "PackageProductGcExecutionError",
     "PackageProductGcRootStorePort",
+    "PackageProductRootGcApplication",
+    "PackageProductRootGcCommandV1",
     "PackageProductRootGcExecutor",
 ]
