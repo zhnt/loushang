@@ -366,9 +366,12 @@ Neither may silently override a narrower implemented owner contract.
   Product mapping of their real Coding state remains required. On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
-  materializer construction follows that admission. Generic Session Package
-  materialization, Continuity preparation before the common lifecycle, and
-  remaining CLI/RPC/supervisor launch coverage still need a one-time switch.
+  materializer construction follows that admission. Configured Continuity now
+  registers before compatibility reconciliation and materializer construction;
+  a bound compatibility writer retains that registration after an empty bind.
+  Continuity without a settings owner or Plugin Source remains a non-Plugin
+  path. Generic Session Package materialization and remaining CLI/RPC/supervisor
+  launch coverage still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.

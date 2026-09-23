@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+import sys
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,6 +147,191 @@ def test_continuity_state_layout_is_canonical_and_redacts_workspace(
     assert first.private_data_base == lifecycle.private_data_base
     assert first.package_root.is_relative_to(paths.data)
     assert not first.package_root.is_relative_to(first.root)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_continuity_registers_before_compatibility_and_default_materializer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceJournal,
+        PackageEpochFenceRequestV1,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+        PackagePosixPreFenceRegistrationOwner,
+    )
+
+    workspace = tmp_path / "workspace"
+    layout = _test_layout(tmp_path / "state", workspace)
+    epoch = resolve_coding_package_epoch_layout(
+        continuity_bootstrap_module._common_lifecycle_layout(layout)
+    )
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            plugin_sources=(str(tmp_path / "source"),), disabled_plugins=()
+        )
+    )
+    observed: list[str] = []
+    original_compatibility = (
+        continuity_bootstrap_module.bind_coding_plugin_enablement_compatibility
+    )
+    original_materializer = continuity_bootstrap_module._coding_continuity_materializer
+
+    def assert_registered(stage: str) -> None:
+        owner = PackagePosixPreFenceRegistrationOwner(
+            epoch.authority_root,
+            store_id=epoch.store_id,
+            fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
+        )
+        with owner.exclusive_quiescence(store_id=epoch.store_id) as live:
+            assert len(live.active_registration_ids) == 1
+        observed.append(stage)
+
+    def compatibility_spy(*_args: object) -> None:
+        assert_registered("compatibility")
+
+    def materializer_spy(_layout: CodingContinuityStateLayout) -> None:
+        assert_registered("materializer")
+        raise RuntimeError("stop before package materialization")
+
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        compatibility_spy,
+    )
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "_coding_continuity_materializer",
+        materializer_spy,
+    )
+    runtime = _Runtime(tmp_path / "sessions")
+    with pytest.raises(CodingContinuityBootstrapError) as stopped:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                runtime,
+                settings_manager=settings,
+                session_dir=runtime.session_dir,
+                cwd=workspace,
+                state_layout=layout,
+            )
+        )
+    assert stopped.value.code == "coding_continuity_bootstrap_failed"
+    assert observed == ["compatibility", "materializer"]
+    owner = PackagePosixPreFenceRegistrationOwner(
+        epoch.authority_root,
+        store_id=epoch.store_id,
+        fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
+    )
+    with owner.exclusive_quiescence(store_id=epoch.store_id) as released:
+        assert released.active_registration_ids == ()
+
+    PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl").publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=epoch.store_id,
+            prior_fence=None,
+            legacy_root_identity="a" * 64,
+            fenced_root_identity="b" * 64,
+            namespace_id="c" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="d" * 64,
+            snapshot_receipt_id="e" * 64,
+            root_switch_receipt_id="f" * 64,
+        )
+    )
+    refused_runtime = _Runtime(tmp_path / "refused-sessions")
+    with pytest.raises(CodingContinuityBootstrapError) as refused:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                refused_runtime,
+                settings_manager=settings,
+                session_dir=refused_runtime.session_dir,
+                cwd=workspace,
+                state_layout=layout,
+            )
+        )
+    assert refused.value.code == "package_runtime_epoch_unsupported"
+    assert observed == ["compatibility", "materializer"]
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        original_compatibility,
+    )
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "_coding_continuity_materializer",
+        original_materializer,
+    )
+
+    non_plugin_runtime = _Runtime(tmp_path / "non-plugin-sessions")
+    non_plugin = asyncio.run(
+        bind_coding_configured_continuity(
+            non_plugin_runtime,
+            settings_manager=None,
+            session_dir=non_plugin_runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+        )
+    )
+    assert non_plugin.plugin_publication is None
+    asyncio.run(shutdown_coding_continuity(non_plugin_runtime))
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_empty_continuity_keeps_registration_for_bound_compatibility_writer(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceJournal,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+        PackagePosixPreFenceRegistrationOwner,
+    )
+
+    workspace = tmp_path / "workspace"
+    layout = _test_layout(tmp_path / "state", workspace)
+    common_layout = continuity_bootstrap_module._common_lifecycle_layout(layout)
+    epoch = resolve_coding_package_epoch_layout(common_layout)
+    settings = SettingsManager(
+        initial=ControlConfig(),
+        project_settings_path=tmp_path / "settings.json",
+    )
+    runtime = _Runtime(tmp_path / "sessions")
+    owner = None
+    try:
+        composition = asyncio.run(
+            bind_coding_configured_continuity(
+                runtime,
+                settings_manager=settings,
+                session_dir=runtime.session_dir,
+                cwd=workspace,
+                state_layout=layout,
+            )
+        )
+        assert composition.plugin_publication is None
+        owner = PackagePosixPreFenceRegistrationOwner(
+            epoch.authority_root,
+            store_id=epoch.store_id,
+            fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
+        )
+        asyncio.run(shutdown_coding_continuity(runtime))
+        with owner.exclusive_quiescence(store_id=epoch.store_id) as live:
+            assert len(live.active_registration_ids) == 1
+    finally:
+        plugin_lifecycle_module._release_process_startup_lease(
+            common_layout,
+            startup_id=plugin_lifecycle_module._CODING_PLUGIN_RUNTIME_BOOT_ID,
+        )
+    assert owner is not None
+    with owner.exclusive_quiescence(store_id=epoch.store_id) as released:
+        assert released.active_registration_ids == ()
 
 
 def test_private_state_root_rejects_symlink_without_chmodding_target(

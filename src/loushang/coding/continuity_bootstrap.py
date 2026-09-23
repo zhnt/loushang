@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import stat
+import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -21,8 +22,11 @@ from time import time_ns
 from typing import Literal, Protocol
 
 from loushang.coding._plugin_lifecycle import (
+    _CODING_PLUGIN_RUNTIME_BOOT_ID,
     CodingPluginLifecycle,
     CodingPluginLifecycleStateLayout,
+    _hold_process_startup_lease,
+    _release_process_startup_lease,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -306,10 +310,34 @@ async def bind_coding_configured_continuity(
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
     configured_count = len(sources)
+    common_layout: CodingPluginLifecycleStateLayout | None = None
+    existing: CodingContinuityComposition | None = None
+    compatibility = None
+    owns_early_startup_lease = False
+
+    def release_early_startup_lease() -> None:
+        nonlocal owns_early_startup_lease
+        if owns_early_startup_lease and common_layout is not None:
+            _release_process_startup_lease(
+                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
+            )
+            owns_early_startup_lease = False
+
     try:
         layout = state_layout or resolve_coding_continuity_state_layout(cwd)
+        common_layout = _common_lifecycle_layout(layout)
+        prior = getattr(runtime, "_loushang_coding_continuity", None)
+        existing = prior if isinstance(prior, CodingContinuityComposition) else None
+        if sys.platform.startswith("linux") and (
+            sources
+            or settings_manager is not None
+            or (existing is not None and existing.plugin_publication is not None)
+        ):
+            owns_early_startup_lease = _hold_process_startup_lease(
+                common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
+            )
         compatibility = bind_coding_plugin_enablement_compatibility(
-            _common_lifecycle_layout(layout),
+            common_layout,
             settings_manager,
         )
         if compatibility is not None:
@@ -326,10 +354,11 @@ async def bind_coding_configured_continuity(
             all_sessions=all_sessions,
         )
 
-        existing = getattr(runtime, "_loushang_coding_continuity", None)
-        if isinstance(existing, CodingContinuityComposition):
+        if existing is not None:
             if existing.configured_request_fingerprint == request_fingerprint:
                 _restore_ready_status(runtime, diagnostics_service)
+                if existing.plugin_publication is None and compatibility is None:
+                    release_early_startup_lease()
                 return existing
             if (
                 not sources
@@ -348,6 +377,8 @@ async def bind_coding_configured_continuity(
                     provider_count=0,
                     recovered_deletion_count=0,
                 )
+                if compatibility is None:
+                    release_early_startup_lease()
                 return existing
             raise CodingContinuityBootstrapError(
                 code="coding_continuity_composition_already_bound",
@@ -369,8 +400,14 @@ async def bind_coding_configured_continuity(
                 provider_count=0,
                 recovered_deletion_count=0,
             )
+            if compatibility is None:
+                release_early_startup_lease()
             return result
     except BaseException as error:
+        if compatibility is None and (
+            existing is None or existing.plugin_publication is None
+        ):
+            release_early_startup_lease()
         if not isinstance(error, Exception):
             raise
         if (
@@ -398,6 +435,7 @@ async def bind_coding_configured_continuity(
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
     runtime_resolution: PluginRuntimeResolution | None = None
+    lifecycle_started = False
     try:
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None and not materializer.uses_storage_authority(
@@ -413,6 +451,7 @@ async def bind_coding_configured_continuity(
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
+        lifecycle_started = True
         lifecycle.common.reconcile_retirements()
         replayed_runtime, inspections = _continuity_runtime_inputs(
             sources,
@@ -438,6 +477,8 @@ async def bind_coding_configured_continuity(
                 provider_count=0,
                 recovered_deletion_count=0,
             )
+            if compatibility is None:
+                release_early_startup_lease()
             return result
 
         if not supports_coding_continuity_secure_staging():
@@ -482,6 +523,8 @@ async def bind_coding_configured_continuity(
                 provider_count=0,
                 recovered_deletion_count=0,
             )
+            if compatibility is None:
+                release_early_startup_lease()
             return result
         selection = _finalize_selection(
             runtime_resolution,
@@ -531,6 +574,8 @@ async def bind_coding_configured_continuity(
         )
         return result
     except BaseException as error:
+        if not lifecycle_started and compatibility is None:
+            release_early_startup_lease()
         if runtime_resolution is not None:
             try:
                 runtime_resolution.close()
