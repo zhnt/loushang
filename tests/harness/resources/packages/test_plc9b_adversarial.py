@@ -211,6 +211,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
 from loushang.harness.resources.packages.product_composition import (
     PackageRetentionHandoffRecovery,
 )
+from loushang.harness.resources.packages.product_handoff import (
+    PackageProductHandoffFinalizer,
+)
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
     PackageProductLifecycleExecutionBinding,
@@ -3168,6 +3171,114 @@ class _ManifestNativeAdoptionFixture:
     secret: str
 
 
+@dataclass(frozen=True)
+class _NativeProductDesiredProjection:
+    ledger: PluginDesiredStateLedger
+    committed_sets: PackageCommittedSetJournal
+
+    def project(
+        self, request: PackageDesiredStateCommitRequestV1
+    ) -> PluginPackageRevisionRefV1:
+        record = self.committed_sets.current(request.operation_id)
+        assert record is not None
+        root = next(
+            node
+            for node in record.closure_lock.nodes
+            if node.node_id == record.closure_lock.root_node_id
+        )
+        return PluginPackageRevisionRefV1(
+            plugin_id=request.plugin_id,
+            plugin_version=request.root_ref.version,
+            package_content_digest=request.root_ref.artifact_digest,
+            dependency_lock_digest=record.closure_lock.lock_digest,
+            package_source_identity=root.plan_node.canonical_source_identity,
+        )
+
+    def inventory_revision(self) -> int:
+        return self.ledger.snapshot().inventory_revision
+
+
+@dataclass(frozen=True)
+class _NativeProductHandoff:
+    finalizer: PackageProductHandoffFinalizer
+    desired: PluginDesiredStateLedger
+    bindings: PluginPackageGcBindingJournal
+    journal: PackageRetentionHandoffJournal
+
+
+@dataclass
+class _FailOnceProductHandoff:
+    delegate: PackageProductHandoffFinalizer
+    calls: int = 0
+
+    def finalize(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("crash before Product handoff journal open")
+        self.delegate.finalize(request, current=current)
+
+
+def _native_product_handoff(
+    fixture: _ManifestNativeAdoptionFixture, tmp_path: Path
+) -> _NativeProductHandoff:
+    assert isinstance(fixture.commit, PackageCommitLifecycleOwner)
+    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
+    desired = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=tmp_path / "product-management.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "product-gc-bindings.jsonl")
+    projection = _NativeProductDesiredProjection(desired, fixture.committed_sets)
+    desired_adapter = PluginManagementPackageDesiredStateAdapter(
+        management=management,
+        revisions=projection,
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+        gc_bindings=bindings,
+        gc_gate=gate,
+    )
+    admission = PackageCommitAdmissionOwner(
+        lifecycle_journal=fixture.lifecycle_journal,
+        committed_sets=fixture.committed_sets,
+        pin_journal=fixture.pin_journal,
+    )
+    journal = PackageRetentionHandoffJournal(
+        tmp_path / "product-handoff.jsonl"
+    )
+    handoff = PackageRetentionHandoffOwner(
+        journal=journal,
+        admission=admission,
+        retention=PackageProductRetentionSettlementOwner(
+            path=tmp_path / "product-retention.jsonl",
+            transaction_pins=fixture.pin_journal,
+        ),
+        desired_state=desired_adapter,
+    )
+    return _NativeProductHandoff(
+        finalizer=PackageProductHandoffFinalizer(
+            kernel=fixture.kernel,
+            commit=fixture.commit,
+            admission=admission,
+            transaction_pins=fixture.pin_journal,
+            journal=journal,
+            handoff=handoff,
+            inventory_revision=projection.inventory_revision,
+        ),
+        desired=desired,
+        bindings=bindings,
+        journal=journal,
+    )
+
+
 class _ManifestAdoptionCoordination:
     def __init__(self) -> None:
         self.lock = Lock()
@@ -3659,6 +3770,7 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     fixture = _manifest_native_adoption_fixture(
         tmp_path, secret=secret, product_ingress=ingress
     )
+    product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
         kernel=fixture.kernel,
         execution=lambda _request, _current: fixture.execution,
@@ -3667,6 +3779,7 @@ def test_product_transaction_uses_real_store_and_durable_owner(
         pins=fixture.pin_owner,
         staging=fixture.staging_owner,
         commit=fixture.commit,
+        handoff=product.finalizer,
     )
     router = PackageProductLifecycleRouter(
         execution=PackageProductLifecycleExecutionBinding(
@@ -3684,9 +3797,74 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     assert fixture.root_settlements.records()
     assert fixture.committed_sets.records()
     assert fixture.source_authority.authorize_calls == 1
+    desired = product.desired.snapshot()
+    assert desired.inventory_revision == 1
+    assert desired.installations[0].selection.desired_state == "installed_disabled"
+    assert len(product.bindings.records()) == 1
+    assert product.journal.records()[-1].receipt is not None
+    assert product.journal.records()[-1].receipt.state == "settled"
+    handoff_before = product.journal.records()
     assert router.route(route) == committed
     assert fixture.lifecycle_journal.records() == before
     assert fixture.source_authority.authorize_calls == 1
+    assert product.desired.snapshot() == desired
+    assert product.journal.records() == handoff_before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-handoff-recovery"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    handoff = _FailOnceProductHandoff(product.finalizer)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=lambda _request, _current: fixture.execution,
+        recovery_identity="manifest-product-handoff-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=handoff,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint="cli", ingress=ingress, admission=admission
+    )
+
+    with pytest.raises(RuntimeError, match="crash before Product handoff"):
+        router.route(route)
+    committed = fixture.kernel.status(ingress.operation_id)
+    assert committed is not None
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert product.journal.records() == ()
+    assert product.desired.snapshot().inventory_revision == 0
+    lifecycle_before = fixture.lifecycle_journal.records()
+
+    assert router.route(route) == committed
+    assert fixture.lifecycle_journal.records() == lifecycle_before
+    assert product.desired.snapshot().inventory_revision == 1
+    assert product.journal.records()[-1].receipt is not None
+    assert product.journal.records()[-1].receipt.state == "settled"
+    assert handoff.calls == 2
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
@@ -3708,6 +3886,7 @@ def test_product_direct_materializer_refusal_never_reaches_real_store(
     fixture = _manifest_native_adoption_fixture(
         tmp_path, secret=secret, product_ingress=ingress
     )
+    product = _native_product_handoff(fixture, tmp_path)
 
     def unexpected_execution(
         _request: PackageProductRouteRequestV1,
@@ -3723,6 +3902,7 @@ def test_product_direct_materializer_refusal_never_reaches_real_store(
         pins=fixture.pin_owner,
         staging=fixture.staging_owner,
         commit=fixture.commit,
+        handoff=product.finalizer,
     )
     router = PackageProductLifecycleRouter(
         execution=PackageProductLifecycleExecutionBinding(
@@ -3764,6 +3944,7 @@ def test_product_transaction_refuses_changed_execution_before_source(
     fixture = _manifest_native_adoption_fixture(
         tmp_path, secret=secret, product_ingress=ingress
     )
+    product = _native_product_handoff(fixture, tmp_path)
     changed = replace(
         fixture.execution,
         artifact=replace(fixture.execution.artifact, request_fingerprint="0" * 64),
@@ -3776,6 +3957,7 @@ def test_product_transaction_refuses_changed_execution_before_source(
         pins=fixture.pin_owner,
         staging=fixture.staging_owner,
         commit=fixture.commit,
+        handoff=product.finalizer,
     )
     router = PackageProductLifecycleRouter(
         execution=PackageProductLifecycleExecutionBinding(

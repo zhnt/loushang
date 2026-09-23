@@ -140,6 +140,24 @@ class _InvalidTransaction:
         return current
 
 
+@dataclass
+class _FinalizingTransaction(_CommittingTransaction):
+    finalization_calls: int = 0
+    interrupt_once: bool = True
+
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+        self.finalization_calls += 1
+        if self.interrupt_once:
+            self.interrupt_once = False
+            raise RuntimeError("handoff interrupted before journal open")
+
+
 def _ingress(
     *, operation_id: str = "product-route-operation"
 ) -> PackageLifecycleIngressRequestV1:
@@ -313,6 +331,32 @@ def test_direct_materializer_is_rejected_without_transaction_fallback(
     assert refused.failure.code == "package_route_unavailable"
     assert transaction.calls == []
     assert journal.records() == before
+
+
+def test_committed_replay_retries_required_product_handoff(tmp_path: Path) -> None:
+    journal = PackageLifecycleJournal(tmp_path / "product-handoff-replay.jsonl")
+    owner = PackageLifecycleOwner(
+        journal=journal,
+        classification_authority=_ClassificationAuthority(),
+        enabled=True,
+    )
+    transaction = _FinalizingTransaction(owner)
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(owner, transaction)
+    )
+    route = _route_request("cli")
+
+    with pytest.raises(RuntimeError, match="handoff interrupted"):
+        router.route(route)
+    committed = owner.status(route.ingress.operation_id)
+    assert committed is not None
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert transaction.calls == ["cli"]
+    assert transaction.finalization_calls == 1
+
+    assert router.route(route) == committed
+    assert transaction.calls == ["cli"]
+    assert transaction.finalization_calls == 2
 
 
 def test_direct_publish_is_durably_refused_without_publication_port(

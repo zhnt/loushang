@@ -32,6 +32,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime im
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
     PackageTransactionPinExecutionResult,
 )
+from loushang.harness.resources.packages.product_handoff import (
+    PackageProductHandoffPort,
+)
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
@@ -103,6 +106,7 @@ class PackageProductLifecycleTransaction:
         pins: PackageProductPinPort,
         staging: PackageProductStagingPort,
         commit: PackageProductCommitPort,
+        handoff: PackageProductHandoffPort,
     ) -> None:
         if not isinstance(kernel, PackageLifecycleOwner):
             raise TypeError("Package lifecycle owner is required")
@@ -115,6 +119,7 @@ class PackageProductLifecycleTransaction:
             (pins, ("pin",), "pin owner"),
             (staging, ("stage_and_publish", "resume"), "staging owner"),
             (commit, ("commit",), "commit owner"),
+            (handoff, ("finalize",), "handoff owner"),
         ):
             if any(not callable(getattr(owner, method, None)) for method in methods):
                 raise TypeError(f"Package Product {name} is required")
@@ -125,10 +130,19 @@ class PackageProductLifecycleTransaction:
         self._pins = pins
         self._staging = staging
         self._commit = commit
+        self._handoff = handoff
 
     @property
     def owner_binding_id(self) -> str:
         return self._kernel.binding_id
+
+    def finalize_committed(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        self._handoff.finalize(request, current=current)
 
     def execute(
         self,

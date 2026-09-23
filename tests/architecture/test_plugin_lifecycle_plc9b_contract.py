@@ -2239,6 +2239,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/harness/plugin_management/package_product.py"),
         Path("src/loushang/harness/resources/packages/product_activation.py"),
         Path("src/loushang/harness/resources/packages/product_composition.py"),
+        Path("src/loushang/harness/resources/packages/product_handoff.py"),
         Path("src/loushang/harness/resources/packages/product_transaction.py"),
         LINUX_LEGACY_RUNTIME,
         PRODUCT_LIFECYCLE,
