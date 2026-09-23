@@ -61,14 +61,16 @@
   launch, bounded supervisor, and default-dark read-only Capability adapter.
   The accepted
   [PLC9C5 C5.0 baseline](plugin-lifecycle-plc9c5-c50-baseline.md) and
-  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) plan
-  receipt/lifecycle, Linux native, Windows mechanics/rejection, and final Linux
-  Coding Product-convergence slices while retaining every production
-  activation guard.
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) now record the
+  implemented C5.1 receipt/lifecycle, C5.2 Linux native, C5.3 Windows
+  mechanics/rejection, C5.4 Linux Coding Product canary, and C5.5b/c Windows
+  LPAC containment and Coding Product canary. Both canaries are explicit and
+  default-dark; Current remains the default and unlisted routes remain closed.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
-  Skill catalog convergence, and later public SDK stabilization.
+  Skill catalog convergence, the stable public SDK, and remaining PLC9
+  platform closure.
 - Authority: the canonical target
   [Plugin Architecture V2](architecture.md),
   [Capability Composition Lifecycle Authority Plan](../composition-lifecycle-authority-plan.md),

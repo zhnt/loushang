@@ -8,8 +8,10 @@
   independently reviewed and owner accepted under issue `#502`; incremental
   contracts record implemented slices; plans remain delivery records; baselines
   are implementation evidence.
-- Implementation status: partial, summarized by `architecture.md` and tracked
-  in the lifecycle plan.
+- Implementation status: PLC0--PLC8 are complete and terminally reviewed;
+  PLC9 is partially implemented through the explicit Linux and Windows AMD64
+  Coding Worker canaries. The remaining platform gaps are summarized by
+  `architecture.md` and tracked in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
@@ -45,7 +47,7 @@ Neither may silently override a narrower implemented owner contract.
   the current implementation, including the production `coding.lsp` route.
 - [Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
   refines Definition/Provider/Consumer, Component Host, declaration builder,
-  admission, and future public SDK delivery.
+  admission, and the public SDK path delivered by PLC8.
 - [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
   owns the Resource/Skill catalog convergence and the rule that mechanisms may
   be Plugin components while individual Skills remain Resources.
@@ -320,8 +322,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,
-  durable attempt journal, and default-dark read-only Capability adapter. C5
-  Product/native activation, author-SDK runtime owners, generation publication,
+  durable attempt journal, and default-dark read-only Capability adapter. C5.1
+  through C5.5c now add exact lifecycle/receipt ownership and explicit Linux
+  and Windows AMD64 Coding Product canaries; general author-SDK runtime owners
   and `remote_service` remain absent. The separate
   [HOST-H5 default-dark adapter](../../hosting/harness-worker-adapter-h5.md)
   supplies an atomic Hosting session seam and rollback selector but explicitly
@@ -332,10 +335,10 @@ Neither may silently override a narrower implemented owner contract.
   activation fence. The accepted
   [PLC9C5 C5.0 Product/Native Worker Activation Baseline](plugin-lifecycle-plc9c5-c50-baseline.md)
   and its source-backed
-  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) split C5 into
-  receipt/lifecycle, Linux native, Windows mechanics/rejection, and Linux
-  Product-convergence slices. C5.0 itself is design/guards only: every runtime
-  route remains default-dark and Product activation remains absent.
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) records the C5
+  progression from design/guards through receipt/lifecycle, Linux native,
+  Windows mechanics, and the two Product canaries. Product activation remains
+  explicit and default-dark; Current is still the default.
 - [PLC9C5 C5.1 Product Worker Receipt And Lifecycle Contract](plugin-lifecycle-plc9c5-c51-contract.md)
   implements the authority-free policy/receipt join, synchronous serialized
   freshness gate, deterministic publication/retirement lifecycle, durable
@@ -344,20 +347,24 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9C5 C5.2 Linux Native Profile Binding](plugin-lifecycle-plc9c5-c52-linux-native.md)
   adds the single request-bound POSIX contained-profile friend, exact
   policy/execution closure evidence, non-WSL Linux x86_64 rejection gate, and
-  retained native report. It remains default-dark and has no Product consumer.
+  retained native report. C5.2 had no Product consumer; C5.4 later added the
+  explicit Linux Coding canary while keeping Current as the default.
 - [PLC9C5 C5.3 Windows Mechanics And Product Rejection](plugin-lifecycle-plc9c5-c53-windows-mechanics.md)
   adds one Hosting-private OS-sourced trusted-payload builder, retains the
   restricted-token/Job/handle-list mechanics report, and proves explicit
-  Product required-containment rejection. Windows activation remains closed.
+  Product required-containment rejection at C5.3. C5.5b/c later accepted only
+  the LPAC-contained Windows AMD64 Coding canary.
 - [PLC9C5 C5.4 Linux Coding Product Canary](plugin-lifecycle-plc9c5-c54-linux-product.md)
   composes the one explicit Linux Coding canary over the retained Worker and
   Hosting capabilities, joins stable Session and shared-entrypoint evidence,
-  and closes ordered rollback/recovery and publication evidence. Current stays
-  default and G7 remains open on Windows.
+  and closes ordered rollback/recovery and publication evidence. G7 remained
+  open at C5.4; C5.5c subsequently closed its Windows gate for the exact canary.
 - [PLC9C5 C5.5 Windows Required-Containment Baseline](plugin-lifecycle-plc9c5-c55-windows-containment.md)
   freezes the LPAC threat model, immutable-material-versus-attempt lifetime,
   sole-writer boundaries, native/Product evidence matrices, and the C5.5a--c
-  rollout. C5.5a is design-only; Windows activation remains closed.
+  rollout. C5.5b implements the retained LPAC native containment path and C5.5c
+  implements the exact Windows AMD64 Coding canary; every unlisted Windows or
+  Product route remains closed and Current remains the default.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
@@ -386,8 +393,10 @@ Neither may silently override a narrower implemented owner contract.
   internal and does not authorize Product cutover.
 
 These contracts refine the architecture only inside their stated versions and
-implemented slices. An unimplemented Worker, Skill-action, remote-service, or
-public SDK shape cannot be inferred from them.
+implemented slices. The implemented public SDK, managed Skill actions, and
+explicit Worker canaries grant no unstated author/runtime authority; an
+unimplemented general Worker authoring path or `remote_service` shape cannot be
+inferred from them.
 
 ## Baselines
 
