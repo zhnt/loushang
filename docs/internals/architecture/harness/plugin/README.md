@@ -349,6 +349,11 @@ Neither may silently override a narrower implemented owner contract.
   covers changed-Source refusal. The composition refuses a moved Store root. No
   Coding entrypoint calls this composition yet; it is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
+  The composition now returns one enforced lifecycle/inventory runtime binding.
+  Its Product-owned local-Wheel inventory reads the same desired and
+  committed-set journals, binds bulk-update targets durably, and reports
+  unknown or legacy-unverified installed Sources as check failures. Coding has
+  not yet supplied this binding through its runtime factory.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,

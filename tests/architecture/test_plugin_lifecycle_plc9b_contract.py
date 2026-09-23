@@ -2246,6 +2246,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         # Explicit POSIX Product composition consumes Package owners behind
         # admitted epoch and existing Product management/GC authorities.
         Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
+        Path("src/loushang/harness/resources/packages/product_local_wheel_inventory.py"),
         Path("src/loushang/harness/resources/packages/product_root_target.py"),
         Path("src/loushang/harness/resources/packages/product_transaction.py"),
         LINUX_LEGACY_RUNTIME,

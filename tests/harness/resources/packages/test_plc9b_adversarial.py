@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
 import inspect
@@ -223,6 +224,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
+from loushang.harness.resources.packages.operations import PackageOperationsRuntime
 from loushang.harness.resources.packages.product_activation import (
     PackageProductActivationError,
 )
@@ -232,6 +234,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
+    PackageProductUpdateCheckRequestV1,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -243,6 +246,9 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductPublishAttemptV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+)
+from loushang.harness.resources.packages.product_local_wheel_inventory import (
+    PackageProductLocalWheelInventory,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
@@ -4312,8 +4318,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     recovery_identity="product-runtime-recovery",
                 )
 
-            activation = compose()
-            activation.activate()
+            runtime = compose()
+            runtime.activate()
+            activation = runtime.lifecycle
             outcome = activation.route(
                 PackageProductLifecycleIntentV1(
                     operation_id="operation:product-runtime",
@@ -4334,12 +4341,145 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert len(committed_set.committed_set.dependency_refs) == int(
                 with_dependency
             )
+            inventory = runtime.inventory
+            targets = inventory.list_update_targets(scope="project")
+            assert tuple(target.source for target in targets) == (str(source),)
+            update_manifest = inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            )
+            assert update_manifest.target_refs == (targets[0].target_ref,)
+            assert inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            ) == update_manifest
+            checks = asyncio.run(
+                inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:product-check-updates",
+                        entrypoint="rpc",
+                        scope="project",
+                    )
+                )
+            )
+            assert len(checks) == 1
+            assert checks[0].target_ref == targets[0].target_ref
+            assert not checks[0].update_available
+            assert checks[0].failure_code is None
+            def forbidden_legacy(*_args: object, **_kwargs: object) -> None:
+                raise AssertionError("Plugin operation reached a legacy Package effect")
+
+            operations = PackageOperationsRuntime(
+                get_materializer=forbidden_legacy,
+                add_source=forbidden_legacy,
+                remove_source=forbidden_legacy,
+                refresh_resources=forbidden_legacy,
+                product_lifecycle=runtime.lifecycle,
+                product_inventory=runtime.inventory,
+                product_lifecycle_mode=runtime.mode,
+            )
+            refused_operation = asyncio.run(
+                operations.install(
+                    "https://packages.example.test/unknown.whl",
+                    scope="project",
+                    entrypoint="rpc",
+                    operation_id="operation:product-operations-refused",
+                )
+            )
+            assert refused_operation.lifecycle == "failed"
+            assert desired.snapshot().inventory_revision == 1
+            restarted_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=policy,
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "update-manifests.jsonl",
+            )
+            assert restarted_inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            ) == update_manifest
+            unknown_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=replace(policy, bindings=()),
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "unknown-update-manifests.jsonl",
+            )
+            unknown_checks = asyncio.run(
+                unknown_inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:unknown-check",
+                        entrypoint="session",
+                        scope="project",
+                    )
+                )
+            )
+            assert unknown_checks[0].failure_code == "package_update_source_unavailable"
+            changed_root_policy = replace(
+                policy,
+                bindings=(replace(policy.bindings[0], artifact_digest="f" * 64),),
+            )
+            changed_root_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=changed_root_policy,
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "changed-update-manifests.jsonl",
+            )
+            changed_root_checks = asyncio.run(
+                changed_root_inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:changed-root-check",
+                        entrypoint="rpc",
+                        scope="project",
+                    )
+                )
+            )
+            assert changed_root_checks[0].update_available
+            if with_dependency:
+                changed_dependency_inventory = PackageProductLocalWheelInventory(
+                    binding_id=activation.binding_id,
+                    policy=replace(
+                        policy,
+                        dependencies=(
+                            replace(
+                                policy.dependencies[0], artifact_digest="f" * 64
+                            ),
+                        ),
+                    ),
+                    desired_state=desired,
+                    committed_sets=PackageCommittedSetJournal(
+                        state_root / "committed-sets.jsonl"
+                    ),
+                    manifest_path=state_root / "changed-dependency-manifests.jsonl",
+                )
+                changed_dependency_checks = asyncio.run(
+                    changed_dependency_inventory.check_updates(
+                        request=PackageProductUpdateCheckRequestV1(
+                            operation_id="operation:changed-dependency-check",
+                            entrypoint="rpc",
+                            scope="project",
+                        )
+                    )
+                )
+                assert changed_dependency_checks[0].update_available
             lifecycle_journal = PackageLifecycleJournal(
                 state_root / "lifecycle.jsonl"
             )
             before_restart = lifecycle_journal.records()
             restarted = compose()
             restarted.activate()
+            assert restarted.binding_id == runtime.binding_id
             assert lifecycle_journal.records() == before_restart
             assert desired.snapshot().inventory_revision == 1
             foreign_desired = PluginDesiredStateLedger(

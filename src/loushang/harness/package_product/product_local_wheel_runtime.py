@@ -112,9 +112,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
 )
-from loushang.harness.resources.packages.product_activation import (
-    PackageProductLifecycleActivation,
-)
 from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
@@ -126,11 +123,17 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
 )
+from loushang.harness.resources.packages.product_local_wheel_inventory import (
+    PackageProductLocalWheelInventory,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
+)
+from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeBindingV1,
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
@@ -190,8 +193,8 @@ def compose_posix_local_wheel_product(
     actor_id: str,
     desired_policy_revision: str,
     recovery_identity: str,
-) -> PackageProductLifecycleActivation:
-    """Build the exact Product transaction; the caller activates it explicitly."""
+) -> PackageProductRuntimeBindingV1:
+    """Bind the exact Product transaction and inventory before activation."""
 
     if os.name != "posix" or not all(
         hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_CLOEXEC")
@@ -388,7 +391,7 @@ def compose_posix_local_wheel_product(
         commit=commit,
         handoff=finalizer,
     )
-    return compose_package_product_lifecycle(
+    lifecycle = compose_package_product_lifecycle(
         product_id=policy.product_id,
         owner=kernel,
         transaction=transaction,
@@ -412,6 +415,19 @@ def compose_posix_local_wheel_product(
                 finalizer=finalizer,
             ),
         ),
+    )
+    inventory = PackageProductLocalWheelInventory(
+        binding_id=lifecycle.binding_id,
+        policy=policy,
+        desired_state=desired_state,
+        committed_sets=committed_sets,
+        manifest_path=state_root / "update-manifests.jsonl",
+    )
+    return PackageProductRuntimeBindingV1(
+        product_id=policy.product_id,
+        lifecycle=lifecycle,
+        inventory=inventory,
+        mode="enforced",
     )
 
 
