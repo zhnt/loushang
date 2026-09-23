@@ -30,7 +30,7 @@ Internal docs are not all live architecture.
 - `specs/` records dated implementation designs; use them for rationale, not as current API truth.
 - `plans/archive/` records completed or abandoned execution plans.
 - `experimental/` records research inputs and methodology experiments.
-- `legacy/` preserves older position papers and boundary notes.
+- `legacy/` preserves older boundary protocols and design notes.
 
 When these documents conflict, prefer current code/tests and the live architecture
 docs. Historical terms such as `loushang-methods`, `methods/**`, Textual, or old
