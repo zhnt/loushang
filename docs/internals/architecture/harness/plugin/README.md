@@ -360,7 +360,10 @@ Neither may silently override a narrower implemented owner contract.
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:
   process-held liveness locks and a root-directory launch barrier reject live
   old processes before snapshot and refuse new old registrations after fence.
-  Product mapping of real Coding state and registration of every legacy
+  The cutover fixture now uses Coding's existing legacy Package directory as
+  the POSIX legacy root, with a sibling epoch namespace, and snapshots its
+  actual lifecycle state root. Other pre-B domains still use fixture roots;
+  Product mapping of their real Coding state and registration of every legacy
   CLI/RPC/Session/supervisor launch remain required.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.

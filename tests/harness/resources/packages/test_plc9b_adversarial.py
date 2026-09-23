@@ -4207,11 +4207,17 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
+    from loushang.coding._plugin_lifecycle import (
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import (
+        resolve_coding_package_epoch_layout,
+    )
     from loushang.coding.session_manager import SessionManager
 
     source_root = tmp_path / "sources"
@@ -4258,9 +4264,33 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         authority_id="coding-local-source:runtime",
     )
     state_root = tmp_path / "package-state"
-    control_root = tmp_path / "epoch-control"
-    for directory in (state_root, control_root):
+    state_root.mkdir(mode=0o700)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    legacy_base = tmp_path / "legacy-coding"
+    legacy_layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        legacy_base, cwd=workspace
+    )
+    epoch_layout = resolve_coding_package_epoch_layout(legacy_layout)
+    control_root = epoch_layout.control_root
+    authority = epoch_layout.authority_root
+    legacy_root = epoch_layout.legacy_root
+    epochs_root = epoch_layout.epochs_root
+    snapshot_root = epoch_layout.snapshot_root
+    for directory in (
+        legacy_base,
+        authority,
+        legacy_layout.root.parent,
+        legacy_layout.root,
+        legacy_root,
+        epochs_root,
+        control_root,
+        snapshot_root,
+    ):
         directory.mkdir(mode=0o700)
+    assert legacy_root == legacy_layout.package_root
+    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_layout.root / "desired-state.jsonl").write_bytes(b"")
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
         tmp_path / "product-desired.jsonl", gc_gate=gate
@@ -4270,25 +4300,20 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         operation_journal_path=tmp_path / "product-management.jsonl",
     )
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
-    store_id = "package-store:product-runtime"
+    store_id = epoch_layout.store_id
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
-    authority = tmp_path / "package-epoch-authority"
-    legacy_root = authority / "legacy"
-    epochs_root = authority / "epochs"
-    for directory in (authority, legacy_root, epochs_root):
-        directory.mkdir(mode=0o700)
-    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
-    domain_roots = {"store_bytes": legacy_root}
+    domain_roots = {
+        "store_bytes": legacy_root,
+        "desired_state": legacy_layout.root,
+    }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
-        if domain == "store_bytes":
+        if domain in domain_roots:
             continue
         domain_root = source_root / domain
         domain_root.mkdir(mode=0o700)
         domain_roots[domain] = domain_root
-    snapshot_root = tmp_path / "pre-b-snapshots"
-    snapshot_root.mkdir(mode=0o700)
     snapshots = PackagePosixEpochSnapshotOwner(
         snapshot_root,
         store_id=store_id,
@@ -4313,6 +4338,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             authority,
             store_id=store_id,
             epoch_journal=fences,
+            legacy_root_name=epoch_layout.legacy_root_name,
+            epochs_root_name=epoch_layout.epochs_root_name,
             coordination=PackagePosixEpochCutoverCoordination(
                 leases=cutover_registry,
                 pre_fence=pre_fence,
@@ -4347,7 +4374,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / "store_bytes"
         / "state.json"
     ).read_bytes() == b'{"legacy":1}\n'
-    plugin_root = epochs_root / cutover_request.namespace_id
+    plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4406,8 +4433,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     PackageProductRuntimeRequestV1,
                 )
 
-                workspace = tmp_path / "workspace"
-                workspace.mkdir(mode=0o700)
                 session_manager = asyncio.run(
                     SessionManager.new(
                         session_dir=tmp_path / "sessions",

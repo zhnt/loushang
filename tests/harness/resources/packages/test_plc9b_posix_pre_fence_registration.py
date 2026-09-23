@@ -176,3 +176,17 @@ def test_in_flight_launch_barrier_refuses_cutover_scope_without_waiting(
     finally:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
+
+
+def test_shared_authority_does_not_count_another_store_as_live(
+    tmp_path: Path,
+) -> None:
+    authority, fences, first = _fixture(tmp_path)
+    second = PackagePosixPreFenceRegistrationOwner(
+        authority, store_id="package-store:other", fences=fences
+    )
+    with second.register(startup_id="legacy:other") as other:
+        with first.exclusive_quiescence(store_id=_STORE_ID) as unrelated:
+            assert unrelated.active_registration_ids == ()
+        with second.exclusive_quiescence(store_id="package-store:other") as live:
+            assert live.active_registration_ids == (other.registration_id,)

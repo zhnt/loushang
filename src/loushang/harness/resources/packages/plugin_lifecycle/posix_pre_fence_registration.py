@@ -46,7 +46,7 @@ if os.name == "posix":
 else:  # pragma: no cover - imported during Windows collection
     _fcntl = None  # type: ignore[assignment]
 
-_REGISTRATIONS_NAME = "pre-fence-registrations"
+_REGISTRATIONS_PREFIX = "pre-fence-registrations-"
 _REGISTRATION_NAME = re.compile(r"([0-9a-f]{64})\.lease\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 
@@ -104,12 +104,19 @@ class PackagePosixPreFenceRegistrationOwner:
         )
         self.store_id = store_id
         self._fences = fences
+        self._registrations_name = _REGISTRATIONS_PREFIX + sha256(
+            store_id.encode("utf-8")
+        ).hexdigest()
         root = _PinnedRoot.open(self.authority_root)
         try:
             with suppress(FileExistsError):
-                os.mkdir(_REGISTRATIONS_NAME, mode=0o700, dir_fd=root.descriptor)
+                os.mkdir(
+                    self._registrations_name,
+                    mode=0o700,
+                    dir_fd=root.descriptor,
+                )
             registrations_fd = _open_directory_at(
-                root.descriptor, _REGISTRATIONS_NAME
+                root.descriptor, self._registrations_name
             )
             try:
                 _require_private_directory(registrations_fd)
@@ -228,7 +235,7 @@ class PackagePosixPreFenceRegistrationOwner:
         registrations_fd: int | None = None
         try:
             registrations_fd = _open_directory_at(
-                root.descriptor, _REGISTRATIONS_NAME
+                root.descriptor, self._registrations_name
             )
             if _native_identity(os.fstat(registrations_fd)) != self._registration_identity:
                 raise OSError("Pre-fence registration root changed")
