@@ -283,6 +283,7 @@ class _WindowsRoleStore:
                     or settlement not in self._settlement_journal.records()
                 ):
                     raise _collision()
+                self._settlement_journal.tombstone(settlement)
                 if not _entry_exists(root.descriptor, settlement.final_name):
                     root.validate_visible()
                     return PackageStoreGcResultV1.create(
@@ -631,6 +632,8 @@ class _WindowsVerifiedTreeSink:
     def _prepare(self) -> None:
         try:
             self._root.validate_visible()
+            if self._settlement_journal.is_tombstoned(self._stable_ref.ref_id):
+                raise _collision()
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):

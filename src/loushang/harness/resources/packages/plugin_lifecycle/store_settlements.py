@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -350,6 +350,120 @@ PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC = FunctionalJournalRecordCodec(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PackageStoreGcTombstoneV1:
+    """Durable refusal to republish an exact settled Store ref."""
+
+    journal_revision: int
+    settlement_id: str
+    stable_ref_id: str
+    store_role: PackageStoreRole
+    store_identity: str
+    final_name: str
+    tombstone_id: str
+    record_kind: Literal["store_gc_tombstone"] = "store_gc_tombstone"
+    record_version: int = 2
+
+    def __post_init__(self) -> None:
+        _require_positive(self.journal_revision, name="Store GC journal revision")
+        _require_sha256(self.settlement_id, name="Store settlement identity")
+        _require_sha256(self.stable_ref_id, name="Store stable ref identity")
+        _require_safe_id(self.store_identity, name="Package Store identity")
+        _require_component(self.final_name, name="Package Store final name")
+        if (
+            self.store_role not in {"root", "dependency"}
+            or self.record_kind != "store_gc_tombstone"
+            or self.record_version != 2
+            or self.tombstone_id != _fingerprint(self._identity_dict())
+        ):
+            raise ValueError("Package Store GC tombstone identity is invalid")
+
+    @classmethod
+    def create(
+        cls, settlement: PackageStoreSettlementRecordV1, *, journal_revision: int
+    ) -> PackageStoreGcTombstoneV1:
+        identity = {
+            "finalName": settlement.final_name,
+            "recordKind": "store_gc_tombstone",
+            "recordVersion": 2,
+            "settlementId": settlement.settlement_id,
+            "stableRefId": settlement.receipt.stable_ref.ref_id,
+            "storeIdentity": settlement.store_identity,
+            "storeRole": settlement.store_role,
+        }
+        return cls(
+            journal_revision=journal_revision,
+            settlement_id=settlement.settlement_id,
+            stable_ref_id=settlement.receipt.stable_ref.ref_id,
+            store_role=settlement.store_role,
+            store_identity=settlement.store_identity,
+            final_name=settlement.final_name,
+            tombstone_id=_fingerprint(identity),
+        )
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            "finalName": self.final_name,
+            "recordKind": self.record_kind,
+            "recordVersion": self.record_version,
+            "settlementId": self.settlement_id,
+            "stableRefId": self.stable_ref_id,
+            "storeIdentity": self.store_identity,
+            "storeRole": self.store_role,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            **self._identity_dict(),
+            "journalRevision": self.journal_revision,
+            "tombstoneId": self.tombstone_id,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageStoreGcTombstoneV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "finalName", "journalRevision", "recordKind", "recordVersion",
+                "settlementId", "stableRefId", "storeIdentity", "storeRole",
+                "tombstoneId",
+            },
+            name="Package Store GC tombstone",
+        )
+        return cls(
+            journal_revision=_wire_int(document["journalRevision"], name="journal revision"),
+            settlement_id=_wire_string(document["settlementId"], name="settlement id"),
+            stable_ref_id=_wire_string(document["stableRefId"], name="stable ref id"),
+            store_role=_wire_role(document["storeRole"]),
+            store_identity=_wire_string(document["storeIdentity"], name="Store identity"),
+            final_name=_wire_string(document["finalName"], name="final name"),
+            tombstone_id=_wire_string(document["tombstoneId"], name="tombstone id"),
+            record_kind=cast(Literal["store_gc_tombstone"], document["recordKind"]),
+            record_version=_wire_int(document["recordVersion"], name="record version"),
+        )
+
+
+StoreJournalEvent: TypeAlias = PackageStoreSettlementRecordV1 | PackageStoreGcTombstoneV1
+
+
+def _decode_store_event(value: object) -> StoreJournalEvent:
+    try:
+        if type(value) is dict and value.get("recordKind") == "store_gc_tombstone":
+            return PackageStoreGcTombstoneV1.from_dict(value)
+        return PackageStoreSettlementRecordV1.from_dict(value)
+    except (TypeError, ValueError) as exc:
+        raise JournalCodecError(
+            "Package Store journal event is invalid",
+            code="invalid_package_store_settlement_record",
+        ) from exc
+
+
+_STORE_EVENT_CODEC = FunctionalJournalRecordCodec(
+    encoder=lambda record: record.to_dict(),
+    decoder=_decode_store_event,
+)
+
+
 class PackageStoreSettlementJournal:
     """Append pre-rename authority and verify exact durable reuse."""
 
@@ -401,7 +515,10 @@ class PackageStoreSettlementJournal:
         receipt: PackageArtifactStagingReceiptV1,
     ) -> PackageStoreSettlementRecordV1:
         with self._exclusive():
-            records = self._load_unlocked()
+            events = self._load_events_unlocked()
+            records = tuple(
+                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+            )
             expected_root = tuple(
                 PackageStoreNativeIdentityV1.from_native(value)
                 for value in root_identities
@@ -425,6 +542,11 @@ class PackageStoreSettlementJournal:
                 manifest=manifest,
                 receipt=receipt,
             )
+            if _tombstoned(events, receipt.stable_ref.ref_id):
+                raise self._error(
+                    "Package Store ref was retired by GC",
+                    code="package_store_gc_tombstoned",
+                )
             existing = next(
                 (
                     record
@@ -453,7 +575,7 @@ class PackageStoreSettlementJournal:
             append_jsonl_record(
                 self._path,
                 candidate,
-                record_codec=PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
+                record_codec=_STORE_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
             )
@@ -487,14 +609,70 @@ class PackageStoreSettlementJournal:
             receipt=receipt,
         )
         with self._exclusive():
-            records = self._load_unlocked()
+            events = self._load_events_unlocked()
+            records = tuple(
+                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+            )
             self._require_store_binding(
                 records,
                 store_role=store_role,
                 store_identity=store_identity,
                 root_identities=probe.root_identities,
             )
-            return any(record.settlement_id == probe.settlement_id for record in records)
+            return not _tombstoned(events, receipt.stable_ref.ref_id) and any(
+                record.settlement_id == probe.settlement_id for record in records
+            )
+
+    def tombstone(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcTombstoneV1:
+        """Fence re-publication before the Store owner mutates the tree."""
+
+        if not isinstance(settlement, PackageStoreSettlementRecordV1):
+            raise TypeError("Exact Store settlement is required")
+        with self._exclusive():
+            events = self._load_events_unlocked()
+            if settlement not in events:
+                raise self._error(
+                    "Package Store GC settlement is unknown",
+                    code="package_store_gc_settlement_unknown",
+                )
+            if sum(
+                isinstance(item, PackageStoreSettlementRecordV1)
+                and item.receipt.stable_ref.ref_id
+                == settlement.receipt.stable_ref.ref_id
+                for item in events
+            ) != 1:
+                raise self._error(
+                    "Package Store ref has multiple physical settlements",
+                    code="package_store_gc_settlement_ambiguous",
+                )
+            existing = next(
+                (
+                    item for item in events
+                    if isinstance(item, PackageStoreGcTombstoneV1)
+                    and item.settlement_id == settlement.settlement_id
+                ),
+                None,
+            )
+            if existing is not None:
+                return existing
+            tombstone = PackageStoreGcTombstoneV1.create(
+                settlement, journal_revision=len(events) + 1
+            )
+            append_jsonl_record(
+                self._path,
+                tombstone,
+                record_codec=_STORE_EVENT_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+            )
+            return tombstone
+
+    def is_tombstoned(self, stable_ref_id: str) -> bool:
+        _require_sha256(stable_ref_id, name="Store stable ref identity")
+        with self._exclusive():
+            return _tombstoned(self._load_events_unlocked(), stable_ref_id)
 
     def records(self) -> tuple[PackageStoreSettlementRecordV1, ...]:
         with self._exclusive():
@@ -515,7 +693,10 @@ class PackageStoreSettlementJournal:
             for value in root_identities
         )
         with self._exclusive():
-            records = self._load_unlocked()
+            events = self._load_events_unlocked()
+            records = tuple(
+                item for item in events if isinstance(item, PackageStoreSettlementRecordV1)
+            )
             self._require_store_binding(
                 records,
                 store_role=store_role,
@@ -529,23 +710,31 @@ class PackageStoreSettlementJournal:
                 and record.store_identity == store_identity
                 and record.root_identities == expected_root
                 and record.receipt == receipt
+                and not _tombstoned(events, receipt.stable_ref.ref_id)
             )
 
     def _load_unlocked(self) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return tuple(
+            item
+            for item in self._load_events_unlocked()
+            if isinstance(item, PackageStoreSettlementRecordV1)
+        )
+
+    def _load_events_unlocked(self) -> tuple[StoreJournalEvent, ...]:
         if not self._path.exists():
             return ()
         try:
-            snapshot: JsonlSnapshot[None, PackageStoreSettlementRecordV1] = load_jsonl(
+            snapshot: JsonlSnapshot[None, StoreJournalEvent] = load_jsonl(
                 self._path,
-                record_codec=PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
+                record_codec=_STORE_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
             )
-            records = snapshot.records
+            events = snapshot.records
             _assert_no_duplicate_json_keys(self._path)
-            _validate_records(records)
-            return records
+            _validate_events(events)
+            return events
         except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
             raise self._error(
                 "Package Store settlement journal is corrupt",
@@ -663,6 +852,46 @@ def _validate_records(records: tuple[PackageStoreSettlementRecordV1, ...]) -> No
         previous_binding = final_bindings.setdefault(final_key, binding)
         if previous_binding != binding:
             raise ValueError("Package Store final name changed identity")
+
+
+def _validate_events(events: tuple[StoreJournalEvent, ...]) -> None:
+    settlements: list[PackageStoreSettlementRecordV1] = []
+    retired_refs: set[str] = set()
+    for journal_revision, event in enumerate(events, start=1):
+        if isinstance(event, PackageStoreSettlementRecordV1):
+            if event.receipt.stable_ref.ref_id in retired_refs:
+                raise ValueError("Package Store ref was republished after GC")
+            settlements.append(event)
+            continue
+        if event.journal_revision != journal_revision:
+            raise ValueError("Package Store GC tombstone revisions are not contiguous")
+        matching = [
+            item for item in settlements
+            if item.settlement_id == event.settlement_id
+            and item.receipt.stable_ref.ref_id == event.stable_ref_id
+            and item.store_role == event.store_role
+            and item.store_identity == event.store_identity
+            and item.final_name == event.final_name
+        ]
+        if (
+            len(matching) != 1
+            or event.stable_ref_id in retired_refs
+            or sum(
+                item.receipt.stable_ref.ref_id == event.stable_ref_id
+                for item in settlements
+            ) != 1
+        ):
+            raise ValueError("Package Store GC tombstone lacks one exact settlement")
+        retired_refs.add(event.stable_ref_id)
+    _validate_records(tuple(settlements))
+
+
+def _tombstoned(events: tuple[StoreJournalEvent, ...], stable_ref_id: str) -> bool:
+    return any(
+        isinstance(item, PackageStoreGcTombstoneV1)
+        and item.stable_ref_id == stable_ref_id
+        for item in events
+    )
 
 
 def _validate_store_binding(
@@ -858,6 +1087,7 @@ __all__ = [
     "PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC",
     "PACKAGE_STORE_SETTLEMENT_RECORD_VERSION",
     "PackageStoreEntryIdentityV1",
+    "PackageStoreGcTombstoneV1",
     "PackageStoreNativeIdentityV1",
     "PackageStoreSettlementJournal",
     "PackageStoreSettlementJournalError",

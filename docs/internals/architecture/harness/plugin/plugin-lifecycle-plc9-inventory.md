@@ -22,6 +22,11 @@
   adds an explicit downgrade seal, irreversible reservation start, a durable
   handoff crosswalk, and dark Store-owned rooted deletion primitives. It does
   not add a Product GC route or a durable deletion result/debt receipt.
+- PLC9D3b refinement:
+  [Store GC Re-publication Fence](plugin-lifecycle-plc9d3b-contract.md)
+  adds a Store-owned exact-ref tombstone before rooted deletion. Store replay
+  excludes previous codecs and refuses re-staging, but no Product GC command
+  or settled result/debt receipt exists.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all

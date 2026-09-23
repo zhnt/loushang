@@ -48,8 +48,9 @@ not reconstructed from path, plugin name, or digest similarity.
    or conservatively excluding them needs a separate Product cutover proof.
 2. A GC coordinator must resolve the crosswalk to one committed set and its
    exact Store settlements, exclude aliases and shared dependency refs, and
-   hold the reference gate through deletion. Store re-publication of a deleted
-   final ref must be fenced by a durable tombstone or equivalent owner rule.
+   hold the reference gate through deletion. PLC9D3b adds a durable Store
+   tombstone for re-publication; the coordinator must still use it under the
+   exact Product reference fence.
 3. The coordinator must durably journal Store success or retryable debt and
    expose recovery/repair. Neither a `deletion_started` event nor the Store
    return value is a settled GC outcome.

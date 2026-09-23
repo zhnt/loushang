@@ -78,6 +78,9 @@ def test_windows_store_gc_deletes_exact_root_and_replays_absence(
     assert result.disposition == "deleted"
     assert not (root / settlement.final_name).exists()
     assert store._store.delete_settlement(settlement).disposition == "already_absent"
+    assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_root(request, candidate)
 
 
 @dataclass

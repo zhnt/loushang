@@ -300,6 +300,7 @@ class _PosixRoleStore:
                     or settlement not in self._settlement_journal.records()
                 ):
                     raise _collision()
+                self._settlement_journal.tombstone(settlement)
                 try:
                     tree_fd = _open_directory(
                         settlement.final_name, dir_fd=root.descriptor
@@ -679,6 +680,8 @@ class _PosixVerifiedTreeSink:
     def _prepare(self) -> None:
         try:
             self._root.validate_visible()
+            if self._settlement_journal.is_tombstoned(self._stable_ref.ref_id):
+                raise _collision()
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackagePluginRootTargetV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
     PackageStoreSettlementJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
@@ -58,7 +60,9 @@ ENVIRONMENT_FINGERPRINT = "7" * 64
 def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     tmp_path: Path,
 ) -> None:
-    _, _, request, candidate, _, _ = _requests_and_candidates()
+    dependency_request, dependency_candidate, request, candidate, _, _ = (
+        _requests_and_candidates()
+    )
     root = tmp_path / "store"
     root.mkdir(mode=0o700)
     settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
@@ -77,6 +81,29 @@ def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     assert not (root / settlement.final_name).exists()
     replay = store._store.delete_settlement(settlement)
     assert replay.disposition == "already_absent"
+    assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
+    marker = json.loads(settlements.path.read_text(encoding="utf-8").splitlines()[-1])
+    with pytest.raises(ValueError):
+        PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC.decode_record(marker)
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_root(request, candidate)
+    restarted = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    with pytest.raises(PackagePhysicalStagingError):
+        restarted.stage_root(request, candidate)
+
+    dependency_root = tmp_path / "dependency-store"
+    dependency_root.mkdir(mode=0o700)
+    other_store = PosixPackageDependencyMaterializationStore(
+        dependency_root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    other_store.stage_dependency(dependency_request, dependency_candidate)
+    assert len(settlements.records()) == 2
 
 
 def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(

@@ -74,6 +74,8 @@
   [PLC9D3a](plugin-lifecycle-plc9d3a-contract.md) adds a Product-bound writer
   seal, exact Store deletion primitive, and durable handoff crosswalk. It has
   no executable Product GC command or durable deletion result/debt receipt.
+  [PLC9D3b](plugin-lifecycle-plc9d3b-contract.md) closes the Store re-publication
+  counterexample with a durable exact-ref tombstone; it does not authorize GC.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
