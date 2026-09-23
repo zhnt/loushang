@@ -146,6 +146,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+    PackagePosixEpochCutoverCoordination,
+    PackagePreFenceRegistrationSnapshotV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
     PackageEpochCutoverSnapshotReceiptV1,
@@ -4268,22 +4272,49 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     for directory in (authority, legacy_root, epochs_root):
         directory.mkdir(mode=0o700)
     (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
-    cutover_owner = PackagePosixEpochCutoverOwner(
-        authority,
-        store_id=store_id,
-        epoch_journal=fences,
-        coordination=_ManifestEpochCutoverCoordination(),
-        snapshots=_ManifestEpochCutoverSnapshots(),
+    class _PreFenceScope:
+        @contextmanager
+        def exclusive_quiescence(self, *, store_id: str):
+            yield PackagePreFenceRegistrationSnapshotV1(
+                store_id=store_id,
+                owner_revision=1,
+                active_registration_ids=(),
+            )
+
+    cutover_root_fd = os.open(
+        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
-    cutover_request = PackagePosixEpochCutoverRequestV1.create(
-        store_id=store_id,
-        prior_fence=None,
-        expected_legacy_root_identity=cutover_owner.current_root_identity(),
-        namespace_id="2" * 64,
-        minimum_runtime_version="2.0.0",
-        minimum_runtime_protocol_epoch=2,
-    )
-    cutover_result = cutover_owner.cutover(cutover_request)
+    cutover_io = RootedFileIO(control_root, cutover_root_fd)
+    try:
+        cutover_registry = PackageEpochRuntimeLeaseRegistry(
+            path=control_root / "runtime-leases.jsonl",
+            coordination_lock=control_root / "coordination",
+            file_io=cutover_io,
+            fences=fences,
+            store_id=store_id,
+        )
+        cutover_owner = PackagePosixEpochCutoverOwner(
+            authority,
+            store_id=store_id,
+            epoch_journal=fences,
+            coordination=PackagePosixEpochCutoverCoordination(
+                leases=cutover_registry,
+                pre_fence=_PreFenceScope(),
+            ),
+            snapshots=_ManifestEpochCutoverSnapshots(),
+        )
+        cutover_request = PackagePosixEpochCutoverRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            expected_legacy_root_identity=cutover_owner.current_root_identity(),
+            namespace_id="2" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+        )
+        cutover_result = cutover_owner.cutover(cutover_request)
+    finally:
+        cutover_io.cleanup()
+        os.close(cutover_root_fd)
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None

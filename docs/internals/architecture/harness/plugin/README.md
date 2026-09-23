@@ -352,8 +352,10 @@ Neither may silently override a narrower implemented owner contract.
   materializer. The concrete POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
-  integration fixture runs the native cutover owner with test quiescence and
-  snapshot providers; production providers remain required.
+  integration fixture runs the native cutover owner with the durable runtime
+  lease/quiescence owner and reopens that registry for Session admission. Its
+  pre-fence and snapshot providers remain test doubles; production providers
+  remain required.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.
