@@ -361,7 +361,8 @@ Neither may silently override a narrower implemented owner contract.
   Only an explicit minimal composition with the canonical read-only Catalog
   policy can exercise the factory before those legacy inputs are migrated; it
   constructs and exposes no legacy Package materializer. Default Coding
-  remains on its existing path.
+  remains on its existing path. An enforced Product route with no materializer
+  also refuses explicit non-Plugin fallback before settings mutation.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,
