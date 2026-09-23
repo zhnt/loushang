@@ -34,6 +34,7 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_product import (
+    CommittedSetPackageRevisionProjection,
     PackageProductGcAdmissionError,
     PluginManagementPackageDesiredStateAdapter,
 )
@@ -3180,38 +3181,12 @@ class _ManifestNativeAdoptionFixture:
 
 
 @dataclass(frozen=True)
-class _NativeProductDesiredProjection:
-    ledger: PluginDesiredStateLedger
-    committed_sets: PackageCommittedSetJournal
-
-    def project(
-        self, request: PackageDesiredStateCommitRequestV1
-    ) -> PluginPackageRevisionRefV1:
-        record = self.committed_sets.current(request.operation_id)
-        assert record is not None
-        root = next(
-            node
-            for node in record.closure_lock.nodes
-            if node.node_id == record.closure_lock.root_node_id
-        )
-        return PluginPackageRevisionRefV1(
-            plugin_id=request.plugin_id,
-            plugin_version=request.root_ref.version,
-            package_content_digest=request.root_ref.artifact_digest,
-            dependency_lock_digest=record.closure_lock.lock_digest,
-            package_source_identity=root.plan_node.canonical_source_identity,
-        )
-
-    def inventory_revision(self) -> int:
-        return self.ledger.snapshot().inventory_revision
-
-
-@dataclass(frozen=True)
 class _NativeProductHandoff:
     finalizer: PackageProductHandoffFinalizer
     desired: PluginDesiredStateLedger
     bindings: PluginPackageGcBindingJournal
     journal: PackageRetentionHandoffJournal
+    revisions: CommittedSetPackageRevisionProjection
 
 
 @dataclass
@@ -3244,7 +3219,9 @@ def _native_product_handoff(
         operation_journal_path=tmp_path / "product-management.jsonl",
     )
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-gc-bindings.jsonl")
-    projection = _NativeProductDesiredProjection(desired, fixture.committed_sets)
+    projection = CommittedSetPackageRevisionProjection(
+        desired, fixture.committed_sets
+    )
     desired_adapter = PluginManagementPackageDesiredStateAdapter(
         management=management,
         revisions=projection,
@@ -3284,6 +3261,7 @@ def _native_product_handoff(
         desired=desired,
         bindings=bindings,
         journal=journal,
+        revisions=projection,
     )
 
 
@@ -3811,6 +3789,33 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     assert len(product.bindings.records()) == 1
     assert product.journal.records()[-1].receipt is not None
     assert product.journal.records()[-1].receipt.state == "settled"
+    handoff_receipt = product.journal.records()[-1].receipt
+    assert handoff_receipt is not None
+    admission_request = handoff_receipt.request.admission_request
+    forged_admission = PackageCommitAdmissionRequestV1.create(
+        operation_id=admission_request.operation_id,
+        request_fingerprint=admission_request.request_fingerprint,
+        product_id=admission_request.product_id,
+        scope_id="workspace:other",
+        installation_id=admission_request.installation_id,
+        plugin_id=admission_request.plugin_id,
+        claimed_root_ref=admission_request.claimed_root_ref,
+        committed_set_id=admission_request.committed_set_id,
+        closure_lock_digest=admission_request.closure_lock_digest,
+        publication_receipt=admission_request.publication_receipt,
+    )
+    forged_desired = PackageDesiredStateCommitRequestV1.create(
+        forged_admission,
+        command_id=handoff_receipt.request.desired_request.command_id,
+        command_fingerprint=(
+            handoff_receipt.request.desired_request.command_fingerprint
+        ),
+        expected_inventory_revision=(
+            handoff_receipt.request.desired_request.expected_inventory_revision
+        ),
+    )
+    with pytest.raises(ValueError, match="committed set"):
+        product.revisions.project(forged_desired)
     handoff_before = product.journal.records()
     assert router.route(route) == committed
     assert fixture.lifecycle_journal.records() == before
