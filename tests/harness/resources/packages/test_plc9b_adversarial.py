@@ -6853,6 +6853,74 @@ while True:
                         ).current(cli_operation_id)
                         is not None
                     )
+                    rpc_install_output = io.StringIO()
+                    rpc_install = RpcPackageCommands(
+                        runtime=object(),
+                        get_session=lambda: configured_session,
+                        output=RpcOutput(rpc_install_output),
+                    )
+                    before_rpc_install = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    committed_before_rpc = len(
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).records()
+                    )
+                    desired_before_rpc = desired.snapshot()
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        asyncio.run(
+                            dict(rpc_install.bindings())["install_package"](
+                                "request:default-product-install-replay",
+                                {"source": str(cli_artifact.path), "scope": "project"},
+                            )
+                        )
+                    rpc_response = json.loads(rpc_install_output.getvalue())
+                    assert rpc_response["success"] is False
+                    rpc_records = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).records()[before_rpc_install:]
+                    assert rpc_records
+                    rpc_operation_ids = {
+                        record.request.operation_id for record in rpc_records
+                    }
+                    assert len(rpc_operation_ids) == 1
+                    rpc_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(next(iter(rpc_operation_ids)))
+                    assert rpc_status is not None
+                    assert rpc_status.failure is not None
+                    assert rpc_status.failure.code == "package_route_unavailable"
+                    assert len(
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).records()
+                    ) == committed_before_rpc
+                    assert desired.snapshot() == desired_before_rpc
+                    before_rpc_replay = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        asyncio.run(
+                            dict(rpc_install.bindings())["install_package"](
+                                "request:default-product-install-replay",
+                                {"source": str(cli_artifact.path), "scope": "project"},
+                            )
+                        )
+                    assert json.loads(rpc_install_output.getvalue().splitlines()[-1]) == (
+                        rpc_response
+                    )
+                    assert len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    ) == before_rpc_replay
                     refused_source = "https://packages.example.test/unknown.whl"
                     before_transport = len(
                         PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()

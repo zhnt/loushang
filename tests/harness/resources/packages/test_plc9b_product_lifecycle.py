@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
+from threading import Event
 
 import pytest
 
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
@@ -373,6 +378,53 @@ def test_committed_replay_retries_required_product_handoff(tmp_path: Path) -> No
     assert router.route(route) == committed
     assert transaction.calls == ["cli"]
     assert transaction.finalization_calls == 2
+
+
+def test_product_route_keeps_reference_gate_through_handoff(tmp_path: Path) -> None:
+    journal = PackageLifecycleJournal(tmp_path / "gated-product-route.jsonl")
+    owner = PackageLifecycleOwner(
+        journal=journal,
+        classification_authority=_ClassificationAuthority(),
+        enabled=True,
+    )
+    gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    entered_handoff = Event()
+    release_handoff = Event()
+    writer_started = Event()
+    writer_entered = Event()
+
+    class BlockingFinalization(_CommittingTransaction):
+        def finalize_committed(
+            self,
+            _request: PackageProductRouteRequestV1,
+            *,
+            current: PackageLifecycleStatusV1,
+        ) -> None:
+            assert current.disposition == "committed"
+            entered_handoff.set()
+            assert release_handoff.wait(5)
+
+    transaction = BlockingFinalization(owner)
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(owner, transaction),
+        reference_guard=gate.guard,
+    )
+
+    def competing_writer() -> None:
+        writer_started.set()
+        with gate.guard():
+            writer_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        route = pool.submit(router.route, _route_request("cli"))
+        assert entered_handoff.wait(5)
+        writer = pool.submit(competing_writer)
+        assert writer_started.wait(5)
+        assert not writer_entered.wait(0.2)
+        release_handoff.set()
+        assert route.result(timeout=5).disposition == "committed"
+        writer.result(timeout=5)
+        assert writer_entered.is_set()
 
 
 def test_direct_publish_is_durably_refused_without_publication_port(

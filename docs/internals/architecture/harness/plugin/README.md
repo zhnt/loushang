@@ -527,6 +527,11 @@ Neither may silently override a narrower implemented owner contract.
   The same default Session commits the first-party LSP Wheel through the CLI
   install route with its legacy Session install method disabled; the Product
   lifecycle and committed set retain that separate transaction.
+  A second RPC install of that already installed Plugin now leaves a durable
+  classified refusal before another Package commit, with Desired state and
+  committed sets unchanged. The real Product route holds the GC reference gate
+  across its installed-target preflight, transaction, and handoff so concurrent
+  management mutations cannot cross those phases.
   That default Session also sends unauthorized CLI and RPC installs through
   Product: both leave distinct durable refusals with Desired state unchanged
   while its legacy install method is disabled.
