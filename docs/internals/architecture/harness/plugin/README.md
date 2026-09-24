@@ -524,6 +524,12 @@ Neither may silently override a narrower implemented owner contract.
   commits a configured first-party capability Wheel through the real Product
   Store, records the committed lifecycle and committed set, and releases its
   runtime lease. The subsequent capability selection reads that committed root.
+  Direct legacy `PluginRevisionStore.publish` and
+  `PackageMaterializer.publish_plugin_packages` now refuse the old revision root
+  after an epoch namespace exists. They hold the same authority-root lock as
+  cutover through publication; the native B fixture proves both refusals and
+  preserves the pre-B tree. Other direct legacy materializer writes and binding
+  mutations still need their own no-bypass audit.
   This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

@@ -5,8 +5,10 @@ import io
 import os
 import shutil
 import stat
+import sys
 import tempfile
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
@@ -39,6 +41,52 @@ class PluginRevisionError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.path = path
+
+
+@contextmanager
+def _legacy_revision_publication_guard(root: Path) -> Iterator[None]:
+    if not sys.platform.startswith("linux") or root.name != "plugin-revisions":
+        yield
+        return
+
+    import fcntl
+
+    legacy_root = root.parent
+    authority_root = legacy_root.parent
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        authority_fd = os.open(authority_root, flags)
+    except FileNotFoundError:
+        yield
+        return
+    locked = False
+    try:
+        # POSIX cutover holds the exclusive lock on this same authority root.
+        fcntl.flock(authority_fd, fcntl.LOCK_SH)
+        locked = True
+        try:
+            epochs_fd = os.open(
+                f"{legacy_root.name}.epochs", flags, dir_fd=authority_fd
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            try:
+                if os.listdir(epochs_fd):
+                    raise PluginRevisionError(
+                        "Legacy Plugin revision root is fenced by a Package epoch",
+                        code="plugin_revision_epoch_fenced",
+                        path=root,
+                    )
+            finally:
+                os.close(epochs_fd)
+        yield
+    finally:
+        try:
+            if locked:
+                fcntl.flock(authority_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(authority_fd)
 
 
 @dataclass(frozen=True)
@@ -259,6 +307,12 @@ class PluginRevisionStore:
         self.revision_root = self.root / "sha256"
 
     def publish(self, package: ResolvedPluginPackage) -> VerifiedPluginRevision:
+        with _legacy_revision_publication_guard(self.root):
+            return self._publish_unchecked(package)
+
+    def _publish_unchecked(
+        self, package: ResolvedPluginPackage
+    ) -> VerifiedPluginRevision:
         PluginManifestParser().revalidate(package)
         self.revision_root.mkdir(parents=True, exist_ok=True)
         quarantine = Path(
@@ -342,13 +396,14 @@ class PluginRevisionStore:
         packages: tuple[ResolvedPluginPackage, ...],
     ) -> tuple[VerifiedPluginRevision, ...]:
         published: list[VerifiedPluginRevision] = []
-        try:
-            for package in packages:
-                published.append(self.publish(package))
-        except Exception:
-            for package in published:
-                package.revision_handle.close()
-            raise
+        with _legacy_revision_publication_guard(self.root):
+            try:
+                for package in packages:
+                    published.append(self.publish(package))
+            except Exception:
+                for package in published:
+                    package.revision_handle.close()
+                raise
         return tuple(published)
 
     def reopen(

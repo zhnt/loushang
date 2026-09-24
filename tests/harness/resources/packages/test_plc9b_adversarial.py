@@ -4497,6 +4497,25 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
+    if checked_in_base:
+        from loushang.harness.resources.packages.materializer import PackageMaterializer
+        from loushang.harness.resources.plugins.manifest import PluginManifestParser
+        from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+
+        old_package = PluginManifestParser().parse(coding_base_plugin_root())
+        with pytest.raises(PluginRevisionError) as direct_publish:
+            PluginRevisionStore(legacy_layout.plugin_revision_root).publish(
+                old_package
+            )
+        assert direct_publish.value.code == "plugin_revision_epoch_fenced"
+        legacy_materializer = PackageMaterializer(
+            install_root=legacy_layout.package_install_root,
+            lockfile_path=legacy_layout.package_lockfile,
+            plugin_revision_root=legacy_layout.plugin_revision_root,
+        )
+        with pytest.raises(PluginRevisionError) as direct_materialize:
+            legacy_materializer.publish_plugin_packages((old_package,))
+        assert direct_materialize.value.code == "plugin_revision_epoch_fenced"
     snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
     assert snapshot_evidence is not None
     assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
