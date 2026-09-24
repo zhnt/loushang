@@ -11,7 +11,9 @@ from loushang.tui import RenderBaselineReset, RenderConstraints
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
+    ToolExecutionRecord,
     UserPromptRecord,
+    WorkedDividerRecord,
 )
 from loushang.tui.ui_parts.transcript import TranscriptRegion
 
@@ -71,6 +73,67 @@ def test_screen_conversation_app_keeps_presentation_and_region_instances() -> No
     assert app._transcript_region is region
 
 
+@pytest.mark.tui_render_contract
+@pytest.mark.parametrize("start_method", ("prompt", "begin_run"))
+def test_active_frames_defer_context_usage_rebuild_until_run_completes(
+    start_method: str,
+) -> None:
+    app = _app()
+    calls: list[int] = []
+
+    def context_usage() -> int:
+        calls.append(app.state.records_revision)
+        return len(calls)
+
+    app.context_usage_provider = context_usage
+    constraints = RenderConstraints(width=60, max_height=24, visible_height=24)
+    app.render(constraints)
+    assert calls == [0]
+
+    if start_method == "prompt":
+        app.start_prompt("run", started_at=1.0)
+    else:
+        app.begin_run(started_at=1.0)
+    app.render(constraints)
+    app.state.upsert_tool_record(
+        "tool-1", ToolExecutionRecord(name="bash", state="running", elapsed_seconds=0.0)
+    )
+    app.render(constraints)
+
+    assert calls == [0]
+    assert app.state.context_usage == 1
+
+    app.complete_run(elapsed_seconds=1.0)
+    app.render(constraints)
+
+    assert calls == [0, app.state.records_revision]
+    assert app.state.context_usage == 2
+
+
+def test_context_usage_refreshes_after_run_without_display_changes() -> None:
+    app = _app()
+    app.state.records.append(WorkedDividerRecord(1.0))
+    app.state.mark_records_changed()
+    calls = 0
+
+    def context_usage() -> int:
+        nonlocal calls
+        calls += 1
+        return calls
+
+    app.context_usage_provider = context_usage
+    app.statusline_preview_snapshot()
+    revision = app.state.records_revision
+
+    app.begin_run(started_at=1.0)
+    app.statusline_preview_snapshot()
+    app.complete_run(elapsed_seconds=1.0)
+    app.statusline_preview_snapshot()
+
+    assert app.state.records_revision == revision
+    assert calls == 2
+
+
 def test_screen_conversation_app_reports_window_replacement_reason_once() -> None:
     app = _app()
 
@@ -82,9 +145,7 @@ def test_screen_conversation_app_reports_window_replacement_reason_once() -> Non
     assert app.consume_render_baseline_reset_reason() is None
 
 
-def test_screen_conversation_app_atomically_installs_bounded_resumed_history() -> (
-    None
-):
+def test_screen_conversation_app_atomically_installs_bounded_resumed_history() -> None:
     app = _app()
     app.active_transcript_line_budget = 2
 
