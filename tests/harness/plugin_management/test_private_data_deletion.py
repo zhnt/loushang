@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from loushang.harness.plugin_management import PluginInstallationKeyV1
+from loushang.harness.plugin_management.private_data_confirmation import (
+    PluginPrivateDataConfirmationJournal,
+)
 from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionConfirmationV1,
     PluginPrivateDataDeletionCoordinator,
@@ -168,3 +172,82 @@ def test_private_data_deletion_rejects_foreign_receipt(tmp_path: Path) -> None:
                 confirmation_id="operator:confirmed-plan",
             ),
         )
+
+
+def test_durable_confirmation_is_required_after_restart(tmp_path: Path) -> None:
+    marker = tmp_path / "user-state.txt"
+    marker.write_text("private")
+    path = tmp_path / "confirmations.jsonl"
+    owner = _PrivateDataOwner(tmp_path)
+    first = PluginPrivateDataConfirmationJournal(path)
+    plan = PluginPrivateDataDeletionCoordinator(
+        owner, confirmation_authority=first
+    ).preview(_key())
+    confirmation = PluginPrivateDataDeletionConfirmationV1(
+        plan_fingerprint=plan.fingerprint,
+        confirmation_id="operator:approved-1",
+    )
+    with pytest.raises(ValueError, match="not authorized"):
+        PluginPrivateDataDeletionCoordinator(
+            owner, confirmation_authority=first
+        ).delete(plan, confirmation)
+    assert marker.exists()
+
+    recorded = first.record_confirmation(
+        plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
+    )
+    assert recorded.record_revision == 1
+    assert first.record_confirmation(
+        plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
+    ) == recorded
+    restarted = PluginPrivateDataConfirmationJournal(path)
+    assert restarted.is_confirmed(plan, confirmation)
+    receipt = PluginPrivateDataDeletionCoordinator(
+        owner, confirmation_authority=restarted
+    ).delete(plan, confirmation)
+    assert receipt.disposition == "deleted"
+    assert not marker.exists()
+
+    changed = PluginPrivateDataDeletionPlanV1(
+        installation_key=_key(), owner_id=plan.owner_id, target_id="private-data:two"
+    )
+    with pytest.raises(ValueError, match="confirmation identity"):
+        restarted.record_confirmation(
+            changed,
+            PluginPrivateDataDeletionConfirmationV1(
+                plan_fingerprint=changed.fingerprint,
+                confirmation_id=confirmation.confirmation_id,
+            ),
+            actor_id="operator:alice",
+            policy_revision="policy:1",
+        )
+
+    original = path.read_text()
+    assert '"actorId": "operator:alice",' in original
+    path.write_text(
+        original.replace(
+            '"actorId": "operator:alice",',
+            '"actorId": "operator:alice", "actorId": "operator:bob",',
+            1,
+        )
+    )
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        restarted.is_confirmed(plan, confirmation)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlink admission")
+def test_confirmation_journal_refuses_symlink_without_reading_target(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "other-owner.jsonl"
+    target.write_text("private foreign evidence")
+    path = tmp_path / "confirmations.jsonl"
+    path.symlink_to(target)
+    plan = _PrivateDataOwner(tmp_path).plan_for(_key())
+    confirmation = PluginPrivateDataDeletionConfirmationV1(
+        plan_fingerprint=plan.fingerprint, confirmation_id="operator:forged"
+    )
+
+    with pytest.raises(ValueError, match="journal is unsafe"):
+        PluginPrivateDataConfirmationJournal(path).is_confirmed(plan, confirmation)
+    assert target.read_text() == "private foreign evidence"

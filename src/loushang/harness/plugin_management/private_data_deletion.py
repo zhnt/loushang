@@ -41,7 +41,10 @@ class PluginPrivateDataDeletionPlanV1:
             raise TypeError("Private-data deletion requires an Installation key")
         _require_text(self.owner_id, name="private-data owner id")
         _require_text(self.target_id, name="private-data target id")
-        if self.plan_version != PRIVATE_DATA_DELETION_VERSION:
+        if (
+            type(self.plan_version) is not int
+            or self.plan_version != PRIVATE_DATA_DELETION_VERSION
+        ):
             raise ValueError("Unsupported private-data deletion plan")
 
     @property
@@ -61,6 +64,19 @@ class PluginPrivateDataDeletionPlanV1:
             "targetId": self.target_id,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> PluginPrivateDataDeletionPlanV1:
+        if type(value) is not dict or set(value) != {
+            "installationKey", "ownerId", "planVersion", "targetId"
+        }:
+            raise ValueError("Private-data deletion plan fields are invalid")
+        return cls(
+            installation_key=PluginInstallationKeyV1.from_dict(value["installationKey"]),
+            owner_id=value["ownerId"],
+            target_id=value["targetId"],
+            plan_version=value["planVersion"],
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class PluginPrivateDataDeletionConfirmationV1:
@@ -73,8 +89,30 @@ class PluginPrivateDataDeletionConfirmationV1:
     def __post_init__(self) -> None:
         _require_sha256(self.plan_fingerprint, name="confirmed plan fingerprint")
         _require_text(self.confirmation_id, name="private-data confirmation id")
-        if self.confirmation_version != PRIVATE_DATA_DELETION_VERSION:
+        if (
+            type(self.confirmation_version) is not int
+            or self.confirmation_version != PRIVATE_DATA_DELETION_VERSION
+        ):
             raise ValueError("Unsupported private-data deletion confirmation")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "confirmationId": self.confirmation_id,
+            "confirmationVersion": self.confirmation_version,
+            "planFingerprint": self.plan_fingerprint,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginPrivateDataDeletionConfirmationV1:
+        if type(value) is not dict or set(value) != {
+            "confirmationId", "confirmationVersion", "planFingerprint"
+        }:
+            raise ValueError("Private-data confirmation fields are invalid")
+        return cls(
+            plan_fingerprint=value["planFingerprint"],
+            confirmation_id=value["confirmationId"],
+            confirmation_version=value["confirmationVersion"],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +141,10 @@ class PluginPrivateDataDeletionReceiptV1:
         _require_sha256(self.plan_fingerprint, name="private-data plan fingerprint")
         if self.disposition not in {"deleted", "already_absent"}:
             raise ValueError("Unsupported private-data deletion disposition")
-        if self.receipt_version != PRIVATE_DATA_DELETION_VERSION:
+        if (
+            type(self.receipt_version) is not int
+            or self.receipt_version != PRIVATE_DATA_DELETION_VERSION
+        ):
             raise ValueError("Unsupported private-data deletion receipt")
 
     def to_dict(self) -> dict[str, object]:

@@ -140,6 +140,11 @@ from loushang.harness.plugin_management.package_records import (
     PluginPackagePinV1,
     PluginPackageRecoveryBarrierV1,
 )
+from loushang.harness.plugin_management.private_data_confirmation import (
+    PRIVATE_DATA_CONFIRMATION_RECORD_VERSION,
+    PluginPrivateDataConfirmationJournal,
+    PluginPrivateDataConfirmationRecordV1,
+)
 from loushang.harness.plugin_management.private_data_deletion import (
     PRIVATE_DATA_DELETION_VERSION,
     PluginPrivateDataConfirmationAuthorityPort,
@@ -218,6 +223,9 @@ from loushang.harness.plugin_management.updates import (
 )
 
 __all__ = [
+    "PRIVATE_DATA_CONFIRMATION_RECORD_VERSION",
+    "PluginPrivateDataConfirmationJournal",
+    "PluginPrivateDataConfirmationRecordV1",
     "PRIVATE_DATA_DELETION_VERSION",
     "PluginPrivateDataConfirmationAuthorityPort",
     "PluginPrivateDataDeletionConfirmationV1",
