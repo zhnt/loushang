@@ -15,6 +15,9 @@ from pathlib import Path
 from threading import Lock
 from typing import cast
 
+from packaging.markers import default_environment
+from packaging.tags import sys_tags
+
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
@@ -727,6 +730,35 @@ def compose_posix_local_wheel_product(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class PosixLocalWheelProductHostInputs:
+    """Host resolution facts and bounded local-Wheel work for one Product."""
+
+    environment: PackageResolutionEnvironmentV1
+    acquisition_budgets: PackageAcquisitionBudgetV1
+    inspection_budgets: PackageInspectionBudgetV1
+    closure_budgets: PackageClosureBudgetV1
+
+    @classmethod
+    def current_host(
+        cls, *, max_transport_bytes: int
+    ) -> PosixLocalWheelProductHostInputs:
+        return cls(
+            environment=PackageResolutionEnvironmentV1.from_mapping(
+                {key: str(value) for key, value in default_environment().items()},
+                supported_tags=tuple(str(tag) for tag in sys_tags()),
+            ),
+            acquisition_budgets=PackageAcquisitionBudgetV1(
+                max_transport_bytes=max_transport_bytes,
+                max_requests=1,
+                max_redirects=0,
+                max_wall_time_ms=30_000,
+            ),
+            inspection_budgets=PackageInspectionBudgetV1(),
+            closure_budgets=PackageClosureBudgetV1(),
+        )
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PosixLocalWheelProductSessionOwner:
     """Issue one Session factory from fixed, fenced Product authorities."""
@@ -1031,6 +1063,7 @@ def _directory_identity(path: Path) -> str | None:
 
 __all__ = [
     "PackageProductSelectedPluginManifestV1",
+    "PosixLocalWheelProductHostInputs",
     "PosixLocalWheelProductSessionOwner",
     "PosixLocalWheelProductRuntimeFactory",
     "compose_posix_local_wheel_product",

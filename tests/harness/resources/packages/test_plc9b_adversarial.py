@@ -4240,6 +4240,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         reopen_coding_package_cutover,
     )
     from loushang.coding.package_product_runtime import (
+        open_coding_base_product_runtime_owner,
         open_coding_package_product_state,
     )
     from loushang.coding.session_manager import SessionManager
@@ -4630,6 +4631,55 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 product_source_root
             )
             assert product_artifact.artifact_digest == artifact.artifact_digest
+            foreign_workspace = tmp_path / "foreign-product-owner-workspace"
+            foreign_workspace.mkdir(mode=0o700)
+            with pytest.raises(ValueError, match="workspace scope changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    product_state,
+                    workspace=foreign_workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            with pytest.raises(ValueError, match="state authority changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    replace(product_state, state_root=product_source_root),
+                    workspace=workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            with pytest.raises(ValueError, match="state authority changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    replace(
+                        product_state,
+                        desired_state=PluginDesiredStateLedger(
+                            legacy_layout.desired_state, gc_gate=gate
+                        ),
+                    ),
+                    workspace=workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            product_runtime_owner = open_coding_base_product_runtime_owner(
+                legacy_layout,
+                epoch_runtime,
+                product_state,
+                workspace=workspace,
+                runtime_version="2.0.0",
+                runtime_protocol_epoch=2,
+            )
+            assert (
+                product_runtime_owner.product_owner.policy.source_root
+                == product_source_root
+            )
+            policy = product_runtime_owner.product_owner.policy
+            environment = product_runtime_owner.product_owner.environment
+            source = product_artifact.path
             restore_root = tmp_path / "isolated-offline-restore"
             restore_root.mkdir(mode=0o700)
             activation_root = tmp_path / "isolated-legacy-activation"
@@ -4746,6 +4796,16 @@ while True:
             runtime_version="2.0.0",
             runtime_protocol_epoch=2,
         )
+        root_store_identity = (
+            product_runtime_owner.product_owner.root_store_identity
+            if checked_in_base
+            else "product-runtime-root-store"
+        )
+        dependency_store_identity = (
+            product_runtime_owner.product_owner.dependency_store_identity
+            if checked_in_base
+            else "product-runtime-dependency-store"
+        )
         if entrypoint == "session" and not with_dependency:
             with pytest.raises(RuntimeError, match="leases remain active"):
                 epoch_runtime.close()
@@ -4768,8 +4828,8 @@ while True:
                     ),
                     inspection_budgets=PackageInspectionBudgetV1(),
                     closure_budgets=PackageClosureBudgetV1(),
-                    root_store_identity="product-runtime-root-store",
-                    dependency_store_identity="product-runtime-dependency-store",
+                    root_store_identity=root_store_identity,
+                    dependency_store_identity=dependency_store_identity,
                     registry=registry,
                     admission_request=admission_request,
                     management=management,
@@ -4811,8 +4871,8 @@ while True:
                     ),
                     inspection_budgets=PackageInspectionBudgetV1(),
                     closure_budgets=PackageClosureBudgetV1(),
-                    root_store_identity="product-runtime-root-store",
-                    dependency_store_identity="product-runtime-dependency-store",
+                    root_store_identity=root_store_identity,
+                    dependency_store_identity=dependency_store_identity,
                     runtime_lease=runtime_lease,
                     cutover_result=cutover_result,
                     management=management,
@@ -5288,7 +5348,7 @@ while True:
                 )
                 root_store = PosixPackagePluginRootMaterializationStore(
                     plugin_root,
-                    store_identity="product-runtime-root-store",
+                    store_identity=root_store_identity,
                     package_store_id=store_id,
                     settlement_journal=root_settlements,
                 )
@@ -5485,37 +5545,7 @@ while True:
                     from loushang.coding.hosted_session import (
                         CodingRealHostedSessionFactoryV1,
                     )
-                    from loushang.coding.package_product_runtime import (
-                        CodingPosixLocalWheelProductRuntimeOwner,
-                    )
-                    from loushang.harness.package_product.product_local_wheel_runtime import (
-                        PosixLocalWheelProductSessionOwner,
-                    )
-
-                    hosted_product_owner = CodingPosixLocalWheelProductRuntimeOwner(
-                        product_owner=PosixLocalWheelProductSessionOwner(
-                            workspace=workspace,
-                            state_root=factory.state_root,
-                            plugin_store_root=plugin_root,
-                            policy=policy,
-                            environment=environment,
-                            acquisition_budgets=factory.acquisition_budgets,
-                            inspection_budgets=factory.inspection_budgets,
-                            closure_budgets=factory.closure_budgets,
-                            root_store_identity=factory.root_store_identity,
-                            dependency_store_identity=factory.dependency_store_identity,
-                            epoch_runtime=epoch_runtime,
-                            management=management,
-                            desired_state=desired,
-                            gc_bindings=bindings,
-                            gc_gate=gate,
-                            actor_id=factory.actor_id,
-                            desired_policy_revision=factory.desired_policy_revision,
-                            recovery_identity=factory.recovery_identity,
-                            runtime_version="2.0.0",
-                            runtime_protocol_epoch=2,
-                        ),
-                    )
+                    hosted_product_owner = product_runtime_owner
 
                     async def product_hosted_session() -> None:
                         hosted_scope = CodingHostedScopeV1(
@@ -6613,6 +6643,19 @@ while True:
                 reopened_state = open_coding_package_product_state(
                     legacy_layout, epoch_runtime
                 )
+                if checked_in_base:
+                    reopened_owner = open_coding_base_product_runtime_owner(
+                        legacy_layout,
+                        epoch_runtime,
+                        reopened_state,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
+                    assert (
+                        reopened_owner.product_owner.policy
+                        == product_runtime_owner.product_owner.policy
+                    )
             finally:
                 if checked_in_base:
                     hidden_lifecycle.rename(legacy_layout.root)

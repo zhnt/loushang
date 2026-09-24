@@ -427,6 +427,12 @@ Neither may silently override a narrower implemented owner contract.
   The same pinned owner can create a separate private Product Source child
   after the fence; the native fixture rejects an unsafe existing child and
   publishes the installed `coding.base` Wheel there under a restrictive umask.
+  A Coding Product owner constructor now joins that Source, the B-only state
+  owners, the selected Store namespace, the canonical workspace scope, and the
+  host's resolution environment. The real Hosted Session fixture uses this
+  constructor to reopen the selected `coding.base` files from the Store;
+  foreign workspaces and mismatched B journals refuse before composition. The
+  constructor also reopens with both pre-B roots temporarily absent.
   This is restart admission evidence, not default runtime selection. For
   `legacy_root_pointer`, the snapshot owner requires an empty source domain and
   records the verified old Store identity with the
