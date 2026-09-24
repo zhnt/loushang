@@ -35,6 +35,9 @@ from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources._catalog_product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
@@ -106,6 +109,23 @@ class CodingBaseProductCompilation:
         raise CodingBasePluginAssemblyError(
             "Product Resource body is unavailable under this owner admission",
             code="coding_base_product_resource_unavailable",
+        )
+
+    def product_resource_inputs(self) -> tuple[ProductSelectedResourceInput, ...]:
+        """Pair captured bytes with their exact Product owner admissions."""
+
+        by_fingerprint = {
+            item.admission_fingerprint: item for item in self.resource_bodies
+        }
+        return tuple(
+            ProductSelectedResourceInput(
+                admission=admission,
+                relative_path=by_fingerprint[admission.fingerprint].logical_path,
+                body=self.read_resource_body(
+                    admission.fingerprint, max_bytes=16 * 1024 * 1024
+                ),
+            )
+            for admission in self.product_composition.resource_admissions
         )
 
 
@@ -207,8 +227,8 @@ def _resource_bodies(
                     code="coding_base_product_resource_unavailable",
                 )
             locator = f"{locator}/SKILL.md"
-        logical_path = locator if root == "." else f"{root}/{locator}"
-        body = members.get(logical_path)
+        captured_path = locator if root == "." else f"{root}/{locator}"
+        body = members.get(captured_path)
         if body is None:
             raise CodingBasePluginAssemblyError(
                 "Product Resource body is missing from the selected Store capture",
@@ -218,7 +238,7 @@ def _resource_bodies(
             CodingBaseProductResourceBody(
                 admission_fingerprint=admission.fingerprint,
                 contribution_id=candidate.contribution_id,
-                logical_path=logical_path,
+                logical_path=locator,
                 content_digest=sha256(body).hexdigest(),
                 body=body,
             )

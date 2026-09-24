@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
+from unittest.mock import patch
 
 import pytest
 
@@ -5362,6 +5363,243 @@ while True:
                         "coding_base/skills/standard/SKILL.md"
                     ],
                 }
+                from loushang.harness.resources._catalog_engine import (
+                    compose_resource_catalog,
+                    default_resource_merge_policy,
+                )
+                from loushang.harness.resources._catalog_package_source import (
+                    PackageResourceDiscoveryBudget,
+                    build_package_resource_discovery_request,
+                )
+                from loushang.harness.resources._catalog_product_snapshot_source import (
+                    ProductSelectedResourceSource,
+                    ProductSnapshotResourceSourceError,
+                    product_snapshot_source_policy_fingerprint,
+                )
+                from loushang.harness.resources._catalog_projection import (
+                    project_resource_catalog,
+                )
+                from loushang.harness.resources._catalog_records import (
+                    ResourceCatalogHandle,
+                    ResourceComponentProducer,
+                    ResourceLoadHandle,
+                    ResourceLoadReceipt,
+                    ResourceSourceGenerationRef,
+                    build_activation_policy_snapshot,
+                )
+
+                product_inputs = compiled_base.product_resource_inputs()
+                assert {item.relative_path for item in product_inputs} == {
+                    "prompts/standard.md",
+                    "skills/standard/SKILL.md",
+                }
+                source_ref = ResourceSourceGenerationRef(
+                    source_id="test.product.selected.resources",
+                    product_id=product_inputs[0].admission.product_id,
+                    generation="store-product-selection:1",
+                    source_policy_fingerprint=product_snapshot_source_policy_fingerprint(
+                        product_id=product_inputs[0].admission.product_id,
+                        resources=product_inputs,
+                    ),
+                    producer=ResourceComponentProducer(
+                        component_contribution_id="test.product.selected.resources",
+                        component_candidate_fingerprint="a" * 64,
+                        component_admission_fingerprint="b" * 64,
+                        binding_fingerprint="c" * 64,
+                        plugin_instance_revision_ref="first-party:product-snapshot@1",
+                        package_content_digest="d" * 64,
+                    ),
+                )
+                product_source = ProductSelectedResourceSource(
+                    source_generation_ref=source_ref,
+                    resources=product_inputs,
+                )
+                with pytest.raises(ValueError, match="policy changed"):
+                    ProductSelectedResourceSource(
+                        source_generation_ref=replace(
+                            source_ref, source_policy_fingerprint="0" * 64
+                        ),
+                        resources=product_inputs,
+                    )
+                with pytest.raises(ProductSnapshotResourceSourceError) as foreign_source:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=replace(
+                                source_ref, generation="foreign-generation"
+                            ),
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                assert foreign_source.value.reason == "foreign_source_generation"
+                with pytest.raises(ProductSnapshotResourceSourceError) as missing_admission:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=(product_inputs[0].admission.fingerprint,),
+                        )
+                    )
+                assert missing_admission.value.reason == "admission_set_mismatch"
+                with pytest.raises(ProductSnapshotResourceSourceError) as over_budget:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                            budget=PackageResourceDiscoveryBudget(maximum_items=1),
+                        )
+                    )
+                assert over_budget.value.reason == "item_count_exceeded"
+                with (
+                    patch.object(
+                        Path, "open", side_effect=AssertionError("host path read")
+                    ),
+                    patch.object(
+                        Path, "read_bytes", side_effect=AssertionError("host path read")
+                    ),
+                ):
+                    source_snapshot = product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                catalog = compose_resource_catalog(
+                    (source_snapshot,),
+                    catalog_generation=1,
+                    engine_binding_fingerprint="e" * 64,
+                    merge_policy=default_resource_merge_policy(),
+                    activation_policy=build_activation_policy_snapshot(
+                        policy_revision="test-product-selected-resources"
+                    ),
+                )
+                projection = project_resource_catalog(
+                    catalog_snapshot=catalog,
+                    cwd=tmp_path,
+                    descriptor_bindings=product_source.projection_bindings,
+                )
+                assert projection is not None
+                assert all(
+                    not item.descriptor.source_path.is_absolute()
+                    for item in projection.selected_bindings
+                )
+                for entry in catalog.effective_entries:
+                    candidate = catalog.candidate_by_fingerprint(
+                        entry.primary_candidate_fingerprint
+                    )
+                    handle = ResourceLoadHandle.from_catalog(
+                        catalog_handle=ResourceCatalogHandle(
+                            catalog_generation=catalog.catalog_generation,
+                            snapshot_fingerprint=catalog.snapshot_fingerprint,
+                            identity=entry.identity,
+                            candidate_fingerprint=candidate.candidate_fingerprint,
+                        ),
+                        candidate=candidate,
+                    )
+                    with (
+                        patch.object(
+                            Path, "open", side_effect=AssertionError("host path read")
+                        ),
+                        patch.object(
+                            Path,
+                            "read_bytes",
+                            side_effect=AssertionError("host path read"),
+                        ),
+                    ):
+                        read = product_source.load(handle)
+                    assert ResourceLoadReceipt.from_validated_read(
+                        load_handle=handle, body_read=read
+                    )
+                    assert (
+                        read.body
+                        == resource_bodies[
+                            candidate.content_origin.resource_contribution_id
+                        ]
+                    )
+                    with pytest.raises(ProductSnapshotResourceSourceError) as wrong_body:
+                        product_source.load(
+                            replace(handle, expected_content_digest="0" * 64)
+                        )
+                    assert wrong_body.value.reason == "load_handle_identity_mismatch"
+                product_source.dispose()
+                with pytest.raises(ProductSnapshotResourceSourceError) as disposed_source:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                assert disposed_source.value.reason == "source_disposed"
+                from loushang.harness.resource_catalog.shadow import (
+                    run_first_party_resource_catalog_shadow,
+                )
+
+                async def _verify_product_catalog_owner() -> None:
+                    generation = await run_first_party_resource_catalog_shadow(
+                        product_id=source_ref.product_id,
+                        scope_id="product-selected-coding-base",
+                        runtime_id="product-selected-coding-base",
+                        product_policy_revision="product-selected-coding-base-v1",
+                        root_handles=(),
+                        product_snapshot_resources=product_inputs,
+                        issued_at=1,
+                        expires_at=100,
+                        now=1,
+                        projection_cwd=tmp_path,
+                    )
+                    try:
+                        assert generation.catalog_projection is not None
+                        assert len(generation.catalog_snapshot.effective_entries) == 2
+                        assert len(generation.source_snapshots) == 1
+                        assert generation.source_snapshots[
+                            0
+                        ].source_generation_ref.source_id == (
+                            "harness.resources.source.product_snapshot"
+                        )
+                        for entry in generation.catalog_snapshot.effective_entries:
+                            handle = generation.load_handle(entry.identity)
+                            loaded = await generation.load(handle)
+                            assert (
+                                loaded.body
+                                == resource_bodies[
+                                    generation.catalog_snapshot.candidate_by_fingerprint(
+                                        entry.primary_candidate_fingerprint
+                                    ).content_origin.resource_contribution_id
+                                ]
+                            )
+                    finally:
+                        assert await generation.dispose() == ()
+
+                asyncio.run(_verify_product_catalog_owner())
+                from loushang.harness.resource_catalog.bootstrap_projection import (
+                    prepare_resource_catalog_bootstrap_projection,
+                )
+
+                product_bundle = prepare_resource_catalog_bootstrap_projection(
+                    product_id=source_ref.product_id,
+                    runtime_id="product-selected-coding-base",
+                    product_policy_revision="product-selected-coding-base-v1",
+                    cwd=tmp_path,
+                    root_handles=(),
+                    product_snapshot_resources=product_inputs,
+                )
+                assert len(product_bundle.prompts) == 1
+                assert product_bundle.prompts[0].text == (
+                    base_files["coding_base/prompts/standard.md"].decode("utf-8").strip()
+                )
+                assert len(product_bundle.skills) == 1
+                assert product_bundle.skills[0].name == "standard"
                 with pytest.raises(CodingBasePluginAssemblyError) as foreign_body:
                     compiled_base.read_resource_body("foreign-admission", max_bytes=64 * 1024)
                 assert foreign_body.value.code == "coding_base_product_resource_unavailable"

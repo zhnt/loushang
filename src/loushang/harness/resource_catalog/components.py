@@ -48,6 +48,11 @@ from loushang.harness.resources._catalog_package_source import (
     VerifiedPackageResourceInput,
     build_package_source_generation_ref,
 )
+from loushang.harness.resources._catalog_product_snapshot_source import (
+    ProductSelectedResourceInput,
+    ProductSelectedResourceSource,
+    product_snapshot_source_policy_fingerprint,
+)
 from loushang.harness.resources._catalog_projection import (
     ResourceProjectionDescriptorBinding,
 )
@@ -71,6 +76,9 @@ RESOURCE_SOURCE_COMPONENT_KIND = "resource.source"
 STANDARD_CATALOG_ENGINE_COMPONENT_ID = "harness.resources.catalog.standard"
 NATIVE_RESOURCE_SOURCE_COMPONENT_ID = "harness.resources.source.native"
 PACKAGE_RESOURCE_SOURCE_COMPONENT_ID = "harness.resources.source.package"
+PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID = (
+    "harness.resources.source.product_snapshot"
+)
 EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID = "harness.resources.source.embedded"
 
 _CAPABILITY_ID = "harness.resources"
@@ -81,9 +89,13 @@ _TRUST_POLICY_REVISION = "harness-first-party-components-v1"
 _ENGINE_REVISION = "builtin:harness.resources.catalog.standard@1"
 _SOURCE_REVISION = "builtin:harness.resources.source.native@1"
 _PACKAGE_SOURCE_REVISION = "builtin:harness.resources.source.package@1"
+_PRODUCT_SNAPSHOT_SOURCE_REVISION = (
+    "builtin:harness.resources.source.product_snapshot@1"
+)
 _EMBEDDED_SOURCE_REVISION = "builtin:harness.resources.source.embedded@1"
 _CONTAINED_READ_AUTHORITY = "filesystem.read.contained"
 _VERIFIED_REVISION_READ_AUTHORITY = "plugin.revision.read.contained"
+_PRODUCT_SNAPSHOT_READ_AUTHORITY = "product.snapshot.read"
 _EMBEDDED_READ_AUTHORITY = "embedded.resource.read"
 
 
@@ -274,6 +286,7 @@ def resolve_first_party_resource_components(
     product_policy_revision: str,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     issued_at: int,
     expires_at: int,
@@ -297,6 +310,22 @@ def resolve_first_party_resource_components(
         raise ValueError("First-party package Resource admissions must match Product")
     if any(item.revision_handle.closed for item in canonical_package_resources):
         raise ValueError("First-party package revision handles must be live")
+    canonical_product_resources = tuple(
+        sorted(product_snapshot_resources, key=lambda item: item.admission.fingerprint)
+    )
+    product_fingerprints = tuple(
+        item.admission.fingerprint for item in canonical_product_resources
+    )
+    if len(set(product_fingerprints)) != len(product_fingerprints):
+        raise ValueError("First-party Product Resource admissions must not repeat")
+    if any(
+        item.admission.product_id != product_id for item in canonical_product_resources
+    ):
+        raise ValueError("First-party Product Resource admissions must match Product")
+    if set(product_fingerprints) & {
+        item.admission.fingerprint for item in canonical_package_resources
+    }:
+        raise ValueError("One Resource admission cannot use both package source routes")
     canonical_embedded_collections = tuple(
         sorted(embedded_collections, key=lambda item: item.handle_id)
     )
@@ -337,12 +366,14 @@ def resolve_first_party_resource_components(
                 EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID,
                 NATIVE_RESOURCE_SOURCE_COMPONENT_ID,
                 PACKAGE_RESOURCE_SOURCE_COMPONENT_ID,
+                PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID,
             ),
             allowed_source_trust_classes=(_TRUST_CLASS,),
             authority_ceiling=(
                 _CONTAINED_READ_AUTHORITY,
                 _EMBEDDED_READ_AUTHORITY,
                 _VERIFIED_REVISION_READ_AUTHORITY,
+                _PRODUCT_SNAPSHOT_READ_AUTHORITY,
             ),
         ),
     )
@@ -387,6 +418,22 @@ def resolve_first_party_resource_components(
             "sourceContractRevision": "package-resource-source-v1",
         },
     )
+    product_source_spec = CapabilityComponentBindingSpec(
+        source_kind="first_party",
+        source_id=_FIRST_PARTY_SOURCE_ID,
+        contribution_id=PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID,
+        source_revision_ref=_PRODUCT_SNAPSHOT_SOURCE_REVISION,
+        content_digest=fingerprint_catalog_value(
+            "loushang.first-party-resource-component/v1",
+            {"implementation": _PRODUCT_SNAPSHOT_SOURCE_REVISION},
+        ),
+        binding_inputs={
+            "sourcePolicyFingerprint": product_snapshot_source_policy_fingerprint(
+                product_id=product_id, resources=canonical_product_resources
+            ),
+            "sourceContractRevision": "product-snapshot-resource-source-v1",
+        },
+    )
     embedded_source_spec = CapabilityComponentBindingSpec(
         source_kind="first_party",
         source_id=_FIRST_PARTY_SOURCE_ID,
@@ -422,7 +469,9 @@ def resolve_first_party_resource_components(
     )
     source_candidates = []
     if canonical_roots or (
-        not canonical_package_resources and not canonical_embedded_collections
+        not canonical_package_resources
+        and not canonical_product_resources
+        and not canonical_embedded_collections
     ):
         source_candidates.append(source_candidate)
     if canonical_package_resources:
@@ -435,6 +484,18 @@ def resolve_first_party_resource_components(
                 scope_id=scope_id,
                 product_policy_revision=product_policy_revision,
                 requested_authorities=(_VERIFIED_REVISION_READ_AUTHORITY,),
+            )
+        )
+    if canonical_product_resources:
+        source_candidates.append(
+            _candidate(
+                definition=RESOURCE_SOURCE_DEFINITION,
+                component_id=PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID,
+                binding_spec=product_source_spec,
+                product_id=product_id,
+                scope_id=scope_id,
+                product_policy_revision=product_policy_revision,
+                requested_authorities=(_PRODUCT_SNAPSHOT_READ_AUTHORITY,),
             )
         )
     if canonical_embedded_collections:
@@ -497,6 +558,7 @@ def resolve_first_party_resource_components(
             component,
             root_handles=canonical_roots,
             verified_package_resources=verified_package_resources,
+            product_snapshot_resources=canonical_product_resources,
             embedded_collections=canonical_embedded_collections,
         )
         for component in resolved.components
@@ -540,6 +602,7 @@ def _first_party_binding(
     *,
     root_handles: tuple[NativeResourceRootHandle, ...],
     verified_package_resources: tuple[VerifiedPackageResourceInput, ...],
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...],
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...],
 ) -> CapabilityOwnerComponentBinding:
     if not isinstance(component, ResolvedCapabilityComponent):
@@ -605,6 +668,21 @@ def _first_party_binding(
                 source_generation_ref=source_ref,
                 resources=verified_package_resources,
             )
+        if component_id == PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID:
+            source_ref = ResourceSourceGenerationRef(
+                source_id=component_id,
+                product_id=context.product_id,
+                generation=f"{context.runtime_id}:{context.owner_generation}",
+                source_policy_fingerprint=product_snapshot_source_policy_fingerprint(
+                    product_id=context.product_id,
+                    resources=product_snapshot_resources,
+                ),
+                producer=producer,
+            )
+            return ProductSelectedResourceSource(
+                source_generation_ref=source_ref,
+                resources=product_snapshot_resources,
+            )
         if component_id == EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID:
             source_ref = build_embedded_source_generation_ref(
                 source_id=component_id,
@@ -628,6 +706,7 @@ def _first_party_binding(
             payload,
             NativeFilesystemResourceSource
             | AdmittedPackageResourceSource
+            | ProductSelectedResourceSource
             | EmbeddedOemResourceSource,
         ):
             payload.dispose()
@@ -658,6 +737,7 @@ __all__ = [
     "EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID",
     "NATIVE_RESOURCE_SOURCE_COMPONENT_ID",
     "PACKAGE_RESOURCE_SOURCE_COMPONENT_ID",
+    "PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID",
     "RESOURCE_CATALOG_ENGINE_COMPONENT_KIND",
     "RESOURCE_CATALOG_ENGINE_DEFINITION",
     "RESOURCE_SOURCE_COMPONENT_KIND",

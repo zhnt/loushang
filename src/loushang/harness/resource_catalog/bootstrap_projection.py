@@ -28,6 +28,11 @@ from loushang.harness.resources._catalog_package_source import (
     build_package_resource_discovery_request,
     build_package_source_generation_ref,
 )
+from loushang.harness.resources._catalog_product_snapshot_source import (
+    ProductSelectedResourceInput,
+    ProductSelectedResourceSource,
+    product_snapshot_source_policy_fingerprint,
+)
 from loushang.harness.resources._catalog_projection import (
     ResourceProjectionDescriptorBinding,
     project_resource_catalog,
@@ -36,6 +41,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceCatalogSnapshot,
     ResourceComponentProducer,
     ResourceIdentity,
+    ResourceSourceGenerationRef,
     ResourceSourceSnapshot,
     build_activation_policy_snapshot,
     fingerprint_catalog_value,
@@ -56,6 +62,7 @@ def prepare_resource_catalog_bootstrap_projection(
     cwd: Path,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     disabled_skill_selectors: Sequence[str] = (),
@@ -68,11 +75,19 @@ def prepare_resource_catalog_bootstrap_projection(
     before returning the immutable compatibility copy.
     """
 
+    if any(item.admission.product_id != product_id for item in product_snapshot_resources):
+        raise ValueError("Product snapshot Resources must match Product")
+    if {
+        item.admission.fingerprint for item in product_snapshot_resources
+    } & {item.admission.fingerprint for item in package_resources}:
+        raise ValueError("One Resource admission cannot use both package source routes")
+
     source_snapshots: list[ResourceSourceSnapshot] = []
     descriptor_bindings: list[ResourceProjectionDescriptorBinding] = []
     sources: list[
         NativeFilesystemResourceSource
         | AdmittedPackageResourceSource
+        | ProductSelectedResourceSource
         | EmbeddedOemResourceSource
     ] = []
     unclaimed_packages = list(package_resources)
@@ -146,6 +161,41 @@ def prepare_resource_catalog_bootstrap_projection(
                 )
             )
             descriptor_bindings.extend(package_source.projection_bindings)
+
+        if product_snapshot_resources:
+            binding = _preflight_binding_fingerprint(
+                product_id=product_id,
+                runtime_id=runtime_id,
+                source_id="harness.resources.source.product_snapshot",
+            )
+            source_ref = ResourceSourceGenerationRef(
+                source_id="harness.resources.source.product_snapshot",
+                product_id=product_id,
+                generation=f"{runtime_id}:{_PREFLIGHT_GENERATION}",
+                source_policy_fingerprint=product_snapshot_source_policy_fingerprint(
+                    product_id=product_id,
+                    resources=product_snapshot_resources,
+                ),
+                producer=_preflight_producer(binding, "product_snapshot"),
+            )
+            product_source = ProductSelectedResourceSource(
+                source_generation_ref=source_ref,
+                resources=product_snapshot_resources,
+            )
+            sources.append(product_source)
+            source_snapshots.append(
+                product_source.discover_initial(
+                    build_package_resource_discovery_request(
+                        product_id=product_id,
+                        source_generation_ref=source_ref,
+                        admission_fingerprints=tuple(
+                            item.admission.fingerprint
+                            for item in product_snapshot_resources
+                        ),
+                    )
+                )
+            )
+            descriptor_bindings.extend(product_source.projection_bindings)
 
         if embedded_collections:
             binding = _preflight_binding_fingerprint(
