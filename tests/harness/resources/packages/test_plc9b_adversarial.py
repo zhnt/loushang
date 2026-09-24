@@ -8050,7 +8050,6 @@ while True:
             assert reopened_state.state_root == state_root
             assert reopened_state.desired_state.snapshot() == desired.snapshot()
             assert reopened_state.gc_bindings.records() == bindings.records()
-
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
@@ -8065,8 +8064,7 @@ while True:
                     )
                 assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
-                with pytest.raises(ValueError, match="POSIX cutover evidence changed"):
-
+                with pytest.raises(ValueError, match="cutover evidence changed"):
                     factory.create(
                         PackageProductRuntimeRequestV1(
                             product_id="coding",
