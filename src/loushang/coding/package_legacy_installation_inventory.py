@@ -5,8 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from .package_legacy_desired_evidence import CodingLegacyDesiredEvidenceV1
-from .package_legacy_lock_evidence import CodingLegacyLocalBindingEvidenceV1
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
+
+from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
+from .package_legacy_desired_evidence import (
+    CodingLegacyDesiredEvidenceV1,
+    read_coding_legacy_desired_evidence,
+)
+from .package_legacy_lock_evidence import (
+    CodingLegacyLocalBindingEvidenceV1,
+    read_coding_legacy_local_binding_heads,
+)
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
 CodingLegacyInstalledState = Literal["installed_disabled", "installed_enabled"]
@@ -39,6 +50,42 @@ class CodingLegacyInstallationInventoryV1:
     unselected_source_identities: tuple[str, ...]
     desired_journal_digest: str | None
     lockfile_digest: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CodingLegacyInstallationInventoryEvidenceV1:
+    """One first-B fence and snapshot binding for a read-only inventory."""
+
+    first_fence_id: str
+    snapshot_receipt_id: str
+    inventory: CodingLegacyInstallationInventoryV1
+
+
+def read_coding_legacy_installation_inventory(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+) -> CodingLegacyInstallationInventoryEvidenceV1:
+    """Join authenticated old lock and desired state under the current B fence."""
+
+    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
+        raise TypeError("Fenced Product epoch owner is required")
+    epoch_runtime.assert_current()
+    bindings = read_coding_legacy_local_binding_heads(lifecycle, epoch_runtime)
+    desired = read_coding_legacy_desired_evidence(lifecycle, epoch_runtime)
+    inventory = classify_coding_legacy_installations(
+        bindings, desired, scope_id=lifecycle.scope_id
+    )
+    epoch_runtime.assert_current()
+    fence = epoch_runtime.cutover_result.fence
+    if fence is None:
+        raise CodingLegacyInventoryError("Coding legacy first fence is missing")
+    return CodingLegacyInstallationInventoryEvidenceV1(
+        first_fence_id=fence.fence_id,
+        snapshot_receipt_id=fence.request.snapshot_receipt_id,
+        inventory=inventory,
+    )
 
 
 def classify_coding_legacy_installations(
@@ -145,7 +192,9 @@ def classify_coding_legacy_installations(
 __all__ = [
     "CodingLegacyBuiltinIntentV1",
     "CodingLegacyInstallationInventoryV1",
+    "CodingLegacyInstallationInventoryEvidenceV1",
     "CodingLegacyInventoryError",
     "CodingLegacyLocalInstallationV1",
     "classify_coding_legacy_installations",
+    "read_coding_legacy_installation_inventory",
 ]
