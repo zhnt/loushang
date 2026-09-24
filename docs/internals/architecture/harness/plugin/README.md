@@ -414,9 +414,15 @@ Neither may silently override a narrower implemented owner contract.
   after that snapshot. The current POSIX Product fence can now be reopened from
   the durable journal and exact selected-root identity without reading the old
   Package or lifecycle Source roots; missing fences and replaced B roots refuse.
+  A Product-facing runtime owner now retains the private control-root descriptor
+  and rooted lease registry across Sessions, and refuses shutdown while a live
+  runtime lease remains. The Session selector issues leases through that owner,
+  which rechecks the visible control root and B fence at selection and factory
+  activation; a replaced control path cannot reuse the pinned registry. The
+  real Store fixture uses this owner instead of assembling the registry itself.
   This is restart admission evidence, not default runtime selection. For
-  `legacy_root_pointer`, the snapshot owner requires an
-  empty source domain and records the verified old Store identity with the
+  `legacy_root_pointer`, the snapshot owner requires an empty source domain and
+  records the verified old Store identity with the
   Product-declared root name. The native fixture now holds real Coding global
   and project settings transaction locks through cutover, verifies their file
   bytes against the loaded settings layers, and snapshots a private Source-only

@@ -135,8 +135,8 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductFileEpochTransactionGuard,
+    PackageProductPosixFencedRuntimeOwner,
     PackageProductRuntimeLease,
-    register_package_product_runtime_lease,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -741,8 +741,7 @@ class PosixLocalWheelProductSessionOwner:
     closure_budgets: PackageClosureBudgetV1
     root_store_identity: str
     dependency_store_identity: str
-    registry: PackageEpochRuntimeLeaseRegistry
-    cutover_result: PackagePosixEpochCutoverResultV1
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner
     management: PluginManagementService
     desired_state: PluginDesiredStateLedger
     gc_bindings: PluginPackageGcBindingJournal
@@ -759,12 +758,10 @@ class PosixLocalWheelProductSessionOwner:
             getattr(self.management, "_desired_state", None) is not self.desired_state
             or self.management.gc_gate is not self.gc_gate
             or self.desired_state.gc_gate is not self.gc_gate
-            or self.cutover_result.disposition != "fenced"
-            or self.cutover_result.fence is None
-            or self.cutover_result.switch_receipt is None
-            or self.registry.store_id != self.cutover_result.fence.store_id
+            or not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
         ):
             raise ValueError("Package Product owners are not bound")
+        self.epoch_runtime.assert_current()
         if (
             not isinstance(self.workspace, Path)
             or not self.workspace.is_absolute()
@@ -789,12 +786,7 @@ class PosixLocalWheelProductSessionOwner:
             raise ValueError("Package Product Session workspace changed")
         if self._current_workspace_identity() != self._workspace_identity:
             raise ValueError("Package Product workspace identity changed")
-        fence = self.cutover_result.fence
-        if fence is None or self.registry.fences.current(self.registry.store_id) != fence:
-            raise ValueError("Package Product fence changed")
-        lease = register_package_product_runtime_lease(
-            self.registry,
-            fence=fence,
+        lease = self.epoch_runtime.issue_runtime_lease(
             runtime_id=runtime_id,
             runtime_version=self.runtime_version,
             runtime_protocol_epoch=self.runtime_protocol_epoch,
@@ -813,7 +805,8 @@ class PosixLocalWheelProductSessionOwner:
                 root_store_identity=self.root_store_identity,
                 dependency_store_identity=self.dependency_store_identity,
                 runtime_lease=lease,
-                cutover_result=self.cutover_result,
+                cutover_result=self.epoch_runtime.cutover_result,
+                epoch_runtime=self.epoch_runtime,
                 management=self.management,
                 desired_state=self.desired_state,
                 gc_bindings=self.gc_bindings,
@@ -824,6 +817,7 @@ class PosixLocalWheelProductSessionOwner:
             )
             if self._current_workspace_identity() != self._workspace_identity:
                 raise ValueError("Package Product workspace identity changed")
+            self.epoch_runtime.assert_current()
             return factory
         except BaseException:
             lease.release()
@@ -863,6 +857,7 @@ class PosixLocalWheelProductRuntimeFactory:
     actor_id: str
     desired_policy_revision: str
     recovery_identity: str
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner | None = None
     _cwd_identity: tuple[int, int] = field(init=False, repr=False)
     _create_lock: Lock = field(
         default_factory=Lock, init=False, repr=False, compare=False
@@ -885,6 +880,14 @@ class PosixLocalWheelProductRuntimeFactory:
             or self.cutover_result.switch_receipt is None
         ):
             raise ValueError("Package Product requires completed POSIX cutover")
+        if self.epoch_runtime is not None:
+            if (
+                not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
+                or self.epoch_runtime.registry is not self.runtime_lease.registry
+                or self.epoch_runtime.cutover_result != self.cutover_result
+            ):
+                raise ValueError("Package Product epoch owner changed")
+            self.epoch_runtime.assert_current()
         cwd = self.expected_cwd
         if not isinstance(cwd, Path) or not cwd.is_absolute() or ".." in cwd.parts:
             raise ValueError("Package Product workspace must be absolute")
@@ -907,6 +910,8 @@ class PosixLocalWheelProductRuntimeFactory:
             or self._current_cwd_identity() != self._cwd_identity
         ):
             raise ValueError("Package Product Session or workspace identity changed")
+        if self.epoch_runtime is not None:
+            self.epoch_runtime.assert_current()
         cutover = self.cutover_result
         fence = cutover.fence
         switch = cutover.switch_receipt
@@ -958,6 +963,8 @@ class PosixLocalWheelProductRuntimeFactory:
             )
             if self._current_cwd_identity() != self._cwd_identity:
                 raise ValueError("Package Product workspace changed during composition")
+            if self.epoch_runtime is not None:
+                self.epoch_runtime.assert_current()
             bound = replace(binding, on_dispose=self.runtime_lease.release)
             object.__setattr__(self, "_binding_issued", True)
             return bound

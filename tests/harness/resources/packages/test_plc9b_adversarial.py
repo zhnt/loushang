@@ -25,7 +25,6 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
@@ -136,7 +135,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
-    PackageEpochRuntimeLeaseRegistry,
     PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
@@ -4250,6 +4248,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
     from loushang.harness.resources.packages.product_epoch_guard import (
+        PackageProductPosixFencedRuntimeOwner,
         register_package_product_runtime_lease,
     )
     from loushang.harness.resources.packages.product_pre_b_snapshot import (
@@ -4565,18 +4564,15 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         "package_roots": [str(legacy_root)]
     }
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
-    root_fd = os.open(
-        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
+        authority_root=authority,
+        control_root=control_root,
+        store_id=store_id,
+        epochs_root_name=epoch_layout.epochs_root_name,
     )
-    file_io = RootedFileIO(control_root, root_fd)
     try:
-        registry = PackageEpochRuntimeLeaseRegistry(
-            path=control_root / "runtime-leases.jsonl",
-            coordination_lock=control_root / "coordination",
-            file_io=file_io,
-            fences=fences,
-            store_id=store_id,
-        )
+        registry = epoch_runtime.registry
+        assert epoch_runtime.cutover_result == cutover_result
         if entrypoint == "session" and not with_dependency:
             restore_root = tmp_path / "isolated-offline-restore"
             restore_root.mkdir(mode=0o700)
@@ -4694,6 +4690,9 @@ while True:
             runtime_version="2.0.0",
             runtime_protocol_epoch=2,
         )
+        if entrypoint == "session" and not with_dependency:
+            with pytest.raises(RuntimeError, match="leases remain active"):
+                epoch_runtime.close()
         session = None
         try:
             admission_request = runtime_lease.admission_request
@@ -5449,8 +5448,7 @@ while True:
                             closure_budgets=factory.closure_budgets,
                             root_store_identity=factory.root_store_identity,
                             dependency_store_identity=factory.dependency_store_identity,
-                            registry=registry,
-                            cutover_result=cutover_result,
+                            epoch_runtime=epoch_runtime,
                             management=management,
                             desired_state=desired,
                             gc_bindings=bindings,
@@ -5601,6 +5599,39 @@ while True:
                     ):
                         with pytest.raises(RuntimeError, match="factory construction failed"):
                             hosted_product_owner.factory_for_session(failed_manager)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    moved_control = tmp_path / "moved-product-hosted-control"
+                    control_root.rename(moved_control)
+                    control_root.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="control root changed"):
+                            hosted_product_owner.factory_for_session(failed_manager)
+                    finally:
+                        control_root.rmdir()
+                        moved_control.rename(control_root)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    pending_factory = hosted_product_owner.factory_for_session(
+                        failed_manager
+                    )
+                    control_root.rename(moved_control)
+                    control_root.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="control root changed"):
+                            pending_factory.create(
+                                PackageProductRuntimeRequestV1(
+                                    product_id="coding",
+                                    session_id=failed_manager.get_header().conversation_id,
+                                    cwd=str(workspace),
+                                )
+                            )
+                    finally:
+                        control_root.rmdir()
+                        moved_control.rename(control_root)
+                        pending_factory.dispose_unbound_runtime()
                     assert len(
                         registry.snapshot(store_id=store_id).active_leases
                     ) == prior_leases
@@ -6589,8 +6620,7 @@ while True:
                 assert released.value.code == "package_epoch_lease_absent"
             runtime_lease.release()
     finally:
-        file_io.cleanup()
-        os.close(root_fd)
+        epoch_runtime.close()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
