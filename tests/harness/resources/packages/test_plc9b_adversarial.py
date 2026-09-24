@@ -6821,6 +6821,38 @@ while True:
                         ).current(configured_operation_id)
                         is not None
                     )
+                    cli_artifact = next(
+                        artifact
+                        for artifact in capability_artifacts
+                        if artifact.plugin_id == "coding.lsp.default"
+                    )
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        cli_install = asyncio.run(
+                            run_package_lifecycle(
+                                configured_session,
+                                PackageLifecycleRequest(
+                                    install=(str(cli_artifact.path),), scope="project"
+                                ),
+                            )
+                        )
+                    cli_record = cli_install.outputs[0]["record"]
+                    assert isinstance(cli_record, dict)
+                    cli_operation_id = str(cli_record["operationId"])
+                    cli_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(cli_operation_id)
+                    assert cli_status is not None
+                    assert cli_status.disposition == "committed"
+                    assert (
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).current(cli_operation_id)
+                        is not None
+                    )
                     refused_source = "https://packages.example.test/unknown.whl"
                     before_transport = len(
                         PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
@@ -6912,7 +6944,7 @@ while True:
                 combined_runtime = compose_builtin_product(product_state)
                 try:
                     for capability_artifact in capability_artifacts:
-                        if capability_artifact != configured_artifact:
+                        if capability_artifact not in (configured_artifact, cli_artifact):
                             capability_outcome = combined_runtime.lifecycle.route(
                                 PackageProductLifecycleIntentV1(
                                     operation_id=(
