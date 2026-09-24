@@ -5372,15 +5372,14 @@ while True:
                     async def start(self, request, *, correlation_id, signal=None):
                         raise AssertionError("Product compilation must not launch a process")
 
-                product_session = compiled_base.bind_workspace(
-                    workspace_capability_provider_binding(
-                        operations=LocalToolOperations(),
-                        process_launcher=_UnusedProcessLauncher(),
-                        scope_instance_id="workspace:product-store-session",
-                        binding_input_fingerprint="f" * 64,
-                        source_id="product-store-test",
-                    )
+                workspace_binding = workspace_capability_provider_binding(
+                    operations=LocalToolOperations(),
+                    process_launcher=_UnusedProcessLauncher(),
+                    scope_instance_id="workspace:product-store-session",
+                    binding_input_fingerprint="f" * 64,
+                    source_id="product-store-test",
                 )
+                product_session = compiled_base.bind_workspace(workspace_binding)
                 assert (
                     product_session.session_inputs.product_composition
                     is compiled_base.product_composition
@@ -5490,6 +5489,83 @@ while True:
                     cwd=workspace,
                 )
                 assert len(coding_bundle.skills) == 1
+                from loushang.agent import Agent
+                from loushang.coding.session.agent_session import AgentSession
+                from loushang.harness.extensions.agent import ExtensionRunner
+                from loushang.harness.extensions.context import ExtensionRuntimeBindings
+
+                async def _verify_product_coding_session() -> None:
+                    async def _ignore(_value: object) -> None:
+                        return None
+
+                    product_manager = await SessionManager.new(
+                        session_dir=tmp_path / "product-coding-session",
+                        cwd=str(workspace),
+                        persist=False,
+                        session_id=session_manager.get_header().conversation_id,
+                    )
+                    extension_runner = ExtensionRunner([])
+                    await extension_runner.activate_runtime_generation(
+                        ExtensionRuntimeBindings(
+                            cwd=str(workspace),
+                            get_active_tool_names=lambda: [],
+                            get_model_selection=lambda: None,
+                            set_active_tools=_ignore,
+                            set_model=_ignore,
+                            request_resource_refresh=lambda: None,
+                            shutdown=lambda: None,
+                            record_diagnostic=lambda _diagnostic: None,
+                        )
+                    )
+                    coding_bootstrap = coding_adapter.construct_session(
+                        product_id="coding",
+                        session_id=session_manager.get_header().conversation_id,
+                        base_resource_bundle=coding_bundle,
+                        construct=lambda value: value,
+                    )
+                    with pytest.raises(ValueError, match="requires Catalog bootstrap"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            workspace_capability_binding=workspace_binding,
+                            coding_plugin_clock=lambda: 1,
+                        )
+                    with pytest.raises(ValueError, match="workspace binding changed"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            coding_plugin_clock=lambda: 1,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    product_agent_session = AgentSession(
+                        agent=Agent(),
+                        session_manager=product_manager,
+                        resource_bundle=coding_bundle,
+                        extension_runner=extension_runner,
+                        coding_base_product_session_assembly=product_session,
+                        workspace_capability_binding=workspace_binding,
+                        coding_plugin_clock=lambda: 1,
+                        initial_resource_catalog_bootstrap=coding_bootstrap,
+                    )
+                    try:
+                        await product_agent_session.prepare_model_call_runtime()
+                        assert coding_bootstrap.state == "published"
+                        assert {
+                            tool.name
+                            for tool in product_agent_session._composition.tool_controller.get_all_tools()
+                        } == set(compiled_base.tool_names)
+                        assert "changelog" in {
+                            command.name for command in product_agent_session.list_commands()
+                        }
+                        assert "skill:standard" in {
+                            command.name for command in product_agent_session.list_commands()
+                        }
+                    finally:
+                        await product_agent_session.dispose()
+
+                asyncio.run(_verify_product_coding_session())
                 with pytest.raises(ValueError, match="requires a composition"):
                     build_coding_initial_resource_catalog_adapter(
                         coding_receipt,

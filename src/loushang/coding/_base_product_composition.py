@@ -227,6 +227,7 @@ class CodingBaseProductCompilation:
         )
         return CodingBaseProductSessionAssembly(
             compilation=self,
+            workspace_binding=workspace_binding,
             session_inputs=SessionCapabilityCompositionInputs(
                 product_composition=self.product_composition,
                 resolved_providers=resolved,
@@ -238,6 +239,7 @@ class CodingBaseProductCompilation:
 @dataclass(frozen=True, slots=True)
 class CodingBaseProductSessionAssembly:
     compilation: CodingBaseProductCompilation = field(repr=False)
+    workspace_binding: CapabilityBundleProviderBinding = field(repr=False)
     session_inputs: SessionCapabilityCompositionInputs
 
 
