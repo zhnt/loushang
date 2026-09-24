@@ -358,8 +358,8 @@ Neither may silently override a narrower implemented owner contract.
   also installs that checked-in package through
   the Product transaction and reads its manifest, declaration, Prompt, and
   Skill members from the selected Store root after enablement. A concrete
-  fenced Coding Product owner constructor now serves explicit Hosted Sessions;
-  default selection remains unimplemented. The first-party LSP and Arch
+  fenced Coding Product owner constructor first served explicit Hosted Sessions;
+  default selection is described below. The first-party LSP and Arch
   Capability packages can now be frozen as distinct, digest-pinned Product
   Wheels alongside `coding.base` under one explicit Source policy. Their
   `in_process` Provider declarations remain unchanged. The real B Store fixture
@@ -388,9 +388,8 @@ Neither may silently override a narrower implemented owner contract.
   while `coding-architecture` starts from all three selected packages. Both
   prepare the Session graph with pre-B roots hidden and legacy constructors
   disabled. A base-only Product owner cannot satisfy the LSP request and does
-  not fall back to the legacy materializer. Omitting the Product factory still
-  selects the legacy rollout path, so workspace-wide default selection and
-  final migration remain open. The
+  not fall back to the legacy materializer. The later B-fence default selection
+  and its remaining migration gates are described below. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired
@@ -516,9 +515,12 @@ Neither may silently override a narrower implemented owner contract.
   base/LSP selection with pre-B roots hidden and legacy constructors disabled,
   then releases their runtime leases on close. CLI and RPC updates through that
   default Session each leave a durable Product refusal while their legacy
-  Session method is disabled. A configured startup Package Source currently
-  stops at the Product/legacy-input composition gate without invoking the old
-  materializer or recording a B transaction; its Product ingress remains open.
+  Session method is disabled. A configured startup Package Source now enters
+  the Product transaction, and a failed Product record aborts Session startup;
+  later configured Sources are not attempted, and the exact Product failure
+  code is recorded in diagnostics. The old materializer is not called. Product
+  mode does not mount the configured Source path as a Resource root. Successful
+  configured-source startup still needs native end-to-end acceptance.
   This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

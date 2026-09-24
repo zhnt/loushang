@@ -507,7 +507,7 @@ def test_package_product_runtime_rejects_supplied_peer_materializer(
 
 
 @pytest.mark.parametrize(
-    "configured_input", ("package_roots", "plugin_sources", "package_sources")
+    "configured_input", ("package_roots", "plugin_sources")
 )
 def test_package_product_runtime_rejects_configured_legacy_sources_before_effects(
     tmp_path: Path,

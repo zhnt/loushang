@@ -148,17 +148,32 @@ def configure_resource_loader_roots(
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
     selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
+    include_configured_package_sources: bool = True,
 ) -> ResolvedPackageResourceRoots:
     """Bind standard package and user resource roots to one loader."""
 
     settings = settings_manager.get_settings()
-    scoped_package_sources = configured_package_sources(settings_manager)
+    if not include_configured_package_sources and materializer is not None:
+        raise ValueError("Product-only Package mounts cannot use a legacy materializer")
+    scoped_package_sources = (
+        configured_package_sources(settings_manager)
+        if include_configured_package_sources
+        else ()
+    )
     resolved = resolve_package_resource_roots(
         package_roots=settings.package_roots,
         plugin_sources=settings.plugin_sources,
-        package_sources=scoped_package_sources or settings.package_sources,
+        package_sources=(
+            scoped_package_sources or settings.package_sources
+            if include_configured_package_sources
+            else ()
+        ),
         materializer=materializer,
-        package_source_scopes=package_source_scopes(settings_manager),
+        package_source_scopes=(
+            package_source_scopes(settings_manager)
+            if include_configured_package_sources
+            else {}
+        ),
         global_base_dir=settings_manager.global_base_dir,
         project_base_dir=settings_manager.project_base_dir,
         disabled_plugins=settings.disabled_plugins,

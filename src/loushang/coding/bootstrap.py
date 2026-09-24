@@ -175,9 +175,6 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleOperationPort,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
-from loushang.harness.resources.packages.source_resolver import (
-    configured_package_sources,
-)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
     AgentProductConstructionBinding,
@@ -650,12 +647,7 @@ def _create_agent_session(
     services = services or create_services()
     if package_product_runtime_factory is not None:
         settings = services.settings_manager.get_settings()
-        if (
-            settings.package_roots
-            or settings.plugin_sources
-            or settings.package_sources
-            or configured_package_sources(services.settings_manager)
-        ):
+        if settings.package_roots or settings.plugin_sources:
             raise CodingPackageProductLegacyPathError(
                 "Package Product runtime cannot coexist with legacy Plugin inputs"
             )

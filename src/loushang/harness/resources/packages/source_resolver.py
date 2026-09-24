@@ -117,7 +117,11 @@ class PackageSourceResolver:
                 if callable(missing_source_action)
                 else missing_source_action
             )
-            if package_offline_enabled() and action == "install":
+            if (
+                package_offline_enabled()
+                and action == "install"
+                and self.product_lifecycle_mode != "enforced"
+            ):
                 action = "skip"
             if action == "skip":
                 skipped.append(source)
@@ -134,6 +138,8 @@ class PackageSourceResolver:
             if materialized.lifecycle == "failed":
                 failed.append(source)
                 self._record_materialization_failure(materialized, phase=phase)
+                if self.product_lifecycle_mode == "enforced":
+                    break
             else:
                 records.append(materialized)
         return PackageResolveResult(
@@ -231,14 +237,24 @@ class PackageSourceResolver:
     ) -> None:
         if self.diagnostics_service is None:
             return
+        code = (
+            record.failure_code
+            if isinstance(record, PackageProductLifecycleRecordV1)
+            and record.failure_code is not None
+            else "package_materialization_failed"
+        )
         self.diagnostics_service.capture_failure(
-            code="package_materialization_failed",
+            code=code,
             error=getattr(record, "error_message", None)
             or getattr(record, "failure_code", None)
             or f"Package materialization failed: {record.source}",
             phase=phase,
             source="package",
-            level="warning",
+            level=(
+                "error"
+                if isinstance(record, PackageProductLifecycleRecordV1)
+                else "warning"
+            ),
             session_id=self.session_id,
             details={
                 "package_source": record.source,

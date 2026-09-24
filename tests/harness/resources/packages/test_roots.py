@@ -82,6 +82,36 @@ def test_materializer_free_product_roots_refuse_legacy_package_inputs(
         )
 
 
+def test_product_bootstrap_does_not_mount_configured_source_path(tmp_path: Path) -> None:
+    source = tmp_path / "configured-plugin"
+    source.mkdir()
+    loader = _Loader()
+    settings = _SettingsManager(
+        _Settings(
+            package_roots=(),
+            package_sources=(PackageSourceConfig(source=str(source)),),
+        ),
+        tmp_path / "global",
+    )
+
+    resolved = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=settings,
+        materializer=None,
+        include_configured_package_sources=False,
+    )
+
+    assert resolved.mounts == ()
+    assert loader.mounts == ()
+    with pytest.raises(ValueError, match="Product-only Package mounts"):
+        configure_resource_loader_roots(
+            resource_loader=loader,
+            settings_manager=settings,
+            materializer=PackageMaterializer(install_root=tmp_path / "installed"),
+            include_configured_package_sources=False,
+        )
+
+
 class _Loader:
     def __init__(self) -> None:
         self.mounts: tuple[PackageResourceMount, ...] = ()

@@ -4231,7 +4231,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
     from loushang.coding.bootstrap import (
-        CodingPackageProductLegacyPathError,
         create_agent_session,
         create_agent_session_runtime,
         create_services,
@@ -4288,6 +4287,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.resources.plugins.revisions import PluginRevisionError
     from loushang.harness.resources.plugins.selection import PluginContributionRef
+    from loushang.harness.session.bootstrap_configuration import (
+        PackageProductStartupSourceError,
+    )
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
         _assemble_product_contribution_candidates,
@@ -7539,6 +7541,15 @@ while True:
                         before_configured = len(
                             PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
                         )
+                        configured_services = create_services(
+                            settings_manager=SettingsManager(
+                                ControlConfig(
+                                    package_sources=(
+                                        PackageSourceConfig(source=str(source)),
+                                    )
+                                )
+                            )
+                        )
                         with (
                             patch(
                                 "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
@@ -7552,7 +7563,7 @@ while True:
                                 "loushang.coding.bootstrap._default_package_materializer",
                                 side_effect=AssertionError("legacy startup materializer"),
                             ),
-                            pytest.raises(CodingPackageProductLegacyPathError),
+                            pytest.raises(PackageProductStartupSourceError),
                         ):
                             create_agent_session(
                                 session_manager=configured_manager,
@@ -7568,19 +7579,34 @@ while True:
                                         max_tokens=4096,
                                     ),
                                 ),
-                                services=create_services(
-                                    settings_manager=SettingsManager(
-                                        ControlConfig(
-                                            package_sources=(
-                                                PackageSourceConfig(source=str(source)),
-                                            )
-                                        )
-                                    )
-                                ),
+                                services=configured_services,
                             )
-                        assert (
-                            len(PackageLifecycleJournal(state_root / "lifecycle.jsonl").records())
-                            == before_configured
+                        configured_records = PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()[before_configured:]
+                        assert any(
+                            record.request.action == "install"
+                            and record.status.failure is not None
+                            for record in configured_records
+                        )
+                        configured_failure_codes = {
+                            record.status.failure.code
+                            for record in configured_records
+                            if record.request.action == "install"
+                            and record.status.failure is not None
+                        }
+                        startup_diagnostics = (
+                            configured_services.diagnostics_service.get_diagnostics(
+                                phase="startup", source="package"
+                            )
+                        )
+                        assert configured_failure_codes <= {
+                            diagnostic.code for diagnostic in startup_diagnostics
+                        }
+                        assert all(
+                            diagnostic.type == "error"
+                            for diagnostic in startup_diagnostics
+                            if diagnostic.code in configured_failure_codes
                         )
                         assert (
                             len(registry.snapshot(store_id=store_id).active_leases)
