@@ -29,6 +29,10 @@ from loushang.coding.package_legacy_reacquisition import (
 from loushang.coding.package_legacy_review import (
     review_coding_legacy_reacquired_installation,
 )
+from loushang.coding.package_legacy_snapshot_member import (
+    CodingFirstBLegacyStateObserver,
+    CodingLegacySnapshotError,
+)
 from loushang.coding.package_pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
@@ -43,6 +47,9 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
+)
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    read_posix_product_pre_b_snapshot,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 
@@ -246,6 +253,25 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert fence is not None
         assert evidence.first_fence_id == fence.fence_id
         assert evidence.snapshot_receipt_id == fence.request.snapshot_receipt_id
+        snapshot = read_posix_product_pre_b_snapshot(
+            snapshot_root=epoch.snapshot_root,
+            store_id=epoch.store_id,
+            snapshot_receipt_id=evidence.snapshot_receipt_id,
+        )
+        assert snapshot is not None
+        observer = CodingFirstBLegacyStateObserver(lifecycle, owner)
+        legacy_state = observer.observe(
+            store_id=epoch.store_id,
+            legacy_root_identity=fence.request.legacy_root_identity,
+        )
+        assert legacy_state.state_digest == snapshot.snapshot_tree_digest
+        assert legacy_state.entry_count == snapshot.snapshot.entry_count
+        assert legacy_state.byte_count == snapshot.snapshot.byte_count
+        with pytest.raises(CodingLegacySnapshotError, match="authority changed"):
+            observer.observe(
+                store_id=epoch.store_id,
+                legacy_root_identity="f" * 64,
+            )
         assert evidence.inventory.active_local[0].binding == binding
         assert evidence.inventory.active_local[0].desired_state == "installed_enabled"
         assert evidence.inventory.desired_journal_digest == desired.journal_digest
