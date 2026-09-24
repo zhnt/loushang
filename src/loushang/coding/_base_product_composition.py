@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from loushang.coding._base_plugin import (
     CodingBasePluginAssemblyError,
+    CodingBasePluginOwners,
+    _build_coding_base_owners_from_admissions,
     _owner_bindings,
     prepare_coding_base_product_plan,
 )
@@ -61,8 +64,10 @@ from loushang.harness.session.capability_composition_inputs import (
     validate_session_capability_composition_closure,
 )
 from loushang.harness.session.product_composition_assembly import (
+    ProductContributionOwnerBinding,
     _assemble_product_contribution_candidates,
 )
+from loushang.harness.tools.workspace.factory import ToolsOptions
 
 if TYPE_CHECKING:
     from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -89,6 +94,10 @@ class CodingBaseProductResourceBody:
 class CodingBaseProductCompilation:
     plan: PluginSelectionPlanV2
     product_composition: ProductCompositionCompilation
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...] = field(
+        repr=False, compare=False
+    )
+    host_environment: HostEnvironment
     selected_manifest: PackageProductSelectedPluginManifestV1 = field(
         repr=False, compare=False
     )
@@ -97,6 +106,15 @@ class CodingBaseProductCompilation:
     resource_bodies: tuple[CodingBaseProductResourceBody, ...] = field(repr=False)
 
     def __post_init__(self) -> None:
+        context = self.product_composition.authority_context
+        if (
+            self.plan.context.product_id != context.product_id
+            or self.plan.context.scope_id != context.scope_id
+            or self.plan.context.policy_revision != context.product_policy_revision
+            or tuple(item.authority.snapshot() for item in self.owner_bindings)
+            != context.owner_snapshots
+        ):
+            raise ValueError("Product Coding base changed owner authority facts")
         expected = {
             item.fingerprint: item.contribution_id
             for item in self.product_composition.resource_admissions
@@ -151,6 +169,24 @@ class CodingBaseProductCompilation:
                 relative_path=by_fingerprint[admission.fingerprint].logical_path,
             )
             for admission in self.product_composition.resource_admissions
+        )
+
+    def build_owners(
+        self,
+        *,
+        clock: Callable[[], int],
+        tool_options: ToolsOptions,
+    ) -> CodingBasePluginOwners:
+        """Bind Tool and Command owners to the same Product admission facts."""
+
+        return _build_coding_base_owners_from_admissions(
+            plan=self.plan,
+            product_composition=self.product_composition,
+            owner_bindings=self.owner_bindings,
+            scope_id=self.plan.context.scope_id,
+            tool_contribution_id=self.tool_contribution_id,
+            clock=clock,
+            tool_options=tool_options,
         )
 
     def bind_workspace(
@@ -248,15 +284,16 @@ def compile_coding_base_product_selection(
             code="coding_base_product_selection_mismatch",
         )
     owners = {item.owner_id for item in candidates}
+    owner_bindings = _owner_bindings(
+        include_tools="tools.workspace" in owners,
+        include_prompt="resources.prompt" in owners,
+        include_skill="resources.skill" in owners,
+        include_command="commands.session" in owners,
+    )
     product_composition = _assemble_product_contribution_candidates(
         plan=plan,
         candidates=candidates,
-        owner_bindings=_owner_bindings(
-            include_tools="tools.workspace" in owners,
-            include_prompt="resources.prompt" in owners,
-            include_skill="resources.skill" in owners,
-            include_command="commands.session" in owners,
-        ),
+        owner_bindings=owner_bindings,
         mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
         definitions=(
             MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -268,6 +305,8 @@ def compile_coding_base_product_selection(
     return CodingBaseProductCompilation(
         plan=plan,
         product_composition=product_composition,
+        owner_bindings=owner_bindings,
+        host_environment=host_environment,
         selected_manifest=selected,
         tool_contribution_id=tool_id,
         tool_names=tool_names,

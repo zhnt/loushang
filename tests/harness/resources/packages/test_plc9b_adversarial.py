@@ -5337,6 +5337,30 @@ while True:
                 )
                 assert compiled_base.plan == base_plan
                 assert compiled_base.tool_contribution_id == base_tool
+                from loushang.harness.tools.workspace.factory import ToolsOptions
+
+                product_owners = compiled_base.build_owners(
+                    clock=lambda: 1,
+                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                )
+                assert product_owners.tool is not None
+                assert product_owners.command is not None
+                without_tools = compile_coding_base_product_selection(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    host_environment=compiled_base.host_environment,
+                    evaluated_at=1,
+                    include_tool_contribution=False,
+                    include_tool_claim_prompt=False,
+                )
+                tool_free_owners = without_tools.build_owners(
+                    clock=lambda: 1,
+                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                )
+                assert tool_free_owners.tool is None
+                assert tool_free_owners.command is not None
                 assert len(compiled_base.product_composition.resource_admissions) == 2
                 assert len(compiled_base.product_composition.catalog_admissions) == 2
                 from loushang.harness.capabilities.workspace_provider import (
