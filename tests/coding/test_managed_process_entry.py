@@ -441,7 +441,9 @@ def test_concurrent_start_and_warm_reuse_use_one_production_child(production_own
             )
             manager = ManagedMuxManagerV1(registry, manager_journal, namespace, service, first.instance,
                                           application_id=APPLICATION_ID)
-            reservation = registry.resolve("main")
+            reservation = await _same_control_operation(
+                lambda: registry.resolve("main"), deadline=deadline,
+            )
             permit = await _same_control_operation(lambda: manager.issue_create(reservation, deadline=deadline), deadline=deadline)
             assert first.managed_mux_client is not None
             created = await first.managed_mux_client.create_managed_mux(permit)
