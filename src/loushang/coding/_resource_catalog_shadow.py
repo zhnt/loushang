@@ -37,6 +37,9 @@ from loushang.harness.resource_catalog.product_inputs import (
     ProductEmbeddedResourceCollectionSpec,
     ProductNativeResourceRootSpec,
 )
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     capture_built_in_resource_package_files,
 )
@@ -202,6 +205,7 @@ def build_coding_initial_resource_catalog_adapter(
     product_scope_id: str | None = None,
     disabled_skills: Sequence[str] = (),
     product_composition: ProductCompositionCompilation | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
     product_selection: PluginSelection | None = None,
     package_admission_now: int | None = None,
     clock: Callable[[], int] | None = None,
@@ -239,6 +243,14 @@ def build_coding_initial_resource_catalog_adapter(
     if product_composition is not None and product_selection is not None:
         raise ValueError(
             "Coding Resource Catalog cannot receive both a composition and selection"
+        )
+    if product_snapshot_resources is not None and product_selection is not None:
+        raise ValueError(
+            "Coding Resource Catalog cannot mix Product snapshot and legacy selection"
+        )
+    if product_snapshot_resources is not None and product_composition is None:
+        raise ValueError(
+            "Coding Resource Catalog Product snapshot requires a composition"
         )
     if (
         product_selection is not None
@@ -291,6 +303,15 @@ def build_coding_initial_resource_catalog_adapter(
         rejection_reasons.append("resource_kind_switches")
     if admissions and not resolved_source_policy.include_package_resources:
         rejection_reasons.append("source_policy_package_admission_mismatch")
+    if product_snapshot_resources is not None and any(
+        (
+            receipt.package_mounts,
+            receipt.package_resource_candidates,
+            receipt.package_diagnostic_codes,
+            receipt.catalog_plugin_package_inputs,
+        )
+    ):
+        rejection_reasons.append("legacy_package_inputs_with_product_snapshot")
     package_resources = (
         _prepare_package_resources(
             receipt,
@@ -300,7 +321,10 @@ def build_coding_initial_resource_catalog_adapter(
             admission_now=resolved_admission_now,
             rejection_reasons=rejection_reasons,
         )
-        if resolved_source_policy.include_package_resources
+        if (
+            resolved_source_policy.include_package_resources
+            and product_snapshot_resources is None
+        )
         else ()
     )
 
@@ -376,6 +400,7 @@ def build_coding_initial_resource_catalog_adapter(
             product_composition=product_composition,
             native_roots=tuple(native_roots),
             package_resources=package_resources,
+            product_snapshot_resources=tuple(product_snapshot_resources or ()),
             embedded_collections=embedded,
             source_disposition=(
                 "intentionally_empty"

@@ -29,6 +29,7 @@ from loushang.harness.resources.activation import (
     ResourceActivation,
     SkillActivationRuntime,
 )
+from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
@@ -78,6 +79,9 @@ BundleT = TypeVar("BundleT")
 RegistryT = TypeVar("RegistryT")
 StandardExtensionT = TypeVar("StandardExtensionT", bound=StandardExtensionRuntime)
 ConstructionDiagnosticT = TypeVar("ConstructionDiagnosticT")
+PackageProductCatalogBootstrapProjectionPreparer = Callable[
+    [ResourceLoader, Path, PackageProductRuntimeBindingV1], ResourceBundle
+]
 
 
 def _record_drafts(
@@ -490,6 +494,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         prepare_catalog_bootstrap_projection: (
             CatalogBootstrapProjectionPreparer | None
         ) = None,
+        prepare_package_product_catalog_bootstrap_projection: (
+            PackageProductCatalogBootstrapProjectionPreparer | None
+        ) = None,
         selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
@@ -556,6 +563,13 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         if package_product_runtime_factory is not None and self.product_id is None:
             raise ValueError(
                 "Package Product identity is required for runtime activation"
+            )
+        if (
+            prepare_package_product_catalog_bootstrap_projection is not None
+            and package_product_runtime_factory is None
+        ):
+            raise ValueError(
+                "Package Product Catalog preparation requires an activated runtime"
             )
         bootstrap_capability_runtime = self.bind_capabilities()
         bootstrap_capability_handles = _root_owned_resource_handles(
@@ -682,6 +696,24 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 package_product_lifecycle = package_runtime.lifecycle
                 package_product_inventory = package_runtime.inventory
                 package_product_lifecycle_mode = package_runtime.mode
+            selected_catalog_preparer = prepare_catalog_bootstrap_projection
+            if (
+                package_runtime is not None
+                and prepare_package_product_catalog_bootstrap_projection is not None
+            ):
+                activated_runtime = package_runtime
+                product_catalog_preparer = (
+                    prepare_package_product_catalog_bootstrap_projection
+                )
+
+                def prepare_selected_product_catalog(
+                    loader: ResourceLoader, resolved_cwd: Path
+                ) -> ResourceBundle:
+                    return product_catalog_preparer(
+                        loader, resolved_cwd, activated_runtime
+                    )
+
+                selected_catalog_preparer = prepare_selected_product_catalog
             result = AgentProductConstructionRuntime[
                 AgentT,
                 SessionT,
@@ -705,7 +737,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         extension_flag_values=extension_flag_values,
                         catalog_authoritative=catalog_authoritative,
                         prepare_catalog_bootstrap_projection=(
-                            prepare_catalog_bootstrap_projection
+                            selected_catalog_preparer
                         ),
                         selected_plugin_packages=tuple(selected_plugin_packages),
                         package_product_lifecycle=package_product_lifecycle,

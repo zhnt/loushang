@@ -5423,6 +5423,71 @@ while True:
                     "prompts/standard.md",
                     "skills/standard/SKILL.md",
                 }
+                from loushang.coding._resource_catalog_shadow import (
+                    CodingResourceCatalogAdmissionError,
+                    build_coding_initial_resource_catalog_adapter,
+                )
+                from loushang.harness.resources._catalog_input_receipt import (
+                    ResourceCatalogInputReceipt,
+                )
+
+                coding_receipt = ResourceCatalogInputReceipt(
+                    cwd=workspace,
+                    project_resource_root=workspace,
+                    project_context_roots=(),
+                    package_mounts=(),
+                    package_resource_candidates=(),
+                    package_diagnostic_codes=(),
+                    user_resource_roots=(),
+                    explicit_user_resource_roots=frozenset(),
+                    additional_extension_paths=(),
+                    additional_skill_paths=(),
+                    additional_prompt_template_paths=(),
+                    additional_theme_paths=(),
+                    no_extensions=False,
+                    no_skills=False,
+                    no_prompt_templates=False,
+                    no_themes=False,
+                    no_context_files=False,
+                    built_in_resource_packages=(),
+                    context_file_names=("AGENTS.md", "CLAUDE.md"),
+                )
+                coding_adapter = build_coding_initial_resource_catalog_adapter(
+                    coding_receipt,
+                    product_scope_id=session_manager.get_header().conversation_id,
+                    product_composition=compiled_base.product_composition,
+                    product_snapshot_resources=product_inputs,
+                    package_admission_now=1,
+                    clock=lambda: 1,
+                )
+                coding_bundle = coding_adapter.prepare_bootstrap_projection(
+                    product_id="coding",
+                    session_id=session_manager.get_header().conversation_id,
+                    cwd=workspace,
+                )
+                assert len(coding_bundle.skills) == 1
+                with pytest.raises(ValueError, match="requires a composition"):
+                    build_coding_initial_resource_catalog_adapter(
+                        coding_receipt,
+                        product_snapshot_resources=product_inputs,
+                        package_admission_now=1,
+                    )
+                with pytest.raises(
+                    CodingResourceCatalogAdmissionError,
+                    match="legacy_package_inputs_with_product_snapshot",
+                ):
+                    build_coding_initial_resource_catalog_adapter(
+                        replace(
+                            coding_receipt,
+                            package_diagnostic_codes=("legacy_package_probe",),
+                        ),
+                        product_scope_id=(
+                            session_manager.get_header().conversation_id
+                        ),
+                        product_composition=compiled_base.product_composition,
+                        product_snapshot_resources=product_inputs,
+                        package_admission_now=1,
+                    )
                 from loushang.harness.resource_catalog.product_inputs import (
                     InitialResourceCatalogProductAdapter,
                     InitialResourceCatalogProductSelection,

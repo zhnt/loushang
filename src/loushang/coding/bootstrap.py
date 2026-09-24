@@ -141,6 +141,9 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog_diagnostics import (
     record_package_lockfile_diagnostics,
@@ -281,6 +284,7 @@ def _prepare_coding_catalog_projection(
     session_id: str,
     disabled_skills: tuple[str, ...] | list[str] = (),
     product_composition: object | None = None,
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] | None = None,
     product_selection: object | None = None,
     admission_now: int | None = None,
     clock: Callable[[], int] | None = None,
@@ -307,6 +311,7 @@ def _prepare_coding_catalog_projection(
         product_scope_id=session_id,
         disabled_skills=disabled_skills,
         product_composition=cast(Any, product_composition),
+        product_snapshot_resources=product_snapshot_resources,
         product_selection=cast(Any, product_selection),
         package_admission_now=evaluated_at,
         clock=clock,
