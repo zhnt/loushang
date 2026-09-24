@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +47,51 @@ class PackageProductPreBSnapshotSharedMemberV1:
 class PackageProductPosixCutoverAttemptV1:
     request: PackagePosixEpochCutoverRequestV1
     result: PackagePosixEpochCutoverResultV1
+
+
+def reopen_posix_product_cutover(
+    *,
+    authority_root: Path,
+    control_root: Path,
+    store_id: str,
+    epochs_root_name: str,
+) -> PackagePosixEpochCutoverResultV1:
+    """Reopen the fenced Product root using durable evidence, without old Source."""
+
+    if any(
+        not isinstance(path, Path)
+        or not path.is_absolute()
+        or ".." in path.parts
+        for path in (authority_root, control_root)
+    ):
+        raise ValueError("Package Product epoch roots must be absolute")
+    if control_root != control_root.resolve(strict=True):
+        raise ValueError("Package Product control root is not canonical")
+    metadata = control_root.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError("Package Product control root is not private")
+    journal_path = control_root / "epoch.jsonl"
+    journal = PackageEpochFenceJournal(journal_path)
+    if journal.path != journal_path:
+        raise ValueError("Package Product fence journal is not canonical")
+    result = PackagePosixEpochCutoverOwner.reopen_fenced(
+        authority_root,
+        store_id=store_id,
+        epoch_journal=journal,
+        epochs_root_name=epochs_root_name,
+    )
+    observed = control_root.lstat()
+    if (
+        control_root != control_root.resolve(strict=True)
+        or journal.path != journal_path
+        or (observed.st_dev, observed.st_ino) != (metadata.st_dev, metadata.st_ino)
+    ):
+        raise ValueError("Package Product control root changed during reopen")
+    return result
 
 
 class PackageProductPreBSnapshotOwner:
@@ -174,7 +220,9 @@ class PackageProductPreBSnapshotOwner:
 
 
 __all__ = [
+    "PackagePosixEpochCutoverResultV1",
     "PackageProductPreBSnapshotOwner",
     "PackageProductPreBSnapshotSharedMemberV1",
     "PackageProductPosixCutoverAttemptV1",
+    "reopen_posix_product_cutover",
 ]

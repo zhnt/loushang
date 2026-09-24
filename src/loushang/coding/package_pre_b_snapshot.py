@@ -19,9 +19,11 @@ from loushang.coding.package_source_snapshot import (
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
     PackageProductPreBSnapshotSharedMemberV1,
+    reopen_posix_product_cutover,
 )
 
 
@@ -37,6 +39,20 @@ class CodingPreBSnapshotPreparation:
 class CodingPackagePreBCutover:
     attempt: PackageProductPosixCutoverAttemptV1
     snapshots: PackageProductPreBSnapshotOwner
+
+
+def reopen_coding_package_cutover(
+    lifecycle: CodingPluginLifecycleStateLayout,
+) -> PackagePosixEpochCutoverResultV1:
+    """Reopen the current B root without reading legacy Coding Source state."""
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    return reopen_posix_product_cutover(
+        authority_root=epoch.authority_root,
+        control_root=epoch.control_root,
+        store_id=epoch.store_id,
+        epochs_root_name=epoch.epochs_root_name,
+    )
 
 
 def cutover_coding_package_store_from_legacy(
@@ -144,4 +160,5 @@ __all__ = [
     "CodingPreBSnapshotPreparation",
     "cutover_coding_package_store_from_legacy",
     "hold_coding_pre_b_snapshot_owner",
+    "reopen_coding_package_cutover",
 ]

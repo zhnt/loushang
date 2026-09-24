@@ -411,7 +411,11 @@ Neither may silently override a narrower implemented owner contract.
   explicit call that holds the Source locks through this Product cutover; the
   default bootstrap has not selected it. The cutover snapshots the
   real pre-fence control root as `fence_record`; the new B fence appears only
-  after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
+  after that snapshot. The current POSIX Product fence can now be reopened from
+  the durable journal and exact selected-root identity without reading the old
+  Package or lifecycle Source roots; missing fences and replaced B roots refuse.
+  This is restart admission evidence, not default runtime selection. For
+  `legacy_root_pointer`, the snapshot owner requires an
   empty source domain and records the verified old Store identity with the
   Product-declared root name. The native fixture now holds real Coding global
   and project settings transaction locks through cutover, verifies their file

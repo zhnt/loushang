@@ -4239,6 +4239,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
         cutover_coding_package_store_from_legacy,
+        reopen_coding_package_cutover,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4250,6 +4251,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.host.rpc.output import RpcOutput
     from loushang.harness.resources.packages.product_epoch_guard import (
         register_package_product_runtime_lease,
+    )
+    from loushang.harness.resources.packages.product_pre_b_snapshot import (
+        reopen_posix_product_cutover,
     )
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
@@ -4407,6 +4411,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         )
 
     if entrypoint == "session" and not with_dependency:
+        with pytest.raises(PackagePosixEpochCutoverError) as missing_fence:
+            reopen_coding_package_cutover(legacy_layout)
+        assert missing_fence.value.code == "package_epoch_fence_stale"
         live_old_runtime = pre_fence.register(startup_id="legacy:live")
         try:
             denied = attempt_cutover().attempt.result
@@ -4432,6 +4439,36 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fence = cutover_result.fence
     assert fence is not None
     assert fences.current(store_id) == fence
+    if entrypoint == "session" and not with_dependency:
+        hidden_store = tmp_path / "hidden-legacy-package-root"
+        hidden_lifecycle = tmp_path / "hidden-legacy-lifecycle-root"
+        legacy_root.rename(hidden_store)
+        legacy_layout.root.rename(hidden_lifecycle)
+        try:
+            assert reopen_coding_package_cutover(legacy_layout) == cutover_result
+        finally:
+            hidden_lifecycle.rename(legacy_layout.root)
+            hidden_store.rename(legacy_root)
+        aliased_control = tmp_path / "aliased-package-control"
+        aliased_control.symlink_to(control_root, target_is_directory=True)
+        with pytest.raises(ValueError, match="not canonical"):
+            reopen_posix_product_cutover(
+                authority_root=authority,
+                control_root=aliased_control,
+                store_id=store_id,
+                epochs_root_name=epoch_layout.epochs_root_name,
+            )
+        selected_root = epoch_layout.epoch_root(cutover_request.namespace_id)
+        hidden_selected = tmp_path / "hidden-selected-package-root"
+        selected_root.rename(hidden_selected)
+        selected_root.mkdir(mode=0o700)
+        try:
+            with pytest.raises(PackagePosixEpochCutoverError) as changed_root:
+                reopen_coding_package_cutover(legacy_layout)
+            assert changed_root.value.code == "package_epoch_cutover_identity_changed"
+        finally:
+            selected_root.rmdir()
+            hidden_selected.rename(selected_root)
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
