@@ -26,6 +26,7 @@ from loushang.harness.session import AgentSessionInspector, AgentSessionState
 from loushang.harness.session.inspection import _build_token_usage_totals
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
     MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -198,6 +199,44 @@ def test_provider_anchor_surface_requires_the_current_model_projection() -> None
 
     inspector.agent.transform_context = lambda values, signal: values
     assert inspector._measure_current_model_surface(messages) is None
+
+
+def test_provider_anchor_does_not_rebuild_input_before_compaction(monkeypatch) -> None:
+    inspector = asyncio.run(_inspector())
+    records = [
+        _record("old-snapshot", MODEL_INPUT_PREPARED_KIND, _snapshot("old", 1)),
+        _record(
+            "old-usage",
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            _attempt_usage("old", 1, input=10, terminal=True),
+        ),
+        _record("checkpoint", CONTEXT_COMPACTION_CHECKPOINT_KIND, object()),
+    ]
+
+    def reject_rebuild(snapshot_id: str) -> None:
+        raise AssertionError(f"rebuilt compacted input {snapshot_id}")
+
+    monkeypatch.setattr(inspector.session, "rebuild_model_input", reject_rebuild)
+
+    assert inspector._derive_provider_context_anchor(records) is None
+
+
+def test_context_usage_reuses_its_replayed_messages_for_counts(monkeypatch) -> None:
+    inspector = asyncio.run(_inspector())
+    build_context = inspector.session.build_context
+    replay_count = 0
+
+    def count_replays():
+        nonlocal replay_count
+        replay_count += 1
+        return build_context()
+
+    monkeypatch.setattr(inspector.session, "build_context", count_replays)
+
+    usage = inspector.get_context_usage()
+
+    assert usage.message_count == 3
+    assert replay_count == 1
 
 
 def test_token_totals_prefer_outcomes_and_keep_uncovered_legacy_usage() -> None:

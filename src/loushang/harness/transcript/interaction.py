@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, cast
 
-from loushang.agent.types import ThinkingLevel
+from loushang.agent.types import AgentMessage, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import (
     AssistantMessage,
@@ -136,13 +136,16 @@ class AgentTranscriptInspector:
 
     session: AgentTranscriptSession
 
-    def message_counts(self) -> TranscriptMessageCounts:
-        context = self.session.build_context()
+    def message_counts(
+        self, *, messages: Sequence[AgentMessage] | None = None
+    ) -> TranscriptMessageCounts:
+        if messages is None:
+            messages = self.session.build_context().messages
         assistant_message_count = 0
         user_message_count = 0
         tool_call_count = 0
         tool_result_count = 0
-        for message in context.messages:
+        for message in messages:
             if isinstance(message, AssistantMessage):
                 assistant_message_count += 1
                 tool_call_count += sum(
@@ -153,7 +156,7 @@ class AgentTranscriptInspector:
             elif isinstance(message, ToolResultMessage):
                 tool_result_count += 1
         return TranscriptMessageCounts(
-            message_count=len(context.messages),
+            message_count=len(messages),
             assistant_message_count=assistant_message_count,
             user_message_count=user_message_count,
             tool_call_count=tool_call_count,
