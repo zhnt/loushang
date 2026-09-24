@@ -10,9 +10,6 @@ from loushang.harness.resources.packages.materializer import (
     _plugin_binding_from_json,
     _plugin_binding_history_key,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
-    PackagePosixEpochSnapshotEvidenceStore,
-)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -22,7 +19,7 @@ from loushang.harness.resources.plugins.dependencies import (
 from loushang.harness.resources.plugins.types import PluginSourceBinding
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from .package_epoch_layout import resolve_coding_package_epoch_layout
+from .package_legacy_snapshot_member import read_coding_first_b_snapshot_member
 
 _MAX_LOCK_BYTES = 2 * 1024 * 1024
 _TOP_LEVEL_KEYS = frozenset(
@@ -63,40 +60,13 @@ def read_coding_legacy_local_binding_heads(
 ) -> tuple[CodingLegacyLocalBindingEvidenceV1, ...]:
     """Project only exact first-fence snapshot binding heads for later review."""
 
-    if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
-        raise TypeError("Coding Plugin lifecycle layout is required")
-    if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
-        raise TypeError("Fenced Product epoch owner is required")
-    epoch = resolve_coding_package_epoch_layout(lifecycle)
-    epoch_runtime.assert_current()
-    fence = epoch_runtime.cutover_result.fence
-    if (
-        epoch_runtime.registry.store_id != epoch.store_id
-        or epoch_runtime.control_root != epoch.control_root
-        or fence is None
-        or fence.store_id != epoch.store_id
-        or fence.epoch != 1
-        or fence.request.prior_epoch != 0
-    ):
-        raise CodingLegacyLockError("Coding legacy Package first fence is unsupported")
-    snapshots = PackagePosixEpochSnapshotEvidenceStore(
-        epoch.snapshot_root, store_id=epoch.store_id
-    )
-    receipt_id = fence.request.snapshot_receipt_id
-    evidence = snapshots.snapshot(receipt_id)
-    if (
-        evidence is None
-        or evidence.snapshot.receipt_id != receipt_id
-        or evidence.snapshot.legacy_root_identity != fence.request.legacy_root_identity
-    ):
-        raise CodingLegacyLockError("Coding legacy Package snapshot is unavailable")
-    raw = snapshots.read_regular_member(
-        receipt_id,
+    raw = read_coding_first_b_snapshot_member(
+        lifecycle,
+        epoch_runtime,
         domain="binding_history",
         member_name="package-lock.json",
         maximum_bytes=_MAX_LOCK_BYTES,
     )
-    epoch_runtime.assert_current()
     if raw is None:
         raise CodingLegacyLockError("Coding legacy Package binding lock is missing")
     return parse_coding_legacy_local_binding_heads(raw)
