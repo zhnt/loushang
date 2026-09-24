@@ -17,6 +17,9 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
+from loushang.coding.package_cutover_backup import (
+    inspect_coding_package_cutover_backup,
+)
 from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
@@ -32,6 +35,11 @@ from loushang.harness.config.agent import SettingsManager
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-package-cutover")
     parser.add_argument("--workspace", default=".", help="existing Coding workspace")
+    parser.add_argument(
+        "--backup-status",
+        action="store_true",
+        help="read the current cutover snapshot owner's verified status",
+    )
     args = parser.parse_args(argv)
     try:
         workspace = Path(args.workspace).expanduser().resolve(strict=True)
@@ -39,6 +47,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("Coding workspace must be a directory")
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
         epoch = resolve_coding_package_epoch_layout(lifecycle)
+        if args.backup_status:
+            document = inspect_coding_package_cutover_backup(lifecycle).to_dict()
+            sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
+            return 0
         namespace_id = sha256(
             b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
         ).hexdigest()

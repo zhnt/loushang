@@ -20,7 +20,9 @@
   POSIX Product Store for explicit offline GC; D3j adds its declared operator
   CLI. D3k adds a separate private-data confirmation seam and a backup-owner
   projection port; D3l adds durable private-data confirmation evidence.
-  The D3k/D3l seams remain without production owner bindings. Default
+  D3m reports the actual PLC9B cutover snapshot owner's workspace-level
+  retention evidence without claiming Plugin-level backup expiry. The D3k/D3l
+  seams remain without production owner bindings. Default
   management/RPC selection, Windows execution evidence, shared dependency
   GC, and production private-data/backup owner composition remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
@@ -103,6 +105,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D3l Durable Private-Data Confirmation Evidence](plugin-lifecycle-plc9d3l-contract.md)
   persists exact separately issued confirmation evidence; no operator or
   destructive command is exposed.
+- [PLC9D3m Cutover Backup Status Projection](plugin-lifecycle-plc9d3m-contract.md)
+  verifies the real pre-B workspace snapshot owner through the current fence;
+  per-Plugin retention and expiry remain unknown.
 
 ## Frozen Contracts
 
