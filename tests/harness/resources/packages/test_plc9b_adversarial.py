@@ -5350,6 +5350,29 @@ while True:
                     "prompt-standard",
                     "skill-standard",
                 }
+                resource_bodies = {
+                    admission.contribution_id: compiled_base.read_resource_body(
+                        admission.fingerprint, max_bytes=64 * 1024
+                    )
+                    for admission in compiled_base.product_composition.resource_admissions
+                }
+                assert resource_bodies == {
+                    "prompt-standard": base_files["coding_base/prompts/standard.md"],
+                    "skill-standard": base_files[
+                        "coding_base/skills/standard/SKILL.md"
+                    ],
+                }
+                with pytest.raises(CodingBasePluginAssemblyError) as foreign_body:
+                    compiled_base.read_resource_body("foreign-admission", max_bytes=64 * 1024)
+                assert foreign_body.value.code == "coding_base_product_resource_unavailable"
+                with pytest.raises(CodingBasePluginAssemblyError) as over_budget_body:
+                    compiled_base.read_resource_body(
+                        compiled_base.product_composition.resource_admissions[0].fingerprint,
+                        max_bytes=0,
+                    )
+                assert over_budget_body.value.code == (
+                    "coding_base_product_resource_unavailable"
+                )
                 changed_candidate = replace(
                     compiled_base.product_composition.resource_admissions[0].candidate,
                     source_trust_policy_revision="foreign-policy",

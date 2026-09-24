@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
@@ -57,11 +57,56 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
+class CodingBaseProductResourceBody:
+    admission_fingerprint: str
+    contribution_id: str
+    logical_path: str
+    content_digest: str
+    body: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.body, bytes):
+            raise TypeError("Product Resource body must be immutable bytes")
+        if sha256(self.body).hexdigest() != self.content_digest:
+            raise ValueError("Product Resource body changed captured bytes")
+
+
+@dataclass(frozen=True, slots=True)
 class CodingBaseProductCompilation:
     plan: PluginSelectionPlanV2
     product_composition: ProductCompositionCompilation
     tool_contribution_id: str | None
     tool_names: tuple[str, ...]
+    resource_bodies: tuple[CodingBaseProductResourceBody, ...] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        expected = {
+            item.fingerprint: item.contribution_id
+            for item in self.product_composition.resource_admissions
+        }
+        actual = {
+            item.admission_fingerprint: item.contribution_id
+            for item in self.resource_bodies
+        }
+        if actual != expected or len(actual) != len(self.resource_bodies):
+            raise ValueError("Product Resource bodies changed owner admissions")
+
+    def read_resource_body(
+        self, admission_fingerprint: str, *, max_bytes: int
+    ) -> bytes:
+        """Read only one admitted body from the immutable Product root capture."""
+
+        if type(max_bytes) is not int or not 0 <= max_bytes <= 16 * 1024 * 1024:
+            raise ValueError("Product Resource read budget is invalid")
+        for item in self.resource_bodies:
+            if item.admission_fingerprint == admission_fingerprint:
+                if len(item.body) > max_bytes:
+                    break
+                return item.body
+        raise CodingBasePluginAssemblyError(
+            "Product Resource body is unavailable under this owner admission",
+            code="coding_base_product_resource_unavailable",
+        )
 
 
 def compile_coding_base_product_selection(
@@ -129,7 +174,56 @@ def compile_coding_base_product_selection(
         product_composition=product_composition,
         tool_contribution_id=tool_id,
         tool_names=tool_names,
+        resource_bodies=_resource_bodies(selected, product_composition),
     )
+
+
+def _resource_bodies(
+    selected: PackageProductSelectedPluginManifestV1,
+    compilation: ProductCompositionCompilation,
+) -> tuple[CodingBaseProductResourceBody, ...]:
+    snapshot = selected.snapshot
+    members = dict(snapshot.files)
+    root = selected.manifest.root_relative_path.as_posix()
+    bodies: list[CodingBaseProductResourceBody] = []
+    for admission in compilation.resource_admissions:
+        candidate = admission.candidate
+        resource = candidate.contribution
+        if (
+            not isinstance(resource, ResourceContributionSpec)
+            or candidate.package_content_digest
+            != snapshot.package_revision.package_content_digest
+            or candidate.instance_revision_ref != snapshot.instance_revision_ref
+        ):
+            raise CodingBasePluginAssemblyError(
+                "Product Resource admission changed selected Store provenance",
+                code="coding_base_product_resource_mismatch",
+            )
+        locator = resource.locator
+        if resource.locator_kind == "directory":
+            if resource.resource_kind != "skill":
+                raise CodingBasePluginAssemblyError(
+                    "Product Resource directory has no supported body",
+                    code="coding_base_product_resource_unavailable",
+                )
+            locator = f"{locator}/SKILL.md"
+        logical_path = locator if root == "." else f"{root}/{locator}"
+        body = members.get(logical_path)
+        if body is None:
+            raise CodingBasePluginAssemblyError(
+                "Product Resource body is missing from the selected Store capture",
+                code="coding_base_product_resource_unavailable",
+            )
+        bodies.append(
+            CodingBaseProductResourceBody(
+                admission_fingerprint=admission.fingerprint,
+                contribution_id=candidate.contribution_id,
+                logical_path=logical_path,
+                content_digest=sha256(body).hexdigest(),
+                body=body,
+            )
+        )
+    return tuple(bodies)
 
 
 def _candidate(
@@ -267,4 +361,8 @@ def _digest(domain: str, payload: dict[str, object]) -> str:
     return sha256(domain.encode("ascii") + b"\0" + encoded).hexdigest()
 
 
-__all__ = ["CodingBaseProductCompilation", "compile_coding_base_product_selection"]
+__all__ = [
+    "CodingBaseProductCompilation",
+    "CodingBaseProductResourceBody",
+    "compile_coding_base_product_selection",
+]
