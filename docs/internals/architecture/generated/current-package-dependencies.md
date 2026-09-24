@@ -124,6 +124,7 @@ graph TD
 | `loushang-hosted` | `loushang.coding.cli.hosted:main` |
 | `loushang-hosted-tui` | `loushang.coding.cli.hosted_client:main` |
 | `loushang-mux` | `loushang.coding.cli.mux:main` |
+| `loushang-package-cutover` | `loushang.coding.cli.package_cutover:main` |
 | `loushang-plugin` | `loushang.plugin.__main__:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
 
