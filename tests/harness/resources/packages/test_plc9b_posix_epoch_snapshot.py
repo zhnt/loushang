@@ -204,12 +204,32 @@ def test_snapshot_copies_only_explicit_shared_member_alias(
     for domain in alias.domains:
         assert (payload / domain / alias.member_name).read_bytes() == b'{"version":4}\n'
     shutil.rmtree(source_root)
+    reopened = PackagePosixEpochSnapshotEvidenceStore(snapshot_root, store_id=_STORE_ID)
+    assert reopened.snapshot(receipt.receipt_id) is not None
+    for domain in alias.domains:
+        assert (
+            reopened.read_regular_member(
+                receipt.receipt_id,
+                domain=domain,
+                member_name=alias.member_name,
+            )
+            == b'{"version":4}\n'
+        )
     assert (
-        PackagePosixEpochSnapshotEvidenceStore(
-            snapshot_root, store_id=_STORE_ID
-        ).snapshot(receipt.receipt_id)
-        is not None
+        reopened.read_regular_member(
+            receipt.receipt_id,
+            domain="binding_history",
+            member_name="absent.json",
+        )
+        is None
     )
+    (payload / "binding_history" / "package-lock.json").write_bytes(b'{"version":3}\n')
+    with pytest.raises(PackageOfflineRestoreError, match="snapshot"):
+        reopened.read_regular_member(
+            receipt.receipt_id,
+            domain="lock_history",
+            member_name=alias.member_name,
+        )
 
 
 def test_snapshot_derives_legacy_root_pointer_from_verified_store_identity(
@@ -271,11 +291,14 @@ def test_snapshot_is_durable_and_reopen_validates_complete_domains(
         legacy_root_identity=legacy_identity,
         quiescence_receipt_id=_QUIESCENCE_ID,
     )
-    assert owner.capture(
-        store_id=_STORE_ID,
-        legacy_root_identity=legacy_identity,
-        quiescence_receipt_id=_QUIESCENCE_ID,
-    ) == receipt
+    assert (
+        owner.capture(
+            store_id=_STORE_ID,
+            legacy_root_identity=legacy_identity,
+            quiescence_receipt_id=_QUIESCENCE_ID,
+        )
+        == receipt
+    )
     shutil.rmtree(legacy_root.parent)
     snapshot_root.chmod(0o500)
     try:

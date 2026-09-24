@@ -21,6 +21,7 @@ from pathlib import Path
 from loushang.harness.journal import journal_file_lock
 from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
     PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
+    PackageOfflineRestoreError,
     PackageOfflineRestoreSnapshotEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
@@ -44,6 +45,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
     _read_regular_file,
     _remove_owned_namespace,
     _rename_directory_noreplace,
+    _revalidate_source,
     _strict_json_object,
     _supports_posix_rooted_io,
     _TreeEntry,
@@ -168,6 +170,64 @@ class PackagePosixEpochSnapshotEvidenceStore:
         finally:
             root.close()
 
+    def read_regular_member(
+        self,
+        snapshot_receipt_id: str,
+        *,
+        domain: str,
+        member_name: str,
+        maximum_bytes: int = 2 * 1024 * 1024,
+    ) -> bytes | None:
+        """Read one bounded member only from a fully verified immutable snapshot."""
+
+        if domain not in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+            raise ValueError("Package snapshot domain is invalid")
+        if type(member_name) is not str:
+            raise TypeError("Package snapshot member name is invalid")
+        _validate_entry_name(member_name)
+        limit = min(
+            _validated_limit(maximum_bytes, name="maximum snapshot member bytes"),
+            self._maximum_bytes,
+        )
+        evidence = self.snapshot(snapshot_receipt_id)
+        if evidence is None:
+            return None
+        root = _PinnedRoot.open(
+            self._snapshot_root, expected_identities=self._snapshot_identities
+        )
+        try:
+            bundle = _validated_snapshot_bundle(
+                root, evidence, maximum_depth=self._maximum_depth
+            )
+            try:
+                _require_domains(bundle.payload_fd)
+                directory = _open_directory_at(bundle.payload_fd, domain)
+                try:
+                    value = (
+                        _read_regular_file(directory, member_name, maximum_bytes=limit)[
+                            0
+                        ]
+                        if _entry_exists(directory, member_name)
+                        else None
+                    )
+                finally:
+                    os.close(directory)
+                _revalidate_source(bundle, evidence, maximum_depth=self._maximum_depth)
+                root.assert_visible()
+                return value
+            finally:
+                bundle.close()
+        except PackageOfflineRestoreError:
+            raise
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise PackageOfflineRestoreError(
+                "Authenticated Package snapshot member changed",
+                code="package_offline_restore_snapshot_invalid",
+                evidence_ref=evidence.evidence_id,
+            ) from exc
+        finally:
+            root.close()
+
 
 class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
     """Publish a complete, immutable, restore-compatible pre-B snapshot."""
@@ -204,7 +264,9 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
             try:
                 _validate_entry_name(legacy_root_pointer_name)
             except (OSError, UnicodeError) as exc:
-                raise ValueError("Package snapshot legacy root name is invalid") from exc
+                raise ValueError(
+                    "Package snapshot legacy root name is invalid"
+                ) from exc
             if self._domain_roots["store_bytes"].name != legacy_root_pointer_name:
                 raise ValueError("Package snapshot legacy root name does not match")
         self._legacy_root_pointer_name = legacy_root_pointer_name
@@ -216,9 +278,11 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
             members = None if domain_members is None else domain_members[domain]
             if members is not None:
-                if type(members) is not tuple or any(
-                    type(name) is not str for name in members
-                ) or members != tuple(sorted(set(members))):
+                if (
+                    type(members) is not tuple
+                    or any(type(name) is not str for name in members)
+                    or members != tuple(sorted(set(members)))
+                ):
                     raise ValueError("Package snapshot domain members are invalid")
                 try:
                     for name in members:
@@ -316,7 +380,9 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
             }
             observed = set(os.listdir(sources[domains[0]].descriptor))
             if duplicates != expected_aliases or set(by_name) != observed:
-                raise ValueError("Package snapshot source member coverage is incomplete")
+                raise ValueError(
+                    "Package snapshot source member coverage is incomplete"
+                )
 
     def _require_shared_member_inspections(
         self, inspections: Mapping[str, _TreeInspection]
@@ -371,7 +437,10 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                     path, expected_identities=self._domain_identities[domain]
                 )
             self._require_member_coverage(sources)
-            if _directory_identity(sources["store_bytes"].descriptor) != legacy_root_identity:
+            if (
+                _directory_identity(sources["store_bytes"].descriptor)
+                != legacy_root_identity
+            ):
                 raise ValueError("Package snapshot legacy root changed")
             inspections = {
                 domain: _inspect_tree(
@@ -420,7 +489,10 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                                 source.descriptor, target_fd, inspections[domain]
                             )
                             expected_entries = inspections[domain].entries
-                            if domain == "legacy_root_pointer" and pointer_contents is not None:
+                            if (
+                                domain == "legacy_root_pointer"
+                                and pointer_contents is not None
+                            ):
                                 _write_new_file(
                                     target_fd,
                                     _LEGACY_ROOT_POINTER_NAME,
@@ -431,7 +503,9 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                                         logical_path=_LEGACY_ROOT_POINTER_NAME,
                                         kind="file",
                                         mode=0o600,
-                                        content_digest=sha256(pointer_contents).hexdigest(),
+                                        content_digest=sha256(
+                                            pointer_contents
+                                        ).hexdigest(),
                                         byte_count=len(pointer_contents),
                                     ),
                                 )
@@ -442,7 +516,9 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                                 maximum_depth=self._maximum_depth - 1,
                             )
                             if copied_domain.entries != expected_entries:
-                                raise OSError("Package snapshot domain changed during copy")
+                                raise OSError(
+                                    "Package snapshot domain changed during copy"
+                                )
                             os.fchmod(
                                 target_fd,
                                 stat.S_IMODE(os.fstat(source.descriptor).st_mode),
