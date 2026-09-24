@@ -29,6 +29,7 @@ from .hosted_bootstrap import CodingHostedLaunchV1, _create_coding_attempt
 from .hosted_catalog import CodingHostedScopeV1
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_local import CodingLocalLaunchV1
+from .hosted_session import CodingHostedProductRuntimeFactoryForSession
 from .managed_catalog import CodingManagedSessionCatalogV1
 
 
@@ -76,6 +77,9 @@ def create_coding_managed_attempt(
     session_discovery: bool = False,
     managed_mux: ManagedMuxServiceBindingV1 | None = None,
     output_capture_factory: ExecCaptureFactory | None = None,
+    package_product_runtime_factory_for_session: (
+        CodingHostedProductRuntimeFactoryForSession | None
+    ) = None,
 ) -> CodingHostedContinuityAttemptV1:
     """Prepare the owned Product application; no daemon/default-path effects."""
     if type(launch) is not CodingManagedApplicationLaunchV1 or type(session_discovery) is not bool:
@@ -92,6 +96,9 @@ def create_coding_managed_attempt(
         profile_id=CODING_MANAGED_APPLICATION_PROFILE_ID, managed_selection=True,
         managed_mux=managed_mux,
         output_capture_factory=output_capture_factory,
+        package_product_runtime_factory_for_session=(
+            package_product_runtime_factory_for_session
+        ),
     )
 
 
