@@ -11,6 +11,9 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding.package_legacy_local_wheel import (
+    reacquire_coding_legacy_local_plugin_wheel,
+)
 from loushang.coding.package_legacy_lock_evidence import (
     CodingLegacyLockError,
     parse_coding_legacy_local_binding_heads,
@@ -108,6 +111,18 @@ def test_first_b_fence_reads_old_binding_only_from_verified_snapshot(
         [selected] = read_coding_legacy_local_binding_heads(lifecycle, owner)
         assert selected.source_identity == binding.source_identity
         assert selected.lockfile_digest == sha256(raw).hexdigest()
+        candidate = reacquire_coding_legacy_local_plugin_wheel(
+            tmp_path / "original-source",
+            legacy_package_root=lifecycle.package_root,
+            staging_parent=owner.prepare_product_source_root(),
+            plugin_id=selected.plugin_id,
+            expected_source_identity=selected.source_identity,
+            expected_content_digest=selected.content_digest,
+            expected_manifest_digest=selected.manifest_digest,
+            expected_dependency_lock=selected.dependency_lock,
+        )
+        assert candidate.artifact_digest == sha256(candidate.wheel_bytes).hexdigest()
+        assert candidate.original_source_identity == selected.source_identity
     finally:
         owner.close()
 
