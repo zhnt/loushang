@@ -4959,7 +4959,6 @@ while True:
                 "gc_command_unsealed",
             }:
                 from loushang.harness.package_product.product_runtime import (
-
                     PackageProductRuntimeRequestV1,
                 )
 
@@ -8151,6 +8150,13 @@ def _assert_product_root_gc_after_install(
     stale_product_command: bool,
     unsealed_product_command: bool,
 ) -> None:
+    from loushang.harness.package_product.product_gc_executor import (
+        PackageProductGcExecutionError,
+        PackageProductRootGcApplication,
+        PackageProductRootGcCommandV1,
+        PackageProductRootGcExecutor,
+        PackageProductRootGcReadModel,
+    )
     from loushang.harness.plugin_management.continuity_adapter import (
         PluginContinuitySecurityRetirementJournal,
     )
@@ -8178,13 +8184,6 @@ def _assert_product_root_gc_after_install(
     )
     from loushang.harness.plugin_management.retirement_sets import (
         PluginRetirementSetLedger,
-    )
-    from loushang.harness.package_product.product_gc_executor import (
-        PackageProductGcExecutionError,
-        PackageProductRootGcApplication,
-        PackageProductRootGcCommandV1,
-        PackageProductRootGcExecutor,
-        PackageProductRootGcReadModel,
     )
 
     selected = desired.snapshot().installations[0]
