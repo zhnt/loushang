@@ -369,11 +369,14 @@ Neither may silently override a narrower implemented owner contract.
   revision bridge now rechecks the live Store selection on every verified file
   read and supplies those bytes to the existing Plugin Python loader; the
   native fixture proves both Definitions load after the pre-B roots are hidden
-  and the bridge rejects a disposed Product runtime. Definition preflight also
-  yields pending Subjects bound to the B instance, Source, artifact, and trust
-  evidence. This is preflight input evidence only: Definition approval,
-  Provider composition, and default
-  selection for those two packages are still open. The
+  and the bridge rejects a disposed Product runtime. An explicit POSIX Product
+  preparation builds its Definition plan from the B instance, Source, artifact,
+  and trust evidence, then uses those selections to
+  approve and compile both Definitions, bind a workspace Provider into two
+  Capability requests and two Tool owners, and abort an unpublished assembly.
+  It rechecks the live Product selection before binding, so disposing the B
+  runtime after preparation fails closed. Default Coding selection, Session
+  graph publication, and Provider activation remain open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired

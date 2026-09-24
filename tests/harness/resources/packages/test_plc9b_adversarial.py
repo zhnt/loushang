@@ -4221,13 +4221,18 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
+    from loushang.coding._product_capability_plugin_composition import (
+        prepare_coding_product_capability_plugin_composition,
+    )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
         CodingResourceCatalogAdmissionError,
     )
+    from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
     from loushang.coding.package_builtin_wheel import (
         CODING_BASE_PRODUCT_WHEEL_FILENAME,
         build_coding_base_product_wheel,
@@ -4262,7 +4267,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
-    from loushang.harness.plugin_authoring.host import PluginDeclarationHost
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
         register_package_product_runtime_lease,
@@ -4274,14 +4278,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         load_verified_plugin_python_module,
     )
     from loushang.harness.resources.plugins.revisions import PluginRevisionError
-    from loushang.harness.resources.plugins.selection import (
-        PluginContributionRef,
-        PluginEffectiveConfigurationEntry,
-        PluginEffectiveConfigurationSetV1,
-        PluginPreflightContextV1,
-        PluginPreflightPendingApprovalOutcome,
-        PluginSelectionPlanV2,
-    )
+    from loushang.harness.resources.plugins.selection import PluginContributionRef
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
         _assemble_product_contribution_candidates,
@@ -6872,18 +6869,40 @@ while True:
                                 ),
                             )
                             assert callable(product_module.resolve("declare"))
-                        product_scope_id = (
-                            "session:"
-                            + session_manager.get_header().conversation_id
-                        )
-                        product_plan = PluginSelectionPlanV2(
-                            context=PluginPreflightContextV1(
-                                product_id="coding",
-                                scope_id=product_scope_id,
-                                policy_revision=(
-                                    reopened_owner.product_owner.policy.policy_revision
+                        product_configurations = {
+                            "coding.lsp.default": CodingLspPluginConfigV1.from_runtime_inputs(
+                                workspace_root=workspace,
+                                definitions=(),
+                                baseline_environment={},
+                            ),
+                            "coding.arch.default": CodingArchPluginConfigV1.from_runtime_inputs(
+                                workspace_root=workspace,
+                                private_data_root=(
+                                    reopened_state.state_root
+                                    / "private-data"
+                                    / "coding-arch-default"
                                 ),
-                                instance_revision_refs=tuple(
+                            ),
+                        }
+                        product_policy_revision = (
+                            reopened_owner.product_owner.policy.policy_revision
+                        )
+                        product_preparation = (
+                            prepare_coding_product_capability_plugin_composition(
+                                reopened_builtin,
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "product-capability-approval"),
+                                clock=lambda: 1_700_000_000_000,
+                                product_policy_revision=product_policy_revision,
+                            )
+                        )
+                        try:
+                            assert (
+                                product_preparation.selection.plan.context.instance_revision_refs
+                                == tuple(
                                     sorted(
                                         (
                                             item.snapshot.instance_revision_ref
@@ -6891,89 +6910,96 @@ while True:
                                         ),
                                         key=lambda item: item.plugin_id,
                                     )
-                                ),
-                            ),
-                            selected_plugin_ids=tuple(
-                                sorted(item.manifest.name for item in product_capabilities.packages)
-                            ),
-                            selected_contributions=tuple(
-                                sorted(
-                                    PluginContributionRef(
-                                        package.manifest.name,
-                                        reservation.contribution_id,
-                                    )
-                                    for package in product_capabilities.packages
-                                    for reservation in package.contribution_index.items
                                 )
-                            ),
-                            source_trust_snapshots=tuple(
-                                sorted(
-                                    (
-                                        item.source_trust_snapshot
-                                        for item in selected_capabilities
-                                        if item.source_trust_snapshot is not None
-                                    ),
-                                    key=lambda item: item.plugin_id,
-                                )
-                            ),
-                            effective_configuration_set=PluginEffectiveConfigurationSetV1(
-                                entries=tuple(
-                                    sorted(
-                                        (
-                                            PluginEffectiveConfigurationEntry(
-                                                plugin_id=package.manifest.name,
-                                                contribution_id=reservation.contribution_id,
-                                                configuration={},
-                                            )
-                                            for package in product_capabilities.packages
-                                            for reservation in package.contribution_index.items
-                                        ),
-                                        key=lambda item: (
-                                            item.plugin_id,
-                                            item.contribution_id,
-                                        ),
-                                    )
-                                ),
-                            ),
-                            allowed_authority_ceiling=("filesystem", "process"),
-                        )
-                        pending = PluginDeclarationHost().resolve(
-                            product_capabilities.packages,
-                            bindings=product_capabilities.bindings,
-                            plan=product_plan,
-                            decision_lookup=PluginExecutionDecisionJournal(
-                                tmp_path / "product-definition-decisions.jsonl",
-                                scope_kind="workspace",
-                                scope_id=product_scope_id,
-                                clock=lambda: 1_700_000_000_000,
-                            ),
-                        )
-                        assert isinstance(
-                            pending, PluginPreflightPendingApprovalOutcome
-                        )
-                        assert {item.plugin_id for item in pending.subjects} == {
-                            "coding.lsp.default",
-                            "coding.arch.default",
-                        }
-                        for subject in pending.subjects:
-                            selected_capability = next(
-                                item
-                                for item in selected_capabilities
-                                if item.manifest.name == subject.plugin_id
                             )
                             assert (
-                                subject.instance_revision_ref
-                                == selected_capability.snapshot.instance_revision_ref
+                                product_preparation.selection.plan.source_trust_snapshots
+                                == tuple(
+                                    sorted(
+                                        (
+                                            item.source_trust_snapshot
+                                            for item in selected_capabilities
+                                            if item.source_trust_snapshot is not None
+                                        ),
+                                        key=lambda item: item.plugin_id,
+                                    )
+                                )
                             )
-                            assert subject.package_source_identity == (
-                                selected_capability.snapshot.package_revision.package_source_identity
+                            decisions = PluginExecutionDecisionJournal(
+                                product_preparation.state_root
+                                / "definition-decisions.jsonl",
+                                scope_kind="workspace",
+                                scope_id=product_preparation.scope_id,
+                                clock=lambda: 1_700_000_000_000,
+                            ).snapshot().decisions
+                            assert len(decisions) == 2
+                            assert all(item.disposition == "approved" for item in decisions)
+                            assert {
+                                (
+                                    candidate.package.manifest.name,
+                                    candidate.declaration.contribution_id,
+                                )
+                                for candidate in product_preparation.selection.candidates
+                            } == {
+                                ("coding.lsp.default", "coding-lsp-default"),
+                                ("coding.lsp.default", "coding-lsp-tools"),
+                                ("coding.arch.default", "coding-arch-default"),
+                                ("coding.arch.default", "coding-arch-tools"),
+                            }
+                            product_assembly = product_preparation.bind_workspace(
+                                workspace_binding,
+                                host_boot_id="a" * 32,
+                                tool_modes={
+                                    capability_id: "on_demand"
+                                    for capability_id in (
+                                        product_preparation.provider_owner_authorities
+                                    )
+                                },
+                                clock=lambda: 1_700_000_000_000,
                             )
-                            assert subject.package_content_digest == (
-                                selected_capability.snapshot.root_ref.artifact_digest
+                            try:
+                                assert len(
+                                    product_assembly.session_inputs.component_requests
+                                ) == 2
+                                assert set(product_assembly.tool_owners) == {
+                                    "coding.lsp.default",
+                                    "coding.arch.default",
+                                }
+                            finally:
+                                product_assembly.abort_unpublished()
+                        finally:
+                            product_preparation.close()
+                        stale_preparation = (
+                            prepare_coding_product_capability_plugin_composition(
+                                reopened_builtin,
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                configurations=product_configurations,
+                                state_root=(
+                                    tmp_path / "stale-product-capability-approval"
+                                ),
+                                clock=lambda: 1_700_000_000_000,
+                                product_policy_revision=product_policy_revision,
                             )
-                            assert subject.source_trust_policy_revision == (
-                                selected_capability.source_trust_snapshot.source_trust_policy_revision
-                            )
+                        )
+                        reopened_builtin.dispose_runtime()
+                        try:
+                            with pytest.raises(PluginRevisionError) as stale_selection:
+                                stale_preparation.bind_workspace(
+                                    workspace_binding,
+                                    host_boot_id="a" * 32,
+                                    tool_modes={
+                                        capability_id: "on_demand"
+                                        for capability_id in (
+                                            stale_preparation.provider_owner_authorities
+                                        )
+                                    },
+                                    clock=lambda: 1_700_000_000_000,
+                                )
+                            assert stale_selection.value.code == "plugin_revision_changed"
+                        finally:
+                            stale_preparation.close()
                     finally:
                         reopened_builtin.dispose_runtime()
                     try:

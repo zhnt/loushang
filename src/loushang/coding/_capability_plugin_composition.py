@@ -339,6 +339,7 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
     )
     approval_source: str = _DEFAULT_APPROVAL_SOURCE
     product_policy_revision: str = _PRODUCT_POLICY_REVISION
+    source_trust_policy_revision: str = _SOURCE_TRUST_POLICY_REVISION
 
     def bind_selected_instances(
         self,
@@ -375,6 +376,7 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
             instance_revision_refs=selected_refs,
             approval_source=self.approval_source,
             product_policy_revision=self.product_policy_revision,
+            source_trust_policy_revision=self.source_trust_policy_revision,
         )
 
     def approve_definition(
@@ -387,6 +389,7 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
             subject,
             plugin_ids=self.plugin_ids,
             product_policy_revision=self.product_policy_revision,
+            source_trust_policy_revision=self.source_trust_policy_revision,
             instance_revision_refs=self.instance_revision_refs,
         )
         now = _read_clock(self.clock)
@@ -410,6 +413,7 @@ class _CodingDefaultCapabilityPluginApprovalOwner:
             subject,
             plugin_ids=self.plugin_ids,
             product_policy_revision=self.product_policy_revision,
+            source_trust_policy_revision=self.source_trust_policy_revision,
             instance_revision_refs=self.instance_revision_refs,
         )
         now = _read_clock(self.clock)
@@ -429,6 +433,7 @@ def create_coding_capability_plugin_composition_request(
     plugin_ids: frozenset[str],
     approval_source: str = _DEFAULT_APPROVAL_SOURCE,
     product_policy_revision: str = _PRODUCT_POLICY_REVISION,
+    source_trust_policy_revision: str = _SOURCE_TRUST_POLICY_REVISION,
 ) -> CodingCapabilityPluginCompositionRequest:
     """Create Coding's exact-policy request for selected checked-in Plugins."""
 
@@ -440,12 +445,18 @@ def create_coding_capability_plugin_composition_request(
         raise ValueError("Coding Capability Plugin Approval source is invalid")
     if not isinstance(product_policy_revision, str) or not product_policy_revision:
         raise ValueError("Coding Capability Product policy revision is invalid")
+    if (
+        not isinstance(source_trust_policy_revision, str)
+        or not source_trust_policy_revision
+    ):
+        raise ValueError("Coding Capability Source trust policy revision is invalid")
     return CodingCapabilityPluginCompositionRequest(
         approval_owner=_CodingDefaultCapabilityPluginApprovalOwner(
             clock=clock,
             plugin_ids=plugin_ids,
             approval_source=approval_source,
             product_policy_revision=product_policy_revision,
+            source_trust_policy_revision=source_trust_policy_revision,
         )
     )
 
@@ -687,6 +698,11 @@ class CodingCapabilityPluginCompositionPreparation:
         repr=False,
         compare=False,
     )
+    selection_recheck: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _runtime_closed: bool = field(default=False, init=False, repr=False)
     _management_released: bool = field(default=False, init=False, repr=False)
     _state_cleaned: bool = field(default=False, init=False, repr=False)
@@ -718,6 +734,8 @@ class CodingCapabilityPluginCompositionPreparation:
             clock=clock,
         )
         try:
+            if self.selection_recheck is not None:
+                self.selection_recheck()
             plugin_assembly = self.product.bind_host_providers(
                 (workspace_binding.provider,)
             )
@@ -1651,6 +1669,7 @@ def _validate_default_definition_subject(
     *,
     plugin_ids: frozenset[str],
     product_policy_revision: str,
+    source_trust_policy_revision: str,
     instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
 ) -> None:
     spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID.get(subject.plugin_id)
@@ -1663,7 +1682,7 @@ def _validate_default_definition_subject(
         or subject.policy_revision != product_policy_revision
         or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
         or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != _SOURCE_TRUST_POLICY_REVISION
+        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.requested_authorities != spec.requested_authorities
         or subject.allowed_authority_ceiling != ("filesystem", "process")
         or subject.instance_revision_ref.plugin_id != subject.plugin_id
@@ -1685,6 +1704,7 @@ def _validate_default_activation_subject(
     *,
     plugin_ids: frozenset[str],
     product_policy_revision: str,
+    source_trust_policy_revision: str,
     instance_revision_refs: Mapping[str, PluginInstanceRevisionRef] | None,
 ) -> None:
     spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID.get(subject.plugin_id)
@@ -1702,7 +1722,7 @@ def _validate_default_activation_subject(
         or not subject.scope_id.startswith("session:")
         or subject.scope_id == "session:"
         or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision != _SOURCE_TRUST_POLICY_REVISION
+        or subject.source_trust_policy_revision != source_trust_policy_revision
         or subject.product_policy_revision != product_policy_revision
         or subject.owner_policy_revision != spec.provider_owner_policy_revision
         or subject.revocation_epoch != 0
