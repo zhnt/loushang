@@ -6821,6 +6821,51 @@ while True:
                         ).current(configured_operation_id)
                         is not None
                     )
+                    refused_source = "https://packages.example.test/unknown.whl"
+                    before_transport = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    desired_before_transport = desired.snapshot()
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        with pytest.raises(PackageLifecycleError):
+                            asyncio.run(
+                                run_package_lifecycle(
+                                    configured_session,
+                                    PackageLifecycleRequest(
+                                        install=(refused_source,), scope="project"
+                                    ),
+                                )
+                            )
+                        rpc_output = io.StringIO()
+                        rpc = RpcPackageCommands(
+                            runtime=object(),
+                            get_session=lambda: configured_session,
+                            output=RpcOutput(rpc_output),
+                        )
+                        asyncio.run(
+                            dict(rpc.bindings())["install_package"](
+                                "request:default-product-install-refusal",
+                                {"source": refused_source, "scope": "project"},
+                            )
+                        )
+                    assert json.loads(rpc_output.getvalue())["success"] is False
+                    transport_failures = [
+                        record
+                        for record in PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()[before_transport:]
+                        if record.request.action == "install"
+                        and record.status.failure is not None
+                    ]
+                    assert len(transport_failures) == 2
+                    assert len(
+                        {record.request.operation_id for record in transport_failures}
+                    ) == 2
+                    assert desired.snapshot() == desired_before_transport
                 finally:
                     if configured_session is not None:
                         asyncio.run(configured_session.dispose())

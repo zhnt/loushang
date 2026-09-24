@@ -524,6 +524,9 @@ Neither may silently override a narrower implemented owner contract.
   commits a configured first-party capability Wheel through the real Product
   Store, records the committed lifecycle and committed set, and releases its
   runtime lease. The subsequent capability selection reads that committed root.
+  That default Session also sends unauthorized CLI and RPC installs through
+  Product: both leave distinct durable refusals with Desired state unchanged
+  while its legacy install method is disabled.
   Direct legacy `PluginRevisionStore.publish` and
   `PackageMaterializer.publish_plugin_packages` now refuse the old revision root
   after an epoch namespace exists. They hold the same authority-root lock as
