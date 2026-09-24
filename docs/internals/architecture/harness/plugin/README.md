@@ -528,8 +528,12 @@ Neither may silently override a narrower implemented owner contract.
   `PackageMaterializer.publish_plugin_packages` now refuse the old revision root
   after an epoch namespace exists. They hold the same authority-root lock as
   cutover through publication; the native B fixture proves both refusals and
-  preserves the pre-B tree. Other direct legacy materializer writes and binding
-  mutations still need their own no-bypass audit.
+  preserves the pre-B tree. The same Linux fence now covers direct
+  `PackageMaterializer` lockfile/binding writes, synchronous and asynchronous
+  backend effects, and removal through their full write intervals. Native B
+  evidence covers lockfile and synchronous backend refusals; focused epoch-root
+  regressions cover binding, asynchronous update, and removal. Windows and
+  noncanonical external write roots remain outside this guard.
   This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

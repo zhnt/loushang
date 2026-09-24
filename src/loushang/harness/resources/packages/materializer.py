@@ -11,7 +11,8 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,7 +43,10 @@ from loushang.harness.resources.plugins.distribution_evidence import (
     InstalledPythonDistributionEvidenceResolver,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
-from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionStore,
+    _legacy_package_epoch_write_guard,
+)
 from loushang.harness.resources.plugins.types import (
     PluginRevisionKind,
     PluginSource,
@@ -454,6 +458,18 @@ class PackageMaterializer:
             str, PluginSourceBinding
         ] = {}
         self._load_lockfile()
+
+    @contextmanager
+    def _legacy_write_guard(self) -> Iterator[None]:
+        roots = set()
+        if self.install_root.name == "installed":
+            roots.add(self.install_root.parent)
+        if self.lockfile_path.name == "package-lock.json":
+            roots.add(self.lockfile_path.parent)
+        with ExitStack() as stack:
+            for root in sorted(roots):
+                stack.enter_context(_legacy_package_epoch_write_guard(root))
+            yield
 
     def set_progress_callback(
         self, callback: Callable[[PackageProgressEvent], None] | None
@@ -967,8 +983,9 @@ class PackageMaterializer:
                 f"Package materialization requires a remote source: {source}"
             )
         record = self._source_record(source)
-        self._records[_record_key(source)] = record
-        self._save_lockfile()
+        with self._legacy_write_guard():
+            self._records[_record_key(source)] = record
+            self._save_lockfile()
         return record
 
     async def materialize_remote_source(
@@ -1027,37 +1044,38 @@ class PackageMaterializer:
         record = self.get_record(source)
         if record is None:
             record = self._source_record(source).with_lifecycle("remote_registered")
-        self._emit_progress(
-            "start",
-            "remove",
-            source,
-            message=_progress_message("remove", source),
-            target_path=record.target_path,
-        )
-        try:
-            if record.target_path.exists():
-                shutil.rmtree(record.target_path)
-            removed = record.with_lifecycle(
-                "remote_registered", error_message=None
-            ).with_git_state(
-                installed_commit="",
-                resolved_commit="",
-                dirty=False,
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                "remove",
+                source,
+                message=_progress_message("remove", source),
+                target_path=record.target_path,
             )
-            progress_type: PackageProgressEventType = "complete"
-        except Exception as exc:
-            removed = record.with_lifecycle("failed", error_message=str(exc))
-            progress_type = "error"
-        self._records[_record_key(source)] = removed
-        self._save_lockfile()
-        self._emit_progress(
-            progress_type,
-            "remove",
-            source,
-            message=removed.error_message,
-            target_path=removed.target_path,
-        )
-        return removed
+            try:
+                if record.target_path.exists():
+                    shutil.rmtree(record.target_path)
+                removed = record.with_lifecycle(
+                    "remote_registered", error_message=None
+                ).with_git_state(
+                    installed_commit="",
+                    resolved_commit="",
+                    dirty=False,
+                )
+                progress_type: PackageProgressEventType = "complete"
+            except Exception as exc:
+                removed = record.with_lifecycle("failed", error_message=str(exc))
+                progress_type = "error"
+            self._records[_record_key(source)] = removed
+            self._save_lockfile()
+            self._emit_progress(
+                progress_type,
+                "remove",
+                source,
+                message=removed.error_message,
+                target_path=removed.target_path,
+            )
+            return removed
 
     def forget_remote_source(self, source: str) -> None:
         record_key = _record_key(source)
@@ -1272,30 +1290,31 @@ class PackageMaterializer:
         backend = self._backend_for_record(record)
         if backend is None:
             return record
-        self._emit_progress(
-            "start",
-            action,
-            source,
-            message=_progress_message(action, source),
-            target_path=record.target_path,
-        )
-        try:
-            result = backend(record)
-            if inspect.isawaitable(result):
-                result = await result
-        except Exception as exc:
-            result = record.with_lifecycle("failed", error_message=str(exc))
-        self._emit_progress(
-            "error" if result.lifecycle == "failed" else "complete",
-            action,
-            source,
-            message=result.error_message,
-            target_path=result.target_path,
-        )
-        if persist:
-            self._records[_record_key(source)] = result
-            self._save_lockfile()
-        return result
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                action,
+                source,
+                message=_progress_message(action, source),
+                target_path=record.target_path,
+            )
+            try:
+                result = backend(record)
+                if inspect.isawaitable(result):
+                    result = await result
+            except Exception as exc:
+                result = record.with_lifecycle("failed", error_message=str(exc))
+            self._emit_progress(
+                "error" if result.lifecycle == "failed" else "complete",
+                action,
+                source,
+                message=result.error_message,
+                target_path=result.target_path,
+            )
+            if persist:
+                self._records[_record_key(source)] = result
+                self._save_lockfile()
+            return result
 
     def _run_backend_for_record_sync(
         self,
@@ -1324,32 +1343,33 @@ class PackageMaterializer:
         backend = self._backend_for_record(record)
         if backend is None:
             return record
-        self._emit_progress(
-            "start",
-            action,
-            source,
-            message=_progress_message(action, source),
-            target_path=record.target_path,
-        )
-        try:
-            result = backend(record)
-            if inspect.isawaitable(result):
-                raise RuntimeError(
-                    "Package materializer backend is async and cannot run during synchronous bootstrap."
-                )
-        except Exception as exc:
-            result = record.with_lifecycle("failed", error_message=str(exc))
-        self._emit_progress(
-            "error" if result.lifecycle == "failed" else "complete",
-            action,
-            source,
-            message=result.error_message,
-            target_path=result.target_path,
-        )
-        if persist:
-            self._records[_record_key(source)] = result
-            self._save_lockfile()
-        return result
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                action,
+                source,
+                message=_progress_message(action, source),
+                target_path=record.target_path,
+            )
+            try:
+                result = backend(record)
+                if inspect.isawaitable(result):
+                    raise RuntimeError(
+                        "Package materializer backend is async and cannot run during synchronous bootstrap."
+                    )
+            except Exception as exc:
+                result = record.with_lifecycle("failed", error_message=str(exc))
+            self._emit_progress(
+                "error" if result.lifecycle == "failed" else "complete",
+                action,
+                source,
+                message=result.error_message,
+                target_path=result.target_path,
+            )
+            if persist:
+                self._records[_record_key(source)] = result
+                self._save_lockfile()
+            return result
 
     def _source_record(self, source: str) -> PackageMaterializationRecord:
         identity = PackageSourceIdentity.parse(source)
@@ -1702,10 +1722,13 @@ class PackageMaterializer:
             if local_binding_history.get(key) != baseline_binding_history.get(key)
         }
         try:
-            with journal_file_lock(
-                self.lockfile_path,
-                "exclusive",
-                lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            with (
+                self._legacy_write_guard(),
+                journal_file_lock(
+                    self.lockfile_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                ),
             ):
                 self._replace_lockfile_state_from_disk_unlocked()
                 if (

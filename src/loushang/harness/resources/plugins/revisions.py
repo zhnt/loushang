@@ -45,13 +45,22 @@ class PluginRevisionError(RuntimeError):
 
 @contextmanager
 def _legacy_revision_publication_guard(root: Path) -> Iterator[None]:
-    if not sys.platform.startswith("linux") or root.name != "plugin-revisions":
+    if root.name != "plugin-revisions":
+        yield
+        return
+
+    with _legacy_package_epoch_write_guard(root.parent):
+        yield
+
+
+@contextmanager
+def _legacy_package_epoch_write_guard(legacy_root: Path) -> Iterator[None]:
+    if not sys.platform.startswith("linux"):
         yield
         return
 
     import fcntl
 
-    legacy_root = root.parent
     authority_root = legacy_root.parent
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     try:
@@ -76,7 +85,7 @@ def _legacy_revision_publication_guard(root: Path) -> Iterator[None]:
                     raise PluginRevisionError(
                         "Legacy Plugin revision root is fenced by a Package epoch",
                         code="plugin_revision_epoch_fenced",
-                        path=root,
+                        path=legacy_root,
                     )
             finally:
                 os.close(epochs_fd)

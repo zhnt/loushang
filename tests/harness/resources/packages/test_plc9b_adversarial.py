@@ -4498,6 +4498,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
     if checked_in_base:
+        from loushang.harness.policy import PolicyDecision
         from loushang.harness.resources.packages.materializer import PackageMaterializer
         from loushang.harness.resources.plugins.manifest import PluginManifestParser
         from loushang.harness.resources.plugins.revisions import PluginRevisionStore
@@ -4516,6 +4517,39 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         with pytest.raises(PluginRevisionError) as direct_materialize:
             legacy_materializer.publish_plugin_packages((old_package,))
         assert direct_materialize.value.code == "plugin_revision_epoch_fenced"
+        before_direct_prepare = legacy_layout.package_lockfile.read_bytes()
+        with pytest.raises(PluginRevisionError) as direct_prepare:
+            legacy_materializer.prepare_remote_source(
+                "https://packages.example.test/legacy-plugin.git"
+            )
+        assert direct_prepare.value.code == "plugin_revision_epoch_fenced"
+        assert legacy_layout.package_lockfile.read_bytes() == before_direct_prepare
+
+        class AllowLegacySource:
+            def evaluate_package_source(self, _source: str | Path) -> PolicyDecision:
+                return PolicyDecision.allow()
+
+        backend_calls = []
+
+        def direct_backend(record):
+            backend_calls.append(record.source)
+            record.target_path.mkdir(parents=True)
+            (record.target_path / "bypass.txt").write_bytes(b"legacy write")
+            return record.with_lifecycle("installed")
+
+        direct_backend_materializer = PackageMaterializer(
+            install_root=legacy_layout.package_install_root,
+            lockfile_path=legacy_layout.package_lockfile,
+            plugin_revision_root=legacy_layout.plugin_revision_root,
+            backend=direct_backend,
+            security_policy=AllowLegacySource(),
+        )
+        with pytest.raises(PluginRevisionError) as direct_backend_write:
+            direct_backend_materializer.materialize_temporary_remote_source_sync(
+                "https://packages.example.test/legacy-plugin.git"
+            )
+        assert direct_backend_write.value.code == "plugin_revision_epoch_fenced"
+        assert backend_calls == []
     snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
     assert snapshot_evidence is not None
     assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
