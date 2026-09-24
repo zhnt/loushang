@@ -31,10 +31,13 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 )
 from loushang.harness.plugin_management.package_product import (
     CommittedSetPackageRevisionProjection,
+    PackageProductRuntimeReadError,
     PackageProductSelectedRootReader,
+    PackageProductSelectedRootSnapshotV1,
     PluginManagementCommandSubmitPort,
     PluginManagementPackageDesiredStateAdapter,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageAcquisitionBudgetV1,
@@ -147,6 +150,99 @@ from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
 )
+from loushang.harness.resources.plugins.manifest import (
+    InertPluginFileManifest,
+    PluginManifestError,
+    PluginManifestParser,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedPluginManifestV1:
+    """Policy-chosen inert manifest plus its complete admitted root evidence."""
+
+    snapshot: PackageProductSelectedRootSnapshotV1
+    manifest: InertPluginFileManifest
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.snapshot, PackageProductSelectedRootSnapshotV1):
+            raise TypeError("Selected Plugin manifest requires Product root evidence")
+        if not isinstance(self.manifest, InertPluginFileManifest):
+            raise TypeError("Selected Plugin manifest requires inert metadata")
+        if (
+            self.manifest.name != self.snapshot.installation_key.plugin_id
+            or self.manifest.version != self.snapshot.root_ref.version
+        ):
+            raise ValueError("Selected Plugin manifest changed Product identity")
+        root = self.manifest.root_relative_path.as_posix()
+        manifest_path = "plugin.json" if root == "." else f"{root}/plugin.json"
+        body = dict(self.snapshot.files).get(manifest_path)
+        if body is None or sha256(body).hexdigest() != self.manifest.manifest_digest:
+            raise ValueError("Selected Plugin manifest changed root bytes")
+
+
+@dataclass(frozen=True, slots=True)
+class _LocalWheelSelectedManifestReader:
+    policy: PackageProductLocalWheelPolicy
+    root_reader: PackageProductSelectedRootReader
+
+    def capture_selected_manifest(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        if (
+            not isinstance(installation_key, PluginInstallationKeyV1)
+            or installation_key.product_id != self.policy.product_id
+            or installation_key.scope_id != self.policy.project_scope_id
+        ):
+            raise PackageProductRuntimeReadError(
+                "Product Plugin manifest scope changed",
+                code="package_product_root_scope_changed",
+            )
+        snapshot = self.root_reader.capture_selected_root(
+            installation_key,
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
+        matches = tuple(
+            binding
+            for binding in self.policy.bindings
+            if binding.plugin_id == installation_key.plugin_id
+            and binding.source_identity
+            == snapshot.package_revision.package_source_identity
+            and binding.artifact_digest == snapshot.root_ref.artifact_digest
+            and binding.plugin_manifest_path is not None
+        )
+        if len(matches) != 1:
+            raise PackageProductRuntimeReadError(
+                "Selected Plugin manifest has no exact Product policy binding",
+                code="package_product_manifest_unbound",
+            )
+        manifest_path = matches[0].plugin_manifest_path
+        assert manifest_path is not None
+        try:
+            manifest = PluginManifestParser().parse_file_set(
+                dict(snapshot.files), manifest_logical_path=manifest_path
+            )
+        except PluginManifestError as exc:
+            raise PackageProductRuntimeReadError(
+                "Selected Plugin manifest failed inert parsing",
+                code="package_product_manifest_invalid",
+            ) from exc
+        if (
+            manifest.name != installation_key.plugin_id
+            or manifest.version != snapshot.root_ref.version
+        ):
+            raise PackageProductRuntimeReadError(
+                "Selected Plugin manifest changed Product identity",
+                code="package_product_manifest_mismatch",
+            )
+        return PackageProductSelectedPluginManifestV1(
+            snapshot=snapshot, manifest=manifest
+        )
 
 
 class _PosixStoreRootAdmission(PackageEpochRuntimeAdmissionOwner):
@@ -433,21 +529,25 @@ def compose_posix_local_wheel_product(
         committed_sets=committed_sets,
         manifest_path=state_root / "update-manifests.jsonl",
     )
+    selected_root_reader = PackageProductSelectedRootReader(
+        product_id=policy.product_id,
+        scope_id=policy.project_scope_id,
+        installation_scope="workspace",
+        desired_state=desired_state,
+        bindings=gc_bindings,
+        committed_sets=committed_sets,
+        root_settlements=root_settlements,
+        root_store=root_store,
+        gc_gate=gc_gate,
+    )
     return PackageProductRuntimeBindingV1(
         product_id=policy.product_id,
         lifecycle=lifecycle,
         inventory=inventory,
         mode="enforced",
-        _selected_root_reader=PackageProductSelectedRootReader(
-            product_id=policy.product_id,
-            scope_id=policy.project_scope_id,
-            installation_scope="workspace",
-            desired_state=desired_state,
-            bindings=gc_bindings,
-            committed_sets=committed_sets,
-            root_settlements=root_settlements,
-            root_store=root_store,
-            gc_gate=gc_gate,
+        _selected_root_reader=selected_root_reader,
+        _selected_manifest_reader=_LocalWheelSelectedManifestReader(
+            policy=policy, root_reader=selected_root_reader
         ),
     )
 
@@ -635,4 +735,8 @@ def _directory_identity(path: Path) -> str | None:
         os.close(fd)
 
 
-__all__ = ["PosixLocalWheelProductRuntimeFactory", "compose_posix_local_wheel_product"]
+__all__ = [
+    "PackageProductSelectedPluginManifestV1",
+    "PosixLocalWheelProductRuntimeFactory",
+    "compose_posix_local_wheel_product",
+]

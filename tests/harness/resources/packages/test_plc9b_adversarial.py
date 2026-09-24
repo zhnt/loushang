@@ -4276,6 +4276,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 ),
                 plugin_id="coding.base" if checked_in_base else "acme.plugin",
                 artifact_digest=sha256(payload).hexdigest(),
+                plugin_manifest_path=(
+                    "coding_base/plugin.json" if checked_in_base else None
+                ),
             ),
         ),
         dependencies=(
@@ -5184,6 +5187,11 @@ while True:
                         key, max_files=64, max_total_bytes=1024 * 1024
                     )
                 assert disabled_capture.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_manifest:
+                    runtime.capture_selected_plugin_manifest(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert disabled_manifest.value.code == "package_product_root_not_selected"
                 enabled = management.submit(
                     PluginManagementCommandV1(
                         action="enable",
@@ -5239,6 +5247,44 @@ while True:
                     dict(captured.files)[path] == body
                     for path, body in base_files.items()
                 )
+                selected_manifest = runtime.capture_selected_plugin_manifest(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert selected_manifest.snapshot == captured
+                from loushang.harness.resources.plugins.manifest import (
+                    PluginManifestError,
+                    PluginManifestParser,
+                )
+
+                manifest_path = policy.bindings[0].plugin_manifest_path
+                assert manifest_path == "coding_base/plugin.json"
+                parsed = selected_manifest.manifest
+                assert parsed.name == "coding.base"
+                assert parsed.version == "1"
+                assert parsed.root_relative_path.as_posix() == "coding_base"
+                assert tuple(
+                    item.contribution_id for item in parsed.contribution_index.items
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
+                missing_declaration = dict(captured.files)
+                del missing_declaration["coding_base/declarations/plugin.json"]
+                with pytest.raises(PluginManifestError) as missing_source:
+                    PluginManifestParser().parse_file_set(
+                        missing_declaration,
+                        manifest_logical_path=manifest_path,
+                    )
+                assert missing_source.value.code == "invalid_plugin_contribution_entrypoint"
+                with pytest.raises(PluginManifestError) as wrong_manifest:
+                    PluginManifestParser().parse_file_set(
+                        dict(captured.files),
+                        manifest_logical_path="coding_base/declarations/plugin.json",
+                    )
+                assert wrong_manifest.value.code == "invalid_plugin_manifest"
                 with pytest.raises(PackageProductRuntimeReadError) as capture_budget:
                     runtime.capture_selected_plugin_root(
                         key, max_files=64, max_total_bytes=1
@@ -5367,6 +5413,13 @@ while True:
                             key, max_files=64, max_total_bytes=1024 * 1024
                         )
                     assert closed_capture.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(
+                        PackageProductRuntimeActivationError
+                    ) as closed_manifest:
+                        runtime.capture_selected_plugin_manifest(
+                            key, max_files=64, max_total_bytes=1024 * 1024
+                        )
+                    assert closed_manifest.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"

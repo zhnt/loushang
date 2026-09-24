@@ -19,6 +19,9 @@ if TYPE_CHECKING:
         PackageProductSelectedRootSnapshotV1,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+    from loushang.harness.resources.packages.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
 
 PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION = 1
 PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION = 1
@@ -60,6 +63,16 @@ class PackageProductSelectedRootReadPort(Protocol):
     ) -> PackageProductSelectedRootSnapshotV1: ...
 
 
+class PackageProductSelectedManifestReadPort(Protocol):
+    def capture_selected_manifest(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1: ...
+
+
 @dataclass(frozen=True, slots=True)
 class PackageProductRuntimeRequestV1:
     """Identity-only request used by a Product to select its runtime owners."""
@@ -95,6 +108,9 @@ class PackageProductRuntimeBindingV1:
     mode: PackageProductLifecycleMode
     binding_version: int = PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION
     _selected_root_reader: PackageProductSelectedRootReadPort | None = field(
+        default=None, kw_only=True, repr=False, compare=False
+    )
+    _selected_manifest_reader: PackageProductSelectedManifestReadPort | None = field(
         default=None, kw_only=True, repr=False, compare=False
     )
     on_dispose: Callable[[], None] | None = field(
@@ -136,6 +152,10 @@ class PackageProductRuntimeBindingV1:
             getattr(self._selected_root_reader, "capture_selected_root", None)
         ):
             raise TypeError("Package Product selected-root capture is invalid")
+        if self._selected_manifest_reader is not None and not callable(
+            getattr(self._selected_manifest_reader, "capture_selected_manifest", None)
+        ):
+            raise TypeError("Package Product selected-manifest reader is invalid")
 
     @property
     def binding_id(self) -> str:
@@ -210,6 +230,32 @@ class PackageProductRuntimeBindingV1:
                     code="package_product_root_reader_unavailable",
                 )
             return self._selected_root_reader.capture_selected_root(
+                installation_key,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
+
+    def capture_selected_plugin_manifest(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        """Parse only the manifest bound to this Product's pinned root policy."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_manifest_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-manifest reader is unavailable",
+                    code="package_product_manifest_reader_unavailable",
+                )
+            return self._selected_manifest_reader.capture_selected_manifest(
                 installation_key,
                 max_files=max_files,
                 max_total_bytes=max_total_bytes,
@@ -326,6 +372,7 @@ __all__ = [
     "PackageProductRuntimeBindingV1",
     "PackageProductRuntimeFactoryPort",
     "PackageProductRuntimeRequestV1",
+    "PackageProductSelectedManifestReadPort",
     "PackageProductSelectedRootReadPort",
     "activate_package_product_runtime",
 ]

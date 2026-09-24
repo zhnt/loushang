@@ -92,6 +92,19 @@ def test_configured_local_wheel_is_plugin_bound_by_durable_product_facts(
     assert policy.recheck(request, status.classification) == status.classification
 
 
+def test_plugin_manifest_path_is_an_exact_product_policy_fact(tmp_path: Path) -> None:
+    policy = _policy(tmp_path)
+    (binding,) = policy.bindings
+    with pytest.raises(ValueError, match="manifest path is invalid"):
+        replace(binding, plugin_manifest_path="../plugin.json")
+    with pytest.raises(ValueError, match="must name plugin.json"):
+        replace(binding, plugin_manifest_path="acme_plugin/declarations.json")
+
+    selected = replace(binding, plugin_manifest_path="acme_plugin/plugin.json")
+    updated = replace(policy, bindings=(selected,))
+    assert updated.authority_revision != policy.authority_revision
+
+
 def test_unknown_or_wrong_scope_source_is_durably_indeterminate(
     tmp_path: Path,
 ) -> None:
