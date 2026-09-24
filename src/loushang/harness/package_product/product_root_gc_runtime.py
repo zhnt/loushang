@@ -130,6 +130,28 @@ class PosixLocalWheelProductRootGcOwner:
             self._require_no_open_transaction_pins()
             return self.application.execute(command)
 
+    def retry_started(
+        self,
+        reservation_id: str,
+        *,
+        operation_id: str,
+        idempotency_key: str,
+    ) -> PluginPackageGcAttemptV1:
+        """Retry one durable deletion start without recapturing a candidate."""
+
+        with self._offline():
+            self._require_no_open_transaction_pins()
+            if self.product.gc_gate.deletion_start(reservation_id) is None:
+                raise PackageProductGcExecutionError(
+                    "Package GC deletion has not started",
+                    code="plugin_package_gc_deletion_not_started",
+                )
+            return self.application.executor.execute(
+                reservation_id,
+                operation_id=operation_id,
+                idempotency_key=idempotency_key,
+            )
+
     def statuses(self) -> tuple[PackageProductRootGcStatusV1, ...]:
         with self._offline():
             return self.read_model.snapshot()

@@ -17,8 +17,9 @@
   root-GC executor. D3g adds an explicit Product command over an exact GC
   candidate and an explicit root Store method. D3h joins reservation, result,
   and root fences in a read-only operator view. D3i composes the real fenced
-  POSIX Product Store for explicit offline GC; default transport selection,
-  Windows execution evidence, shared dependency GC, private-data
+  POSIX Product Store for explicit offline GC; D3j adds its declared operator
+  CLI. Default management/RPC selection, Windows execution evidence, shared
+  dependency GC, private-data
   confirmation, and backup projection remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
@@ -90,7 +91,10 @@ Neither may silently override a narrower implemented owner contract.
   owners without granting deletion or asserting private-data/backup effects.
 - [PLC9D3i Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
   joins the real B Product owners behind offline runtime quiescence, transaction
-  recovery, and an exact Store root; no transport selects the command yet.
+  recovery, and an exact Store root.
+- [PLC9D3j Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md)
+  exposes separate preparation, candidate/status, exact deletion, and
+  durable-start retry through an offline POSIX operator CLI.
 
 ## Frozen Contracts
 

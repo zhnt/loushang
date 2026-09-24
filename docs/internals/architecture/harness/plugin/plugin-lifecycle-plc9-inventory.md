@@ -58,6 +58,10 @@
   [Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
   binds the real B Product owners and exact POSIX Store behind an explicit
   offline, no-active-Session gate. No default transport route selects it.
+- PLC9D3j refinement:
+  [Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md) selects
+  that owner through a declared POSIX operator CLI with separate prepare,
+  candidate/status, exact delete, and durable-start retry actions.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -930,7 +934,7 @@ publication outside those exact canaries.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
-| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` and `src/loushang/harness/package_product/product_gc_executor.py::PackageProductRootGcReadModel` | D1 projects every known revision and cleanup blocker; D3h projects active root-GC reservations and durable result/debt, verifying both root fences before success; D3i explicitly composes real POSIX Product owners while excluding active Session leases | Retain as internal read-only evidence; default transport selection, operator repair, and Windows native execution remain open |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel`, `src/loushang/harness/package_product/product_gc_executor.py::PackageProductRootGcReadModel`, and `src/loushang/coding/cli/package_gc.py::main` | D1 projects every known revision and cleanup blocker; D3h projects active root-GC reservations and durable result/debt, verifying both root fences before success; D3i composes real POSIX Product owners while excluding active Session leases; D3j exposes explicit offline CLI preparation, status, deletion, and started-deletion retry | Retain pathless operator evidence; default management/RPC selection, terminal debt repair, and Windows native execution remain open |
 
 | GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
@@ -975,9 +979,8 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- default transport selection of the explicitly composed D3i artifact-GC
-  command, operator repair for GC debt, and Windows native Product execution
-  evidence;
+- default management/RPC selection beyond the declared D3j offline GC CLI,
+  terminal GC debt repair, and Windows native Product execution evidence;
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

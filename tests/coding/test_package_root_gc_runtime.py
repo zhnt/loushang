@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -51,13 +56,13 @@ def test_fenced_coding_product_gc_excludes_live_session_and_deletes_exact_root(
         settings,
         workspace=workspace,
         namespace_id="c" * 64,
-        runtime_version="2.0.0",
+        runtime_version=version("loushang"),
         runtime_protocol_epoch=2,
     )
     owner = open_coding_fenced_product_application_owner(
         lifecycle,
         workspace=workspace,
-        runtime_version="2.0.0",
+        runtime_version=version("loushang"),
         runtime_protocol_epoch=2,
     )
     try:
@@ -156,7 +161,7 @@ def test_fenced_coding_product_gc_excludes_live_session_and_deletes_exact_root(
     reopened_owner = open_coding_fenced_product_application_owner(
         lifecycle,
         workspace=workspace,
-        runtime_version="2.0.0",
+        runtime_version=version("loushang"),
         runtime_protocol_epoch=2,
     )
     try:
@@ -168,5 +173,99 @@ def test_fenced_coding_product_gc_excludes_live_session_and_deletes_exact_root(
         assert recovered.state == "succeeded"
         assert recovered.latest_attempt == result
         assert private_marker.read_text(encoding="utf-8") == "keep"
+
+        product = reopened_owner.runtime_owner.product_owner
+        state = product.desired_state.snapshot()
+        lsp = next(
+            item
+            for item in state.installations
+            if item.installation_key.plugin_id == "coding.lsp.default"
+        )
+        lsp_revision = lsp.selection.package_revision
+        assert lsp_revision is not None
+        removal = product.management.submit(
+            PluginManagementCommandV1(
+                action="remove",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id="operator:remove-lsp-after-gc",
+                    idempotency_key="operator:remove-lsp-after-gc",
+                    expected_inventory_revision=state.inventory_revision,
+                    installation_key=lsp.installation_key,
+                    desired_state="absent",
+                    package_revision=None,
+                    actor_id="operator",
+                    policy_revision="operator:1",
+                ),
+            )
+        )
+        assert removal.result is not None
+        assert removal.result.disposition == "succeeded"
+        lsp_candidate = next(
+            item
+            for item in reopened_gc.candidates()
+            if item.package_revision == lsp_revision
+        )
+        lsp_target = resolve_plugin_package_gc_root_target(
+            lsp_revision,
+            bindings=product.gc_bindings.records(),
+            claims=product.gc_bindings.claims(),
+            committed_sets=reopened_gc.application.executor.committed_sets.records(),
+            settlements=reopened_gc.application.executor.root_settlements.records(),
+        )
+        lsp_root = product.plugin_store_root / lsp_target.settlement.final_name
+        assert lsp_root.is_dir()
+        lsp_command = PackageProductRootGcCommandV1(
+            candidate=lsp_candidate,
+            reservation_operation_id="operator:gc-reserve-lsp",
+            reservation_idempotency_key="operator:gc-reserve-lsp",
+            attempt_operation_id="operator:gc-delete-lsp",
+            attempt_idempotency_key="operator:gc-delete-lsp",
+        )
+        with patch.object(
+            reopened_gc.application.executor.results,
+            "record",
+            side_effect=RuntimeError("injected crash after physical deletion"),
+        ):
+            with pytest.raises(RuntimeError, match="injected crash"):
+                reopened_gc.execute(lsp_command)
+        assert not lsp_root.exists()
+        started = next(
+            item
+            for item in reopened_gc.statuses()
+            if item.reservation.candidate == lsp_candidate
+        )
+        assert started.state == "deletion_started"
+        assert started.latest_attempt is None
+
+        recovery = subprocess.run(
+            (
+                sys.executable,
+                "-m",
+                "loushang.coding.cli.package_gc",
+                "--workspace",
+                str(workspace),
+                "retry",
+                "--reservation-id",
+                started.reservation.reservation_id,
+                "--attempt-key",
+                "crash-recovery",
+            ),
+            env={**os.environ, "LOUSHANG_HOME": str(tmp_path / "private-home")},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=90,
+        )
+        assert recovery.returncode == 0, recovery.stderr
+        assert json.loads(recovery.stdout)["disposition"] == "succeeded"
+        recovered_lsp = next(
+            item
+            for item in reopened_gc.statuses()
+            if item.reservation.candidate == lsp_candidate
+        )
+        assert recovered_lsp.state == "succeeded"
+        assert recovered_lsp.latest_attempt is not None
+        assert recovered_lsp.latest_attempt.store_result is not None
+        assert recovered_lsp.latest_attempt.store_result.disposition == "already_absent"
     finally:
         reopened_owner.close()

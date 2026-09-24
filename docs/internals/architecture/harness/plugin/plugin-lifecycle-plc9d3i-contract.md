@@ -2,8 +2,9 @@
 
 ## Status
 
-- Tracking: PLC9 `#509`. This is an explicit offline POSIX Product composition,
-  not a default CLI, RPC, UI, SDK, or scheduled deletion route.
+- Tracking: PLC9 `#509`. This is an explicit offline POSIX Product composition.
+  D3j subsequently adds a declared offline CLI route; no default management,
+  RPC, UI, SDK, or scheduled deletion route selects it.
 - The Product owner supplies its already fenced B Store, desired-state and
   management owners, GC reservation gate, and exact handoff crosswalk. Opening
   the composition does not prepare GC or delete anything.
@@ -34,8 +35,8 @@ the Plugin reference graph is sealed.
 
 ## Remaining Closure
 
-No transport selects this composition yet. Existing pre-B Coding state still
-requires explicit adoption or migration before Product cutover; this
+Only the later D3j offline CLI selects this composition. Existing pre-B Coding
+state still requires explicit adoption or migration before Product cutover; this
 composition only addresses B-owned revisions with a complete handoff
-crosswalk. Windows Product composition, GC debt repair, private-data deletion
-confirmation, and correlated backup status remain separate work.
+crosswalk. Windows Product composition, terminal GC debt repair, private-data
+deletion confirmation, and correlated backup status remain separate work.
