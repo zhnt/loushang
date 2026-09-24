@@ -5368,6 +5368,126 @@ while True:
                         command.name
                         for command in product_coding_session.list_commands()
                     }
+                    from loushang.apphost import (
+                        SessionBindingKeyV1,
+                        SessionCreateIntentV1,
+                        SessionCreateRequestV1,
+                    )
+                    from loushang.appserver.protocol import SessionScopeV1
+                    from loushang.coding.hosted_catalog import (
+                        CODING_HOSTED_COMPATIBILITY_ID,
+                        CodingHostedScopeV1,
+                        CodingHostedSessionCatalogV1,
+                    )
+                    from loushang.coding.hosted_session import (
+                        CodingRealHostedSessionFactoryV1,
+                    )
+
+                    async def product_hosted_session() -> None:
+                        hosted_scope = CodingHostedScopeV1(
+                            SessionScopeV1.CWD,
+                            tmp_path / "product-hosted-sessions",
+                            workspace,
+                        )
+                        catalog = CodingHostedSessionCatalogV1((hosted_scope,))
+                        candidate = await catalog.create_candidate(
+                            SessionCreateIntentV1(
+                                SessionCreateRequestV1(
+                                    "coding",
+                                    hosted_scope.fingerprint,
+                                    "b" * 32,
+                                    requested_continuity_id="product-hosted",
+                                    requested_scope=hosted_scope.discovery_scope,
+                                ),
+                                CODING_HOSTED_COMPATIBILITY_ID,
+                            )
+                        )
+                        claimed = await candidate.claim()
+                        identity = claimed.opaque_binding.record.identity
+                        selected_sessions: list[str] = []
+                        prior_leases = len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        )
+
+                        def select_hosted(manager: SessionManager):
+                            selected_sessions.append(
+                                manager.get_header().conversation_id
+                            )
+                            lease = register_package_product_runtime_lease(
+                                registry,
+                                fence=fence,
+                                runtime_id="runtime:product-hosted-startup",
+                                runtime_version="2.0.0",
+                                runtime_protocol_epoch=2,
+                            )
+                            return replace(
+                                factory,
+                                expected_session_id=selected_sessions[-1],
+                                runtime_lease=lease,
+                            )
+
+                        hosted_factory = CodingRealHostedSessionFactoryV1(
+                            services_factory=lambda _cwd: create_services(
+                                settings_manager=SettingsManager(
+                                    ControlConfig(
+                                        capabilities={"coding.lsp": "disabled"}
+                                    )
+                                )
+                            ),
+                            model=Model(
+                                id="plc9b-product-hosted",
+                                name="PLC9B Product Hosted",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            tools=[],
+                            package_product_runtime_factory_for_session=select_hosted,
+                        )
+                        hosted = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy coding.base assembly"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy package materializer"),
+                                ),
+                            ):
+                                hosted = await hosted_factory.create_session(
+                                    binding_key=SessionBindingKeyV1(
+                                        identity.product_id,
+                                        identity.continuity_id,
+                                        identity.session_id,
+                                    ),
+                                    opaque_session_binding=claimed.opaque_binding,
+                                )
+                            assert selected_sessions == [identity.session_id]
+                            assert hosted.control._package_controller.get_package_materializer() is None
+                            assert any(
+                                command.name == "standard" and command.source == "prompt"
+                                for command in hosted.control.list_commands()
+                            )
+                            await hosted.control.prepare_model_call_runtime()
+                            assert "skill:standard" in {
+                                command.name for command in hosted.control.list_commands()
+                            }
+                        finally:
+                            if hosted is not None:
+                                await hosted.close()
+                            await claimed.close()
+                            await candidate.close()
+                        assert len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        ) == prior_leases
+
+                    asyncio.run(product_hosted_session())
                     disabled_again = management.submit(
                         PluginManagementCommandV1(
                             action="disable",
