@@ -150,6 +150,12 @@ from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
 )
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+    PluginDeclarationCodecError,
+    PluginDeclarationDocument,
+    PluginDeclarationDocumentCodec,
+)
 from loushang.harness.resources.plugins.manifest import (
     InertPluginFileManifest,
     PluginManifestError,
@@ -163,6 +169,7 @@ class PackageProductSelectedPluginManifestV1:
 
     snapshot: PackageProductSelectedRootSnapshotV1
     manifest: InertPluginFileManifest
+    declaration_documents: tuple[tuple[str, PluginDeclarationDocument], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.snapshot, PackageProductSelectedRootSnapshotV1):
@@ -179,6 +186,30 @@ class PackageProductSelectedPluginManifestV1:
         body = dict(self.snapshot.files).get(manifest_path)
         if body is None or sha256(body).hexdigest() != self.manifest.manifest_digest:
             raise ValueError("Selected Plugin manifest changed root bytes")
+        paths = tuple(path for path, _ in self.declaration_documents)
+        if paths != tuple(sorted(set(paths))):
+            raise ValueError("Selected Plugin declaration paths are not canonical")
+        prefix = "" if root == "." else f"{root}/"
+        expected_paths = tuple(
+            sorted(
+                {
+                    f"{prefix}{item.declaration_source.relative_path.as_posix()}"
+                    for item in self.manifest.contribution_index.items
+                    if item.declaration_source.kind == "document"
+                }
+            )
+        )
+        if paths != expected_paths:
+            raise ValueError("Selected Plugin declarations are incomplete")
+        members = dict(self.snapshot.files)
+        for path, document in self.declaration_documents:
+            body = members.get(path)
+            if (
+                not isinstance(document, PluginDeclarationDocument)
+                or body is None
+                or sha256(body).hexdigest() != document.bytes_digest
+            ):
+                raise ValueError("Selected Plugin declaration changed root bytes")
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,8 +271,46 @@ class _LocalWheelSelectedManifestReader:
                 "Selected Plugin manifest changed Product identity",
                 code="package_product_manifest_mismatch",
             )
+        root = manifest.root_relative_path.as_posix()
+        root_prefix = "" if root == "." else f"{root}/"
+        reservations_by_path: dict[str, list[PluginContributionReservation]] = {}
+        for reservation in manifest.contribution_index.items:
+            source = reservation.declaration_source
+            if source.kind == "document":
+                path = f"{root_prefix}{source.relative_path.as_posix()}"
+                reservations_by_path.setdefault(path, []).append(reservation)
+        members = dict(snapshot.files)
+        documents: list[tuple[str, PluginDeclarationDocument]] = []
+        for path, reservations in sorted(reservations_by_path.items()):
+            try:
+                document = PluginDeclarationDocumentCodec.decode_bytes(members[path])
+            except (KeyError, PluginDeclarationCodecError) as exc:
+                raise PackageProductRuntimeReadError(
+                    "Selected Plugin declaration document is invalid",
+                    code="package_product_declaration_invalid",
+                ) from exc
+            expected = {item.contribution_id: item for item in reservations}
+            actual = {item.contribution_id: item for item in document.declarations}
+            if set(expected) != set(actual) or any(
+                declaration.plugin_id != manifest.name
+                or declaration.kind != reservation.kind
+                or declaration.owner != reservation.owner
+                or declaration.reservation_fingerprint != reservation.fingerprint
+                or declaration.source_descriptor_fingerprint
+                != reservation.source_descriptor_fingerprint
+                or declaration.source_kind != "document"
+                for contribution_id, reservation in expected.items()
+                for declaration in (actual[contribution_id],)
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected Plugin declaration changed its manifest reservation",
+                    code="package_product_declaration_mismatch",
+                )
+            documents.append((path, document))
         return PackageProductSelectedPluginManifestV1(
-            snapshot=snapshot, manifest=manifest
+            snapshot=snapshot,
+            manifest=manifest,
+            declaration_documents=tuple(documents),
         )
 
 

@@ -5251,6 +5251,46 @@ while True:
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
                 assert selected_manifest.snapshot == captured
+                assert tuple(
+                    path for path, _ in selected_manifest.declaration_documents
+                ) == ("coding_base/declarations/plugin.json",)
+                assert tuple(
+                    declaration.contribution_id
+                    for _, document in selected_manifest.declaration_documents
+                    for declaration in document.declarations
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
+                from loushang.harness.resources.packages.product_local_wheel_runtime import (
+                    _LocalWheelSelectedManifestReader,
+                )
+
+                assert isinstance(
+                    runtime._selected_root_reader, PackageProductSelectedRootReader
+                )
+                wrong_path_reader = _LocalWheelSelectedManifestReader(
+                    policy=replace(
+                        policy,
+                        bindings=(
+                            replace(
+                                policy.bindings[0],
+                                plugin_manifest_path=(
+                                    "coding_base/declarations/plugin.json"
+                                ),
+                            ),
+                        ),
+                    ),
+                    root_reader=runtime._selected_root_reader,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as wrong_path:
+                    wrong_path_reader.capture_selected_manifest(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert wrong_path.value.code == "package_product_manifest_invalid"
                 from loushang.harness.resources.plugins.manifest import (
                     PluginManifestError,
                     PluginManifestParser,
