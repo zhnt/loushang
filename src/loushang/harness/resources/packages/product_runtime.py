@@ -15,6 +15,9 @@ from loushang.harness.resources.packages.product_contract import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.plugin_management.package_product import (
+        PackageProductSelectedRootSnapshotV1,
+    )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION = 1
@@ -47,6 +50,14 @@ class PackageProductSelectedRootReadPort(Protocol):
         *,
         max_total_bytes: int,
     ) -> tuple[bytes, ...]: ...
+
+    def capture_selected_root(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedRootSnapshotV1: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +132,10 @@ class PackageProductRuntimeBindingV1:
             getattr(self._selected_root_reader, "read_selected_files", None)
         ):
             raise TypeError("Package Product selected-root batch reader is invalid")
+        if self._selected_root_reader is not None and not callable(
+            getattr(self._selected_root_reader, "capture_selected_root", None)
+        ):
+            raise TypeError("Package Product selected-root capture is invalid")
 
     @property
     def binding_id(self) -> str:
@@ -172,6 +187,32 @@ class PackageProductRuntimeBindingV1:
                 )
             return self._selected_root_reader.read_selected_files(
                 installation_key, logical_paths, max_total_bytes=max_total_bytes
+            )
+
+    def capture_selected_plugin_root(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedRootSnapshotV1:
+        """Capture one complete inert root before runtime package assembly."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_root_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-root reader is unavailable",
+                    code="package_product_root_reader_unavailable",
+                )
+            return self._selected_root_reader.capture_selected_root(
+                installation_key,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
             )
 
     def dispose_runtime(self) -> None:

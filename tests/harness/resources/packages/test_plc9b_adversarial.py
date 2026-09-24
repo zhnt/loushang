@@ -5179,6 +5179,11 @@ while True:
                         key, ("coding_base/plugin.json",), max_total_bytes=4096
                     )
                 assert disabled_batch.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_capture:
+                    runtime.capture_selected_plugin_root(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert disabled_capture.value.code == "package_product_root_not_selected"
                 enabled = management.submit(
                     PluginManagementCommandV1(
                         action="enable",
@@ -5215,6 +5220,33 @@ while True:
                 assert runtime.read_selected_plugin_files(
                     key, selected_paths, max_total_bytes=64 * 1024
                 ) == tuple(base_files[path] for path in selected_paths)
+                captured = runtime.capture_selected_plugin_root(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert captured.installation_key == key
+                assert (
+                    captured.root_ref.artifact_digest
+                    == captured.package_revision.package_content_digest
+                )
+                assert (
+                    captured.committed_record.committed_set.root_ref
+                    == captured.root_ref
+                )
+                assert tuple(path for path, _ in captured.files) == tuple(
+                    entry.logical_path for entry in captured.manifest.entries
+                )
+                assert all(
+                    dict(captured.files)[path] == body
+                    for path, body in base_files.items()
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as capture_budget:
+                    runtime.capture_selected_plugin_root(
+                        key, max_files=64, max_total_bytes=1
+                    )
+                assert (
+                    capture_budget.value.code
+                    == "package_product_root_capture_budget_exceeded"
+                )
                 with pytest.raises(PackageProductRuntimeReadError) as over_budget:
                     runtime.read_selected_plugin_files(
                         key, selected_paths, max_total_bytes=1
@@ -5328,6 +5360,13 @@ while True:
                             key, ("coding_base/plugin.json",), max_total_bytes=4096
                         )
                     assert closed_batch.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(
+                        PackageProductRuntimeActivationError
+                    ) as closed_capture:
+                        runtime.capture_selected_plugin_root(
+                            key, max_files=64, max_total_bytes=1024 * 1024
+                        )
+                    assert closed_capture.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"

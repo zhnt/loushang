@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Protocol
 
 from loushang.harness.plugin_management.gc_fence import (
@@ -34,6 +35,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
+    PackageCommittedSetRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDesiredStateCommitRequestV1,
@@ -42,6 +44,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PackageStoreSettlementJournal,
     PackageStoreSettlementRecordV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackageVerifiedTreeManifestV1,
 )
 
 PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION = 1
@@ -302,6 +307,76 @@ class PackageProductRuntimeReadError(RuntimeError):
         self.code = code
 
 
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedRootSnapshotV1:
+    """Complete Store-pathless bytes from one admitted Product selection.
+
+    This is inert data evidence, not a lease or permission to execute. The
+    Product reader constructs it only after checking live selection and Store.
+    """
+
+    installation_key: PluginInstallationKeyV1
+    package_revision: PluginPackageRevisionRefV1
+    committed_record: PackageCommittedSetRecordV1
+    root_ref: PluginRevisionRefV1
+    manifest: PackageVerifiedTreeManifestV1
+    files: tuple[tuple[str, bytes], ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.installation_key, PluginInstallationKeyV1):
+            raise TypeError("Selected root requires a Product installation key")
+        if not isinstance(self.package_revision, PluginPackageRevisionRefV1):
+            raise TypeError("Selected root requires a Product package revision")
+        if not isinstance(self.committed_record, PackageCommittedSetRecordV1):
+            raise TypeError("Selected root requires a committed Package set")
+        if not isinstance(self.root_ref, PluginRevisionRefV1):
+            raise TypeError("Selected root requires a Store root ref")
+        if not isinstance(self.manifest, PackageVerifiedTreeManifestV1):
+            raise TypeError("Selected root requires a verified tree manifest")
+        committed = self.committed_record.committed_set
+        root_node = next(
+            node
+            for node in self.committed_record.closure_lock.nodes
+            if node.node_id == self.committed_record.closure_lock.root_node_id
+        )
+        if (
+            self.installation_key.plugin_id != self.root_ref.plugin_id
+            or self.installation_key.product_id != committed.product_id
+            or self.installation_key.scope_id != committed.scope_id
+            or committed.plugin_id != self.root_ref.plugin_id
+            or committed.root_ref != self.root_ref
+            or self.package_revision.plugin_id != self.root_ref.plugin_id
+            or self.package_revision.plugin_version != self.root_ref.version
+            or self.package_revision.package_content_digest
+            != self.root_ref.artifact_digest
+            or self.package_revision.dependency_lock_digest
+            != committed.closure_lock_digest
+            or self.package_revision.package_source_identity
+            != root_node.plan_node.canonical_source_identity
+            or self.root_ref.artifact_digest != self.manifest.artifact_digest
+            or self.root_ref.extraction_tree_digest
+            != self.manifest.extraction_tree_digest
+            or committed.operation_id != self.manifest.operation_id
+            or committed.attempt_epoch != self.manifest.attempt_epoch
+        ):
+            raise ValueError("Selected Product revision and Store root changed")
+        if (
+            not isinstance(self.files, tuple)
+            or len(self.files) != len(self.manifest.entries)
+        ):
+            raise ValueError("Selected Store snapshot is incomplete")
+        for item, entry in zip(self.files, self.manifest.entries, strict=True):
+            if (
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or item[0] != entry.logical_path
+                or not isinstance(item[1], bytes)
+                or len(item[1]) != entry.byte_count
+                or sha256(item[1]).hexdigest() != entry.content_digest
+            ):
+                raise ValueError("Selected Store snapshot member changed")
+
+
 class PackageProductRootStoreReadPort(Protocol):
     def read_root_file(
         self,
@@ -363,7 +438,7 @@ class PackageProductSelectedRootReader:
         max_bytes: int,
     ) -> bytes:
         with self.gc_gate.guard() as reserved:
-            settlement = self._selected_settlement(installation_key, reserved)
+            _, _, settlement = self._selected_settlement(installation_key, reserved)
             return self.root_store.read_root_file(
                 settlement, logical_path, max_bytes=max_bytes
             )
@@ -392,7 +467,7 @@ class PackageProductSelectedRootReader:
         ):
             raise ValueError("Product selected-root read budget is invalid")
         with self.gc_gate.guard() as reserved:
-            settlement = self._selected_settlement(installation_key, reserved)
+            _, _, settlement = self._selected_settlement(installation_key, reserved)
             members = {
                 entry.logical_path: entry for entry in settlement.manifest.entries
             }
@@ -412,11 +487,68 @@ class PackageProductSelectedRootReader:
                 for path in logical_paths
             )
 
+    def capture_selected_root(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedRootSnapshotV1:
+        """Capture every verified root member under one Product/GC admission."""
+
+        if type(max_files) is not int or not 1 <= max_files <= 64:
+            raise ValueError("Product selected-root file budget is invalid")
+        if (
+            type(max_total_bytes) is not int
+            or not 0 <= max_total_bytes <= 16 * 1024 * 1024
+        ):
+            raise ValueError("Product selected-root byte budget is invalid")
+        with self.gc_gate.guard() as reserved:
+            package_revision, committed_record, settlement = self._selected_settlement(
+                installation_key, reserved
+            )
+            root_ref = settlement.receipt.stable_ref
+            if not isinstance(root_ref, PluginRevisionRefV1):
+                raise self._error(
+                    "Selected Store root has the wrong role",
+                    "package_product_root_unavailable",
+                )
+            entries = settlement.manifest.entries
+            if (
+                len(entries) > max_files
+                or settlement.manifest.total_byte_count > max_total_bytes
+            ):
+                raise self._error(
+                    "Selected Store root exceeds capture budget",
+                    "package_product_root_capture_budget_exceeded",
+                )
+            files = tuple(
+                (
+                    entry.logical_path,
+                    self.root_store.read_root_file(
+                        settlement, entry.logical_path, max_bytes=entry.byte_count
+                    ),
+                )
+                for entry in entries
+            )
+            return PackageProductSelectedRootSnapshotV1(
+                installation_key=installation_key,
+                package_revision=package_revision,
+                committed_record=committed_record,
+                root_ref=root_ref,
+                manifest=settlement.manifest,
+                files=files,
+            )
+
     def _selected_settlement(
         self,
         installation_key: PluginInstallationKeyV1,
         reserved: frozenset[PluginPackageRevisionRefV1],
-    ) -> PackageStoreSettlementRecordV1:
+    ) -> tuple[
+        PluginPackageRevisionRefV1,
+        PackageCommittedSetRecordV1,
+        PackageStoreSettlementRecordV1,
+    ]:
         if not isinstance(installation_key, PluginInstallationKeyV1):
             raise TypeError("Exact Product installation key is required")
         if (
@@ -511,7 +643,7 @@ class PackageProductSelectedRootReader:
                 "Selected Store root is unavailable",
                 "package_product_root_unavailable",
             )
-        return settlements[0]
+        return package_revision, committed_record, settlements[0]
 
     @staticmethod
     def _error(message: str, code: str) -> PackageProductRuntimeReadError:
@@ -537,6 +669,7 @@ __all__ = [
     "PackageProductGcAdmissionError",
     "PackageProductDesiredRevisionProjectionPort",
     "PackageProductRuntimeReadError",
+    "PackageProductSelectedRootSnapshotV1",
     "PackageProductRootStoreReadPort",
     "PackageProductSelectedRootReader",
     "PluginManagementCommandSubmitPort",
