@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
@@ -10,6 +11,7 @@ from importlib.metadata import version
 from pathlib import Path
 from threading import Lock
 
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs,
     PosixLocalWheelProductRuntimeFactory,
@@ -20,13 +22,22 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
+from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
+    PluginDesiredStateTransitionV1,
+    PluginInstallationKeyV1,
+)
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleIntentV1,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
@@ -41,7 +52,11 @@ from .package_builtin_wheel import (
     prepare_posix_coding_base_product_wheel,
     prepare_posix_coding_capability_product_wheels,
 )
-from .package_epoch_layout import resolve_coding_package_epoch_layout
+from .package_epoch_layout import (
+    resolve_coding_lifecycle_pre_b_members,
+    resolve_coding_package_epoch_layout,
+    resolve_coding_package_pre_b_store_members,
+)
 from .session_manager import SessionManager
 
 CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
@@ -280,6 +295,181 @@ def open_coding_fenced_product_application_owner(
         raise
 
 
+def bootstrap_coding_builtin_product_plugins(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> bool:
+    """Install and enable unseen first-party Plugins through the fenced Product.
+
+    Only a disabled selection committed by this exact bootstrap installation
+    may finish an interrupted enable. A later operator disable or remove is
+    never converted back into a default install.
+    """
+
+    require_fresh_coding_product_inputs(lifecycle, settings_manager)
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    try:
+        changed = False
+        for plugin_id in (
+            "coding.base",
+            "coding.lsp.default",
+            "coding.arch.default",
+        ):
+            changed = _bootstrap_coding_builtin_plugin(owner, plugin_id) or changed
+        return changed
+    finally:
+        owner.close()
+
+
+def require_fresh_coding_product_inputs(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+) -> None:
+    """Refuse to treat legacy settings or state as a fresh Product default."""
+
+    if not isinstance(settings_manager, SettingsManager):
+        raise TypeError("Coding settings manager is required")
+    settings = settings_manager.get_settings()
+    if (
+        settings.disabled_plugins
+        or settings.plugin_sources
+        or settings.package_roots
+        or settings.package_sources
+    ):
+        raise RuntimeError("Coding legacy Plugin settings require explicit migration")
+    state = resolve_coding_lifecycle_pre_b_members(lifecycle)
+    package = resolve_coding_package_pre_b_store_members(lifecycle)
+    if any(state.domain_members().values()) or any(package.domain_members().values()):
+        raise RuntimeError("Coding pre-B Plugin state requires explicit adoption")
+
+
+def _bootstrap_coding_builtin_plugin(
+    owner: CodingFencedProductApplicationOwner, plugin_id: str
+) -> bool:
+    product = owner.runtime_owner.product_owner
+    desired = product.desired_state
+    key = PluginInstallationKeyV1(
+        product_id="coding",
+        installation_scope="workspace",
+        scope_id=product.policy.project_scope_id,
+        plugin_id=plugin_id,
+    )
+    operation_id = (
+        "coding-builtin-bootstrap:"
+        + sha256(
+            f"{owner.epoch_runtime.registry.store_id}:{plugin_id}".encode()
+        ).hexdigest()
+    )
+    snapshot = desired.snapshot()
+    current = snapshot.installation(key).selection.desired_state
+    if current == "installed_enabled":
+        return False
+    if current == "absent" and any(
+        item.installation_key == key for item in snapshot.installations
+    ):
+        raise RuntimeError("Coding builtin Product bootstrap was removed")
+    bootstrap_id = f"coding-builtin-bootstrap:{secrets.token_hex(16)}"
+    factory = product.factory_for_session(
+        session_id=bootstrap_id,
+        cwd=product.workspace,
+        runtime_id=bootstrap_id,
+    )
+    binding: PackageProductRuntimeBindingV1 | None = None
+    try:
+        binding = factory.create(
+            PackageProductRuntimeRequestV1(
+                product_id="coding",
+                session_id=bootstrap_id,
+                cwd=str(product.workspace),
+            )
+        )
+        binding.activate()
+        if current == "absent":
+            source = next(
+                item.source_identity
+                for item in product.policy.bindings
+                if item.plugin_id == plugin_id
+            )
+            outcome = binding.lifecycle.route(
+                PackageProductLifecycleIntentV1(
+                    operation_id=operation_id,
+                    action="install",
+                    source=source,
+                    scope="project",
+                ),
+                entrypoint="startup",
+            )
+            if (
+                not outcome.handled
+                or outcome.record is None
+                or outcome.record.lifecycle != "installed"
+                or outcome.evidence.operation_id != operation_id
+            ):
+                raise RuntimeError("Coding builtin Product bootstrap install refused")
+        expected_command_id = product.settled_install_command_id(
+            operation_id=operation_id,
+            plugin_id=plugin_id,
+        )
+        if expected_command_id is None:
+            raise RuntimeError("Coding builtin Product bootstrap handoff is missing")
+    finally:
+        if binding is None:
+            factory.dispose_unbound_runtime()
+        else:
+            binding.dispose_runtime()
+
+    snapshot = desired.snapshot()
+    selected = snapshot.installation(key)
+    if selected.selection.desired_state != "installed_disabled":
+        raise RuntimeError("Coding builtin Product bootstrap selection changed")
+    prior = next(
+        (
+            transition
+            for transition in reversed(desired.transitions())
+            if transition.mutation.installation_key == key
+        ),
+        None,
+    )
+    if (
+        not isinstance(prior, PluginDesiredStateTransitionV1)
+        or prior.mutation.operation_id != expected_command_id
+        or prior.mutation.actor_id != product.actor_id
+        or prior.committed_state != selected
+    ):
+        raise RuntimeError("Coding builtin Product bootstrap was superseded")
+    enable_id = (
+        "coding-builtin-bootstrap-enable:"
+        + sha256(f"{operation_id}:{snapshot.inventory_revision}".encode()).hexdigest()
+    )
+    enabled = product.management.submit(
+        PluginManagementCommandV1(
+            action="enable",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id=enable_id,
+                idempotency_key=enable_id,
+                expected_inventory_revision=snapshot.inventory_revision,
+                installation_key=key,
+                desired_state="installed_enabled",
+                package_revision=None,
+                actor_id=product.actor_id,
+                policy_revision=product.desired_policy_revision,
+            ),
+        )
+    )
+    if enabled.result is None or enabled.result.disposition != "succeeded":
+        raise RuntimeError("Coding builtin Product bootstrap enable refused")
+    return True
+
+
 def open_coding_base_product_runtime_owner(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
@@ -436,6 +626,8 @@ __all__ = [
     "CodingSessionOwnedProductRuntimeFactory",
     "CodingPackageProductStateOwners",
     "CodingPosixLocalWheelProductRuntimeOwner",
+    "bootstrap_coding_builtin_product_plugins",
+    "require_fresh_coding_product_inputs",
     "open_coding_fenced_product_application_owner",
     "open_coding_base_product_runtime_owner",
     "open_coding_builtin_product_runtime_owner",

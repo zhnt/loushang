@@ -17,6 +17,10 @@ from loushang.coding.package_epoch_layout import (
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
+from loushang.coding.package_product_runtime import (
+    bootstrap_coding_builtin_product_plugins,
+    require_fresh_coding_product_inputs,
+)
 from loushang.coding.package_source_snapshot import (
     hold_coding_pre_b_source_configuration,
 )
@@ -88,13 +92,51 @@ def prepare_and_cutover_coding_package_store_from_legacy(
         )
 
 
+def cutover_and_bootstrap_coding_package_product(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    workspace: Path,
+    namespace_id: str,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> CodingPackagePreBCutover:
+    """Offline first B cutover of a fresh workspace, then install builtins.
+
+    A failed Product bootstrap leaves the durable B fence in force. The caller
+    may retry bootstrap, but may not resume a pre-fence writer against it.
+    """
+
+    prepare_coding_package_cutover_roots(lifecycle)
+    require_fresh_coding_product_inputs(lifecycle, settings_manager)
+    cutover = prepare_and_cutover_coding_package_store_from_legacy(
+        lifecycle,
+        settings_manager,
+        namespace_id=namespace_id,
+        minimum_runtime_version=runtime_version,
+        minimum_runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    if cutover.attempt.result.disposition != "fenced":
+        raise RuntimeError("Coding Package Product cutover refused")
+    bootstrap_coding_builtin_product_plugins(
+        lifecycle,
+        settings_manager,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    return cutover
+
+
 def _prepare_private_cutover_root(root: Path, *, private_base: Path) -> None:
     if not private_base.is_absolute() or not root.is_absolute():
         raise ValueError("Coding Package cutover roots must be absolute")
     try:
         relative = root.relative_to(private_base)
     except ValueError:
-        raise ValueError("Coding Package cutover root is outside its private base") from None
+        raise ValueError(
+            "Coding Package cutover root is outside its private base"
+        ) from None
     create_private_directory_chain(private_base)
     current = private_base
     _require_private_cutover_directory(current)
@@ -231,6 +273,7 @@ def hold_coding_pre_b_snapshot_owner(
 __all__ = [
     "CodingPackagePreBCutover",
     "CodingPreBSnapshotPreparation",
+    "cutover_and_bootstrap_coding_package_product",
     "cutover_coding_package_store_from_legacy",
     "hold_coding_pre_b_snapshot_owner",
     "prepare_and_cutover_coding_package_store_from_legacy",
