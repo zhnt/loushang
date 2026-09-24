@@ -48,6 +48,7 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
+    OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
     OwnerContributionSnapshot,
 )
@@ -1574,6 +1575,7 @@ def _assembly_request(
     selection_seed: ProductPluginSelectionSeed,
     *,
     provider_authorities: Mapping[str, CapabilityProviderOwnerAuthority],
+    owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = None,
 ) -> ProductPluginCompositionAssemblyRequest:
     def select(
         admissions: tuple[CapabilityProviderAdmissionRecord, ...],
@@ -1594,6 +1596,7 @@ def _assembly_request(
         contribution_request=ProductCompositionAssemblyRequest(
             selection=selection_seed.selection,
             owner_bindings=selection_seed.owner_bindings,
+            owner_candidates=owner_candidates,
             mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
             definitions=(
                 MODEL_INPUT_CAPABILITY_DEFINITION,

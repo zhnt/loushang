@@ -375,7 +375,15 @@ Neither may silently override a narrower implemented owner contract.
   approve and compile both Definitions, bind a workspace Provider into two
   Capability requests and two Tool owners, and abort an unpublished assembly.
   It rechecks the live Product selection before binding, so disposing the B
-  runtime after preparation fails closed. Default Coding selection, Session
+  runtime after preparation fails closed. A second explicit preparation now
+  selects `coding.base` and both Capability packages in one Product plan,
+  rejects a base compilation from an older Store selection, and compiles the
+  base Resource admissions and Capability owners together. The base Resource
+  candidates retain the exact B transaction lock digest while the executable
+  Definition gate retains its Plugin lock; the only permitted owner-candidate
+  projection changes that lock field after matching current Store identity.
+  The native fixture binds the resulting base and Capability assemblies to
+  the same Session composition inputs. Default Coding selection, Session
   graph publication, and Provider activation remain open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.

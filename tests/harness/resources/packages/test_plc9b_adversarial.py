@@ -4222,6 +4222,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
     from loushang.coding._product_capability_plugin_composition import (
+        prepare_coding_builtin_product_composition,
         prepare_coding_product_capability_plugin_composition,
     )
     from loushang.coding._resource_catalog_shadow import (
@@ -4245,7 +4246,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         cutover_coding_package_store_from_legacy,
         reopen_coding_package_cutover,
     )
-    from loushang.coding.package_product_capabilities import (
+    from loushang.coding.package_product_revisions import (
+        open_coding_product_builtin_resolution,
         open_coding_product_capability_resolution,
     )
     from loushang.coding.package_product_runtime import (
@@ -6808,6 +6810,35 @@ while True:
                                 ),
                             )
                         )
+                        builtin_revisions = open_coding_product_builtin_resolution(
+                            reopened_builtin
+                        )
+                        try:
+                            assert {
+                                package.manifest.name
+                                for package in builtin_revisions.packages
+                            } == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            base_revision = next(
+                                package
+                                for package in builtin_revisions.packages
+                                if package.manifest.name == "coding.base"
+                            )
+                            with base_revision.revision_handle.open_file(
+                                "declarations/plugin.json"
+                            ) as stream:
+                                assert stream.read() == dict(
+                                    reopened_builtin.capture_selected_plugin_manifest_for(
+                                        "coding.base",
+                                        max_files=64,
+                                        max_total_bytes=1024 * 1024,
+                                    ).snapshot.files
+                                )["coding_base/declarations/plugin.json"]
+                        finally:
+                            builtin_revisions.close()
                         selected_capabilities = []
                         for capability_artifact in capability_artifacts:
                             selected_capability = (
@@ -6969,6 +7000,96 @@ while True:
                                 product_assembly.abort_unpublished()
                         finally:
                             product_preparation.close()
+                        builtin_session_id = (
+                            session_manager.get_header().conversation_id
+                        )
+                        with pytest.raises(
+                            ValueError, match="base selection changed"
+                        ):
+                            prepare_coding_builtin_product_composition(
+                                reopened_builtin,
+                                base_compilation=compiled_base,
+                                session_id=builtin_session_id,
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "stale-builtin-approval"),
+                                clock=lambda: 1_700_000_000_000,
+                            )
+                        current_base_compilation = (
+                            compile_coding_base_product_selection(
+                                reopened_builtin.capture_selected_plugin_manifest_for(
+                                    "coding.base",
+                                    max_files=64,
+                                    max_total_bytes=1024 * 1024,
+                                ),
+                                resolve_coding_composition_set("coding-standard"),
+                                installation_key=key,
+                                session_id=builtin_session_id,
+                                host_environment=compiled_base.host_environment,
+                                evaluated_at=1,
+                            )
+                        )
+                        builtin_preparation = (
+                            prepare_coding_builtin_product_composition(
+                                reopened_builtin,
+                                base_compilation=current_base_compilation,
+                                session_id=builtin_session_id,
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "builtin-product-approval"),
+                                clock=lambda: 1_700_000_000_000,
+                            )
+                        )
+                        try:
+                            assert set(
+                                builtin_preparation.capability_preparation.selection.plan.selected_plugin_ids
+                            ) == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            assert (
+                                builtin_preparation.base_compilation.product_composition
+                                is builtin_preparation.capability_preparation.product_composition
+                            )
+                            builtin_session = builtin_preparation.bind_workspace(
+                                workspace_binding,
+                                host_boot_id="a" * 32,
+                                tool_modes={
+                                    capability_id: "on_demand"
+                                    for capability_id in (
+                                        builtin_preparation.capability_preparation.provider_owner_authorities
+                                    )
+                                },
+                                clock=lambda: 1_700_000_000_000,
+                            )
+                            try:
+                                assert (
+                                    builtin_session.base_session.session_inputs
+                                    is builtin_session.capability_assembly.session_inputs
+                                )
+                                assert len(
+                                    builtin_session.base_session.compilation.product_resource_inputs()
+                                ) == 2
+                                assert all(
+                                    admission.candidate.dependency_lock_digest
+                                    == current_base_compilation.selected_manifest.snapshot.package_revision.dependency_lock_digest
+                                    for admission in builtin_session.base_session.compilation.product_composition.resource_admissions
+                                )
+                                assert (
+                                    builtin_session.base_session.compilation.build_owners(
+                                        clock=lambda: 1,
+                                        tool_options=ToolsOptions(
+                                            host_environment=compiled_base.host_environment
+                                        ),
+                                    ).tool
+                                    is not None
+                                )
+                                assert len(
+                                    builtin_session.capability_assembly.session_inputs.component_requests
+                                ) == 2
+                            finally:
+                                builtin_session.abort_unpublished()
+                        finally:
+                            builtin_preparation.close()
                         stale_preparation = (
                             prepare_coding_product_capability_plugin_composition(
                                 reopened_builtin,

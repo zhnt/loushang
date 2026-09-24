@@ -1,4 +1,4 @@
-"""First-party Capability revisions captured from the selected Product Store.
+"""First-party Plugin revisions captured from the selected Product Store.
 
 This module supplies verified bytes to the existing Plugin approval and
 declaration machinery. It does not approve or execute a Definition itself.
@@ -48,7 +48,10 @@ from ._capability_plugin_specs import (
     CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
     ordered_coding_capability_plugin_specs,
 )
-from .package_builtin_wheel import build_coding_capability_product_wheel
+from .package_builtin_wheel import (
+    build_coding_base_product_wheel,
+    build_coding_capability_product_wheel,
+)
 from .plugin_dependency_grants import coding_plugin_distribution_evidence_resolver
 
 _MAX_FILES = 64
@@ -178,8 +181,6 @@ def open_coding_product_capability_resolution(
     to a Wheel identical to the installed first-party package.
     """
 
-    if not isinstance(runtime, PackageProductRuntimeBindingV1):
-        raise TypeError("Coding Product Capability requires a Product runtime")
     if (
         not isinstance(plugin_ids, tuple)
         or not plugin_ids
@@ -189,21 +190,41 @@ def open_coding_product_capability_resolution(
     specs = ordered_coding_capability_plugin_specs(plugin_ids)
     if len(specs) != len(plugin_ids):
         raise ValueError("Coding Product Capability selection is invalid")
+    return _open_selected_resolution(runtime, tuple(spec.plugin_id for spec in specs))
+
+
+def open_coding_product_builtin_resolution(
+    runtime: PackageProductRuntimeBindingV1,
+) -> PluginRuntimeResolution:
+    """Reopen the complete, sorted first-party set from one Product binding."""
+
+    return _open_selected_resolution(
+        runtime,
+        ("coding.arch.default", "coding.base", "coding.lsp.default"),
+    )
+
+
+def _open_selected_resolution(
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_ids: tuple[str, ...],
+) -> PluginRuntimeResolution:
+    if not isinstance(runtime, PackageProductRuntimeBindingV1):
+        raise TypeError("Coding Product Plugin requires a Product runtime")
     packages: list[PublishedPluginPackage] = []
     bindings: list[PluginSourceBinding] = []
     plugins: list[InstalledPlugin] = []
     try:
-        for spec in specs:
+        for plugin_id in plugin_ids:
             selected = runtime.capture_selected_plugin_manifest_for(
-                spec.plugin_id,
+                plugin_id,
                 max_files=_MAX_FILES,
                 max_total_bytes=_MAX_BYTES,
             )
-            _validate_builtin_selection(selected, spec.plugin_id)
+            _validate_builtin_selection(selected, plugin_id)
             handle = _ProductSelectedRevisionHandle(runtime, selected)
             try:
                 lock = _host_distribution_lock(
-                    spec.plugin_id, selected.snapshot.root_ref.artifact_digest
+                    plugin_id, selected.snapshot.root_ref.artifact_digest
                 )
                 manifest = selected.verified_manifest()
                 root = handle.root
@@ -234,7 +255,7 @@ def open_coding_product_capability_resolution(
                         selected.snapshot.package_revision.package_source_identity
                     ),
                     source_kind="local",
-                    plugin_id=spec.plugin_id,
+                    plugin_id=plugin_id,
                     manifest_digest=manifest.manifest_digest,
                     content_digest=handle.content_digest,
                     revision=handle.content_digest,
@@ -269,8 +290,24 @@ def _validate_builtin_selection(
     selected: PackageProductSelectedPluginManifestV1, plugin_id: str
 ) -> None:
     manifest = selected.verified_manifest()
-    spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[plugin_id]
     trust = selected.source_trust_snapshot
+    if plugin_id == "coding.base":
+        if (
+            selected.snapshot.installation_key.product_id != "coding"
+            or manifest.name != plugin_id
+            or manifest.version != "1"
+            or not manifest.enabled
+            or manifest.root_relative_path.as_posix() != "coding_base"
+            or manifest.package_root_relative_path != PurePosixPath(".")
+            or trust is None
+            or trust.source_trust_class != "host-equivalent-local"
+            or sha256(build_coding_base_product_wheel()).hexdigest()
+            != selected.snapshot.root_ref.artifact_digest
+        ):
+            raise ValueError("Coding Product base selection is not first-party")
+        selected.verified_data_only_declarations()
+        return
+    spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[plugin_id]
     reservations = {
         item.contribution_id: item for item in manifest.contribution_index.items
     }
@@ -304,6 +341,11 @@ def _validate_builtin_selection(
 def _host_distribution_lock(
     plugin_id: str, content_digest: str
 ) -> PluginDependencyClosureLock:
+    if plugin_id == "coding.base":
+        return PluginDependencyClosureLock(
+            package_content_digest=content_digest,
+            python_distributions=(),
+        )
     spec = CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[plugin_id]
     try:
         evidence = coding_plugin_distribution_evidence_resolver().resolve(
@@ -325,4 +367,7 @@ def _host_distribution_lock(
     )
 
 
-__all__ = ["open_coding_product_capability_resolution"]
+__all__ = [
+    "open_coding_product_builtin_resolution",
+    "open_coding_product_capability_resolution",
+]
