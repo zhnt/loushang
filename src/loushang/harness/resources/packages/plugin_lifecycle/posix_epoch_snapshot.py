@@ -228,6 +228,40 @@ class PackagePosixEpochSnapshotEvidenceStore:
         finally:
             root.close()
 
+    def list_domain_members(
+        self, snapshot_receipt_id: str, *, domain: str
+    ) -> tuple[str, ...] | None:
+        """List immediate members only after verifying the whole immutable tree."""
+
+        if domain not in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+            raise ValueError("Package snapshot domain is invalid")
+        evidence = self.snapshot(snapshot_receipt_id)
+        if evidence is None:
+            return None
+        root = _PinnedRoot.open(
+            self._snapshot_root, expected_identities=self._snapshot_identities
+        )
+        try:
+            bundle = _validated_snapshot_bundle(
+                root, evidence, maximum_depth=self._maximum_depth
+            )
+            try:
+                _require_domains(bundle.payload_fd)
+                prefix = domain + "/"
+                members = tuple(
+                    entry.logical_path[len(prefix) :]
+                    for entry in bundle.inspection.entries
+                    if entry.logical_path.startswith(prefix)
+                    and entry.logical_path.count("/") == 1
+                )
+                _revalidate_source(bundle, evidence, maximum_depth=self._maximum_depth)
+                root.assert_visible()
+                return members
+            finally:
+                bundle.close()
+        finally:
+            root.close()
+
 
 class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
     """Publish a complete, immutable, restore-compatible pre-B snapshot."""

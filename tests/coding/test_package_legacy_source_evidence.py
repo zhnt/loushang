@@ -12,6 +12,9 @@ from loushang.coding._plugin_lifecycle import (
 from loushang.coding.package_legacy_classification import (
     CodingScopedLegacyDisableV1,
 )
+from loushang.coding.package_legacy_snapshot_member import (
+    list_coding_first_b_snapshot_domain_members,
+)
 from loushang.coding.package_legacy_source_evidence import (
     CodingLegacySourceEvidenceError,
     parse_coding_legacy_source_evidence,
@@ -37,6 +40,7 @@ def test_first_b_source_settings_survive_mutable_settings_change(
         tmp_path / "session-state", cwd=workspace
     )
     epoch = prepare_coding_package_cutover_roots(lifecycle)
+    (lifecycle.package_root / "installed").mkdir(mode=0o700)
     global_path = tmp_path / "global-settings.json"
     project_path = workspace / ".loushang" / "settings.json"
     global_path.write_bytes(b'{"disabled_plugins":["coding.base"]}\n')
@@ -54,6 +58,7 @@ def test_first_b_source_settings_survive_mutable_settings_change(
         minimum_runtime_protocol_epoch=2,
     )
     assert cutover.attempt.result.disposition == "fenced"
+    (lifecycle.package_root / "installed").rmdir()
     global_path.write_bytes(b'{"disabled_plugins":[]}\n')
     project_path.write_bytes(b'{"plugin_sources":["/other/plugins"]}\n')
     owner = PackageProductPosixFencedRuntimeOwner.open(
@@ -63,6 +68,12 @@ def test_first_b_source_settings_survive_mutable_settings_change(
         epochs_root_name=epoch.epochs_root_name,
     )
     try:
+        assert list_coding_first_b_snapshot_domain_members(
+            lifecycle, owner, domain="binding_history"
+        ) == ()
+        assert list_coding_first_b_snapshot_domain_members(
+            lifecycle, owner, domain="store_bytes"
+        ) == ("installed",)
         evidence = read_coding_legacy_source_evidence(
             lifecycle,
             owner,
