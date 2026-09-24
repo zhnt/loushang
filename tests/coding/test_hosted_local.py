@@ -81,6 +81,66 @@ def test_local_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path
     asyncio.run(scenario())
 
 
+def test_local_command_product_selection_failure_never_uses_legacy_materializer(
+    tmp_path, monkeypatch
+):
+    import loushang.coding.bootstrap as coding_bootstrap
+
+    legacy_calls = []
+    selected = []
+
+    def reject_legacy(*_args, **_kwargs):
+        legacy_calls.append("materializer")
+        raise AssertionError("Product selection fell back to legacy startup")
+
+    def select(manager):
+        selected.append(manager.get_header().conversation_id)
+        return None
+
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+
+    async def scenario():
+        root = tmp_path.resolve()
+        monkeypatch.setenv("LOUSHANG_HOME", str(root / "platform"))
+        monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(root / "runtime"))
+        launch = _local_launch(root)
+        command = CodingLocalCommandV1(
+            launch,
+            model=_model(),
+            stream_fn=scripted_stream,
+            tools=[],
+            package_product_runtime_factory_for_session=select,
+        )
+        connection = LocalAppClientConnectionV1(
+            LocalConnectionDirectoryV1(launch.connection_root), launch.endpoint
+        )
+        try:
+            await command.start()
+            await connection.start()
+            client = connection.client
+            mux = await client.create_mux(MuxCreateV1("dev"))
+            selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
+            await client.attach_mux(MuxAttachV1(selector))
+            scope = launch.application.scopes[0]
+            with pytest.raises(AppServiceError):
+                await client.open_member(
+                    MuxMemberOpenV1(
+                        selector,
+                        SessionOpenSpecV1(
+                            "coding", "continuity-dev", scope.scope,
+                            scope.fingerprint, "dev",
+                        ),
+                    )
+                )
+            assert len(selected) == 1
+            assert legacy_calls == []
+        finally:
+            await connection.close()
+            await command.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
 @pytest.mark.parametrize("discovery_enabled", [False, True])
 def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_scopes(
     tmp_path,
