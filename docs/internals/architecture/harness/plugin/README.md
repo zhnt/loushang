@@ -16,8 +16,9 @@
   result/debt journal. D3f connects those owners in an internal POSIX-tested
   root-GC executor. D3g adds an explicit Product command over an exact GC
   candidate and an explicit root Store method. D3h joins reservation, result,
-  and root fences in a read-only operator view; default Product/transport
-  composition, Windows execution evidence, shared dependency GC, private-data
+  and root fences in a read-only operator view. D3i composes the real fenced
+  POSIX Product Store for explicit offline GC; default transport selection,
+  Windows execution evidence, shared dependency GC, private-data
   confirmation, and backup projection remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
@@ -87,6 +88,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D3h Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md)
   shows reserved, started, debt, success, or evidence conflict from durable
   owners without granting deletion or asserting private-data/backup effects.
+- [PLC9D3i Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
+  joins the real B Product owners behind offline runtime quiescence, transaction
+  recovery, and an exact Store root; no transport selects the command yet.
 
 ## Frozen Contracts
 

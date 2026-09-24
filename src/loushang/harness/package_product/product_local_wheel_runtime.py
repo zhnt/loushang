@@ -917,6 +917,22 @@ class PosixLocalWheelProductSessionOwner:
         self.epoch_runtime.assert_current()
         return desired.command_id
 
+    def assert_root_gc_authority_current(self) -> None:
+        """Require the same fenced Product, workspace, state, and Store roots."""
+
+        self.epoch_runtime.assert_current()
+        if self._current_workspace_identity() != self._workspace_identity:
+            raise ValueError("Package Product workspace identity changed")
+        if _directory_identity(self.state_root) is None:
+            raise ValueError("Package Product state root is unsafe")
+        fence = self.epoch_runtime.cutover_result.fence
+        if (
+            fence is None
+            or _directory_identity(self.plugin_store_root) != fence.fenced_root_identity
+        ):
+            raise ValueError("Package Product fenced Store root changed")
+        self.epoch_runtime.assert_current()
+
     def _current_workspace_identity(self) -> tuple[int, int] | None:
         try:
             metadata = self.workspace.lstat()
