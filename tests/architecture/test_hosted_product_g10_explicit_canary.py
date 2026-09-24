@@ -51,9 +51,9 @@ def test_inventory_v3_records_one_explicit_canary_and_current_omission(
 ) -> None:
     del _case
     inventory = json.loads(_read(INVENTORY))
-    # G14 v4, G16 v5, G17 v6 and LMUX v7 add explicit commands;
+    # G14 v4, G16 v5, G17 v6, LMUX v7, and PLC9B v8 add explicit commands;
     # the G10 v3 canary and default-entry omissions stay exact.
-    assert inventory["inventoryVersion"] == 7
+    assert inventory["inventoryVersion"] == 8
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert rows["coding.apphost.canary"] == {

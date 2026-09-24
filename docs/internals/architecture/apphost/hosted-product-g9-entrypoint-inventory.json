@@ -12,6 +12,16 @@
       "surface": "mux"
     },
     {
+      "disposition": "explicit-offline-posix-product-cutover",
+      "entrypointId": "coding.package-cutover.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-package-cutover",
+      "source": "src/loushang/coding/cli/package_cutover.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-owned-foreground-tui",
       "entrypointId": "coding.hosted-tui.command",
       "importsComposition": false,
@@ -152,5 +162,5 @@
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 7
+  "inventoryVersion": 8
 }
