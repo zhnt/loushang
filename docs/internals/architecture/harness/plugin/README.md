@@ -378,12 +378,16 @@ Neither may silently override a narrower implemented owner contract.
   it, and successful Session disposal releases it after cleanup completes. A
   failed disposal retains the lease for safe retry or operator repair. The
   POSIX factory issues only one binding per lease, and Coding bootstrap
-  releases an unbound lease if startup refuses before activation. The Product
-  caller owns failures while constructing the factory itself. The native
-  fixture also starts a Hosted Session on the committed `coding.base` Store
-  root with a fresh runtime lease; Product Prompt and Skill are visible, the
-  legacy materializer is not reached, and closing releases the lease. A POSIX
-  snapshot owner now publishes a durable, restore-compatible bundle from
+  releases an unbound lease if startup refuses before activation. A Product-facing
+  Session owner accepts the already fenced authorities, registers a distinct
+  runtime lease, and returns a one-shot factory through a thin Coding selector;
+  it refuses a foreign workspace before registration and releases the lease if
+  factory construction fails. The native fixture also starts a Hosted Session
+  on the committed `coding.base` Store root through this selector; Product
+  Prompt and Skill are visible, the legacy materializer is not reached, and
+  closing releases the lease. Installed commands still do not construct this
+  owner by default. A POSIX snapshot owner now publishes a durable,
+  restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:

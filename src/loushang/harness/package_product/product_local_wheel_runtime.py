@@ -136,6 +136,7 @@ from loushang.harness.resources.packages.product_composition import (
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductFileEpochTransactionGuard,
     PackageProductRuntimeLease,
+    register_package_product_runtime_lease,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -727,6 +728,118 @@ def compose_posix_local_wheel_product(
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class PosixLocalWheelProductSessionOwner:
+    """Issue one Session factory from fixed, fenced Product authorities."""
+
+    workspace: Path
+    state_root: Path
+    plugin_store_root: Path
+    policy: PackageProductLocalWheelPolicy
+    environment: PackageResolutionEnvironmentV1
+    acquisition_budgets: PackageAcquisitionBudgetV1
+    inspection_budgets: PackageInspectionBudgetV1
+    closure_budgets: PackageClosureBudgetV1
+    root_store_identity: str
+    dependency_store_identity: str
+    registry: PackageEpochRuntimeLeaseRegistry
+    cutover_result: PackagePosixEpochCutoverResultV1
+    management: PluginManagementService
+    desired_state: PluginDesiredStateLedger
+    gc_bindings: PluginPackageGcBindingJournal
+    gc_gate: PluginPackageGcReservationJournal
+    actor_id: str
+    desired_policy_revision: str
+    recovery_identity: str
+    runtime_version: str
+    runtime_protocol_epoch: int
+    _workspace_identity: tuple[int, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            getattr(self.management, "_desired_state", None) is not self.desired_state
+            or self.management.gc_gate is not self.gc_gate
+            or self.desired_state.gc_gate is not self.gc_gate
+            or self.cutover_result.disposition != "fenced"
+            or self.cutover_result.fence is None
+            or self.cutover_result.switch_receipt is None
+            or self.registry.store_id != self.cutover_result.fence.store_id
+        ):
+            raise ValueError("Package Product owners are not bound")
+        if (
+            not isinstance(self.workspace, Path)
+            or not self.workspace.is_absolute()
+            or self.workspace != self.workspace.resolve(strict=True)
+        ):
+            raise ValueError("Package Product workspace is not canonical")
+        metadata = self.workspace.stat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("Package Product workspace is not a directory")
+        object.__setattr__(
+            self, "_workspace_identity", (metadata.st_dev, metadata.st_ino)
+        )
+
+    def factory_for_session(
+        self, *, session_id: str, cwd: Path, runtime_id: str
+    ) -> PosixLocalWheelProductRuntimeFactory:
+        """Register a live lease and transfer it to a one-shot Session factory."""
+
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("Package Product Session identity is required")
+        if not isinstance(cwd, Path) or cwd.resolve(strict=True) != self.workspace:
+            raise ValueError("Package Product Session workspace changed")
+        if self._current_workspace_identity() != self._workspace_identity:
+            raise ValueError("Package Product workspace identity changed")
+        fence = self.cutover_result.fence
+        if fence is None or self.registry.fences.current(self.registry.store_id) != fence:
+            raise ValueError("Package Product fence changed")
+        lease = register_package_product_runtime_lease(
+            self.registry,
+            fence=fence,
+            runtime_id=runtime_id,
+            runtime_version=self.runtime_version,
+            runtime_protocol_epoch=self.runtime_protocol_epoch,
+        )
+        try:
+            factory = PosixLocalWheelProductRuntimeFactory(
+                expected_session_id=session_id,
+                expected_cwd=self.workspace,
+                state_root=self.state_root,
+                plugin_store_root=self.plugin_store_root,
+                policy=self.policy,
+                environment=self.environment,
+                acquisition_budgets=self.acquisition_budgets,
+                inspection_budgets=self.inspection_budgets,
+                closure_budgets=self.closure_budgets,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                runtime_lease=lease,
+                cutover_result=self.cutover_result,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if self._current_workspace_identity() != self._workspace_identity:
+                raise ValueError("Package Product workspace identity changed")
+            return factory
+        except BaseException:
+            lease.release()
+            raise
+
+    def _current_workspace_identity(self) -> tuple[int, int] | None:
+        try:
+            metadata = self.workspace.lstat()
+        except OSError:
+            return None
+        if not stat.S_ISDIR(metadata.st_mode):
+            return None
+        return metadata.st_dev, metadata.st_ino
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PosixLocalWheelProductRuntimeFactory:
     """Bind one Session to Product-supplied owners of a fenced local Store."""
 
@@ -911,6 +1024,7 @@ def _directory_identity(path: Path) -> str | None:
 
 __all__ = [
     "PackageProductSelectedPluginManifestV1",
+    "PosixLocalWheelProductSessionOwner",
     "PosixLocalWheelProductRuntimeFactory",
     "compose_posix_local_wheel_product",
 ]

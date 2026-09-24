@@ -5393,6 +5393,38 @@ while True:
                     from loushang.coding.hosted_session import (
                         CodingRealHostedSessionFactoryV1,
                     )
+                    from loushang.coding.package_product_runtime import (
+                        CodingPosixLocalWheelProductRuntimeOwner,
+                    )
+                    from loushang.harness.package_product.product_local_wheel_runtime import (
+                        PosixLocalWheelProductSessionOwner,
+                    )
+
+                    hosted_product_owner = CodingPosixLocalWheelProductRuntimeOwner(
+                        product_owner=PosixLocalWheelProductSessionOwner(
+                            workspace=workspace,
+                            state_root=factory.state_root,
+                            plugin_store_root=plugin_root,
+                            policy=policy,
+                            environment=environment,
+                            acquisition_budgets=factory.acquisition_budgets,
+                            inspection_budgets=factory.inspection_budgets,
+                            closure_budgets=factory.closure_budgets,
+                            root_store_identity=factory.root_store_identity,
+                            dependency_store_identity=factory.dependency_store_identity,
+                            registry=registry,
+                            cutover_result=cutover_result,
+                            management=management,
+                            desired_state=desired,
+                            gc_bindings=bindings,
+                            gc_gate=gate,
+                            actor_id=factory.actor_id,
+                            desired_policy_revision=factory.desired_policy_revision,
+                            recovery_identity=factory.recovery_identity,
+                            runtime_version="2.0.0",
+                            runtime_protocol_epoch=2,
+                        ),
+                    )
 
                     async def product_hosted_session() -> None:
                         hosted_scope = CodingHostedScopeV1(
@@ -5424,18 +5456,7 @@ while True:
                             selected_sessions.append(
                                 manager.get_header().conversation_id
                             )
-                            lease = register_package_product_runtime_lease(
-                                registry,
-                                fence=fence,
-                                runtime_id="runtime:product-hosted-startup",
-                                runtime_version="2.0.0",
-                                runtime_protocol_epoch=2,
-                            )
-                            return replace(
-                                factory,
-                                expected_session_id=selected_sessions[-1],
-                                runtime_lease=lease,
-                            )
+                            return hosted_product_owner.factory_for_session(manager)
 
                         hosted_factory = CodingRealHostedSessionFactoryV1(
                             services_factory=lambda _cwd: create_services(
@@ -5499,6 +5520,53 @@ while True:
                         ) == prior_leases
 
                     asyncio.run(product_hosted_session())
+                    foreign_workspace = tmp_path / "foreign-product-hosted-workspace"
+                    foreign_workspace.mkdir(mode=0o700)
+                    foreign_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "foreign-product-hosted-sessions",
+                            cwd=str(foreign_workspace),
+                            persist=False,
+                        )
+                    )
+                    prior_leases = len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    )
+                    with pytest.raises(ValueError, match="workspace changed"):
+                        hosted_product_owner.factory_for_session(foreign_manager)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    moved_workspace = tmp_path / "moved-product-hosted-workspace"
+                    workspace.rename(moved_workspace)
+                    workspace.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="identity changed"):
+                            hosted_product_owner.factory_for_session(
+                                product_coding_manager
+                            )
+                    finally:
+                        workspace.rmdir()
+                        moved_workspace.rename(workspace)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    failed_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "failed-product-hosted-sessions",
+                            cwd=str(workspace),
+                            persist=False,
+                        )
+                    )
+                    with patch(
+                        "loushang.harness.package_product.product_local_wheel_runtime.PosixLocalWheelProductRuntimeFactory",
+                        side_effect=RuntimeError("factory construction failed"),
+                    ):
+                        with pytest.raises(RuntimeError, match="factory construction failed"):
+                            hosted_product_owner.factory_for_session(failed_manager)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
                     disabled_again = management.submit(
                         PluginManagementCommandV1(
                             action="disable",
