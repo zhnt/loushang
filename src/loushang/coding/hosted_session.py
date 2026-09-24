@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Mapping
-from importlib.metadata import version
 from pathlib import Path
 from secrets import token_hex
 from typing import cast
@@ -31,18 +30,14 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
-from ._plugin_lifecycle import resolve_coding_plugin_lifecycle_state_layout
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,
 )
 from .bootstrap import BootstrapServices, create_agent_session
 from .hosted_catalog import CodingHostedCandidateBindingV1, CodingHostedCatalogError
-from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .package_product_runtime import (
-    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    CodingFencedProductApplicationOwner,
-    open_coding_fenced_product_application_owner,
+    CodingFencedProductApplicationSelection,
 )
 from .session.agent_session import AgentSession
 from .session_manager import SessionManager
@@ -260,37 +255,20 @@ class CodingRealHostedSessionFactoryV1:
         self._package_product_runtime_factory_for_session = (
             package_product_runtime_factory_for_session
         )
-        self._product_application_owner: CodingFencedProductApplicationOwner | None = None
+        self._product_owner_selection = CodingFencedProductApplicationSelection()
         self._closing = False
         self._closed = False
 
     def _default_product_factory_for_session(
         self, manager: SessionManager
     ) -> PackageProductRuntimeFactoryPort | None:
-        owner = self._product_application_owner
-        if owner is None:
-            workspace = Path(manager.get_cwd()).resolve(strict=True)
-            lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-            epoch = resolve_coding_package_epoch_layout(lifecycle)
-            try:
-                (epoch.control_root / "epoch.jsonl").lstat()
-            except FileNotFoundError:
-                return None
-            owner = open_coding_fenced_product_application_owner(
-                lifecycle,
-                workspace=workspace,
-                runtime_version=version("loushang"),
-                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            )
-            self._product_application_owner = owner
-        return owner.factory_for_session(manager)
+        return self._product_owner_selection.factory_for_session(manager)
 
     async def close(self) -> None:
         if self._closed:
             return
         self._closing = True
-        if self._product_application_owner is not None:
-            self._product_application_owner.close()
+        self._product_owner_selection.close()
         self._closed = True
 
     async def create_session(

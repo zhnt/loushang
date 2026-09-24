@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
+from importlib.metadata import version
 from pathlib import Path
+from threading import Lock
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs,
     PosixLocalWheelProductRuntimeFactory,
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+    PackageProductRuntimeRequestV1,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
@@ -24,7 +31,10 @@ from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
 )
 
-from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
+from ._plugin_lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from .package_builtin_wheel import (
     coding_base_product_local_wheel_policy,
     coding_builtin_product_local_wheel_policy,
@@ -129,6 +139,110 @@ class CodingFencedProductApplicationOwner:
 
     def close(self) -> None:
         self.epoch_runtime.close()
+
+
+class CodingFencedProductApplicationSelection:
+    """Select one B owner per workspace and retain it through application close."""
+
+    def __init__(self) -> None:
+        self._owners: dict[Path, CodingFencedProductApplicationOwner] = {}
+        self._lock = Lock()
+        self._fenced = False
+
+    def factory_for_session(
+        self, manager: SessionManager
+    ) -> PosixLocalWheelProductRuntimeFactory | None:
+        if not isinstance(manager, SessionManager):
+            raise TypeError("Coding Product Session manager is required")
+        # The legacy Session API permits a not-yet-created cwd. Use the same
+        # canonical workspace identity as its lifecycle layout; a present B
+        # fence still requires the Product owner to validate the real root.
+        workspace = Path(manager.get_cwd()).resolve(strict=False)
+        with self._lock:
+            if self._fenced:
+                raise RuntimeError("Coding Product application is closing")
+            owner = self._owners.get(workspace)
+            if owner is None:
+                lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+                epoch = resolve_coding_package_epoch_layout(lifecycle)
+                try:
+                    (epoch.control_root / "epoch.jsonl").lstat()
+                except FileNotFoundError:
+                    # A concurrent B cutover is still fenced by the old
+                    # process registration before legacy Plugin preparation.
+                    return None
+                owner = open_coding_fenced_product_application_owner(
+                    lifecycle,
+                    workspace=workspace,
+                    runtime_version=version("loushang"),
+                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                )
+                self._owners[workspace] = owner
+            return owner.factory_for_session(manager)
+
+    def fence(self) -> None:
+        with self._lock:
+            self._fenced = True
+
+    def close(self) -> None:
+        with self._lock:
+            self._fenced = True
+            failures: list[BaseException] = []
+            for workspace, owner in tuple(self._owners.items()):
+                try:
+                    owner.close()
+                except BaseException as error:
+                    failures.append(error)
+                else:
+                    del self._owners[workspace]
+            if failures:
+                raise failures[0]
+
+
+@dataclass(slots=True)
+class CodingSessionOwnedProductRuntimeFactory:
+    """Transfer a one-Session Product owner to the runtime binding's disposal."""
+
+    factory: PosixLocalWheelProductRuntimeFactory
+    selection: CodingFencedProductApplicationSelection
+    _binding_issued: bool = False
+    _lock: Lock = field(default_factory=Lock, repr=False)
+
+    def create(
+        self, request: PackageProductRuntimeRequestV1
+    ) -> PackageProductRuntimeBindingV1:
+        with self._lock:
+            if self._binding_issued:
+                raise ValueError("Coding Product Session factory already used")
+            binding = self.factory.create(request)
+            try:
+                release = binding.on_dispose
+                if release is None:
+                    raise ValueError("Coding Product runtime release is missing")
+                owned = replace(binding, on_dispose=self._dispose_binding(release))
+            except BaseException as error:
+                try:
+                    binding.dispose_runtime()
+                    self.selection.close()
+                except BaseException:
+                    error.add_note("Coding Product Session owner cleanup also failed")
+                raise
+            self._binding_issued = True
+            return owned
+
+    def dispose_unbound_runtime(self) -> None:
+        with self._lock:
+            if self._binding_issued:
+                return
+            self.factory.dispose_unbound_runtime()
+            self.selection.close()
+
+    def _dispose_binding(self, release: Callable[[], None]) -> Callable[[], None]:
+        def dispose() -> None:
+            release()
+            self.selection.close()
+
+        return dispose
 
 
 def open_coding_fenced_product_application_owner(
@@ -317,7 +431,9 @@ def _open_coding_product_runtime_owner(
 
 __all__ = [
     "CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH",
+    "CodingFencedProductApplicationSelection",
     "CodingFencedProductApplicationOwner",
+    "CodingSessionOwnedProductRuntimeFactory",
     "CodingPackageProductStateOwners",
     "CodingPosixLocalWheelProductRuntimeOwner",
     "open_coding_fenced_product_application_owner",

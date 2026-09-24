@@ -217,7 +217,7 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
-    import loushang.coding.hosted_session as hosted_session
+    import loushang.coding.package_product_runtime as product_runtime
     from loushang.coding._plugin_lifecycle import (
         resolve_coding_plugin_lifecycle_state_layout,
     )
@@ -237,7 +237,7 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
         raise AssertionError("fenced Hosted startup reached legacy materializer")
 
     monkeypatch.setattr(
-        hosted_session, "open_coding_fenced_product_application_owner", refuse_product
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
     )
     monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
 

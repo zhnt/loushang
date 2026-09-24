@@ -4230,7 +4230,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         CodingResourceCatalogAdmissionError,
     )
     from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.bootstrap import (
+        create_agent_session,
+        create_agent_session_runtime,
+        create_services,
+    )
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
@@ -5630,11 +5634,11 @@ while True:
                                     side_effect=AssertionError("legacy package materializer"),
                                 ),
                                 patch(
-                                    "loushang.coding.hosted_session.resolve_coding_plugin_lifecycle_state_layout",
+                                    "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
                                     return_value=legacy_layout,
                                 ),
                                 patch(
-                                    "loushang.coding.hosted_session.version",
+                                    "loushang.coding.package_product_runtime.version",
                                     return_value="2.0.0",
                                 ),
                             ):
@@ -5646,7 +5650,7 @@ while True:
                                     ),
                                     opaque_session_binding=claimed.opaque_binding,
                                 )
-                            assert hosted_factory._product_application_owner is not None
+                            assert len(hosted_factory._product_owner_selection._owners) == 1
                             assert hosted.control._package_controller.get_package_materializer() is None
                             assert any(
                                 command.name == "standard" and command.source == "prompt"
@@ -7299,6 +7303,176 @@ while True:
                                 asyncio.run(architecture_session.dispose())
                             else:
                                 architecture_factory.dispose_unbound_runtime()
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        async def standalone_product_session() -> None:
+                            with patch(
+                                "loushang.coding.bootstrap.resolve_platform_home",
+                                return_value=tmp_path / "standalone-platform",
+                            ):
+                                standalone = create_agent_session_runtime(
+                                    session_dir=tmp_path / "standalone-b-sessions",
+                                    model=Model(
+                                        id="plc9b-standalone-default",
+                                        name="PLC9B Standalone Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(ControlConfig())
+                                    ),
+                                    persist=False,
+                                )
+                            try:
+                                with (
+                                    patch(
+                                        "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                        return_value=legacy_layout,
+                                    ),
+                                    patch(
+                                        "loushang.coding.package_product_runtime.version",
+                                        return_value="2.0.0",
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                        side_effect=AssertionError("legacy standalone base"),
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                        side_effect=AssertionError("legacy standalone Capability"),
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap._default_package_materializer",
+                                        side_effect=AssertionError("legacy standalone materializer"),
+                                    ),
+                                ):
+                                    selected = await standalone.create_session(
+                                        cwd=str(workspace)
+                                    )
+                                    await selected.prepare_model_call_runtime()
+                                assert (
+                                    selected._package_controller.get_package_materializer()
+                                    is None
+                                )
+                                assert (
+                                    selected._coding_base_product_compilation.plan.selected_plugin_ids
+                                    == ("coding.base", "coding.lsp.default")
+                                )
+                            finally:
+                                await standalone.dispose_session_runtime()
+
+                        asyncio.run(standalone_product_session())
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        direct_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "direct-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        direct_session = None
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                side_effect=AssertionError("legacy direct base"),
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                side_effect=AssertionError("legacy direct Capability"),
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap._default_package_materializer",
+                                side_effect=AssertionError("legacy direct materializer"),
+                            ),
+                        ):
+                            try:
+                                direct_session = create_agent_session(
+                                    session_manager=direct_manager,
+                                    model=Model(
+                                        id="plc9b-direct-default",
+                                        name="PLC9B Direct Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(ControlConfig())
+                                    ),
+                                )
+                                asyncio.run(direct_session.prepare_model_call_runtime())
+                                assert (
+                                    direct_session._package_controller.get_package_materializer()
+                                    is None
+                                )
+                                assert (
+                                    direct_session._coding_base_product_compilation.plan.selected_plugin_ids
+                                    == ("coding.base", "coding.lsp.default")
+                                )
+                            finally:
+                                if direct_session is not None:
+                                    asyncio.run(direct_session.dispose())
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        rejected_direct_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "rejected-direct-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            pytest.raises(ValueError, match="Unsupported Coding composition set"),
+                        ):
+                            create_agent_session(
+                                session_manager=rejected_direct_manager,
+                                model=Model(
+                                    id="plc9b-direct-rejected",
+                                    name="PLC9B Direct Rejected",
+                                    provider="test",
+                                    endpoint="anthropic-messages",
+                                    capabilities=Capabilities(
+                                        reasoning=True,
+                                        input=("text",),
+                                        context_window=128000,
+                                        max_tokens=4096,
+                                    ),
+                                ),
+                                composition_set="unsupported",
+                            )
                         assert (
                             len(registry.snapshot(store_id=store_id).active_leases)
                             == prior_builtin_session_leases

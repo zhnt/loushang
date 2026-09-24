@@ -93,6 +93,10 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+    CodingSessionOwnedProductRuntimeFactory,
+)
 from loushang.coding.plugin_enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
 )
@@ -1977,6 +1981,24 @@ def _dispose_unbound_package_product_runtime(
             error.add_note("Package Product runtime cleanup also failed")
 
 
+def _select_direct_coding_product_factory(
+    manager: SessionManager,
+) -> PackageProductRuntimeFactoryPort | None:
+    selection = CodingFencedProductApplicationSelection()
+    try:
+        factory = selection.factory_for_session(manager)
+    except BaseException as error:
+        try:
+            selection.close()
+        except BaseException:
+            error.add_note("Coding Product owner cleanup also failed")
+        raise
+    if factory is None:
+        selection.close()
+        return None
+    return CodingSessionOwnedProductRuntimeFactory(factory, selection)
+
+
 def create_agent_session(
     *,
     session_manager: SessionManager,
@@ -2008,6 +2030,11 @@ def create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
+    selected_factory = (
+        package_product_runtime_factory
+        if package_product_runtime_factory is not None
+        else _select_direct_coding_product_factory(session_manager)
+    )
     try:
         return _create_agent_session(
             session_manager=session_manager,
@@ -2028,7 +2055,7 @@ def create_agent_session(
             agent_factory=agent_factory,
             session_start_event=session_start_event,
             package_materializer=package_materializer,
-            package_product_runtime_factory=package_product_runtime_factory,
+            package_product_runtime_factory=selected_factory,
             resource_catalog_source_policy=resource_catalog_source_policy,
             append_system_prompt=append_system_prompt,
             extension_flag_values=extension_flag_values,
@@ -2041,7 +2068,7 @@ def create_agent_session(
             lsp_read_text=lsp_read_text,
         )
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
+        _dispose_unbound_package_product_runtime(selected_factory, error)
         raise
 
 
@@ -2248,6 +2275,19 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
 )
 
 
+def _build_with_package_product_selection(
+    selection: CodingFencedProductApplicationSelection,
+    manager: SessionManager,
+    build: Callable[[PackageProductRuntimeFactoryPort | None], AgentSession],
+) -> AgentSession:
+    factory = selection.factory_for_session(manager)
+    try:
+        return build(factory)
+    except BaseException as error:
+        _dispose_unbound_package_product_runtime(factory, error)
+        raise
+
+
 def _create_agent_session_runtime(
     *,
     session_dir: Path,
@@ -2296,6 +2336,7 @@ def _create_agent_session_runtime(
     fixed_lsp_environment = (
         dict(lsp_baseline_environment) if lsp_baseline_environment is not None else None
     )
+    product_owner_selection = CodingFencedProductApplicationSelection()
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
         runtime_factory=partial(
@@ -2311,10 +2352,13 @@ def _create_agent_session_runtime(
                 and Path(session_dir).expanduser().resolve(strict=False)
                 == (resolve_platform_home() / "data/sessions").resolve(strict=False)
             ),
+            product_owner_selection=product_owner_selection,
         ),
         fixed_services=fixed_services,
-        build_session=lambda session_manager, session_services, start_event: (
-            _create_agent_session(
+        build_session=lambda session_manager, session_services, start_event: _build_with_package_product_selection(
+            product_owner_selection,
+            cast(SessionManager, session_manager),
+            lambda product_factory: _create_agent_session(
                 session_manager=cast(SessionManager, session_manager),
                 model=model,
                 stream_fn=stream_fn,
@@ -2327,6 +2371,7 @@ def _create_agent_session_runtime(
                 no_tools=no_tools,
                 composition_set=composition_set,
                 services=session_services,
+                package_product_runtime_factory=product_factory,
                 agent_factory=agent_factory,
                 session_start_event=cast(SessionStartEvent | None, start_event),
                 append_system_prompt=append_system_prompt,
@@ -2340,7 +2385,7 @@ def _create_agent_session_runtime(
                 lsp_read_text=lsp_read_text,
                 resource_catalog_source_policy=resource_catalog_source_policy,
                 invocation_product_profile=resolved_invocation_profile,
-            )
+            ),
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
         services_factory=services_factory,
