@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -24,6 +25,9 @@ from loushang.harness.journal import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
@@ -291,6 +295,121 @@ class CodingLegacyLocalBindingCatalog:
         self.policy_revision = policy_revision
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    def publish_candidate(
+        self,
+        candidate: CodingLegacyLocalWheelCandidateV1,
+        *,
+        epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    ) -> Path:
+        """Stage verified inert bytes atomically under the exact B Source root."""
+
+        if not isinstance(candidate, CodingLegacyLocalWheelCandidateV1):
+            raise TypeError("Reacquired legacy Wheel candidate is required")
+        if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
+            raise TypeError("Fenced Product epoch owner is required")
+        switch = epoch_runtime.cutover_result.switch_receipt
+        if (
+            epoch_runtime.registry.store_id != self.store_id
+            or switch is None
+            or switch.namespace_id != self.namespace_id
+            or epoch_runtime.prepare_product_source_root() != self.source_root
+        ):
+            raise CodingLegacyBindingError("Legacy Product Source epoch changed")
+        body = candidate.wheel_bytes
+        if (
+            _WHEEL_FILENAME.fullmatch(candidate.filename) is None
+            or not isinstance(body, bytes)
+            or not body
+            or len(body) > _MAX_WHEEL_BYTES
+            or sha256(body).hexdigest() != candidate.artifact_digest
+        ):
+            raise CodingLegacyBindingError("Legacy Wheel candidate is invalid")
+        with journal_file_lock(self.path, "exclusive"):
+            epoch_runtime.assert_current()
+            descriptor = os.open(
+                self.source_root,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            )
+            try:
+                root_before = os.fstat(descriptor)
+                if (
+                    not stat.S_ISDIR(root_before.st_mode)
+                    or stat.S_IMODE(root_before.st_mode) & 0o077
+                    or root_before.st_uid != os.geteuid()
+                ):
+                    raise CodingLegacyBindingError(
+                        "Legacy Product Source root is not private"
+                    )
+                try:
+                    os.stat(
+                        candidate.filename, dir_fd=descriptor, follow_symlinks=False
+                    )
+                except FileNotFoundError:
+                    self._publish_missing_candidate(descriptor, candidate, body)
+                _verify_artifact(
+                    self.source_root, candidate.filename, candidate.artifact_digest
+                )
+                with suppress(FileNotFoundError):
+                    os.unlink(f".{candidate.filename}.staging", dir_fd=descriptor)
+                    os.fsync(descriptor)
+                root_after = self.source_root.lstat()
+                if (
+                    root_before.st_dev,
+                    root_before.st_ino,
+                    root_before.st_mode,
+                    root_before.st_uid,
+                ) != (
+                    root_after.st_dev,
+                    root_after.st_ino,
+                    root_after.st_mode,
+                    root_after.st_uid,
+                ):
+                    raise CodingLegacyBindingError(
+                        "Legacy Product Source root changed on disk"
+                    )
+                epoch_runtime.assert_current()
+                return self.source_root / candidate.filename
+            finally:
+                os.close(descriptor)
+
+    @staticmethod
+    def _publish_missing_candidate(
+        directory: int, candidate: CodingLegacyLocalWheelCandidateV1, body: bytes
+    ) -> None:
+        staging_name = f".{candidate.filename}.staging"
+        with suppress(FileNotFoundError):
+            os.unlink(staging_name, dir_fd=directory)
+        member = os.open(
+            staging_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=directory,
+        )
+        try:
+            os.fchmod(member, 0o600)
+            remaining = memoryview(body)
+            while remaining:
+                written = os.write(member, remaining)
+                if written <= 0:
+                    raise OSError("Legacy Product Wheel write made no progress")
+                remaining = remaining[written:]
+            os.fsync(member)
+        finally:
+            os.close(member)
+        try:
+            with suppress(FileExistsError):
+                os.link(
+                    staging_name,
+                    candidate.filename,
+                    src_dir_fd=directory,
+                    dst_dir_fd=directory,
+                    follow_symlinks=False,
+                )
+            os.fsync(directory)
+        finally:
+            os.unlink(staging_name, dir_fd=directory)
+            os.fsync(directory)
 
     def append(
         self,

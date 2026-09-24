@@ -104,8 +104,10 @@ def test_expanded_product_policy_reopens_existing_builtin_selections(
         expected_dependency_lock=dependency_lock,
     )
     artifact = source_root / candidate.filename
-    artifact.write_bytes(candidate.wheel_bytes)
-    artifact.chmod(0o600)
+    interrupted_stage = source_root / f".{candidate.filename}.staging"
+    if not legacy_enabled:
+        interrupted_stage.write_bytes(b"interrupted publication")
+        interrupted_stage.chmod(0o600)
     catalog = CodingLegacyLocalBindingCatalog(
         state_root / "legacy-local-bindings.jsonl",
         source_root=source_root,
@@ -114,6 +116,28 @@ def test_expanded_product_policy_reopens_existing_builtin_selections(
         scope_id=lifecycle.scope_id,
         policy_revision="coding-product-package-policy:1",
     )
+    publisher = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    try:
+        assert (
+            catalog.publish_candidate(candidate, epoch_runtime=publisher.epoch_runtime)
+            == artifact
+        )
+        assert not interrupted_stage.exists()
+        if legacy_enabled:
+            interrupted_stage.write_bytes(b"linked but not cleaned")
+            interrupted_stage.chmod(0o600)
+        assert (
+            catalog.publish_candidate(candidate, epoch_runtime=publisher.epoch_runtime)
+            == artifact
+        )
+        assert not interrupted_stage.exists()
+    finally:
+        publisher.close()
     catalog.append(
         candidate,
         legacy_source_identity=candidate.original_source_identity,
