@@ -40,6 +40,14 @@ class PackageProductSelectedRootReadPort(Protocol):
         max_bytes: int,
     ) -> bytes: ...
 
+    def read_selected_files(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_paths: tuple[str, ...],
+        *,
+        max_total_bytes: int,
+    ) -> tuple[bytes, ...]: ...
+
 
 @dataclass(frozen=True, slots=True)
 class PackageProductRuntimeRequestV1:
@@ -109,6 +117,10 @@ class PackageProductRuntimeBindingV1:
             getattr(self._selected_root_reader, "read_selected_file", None)
         ):
             raise TypeError("Package Product selected-root reader is invalid")
+        if self._selected_root_reader is not None and not callable(
+            getattr(self._selected_root_reader, "read_selected_files", None)
+        ):
+            raise TypeError("Package Product selected-root batch reader is invalid")
 
     @property
     def binding_id(self) -> str:
@@ -136,6 +148,30 @@ class PackageProductRuntimeBindingV1:
                 )
             return self._selected_root_reader.read_selected_file(
                 installation_key, logical_path, max_bytes=max_bytes
+            )
+
+    def read_selected_plugin_files(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_paths: tuple[str, ...],
+        *,
+        max_total_bytes: int,
+    ) -> tuple[bytes, ...]:
+        """Capture a bounded file set while this Session binding is active."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_root_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-root reader is unavailable",
+                    code="package_product_root_reader_unavailable",
+                )
+            return self._selected_root_reader.read_selected_files(
+                installation_key, logical_paths, max_total_bytes=max_total_bytes
             )
 
     def dispose_runtime(self) -> None:

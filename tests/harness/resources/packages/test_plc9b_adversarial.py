@@ -5174,6 +5174,11 @@ while True:
                         key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert disabled.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_batch:
+                    runtime.read_selected_plugin_files(
+                        key, ("coding_base/plugin.json",), max_total_bytes=4096
+                    )
+                assert disabled_batch.value.code == "package_product_root_not_selected"
                 enabled = management.submit(
                     PluginManagementCommandV1(
                         action="enable",
@@ -5201,6 +5206,25 @@ while True:
                     assert runtime.read_selected_plugin_file(
                         key, logical_path, max_bytes=64 * 1024
                     ) == base_files[logical_path]
+                selected_paths = (
+                    "coding_base/plugin.json",
+                    "coding_base/declarations/plugin.json",
+                    "coding_base/prompts/standard.md",
+                    "coding_base/skills/standard/SKILL.md",
+                )
+                assert runtime.read_selected_plugin_files(
+                    key, selected_paths, max_total_bytes=64 * 1024
+                ) == tuple(base_files[path] for path in selected_paths)
+                with pytest.raises(PackageProductRuntimeReadError) as over_budget:
+                    runtime.read_selected_plugin_files(
+                        key, selected_paths, max_total_bytes=1
+                    )
+                assert over_budget.value.code == "package_product_root_file_unavailable"
+                with pytest.raises(PackageProductRuntimeReadError) as undeclared:
+                    runtime.read_selected_plugin_files(
+                        key, ("coding_base/missing.py",), max_total_bytes=4096
+                    )
+                assert undeclared.value.code == "package_product_root_file_unavailable"
                 reopened = PackageProductSelectedRootReader(
                     product_id=policy.product_id,
                     scope_id=policy.project_scope_id,
@@ -5299,6 +5323,11 @@ while True:
                             key, "coding_base/plugin.json", max_bytes=4096
                         )
                     assert closed.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(PackageProductRuntimeActivationError) as closed_batch:
+                        runtime.read_selected_plugin_files(
+                            key, ("coding_base/plugin.json",), max_total_bytes=4096
+                        )
+                    assert closed_batch.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"

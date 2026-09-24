@@ -238,9 +238,7 @@ class PluginManagementPackageDesiredStateAdapter:
                 for claim in self.gc_bindings.claims()
             )
         ):
-            raise PackageProductGcAdmissionError(
-                "Package root is reserved for GC"
-            )
+            raise PackageProductGcAdmissionError("Package root is reserved for GC")
         if self.gc_bindings is not None:
             self.gc_bindings.prepare(request, package_revision)
         command = PluginManagementCommandV1(
@@ -364,6 +362,61 @@ class PackageProductSelectedRootReader:
         *,
         max_bytes: int,
     ) -> bytes:
+        with self.gc_gate.guard() as reserved:
+            settlement = self._selected_settlement(installation_key, reserved)
+            return self.root_store.read_root_file(
+                settlement, logical_path, max_bytes=max_bytes
+            )
+
+    def read_selected_files(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_paths: tuple[str, ...],
+        *,
+        max_total_bytes: int,
+    ) -> tuple[bytes, ...]:
+        """Read one bounded file set from a single admitted Product selection."""
+
+        if (
+            not isinstance(logical_paths, tuple)
+            or not logical_paths
+            or len(logical_paths) > 64
+            or any(not isinstance(path, str) for path in logical_paths)
+            or len(set(logical_paths)) != len(logical_paths)
+        ):
+            raise ValueError("Product selected-root file set is invalid")
+        if (
+            type(max_total_bytes) is not int
+            or max_total_bytes < 0
+            or max_total_bytes > 16 * 1024 * 1024
+        ):
+            raise ValueError("Product selected-root read budget is invalid")
+        with self.gc_gate.guard() as reserved:
+            settlement = self._selected_settlement(installation_key, reserved)
+            members = {
+                entry.logical_path: entry for entry in settlement.manifest.entries
+            }
+            if (
+                any(path not in members for path in logical_paths)
+                or sum(members[path].byte_count for path in logical_paths)
+                > max_total_bytes
+            ):
+                raise self._error(
+                    "Selected root file set is unavailable or exceeds budget",
+                    "package_product_root_file_unavailable",
+                )
+            return tuple(
+                self.root_store.read_root_file(
+                    settlement, path, max_bytes=members[path].byte_count
+                )
+                for path in logical_paths
+            )
+
+    def _selected_settlement(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        reserved: frozenset[PluginPackageRevisionRefV1],
+    ) -> PackageStoreSettlementRecordV1:
         if not isinstance(installation_key, PluginInstallationKeyV1):
             raise TypeError("Exact Product installation key is required")
         if (
@@ -371,95 +424,94 @@ class PackageProductSelectedRootReader:
             or installation_key.scope_id != self.scope_id
             or installation_key.installation_scope != self.installation_scope
         ):
-            raise self._error("Product Plugin scope changed", "package_product_root_scope_changed")
-        with self.gc_gate.guard() as reserved:
-            snapshot, transitions = self.desired_state.capture()
-            selection = snapshot.installation(installation_key).selection
-            package_revision = selection.package_revision
-            if (
-                selection.desired_state != "installed_enabled"
-                or package_revision is None
-                or selection.instance_revision_ref is None
-                or package_revision in reserved
-            ):
-                raise self._error("Product Plugin is not selected", "package_product_root_not_selected")
-            provenance = tuple(
-                transition
-                for transition in transitions
-                if transition.committed_state.installation_key == installation_key
-                and (
-                    isinstance(transition, PluginDesiredStateUpdateTransitionV2)
-                    or (
-                        isinstance(transition, PluginDesiredStateTransitionV1)
-                        and transition.transition_kind == "install"
-                    )
+            raise self._error(
+                "Product Plugin scope changed", "package_product_root_scope_changed"
+            )
+        snapshot, transitions = self.desired_state.capture()
+        selection = snapshot.installation(installation_key).selection
+        package_revision = selection.package_revision
+        if (
+            selection.desired_state != "installed_enabled"
+            or package_revision is None
+            or selection.instance_revision_ref is None
+            or package_revision in reserved
+        ):
+            raise self._error(
+                "Product Plugin is not selected", "package_product_root_not_selected"
+            )
+        provenance = tuple(
+            transition
+            for transition in transitions
+            if transition.committed_state.installation_key == installation_key
+            and (
+                isinstance(transition, PluginDesiredStateUpdateTransitionV2)
+                or (
+                    isinstance(transition, PluginDesiredStateTransitionV1)
+                    and transition.transition_kind == "install"
                 )
             )
-            if not provenance:
-                raise self._error(
-                    "Selected root has no Product commit", "package_product_root_unbound"
-                )
-            selected_commit = provenance[-1]
-            if not isinstance(selected_commit, PluginDesiredStateTransitionV1):
-                raise self._error(
-                    "Selected update lacks a PLC9B Product binding",
-                    "package_product_root_unbound",
-                )
-            matches = tuple(
-                binding
-                for binding in self.bindings.records()
-                if binding.desired_transition_revision
-                == selected_commit.inventory_revision
-                and binding.package_revision == package_revision
-                and binding.request.command_id
-                == selected_commit.mutation.operation_id
-                and binding.request.desired_request_id
-                == selected_commit.mutation.idempotency_key
-                and binding.request.product_id == installation_key.product_id
-                and binding.request.scope_id == installation_key.scope_id
-                and binding.request.plugin_id == installation_key.plugin_id
+        )
+        if not provenance:
+            raise self._error(
+                "Selected root has no Product commit", "package_product_root_unbound"
             )
-            if len(matches) != 1:
-                raise self._error(
-                    "Selected root lacks an exact Product binding",
-                    "package_product_root_unbound",
-                )
-            binding = matches[0]
-            request = binding.request
-            try:
-                projected = CommittedSetPackageRevisionProjection(
-                    self.desired_state, self.committed_sets
-                ).project(request)
-            except ValueError:
-                raise self._error(
-                    "Selected committed set changed", "package_product_root_stale"
-                ) from None
-            committed_record = self.committed_sets.current(request.operation_id)
-            if (
-                projected != package_revision
-                or committed_record is None
-                or committed_record.committed_set.set_id != request.committed_set_id
-                or committed_record.committed_set.root_ref != request.root_ref
-                or selected_commit.committed_state.selection.package_revision
-                != package_revision
-            ):
-                raise self._error(
-                    "Selected committed set changed", "package_product_root_stale"
-                )
-            settlements = tuple(
-                settlement
-                for settlement in self.root_settlements.records()
-                if settlement.receipt.stable_ref == request.root_ref
-                and settlement.receipt.operation_id == request.operation_id
+        selected_commit = provenance[-1]
+        if not isinstance(selected_commit, PluginDesiredStateTransitionV1):
+            raise self._error(
+                "Selected update lacks a PLC9B Product binding",
+                "package_product_root_unbound",
             )
-            if len(settlements) != 1:
-                raise self._error(
-                    "Selected Store root is unavailable",
-                    "package_product_root_unavailable",
-                )
-            return self.root_store.read_root_file(
-                settlements[0], logical_path, max_bytes=max_bytes
+        matches = tuple(
+            binding
+            for binding in self.bindings.records()
+            if binding.desired_transition_revision == selected_commit.inventory_revision
+            and binding.package_revision == package_revision
+            and binding.request.command_id == selected_commit.mutation.operation_id
+            and binding.request.desired_request_id
+            == selected_commit.mutation.idempotency_key
+            and binding.request.product_id == installation_key.product_id
+            and binding.request.scope_id == installation_key.scope_id
+            and binding.request.plugin_id == installation_key.plugin_id
+        )
+        if len(matches) != 1:
+            raise self._error(
+                "Selected root lacks an exact Product binding",
+                "package_product_root_unbound",
             )
+        binding = matches[0]
+        request = binding.request
+        try:
+            projected = CommittedSetPackageRevisionProjection(
+                self.desired_state, self.committed_sets
+            ).project(request)
+        except ValueError:
+            raise self._error(
+                "Selected committed set changed", "package_product_root_stale"
+            ) from None
+        committed_record = self.committed_sets.current(request.operation_id)
+        if (
+            projected != package_revision
+            or committed_record is None
+            or committed_record.committed_set.set_id != request.committed_set_id
+            or committed_record.committed_set.root_ref != request.root_ref
+            or selected_commit.committed_state.selection.package_revision
+            != package_revision
+        ):
+            raise self._error(
+                "Selected committed set changed", "package_product_root_stale"
+            )
+        settlements = tuple(
+            settlement
+            for settlement in self.root_settlements.records()
+            if settlement.receipt.stable_ref == request.root_ref
+            and settlement.receipt.operation_id == request.operation_id
+        )
+        if len(settlements) != 1:
+            raise self._error(
+                "Selected Store root is unavailable",
+                "package_product_root_unavailable",
+            )
+        return settlements[0]
 
     @staticmethod
     def _error(message: str, code: str) -> PackageProductRuntimeReadError:
