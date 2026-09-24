@@ -18,9 +18,10 @@
   candidate and an explicit root Store method. D3h joins reservation, result,
   and root fences in a read-only operator view. D3i composes the real fenced
   POSIX Product Store for explicit offline GC; D3j adds its declared operator
-  CLI. Default management/RPC selection, Windows execution evidence, shared
-  dependency GC, private-data
-  confirmation, and backup projection remain open.
+  CLI. D3k adds a separate private-data confirmation seam and a backup-owner
+  projection port, both without production owner bindings. Default
+  management/RPC selection, Windows execution evidence, shared dependency
+  GC, and production private-data/backup owner composition remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
@@ -95,6 +96,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D3j Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md)
   exposes separate preparation, candidate/status, exact deletion, and
   durable-start retry through an offline POSIX operator CLI.
+- [PLC9D3k Private-Data Confirmation And Backup Projection Seams](plugin-lifecycle-plc9d3k-contract.md)
+  requires independent confirmation and domain-owned deletion evidence, and
+  projects backup status only when a backup owner is bound.
 
 ## Frozen Contracts
 

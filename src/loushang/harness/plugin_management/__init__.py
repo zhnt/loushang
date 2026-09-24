@@ -4,12 +4,16 @@ This package is intentionally absent from the public Plugin authoring surface.
 """
 
 from loushang.harness.plugin_management.application import (
+    PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION,
     PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION,
     PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION,
     PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION,
     PLUGIN_MANAGEMENT_PROJECTION_VERSION,
     PLUGIN_MANAGEMENT_QUERY_VERSION,
     PLUGIN_MANAGEMENT_SOURCE_SNAPSHOT_VERSION,
+    PluginBackupRetentionProjectionSourcePort,
+    PluginBackupRetentionRecordV1,
+    PluginBackupRetentionSnapshotV1,
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
@@ -136,6 +140,15 @@ from loushang.harness.plugin_management.package_records import (
     PluginPackagePinV1,
     PluginPackageRecoveryBarrierV1,
 )
+from loushang.harness.plugin_management.private_data_deletion import (
+    PRIVATE_DATA_DELETION_VERSION,
+    PluginPrivateDataConfirmationAuthorityPort,
+    PluginPrivateDataDeletionConfirmationV1,
+    PluginPrivateDataDeletionCoordinator,
+    PluginPrivateDataDeletionOwnerPort,
+    PluginPrivateDataDeletionPlanV1,
+    PluginPrivateDataDeletionReceiptV1,
+)
 from loushang.harness.plugin_management.records import (
     PLUGIN_DESIRED_SELECTION_VERSION,
     PLUGIN_DESIRED_STATE_MUTATION_VERSION,
@@ -205,6 +218,17 @@ from loushang.harness.plugin_management.updates import (
 )
 
 __all__ = [
+    "PRIVATE_DATA_DELETION_VERSION",
+    "PluginPrivateDataConfirmationAuthorityPort",
+    "PluginPrivateDataDeletionConfirmationV1",
+    "PluginPrivateDataDeletionCoordinator",
+    "PluginPrivateDataDeletionOwnerPort",
+    "PluginPrivateDataDeletionPlanV1",
+    "PluginPrivateDataDeletionReceiptV1",
+    "PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION",
+    "PluginBackupRetentionProjectionSourcePort",
+    "PluginBackupRetentionRecordV1",
+    "PluginBackupRetentionSnapshotV1",
     "PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION",
     "PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION",
     "PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION",

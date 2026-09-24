@@ -62,6 +62,10 @@
   [Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md) selects
   that owner through a declared POSIX operator CLI with separate prepare,
   candidate/status, exact delete, and durable-start retry actions.
+- PLC9D3k refinement:
+  [Private-Data Confirmation And Backup Projection Seams](plugin-lifecycle-plc9d3k-contract.md)
+  adds separately authorized domain delegation and a conditional backup-owner
+  read projection. Neither production data nor backup owner is bound.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -941,8 +945,8 @@ publication outside those exact canaries.
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
 | Continuity destructive commit | `src/loushang/harness/continuity/mutation.py::AuthorizedContinuityDeletionLease._commit_complete_and_release` over the source-owned `PreparedContinuityDeletion.commit` port, prepared by `src/loushang/harness/continuity/plugin_provider.py::PluginContinuityProvider._prepare_delete` | Calls the source/data-domain candidate commit first, validates its receipt, then asks the Product authority to settle | Retain the plan -> authorization -> source commit -> receipt settlement order for any future domain deletion contract |
 | Continuity lifecycle adapter | `src/loushang/harness/plugin_management/continuity_adapter.py::PluginInstanceLedgerContinuityFamilyAuthority` | Adapts Continuity provider family lifetime to generic Instance/package ledgers | Retain until the same exact domain contract has another accepted composition; never delete merely because its filename says adapter |
-| Generic private-data deletion | no common owner/contract on this baseline | Plugin removal does not generically delete private mutable data | PLC9D requires separate confirmation, domain-owned plan/receipt, and tests proving remove/GC cannot invoke it |
-| Backup retention/expiry | no common Plugin projection on this baseline | Local deletion has no authority to claim backup expiry | PLC9D projects the exact backup owner or reports unsupported/unknown; it never guesses completion |
+| Generic private-data deletion | `src/loushang/harness/plugin_management/private_data_deletion.py::PluginPrivateDataDeletionCoordinator` | D3k checks an exact plan, independent confirmation authority, and domain-owned receipt; no production owner or command is bound | Bind an exact data-domain owner and Product/operator confirmation issuer before enabling deletion; remove/GC cannot invoke this coordinator |
+| Backup retention/expiry | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | D3k conditionally projects a backup-owner snapshot and receipt-backed expiry; no production backup owner is bound | Bind and authenticate the exact backup owner or continue reporting unsupported/unknown; never infer expiry from local deletion |
 
 ## Compatibility Candidate Ledger
 
@@ -981,8 +985,9 @@ PLC9A1 contract:
 - `remote_service` topology contract and client;
 - default management/RPC selection beyond the declared D3j offline GC CLI,
   terminal GC debt repair, and Windows native Product execution evidence;
-- generic Plugin-private data deletion command/receipt; and
-- correlated backup-retention projection.
+- a production private-data owner, confirmation issuer, and bound deletion
+  command beyond the D3k contract; and
+- production backup-owner binding beyond the D3k conditional projection.
 
 Later slices must first add a focused contract and negative tests for the
 relevant boundary, then revise this inventory in the same change. Absence is a

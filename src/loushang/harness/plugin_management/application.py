@@ -32,6 +32,7 @@ PLUGIN_MANAGEMENT_PROJECTION_VERSION = 1
 PLUGIN_MANAGEMENT_QUERY_VERSION = 1
 PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION = 1
 PLUGIN_MANAGEMENT_SOURCE_SNAPSHOT_VERSION = 1
+PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION = 1
 
 PluginManagementSourceKind = Literal["local", "remote", "builtin", "unknown"]
 PluginManagementSourceAvailability = Literal[
@@ -237,6 +238,56 @@ class PluginSourceProjectionSourcePort(Protocol):
     def snapshot(self) -> PluginManagementSourceSnapshotV1: ...
 
 
+PluginBackupRetentionStatus = Literal[
+    "retained", "expiry_pending", "expired", "unknown"
+]
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class PluginBackupRetentionRecordV1:
+    """An observation from the backup owner, never inferred from Package GC."""
+
+    installation_key: PluginInstallationKeyV1
+    status: PluginBackupRetentionStatus
+    expiry_receipt_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {"retained", "expiry_pending", "expired", "unknown"}:
+            raise ValueError("Unsupported backup-retention status")
+        if self.status == "expired":
+            if self.expiry_receipt_id is None:
+                raise ValueError("Expired backup requires an expiry receipt")
+            _require_nonempty(self.expiry_receipt_id, name="backup expiry receipt")
+        elif self.expiry_receipt_id is not None:
+            raise ValueError("Backup expiry receipt requires expired status")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "installationKey": self.installation_key.to_dict(),
+            "status": self.status,
+            "expiryReceiptId": self.expiry_receipt_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PluginBackupRetentionSnapshotV1:
+    owner_revision: str
+    records: tuple[PluginBackupRetentionRecordV1, ...]
+    snapshot_version: int = PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.owner_revision, name="backup owner revision")
+        if self.snapshot_version != PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION:
+            raise ValueError("Unsupported backup-retention snapshot")
+        keys = tuple(item.installation_key for item in self.records)
+        if keys != tuple(sorted(set(keys))):
+            raise ValueError("Backup records must be sorted and unique by Installation")
+
+
+class PluginBackupRetentionProjectionSourcePort(Protocol):
+    def snapshot(self) -> PluginBackupRetentionSnapshotV1: ...
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class PluginManagementMigrationRecordV1:
     installation_key: PluginInstallationKeyV1
@@ -321,6 +372,7 @@ class PluginManagementOwnerRevisionsV1:
     packages: int | None
     retirement: int | None
     unsupported_dimensions: tuple[str, ...]
+    backup_retention: str | None = None
 
     def __post_init__(self) -> None:
         for required_value, name in (
@@ -340,9 +392,11 @@ class PluginManagementOwnerRevisionsV1:
             sorted(set(self.unsupported_dimensions))
         ):
             raise ValueError("Unsupported dimensions must be sorted and unique")
+        if self.backup_retention is not None:
+            _require_nonempty(self.backup_retention, name="backup owner revision")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "desiredState": self.desired_state,
             "enablementMigration": self.enablement_migration,
             "instances": self.instances,
@@ -352,6 +406,9 @@ class PluginManagementOwnerRevisionsV1:
             "source": self.source,
             "unsupportedDimensions": list(self.unsupported_dimensions),
         }
+        if self.backup_retention is not None:
+            result["backupRetention"] = self.backup_retention
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,6 +506,7 @@ class PluginManagementInstallationViewV1:
     cleanup_debt_ids: tuple[str, ...]
     convergence: PluginManagementConvergence
     unknown_dimensions: tuple[str, ...]
+    backup_retention: PluginBackupRetentionRecordV1 | None = None
 
     def __post_init__(self) -> None:
         if self.operations != tuple(
@@ -475,7 +533,7 @@ class PluginManagementInstallationViewV1:
                 raise ValueError(f"Plugin management {name} must be sorted and unique")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "cleanupDebtIds": list(self.cleanup_debt_ids),
             "convergence": self.convergence,
             "desiredState": self.desired_state,
@@ -497,6 +555,9 @@ class PluginManagementInstallationViewV1:
             "source": None if self.source is None else self.source.to_dict(),
             "unknownDimensions": list(self.unknown_dimensions),
         }
+        if self.backup_retention is not None:
+            result["backupRetention"] = self.backup_retention.to_dict()
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,6 +620,7 @@ class _CapturedOwners:
     instances: PluginInstanceRuntimeInventorySnapshotV1 | None
     packages: PluginPackageLifecycleSnapshotV1 | None
     retirement: PluginRetirementSetInventorySnapshotV1 | None
+    backup_retention: PluginBackupRetentionSnapshotV1 | None
 
 
 class PluginManagementReadModelProjector:
@@ -574,6 +636,7 @@ class PluginManagementReadModelProjector:
         instances: PluginInstanceProjectionSourcePort | None = None,
         packages: PluginPackageProjectionSourcePort | None = None,
         retirement: PluginRetirementProjectionSourcePort | None = None,
+        backup_retention: PluginBackupRetentionProjectionSourcePort | None = None,
     ) -> None:
         self._desired_state = desired_state
         self._operations = operations
@@ -582,6 +645,7 @@ class PluginManagementReadModelProjector:
         self._instances = instances
         self._packages = packages
         self._retirement = retirement
+        self._backup_retention = backup_retention
 
     def snapshot(
         self,
@@ -609,6 +673,15 @@ class PluginManagementReadModelProjector:
             if query.matches(record.installation_key)
         }
         instance_by_key = _instances_by_key(captured.instances, query=query)
+        backup_by_key = {
+            record.installation_key: record
+            for record in (
+                ()
+                if captured.backup_retention is None
+                else captured.backup_retention.records
+            )
+            if query.matches(record.installation_key)
+        }
         keys = tuple(
             sorted(
                 set(desired_by_key)
@@ -616,6 +689,7 @@ class PluginManagementReadModelProjector:
                 | set(operation_by_key)
                 | set(migration_by_key)
                 | set(instance_by_key)
+                | set(backup_by_key)
             )
         )
         skew = _projection_skew(
@@ -635,21 +709,24 @@ class PluginManagementReadModelProjector:
                 instances=instance_by_key.get(key, ()),
                 packages=captured.packages,
                 retirement=captured.retirement,
+                backup_retention=backup_by_key.get(key),
                 source_supported=captured.source is not None,
                 migration_supported=captured.migrations is not None,
                 instances_supported=captured.instances is not None,
                 packages_supported=captured.packages is not None,
                 retirement_supported=captured.retirement is not None,
+                backup_retention_supported=captured.backup_retention is not None,
             )
             for key in keys
         )
-        unsupported = ["backup_retention", "private_data", "worker_process"]
+        unsupported = ["private_data", "worker_process"]
         for supported, dimension in (
             (captured.source is not None, "source"),
             (captured.migrations is not None, "enablement_migration"),
             (captured.instances is not None, "instances"),
             (captured.packages is not None, "packages"),
             (captured.retirement is not None, "retirement"),
+            (captured.backup_retention is not None, "backup_retention"),
         ):
             if not supported:
                 unsupported.append(dimension)
@@ -685,6 +762,11 @@ class PluginManagementReadModelProjector:
                     else captured.retirement.journal_revision
                 ),
                 unsupported_dimensions=tuple(sorted(unsupported)),
+                backup_retention=(
+                    None
+                    if captured.backup_retention is None
+                    else captured.backup_retention.owner_revision
+                ),
             ),
             installations=views,
             skew=skew,
@@ -704,6 +786,11 @@ class PluginManagementReadModelProjector:
             packages=None if self._packages is None else self._packages.snapshot(),
             retirement=(
                 None if self._retirement is None else self._retirement.snapshot()
+            ),
+            backup_retention=(
+                None
+                if self._backup_retention is None
+                else self._backup_retention.snapshot()
             ),
         )
 
@@ -766,11 +853,13 @@ def _project_installation(
     instances: tuple[PluginInstanceRuntimeSnapshotV1, ...],
     packages: PluginPackageLifecycleSnapshotV1 | None,
     retirement: PluginRetirementSetInventorySnapshotV1 | None,
+    backup_retention: PluginBackupRetentionRecordV1 | None,
     source_supported: bool,
     migration_supported: bool,
     instances_supported: bool,
     packages_supported: bool,
     retirement_supported: bool,
+    backup_retention_supported: bool,
 ) -> PluginManagementInstallationViewV1:
     selection = None if desired is None else desired.selection
     desired_state = "unknown" if selection is None else selection.desired_state
@@ -828,6 +917,10 @@ def _project_installation(
         unknown.append("source")
     if migration_supported and migration is None:
         unknown.append("enablement_migration")
+    if backup_retention_supported and backup_retention is None:
+        unknown.append("backup_retention")
+    if backup_retention is not None and backup_retention.status == "unknown":
+        unknown.append("backup_retention")
     if (
         instances_supported
         and selected_instance is not None
@@ -864,6 +957,7 @@ def _project_installation(
         cleanup_debt_ids=cleanup_debt,
         convergence=convergence,
         unknown_dimensions=tuple(sorted(set(unknown))),
+        backup_retention=backup_retention,
     )
 
 
@@ -1062,6 +1156,10 @@ def _require_nonnegative(value: object, *, name: str) -> None:
 
 
 __all__ = [
+    "PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION",
+    "PluginBackupRetentionProjectionSourcePort",
+    "PluginBackupRetentionRecordV1",
+    "PluginBackupRetentionSnapshotV1",
     "PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION",
     "PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION",
     "PLUGIN_MANAGEMENT_PROJECTION_VERSION",
