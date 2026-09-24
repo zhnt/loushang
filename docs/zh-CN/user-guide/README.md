@@ -205,6 +205,14 @@ loushang --check-package-updates
 loushang --update-packages
 ```
 
+Linux 上没有旧 Plugin 状态、旧 Plugin/Package 设置的新工作区，可离线切换到带 fence 的 Product Store：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径
+```
+
+先停止该工作区的 Loushang 进程；命令也会拒绝仍在运行的旧 writer。已有的 Loushang 私有主目录必须归当前用户所有、不可供其他用户访问；命令不会改写它的权限。它通过 Product 事务安装内置的 base、LSP、架构三个插件，中断后可以重试。需要旧状态采纳或设置迁移的工作区会被拒绝。写入 fence 后只能使用理解该 fence 的 Loushang 版本。
+
 ## 方法与技能
 
 方法与技能把可复用工作实践变成运行时资产。CLI 中可以使用：

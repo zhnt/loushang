@@ -230,6 +230,14 @@ loushang --check-package-updates
 loushang --update-packages
 ```
 
+On Linux, a fresh workspace with no prior Plugin state or legacy Plugin/Package settings can be switched offline to the fenced Product store:
+
+```bash
+loushang-package-cutover --workspace /absolute/path/to/workspace
+```
+
+Stop its Loushang processes first; the command also refuses a live pre-fence writer. The existing Loushang private home must be owned by you and inaccessible to other users; the command does not change its permissions. It installs the checked-in base, LSP, and architecture Plugins through Product transactions and can be retried after interruption. It refuses workspaces that need legacy-state adoption or settings migration. Once fenced, use a fence-aware Loushang version; an older runtime cannot safely write the workspace.
+
 ## Methods And Skills
 
 Methods and skills turn reusable working practices into runtime assets. In the CLI, use:
