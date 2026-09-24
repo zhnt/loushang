@@ -4291,6 +4291,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 plugin_manifest_path=(
                     "coding_base/plugin.json" if checked_in_base else None
                 ),
+                source_trust_class=(
+                    "host-equivalent-local" if checked_in_base else None
+                ),
             ),
         ),
         dependencies=(
@@ -5296,24 +5299,16 @@ while True:
                 from loushang.harness.environment import LocalHostEnvironmentProbe
                 from loushang.harness.resources.plugins.selection import (
                     PluginContributionRef,
-                    PluginSourceTrustSnapshotV1,
                 )
 
-                trust = PluginSourceTrustSnapshotV1(
-                    plugin_id="coding.base",
-                    package_source_identity=(
-                        captured.package_revision.package_source_identity
-                    ),
-                    source_trust_class="host-equivalent-local",
-                    source_trust_policy_revision=policy.policy_revision,
-                    trusted=True,
-                )
+                trust = selected_manifest.source_trust_snapshot
+                assert trust is not None
+                assert trust.source_trust_policy_revision == policy.authority_revision
                 base_plan, base_tool, base_tools = prepare_coding_base_product_plan(
                     selected_manifest,
                     resolve_coding_composition_set("coding-standard"),
                     installation_key=key,
                     session_id=session_manager.get_header().conversation_id,
-                    source_trust_snapshot=trust,
                     host_environment=LocalHostEnvironmentProbe().detect(),
                 )
                 assert base_plan.context.instance_revision_refs == (
@@ -5336,7 +5331,6 @@ while True:
                     resolve_coding_composition_set("coding-standard"),
                     installation_key=key,
                     session_id=session_manager.get_header().conversation_id,
-                    source_trust_snapshot=trust,
                     host_environment=LocalHostEnvironmentProbe().detect(),
                     evaluated_at=1,
                 )
@@ -5388,25 +5382,28 @@ while True:
                             ),
                         ),
                     )
-                with pytest.raises(CodingBasePluginAssemblyError) as foreign_trust:
-                    prepare_coding_base_product_plan(
+                with pytest.raises(ValueError, match="source trust changed"):
+                    replace(
                         selected_manifest,
-                        resolve_coding_composition_set("coding-standard"),
-                        installation_key=key,
-                        session_id=session_manager.get_header().conversation_id,
                         source_trust_snapshot=replace(
                             trust, package_source_identity="foreign-source"
                         ),
+                    )
+                with pytest.raises(CodingBasePluginAssemblyError) as missing_trust:
+                    prepare_coding_base_product_plan(
+                        replace(selected_manifest, source_trust_snapshot=None),
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
-                assert foreign_trust.value.code == "coding_base_product_selection_mismatch"
+                assert missing_trust.value.code == "coding_base_product_source_untrusted"
                 with pytest.raises(CodingBasePluginAssemblyError) as foreign_scope_plan:
                     prepare_coding_base_product_plan(
                         selected_manifest,
                         resolve_coding_composition_set("coding-standard"),
                         installation_key=replace(key, scope_id="workspace:foreign"),
                         session_id=session_manager.get_header().conversation_id,
-                        source_trust_snapshot=trust,
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
                 assert foreign_scope_plan.value.code == "coding_base_product_selection_mismatch"
@@ -5417,6 +5414,28 @@ while True:
                 assert isinstance(
                     runtime._selected_root_reader, PackageProductSelectedRootReader
                 )
+                untrusted_reader = _LocalWheelSelectedManifestReader(
+                    policy=replace(
+                        policy,
+                        bindings=(
+                            replace(policy.bindings[0], source_trust_class=None),
+                        ),
+                    ),
+                    root_reader=runtime._selected_root_reader,
+                )
+                untrusted_selected = untrusted_reader.capture_selected_manifest(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert untrusted_selected.source_trust_snapshot is None
+                with pytest.raises(CodingBasePluginAssemblyError) as untrusted_plan:
+                    prepare_coding_base_product_plan(
+                        untrusted_selected,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert untrusted_plan.value.code == "coding_base_product_source_untrusted"
                 wrong_path_reader = _LocalWheelSelectedManifestReader(
                     policy=replace(
                         policy,

@@ -708,7 +708,6 @@ def prepare_coding_base_product_plan(
     *,
     installation_key: PluginInstallationKeyV1,
     session_id: str,
-    source_trust_snapshot: PluginSourceTrustSnapshotV1,
     host_environment: HostEnvironment,
     include_tool_contribution: bool = True,
     include_tool_claim_prompt: bool = True,
@@ -727,11 +726,15 @@ def prepare_coding_base_product_plan(
         raise TypeError("Coding base requires a composition-set plan")
     if not isinstance(host_environment, HostEnvironment):
         raise TypeError("Coding base requires a host environment")
-    if not isinstance(source_trust_snapshot, PluginSourceTrustSnapshotV1):
-        raise TypeError("Coding base requires Product source trust evidence")
     if not isinstance(installation_key, PluginInstallationKeyV1):
         raise TypeError("Coding base requires an exact Product installation key")
     manifest = selected.verified_manifest()
+    source_trust_snapshot = selected.source_trust_snapshot
+    if not isinstance(source_trust_snapshot, PluginSourceTrustSnapshotV1):
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base has no Product source trust decision",
+            code="coding_base_product_source_untrusted",
+        )
     _validate_base_request(composition_set)
     if (
         manifest.name != _PLUGIN_ID

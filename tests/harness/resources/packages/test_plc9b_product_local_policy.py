@@ -73,6 +73,19 @@ def _intent(
     )
 
 
+def test_source_trust_requires_explicit_product_binding(tmp_path: Path) -> None:
+    policy = _policy(tmp_path)
+    binding = policy.bindings[0]
+    assert binding.source_trust_class is None
+    trusted = replace(
+        policy,
+        bindings=(replace(binding, source_trust_class="host-equivalent-local"),),
+    )
+    assert trusted.authority_revision != policy.authority_revision
+    with pytest.raises(ValueError, match="source trust class"):
+        replace(binding, source_trust_class="host equivalent local")
+
+
 def test_configured_local_wheel_is_plugin_bound_by_durable_product_facts(
     tmp_path: Path,
 ) -> None:

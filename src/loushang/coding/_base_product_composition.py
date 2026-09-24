@@ -45,7 +45,6 @@ from loushang.harness.resources.plugins.engine import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginSelectionPlanV2,
-    PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.session.product_composition_assembly import (
     _assemble_product_contribution_candidates,
@@ -71,7 +70,6 @@ def compile_coding_base_product_selection(
     *,
     installation_key: PluginInstallationKeyV1,
     session_id: str,
-    source_trust_snapshot: PluginSourceTrustSnapshotV1,
     host_environment: HostEnvironment,
     evaluated_at: int,
     include_tool_contribution: bool = True,
@@ -86,7 +84,6 @@ def compile_coding_base_product_selection(
         composition_set,
         installation_key=installation_key,
         session_id=session_id,
-        source_trust_snapshot=source_trust_snapshot,
         host_environment=host_environment,
         include_tool_contribution=include_tool_contribution,
         include_tool_claim_prompt=include_tool_claim_prompt,

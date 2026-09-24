@@ -162,6 +162,7 @@ from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
+from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +172,7 @@ class PackageProductSelectedPluginManifestV1:
     snapshot: PackageProductSelectedRootSnapshotV1
     manifest: InertPluginFileManifest
     declaration_documents: tuple[tuple[str, PluginDeclarationDocument], ...] = ()
+    source_trust_snapshot: PluginSourceTrustSnapshotV1 | None = None
 
     def __post_init__(self) -> None:
         self.verified_manifest()
@@ -187,6 +189,15 @@ class PackageProductSelectedPluginManifestV1:
             or self.manifest.version != self.snapshot.root_ref.version
         ):
             raise ValueError("Selected Plugin manifest changed Product identity")
+        trust = self.source_trust_snapshot
+        if trust is not None and (
+            not isinstance(trust, PluginSourceTrustSnapshotV1)
+            or trust.plugin_id != self.manifest.name
+            or trust.package_source_identity
+            != self.snapshot.package_revision.package_source_identity
+            or not trust.trusted
+        ):
+            raise ValueError("Selected Plugin source trust changed Product identity")
         root = self.manifest.root_relative_path.as_posix()
         manifest_path = "plugin.json" if root == "." else f"{root}/plugin.json"
         members = dict(self.snapshot.files)
@@ -369,6 +380,17 @@ class _LocalWheelSelectedManifestReader:
             snapshot=snapshot,
             manifest=manifest,
             declaration_documents=tuple(documents),
+            source_trust_snapshot=(
+                PluginSourceTrustSnapshotV1(
+                    plugin_id=manifest.name,
+                    package_source_identity=matches[0].source_identity,
+                    source_trust_class=matches[0].source_trust_class,
+                    source_trust_policy_revision=self.policy.authority_revision,
+                    trusted=True,
+                )
+                if matches[0].source_trust_class is not None
+                else None
+            ),
         )
 
 
