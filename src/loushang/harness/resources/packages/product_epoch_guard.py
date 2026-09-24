@@ -157,6 +157,43 @@ class PackageProductPosixFencedRuntimeOwner:
         with self._close_lock:
             self._assert_current_unlocked()
 
+    @property
+    def control_root(self) -> Path:
+        return self._file_io.root
+
+    def prepare_product_state_root(self) -> Path:
+        """Create the B Product journal root only after the fence is selected."""
+
+        with self._close_lock:
+            self._assert_current_unlocked()
+            name = "product-state"
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=self._root_fd)
+            except FileExistsError:
+                pass
+            else:
+                os.chmod(
+                    name, 0o700, dir_fd=self._root_fd, follow_symlinks=False
+                )
+                os.fsync(self._root_fd)
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            descriptor = os.open(name, flags, dir_fd=self._root_fd)
+            try:
+                metadata = os.fstat(descriptor)
+                visible = (self.control_root / name).lstat()
+                if (
+                    not stat.S_ISDIR(metadata.st_mode)
+                    or stat.S_IMODE(metadata.st_mode) & 0o077
+                    or metadata.st_uid != os.geteuid()
+                    or (metadata.st_dev, metadata.st_ino)
+                    != (visible.st_dev, visible.st_ino)
+                ):
+                    raise ValueError("Package Product state root is unsafe")
+            finally:
+                os.close(descriptor)
+            self._assert_current_unlocked()
+            return self.control_root / name
+
     def issue_runtime_lease(
         self,
         *,

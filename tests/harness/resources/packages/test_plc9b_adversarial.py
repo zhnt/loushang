@@ -4239,6 +4239,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         cutover_coding_package_store_from_legacy,
         reopen_coding_package_cutover,
     )
+    from loushang.coding.package_product_runtime import (
+        open_coding_package_product_state,
+    )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
         PackageLifecycleError,
@@ -4329,8 +4332,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             resolution_environment_fingerprint=environment.fingerprint,
             authority_id="coding-local-source:runtime",
         )
-    state_root = tmp_path / "package-state"
-    state_root.mkdir(mode=0o700)
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
     legacy_base = tmp_path / "legacy-coding"
@@ -4367,15 +4368,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     (legacy_layout.root / "instance-runtime.jsonl").write_bytes(b"")
     (legacy_layout.root / "process-startups").mkdir(mode=0o700)
     (legacy_layout.root / "session-owners").mkdir(mode=0o700)
-    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
-    desired = PluginDesiredStateLedger(
-        tmp_path / "product-desired.jsonl", gc_gate=gate
-    )
-    management = PluginManagementService(
-        desired_state=desired,
-        operation_journal_path=tmp_path / "product-management.jsonl",
-    )
-    bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
     store_id = epoch_layout.store_id
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
@@ -4425,6 +4417,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         finally:
             live_old_runtime.release()
     cutover_binding = attempt_cutover()
+    assert not (control_root / "product-state").exists()
     cutover_attempt = cutover_binding.attempt
     snapshots = cutover_binding.snapshots
     cutover_request = cutover_attempt.request
@@ -4563,6 +4556,19 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     assert projected_sources["scopes"]["project"]["sourcePatch"] == {
         "package_roots": [str(legacy_root)]
     }
+
+    def pre_b_tree() -> tuple[tuple[str, str, bytes | None], ...]:
+        return tuple(
+            (
+                label,
+                path.relative_to(root).as_posix(),
+                None if path.is_dir() else path.read_bytes(),
+            )
+            for label, root in (("package", legacy_root), ("lifecycle", legacy_layout.root))
+            for path in sorted(root.rglob("*"))
+        )
+
+    frozen_pre_b_tree = pre_b_tree()
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
         authority_root=authority,
@@ -4573,6 +4579,36 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     try:
         registry = epoch_runtime.registry
         assert epoch_runtime.cutover_result == cutover_result
+        if entrypoint == "session" and not with_dependency:
+            foreign_layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+                legacy_base, cwd=tmp_path / "foreign-product-workspace"
+            )
+            with pytest.raises(ValueError, match="workspace authority changed"):
+                open_coding_package_product_state(foreign_layout, epoch_runtime)
+            unsafe_state_root = control_root / "product-state"
+            unsafe_state_root.mkdir(mode=0o700)
+            unsafe_state_root.chmod(0o770)
+            try:
+                with pytest.raises(ValueError, match="state root is unsafe"):
+                    open_coding_package_product_state(legacy_layout, epoch_runtime)
+            finally:
+                unsafe_state_root.rmdir()
+            prior_umask = os.umask(0o777)
+            try:
+                assert epoch_runtime.prepare_product_state_root() == unsafe_state_root
+            finally:
+                os.umask(prior_umask)
+        product_state = open_coding_package_product_state(
+            legacy_layout, epoch_runtime
+        )
+        state_root = product_state.state_root
+        gate = product_state.gc_gate
+        desired = product_state.desired_state
+        management = product_state.management
+        bindings = product_state.gc_bindings
+        assert state_root == control_root / "product-state"
+        assert stat.S_IMODE(state_root.stat().st_mode) == 0o700
+        assert (legacy_layout.root / "desired-state.jsonl").read_bytes() == b""
         if entrypoint == "session" and not with_dependency:
             restore_root = tmp_path / "isolated-offline-restore"
             restore_root.mkdir(mode=0o700)
@@ -6548,6 +6584,22 @@ while True:
                         key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
+            if checked_in_base:
+                hidden_package = tmp_path / "hidden-post-b-package"
+                hidden_lifecycle = tmp_path / "hidden-post-b-lifecycle"
+                legacy_root.rename(hidden_package)
+                legacy_layout.root.rename(hidden_lifecycle)
+            try:
+                reopened_state = open_coding_package_product_state(
+                    legacy_layout, epoch_runtime
+                )
+            finally:
+                if checked_in_base:
+                    hidden_lifecycle.rename(legacy_layout.root)
+                    hidden_package.rename(legacy_root)
+            assert reopened_state.state_root == state_root
+            assert reopened_state.desired_state.snapshot() == desired.snapshot()
+            assert reopened_state.gc_bindings.records() == bindings.records()
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
@@ -6619,6 +6671,7 @@ while True:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"
             runtime_lease.release()
+        assert pre_b_tree() == frozen_pre_b_tree
     finally:
         epoch_runtime.close()
 

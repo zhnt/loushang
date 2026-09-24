@@ -420,6 +420,10 @@ Neither may silently override a narrower implemented owner contract.
   which rechecks the visible control root and B fence at selection and factory
   activation; a replaced control path cannot reuse the pinned registry. The
   real Store fixture uses this owner instead of assembling the registry itself.
+  Coding now opens B Product desired, management, GC gate, and binding journals
+  in a private control-root child only after the fence. The native fixture
+  refuses a foreign workspace or non-private child and verifies that Product
+  work leaves the complete pre-B Package and lifecycle trees unchanged.
   This is restart admission evidence, not default runtime selection. For
   `legacy_root_pointer`, the snapshot owner requires an empty source domain and
   records the verified old Store identity with the
