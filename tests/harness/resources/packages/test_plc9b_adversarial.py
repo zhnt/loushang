@@ -5311,30 +5311,21 @@ while True:
                 )
                 assert base_tool == "coding.builtin"
                 assert base_tools
-                missing_command = replace(
-                    selected_manifest,
-                    manifest=replace(
-                        selected_manifest.manifest,
-                        contribution_index=replace(
-                            selected_manifest.manifest.contribution_index,
-                            items=tuple(
-                                item
-                                for item in selected_manifest.manifest.contribution_index.items
-                                if item.contribution_id != "coding.standard"
+                with pytest.raises(ValueError, match="changed captured bytes"):
+                    replace(
+                        selected_manifest,
+                        manifest=replace(
+                            selected_manifest.manifest,
+                            contribution_index=replace(
+                                selected_manifest.manifest.contribution_index,
+                                items=tuple(
+                                    item
+                                    for item in selected_manifest.manifest.contribution_index.items
+                                    if item.contribution_id != "coding.standard"
+                                ),
                             ),
                         ),
-                    ),
-                )
-                with pytest.raises(CodingBasePluginAssemblyError) as missing_plan:
-                    prepare_coding_base_product_plan(
-                        missing_command,
-                        resolve_coding_composition_set("coding-standard"),
-                        installation_key=key,
-                        session_id=session_manager.get_header().conversation_id,
-                        source_trust_snapshot=trust,
-                        host_environment=LocalHostEnvironmentProbe().detect(),
                     )
-                assert missing_plan.value.code == "coding_base_product_selection_mismatch"
                 with pytest.raises(CodingBasePluginAssemblyError) as foreign_trust:
                     prepare_coding_base_product_plan(
                         selected_manifest,

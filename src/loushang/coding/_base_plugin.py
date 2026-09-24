@@ -731,9 +731,10 @@ def prepare_coding_base_product_plan(
         raise TypeError("Coding base requires Product source trust evidence")
     if not isinstance(installation_key, PluginInstallationKeyV1):
         raise TypeError("Coding base requires an exact Product installation key")
+    manifest = selected.verified_manifest()
     _validate_base_request(composition_set)
     if (
-        selected.manifest.name != _PLUGIN_ID
+        manifest.name != _PLUGIN_ID
         or selected.snapshot.installation_key != installation_key
         or selected.snapshot.installation_key.product_id != CODING_PRODUCT_ID
         or selected.snapshot.instance_revision_ref.plugin_id != _PLUGIN_ID
@@ -744,7 +745,7 @@ def prepare_coding_base_product_plan(
         or not source_trust_snapshot.trusted
         or any(
             item.contribution_execution_model != "data_only"
-            for item in selected.manifest.contribution_index.items
+            for item in manifest.contribution_index.items
         )
     ):
         raise CodingBasePluginAssemblyError(
@@ -753,7 +754,7 @@ def prepare_coding_base_product_plan(
         )
     scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
     plan, tool_id, tool_names = _build_selection_plan_from_evidence(
-        contributions=selected.manifest.contribution_index.items,
+        contributions=manifest.contribution_index.items,
         source_trust_snapshot=source_trust_snapshot,
         instance_revision_ref=selected.snapshot.instance_revision_ref,
         policy_revision_base=(

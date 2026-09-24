@@ -172,6 +172,11 @@ class PackageProductSelectedPluginManifestV1:
     declaration_documents: tuple[tuple[str, PluginDeclarationDocument], ...] = ()
 
     def __post_init__(self) -> None:
+        self.verified_manifest()
+
+    def verified_manifest(self) -> InertPluginFileManifest:
+        """Reparse captured bytes before using this copyable evidence value."""
+
         if not isinstance(self.snapshot, PackageProductSelectedRootSnapshotV1):
             raise TypeError("Selected Plugin manifest requires Product root evidence")
         if not isinstance(self.manifest, InertPluginFileManifest):
@@ -183,9 +188,15 @@ class PackageProductSelectedPluginManifestV1:
             raise ValueError("Selected Plugin manifest changed Product identity")
         root = self.manifest.root_relative_path.as_posix()
         manifest_path = "plugin.json" if root == "." else f"{root}/plugin.json"
-        body = dict(self.snapshot.files).get(manifest_path)
+        members = dict(self.snapshot.files)
+        body = members.get(manifest_path)
         if body is None or sha256(body).hexdigest() != self.manifest.manifest_digest:
             raise ValueError("Selected Plugin manifest changed root bytes")
+        parsed = PluginManifestParser().parse_file_set(
+            members, manifest_logical_path=manifest_path
+        )
+        if parsed != self.manifest:
+            raise ValueError("Selected Plugin manifest changed captured bytes")
         paths = tuple(path for path, _ in self.declaration_documents)
         if paths != tuple(sorted(set(paths))):
             raise ValueError("Selected Plugin declaration paths are not canonical")
@@ -201,7 +212,6 @@ class PackageProductSelectedPluginManifestV1:
         )
         if paths != expected_paths:
             raise ValueError("Selected Plugin declarations are incomplete")
-        members = dict(self.snapshot.files)
         for path, document in self.declaration_documents:
             body = members.get(path)
             if (
@@ -210,6 +220,9 @@ class PackageProductSelectedPluginManifestV1:
                 or sha256(body).hexdigest() != document.bytes_digest
             ):
                 raise ValueError("Selected Plugin declaration changed root bytes")
+            if PluginDeclarationDocumentCodec.decode_bytes(body) != document:
+                raise ValueError("Selected Plugin declaration changed captured bytes")
+        return parsed
 
 
 @dataclass(frozen=True, slots=True)
