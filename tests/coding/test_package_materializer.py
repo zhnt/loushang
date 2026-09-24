@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 
 def _run_git(args: list[str], *, cwd) -> None:
@@ -331,6 +334,72 @@ def test_python_package_installer_backend_falls_back_to_pip_when_uv_is_missing(t
     assert calls[0][:3] == ["uv", "pip", "install"]
     assert calls[1][:4] == ["python3", "-m", "pip", "install"]
     assert installed.installer == "pip"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="POSIX epoch fence")
+@pytest.mark.parametrize("backend_kind", ("git", "python"))
+@pytest.mark.parametrize("aliased", (False, True))
+def test_direct_backends_refuse_fenced_legacy_install_root(
+    tmp_path, backend_kind: str, aliased: bool
+) -> None:
+    from loushang.harness.resources.packages.materializer import (
+        GitPackageMaterializerBackend,
+        PackageMaterializationRecord,
+        PythonPackageInstallerBackend,
+    )
+    from loushang.harness.resources.plugins.revisions import PluginRevisionError
+
+    legacy_root = tmp_path / "packages"
+    install_root = legacy_root / "installed"
+    install_root.mkdir(parents=True)
+    (tmp_path / "packages.epochs" / "new-epoch").mkdir(parents=True)
+    target_root = tmp_path / "installed-alias" if aliased else install_root
+    if aliased:
+        target_root.symlink_to(install_root, target_is_directory=True)
+    calls: list[str] = []
+
+    class RecordingGitBackend(GitPackageMaterializerBackend):
+        def _run_git(
+            self, args: list[str], *, cwd: Path | None = None, check: bool = True
+        ) -> subprocess.CompletedProcess[str]:
+            calls.append(args[0])
+            if args[0] == "clone":
+                target = Path(args[-1])
+                (target / ".git").mkdir(parents=True)
+                (target / "bypass.txt").write_bytes(b"old Store write")
+            return subprocess.CompletedProcess(
+                args, 0, "deadbeef\n" if args[0] == "rev-parse" else "", ""
+            )
+
+    def runner(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(args[0])
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    if backend_kind == "git":
+        target = target_root / "git-plugin"
+        record = PackageMaterializationRecord(
+            source="https://packages.example.test/git-plugin.git",
+            name="git-plugin",
+            lifecycle="materialization_pending",
+            target_path=target,
+        )
+        backend = RecordingGitBackend()
+    else:
+        target = target_root / "python-plugin"
+        record = PackageMaterializationRecord(
+            source="pypi:python-plugin==1.0",
+            name="python-plugin",
+            lifecycle="materialization_pending",
+            target_path=target,
+            source_type="python",
+            requirement="python-plugin==1.0",
+        )
+        backend = PythonPackageInstallerBackend(runner=runner)
+    with pytest.raises(PluginRevisionError) as refusal:
+        backend(record)
+    assert refusal.value.code == "plugin_revision_epoch_fenced"
+    assert calls == []
+    assert not target.exists()
 
 
 def test_package_materializer_materializes_python_package_sources_and_persists_lockfile(tmp_path) -> None:

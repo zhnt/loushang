@@ -535,7 +535,9 @@ Neither may silently override a narrower implemented owner contract.
   `PackageMaterializer` lockfile/binding writes, synchronous and asynchronous
   backend effects, and removal through their full write intervals. Native B
   evidence covers lockfile and synchronous backend refusals; focused epoch-root
-  regressions cover binding, asynchronous update, and removal. Windows and
+  regressions cover binding, asynchronous update, and removal. Direct Git and
+  Python backend calls into the legacy `installed` tree, including aliases that
+  resolve there, now refuse before running either installer. Windows and
   noncanonical external write roots remain outside this guard.
   This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.

@@ -179,6 +179,21 @@ PackageMaterializerBackend = Callable[
 ]
 
 
+@contextmanager
+def _legacy_backend_write_guard(target: Path) -> Iterator[None]:
+    """Fence direct backend effects targeting a legacy installed tree."""
+
+    roots = {
+        parent.parent
+        for parent in target.expanduser().resolve(strict=False).parents
+        if parent.name == "installed"
+    }
+    with ExitStack() as stack:
+        for root in sorted(roots):
+            stack.enter_context(_legacy_package_epoch_write_guard(root))
+        yield
+
+
 class GitPackageMaterializerBackend:
     """Materialize git-backed package sources into a local install root."""
 
@@ -188,48 +203,49 @@ class GitPackageMaterializerBackend:
     def __call__(
         self, record: PackageMaterializationRecord
     ) -> PackageMaterializationRecord:
-        target = Path(record.target_path)
-        source, ref = _git_clone_source(record.source)
-        identity = PackageSourceIdentity.parse(record.source)
-        record = (
-            record.with_git_state(requested_ref=ref, pinned=identity.pinned)
-            if ref
-            else record
-        )
-        try:
-            if target.exists():
-                if not (target / ".git").is_dir():
-                    raise RuntimeError(
-                        f"Package target already exists and is not a git checkout: {target}"
+        with _legacy_backend_write_guard(Path(record.target_path)):
+            target = Path(record.target_path)
+            source, ref = _git_clone_source(record.source)
+            identity = PackageSourceIdentity.parse(record.source)
+            record = (
+                record.with_git_state(requested_ref=ref, pinned=identity.pinned)
+                if ref
+                else record
+            )
+            try:
+                if target.exists():
+                    if not (target / ".git").is_dir():
+                        raise RuntimeError(
+                            f"Package target already exists and is not a git checkout: {target}"
+                        )
+                    local_state = _record_with_local_git_state(
+                        record.with_lifecycle("installed", target_path=target), self
                     )
-                local_state = _record_with_local_git_state(
-                    record.with_lifecycle("installed", target_path=target), self
-                )
-                if local_state.dirty:
-                    return local_state.with_lifecycle(
-                        "failed",
-                        error_message="Package checkout is dirty; commit or discard local changes before updating.",
+                    if local_state.dirty:
+                        return local_state.with_lifecycle(
+                            "failed",
+                            error_message="Package checkout is dirty; commit or discard local changes before updating.",
+                        )
+                    if identity.pinned:
+                        return local_state
+                    self._update_existing_checkout(target)
+                    return _record_with_local_git_state(
+                        record.with_lifecycle("installed", target_path=target), self
                     )
-                if identity.pinned:
-                    return local_state
-                self._update_existing_checkout(target)
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                self._run_git(["clone", source, str(target)])
+                if ref:
+                    self._run_git(["checkout", ref], cwd=target)
                 return _record_with_local_git_state(
                     record.with_lifecycle("installed", target_path=target), self
                 )
-
-            target.parent.mkdir(parents=True, exist_ok=True)
-            self._run_git(["clone", source, str(target)])
-            if ref:
-                self._run_git(["checkout", ref], cwd=target)
-            return _record_with_local_git_state(
-                record.with_lifecycle("installed", target_path=target), self
-            )
-        except Exception as exc:
-            if target.exists() and not (target / ".git").is_dir():
-                shutil.rmtree(target, ignore_errors=True)
-            return record.with_lifecycle(
-                "failed", error_message=str(exc), target_path=target
-            )
+            except Exception as exc:
+                if target.exists() and not (target / ".git").is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+                return record.with_lifecycle(
+                    "failed", error_message=str(exc), target_path=target
+                )
 
     def _run_git(
         self, args: list[str], *, cwd: Path | None = None, check: bool = True
@@ -314,36 +330,39 @@ class PythonPackageInstallerBackend:
     def __call__(
         self, record: PackageMaterializationRecord
     ) -> PackageMaterializationRecord:
-        requirement = record.requirement or python_package_requirement(record.source)
-        if requirement is None:
-            return record.with_lifecycle(
-                "failed",
-                error_message=f"Invalid Python package source: {record.source}",
+        with _legacy_backend_write_guard(Path(record.target_path)):
+            requirement = record.requirement or python_package_requirement(
+                record.source
             )
-        target = Path(record.target_path)
-        temp_path = target.with_name(f".{target.name}.{id(self)}.tmp")
-        shutil.rmtree(temp_path, ignore_errors=True)
-        try:
-            temp_path.mkdir(parents=True, exist_ok=True)
-            installer = self._install_requirement(requirement, temp_path)
-            if target.exists():
-                shutil.rmtree(target)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            temp_path.replace(target)
-            metadata = _python_distribution_metadata(target, record.name)
-            return record.with_lifecycle(
-                "installed", target_path=target, error_message=None
-            ).with_python_state(
-                installer=installer,
-                resolved_name=metadata["name"],
-                resolved_version=metadata["version"],
-                installed_distributions=tuple(metadata["distributions"]),
-            )
-        except Exception as exc:
+            if requirement is None:
+                return record.with_lifecycle(
+                    "failed",
+                    error_message=f"Invalid Python package source: {record.source}",
+                )
+            target = Path(record.target_path)
+            temp_path = target.with_name(f".{target.name}.{id(self)}.tmp")
             shutil.rmtree(temp_path, ignore_errors=True)
-            return record.with_lifecycle(
-                "failed", error_message=str(exc), target_path=target
-            )
+            try:
+                temp_path.mkdir(parents=True, exist_ok=True)
+                installer = self._install_requirement(requirement, temp_path)
+                if target.exists():
+                    shutil.rmtree(target)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temp_path.replace(target)
+                metadata = _python_distribution_metadata(target, record.name)
+                return record.with_lifecycle(
+                    "installed", target_path=target, error_message=None
+                ).with_python_state(
+                    installer=installer,
+                    resolved_name=metadata["name"],
+                    resolved_version=metadata["version"],
+                    installed_distributions=tuple(metadata["distributions"]),
+                )
+            except Exception as exc:
+                shutil.rmtree(temp_path, ignore_errors=True)
+                return record.with_lifecycle(
+                    "failed", error_message=str(exc), target_path=target
+                )
 
     def _install_requirement(
         self, requirement: str, target: Path
