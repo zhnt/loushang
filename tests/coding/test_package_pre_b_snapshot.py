@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import stat
 import sys
 from hashlib import sha256
+from io import StringIO
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -26,13 +29,24 @@ from loushang.coding.package_product_runtime import (
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.cli.package_lifecycle import (
+    PackageLifecycleError,
+    PackageLifecycleRequest,
+    run_package_lifecycle,
+)
 from loushang.harness.config.agent import ControlConfig, SettingsManager
+from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
+from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
 from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.operations import PackageOperationsRuntime
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleAction,
+)
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
@@ -131,7 +145,7 @@ def test_combined_cutover_refuses_implicit_legacy_plugin_adoption(
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
-def test_first_product_bootstrap_selects_base_without_reenabling_operator_disable(
+def test_fenced_product_routes_package_entrances_and_preserves_operator_disable(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -259,6 +273,113 @@ def test_first_product_bootstrap_selects_base_without_reenabling_operator_disabl
         )
     try:
         assert session._package_controller.get_package_materializer() is None
+        assert session.package_product_lifecycle_mode == "enforced"
+        assert session.package_product_binding_id is not None
+        lifecycle_owner = session._package_controller.product_lifecycle
+        assert lifecycle_owner is not None
+        missing_source = str(workspace / "missing-plugin.whl")
+        with (
+            patch.object(
+                lifecycle_owner, "route", wraps=lifecycle_owner.route
+            ) as routed,
+            patch.object(
+                PackageOperationsRuntime,
+                "_materialize_legacy",
+                side_effect=AssertionError("legacy materialization fallback"),
+            ),
+            patch.object(
+                PackageOperationsRuntime,
+                "_remove_legacy",
+                side_effect=AssertionError("legacy deletion fallback"),
+            ),
+        ):
+            requests: dict[PackageProductLifecycleAction, PackageLifecycleRequest] = {
+                "install": PackageLifecycleRequest(
+                    install=(missing_source,), scope="project"
+                ),
+                "materialize": PackageLifecycleRequest(
+                    materialize=(missing_source,), scope="project"
+                ),
+                "update": PackageLifecycleRequest(
+                    update=(missing_source,), scope="project"
+                ),
+                "remove": PackageLifecycleRequest(
+                    remove=(missing_source,), scope="project"
+                ),
+                "uninstall": PackageLifecycleRequest(
+                    uninstall=(missing_source,), scope="project"
+                ),
+            }
+            for action, request in requests.items():
+                try:
+                    direct = asyncio.run(
+                        session.execute_package_lifecycle(
+                            action,
+                            missing_source,
+                            entrypoint="session",
+                            operation_id=f"product-default-session-{action}",
+                            scope="project",
+                        )
+                    )
+                except RuntimeError:
+                    pass
+                else:
+                    assert direct["lifecycle"] == "failed"
+                with pytest.raises(PackageLifecycleError):
+                    asyncio.run(
+                        run_package_lifecycle(
+                            session,
+                            request,
+                        )
+                    )
+                rpc_output = StringIO()
+                rpc = RpcPackageCommands(
+                    runtime=session,
+                    get_session=lambda: session,
+                    output=RpcOutput(rpc_output),
+                )
+                asyncio.run(
+                    cast(
+                        Any,
+                        dict(rpc.bindings())[f"{action}_package"](
+                            f"product-default-rpc-{action}",
+                            {"source": missing_source, "scope": "project"},
+                        ),
+                    )
+                )
+                assert json.loads(rpc_output.getvalue())["success"] is False
+            sync_uninstall = session.uninstall_package(missing_source, scope="project")
+            assert sync_uninstall["lifecycle"] == "failed"
+            assert routed.call_count == 16
+        with patch.object(type(session), "execute_package_lifecycle", None):
+            with pytest.raises(
+                PackageLifecycleError,
+                match="Package Product lifecycle executor is unavailable",
+            ):
+                asyncio.run(
+                    run_package_lifecycle(
+                        session,
+                        PackageLifecycleRequest(
+                            install=(missing_source,), scope="project"
+                        ),
+                    )
+                )
+            missing_rpc_output = StringIO()
+            missing_rpc = RpcPackageCommands(
+                runtime=session,
+                get_session=lambda: session,
+                output=RpcOutput(missing_rpc_output),
+            )
+            asyncio.run(
+                cast(
+                    Any,
+                    dict(missing_rpc.bindings())["install_package"](
+                        "product-default-rpc-missing-executor",
+                        {"source": missing_source, "scope": "project"},
+                    ),
+                )
+            )
+            assert json.loads(missing_rpc_output.getvalue())["success"] is False
     finally:
         asyncio.run(session.dispose())
 
