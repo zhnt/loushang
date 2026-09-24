@@ -374,12 +374,16 @@ def test_product_base_missing_selected_manifest_cannot_fall_back(
 
 
 @pytest.mark.parametrize("composition_set_id", (None, "coding-minimal"))
-def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
+def test_package_product_runtime_rejects_incompatible_resource_policy_before_effects(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     composition_set_id: str | None,
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
 
@@ -415,6 +419,11 @@ def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
             model=_model(),
             package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
             composition_set=composition_set_id,
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                if composition_set_id is None
+                else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
         )
     assert calls == {"legacy_assembly": 0, "factory": 0, "released": 1}
 

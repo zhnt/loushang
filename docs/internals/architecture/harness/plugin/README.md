@@ -383,8 +383,14 @@ Neither may silently override a narrower implemented owner contract.
   Definition gate retains its Plugin lock; the only permitted owner-candidate
   projection changes that lock field after matching current Store identity.
   The native fixture binds the resulting base and Capability assemblies to
-  the same Session composition inputs. Default Coding selection, Session
-  graph publication, and Provider activation remain open. The
+  the same Session composition inputs. With an explicit Product factory,
+  `coding-standard` now starts a real Session from the selected base and LSP,
+  while `coding-architecture` starts from all three selected packages. Both
+  prepare the Session graph with pre-B roots hidden and legacy constructors
+  disabled. A base-only Product owner cannot satisfy the LSP request and does
+  not fall back to the legacy materializer. Omitting the Product factory still
+  selects the legacy rollout path, so workspace-wide default selection and
+  final migration remain open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired

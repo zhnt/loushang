@@ -141,11 +141,8 @@ def prepare_coding_builtin_product_composition(
         raise RuntimeError("Coding Product composition requires POSIX")
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Session id is invalid")
-    if not isinstance(configurations, Mapping) or frozenset(configurations) != {
-        "coding.lsp.default",
-        "coding.arch.default",
-    }:
-        raise ValueError("Coding Product Capability configuration is incomplete")
+    if not isinstance(configurations, Mapping) or not configurations:
+        raise ValueError("Coding Product Capability configuration is invalid")
     specs = ordered_coding_capability_plugin_specs(configurations)
     if any(
         not isinstance(configurations[spec.plugin_id], spec.configuration_type)
@@ -162,7 +159,10 @@ def prepare_coding_builtin_product_composition(
     ):
         raise ValueError("Coding Product approval state is not private")
 
-    runtime = open_coding_product_builtin_resolution(product_runtime)
+    runtime = open_coding_product_builtin_resolution(
+        product_runtime,
+        capability_plugin_ids=tuple(spec.plugin_id for spec in specs),
+    )
     try:
         selected = tuple(
             product_runtime.capture_selected_plugin_manifest_for(
@@ -247,6 +247,9 @@ def prepare_coding_builtin_product_composition(
             product_composition=product.product_composition,
             owner_bindings=selected_seed.owner_bindings,
             resource_bodies=_resource_bodies(base, product.product_composition),
+            selected_capability_manifests=tuple(
+                by_id[plugin_id] for plugin_id in sorted(plugin_ids)
+            ),
         )
         return CodingBuiltinProductCompositionPreparation(
             base_compilation=combined_base,

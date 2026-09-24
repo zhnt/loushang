@@ -195,12 +195,27 @@ def open_coding_product_capability_resolution(
 
 def open_coding_product_builtin_resolution(
     runtime: PackageProductRuntimeBindingV1,
+    *,
+    capability_plugin_ids: tuple[str, ...] = (
+        "coding.arch.default",
+        "coding.lsp.default",
+    ),
 ) -> PluginRuntimeResolution:
-    """Reopen the complete, sorted first-party set from one Product binding."""
+    """Reopen the selected first-party set from one Product binding."""
+
+    if (
+        not isinstance(capability_plugin_ids, tuple)
+        or not capability_plugin_ids
+        or len(capability_plugin_ids) != len(set(capability_plugin_ids))
+    ):
+        raise ValueError("Coding Product Capability selection is invalid")
+    specs = ordered_coding_capability_plugin_specs(capability_plugin_ids)
+    if len(specs) != len(capability_plugin_ids):
+        raise ValueError("Coding Product Capability selection is invalid")
 
     return _open_selected_resolution(
         runtime,
-        ("coding.arch.default", "coding.base", "coding.lsp.default"),
+        tuple(sorted(("coding.base", *(spec.plugin_id for spec in specs)))),
     )
 
 

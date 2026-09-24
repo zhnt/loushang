@@ -282,10 +282,41 @@ class AgentSession(AgentProductSession):
             (
                 coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly,
-                capability_plugin_assembly,
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
+        if (
+            coding_base_product_session_assembly is not None
+            and capability_plugin_assembly is not None
+            and (
+                capability_plugin_assembly.session_inputs
+                is not coding_base_product_session_assembly.session_inputs
+                or capability_plugin_assembly.selection.plan
+                != coding_base_product_session_assembly.compilation.plan
+                or capability_plugin_assembly.plugin_assembly.product_composition
+                is not coding_base_product_session_assembly.compilation.product_composition
+            )
+        ):
+            raise ValueError("Coding Product Session composition changed")
+        if (
+            coding_base_product_session_assembly is not None
+            and capability_plugin_assembly is not None
+        ):
+            compilation = coding_base_product_session_assembly.compilation
+            selected = (
+                compilation.selected_manifest,
+                *compilation.selected_capability_manifests,
+            )
+            packages = capability_plugin_assembly.runtime.packages
+            if tuple(package.manifest.name for package in packages) != tuple(
+                sorted(item.manifest.name for item in selected)
+            ) or {
+                package.manifest.name: package.content_digest for package in packages
+            } != {
+                item.manifest.name: item.snapshot.root_ref.artifact_digest
+                for item in selected
+            }:
+                raise ValueError("Coding Product Session packages changed")
         if coding_base_product_session_assembly is not None:
             if package_materializer is not None:
                 raise ValueError("Coding base Product cannot use a peer materializer")
@@ -837,6 +868,33 @@ class AgentSession(AgentProductSession):
                     "Active Coding Session requires restart after Product selection change",
                     code="coding_base_product_restart_required",
                 ) from exc
+            for selected in product_compilation.selected_capability_manifests:
+                try:
+                    product_runtime.assert_selected_plugin_manifest_current(selected)
+                except (
+                    PackageProductRuntimeActivationError,
+                    PackageProductRuntimeReadError,
+                ) as exc:
+                    self._record_runtime_diagnostic(
+                        DiagnosticDraft(
+                            code="coding_capability_product_restart_required",
+                            message=(
+                                f"{selected.manifest.name} Product selection changed; "
+                                "the active Session must restart."
+                            ),
+                            details={
+                                "pluginId": selected.manifest.name,
+                                "causeCode": exc.code,
+                            },
+                        ),
+                        source="session",
+                        level="error",
+                    )
+                    raise CodingCapabilityPluginCompositionError(
+                        "Active Coding Session requires restart after Product "
+                        "Capability selection change",
+                        code="coding_capability_product_restart_required",
+                    ) from exc
         capability_plugins = self._coding_capability_plugin_assembly
         runtime_claim_id = (
             "coding-session-runtime:"

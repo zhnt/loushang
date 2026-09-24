@@ -7090,6 +7090,222 @@ while True:
                                 builtin_session.abort_unpublished()
                         finally:
                             builtin_preparation.close()
+                        prior_builtin_session_leases = len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        )
+                        default_builtin_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "builtin-default-session",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        default_builtin_owner = (
+                            open_coding_builtin_product_runtime_owner(
+                                legacy_layout,
+                                epoch_runtime,
+                                reopened_state,
+                                workspace=workspace,
+                                runtime_version="2.0.0",
+                                runtime_protocol_epoch=2,
+                            )
+                        )
+                        default_builtin_factory = (
+                            default_builtin_owner.factory_for_session(
+                                default_builtin_manager
+                            )
+                        )
+                        default_builtin_session = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy base route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer"),
+                                ),
+                            ):
+                                default_builtin_session = create_agent_session(
+                                    session_manager=default_builtin_manager,
+                                    model=Model(
+                                        id="plc9b-builtin-default",
+                                        name="PLC9B Builtin Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=default_builtin_factory,
+                                    composition_set="coding-standard",
+                                )
+                                asyncio.run(
+                                    default_builtin_session.prepare_model_call_runtime()
+                                )
+                                assert not (
+                                    default_builtin_session._coding_capability_plugin_assembly.state_root.exists()
+                                )
+                            assert (
+                                default_builtin_session._coding_base_product_compilation.plan.selected_plugin_ids
+                                == ("coding.base", "coding.lsp.default")
+                            )
+                            assert (
+                                default_builtin_session._coding_capability_plugin_assembly.session_inputs.product_composition
+                                is default_builtin_session._coding_base_product_compilation.product_composition
+                            )
+                            assert (
+                                default_builtin_session._package_controller.get_package_materializer()
+                                is None
+                            )
+                        finally:
+                            if default_builtin_session is not None:
+                                asyncio.run(default_builtin_session.dispose())
+                            else:
+                                default_builtin_factory.dispose_unbound_runtime()
+                        missing_capability_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "missing-product-capability",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        missing_capability_factory = (
+                            reopened_owner.factory_for_session(
+                                missing_capability_manager
+                            )
+                        )
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability fallback"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer fallback"),
+                                ),
+                                pytest.raises(PackageProductRuntimeReadError),
+                            ):
+                                create_agent_session(
+                                    session_manager=missing_capability_manager,
+                                    model=Model(
+                                        id="plc9b-missing-capability",
+                                        name="PLC9B Missing Capability",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=(
+                                        missing_capability_factory
+                                    ),
+                                    composition_set="coding-standard",
+                                )
+                        finally:
+                            missing_capability_factory.dispose_unbound_runtime()
+                        architecture_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "builtin-architecture-session",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        architecture_owner = (
+                            open_coding_builtin_product_runtime_owner(
+                                legacy_layout,
+                                epoch_runtime,
+                                reopened_state,
+                                workspace=workspace,
+                                runtime_version="2.0.0",
+                                runtime_protocol_epoch=2,
+                            )
+                        )
+                        architecture_factory = architecture_owner.factory_for_session(
+                            architecture_manager
+                        )
+                        architecture_session = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy base route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer"),
+                                ),
+                            ):
+                                architecture_session = create_agent_session(
+                                    session_manager=architecture_manager,
+                                    model=Model(
+                                        id="plc9b-builtin-architecture",
+                                        name="PLC9B Builtin Architecture",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=architecture_factory,
+                                    composition_set="coding-architecture",
+                                )
+                                asyncio.run(
+                                    architecture_session.prepare_model_call_runtime()
+                                )
+                            assert set(
+                                architecture_session._coding_base_product_compilation.plan.selected_plugin_ids
+                            ) == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            assert set(
+                                architecture_session._coding_capability_plugin_assembly.tool_owners
+                            ) == {"coding.lsp.default", "coding.arch.default"}
+                        finally:
+                            if architecture_session is not None:
+                                asyncio.run(architecture_session.dispose())
+                            else:
+                                architecture_factory.dispose_unbound_runtime()
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
                         stale_preparation = (
                             prepare_coding_product_capability_plugin_composition(
                                 reopened_builtin,
