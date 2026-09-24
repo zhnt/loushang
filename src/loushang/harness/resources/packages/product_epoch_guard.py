@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from threading import Lock
 from typing import Protocol
@@ -54,9 +54,14 @@ class PackageProductRuntimeLease:
     registry: PackageEpochRuntimeLeaseRegistry
     admission_request: PackageEpochRuntimeAdmissionRequestV1
     _handle: PackageEpochRuntimeLeaseHandle = field(repr=False, compare=False)
+    _on_release: Callable[[], None] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def release(self) -> None:
         self._handle.release()
+        if self._on_release is not None:
+            self._on_release()
 
     def __enter__(self) -> PackageProductRuntimeLease:
         return self
@@ -68,8 +73,8 @@ class PackageProductRuntimeLease:
 class PackageProductPosixFencedRuntimeOwner:
     """Retain the rooted control authority and lease registry after B cutover.
 
-    The application must stop creating Sessions and release their leases before
-    closing this owner. An active lease refuses close so the root fd stays live.
+    The application must stop creating Sessions and release this owner's leases
+    before closing it. Another owner's live leases retain their own authority.
     """
 
     def __init__(
@@ -90,6 +95,8 @@ class PackageProductPosixFencedRuntimeOwner:
         self._epochs_root_name = epochs_root_name
         self._closed = False
         self._close_lock = Lock()
+        self._local_lease_lock = Lock()
+        self._local_lease_ids: set[str] = set()
 
     @classmethod
     def open(
@@ -224,10 +231,21 @@ class PackageProductPosixFencedRuntimeOwner:
             )
             try:
                 self._assert_current_unlocked()
-                return lease
+                lease_id = lease.admission_request.lease_id
+                owned_lease = replace(
+                    lease,
+                    _on_release=lambda: self._forget_local_lease(lease_id),
+                )
+                with self._local_lease_lock:
+                    self._local_lease_ids.add(lease_id)
+                return owned_lease
             except BaseException:
                 lease.release()
                 raise
+
+    def _forget_local_lease(self, lease_id: str) -> None:
+        with self._local_lease_lock:
+            self._local_lease_ids.discard(lease_id)
 
     def _assert_current_unlocked(self) -> None:
         if self._closed:
@@ -252,10 +270,21 @@ class PackageProductPosixFencedRuntimeOwner:
         with self._close_lock:
             if self._closed:
                 return
+            # The registry's quiescence scope itself holds one rooted lock.
+            # Check this owner's other active operations before entering it.
+            if self._file_io.active_operations:
+                raise RuntimeError("Package Product runtime leases remain active")
             with self.registry.exclusive_runtime_quiescence(
                 store_id=self.registry.store_id
             ) as quiescence:
-                if quiescence.active_runtime_lease_ids:
+                with self._local_lease_lock:
+                    active_local = self._local_lease_ids.intersection(
+                        quiescence.active_runtime_lease_ids
+                    )
+                    self._local_lease_ids.intersection_update(
+                        quiescence.active_runtime_lease_ids
+                    )
+                if active_local:
                     raise RuntimeError("Package Product runtime leases remain active")
             self._file_io.cleanup()
             os.close(self._root_fd)

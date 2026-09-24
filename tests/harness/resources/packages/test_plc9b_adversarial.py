@@ -4253,6 +4253,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.package_product_runtime import (
         open_coding_base_product_runtime_owner,
         open_coding_builtin_product_runtime_owner,
+        open_coding_fenced_product_application_owner,
         open_coding_package_product_state,
     )
     from loushang.coding.plugin_dependency_grants import (
@@ -4600,6 +4601,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         store_id=store_id,
         epochs_root_name=epoch_layout.epochs_root_name,
     )
+    application_owner = None
     try:
         registry = epoch_runtime.registry
         assert epoch_runtime.cutover_result == cutover_result
@@ -6787,6 +6789,12 @@ while True:
                     legacy_layout, epoch_runtime
                 )
                 if checked_in_base:
+                    application_owner = open_coding_fenced_product_application_owner(
+                        legacy_layout,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
                     reopened_owner = open_coding_base_product_runtime_owner(
                         legacy_layout,
                         epoch_runtime,
@@ -7100,18 +7108,8 @@ while True:
                                 persist=False,
                             )
                         )
-                        default_builtin_owner = (
-                            open_coding_builtin_product_runtime_owner(
-                                legacy_layout,
-                                epoch_runtime,
-                                reopened_state,
-                                workspace=workspace,
-                                runtime_version="2.0.0",
-                                runtime_protocol_epoch=2,
-                            )
-                        )
                         default_builtin_factory = (
-                            default_builtin_owner.factory_for_session(
+                            application_owner.factory_for_session(
                                 default_builtin_manager
                             )
                         )
@@ -7171,6 +7169,10 @@ while True:
                                 default_builtin_session._package_controller.get_package_materializer()
                                 is None
                             )
+                            with pytest.raises(
+                                RuntimeError, match="runtime leases remain active"
+                            ):
+                                application_owner.close()
                         finally:
                             if default_builtin_session is not None:
                                 asyncio.run(default_builtin_session.dispose())
@@ -7233,18 +7235,12 @@ while True:
                                 persist=False,
                             )
                         )
-                        architecture_owner = (
-                            open_coding_builtin_product_runtime_owner(
-                                legacy_layout,
-                                epoch_runtime,
-                                reopened_state,
-                                workspace=workspace,
-                                runtime_version="2.0.0",
-                                runtime_protocol_epoch=2,
-                            )
-                        )
-                        architecture_factory = architecture_owner.factory_for_session(
+                        architecture_factory = application_owner.factory_for_session(
                             architecture_manager
+                        )
+                        assert (
+                            architecture_factory.epoch_runtime
+                            is default_builtin_factory.epoch_runtime
                         )
                         architecture_session = None
                         try:
@@ -7306,6 +7302,11 @@ while True:
                             len(registry.snapshot(store_id=store_id).active_leases)
                             == prior_builtin_session_leases
                         )
+                        # Other live Store owners do not retain this
+                        # application's rooted control handle.
+                        application_owner.close()
+                        with pytest.raises(ValueError, match="closed"):
+                            application_owner.epoch_runtime.assert_current()
                         stale_preparation = (
                             prepare_coding_product_capability_plugin_composition(
                                 reopened_builtin,
@@ -7426,6 +7427,8 @@ while True:
             runtime_lease.release()
         assert pre_b_tree() == frozen_pre_b_tree
     finally:
+        if application_owner is not None:
+            application_owner.close()
         epoch_runtime.close()
 
 

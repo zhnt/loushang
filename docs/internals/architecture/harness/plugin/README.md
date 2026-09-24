@@ -417,9 +417,13 @@ Neither may silently override a narrower implemented owner contract.
   factory construction fails. The native fixture also starts a Hosted Session
   on the committed `coding.base` Store root through this selector; Product
   Prompt and Skill are visible, the legacy materializer is not reached, and
-  closing releases the lease. Installed commands still do not construct this
-  owner by default. A POSIX snapshot owner now publishes a durable,
-  restore-compatible bundle from
+  closing releases the lease. A Coding application owner can now reopen one
+  fenced B epoch, supply factories to successive standard and architecture
+  Sessions, and close only after its own runtime leases have been released;
+  the real-Store fixture rejects an early close and permits closing while a
+  separate Store owner remains live. Installed commands still do not
+  construct this owner by default. A POSIX snapshot owner now publishes a
+  durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:

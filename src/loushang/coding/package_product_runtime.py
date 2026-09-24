@@ -109,6 +109,61 @@ class CodingPosixLocalWheelProductRuntimeOwner:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class CodingFencedProductApplicationOwner:
+    """Retain one B epoch owner for the lifetime of a Coding application."""
+
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    runtime_owner: CodingPosixLocalWheelProductRuntimeOwner
+
+    def __post_init__(self) -> None:
+        if self.runtime_owner.product_owner.epoch_runtime is not self.epoch_runtime:
+            raise ValueError("Coding Product application epoch owner changed")
+
+    def factory_for_session(
+        self, manager: SessionManager
+    ) -> PosixLocalWheelProductRuntimeFactory:
+        return self.runtime_owner.factory_for_session(manager)
+
+    def close(self) -> None:
+        self.epoch_runtime.close()
+
+
+def open_coding_fenced_product_application_owner(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    *,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> CodingFencedProductApplicationOwner:
+    """Reopen the exact B fence and bind all first-party Coding Packages."""
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
+        authority_root=epoch.authority_root,
+        control_root=epoch.control_root,
+        store_id=epoch.store_id,
+        epochs_root_name=epoch.epochs_root_name,
+    )
+    try:
+        state = open_coding_package_product_state(lifecycle, epoch_runtime)
+        runtime_owner = open_coding_builtin_product_runtime_owner(
+            lifecycle,
+            epoch_runtime,
+            state,
+            workspace=workspace,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+        )
+        return CodingFencedProductApplicationOwner(epoch_runtime, runtime_owner)
+    except BaseException as error:
+        try:
+            epoch_runtime.close()
+        except BaseException:
+            error.add_note("Coding Product epoch cleanup also failed")
+        raise
+
+
 def open_coding_base_product_runtime_owner(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
@@ -259,8 +314,10 @@ def _open_coding_product_runtime_owner(
 
 
 __all__ = [
+    "CodingFencedProductApplicationOwner",
     "CodingPackageProductStateOwners",
     "CodingPosixLocalWheelProductRuntimeOwner",
+    "open_coding_fenced_product_application_owner",
     "open_coding_base_product_runtime_owner",
     "open_coding_builtin_product_runtime_owner",
     "open_coding_package_product_state",
