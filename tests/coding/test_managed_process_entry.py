@@ -60,7 +60,9 @@ async def _same_control_operation(operation, *, deadline):
             await asyncio.sleep(min(0.01, max(0, deadline - monotonic())))
 
 
-def test_production_module_starts_real_service_reconnects_and_stops(owners, tmp_path):
+def test_production_module_starts_real_service_reconnects_and_stops(
+    owners, tmp_path, monkeypatch: pytest.MonkeyPatch
+):
     journal, namespace, service, runtime_root = owners
     sessions = Path(namespace.platform_home) / "data/sessions"
     sessions.mkdir(parents=True, mode=0o700)
@@ -91,7 +93,9 @@ def test_production_module_starts_real_service_reconnects_and_stops(owners, tmp_
                     await asyncio.sleep(0.02)
             await asyncio.to_thread(registry.open, deadline=deadline, wait_for_lock=True)
             discovery = ManagedDiscoveryV1(registry, namespace)
-            target = discovery.resolve("main", deadline=deadline)
+            target = await _same_control_operation(
+                lambda: discovery.resolve("main", deadline=deadline), deadline=deadline,
+            )
             assert target is not None and target.instance is not None
             reference = target.instance
             instance = reference.instance_id
@@ -129,7 +133,9 @@ def test_production_module_starts_real_service_reconnects_and_stops(owners, tmp_
             )
             manager = ManagedMuxManagerV1(registry, manager_journal, namespace, service, reference,
                                           application_id=APPLICATION_ID)
-            reservation = registry.resolve(target.name)
+            reservation = await _same_control_operation(
+                lambda: registry.resolve(target.name), deadline=deadline,
+            )
             permit = await _same_control_operation(lambda: manager.issue_create(reservation, deadline=deadline), deadline=deadline)
             with pytest.raises(AppServiceError):
                 await client.client.create_mux(MuxCreateV1(target.name))
@@ -148,7 +154,29 @@ def test_production_module_starts_real_service_reconnects_and_stops(owners, tmp_
             starter.close()
             await client.close()
             assert not observer.exited()
-            assert discovery.resolve("main", deadline=monotonic() + 5).instance == reference
+            original_resolve = discovery.resolve
+            busy_once = True
+
+            def resolve_after_busy(name, *, deadline, wait_for_lock=False):
+                nonlocal busy_once
+                if busy_once:
+                    busy_once = False
+                    raise ManagedStorageError("busy")
+                return original_resolve(
+                    name, deadline=deadline, wait_for_lock=wait_for_lock
+                )
+
+            monkeypatch.setattr(discovery, "resolve", resolve_after_busy)
+            reconnect_deadline = monotonic() + 5
+            try:
+                observed = await _same_control_operation(
+                    lambda: discovery.resolve("main", deadline=reconnect_deadline),
+                    deadline=reconnect_deadline,
+                )
+            finally:
+                monkeypatch.setattr(discovery, "resolve", original_resolve)
+            assert not busy_once
+            assert observed is not None and observed.instance == reference
             fresh = await prepare_exact(monotonic() + 10)
             after = await fresh.client.list_muxes()
             assert after == before
@@ -165,7 +193,10 @@ def test_production_module_starts_real_service_reconnects_and_stops(owners, tmp_
             assert await fresh.managed_mux_close_client.read_managed_mux_close(close) == closed
             await _same_control_operation(lambda: manager.record_close(close, closed, deadline=close_deadline),
                                           deadline=close_deadline)
-            assert registry.resolve(target.name) is None
+            settled_deadline = monotonic() + 5
+            assert await _same_control_operation(
+                lambda: registry.resolve(target.name), deadline=settled_deadline,
+            ) is None
             await stop.start()
             assert stop.stop_requested
             assert await asyncio.to_thread(observer.exited, timeout=10)
