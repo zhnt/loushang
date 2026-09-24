@@ -37,6 +37,9 @@ from loushang.harness.resources._catalog_source_contracts import (
     ResourceDiscoveryRequest,
 )
 from loushang.harness.resources._resource_item_projection import project_catalog_item
+from loushang.harness.resources.packages.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
+)
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     RevisionResourceRef,
@@ -56,9 +59,12 @@ class ProductSelectedResourceInput:
     """One owner admission paired with bytes from its selected Store capture."""
 
     admission: OwnerContributionAdmissionRecord
+    selected_manifest: PackageProductSelectedPluginManifestV1 = field(
+        repr=False, compare=False
+    )
     relative_path: str
-    body: bytes = field(repr=False)
     source_root_order: int = 0
+    _body: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.admission, OwnerContributionAdmissionRecord):
@@ -71,6 +77,25 @@ class ProductSelectedResourceInput:
             or resource.managed_skill_actions
         ):
             raise ValueError("Product Resource must be a supported data-only admission")
+        if self.admission.owner_id != f"resources.{resource.resource_kind}":
+            raise ValueError("Product Resource admission owner is invalid")
+        if not isinstance(self.selected_manifest, PackageProductSelectedPluginManifestV1):
+            raise TypeError("Product Resource requires a selected Store manifest")
+        manifest = self.selected_manifest.verified_manifest()
+        snapshot = self.selected_manifest.snapshot
+        candidate = self.admission.candidate
+        if (
+            self.admission.product_id != snapshot.installation_key.product_id
+            or self.admission.plugin_id != manifest.name
+            or candidate.instance_revision_ref != snapshot.instance_revision_ref
+            or candidate.package_content_digest
+            != snapshot.package_revision.package_content_digest
+            or candidate.dependency_lock_digest
+            != snapshot.package_revision.dependency_lock_digest
+            or candidate.package_source_identity
+            != snapshot.package_revision.package_source_identity
+        ):
+            raise ValueError("Product Resource admission changed selected Store identity")
         expected_path = (
             f"{resource.locator}/SKILL.md"
             if resource.locator_kind == "directory"
@@ -79,10 +104,20 @@ class ProductSelectedResourceInput:
         )
         if self.relative_path != expected_path:
             raise ValueError("Product Resource path changed the admitted locator")
-        if not isinstance(self.body, bytes):
-            raise TypeError("Product Resource body must be immutable bytes")
+        root = manifest.root_relative_path.as_posix()
+        captured_path = (
+            self.relative_path if root == "." else f"{root}/{self.relative_path}"
+        )
+        body = dict(snapshot.files).get(captured_path)
+        if body is None:
+            raise ValueError("Product Resource body is absent from selected Store bytes")
+        object.__setattr__(self, "_body", body)
         if type(self.source_root_order) is not int or self.source_root_order < 0:
             raise ValueError("Product Resource root order must be non-negative")
+
+    @property
+    def body(self) -> bytes:
+        return self._body
 
     def policy_payload(self) -> dict[str, object]:
         return {

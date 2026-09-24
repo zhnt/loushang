@@ -7,6 +7,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+    ProductSelectedResourceSource,
+    product_snapshot_source_policy_fingerprint,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedOemResourceSource,
     EmbeddedResourceCollectionHandle,
@@ -27,11 +32,6 @@ from loushang.harness.resources._catalog_package_source import (
     AdmittedPackageResourceSource,
     build_package_resource_discovery_request,
     build_package_source_generation_ref,
-)
-from loushang.harness.resources._catalog_product_snapshot_source import (
-    ProductSelectedResourceInput,
-    ProductSelectedResourceSource,
-    product_snapshot_source_policy_fingerprint,
 )
 from loushang.harness.resources._catalog_projection import (
     ResourceProjectionDescriptorBinding,
@@ -77,10 +77,8 @@ def prepare_resource_catalog_bootstrap_projection(
 
     if any(item.admission.product_id != product_id for item in product_snapshot_resources):
         raise ValueError("Product snapshot Resources must match Product")
-    if {
-        item.admission.fingerprint for item in product_snapshot_resources
-    } & {item.admission.fingerprint for item in package_resources}:
-        raise ValueError("One Resource admission cannot use both package source routes")
+    if package_resources and product_snapshot_resources:
+        raise ValueError("Legacy package and Product snapshot routes cannot mix")
 
     source_snapshots: list[ResourceSourceSnapshot] = []
     descriptor_bindings: list[ResourceProjectionDescriptorBinding] = []

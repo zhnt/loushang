@@ -35,7 +35,7 @@ from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-from loushang.harness.resources._catalog_product_snapshot_source import (
+from loushang.harness.resource_catalog.product_snapshot_source import (
     ProductSelectedResourceInput,
 )
 from loushang.harness.resources.plugins.declarations import (
@@ -78,6 +78,9 @@ class CodingBaseProductResourceBody:
 class CodingBaseProductCompilation:
     plan: PluginSelectionPlanV2
     product_composition: ProductCompositionCompilation
+    selected_manifest: PackageProductSelectedPluginManifestV1 = field(
+        repr=False, compare=False
+    )
     tool_contribution_id: str | None
     tool_names: tuple[str, ...]
     resource_bodies: tuple[CodingBaseProductResourceBody, ...] = field(repr=False)
@@ -93,6 +96,19 @@ class CodingBaseProductCompilation:
         }
         if actual != expected or len(actual) != len(self.resource_bodies):
             raise ValueError("Product Resource bodies changed owner admissions")
+        for admission in self.product_composition.resource_admissions:
+            captured = next(
+                item
+                for item in self.resource_bodies
+                if item.admission_fingerprint == admission.fingerprint
+            )
+            input_record = ProductSelectedResourceInput(
+                admission=admission,
+                selected_manifest=self.selected_manifest,
+                relative_path=captured.logical_path,
+            )
+            if input_record.body != captured.body:
+                raise ValueError("Product Resource body changed selected Store bytes")
 
     def read_resource_body(
         self, admission_fingerprint: str, *, max_bytes: int
@@ -120,10 +136,8 @@ class CodingBaseProductCompilation:
         return tuple(
             ProductSelectedResourceInput(
                 admission=admission,
+                selected_manifest=self.selected_manifest,
                 relative_path=by_fingerprint[admission.fingerprint].logical_path,
-                body=self.read_resource_body(
-                    admission.fingerprint, max_bytes=16 * 1024 * 1024
-                ),
             )
             for admission in self.product_composition.resource_admissions
         )
@@ -192,6 +206,7 @@ def compile_coding_base_product_selection(
     return CodingBaseProductCompilation(
         plan=plan,
         product_composition=product_composition,
+        selected_manifest=selected,
         tool_contribution_id=tool_id,
         tool_names=tool_names,
         resource_bodies=_resource_bodies(selected, product_composition),

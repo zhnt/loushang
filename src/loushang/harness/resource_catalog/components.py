@@ -32,6 +32,11 @@ from loushang.harness.capabilities.component_selection import (
 )
 from loushang.harness.capabilities.contracts import CapabilityContractRange
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+    ProductSelectedResourceSource,
+    product_snapshot_source_policy_fingerprint,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedOemResourceSource,
     EmbeddedResourceCollectionHandle,
@@ -47,11 +52,6 @@ from loushang.harness.resources._catalog_package_source import (
     AdmittedPackageResourceSource,
     VerifiedPackageResourceInput,
     build_package_source_generation_ref,
-)
-from loushang.harness.resources._catalog_product_snapshot_source import (
-    ProductSelectedResourceInput,
-    ProductSelectedResourceSource,
-    product_snapshot_source_policy_fingerprint,
 )
 from loushang.harness.resources._catalog_projection import (
     ResourceProjectionDescriptorBinding,
@@ -322,10 +322,8 @@ def resolve_first_party_resource_components(
         item.admission.product_id != product_id for item in canonical_product_resources
     ):
         raise ValueError("First-party Product Resource admissions must match Product")
-    if set(product_fingerprints) & {
-        item.admission.fingerprint for item in canonical_package_resources
-    }:
-        raise ValueError("One Resource admission cannot use both package source routes")
+    if canonical_package_resources and canonical_product_resources:
+        raise ValueError("Legacy package and Product snapshot routes cannot mix")
     canonical_embedded_collections = tuple(
         sorted(embedded_collections, key=lambda item: item.handle_id)
     )

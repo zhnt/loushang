@@ -5363,6 +5363,11 @@ while True:
                         "coding_base/skills/standard/SKILL.md"
                     ],
                 }
+                from loushang.harness.resource_catalog.product_snapshot_source import (
+                    ProductSelectedResourceSource,
+                    ProductSnapshotResourceSourceError,
+                    product_snapshot_source_policy_fingerprint,
+                )
                 from loushang.harness.resources._catalog_engine import (
                     compose_resource_catalog,
                     default_resource_merge_policy,
@@ -5370,11 +5375,6 @@ while True:
                 from loushang.harness.resources._catalog_package_source import (
                     PackageResourceDiscoveryBudget,
                     build_package_resource_discovery_request,
-                )
-                from loushang.harness.resources._catalog_product_snapshot_source import (
-                    ProductSelectedResourceSource,
-                    ProductSnapshotResourceSourceError,
-                    product_snapshot_source_policy_fingerprint,
                 )
                 from loushang.harness.resources._catalog_projection import (
                     project_resource_catalog,
@@ -5393,6 +5393,88 @@ while True:
                     "prompts/standard.md",
                     "skills/standard/SKILL.md",
                 }
+                from loushang.harness.resource_catalog.product_inputs import (
+                    InitialResourceCatalogProductAdapter,
+                    InitialResourceCatalogProductSelection,
+                )
+
+                product_adapter = InitialResourceCatalogProductAdapter(
+                    InitialResourceCatalogProductSelection(
+                        product_policy_revision=(
+                            compiled_base.product_composition.authority_context.product_policy_revision
+                        ),
+                        product_composition=compiled_base.product_composition,
+                        product_snapshot_resources=product_inputs,
+                    ),
+                    clock=lambda: 1,
+                )
+                adapter_bundle = product_adapter.prepare_bootstrap_projection(
+                    product_id="coding",
+                    session_id="product-selected-coding-base",
+                    cwd=tmp_path,
+                )
+                assert len(adapter_bundle.skills) == 1
+                bootstrap = product_adapter.construct_session(
+                    product_id="coding",
+                    session_id="product-selected-coding-base",
+                    base_resource_bundle=adapter_bundle,
+                    construct=lambda value: value,
+                )
+                assert bootstrap._inputs.package_resources == ()
+                assert bootstrap._inputs.product_snapshot_resources == product_inputs
+
+                async def _verify_product_session_bootstrap() -> None:
+                    from loushang.harness.capabilities import (
+                        stage_resource_composition_candidate,
+                        standard_capability_composition_plan,
+                    )
+                    from loushang.harness.extensions.agent import ExtensionRunner
+                    from loushang.harness.extensions.context import (
+                        ExtensionRuntimeBindings,
+                    )
+                    from loushang.harness.runtime import RuntimeProfileResolver
+
+                    async def _ignore(_value: object) -> None:
+                        return None
+
+                    bindings = ExtensionRuntimeBindings(
+                        cwd=str(tmp_path),
+                        get_active_tool_names=lambda: [],
+                        get_model_selection=lambda: None,
+                        set_active_tools=_ignore,
+                        set_model=_ignore,
+                        request_resource_refresh=lambda: None,
+                        shutdown=lambda: None,
+                        record_diagnostic=lambda _diagnostic: None,
+                    )
+                    extension_runtime = ExtensionRunner([])
+                    await extension_runtime.activate_runtime_generation(bindings)
+                    profile = RuntimeProfileResolver().resolve(
+                        standard_capability_composition_plan(product_id="coding")
+                    )
+                    staged = stage_resource_composition_candidate(profile)
+                    try:
+                        await bootstrap.prepare(
+                            extension_host=extension_runtime,
+                            staged_resource_candidate=staged,
+                            bindings=bindings,
+                        )
+                        generation = staged._require_prepared_owner_generation()
+                        assert len(generation.catalog_snapshot.effective_entries) == 2
+                        assert generation.ownership_state == "root_owned"
+                        for entry in generation.catalog_snapshot.effective_entries:
+                            candidate = generation.catalog_snapshot.candidate_by_fingerprint(
+                                entry.primary_candidate_fingerprint
+                            )
+                            assert candidate.expected_content_digest == sha256(
+                                resource_bodies[
+                                    candidate.content_origin.resource_contribution_id
+                                ]
+                            ).hexdigest()
+                    finally:
+                        await bootstrap.abort()
+
+                asyncio.run(_verify_product_session_bootstrap())
                 source_ref = ResourceSourceGenerationRef(
                     source_id="test.product.selected.resources",
                     product_id=product_inputs[0].admission.product_id,

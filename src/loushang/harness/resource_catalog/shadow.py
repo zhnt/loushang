@@ -26,6 +26,9 @@ from loushang.harness.resource_catalog.components import (
     validate_resource_catalog_proposal,
 )
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedResourceCollectionHandle,
     EmbeddedResourceDiscoveryBudget,
@@ -40,9 +43,6 @@ from loushang.harness.resources._catalog_native_source import (
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryBudget,
     build_package_resource_discovery_request,
-)
-from loushang.harness.resources._catalog_product_snapshot_source import (
-    ProductSelectedResourceInput,
 )
 from loushang.harness.resources._catalog_projection import (
     ResourceCatalogProjection,
