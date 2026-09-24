@@ -19,7 +19,9 @@ from .package_legacy_installation_inventory import (
     CodingLegacyInventoryError,
     read_coding_legacy_installation_inventory,
 )
-from .package_legacy_reacquisition import CodingLegacyReacquiredInstallationV1
+from .package_legacy_reacquisition import (
+    reacquire_coding_legacy_installed_local_source,
+)
 from .package_legacy_snapshot_member import CodingFirstBLegacyStateObserver
 
 
@@ -88,23 +90,24 @@ class CodingLegacyLocalAdoptionReviewV1:
         return {"reviewId": self.review_id, **self._identity_dict()}
 
 
-def review_coding_legacy_reacquired_installation(
+def review_coding_legacy_installed_local_source(
     lifecycle: CodingPluginLifecycleStateLayout,
     epoch_runtime: PackageProductPosixFencedRuntimeOwner,
-    reacquired: CodingLegacyReacquiredInstallationV1,
     *,
+    plugin_id: str,
     policy_revision: str,
 ) -> CodingLegacyLocalAdoptionReviewV1:
-    """Recheck immutable and live evidence before producing a review identity."""
+    """Fetch the original Source again before producing a review identity."""
 
-    if not isinstance(reacquired, CodingLegacyReacquiredInstallationV1):
-        raise TypeError("Reacquired Coding legacy Installation is required")
     if (
         not isinstance(policy_revision, str)
         or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}", policy_revision) is None
     ):
         raise ValueError("Coding Product policy revision is required")
     epoch_runtime.assert_current()
+    reacquired = reacquire_coding_legacy_installed_local_source(
+        lifecycle, epoch_runtime, plugin_id=plugin_id
+    )
     fence = epoch_runtime.cutover_result.fence
     switch = epoch_runtime.cutover_result.switch_receipt
     inventory = read_coding_legacy_installation_inventory(lifecycle, epoch_runtime)
@@ -162,5 +165,5 @@ def review_coding_legacy_reacquired_installation(
 
 __all__ = [
     "CodingLegacyLocalAdoptionReviewV1",
-    "review_coding_legacy_reacquired_installation",
+    "review_coding_legacy_installed_local_source",
 ]

@@ -27,7 +27,7 @@ from loushang.coding.package_legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source,
 )
 from loushang.coding.package_legacy_review import (
-    review_coding_legacy_reacquired_installation,
+    review_coding_legacy_installed_local_source,
 )
 from loushang.coding.package_legacy_snapshot_member import (
     CodingFirstBLegacyStateObserver,
@@ -282,10 +282,10 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert reacquired.installation == evidence.inventory.active_local[0]
         assert reacquired.wheel.original_source_identity == binding.source_identity
         assert reacquired.wheel.source_content_digest == binding.content_digest
-        review = review_coding_legacy_reacquired_installation(
+        review = review_coding_legacy_installed_local_source(
             lifecycle,
             owner,
-            reacquired,
+            plugin_id=binding.plugin_id,
             policy_revision="coding-product-package-policy:1",
         )
         assert review.first_fence_id == evidence.first_fence_id
@@ -320,37 +320,27 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
             replace(review, legacy_state_digest="f" * 64).review_id != review.review_id
         )
         assert (
-            review_coding_legacy_reacquired_installation(
+            review_coding_legacy_installed_local_source(
                 lifecycle,
                 owner,
-                reacquired,
+                plugin_id=binding.plugin_id,
                 policy_revision="coding-product-package-policy:2",
             ).review_id
             != review.review_id
         )
-        with pytest.raises(CodingLegacyInventoryError, match="review inputs differ"):
-            review_coding_legacy_reacquired_installation(
-                lifecycle,
-                owner,
-                replace(
-                    reacquired,
-                    wheel=replace(reacquired.wheel, wheel_bytes=b"substituted"),
-                ),
-                policy_revision="coding-product-package-policy:1",
-            )
-        with pytest.raises(CodingLegacyInventoryError, match="review inputs differ"):
-            review_coding_legacy_reacquired_installation(
-                lifecycle,
-                owner,
-                replace(
-                    reacquired,
-                    inventory_evidence=replace(
-                        reacquired.inventory_evidence,
-                        snapshot_receipt_id="f" * 64,
-                    ),
-                ),
-                policy_revision="coding-product-package-policy:1",
-            )
+        manifest_path = tmp_path / "source" / "plugin.json"
+        original_manifest = manifest_path.read_bytes()
+        manifest_path.write_text(json.dumps({"name": "review-pack", "version": "2"}))
+        try:
+            with pytest.raises(ValueError, match="revision changed"):
+                review_coding_legacy_installed_local_source(
+                    lifecycle,
+                    owner,
+                    plugin_id=binding.plugin_id,
+                    policy_revision="coding-product-package-policy:1",
+                )
+        finally:
+            manifest_path.write_bytes(original_manifest)
         shutil.rmtree(tmp_path / "source")
         with pytest.raises(FileNotFoundError):
             reacquire_coding_legacy_installed_local_source(
