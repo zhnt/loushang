@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from loushang.coding._plugin_lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.package_epoch_layout import (
     CodingLifecyclePreBMembersV1,
     CodingPackagePreBStoreMembersV1,
@@ -13,6 +16,10 @@ from loushang.coding.package_epoch_layout import (
 from loushang.coding.package_legacy_classification import (
     CodingScopedLegacyDisableV1,
     classify_coding_legacy_workspace,
+)
+from loushang.coding.package_pre_b_snapshot import (
+    hold_coding_pre_b_snapshot_owner,
+    prepare_coding_package_cutover_roots,
 )
 from loushang.coding.package_source_snapshot import (
     hold_coding_pre_b_source_configuration,
@@ -155,6 +162,40 @@ def test_classification_consumes_locked_persistent_source_projection(
         CodingScopedLegacyDisableV1("global", "coding.base"),
     )
     assert classified.configured_source_keys == ("project:plugin_sources",)
+
+
+def test_snapshot_preparation_carries_exact_legacy_classification(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    prepare_coding_package_cutover_roots(lifecycle)
+    lifecycle.desired_state.write_bytes(b"old desired state\n")
+    global_path = tmp_path / "global-settings.json"
+    project_path = workspace / ".loushang" / "settings.json"
+    global_path.write_text('{"disabled_plugins":["coding.base"]}\n')
+    settings = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    projection_parent = tmp_path / "projection"
+    projection_parent.mkdir(mode=0o700)
+
+    with hold_coding_pre_b_snapshot_owner(
+        lifecycle, settings, projection_parent=projection_parent
+    ) as prepared:
+        classification = prepared.legacy_classification
+        assert prepared.source_configuration_root.is_dir()
+
+    assert classification.kind == "legacy_state"
+    assert classification.disabled_plugins == (
+        CodingScopedLegacyDisableV1("global", "coding.base"),
+    )
+    assert classification.lifecycle_members == ("desired_state:desired-state.jsonl",)
+    assert classification.package_members == ()
 
 
 @pytest.mark.parametrize(

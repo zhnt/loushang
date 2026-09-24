@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from collections.abc import Iterator
@@ -16,6 +17,10 @@ from loushang.coding.package_epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
+)
+from loushang.coding.package_legacy_classification import (
+    CodingLegacyWorkspaceClassificationV1,
+    classify_coding_legacy_workspace,
 )
 from loushang.coding.package_product_runtime import (
     bootstrap_coding_builtin_product_plugins,
@@ -41,6 +46,7 @@ class CodingPreBSnapshotPreparation:
 
     owner: PackageProductPreBSnapshotOwner
     source_configuration_root: Path
+    legacy_classification: CodingLegacyWorkspaceClassificationV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +235,14 @@ def hold_coding_pre_b_snapshot_owner(
         ) as pointer_root:
             package = resolve_coding_package_pre_b_store_members(lifecycle)
             state = resolve_coding_lifecycle_pre_b_members(lifecycle)
+            source_projection = json.loads(
+                (source_root / "coding-source-configuration.json").read_bytes()
+            )
+            legacy_classification = classify_coding_legacy_workspace(
+                source_projection,
+                lifecycle=state,
+                package=package,
+            )
             domain_roots = {
                 "store_bytes": package.source_root,
                 "binding_history": package.source_root,
@@ -267,6 +281,7 @@ def hold_coding_pre_b_snapshot_owner(
             yield CodingPreBSnapshotPreparation(
                 owner=owner,
                 source_configuration_root=source_root,
+                legacy_classification=legacy_classification,
             )
 
 
