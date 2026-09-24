@@ -142,8 +142,12 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
+)
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
 )
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resource_catalog.product_snapshot_source import (
@@ -1309,9 +1313,19 @@ def _create_agent_session(
             catalog_generation: int,
         ) -> Any:
             if product_base_compilation is not None:
-                raise CodingResourceCatalogAdmissionError(
-                    ("product_selected_base_refresh_requires_restart",)
-                )
+                if product_base_runtime is None:
+                    raise RuntimeError("Coding Product base runtime is unavailable")
+                try:
+                    product_base_runtime.assert_selected_plugin_manifest_current(
+                        product_base_compilation.selected_manifest
+                    )
+                except (
+                    PackageProductRuntimeActivationError,
+                    PackageProductRuntimeReadError,
+                ) as exc:
+                    raise CodingResourceCatalogAdmissionError(
+                        ("product_selected_base_refresh_requires_restart",)
+                    ) from exc
             resolved_cwd = Path(session_manager.get_cwd())
             try:
                 receipt = services.resource_loader.prepare_catalog_input_receipt(
@@ -1326,12 +1340,18 @@ def _create_agent_session(
                     ("catalog_receipt_unavailable",)
                 )
             evaluated_at = (
-                coding_plugin_clock()
-                if coding_base_plugin_assembly is not None
-                else int(time.time())
+                product_base_compilation.product_composition.authority_context.evaluated_at
+                if product_base_compilation is not None
+                else (
+                    coding_plugin_clock()
+                    if coding_base_plugin_assembly is not None
+                    else int(time.time())
+                )
             )
             product_composition = None
-            if coding_base_plugin_assembly is not None:
+            if product_base_compilation is not None:
+                product_composition = product_base_compilation.product_composition
+            elif coding_base_plugin_assembly is not None:
                 base_resource_plan_seed = prepare_coding_base_resource_plan_seed(
                     coding_base_plugin_assembly
                 )
@@ -1375,8 +1395,18 @@ def _create_agent_session(
                 session_id=session_id,
                 disabled_skills=services.settings_manager.get_settings().disabled_skills,
                 product_composition=product_composition,
+                product_snapshot_resources=(
+                    product_base_compilation.product_resource_inputs()
+                    if product_base_compilation is not None
+                    else None
+                ),
                 admission_now=evaluated_at,
-                clock=(coding_plugin_clock if coding_base_plugin_assembly else None),
+                clock=(
+                    coding_plugin_clock
+                    if coding_base_plugin_assembly is not None
+                    or product_base_compilation is not None
+                    else None
+                ),
                 receipt=receipt,
                 source_policy=resource_catalog_source_policy,
             )

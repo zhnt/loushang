@@ -4225,6 +4225,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CodingResourceCatalogAdmissionError,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.composition_sets import resolve_coding_composition_set
@@ -5339,6 +5340,18 @@ while True:
                             composition_set="coding-standard",
                         )
                     asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    native_skill = workspace / "skills" / "review" / "SKILL.md"
+                    native_skill.parent.mkdir(parents=True)
+                    native_skill.write_text(
+                        "---\nname: review\ndescription: Local review\n---\nLocal review.\n",
+                        encoding="utf-8",
+                    )
+                    asyncio.run(product_coding_session.refresh_resources())
+                    assert "review" in {
+                        item.name
+                        for item in product_coding_session.list_skill_statuses()
+                    }
+                    native_skill.unlink()
                     assert (
                         product_coding_session._package_controller.get_package_materializer()
                         is None
@@ -5411,6 +5424,13 @@ while True:
                     with pytest.raises(CodingBasePluginAssemblyError) as stale_call:
                         asyncio.run(product_coding_session.prepare_model_call_runtime())
                     assert stale_call.value.code == "coding_base_product_restart_required"
+                    with pytest.raises(
+                        CodingResourceCatalogAdmissionError
+                    ) as stale_refresh:
+                        asyncio.run(product_coding_session.refresh_resources())
+                    assert "product_selected_base_refresh_requires_restart" in str(
+                        stale_refresh.value
+                    )
                     expected_inventory_revision = 4
                 finally:
                     if product_coding_session is not None:
@@ -5594,7 +5614,6 @@ while True:
                     "skills/standard/SKILL.md",
                 }
                 from loushang.coding._resource_catalog_shadow import (
-                    CodingResourceCatalogAdmissionError,
                     build_coding_initial_resource_catalog_adapter,
                 )
                 from loushang.harness.resources._catalog_input_receipt import (
