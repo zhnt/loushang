@@ -362,9 +362,12 @@ Neither may silently override a narrower implemented owner contract.
   default selection remains unimplemented. The first-party LSP and Arch
   Capability packages can now be frozen as distinct, digest-pinned Product
   Wheels alongside `coding.base` under one explicit Source policy. Their
-  `in_process` Provider declarations remain unchanged; Product Store admission,
-  Provider composition, and default selection for those two packages remain
-  open. The
+  `in_process` Provider declarations remain unchanged. The real B Store fixture
+  uses a three-package Coding Product owner and its leased Session factory to
+  commit and enable both, capture their exact definition bytes, and reopen both
+  selected manifests while the pre-B roots are absent. This remains inert
+  Package evidence: Provider composition and default selection for those two
+  packages are still open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired

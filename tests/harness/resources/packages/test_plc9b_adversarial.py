@@ -4233,6 +4233,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         build_coding_base_product_wheel,
         coding_base_product_local_wheel_policy,
         prepare_posix_coding_base_product_wheel,
+        prepare_posix_coding_capability_product_wheels,
     )
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
@@ -4241,6 +4242,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.package_product_runtime import (
         open_coding_base_product_runtime_owner,
+        open_coding_builtin_product_runtime_owner,
         open_coding_package_product_state,
     )
     from loushang.coding.session_manager import SessionManager
@@ -6635,6 +6637,118 @@ while True:
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
             if checked_in_base:
+                capability_artifacts = (
+                    prepare_posix_coding_capability_product_wheels(
+                        product_source_root
+                    )
+                )
+                def compose_builtin_product(selected_state):
+                    owner = open_coding_builtin_product_runtime_owner(
+                        legacy_layout,
+                        epoch_runtime,
+                        selected_state,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
+                    assert {item.plugin_id for item in owner.product_owner.policy.bindings} == {
+                        "coding.base",
+                        "coding.arch.default",
+                        "coding.lsp.default",
+                    }
+                    capability_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "builtin-product-sessions",
+                            cwd=str(workspace),
+                            persist=False,
+                        )
+                    )
+                    capability_factory = owner.factory_for_session(capability_manager)
+                    try:
+                        return capability_factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=(
+                                    capability_manager.get_header().conversation_id
+                                ),
+                                cwd=str(workspace),
+                            )
+                        ).activate()
+                    except BaseException:
+                        capability_factory.dispose_unbound_runtime()
+                        raise
+
+                combined_runtime = compose_builtin_product(product_state)
+                try:
+                    for capability_artifact in capability_artifacts:
+                        capability_outcome = combined_runtime.lifecycle.route(
+                            PackageProductLifecycleIntentV1(
+                                operation_id=(
+                                    f"operation:product-{capability_artifact.plugin_id}"
+                                ),
+                                action="install",
+                                source=str(capability_artifact.path),
+                                scope="project",
+                            ),
+                            entrypoint="session",
+                        )
+                        assert capability_outcome.handled
+                        assert capability_outcome.record is not None
+                        assert capability_outcome.record.lifecycle == "installed"
+                        capability_key = PluginInstallationKeyV1(
+                            product_id="coding",
+                            installation_scope="workspace",
+                            scope_id=policy.project_scope_id,
+                            plugin_id=capability_artifact.plugin_id,
+                        )
+                        capability_enablement = management.submit(
+                            PluginManagementCommandV1(
+                                action="enable",
+                                mutation=PluginDesiredStateMutationV1(
+                                    operation_id=(
+                                        f"operation:enable-{capability_artifact.plugin_id}"
+                                    ),
+                                    idempotency_key=(
+                                        f"request:enable-{capability_artifact.plugin_id}"
+                                    ),
+                                    expected_inventory_revision=(
+                                        desired.snapshot().inventory_revision
+                                    ),
+                                    installation_key=capability_key,
+                                    desired_state="installed_enabled",
+                                    package_revision=None,
+                                    actor_id=factory.actor_id,
+                                    policy_revision=factory.desired_policy_revision,
+                                ),
+                            )
+                        )
+                        assert capability_enablement.result is not None
+                        assert capability_enablement.result.disposition == "succeeded"
+                        selected_capability = (
+                            combined_runtime.capture_selected_plugin_manifest_for(
+                                capability_artifact.plugin_id,
+                                max_files=64,
+                                max_total_bytes=1024 * 1024,
+                            )
+                        )
+                        assert (
+                            selected_capability.verified_manifest().name
+                            == capability_artifact.plugin_id
+                        )
+                        definition_path = (
+                            capability_artifact.plugin_id.replace(".", "_")
+                            + "/definition.py"
+                        )
+                        with zipfile.ZipFile(capability_artifact.path) as wheel:
+                            assert dict(selected_capability.snapshot.files)[
+                                definition_path
+                            ] == wheel.read(definition_path)
+                        with pytest.raises(ValueError, match="not data-only"):
+                            selected_capability.verified_data_only_declarations()
+                finally:
+                    combined_runtime.dispose_runtime()
+                expected_inventory_revision = desired.snapshot().inventory_revision
+            if checked_in_base:
                 hidden_package = tmp_path / "hidden-post-b-package"
                 hidden_lifecycle = tmp_path / "hidden-post-b-lifecycle"
                 legacy_root.rename(hidden_package)
@@ -6656,6 +6770,22 @@ while True:
                         reopened_owner.product_owner.policy
                         == product_runtime_owner.product_owner.policy
                     )
+                    reopened_builtin = compose_builtin_product(reopened_state)
+                    try:
+                        for capability_artifact in capability_artifacts:
+                            selected_capability = (
+                                reopened_builtin.capture_selected_plugin_manifest_for(
+                                    capability_artifact.plugin_id,
+                                    max_files=64,
+                                    max_total_bytes=1024 * 1024,
+                                )
+                            )
+                            assert (
+                                selected_capability.verified_manifest().name
+                                == capability_artifact.plugin_id
+                            )
+                    finally:
+                        reopened_builtin.dispose_runtime()
             finally:
                 if checked_in_base:
                     hidden_lifecycle.rename(legacy_layout.root)
