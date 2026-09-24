@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -21,6 +22,9 @@ from loushang.coding.package_legacy_installation_inventory import (
 )
 from loushang.coding.package_legacy_lock_evidence import (
     parse_coding_legacy_local_binding_heads,
+)
+from loushang.coding.package_legacy_reacquisition import (
+    reacquire_coding_legacy_installed_local_source,
 )
 from loushang.coding.package_pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
@@ -242,6 +246,22 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert evidence.inventory.active_local[0].binding == binding
         assert evidence.inventory.active_local[0].desired_state == "installed_enabled"
         assert evidence.inventory.desired_journal_digest == desired.journal_digest
+        reacquired = reacquire_coding_legacy_installed_local_source(
+            lifecycle, owner, plugin_id=binding.plugin_id
+        )
+        assert reacquired.inventory_evidence == evidence
+        assert reacquired.installation == evidence.inventory.active_local[0]
+        assert reacquired.wheel.original_source_identity == binding.source_identity
+        assert reacquired.wheel.source_content_digest == binding.content_digest
+        shutil.rmtree(tmp_path / "source")
+        with pytest.raises(FileNotFoundError):
+            reacquire_coding_legacy_installed_local_source(
+                lifecycle, owner, plugin_id=binding.plugin_id
+            )
+        with pytest.raises(CodingLegacyInventoryError, match="not an installed local"):
+            reacquire_coding_legacy_installed_local_source(
+                lifecycle, owner, plugin_id="unselected-plugin"
+            )
     finally:
         owner.close()
 
