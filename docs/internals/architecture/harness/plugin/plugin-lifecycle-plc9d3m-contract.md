@@ -9,10 +9,11 @@
   retention, an expiry schedule, a restore command, or private-data deletion.
 
 The query reopens the current exact Product fence, reads its snapshot receipt
-ID, and asks `PackagePosixEpochSnapshotEvidenceStore` to verify the immutable
-snapshot bundle. A retained result requires owner evidence matching the fence's
-Store, legacy-root identity, and quiescence receipt. Output is pathless and
-includes the snapshot receipt/evidence IDs and verified entry and byte counts.
+ID, and asks the Product-facing pre-B snapshot adapter to verify the immutable
+snapshot bundle through its native Store owner. A retained result requires
+owner evidence matching the fence's Store, legacy-root identity, and
+quiescence receipt. Output is pathless and includes the snapshot
+receipt/evidence IDs and verified entry and byte counts.
 Backup expiry is always `unknown` because this owner issues no expiry receipt.
 
 A missing evidence file or snapshot authority yields `unknown`, never

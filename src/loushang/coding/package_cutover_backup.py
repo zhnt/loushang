@@ -8,8 +8,8 @@ from typing import Literal
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package_pre_b_snapshot import reopen_coding_package_cutover
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
-    PackagePosixEpochSnapshotEvidenceStore,
+from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    read_posix_product_pre_b_snapshot,
 )
 
 CodingCutoverBackupStatus = Literal["retained", "unknown"]
@@ -89,14 +89,15 @@ def inspect_coding_package_cutover_backup(
     receipt_id = fence.request.snapshot_receipt_id
     reason: CodingCutoverBackupReason
     try:
-        owner = PackagePosixEpochSnapshotEvidenceStore(
-            epoch.snapshot_root, store_id=epoch.store_id
+        evidence = read_posix_product_pre_b_snapshot(
+            snapshot_root=epoch.snapshot_root,
+            store_id=epoch.store_id,
+            snapshot_receipt_id=receipt_id,
         )
     except FileNotFoundError:
         evidence = None
         reason = "snapshot_owner_unavailable"
     else:
-        evidence = owner.snapshot(receipt_id)
         reason = "snapshot_evidence_missing"
     if evidence is None:
         return CodingPackageCutoverBackupStatusV1(

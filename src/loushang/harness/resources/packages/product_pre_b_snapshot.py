@@ -28,6 +28,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
     PackagePosixEpochCutoverResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
+    PackagePosixEpochSnapshotEvidenceStore,
     PackagePosixEpochSnapshotOwner,
     PackagePosixSnapshotSharedMemberV1,
 )
@@ -47,6 +48,19 @@ class PackageProductPreBSnapshotSharedMemberV1:
 class PackageProductPosixCutoverAttemptV1:
     request: PackagePosixEpochCutoverRequestV1
     result: PackagePosixEpochCutoverResultV1
+
+
+def read_posix_product_pre_b_snapshot(
+    *,
+    snapshot_root: Path,
+    store_id: str,
+    snapshot_receipt_id: str,
+) -> PackageOfflineRestoreSnapshotEvidenceV1 | None:
+    """Verify one fenced Product backup through its native snapshot owner."""
+
+    return PackagePosixEpochSnapshotEvidenceStore(
+        snapshot_root, store_id=store_id
+    ).snapshot(snapshot_receipt_id)
 
 
 def reopen_posix_product_cutover(
@@ -224,5 +238,6 @@ __all__ = [
     "PackageProductPreBSnapshotOwner",
     "PackageProductPreBSnapshotSharedMemberV1",
     "PackageProductPosixCutoverAttemptV1",
+    "read_posix_product_pre_b_snapshot",
     "reopen_posix_product_cutover",
 ]
