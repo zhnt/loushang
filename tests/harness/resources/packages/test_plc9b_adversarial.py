@@ -5333,18 +5333,18 @@ while True:
             with pytest.raises(ValueError, match="Product owner"):
                 compose(foreign_desired)
             assert lifecycle_journal.records() == before_restart
-            for entrypoint, source_value in (
+            for refused_entrypoint, source_value in (
                 ("rpc", "https://packages.example.test/unknown.whl"),
                 ("direct_materializer", str(source)),
             ):
                 refused = activation.route(
                     PackageProductLifecycleIntentV1(
-                        operation_id=f"operation:refused:{entrypoint}",
+                        operation_id=f"operation:refused:{refused_entrypoint}",
                         action="install",
                         source=source_value,
                         scope="project",
                     ),
-                    entrypoint=entrypoint,
+                    entrypoint=refused_entrypoint,
                 )
                 assert refused.handled
                 assert refused.record is not None
@@ -7367,7 +7367,7 @@ while True:
                     )
                 assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
-                with pytest.raises(ValueError, match="Store identity changed"):
+                with pytest.raises(ValueError, match="POSIX cutover evidence changed"):
                     factory.create(
                         PackageProductRuntimeRequestV1(
                             product_id="coding",
