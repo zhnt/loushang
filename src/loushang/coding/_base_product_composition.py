@@ -26,6 +26,13 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionSpec,
     ResourceContributionSpec,
 )
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleProviderBinding,
+)
+from loushang.harness.capabilities.provider_selection import (
+    ProductCapabilityProviderResolver,
+    ProductCapabilityProviderSelectionPlanV1,
+)
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.plugin_authoring.consumer_pack import (
     CommandPackDeclarationPayload,
@@ -48,6 +55,10 @@ from loushang.harness.resources.plugins.engine import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginSelectionPlanV2,
+)
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityCompositionInputs,
+    validate_session_capability_composition_closure,
 )
 from loushang.harness.session.product_composition_assembly import (
     _assemble_product_contribution_candidates,
@@ -141,6 +152,57 @@ class CodingBaseProductCompilation:
             )
             for admission in self.product_composition.resource_admissions
         )
+
+    def bind_workspace(
+        self, workspace_binding: CapabilityBundleProviderBinding
+    ) -> CodingBaseProductSessionAssembly:
+        """Close the data-only Product base over the Session's host Provider."""
+
+        if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
+            raise TypeError("Coding base Product requires a workspace binding")
+        workspace = workspace_binding.provider
+        if workspace.capability_id != WORKSPACE_CAPABILITY_DEFINITION.capability_id:
+            raise ValueError("Coding base Product host Provider is not workspace")
+        context = self.product_composition.authority_context
+        resolved = ProductCapabilityProviderResolver().resolve(
+            ProductCapabilityProviderSelectionPlanV1(
+                product_id=context.product_id,
+                roots=(),
+                choices=(),
+                policy_revision=context.product_policy_revision,
+            ),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+            ),
+            admissions=(),
+            owner_snapshots=(),
+            evaluated_at=context.evaluated_at,
+            prebound_providers=(workspace,),
+        )
+        validate_session_capability_composition_closure(
+            self.product_composition,
+            resolved,
+            host_capability_ids=(
+                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+                WORKSPACE_CAPABILITY_DEFINITION.capability_id,
+            ),
+            host_providers=(workspace,),
+        )
+        return CodingBaseProductSessionAssembly(
+            compilation=self,
+            session_inputs=SessionCapabilityCompositionInputs(
+                product_composition=self.product_composition,
+                resolved_providers=resolved,
+                component_requests=(),
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CodingBaseProductSessionAssembly:
+    compilation: CodingBaseProductCompilation = field(repr=False)
+    session_inputs: SessionCapabilityCompositionInputs
 
 
 def compile_coding_base_product_selection(

@@ -5339,6 +5339,36 @@ while True:
                 assert compiled_base.tool_contribution_id == base_tool
                 assert len(compiled_base.product_composition.resource_admissions) == 2
                 assert len(compiled_base.product_composition.catalog_admissions) == 2
+                from loushang.harness.capabilities.workspace_provider import (
+                    workspace_capability_provider_binding,
+                )
+                from loushang.harness.workspace.operations import LocalToolOperations
+
+                class _UnusedProcessLauncher:
+                    async def start(self, request, *, correlation_id, signal=None):
+                        raise AssertionError("Product compilation must not launch a process")
+
+                product_session = compiled_base.bind_workspace(
+                    workspace_capability_provider_binding(
+                        operations=LocalToolOperations(),
+                        process_launcher=_UnusedProcessLauncher(),
+                        scope_instance_id="workspace:product-store-session",
+                        binding_input_fingerprint="f" * 64,
+                        source_id="product-store-test",
+                    )
+                )
+                assert (
+                    product_session.session_inputs.product_composition
+                    is compiled_base.product_composition
+                )
+                assert product_session.session_inputs.resolved_providers.entries == ()
+                assert product_session.session_inputs.component_requests == ()
+                assert {
+                    admission.candidate.owner_id
+                    for admission in (
+                        product_session.session_inputs.product_composition.catalog_admissions
+                    )
+                } == {"tools.workspace", "commands.session"}
                 assert {
                     admission.candidate.contribution_id
                     for admission in (
