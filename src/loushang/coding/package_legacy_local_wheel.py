@@ -36,6 +36,7 @@ class CodingLegacyLocalWheelCandidateV1:
     """Inert bytes; only a later Product policy can authorize publication."""
 
     plugin_id: str
+    original_source_identity: str
     source_content_digest: str
     manifest_digest: str
     requested_package: str
@@ -51,6 +52,7 @@ def reacquire_coding_legacy_local_plugin_wheel(
     legacy_package_root: Path,
     staging_parent: Path,
     plugin_id: str,
+    expected_source_identity: str,
     expected_content_digest: str,
     expected_manifest_digest: str,
     expected_dependency_lock: PluginDependencyClosureLock,
@@ -77,6 +79,9 @@ def reacquire_coding_legacy_local_plugin_wheel(
     ):
         raise ValueError("Legacy Plugin dependency closure is unsupported")
     source = _canonical_directory(source_root, name="original Plugin Source")
+    original_source_identity = f"local:{source}"
+    if expected_source_identity != original_source_identity:
+        raise ValueError("Legacy Plugin Source identity changed")
     legacy = _canonical_directory(legacy_package_root, name="legacy Package root")
     if source == legacy or source.is_relative_to(legacy):
         raise ValueError("Legacy Package Store bytes cannot be reacquired as Source")
@@ -150,6 +155,7 @@ def reacquire_coding_legacy_local_plugin_wheel(
             handle.verify()
             return CodingLegacyLocalWheelCandidateV1(
                 plugin_id=plugin_id,
+                original_source_identity=original_source_identity,
                 source_content_digest=expected_content_digest,
                 manifest_digest=expected_manifest_digest,
                 requested_package=f"{distribution}==1",

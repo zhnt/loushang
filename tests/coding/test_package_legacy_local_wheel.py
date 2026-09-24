@@ -72,6 +72,7 @@ def test_reacquired_local_tree_becomes_product_verified_wheel(tmp_path: Path) ->
         legacy_package_root=old_package,
         staging_parent=staging,
         plugin_id="review-pack",
+        expected_source_identity=f"local:{source}",
         expected_content_digest=digest,
         expected_manifest_digest=manifest_digest,
         expected_dependency_lock=dependency_lock,
@@ -80,6 +81,7 @@ def test_reacquired_local_tree_becomes_product_verified_wheel(tmp_path: Path) ->
     candidate = reacquire_coding_legacy_local_plugin_wheel(source, **kwargs)
     assert candidate == reacquire_coding_legacy_local_plugin_wheel(source, **kwargs)
     assert candidate.source_content_digest == digest
+    assert candidate.original_source_identity == f"local:{source}"
     assert candidate.manifest_digest == manifest_digest
     assert candidate.artifact_digest == sha256(candidate.wheel_bytes).hexdigest()
     assert list(staging.iterdir()) == []
@@ -164,12 +166,14 @@ def test_reacquisition_matches_real_pre_b_local_binding(tmp_path: Path) -> None:
         legacy_package_root=old_package,
         staging_parent=staging,
         plugin_id=binding.plugin_id,
+        expected_source_identity=binding.source_identity,
         expected_content_digest=binding.content_digest,
         expected_manifest_digest=binding.manifest_digest,
         expected_dependency_lock=binding.dependency_lock,
     )
 
     assert candidate.plugin_id == binding.plugin_id
+    assert candidate.original_source_identity == binding.source_identity
     assert candidate.source_content_digest == binding.content_digest
     assert candidate.manifest_digest == binding.manifest_digest
     assert list(staging.iterdir()) == []
@@ -189,18 +193,27 @@ def test_reacquisition_refuses_changed_source_and_old_store_as_source(
         legacy_package_root=old_package,
         staging_parent=staging,
         plugin_id="review-pack",
+        expected_source_identity=f"local:{source}",
         expected_content_digest=digest,
         expected_manifest_digest=manifest_digest,
         expected_dependency_lock=dependency_lock,
     )
 
     (source / "resources" / "prompts" / "review.md").write_text("changed")
+    with pytest.raises(ValueError, match="Source identity changed"):
+        reacquire_coding_legacy_local_plugin_wheel(
+            source,
+            **{**kwargs, "expected_source_identity": "local:/some/other/source"},
+        )
     with pytest.raises(ValueError, match="revision changed"):
         reacquire_coding_legacy_local_plugin_wheel(source, **kwargs)
     assert list(staging.iterdir()) == []
 
     with pytest.raises(ValueError, match="Store bytes"):
-        reacquire_coding_legacy_local_plugin_wheel(old_package, **kwargs)
+        reacquire_coding_legacy_local_plugin_wheel(
+            old_package,
+            **{**kwargs, "expected_source_identity": f"local:{old_package}"},
+        )
     assert list(staging.iterdir()) == []
 
     with pytest.raises(ValueError, match="overlaps protected inputs"):
@@ -232,6 +245,7 @@ def test_reacquisition_refuses_dependency_and_unsafe_stage(tmp_path: Path) -> No
             legacy_package_root=old_package,
             staging_parent=staging,
             plugin_id="review-pack",
+            expected_source_identity=f"local:{source}",
             expected_content_digest=digest,
             expected_manifest_digest=manifest_digest,
             expected_dependency_lock=lock_with_dependency,
@@ -243,6 +257,7 @@ def test_reacquisition_refuses_dependency_and_unsafe_stage(tmp_path: Path) -> No
             legacy_package_root=old_package,
             staging_parent=staging,
             plugin_id="review-pack",
+            expected_source_identity=f"local:{source}",
             expected_content_digest=digest,
             expected_manifest_digest=manifest_digest,
             expected_dependency_lock=PluginDependencyClosureLock(digest, ()),
@@ -283,6 +298,7 @@ def test_reacquisition_refuses_unrepresentable_or_unbounded_tree(
             legacy_package_root=old_package,
             staging_parent=staging,
             plugin_id="review-pack",
+            expected_source_identity=f"local:{source}",
             expected_content_digest=digest,
             expected_manifest_digest=manifest_digest,
             expected_dependency_lock=dependency_lock,
