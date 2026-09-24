@@ -20,6 +20,7 @@ _SOURCE_KEYS = frozenset(
     {"package_roots", "package_sources", "packages", "plugin_sources"}
 )
 _PROJECTION_KEYS = frozenset({"disabled_plugins", *_SOURCE_KEYS, "resource_roots"})
+_PACKAGE_FILTER_KEYS = frozenset({"extensions", "skills", "prompts", "themes"})
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -101,6 +102,7 @@ def classify_coding_legacy_workspace(
             or not isinstance(patch, dict)
             or not set(patch) <= _PROJECTION_KEYS
             or (not present and patch)
+            or ("packages" in patch and "package_sources" in patch)
         ):
             raise ValueError("Coding Source projection layer is invalid")
         for key, value in patch.items():
@@ -114,7 +116,12 @@ def classify_coding_legacy_workspace(
                 disabled.extend(
                     CodingScopedLegacyDisableV1(scope, item) for item in value
                 )
-            elif key in _SOURCE_KEYS and value:
+            elif key in {"packages", "package_sources"}:
+                if any(not _valid_package_source(item) for item in value):
+                    raise ValueError("Coding legacy Package Source is invalid")
+            elif any(not isinstance(item, str) or not item for item in value):
+                raise ValueError("Coding legacy Source setting is invalid")
+            if key in _SOURCE_KEYS and value:
                 sources.append(f"{scope}:{key}")
 
     lifecycle_names = tuple(
@@ -142,6 +149,25 @@ def classify_coding_legacy_workspace(
         configured_source_keys=tuple(sources),
         lifecycle_members=lifecycle_names,
         package_members=package_names,
+    )
+
+
+def _valid_package_source(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value)
+    if not isinstance(value, dict) or not set(value) <= {
+        "source",
+        *_PACKAGE_FILTER_KEYS,
+    }:
+        return False
+    source = value.get("source")
+    if not isinstance(source, str) or not source:
+        return False
+    return all(
+        isinstance(items, list)
+        and all(isinstance(item, str) and item for item in items)
+        for key, items in value.items()
+        if key in _PACKAGE_FILTER_KEYS
     )
 
 

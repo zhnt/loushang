@@ -106,7 +106,10 @@ def test_classification_never_converts_source_or_old_store_to_fresh(
         "project",
         {
             "disabled_plugins": ["coding.base"],
-            "packages": ["/some/old/source"],
+            "packages": [
+                "/some/old/source",
+                {"source": "/another/old/source", "skills": ["review"]},
+            ],
             "resource_roots": ["/ordinary/resources"],
         },
     )
@@ -211,6 +214,21 @@ def test_snapshot_preparation_carries_exact_legacy_classification(
         ),
         lambda value: value["scopes"]["global"].update(
             present=True, rawSha256="a" * 64, sourcePatch={"plugin_sources": "git:repo"}
+        ),
+        lambda value: value["scopes"]["global"].update(
+            present=True,
+            rawSha256="a" * 64,
+            sourcePatch={"packages": [], "package_sources": []},
+        ),
+        lambda value: value["scopes"]["global"].update(
+            present=True,
+            rawSha256="a" * 64,
+            sourcePatch={"packages": [{"source": "", "skills": ["review"]}]},
+        ),
+        lambda value: value["scopes"]["global"].update(
+            present=True,
+            rawSha256="a" * 64,
+            sourcePatch={"package_roots": ["/valid", 42]},
         ),
     ),
 )
