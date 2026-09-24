@@ -21,6 +21,7 @@ from loushang.harness.tools.core import ToolDefinition
 
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_local import CodingLocalCommandV1, _LocalLaunchFacts
+from .hosted_session import CodingHostedProductRuntimeFactoryForSession
 from .managed_bootstrap import (
     CodingManagedApplicationLaunchV1,
     _managed_control_roots,
@@ -75,10 +76,16 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
     def __init__(self, launch: CodingManagedLocalLaunchV1, *, model: Model | ModelSelection | None = None,
                  stream_fn: StreamFn | None = None, tools: list[ToolDefinition] | None = None,
                  startup_timeout: float = 30.0, settlement_timeout: float = 30.0,
-                 output_capture_factory: ManagedOutputCaptureFactory | None = None) -> None:
+                 output_capture_factory: ManagedOutputCaptureFactory | None = None,
+                 package_product_runtime_factory_for_session: (
+                     CodingHostedProductRuntimeFactoryForSession | None
+                 ) = None) -> None:
         self._output_capture_factory = output_capture_factory
         super().__init__(launch, model=model, stream_fn=stream_fn, tools=tools,
-                         startup_timeout=startup_timeout, settlement_timeout=settlement_timeout)
+                         startup_timeout=startup_timeout, settlement_timeout=settlement_timeout,
+                         package_product_runtime_factory_for_session=(
+                             package_product_runtime_factory_for_session
+                         ))
 
     @property
     def cleanup_pending(self) -> bool:
@@ -112,6 +119,9 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
             session_discovery=launch.session_discovery,
             managed_mux=launch.managed_mux,
             output_capture_factory=self._output_capture_factory,
+            package_product_runtime_factory_for_session=(
+                self._package_product_runtime_factory_for_session
+            ),
         )
 
 

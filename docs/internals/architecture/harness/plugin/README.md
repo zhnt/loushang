@@ -437,6 +437,9 @@ Neither may silently override a narrower implemented owner contract.
   real-Store refusal is durable even when catalog refresh is async-only.
   Default Session composition, further transport coverage, and supervisor
   launch still need a one-time switch.
+  Trusted Hosted, local, and managed command constructors can now pass a fresh
+  Product runtime factory for each Session into the same bootstrap gate. The
+  installed CLI and managed child do not yet supply that factory by default.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

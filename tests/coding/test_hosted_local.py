@@ -60,6 +60,27 @@ def test_G16_PRODUCT_launch_rejects_shared_storage_and_does_not_create_files(tmp
     assert str(tmp_path) not in repr(launch)
 
 
+def test_local_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path):
+    async def scenario():
+        called = []
+
+        def select(manager):
+            called.append(manager)
+            raise AssertionError("construction must not select a Session runtime")
+
+        command = CodingLocalCommandV1(
+            _local_launch(tmp_path.resolve()),
+            package_product_runtime_factory_for_session=select,
+        )
+        factory = command._attempt._request.foreground.session_factory
+        assert factory._package_product_runtime_factory_for_session is select
+        assert called == []
+        await command.close()
+        assert not tuple(tmp_path.iterdir())
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("discovery_enabled", [False, True])
 def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_scopes(
     tmp_path,

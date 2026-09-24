@@ -22,6 +22,27 @@ def test_G17_COMPAT_describe_discovery_is_explicit_and_read_only(tmp_path, capsy
     assert not tuple(tmp_path.iterdir())
 
 
+def test_stdio_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path):
+    async def scenario():
+        called = []
+
+        def select(manager):
+            called.append(manager)
+            raise AssertionError("construction must not select a Session runtime")
+
+        launch, _ = hosted.parse_launch(_argv(tmp_path))
+        command = hosted.CodingHostedCommandV1(
+            launch, package_product_runtime_factory_for_session=select
+        )
+        factory = command._attempt._request.foreground.session_factory
+        assert factory._package_product_runtime_factory_for_session is select
+        assert called == []
+        await command.close()
+        assert not tuple(tmp_path.iterdir())
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_G17_COMPAT_main_passes_explicit_discovery_selection(
     tmp_path, monkeypatch, enabled
