@@ -5593,16 +5593,9 @@ while True:
                         )
                         claimed = await candidate.claim()
                         identity = claimed.opaque_binding.record.identity
-                        selected_sessions: list[str] = []
                         prior_leases = len(
                             registry.snapshot(store_id=store_id).active_leases
                         )
-
-                        def select_hosted(manager: SessionManager):
-                            selected_sessions.append(
-                                manager.get_header().conversation_id
-                            )
-                            return hosted_product_owner.factory_for_session(manager)
 
                         hosted_factory = CodingRealHostedSessionFactoryV1(
                             services_factory=lambda _cwd: create_services(
@@ -5624,7 +5617,6 @@ while True:
                                 ),
                             ),
                             tools=[],
-                            package_product_runtime_factory_for_session=select_hosted,
                         )
                         hosted = None
                         try:
@@ -5637,6 +5629,14 @@ while True:
                                     "loushang.coding.bootstrap._default_package_materializer",
                                     side_effect=AssertionError("legacy package materializer"),
                                 ),
+                                patch(
+                                    "loushang.coding.hosted_session.resolve_coding_plugin_lifecycle_state_layout",
+                                    return_value=legacy_layout,
+                                ),
+                                patch(
+                                    "loushang.coding.hosted_session.version",
+                                    return_value="2.0.0",
+                                ),
                             ):
                                 hosted = await hosted_factory.create_session(
                                     binding_key=SessionBindingKeyV1(
@@ -5646,7 +5646,7 @@ while True:
                                     ),
                                     opaque_session_binding=claimed.opaque_binding,
                                 )
-                            assert selected_sessions == [identity.session_id]
+                            assert hosted_factory._product_application_owner is not None
                             assert hosted.control._package_controller.get_package_materializer() is None
                             assert any(
                                 command.name == "standard" and command.source == "prompt"
@@ -5661,6 +5661,7 @@ while True:
                                 await hosted.close()
                             await claimed.close()
                             await candidate.close()
+                            await hosted_factory.close()
                         assert len(
                             registry.snapshot(store_id=store_id).active_leases
                         ) == prior_leases

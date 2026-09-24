@@ -34,6 +34,8 @@ from .package_builtin_wheel import (
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .session_manager import SessionManager
 
+CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
+
 
 @dataclass(frozen=True, slots=True)
 class CodingPackageProductStateOwners:
@@ -314,6 +316,7 @@ def _open_coding_product_runtime_owner(
 
 
 __all__ = [
+    "CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH",
     "CodingFencedProductApplicationOwner",
     "CodingPackageProductStateOwners",
     "CodingPosixLocalWheelProductRuntimeOwner",

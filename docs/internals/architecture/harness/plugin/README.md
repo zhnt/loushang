@@ -421,9 +421,12 @@ Neither may silently override a narrower implemented owner contract.
   fenced B epoch, supply factories to successive standard and architecture
   Sessions, and close only after its own runtime leases have been released;
   the real-Store fixture rejects an early close and permits closing while a
-  separate Store owner remains live. Installed commands still do not
-  construct this owner by default. A POSIX snapshot owner now publishes a
-  durable, restore-compatible bundle from
+  separate Store owner remains live. The shared Hosted/managed Session factory
+  now selects this owner when its workspace has a durable B fence, and its
+  application close releases the owner after Session cleanup. A failed B reopen
+  cannot fall back to the legacy materializer. The standalone Coding runtime
+  still has no automatic Product selection. A POSIX snapshot owner now publishes
+  a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:
@@ -504,13 +507,13 @@ Neither may silently override a narrower implemented owner contract.
   classification. Synchronous Session `uninstall_package` now routes an enforced
   Product binding before consulting the legacy synchronous-refresh gate; its
   real-Store refusal is durable even when catalog refresh is async-only.
-  Default Session composition, further transport coverage, and supervisor
-  launch still need a one-time switch.
+  Standalone default Session composition, further transport coverage, and
+  supervisor launch still need a one-time switch.
   Trusted Hosted, local, and managed command constructors can now pass a fresh
   Product runtime factory for each Session into the same bootstrap gate. The
-  installed CLI and managed child do not yet supply that factory by default.
-  Default Coding does not select that factory; this is not a
-  completed Product cutover, Windows composition, or PLC9D execution claim.
+  shared Hosted/managed factory also selects a fenced Product owner by default;
+  the standalone CLI runtime still does not. This is not a completed Product
+  cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution
   and direct configured-Source preparation. Dark mode retains its compatibility

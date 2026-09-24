@@ -213,6 +213,51 @@ def test_hosted_product_runtime_requires_a_session_factory(
     asyncio.run(asyncio.wait_for(scenario(), 20))
 
 
+def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.hosted_session as hosted_session
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced Hosted startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        hosted_session, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+
+    async def scenario() -> None:
+        candidate, claimed, identity, factory = await _construction(tmp_path)
+        with pytest.raises(ValueError, match="invalid B fence"):
+            await factory.create_session(
+                binding_key=SessionBindingKeyV1(
+                    identity.product_id, identity.continuity_id, identity.session_id
+                ),
+                opaque_session_binding=claimed.opaque_binding,
+            )
+        assert selected == ["product"]
+        await claimed.close()
+        await candidate.close()
+        await factory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
 def test_hosted_product_runtime_missing_selection_cannot_fall_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
