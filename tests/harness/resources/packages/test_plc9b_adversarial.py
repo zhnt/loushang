@@ -4230,6 +4230,12 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_builtin_wheel import (
+        CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        build_coding_base_product_wheel,
+        coding_base_product_local_wheel_policy,
+        prepare_posix_coding_base_product_wheel,
+    )
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
         cutover_coding_package_store_from_legacy,
@@ -4264,57 +4270,62 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             and path.suffix != ".pyc"
         }
     source = source_root / (
-        "coding_base-1-py3-none-any.whl" if checked_in_base else WHEEL_FILENAME
+        CODING_BASE_PRODUCT_WHEEL_FILENAME if checked_in_base else WHEEL_FILENAME
     )
-    payload = _package_wheel_bytes(
-        "coding-base" if checked_in_base else "acme-plugin",
-        "1" if checked_in_base else "1.0",
-        extra_files=base_files,
-        requires_dist=("dependency==2.0",) if with_dependency else (),
-    )
-    source.write_bytes(payload)
+    if checked_in_base:
+        artifact = prepare_posix_coding_base_product_wheel(source_root)
+        assert artifact.path == source
+        assert artifact == prepare_posix_coding_base_product_wheel(source_root)
+        payload = source.read_bytes()
+        assert payload == build_coding_base_product_wheel()
+        assert artifact.artifact_digest == sha256(payload).hexdigest()
+    else:
+        payload = _package_wheel_bytes(
+            "acme-plugin",
+            "1.0",
+            requires_dist=("dependency==2.0",) if with_dependency else (),
+        )
+        source.write_bytes(payload)
     dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
     dependency_payload = _package_wheel_bytes("dependency", "2.0")
     if with_dependency:
         dependency_source.write_bytes(dependency_payload)
     environment = _closure_environment()
-    policy = PackageProductLocalWheelPolicy(
-        product_id="coding",
-        project_scope_id="workspace:manifest",
-        source_root=source_root,
-        bindings=(
-            PackageProductLocalWheelBindingV1(
-                source_identity=str(source),
-                requested_package=(
-                    "coding-base==1" if checked_in_base else "acme-plugin==1.0"
-                ),
-                plugin_id="coding.base" if checked_in_base else "acme.plugin",
-                artifact_digest=sha256(payload).hexdigest(),
-                plugin_manifest_path=(
-                    "coding_base/plugin.json" if checked_in_base else None
-                ),
-                source_trust_class=(
-                    "host-equivalent-local" if checked_in_base else None
+    if checked_in_base:
+        policy = coding_base_product_local_wheel_policy(
+            artifact,
+            project_scope_id="workspace:manifest",
+            resolution_environment_fingerprint=environment.fingerprint,
+            policy_revision="package-policy:1",
+            quota_profile_revision="quota:1",
+            authority_id="coding-local-source:runtime",
+        )
+    else:
+        policy = PackageProductLocalWheelPolicy(
+            product_id="coding",
+            project_scope_id="workspace:manifest",
+            source_root=source_root,
+            bindings=(
+                PackageProductLocalWheelBindingV1(
+                    source_identity=str(source),
+                    requested_package="acme-plugin==1.0",
+                    plugin_id="acme.plugin",
+                    artifact_digest=sha256(payload).hexdigest(),
                 ),
             ),
-        ),
-        dependencies=(
-            (
+            dependencies=(
                 PackageProductLocalWheelDependencyV1(
                     source_identity=str(dependency_source),
                     project_name="dependency",
                     version="2.0",
                     artifact_digest=sha256(dependency_payload).hexdigest(),
                 ),
-            )
-            if with_dependency
-            else ()
-        ),
-        policy_revision="package-policy:1",
-        quota_profile_revision="quota:1",
-        resolution_environment_fingerprint=environment.fingerprint,
-        authority_id="coding-local-source:runtime",
-    )
+            ) if with_dependency else (),
+            policy_revision="package-policy:1",
+            quota_profile_revision="quota:1",
+            resolution_environment_fingerprint=environment.fingerprint,
+            authority_id="coding-local-source:runtime",
+        )
     state_root = tmp_path / "package-state"
     state_root.mkdir(mode=0o700)
     workspace = tmp_path / "workspace"
