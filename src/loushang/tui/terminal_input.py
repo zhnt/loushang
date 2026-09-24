@@ -159,14 +159,6 @@ async def read_input_chunk_or_render_tick(
             if active_task is not None and active_task.done():
                 return None
 
-            wait_for: set[asyncio.Task[Any]] = {input_task}
-            if active_task is not None and not active_task.done():
-                wait_for.add(active_task)
-            render_task: asyncio.Task[bool] | None = None
-            if render_wakeup is not None:
-                render_task = asyncio.create_task(render_wakeup.wait())
-                wait_for.add(render_task)
-
             decision = runtime.request_next_animation_frame()
             timeout = None
             timeout_reason = "render"
@@ -186,16 +178,27 @@ async def read_input_chunk_or_render_tick(
                     timeout = idle_timeout
                     timeout_reason = "idle_wakeup"
 
-            done, _pending = await asyncio.wait(
-                wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
-            )
+            wait_for: set[asyncio.Task[Any]] = {input_task}
+            if active_task is not None and not active_task.done():
+                wait_for.add(active_task)
+            render_task: asyncio.Task[bool] | None = None
+            if render_wakeup is not None:
+                render_task = asyncio.create_task(render_wakeup.wait())
+                wait_for.add(render_task)
+
+            try:
+                done, _pending = await asyncio.wait(
+                    wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                if render_task is not None:
+                    if not render_task.done():
+                        render_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await render_task
             render_wakeup_fired = render_task is not None and render_task in done
             if render_wakeup_fired and render_wakeup is not None:
                 render_wakeup.clear()
-            if render_task is not None and not render_task.done():
-                render_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await render_task
             if input_task in done:
                 return input_task.result()
             if active_task is not None and active_task in done:
@@ -245,6 +248,8 @@ def _read_input_chunk_blocking(stdin: Any) -> str:
 def stream_is_tty(stream: Any) -> bool:
     isatty = getattr(stream, "isatty", None)
     return bool(callable(isatty) and isatty())
+
+
 __all__ = [
     "ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS",
     "TerminalInputMode",
