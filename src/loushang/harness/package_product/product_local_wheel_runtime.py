@@ -294,6 +294,13 @@ class _LocalWheelSelectedManifestReader:
     policy: PackageProductLocalWheelPolicy
     root_reader: PackageProductSelectedRootReader
 
+    def assert_selected_manifest_current(
+        self, selected: PackageProductSelectedPluginManifestV1
+    ) -> None:
+        if not isinstance(selected, PackageProductSelectedPluginManifestV1):
+            raise TypeError("Product selected Plugin manifest is required")
+        self.root_reader.assert_selected_root_current(selected.snapshot)
+
     def capture_selected_manifest_for_plugin(
         self,
         plugin_id: str,

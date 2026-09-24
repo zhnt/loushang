@@ -956,6 +956,7 @@ def _create_agent_session(
     capability_plugin_preparation = None
     base_plugin_session_preparation = None
     product_base_compilation: CodingBaseProductCompilation | None = None
+    product_base_runtime: PackageProductRuntimeBindingV1 | None = None
     capability_plugin_preparation_started = False
 
     def prepare_capability_plugins(
@@ -1214,7 +1215,7 @@ def _create_agent_session(
         resolved_cwd: Path,
         product_runtime: PackageProductRuntimeBindingV1,
     ) -> ResourceBundle:
-        nonlocal product_base_compilation
+        nonlocal product_base_compilation, product_base_runtime
         if not product_base_requested or product_base_compilation is not None:
             raise RuntimeError("Coding Product base Catalog was already prepared")
         if prepared_resource_catalog_adapters:
@@ -1280,6 +1281,7 @@ def _create_agent_session(
             source_policy=resource_catalog_source_policy,
         )
         product_base_compilation = compiled
+        product_base_runtime = product_runtime
         prepared_resource_catalog_adapters.append(adapter)
         return projection
 
@@ -1569,6 +1571,11 @@ def _create_agent_session(
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly=(base_plugin_session_assembly),
                 coding_base_product_session_assembly=(product_base_session_assembly),
+                coding_base_product_runtime_binding=(
+                    product_base_runtime
+                    if product_base_session_assembly is not None
+                    else None
+                ),
                 coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,

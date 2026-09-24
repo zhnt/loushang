@@ -5275,6 +5275,7 @@ while True:
                     )
                     == selected_manifest
                 )
+                runtime.assert_selected_plugin_manifest_current(selected_manifest)
                 with pytest.raises(PackageProductRuntimeReadError):
                     runtime.capture_selected_plugin_manifest_for(
                         "coding.absent", max_files=64, max_total_bytes=1024 * 1024
@@ -5354,6 +5355,63 @@ while True:
                         command.name
                         for command in product_coding_session.list_commands()
                     }
+                    disabled_again = management.submit(
+                        PluginManagementCommandV1(
+                            action="disable",
+                            mutation=PluginDesiredStateMutationV1(
+                                operation_id="operation:product-session-disable",
+                                idempotency_key="request:product-session-disable",
+                                expected_inventory_revision=2,
+                                installation_key=key,
+                                desired_state="installed_disabled",
+                                package_revision=None,
+                                actor_id="product-runtime",
+                                policy_revision="product-policy:1",
+                            ),
+                        )
+                    )
+                    assert disabled_again.result is not None
+                    assert disabled_again.result.disposition == "succeeded"
+                    with pytest.raises(PackageProductRuntimeReadError) as disabled_pin:
+                        runtime.assert_selected_plugin_manifest_current(
+                            selected_manifest
+                        )
+                    assert disabled_pin.value.code == "package_product_root_not_selected"
+                    with pytest.raises(CodingBasePluginAssemblyError) as disabled_call:
+                        asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    assert (
+                        disabled_call.value.code
+                        == "coding_base_product_restart_required"
+                    )
+                    enabled_again = management.submit(
+                        PluginManagementCommandV1(
+                            action="enable",
+                            mutation=PluginDesiredStateMutationV1(
+                                operation_id="operation:product-session-enable",
+                                idempotency_key="request:product-session-enable",
+                                expected_inventory_revision=3,
+                                installation_key=key,
+                                desired_state="installed_enabled",
+                                package_revision=None,
+                                actor_id="product-runtime",
+                                policy_revision="product-policy:1",
+                            ),
+                        )
+                    )
+                    assert enabled_again.result is not None
+                    assert enabled_again.result.disposition == "succeeded"
+                    with pytest.raises(PackageProductRuntimeReadError) as stale_pin:
+                        runtime.assert_selected_plugin_manifest_current(
+                            selected_manifest
+                        )
+                    assert (
+                        stale_pin.value.code
+                        == "package_product_root_selection_changed"
+                    )
+                    with pytest.raises(CodingBasePluginAssemblyError) as stale_call:
+                        asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    assert stale_call.value.code == "coding_base_product_restart_required"
+                    expected_inventory_revision = 4
                 finally:
                     if product_coding_session is not None:
                         asyncio.run(product_coding_session.dispose())
@@ -5617,6 +5675,7 @@ while True:
                             agent=Agent(),
                             session_manager=product_manager,
                             coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
                             workspace_capability_binding=workspace_binding,
                             coding_plugin_clock=lambda: 1,
                         )
@@ -5625,7 +5684,30 @@ while True:
                             agent=Agent(),
                             session_manager=product_manager,
                             coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
                             coding_plugin_clock=lambda: 1,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    with pytest.raises(ValueError, match="requires runtime binding"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            workspace_capability_binding=workspace_binding,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    foreign_manager = await SessionManager.new(
+                        session_dir=tmp_path / "foreign-product-coding-session",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                    with pytest.raises(ValueError, match="Session identity changed"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=foreign_manager,
+                            coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
+                            workspace_capability_binding=workspace_binding,
                             initial_resource_catalog_bootstrap=coding_bootstrap,
                         )
                     product_agent_session = AgentSession(
@@ -5634,23 +5716,19 @@ while True:
                         resource_bundle=coding_bundle,
                         extension_runner=extension_runner,
                         coding_base_product_session_assembly=product_session,
+                        coding_base_product_runtime_binding=runtime,
                         workspace_capability_binding=workspace_binding,
                         coding_plugin_clock=lambda: 1,
                         initial_resource_catalog_bootstrap=coding_bootstrap,
                     )
                     try:
-                        await product_agent_session.prepare_model_call_runtime()
-                        assert coding_bootstrap.state == "published"
-                        assert {
-                            tool.name
-                            for tool in product_agent_session._composition.tool_controller.get_all_tools()
-                        } == set(compiled_base.tool_names)
-                        assert "changelog" in {
-                            command.name for command in product_agent_session.list_commands()
-                        }
-                        assert "skill:standard" in {
-                            command.name for command in product_agent_session.list_commands()
-                        }
+                        with pytest.raises(CodingBasePluginAssemblyError) as stale_direct:
+                            await product_agent_session.prepare_model_call_runtime()
+                        assert (
+                            stale_direct.value.code
+                            == "coding_base_product_restart_required"
+                        )
+                        assert coding_bootstrap.state != "published"
                     finally:
                         await product_agent_session.dispose()
 

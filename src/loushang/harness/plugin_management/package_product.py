@@ -549,6 +549,29 @@ class PackageProductSelectedRootReader:
                 files=files,
             )
 
+    def assert_selected_root_current(
+        self, snapshot: PackageProductSelectedRootSnapshotV1
+    ) -> None:
+        """Recheck a pinned selection without rereading its Store bytes."""
+
+        if not isinstance(snapshot, PackageProductSelectedRootSnapshotV1):
+            raise TypeError("Product selected-root snapshot is required")
+        with self.gc_gate.guard() as reserved:
+            package_revision, instance_revision_ref, committed_record, settlement = (
+                self._selected_settlement(snapshot.installation_key, reserved)
+            )
+            if (
+                package_revision != snapshot.package_revision
+                or instance_revision_ref != snapshot.instance_revision_ref
+                or committed_record != snapshot.committed_record
+                or settlement.receipt.stable_ref != snapshot.root_ref
+                or settlement.manifest != snapshot.manifest
+            ):
+                raise self._error(
+                    "Product selected root changed since Session activation",
+                    "package_product_root_selection_changed",
+                )
+
     def _selected_settlement(
         self,
         installation_key: PluginInstallationKeyV1,
