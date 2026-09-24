@@ -20,6 +20,7 @@ from .package_legacy_installation_inventory import (
     read_coding_legacy_installation_inventory,
 )
 from .package_legacy_reacquisition import CodingLegacyReacquiredInstallationV1
+from .package_legacy_snapshot_member import CodingFirstBLegacyStateObserver
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,11 @@ class CodingLegacyLocalAdoptionReviewV1:
     scope_id: str
     first_fence_id: str
     snapshot_receipt_id: str
+    legacy_root_identity: str
+    legacy_state_evidence_id: str
+    legacy_state_digest: str
+    legacy_entry_count: int
+    legacy_byte_count: int
     plugin_id: str
     desired_state: CodingLegacyInstalledState
     legacy_source_identity: str
@@ -52,13 +58,18 @@ class CodingLegacyLocalAdoptionReviewV1:
             sha256(canonical_json_bytes(self._identity_dict())).hexdigest(),
         )
 
-    def _identity_dict(self) -> dict[str, str]:
+    def _identity_dict(self) -> dict[str, str | int]:
         return {
             "storeId": self.store_id,
             "namespaceId": self.namespace_id,
             "scopeId": self.scope_id,
             "firstFenceId": self.first_fence_id,
             "snapshotReceiptId": self.snapshot_receipt_id,
+            "legacyRootIdentity": self.legacy_root_identity,
+            "legacyStateEvidenceId": self.legacy_state_evidence_id,
+            "legacyStateDigest": self.legacy_state_digest,
+            "legacyEntryCount": self.legacy_entry_count,
+            "legacyByteCount": self.legacy_byte_count,
             "pluginId": self.plugin_id,
             "desiredState": self.desired_state,
             "legacySourceIdentity": self.legacy_source_identity,
@@ -73,7 +84,7 @@ class CodingLegacyLocalAdoptionReviewV1:
             "policyRevision": self.policy_revision,
         }
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, str | int]:
         return {"reviewId": self.review_id, **self._identity_dict()}
 
 
@@ -118,6 +129,10 @@ def review_coding_legacy_reacquired_installation(
         raise CodingLegacyInventoryError(
             "Coding legacy review inputs differ from the first-B Installation"
         )
+    legacy_state = CodingFirstBLegacyStateObserver(lifecycle, epoch_runtime).observe(
+        store_id=fence.store_id,
+        legacy_root_identity=fence.request.legacy_root_identity,
+    )
     epoch_runtime.assert_current()
     return CodingLegacyLocalAdoptionReviewV1(
         store_id=epoch_runtime.registry.store_id,
@@ -125,6 +140,11 @@ def review_coding_legacy_reacquired_installation(
         scope_id=lifecycle.scope_id,
         first_fence_id=inventory.first_fence_id,
         snapshot_receipt_id=inventory.snapshot_receipt_id,
+        legacy_root_identity=legacy_state.legacy_root_identity,
+        legacy_state_evidence_id=legacy_state.evidence_id,
+        legacy_state_digest=legacy_state.state_digest,
+        legacy_entry_count=legacy_state.entry_count,
+        legacy_byte_count=legacy_state.byte_count,
         plugin_id=binding.plugin_id,
         desired_state=selected.desired_state,
         legacy_source_identity=binding.source_identity,

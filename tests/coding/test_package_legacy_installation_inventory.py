@@ -290,6 +290,11 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         )
         assert review.first_fence_id == evidence.first_fence_id
         assert review.snapshot_receipt_id == evidence.snapshot_receipt_id
+        assert review.legacy_root_identity == legacy_state.legacy_root_identity
+        assert review.legacy_state_evidence_id == legacy_state.evidence_id
+        assert review.legacy_state_digest == legacy_state.state_digest
+        assert review.legacy_entry_count == legacy_state.entry_count
+        assert review.legacy_byte_count == legacy_state.byte_count
         assert review.desired_state == "installed_enabled"
         assert review.wheel_artifact_digest == reacquired.wheel.artifact_digest
         assert (
@@ -310,6 +315,9 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert (
             replace(review, desired_state="installed_disabled").review_id
             != review.review_id
+        )
+        assert (
+            replace(review, legacy_state_digest="f" * 64).review_id != review.review_id
         )
         assert (
             review_coding_legacy_reacquired_installation(
