@@ -14,7 +14,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 
-CodingLegacyEvidenceDomain = Literal["binding_history", "desired_state"]
+CodingLegacyEvidenceDomain = Literal[
+    "binding_history", "desired_state", "source_configuration"
+]
 
 
 class CodingLegacySnapshotError(ValueError):
@@ -35,7 +37,7 @@ def read_coding_first_b_snapshot_member(
         raise TypeError("Coding Plugin lifecycle layout is required")
     if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
         raise TypeError("Fenced Product epoch owner is required")
-    if domain not in ("binding_history", "desired_state"):
+    if domain not in ("binding_history", "desired_state", "source_configuration"):
         raise ValueError("Coding legacy evidence domain is unsupported")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
     epoch_runtime.assert_current()

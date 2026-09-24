@@ -41,6 +41,14 @@ class CodingLegacyWorkspaceClassificationV1:
     package_members: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class CodingLegacySourceConfigurationV1:
+    """Scope-preserving settings classification without consulting old roots."""
+
+    disabled_plugins: tuple[CodingScopedLegacyDisableV1, ...]
+    configured_source_keys: tuple[str, ...]
+
+
 def classify_coding_legacy_workspace(
     source_projection: object,
     *,
@@ -57,6 +65,40 @@ def classify_coding_legacy_workspace(
         package, CodingPackagePreBStoreMembersV1
     ):
         raise TypeError("Coding pre-B member mappings are required")
+    configuration = classify_coding_legacy_source_configuration(source_projection)
+    lifecycle_names = tuple(
+        f"{domain}:{name}"
+        for domain, names in lifecycle.domain_members().items()
+        for name in names
+    )
+    package_names = tuple(
+        f"{domain}:{name}"
+        for domain, names in package.domain_members().items()
+        for name in names
+    )
+    kind: CodingLegacyWorkspaceKindV1 = (
+        "legacy_state"
+        if lifecycle_names or package_names
+        else "configured_source"
+        if configuration.configured_source_keys
+        else "disabled_only"
+        if configuration.disabled_plugins
+        else "fresh"
+    )
+    return CodingLegacyWorkspaceClassificationV1(
+        kind=kind,
+        disabled_plugins=configuration.disabled_plugins,
+        configured_source_keys=configuration.configured_source_keys,
+        lifecycle_members=lifecycle_names,
+        package_members=package_names,
+    )
+
+
+def classify_coding_legacy_source_configuration(
+    source_projection: object,
+) -> CodingLegacySourceConfigurationV1:
+    """Validate the frozen settings projection without reading mutable state."""
+
     if not isinstance(source_projection, dict) or set(source_projection) != {
         "productId",
         "projectionVersion",
@@ -124,31 +166,9 @@ def classify_coding_legacy_workspace(
             if key in _SOURCE_KEYS and value:
                 sources.append(f"{scope}:{key}")
 
-    lifecycle_names = tuple(
-        f"{domain}:{name}"
-        for domain, names in lifecycle.domain_members().items()
-        for name in names
-    )
-    package_names = tuple(
-        f"{domain}:{name}"
-        for domain, names in package.domain_members().items()
-        for name in names
-    )
-    kind: CodingLegacyWorkspaceKindV1 = (
-        "legacy_state"
-        if lifecycle_names or package_names
-        else "configured_source"
-        if sources
-        else "disabled_only"
-        if disabled
-        else "fresh"
-    )
-    return CodingLegacyWorkspaceClassificationV1(
-        kind=kind,
+    return CodingLegacySourceConfigurationV1(
         disabled_plugins=tuple(disabled),
         configured_source_keys=tuple(sources),
-        lifecycle_members=lifecycle_names,
-        package_members=package_names,
     )
 
 
@@ -172,8 +192,10 @@ def _valid_package_source(value: object) -> bool:
 
 
 __all__ = [
+    "CodingLegacySourceConfigurationV1",
     "CodingLegacyWorkspaceClassificationV1",
     "CodingLegacyWorkspaceKindV1",
     "CodingScopedLegacyDisableV1",
+    "classify_coding_legacy_source_configuration",
     "classify_coding_legacy_workspace",
 ]
