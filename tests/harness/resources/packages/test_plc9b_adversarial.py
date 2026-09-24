@@ -6659,6 +6659,14 @@ while True:
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
             if checked_in_base:
+                from loushang.harness.plugin_management.operations import (
+                    PluginManagementCommandV1,
+                )
+                from loushang.harness.plugin_management.records import (
+                    PluginDesiredStateMutationV1,
+                    PluginInstallationKeyV1,
+                )
+
                 capability_artifacts = (
                     prepare_posix_coding_capability_product_wheels(
                         product_source_root
