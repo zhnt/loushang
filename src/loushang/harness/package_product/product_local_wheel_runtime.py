@@ -253,9 +253,7 @@ class PackageProductSelectedPluginManifestV1:
                 or reservation.declaration_source.kind != "document"
             ):
                 raise ValueError("Selected Plugin contribution is not data-only")
-            path = (
-                f"{prefix}{reservation.declaration_source.relative_path.as_posix()}"
-            )
+            path = f"{prefix}{reservation.declaration_source.relative_path.as_posix()}"
             declaration = next(
                 item
                 for item in documents[path].declarations
@@ -295,6 +293,26 @@ def _declarations_match_reservations(
 class _LocalWheelSelectedManifestReader:
     policy: PackageProductLocalWheelPolicy
     root_reader: PackageProductSelectedRootReader
+
+    def capture_selected_manifest_for_plugin(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Product Plugin selection id is invalid")
+        return self.capture_selected_manifest(
+            PluginInstallationKeyV1(
+                product_id=self.policy.product_id,
+                installation_scope="workspace",
+                scope_id=self.policy.project_scope_id,
+                plugin_id=plugin_id,
+            ),
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
 
     def capture_selected_manifest(
         self,

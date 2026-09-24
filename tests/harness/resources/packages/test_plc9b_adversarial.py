@@ -5269,7 +5269,96 @@ while True:
                 selected_manifest = runtime.capture_selected_plugin_manifest(
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
+                assert (
+                    runtime.capture_selected_plugin_manifest_for(
+                        "coding.base", max_files=64, max_total_bytes=1024 * 1024
+                    )
+                    == selected_manifest
+                )
+                with pytest.raises(PackageProductRuntimeReadError):
+                    runtime.capture_selected_plugin_manifest_for(
+                        "coding.absent", max_files=64, max_total_bytes=1024 * 1024
+                    )
                 assert selected_manifest.snapshot == captured
+                product_coding_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "product-coding-startup",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+                product_coding_lease = register_package_product_runtime_lease(
+                    registry,
+                    fence=fence,
+                    runtime_id="runtime:product-coding-startup",
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+                product_coding_factory = replace(
+                    factory,
+                    expected_session_id=(
+                        product_coding_manager.get_header().conversation_id
+                    ),
+                    runtime_lease=product_coding_lease,
+                )
+                product_coding_session = None
+                try:
+                    with (
+                        patch(
+                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            side_effect=AssertionError("legacy coding.base assembly"),
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap._default_package_materializer",
+                            side_effect=AssertionError("legacy package materializer"),
+                        ),
+                    ):
+                        product_coding_session = create_agent_session(
+                            session_manager=product_coding_manager,
+                            model=Model(
+                                id="plc9b-product-coding",
+                                name="PLC9B Product Coding",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    reasoning=True,
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            services=create_services(
+                                settings_manager=SettingsManager(
+                                    ControlConfig(
+                                        capabilities={"coding.lsp": "disabled"}
+                                    )
+                                )
+                            ),
+                            package_product_runtime_factory=product_coding_factory,
+                            composition_set="coding-standard",
+                        )
+                    asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    assert (
+                        product_coding_session._package_controller.get_package_materializer()
+                        is None
+                    )
+                    assert {
+                        tool.name
+                        for tool in product_coding_session._composition.tool_controller.get_all_tools()
+                    } == {"bash", "edit", "find", "grep", "ls", "read", "write"}
+                    assert "changelog" in {
+                        command.name
+                        for command in product_coding_session.list_commands()
+                    }
+                    assert "skill:standard" in {
+                        command.name
+                        for command in product_coding_session.list_commands()
+                    }
+                finally:
+                    if product_coding_session is not None:
+                        asyncio.run(product_coding_session.dispose())
+                    else:
+                        product_coding_lease.release()
                 assert tuple(
                     path for path, _ in selected_manifest.declaration_documents
                 ) == ("coding_base/declarations/plugin.json",)

@@ -72,6 +72,14 @@ class PackageProductSelectedManifestReadPort(Protocol):
         max_total_bytes: int,
     ) -> PackageProductSelectedPluginManifestV1: ...
 
+    def capture_selected_manifest_for_plugin(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1: ...
+
 
 @dataclass(frozen=True, slots=True)
 class PackageProductRuntimeRequestV1:
@@ -156,6 +164,14 @@ class PackageProductRuntimeBindingV1:
             getattr(self._selected_manifest_reader, "capture_selected_manifest", None)
         ):
             raise TypeError("Package Product selected-manifest reader is invalid")
+        if self._selected_manifest_reader is not None and not callable(
+            getattr(
+                self._selected_manifest_reader,
+                "capture_selected_manifest_for_plugin",
+                None,
+            )
+        ):
+            raise TypeError("Package Product Plugin selection reader is invalid")
 
     @property
     def binding_id(self) -> str:
@@ -257,6 +273,32 @@ class PackageProductRuntimeBindingV1:
                 )
             return self._selected_manifest_reader.capture_selected_manifest(
                 installation_key,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
+
+    def capture_selected_plugin_manifest_for(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        """Select an installed Plugin through the active Product policy."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_manifest_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-manifest reader is unavailable",
+                    code="package_product_manifest_reader_unavailable",
+                )
+            return self._selected_manifest_reader.capture_selected_manifest_for_plugin(
+                plugin_id,
                 max_files=max_files,
                 max_total_bytes=max_total_bytes,
             )

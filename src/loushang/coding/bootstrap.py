@@ -24,6 +24,10 @@ from loushang.coding._base_plugin import (
     prepare_coding_base_resource_plan_seed,
     prepare_managed_coding_base_plugin_assembly,
 )
+from loushang.coding._base_product_composition import (
+    CodingBaseProductCompilation,
+    compile_coding_base_product_selection,
+)
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionError,
     coding_capability_plugin_failure_custodian,
@@ -138,6 +142,7 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.policy import PolicyEvaluator
@@ -204,6 +209,8 @@ AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 _RESERVED_CODING_EXACT_TOOL_NAMES = frozenset(CODING_EXACT_OWNER_TOOL_NAMES)
+_CODING_BASE_PRODUCT_MAX_FILES = 64
+_CODING_BASE_PRODUCT_MAX_BYTES = 1024 * 1024
 
 
 def _reject_peer_coding_exact_tools(
@@ -588,11 +595,25 @@ def _create_agent_session(
     requested_plugin_ids = {
         item.plugin_id for item in resolved_composition_set.plugin_requests
     }
+    product_base_requested = (
+        package_product_runtime_factory is not None
+        and "coding.base" in requested_plugin_ids
+    )
     if package_product_runtime_factory is not None and (
-        requested_plugin_ids
-        or resource_catalog_source_policy.include_package_resources
-        or initial_resource_catalog_product_composition_assembly is not None
+        initial_resource_catalog_product_composition_assembly is not None
         or package_materializer is not None
+        or (
+            product_base_requested
+            and resource_catalog_source_policy
+            != CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+        )
+        or (
+            not product_base_requested
+            and (
+                requested_plugin_ids
+                or resource_catalog_source_policy.include_package_resources
+            )
+        )
     ):
         raise CodingPackageProductLegacyPathError(
             "Package Product runtime cannot coexist with legacy Plugin inputs"
@@ -659,6 +680,10 @@ def _create_agent_session(
     capability_plugins_enabled_for_session = (
         lsp_enabled_for_session or arch_enabled_for_session
     )
+    if product_base_requested and capability_plugins_enabled_for_session:
+        raise CodingPackageProductLegacyPathError(
+            "Package Product runtime cannot coexist with legacy Plugin inputs"
+        )
     if lsp_enabled_for_session and lsp_read_text is not None:
         raise ValueError("Coding LSP reads only through harness.workspace")
     global_lsp_config, project_lsp_config = coding_lsp_config_paths(
@@ -750,8 +775,13 @@ def _create_agent_session(
     capability_management_state_cleanup: Callable[[], None] | None = None
     coding_plugin_lifecycle: CodingPluginLifecycle | None = None
     coding_plugin_package_materializer: PackageMaterializer | None = None
-    if initial_resource_catalog_product_composition_assembly is None and (
-        "coding.base" in requested_plugin_ids or capability_plugins_enabled_for_session
+    if (
+        package_product_runtime_factory is None
+        and initial_resource_catalog_product_composition_assembly is None
+        and (
+            "coding.base" in requested_plugin_ids
+            or capability_plugins_enabled_for_session
+        )
     ):
         # Transcript persistence is independent from Product desired state.
         # A configured settings runtime is the production persistence seam;
@@ -925,6 +955,7 @@ def _create_agent_session(
     arch_private_ephemeral_state = None
     capability_plugin_preparation = None
     base_plugin_session_preparation = None
+    product_base_compilation: CodingBaseProductCompilation | None = None
     capability_plugin_preparation_started = False
 
     def prepare_capability_plugins(
@@ -1178,6 +1209,80 @@ def _create_agent_session(
             )
             raise
 
+    def prepare_package_product_catalog_projection(
+        loader: ResourceLoader,
+        resolved_cwd: Path,
+        product_runtime: PackageProductRuntimeBindingV1,
+    ) -> ResourceBundle:
+        nonlocal product_base_compilation
+        if not product_base_requested or product_base_compilation is not None:
+            raise RuntimeError("Coding Product base Catalog was already prepared")
+        if prepared_resource_catalog_adapters:
+            raise RuntimeError("Coding Product base cannot mix Catalog routes")
+        _reject_peer_coding_exact_tools(
+            tool_registry=session_tool_registry,
+            tools=construction_tools,
+        )
+        selected = product_runtime.capture_selected_plugin_manifest_for(
+            "coding.base",
+            max_files=_CODING_BASE_PRODUCT_MAX_FILES,
+            max_total_bytes=_CODING_BASE_PRODUCT_MAX_BYTES,
+        )
+        evaluated_at = coding_plugin_clock()
+        compiled = compile_coding_base_product_selection(
+            selected,
+            resolved_composition_set,
+            installation_key=selected.snapshot.installation_key,
+            session_id=session_id,
+            host_environment=session_host_environment,
+            evaluated_at=evaluated_at,
+            include_tool_contribution=(
+                session_no_tools_mode is None
+                and (
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_tool_contribution
+                )
+            ),
+            include_tool_claim_prompt=(
+                session_no_tools_mode is None
+                and (
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_tool_claim_prompt
+                )
+            ),
+            include_skill_contribution=(
+                resolved_invocation_profile is None
+                or resolved_invocation_profile.include_base_skill_contribution
+            ),
+            include_command_contribution=(
+                resolved_invocation_profile is None
+                or resolved_invocation_profile.include_base_command_contribution
+            ),
+        )
+        try:
+            receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
+        except (AttributeError, RuntimeError) as exc:
+            raise CodingResourceCatalogAdmissionError(
+                ("catalog_receipt_unavailable",)
+            ) from exc
+        if not isinstance(receipt, ResourceCatalogInputReceipt):
+            raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
+        adapter, projection = _prepare_coding_catalog_projection(
+            loader,
+            cwd=resolved_cwd,
+            session_id=session_id,
+            disabled_skills=(services.settings_manager.get_settings().disabled_skills),
+            product_composition=compiled.product_composition,
+            product_snapshot_resources=compiled.product_resource_inputs(),
+            admission_now=evaluated_at,
+            clock=coding_plugin_clock,
+            receipt=receipt,
+            source_policy=resource_catalog_source_policy,
+        )
+        product_base_compilation = compiled
+        prepared_resource_catalog_adapters.append(adapter)
+        return projection
+
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
         side_question_binding: LegacySideQuestionBinding | None,
@@ -1201,6 +1306,10 @@ def _create_agent_session(
         def prepare_resource_catalog_refresh(
             catalog_generation: int,
         ) -> Any:
+            if product_base_compilation is not None:
+                raise CodingResourceCatalogAdmissionError(
+                    ("product_selected_base_refresh_requires_restart",)
+                )
             resolved_cwd = Path(session_manager.get_cwd())
             try:
                 receipt = services.resource_loader.prepare_catalog_input_receipt(
@@ -1386,22 +1495,32 @@ def _create_agent_session(
             if base_plugin_session_preparation is not None
             else None
         )
+        product_base_session_assembly = (
+            product_base_compilation.bind_workspace(workspace_binding)
+            if product_base_compilation is not None
+            else None
+        )
 
         def construct_child_session(
             initial_resource_catalog_bootstrap: Any | None = None,
         ) -> AgentSession:
             resolved_initial_active_tool_names = initial_active_tool_names
-            if (
-                resolved_initial_active_tool_names is None
-                and coding_base_plugin_assembly is not None
-                and coding_base_plugin_assembly.tool_names
+            if resolved_initial_active_tool_names is None and (
+                coding_base_plugin_assembly is not None
+                or product_base_compilation is not None
             ):
-                base_tool_names = set(coding_base_plugin_assembly.tool_names)
+                if product_base_compilation is not None:
+                    base_tool_names = set(product_base_compilation.tool_names)
+                    base_host_environment = product_base_compilation.host_environment
+                else:
+                    assert coding_base_plugin_assembly is not None
+                    base_tool_names = set(coding_base_plugin_assembly.tool_names)
+                    base_host_environment = coding_base_plugin_assembly.host_environment
                 resolved_initial_active_tool_names = [
                     *(
                         name
                         for name in coding_default_active_tool_names(
-                            coding_base_plugin_assembly.host_environment
+                            base_host_environment
                         )
                         if name in base_tool_names
                     ),
@@ -1449,6 +1568,7 @@ def _create_agent_session(
                 coding_capability_plugin_assembly=capability_plugin_assembly,
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly=(base_plugin_session_assembly),
+                coding_base_product_session_assembly=(product_base_session_assembly),
                 coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
@@ -1498,6 +1618,11 @@ def _create_agent_session(
             catalog_authoritative=True,
             prepare_catalog_bootstrap_projection=(
                 prepare_initial_resource_catalog_projection
+            ),
+            prepare_package_product_catalog_bootstrap_projection=(
+                prepare_package_product_catalog_projection
+                if product_base_requested
+                else None
             ),
             selected_plugin_packages=selected_plugin_packages,
             explicit_system_prompt=system_prompt,
@@ -1750,9 +1875,7 @@ def create_agent_session(
             lsp_read_text=lsp_read_text,
         )
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(
-            package_product_runtime_factory, error
-        )
+        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
         raise
 
 
@@ -1792,9 +1915,7 @@ def create_agent_session_from_services(
             else None
         )
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(
-            package_product_runtime_factory, error
-        )
+        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
         raise
     return create_agent_session_result(
         session_manager=session_manager,
@@ -1859,9 +1980,7 @@ def create_agent_session_result(
     try:
         resolved_services = services or create_services()
     except BaseException as error:
-        _dispose_unbound_package_product_runtime(
-            package_product_runtime_factory, error
-        )
+        _dispose_unbound_package_product_runtime(package_product_runtime_factory, error)
         raise
     session = create_agent_session(
         session_manager=session_manager,
