@@ -519,8 +519,11 @@ Neither may silently override a narrower implemented owner contract.
   the Product transaction, and a failed Product record aborts Session startup;
   later configured Sources are not attempted, and the exact Product failure
   code is recorded in diagnostics. The old materializer is not called. Product
-  mode does not mount the configured Source path as a Resource root. Successful
-  configured-source startup still needs native end-to-end acceptance.
+  mode does not mount the configured Source path as a Resource root. A native
+  POSIX fixture now also proves that a default, fenced `coding-minimal` Session
+  commits a configured first-party capability Wheel through the real Product
+  Store, records the committed lifecycle and committed set, and releases its
+  runtime lease. The subsequent capability selection reads that committed root.
   This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

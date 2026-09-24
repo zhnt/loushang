@@ -6682,6 +6682,99 @@ while True:
                         product_source_root
                     )
                 )
+                configured_artifact = next(
+                    artifact
+                    for artifact in capability_artifacts
+                    if artifact.plugin_id == "coding.arch.default"
+                )
+                configured_settings = workspace / ".loushang" / "product-sources.json"
+                configured_settings.write_text(
+                    json.dumps({"packages": [str(configured_artifact.path)]}),
+                    encoding="utf-8",
+                )
+                configured_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "configured-product-sessions",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+                configured_operation_id = sha256(
+                    (
+                        "startup:"
+                        + configured_manager.get_header().conversation_id
+                        + f":project:{configured_artifact.path}"
+                    ).encode()
+                ).hexdigest()
+                configured_session = None
+                prior_configured_leases = len(
+                    registry.snapshot(store_id=store_id).active_leases
+                )
+                try:
+                    with (
+                        patch(
+                            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                            return_value=legacy_layout,
+                        ),
+                        patch(
+                            "loushang.coding.package_product_runtime.version",
+                            return_value="2.0.0",
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            side_effect=AssertionError("legacy base assembly"),
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap._default_package_materializer",
+                            side_effect=AssertionError("legacy package materializer"),
+                        ),
+                    ):
+                        configured_session = create_agent_session(
+                            session_manager=configured_manager,
+                            model=Model(
+                                id="plc9b-configured-success",
+                                name="PLC9B Configured Success",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    reasoning=True,
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            services=create_services(
+                                settings_manager=SettingsManager(
+                                    project_settings_path=configured_settings
+                                )
+                            ),
+                            composition_set="coding-minimal",
+                            resource_catalog_source_policy=(
+                                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                            ),
+                        )
+                    assert (
+                        configured_session._package_controller.get_package_materializer()
+                        is None
+                    )
+                    configured_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(configured_operation_id)
+                    assert configured_status is not None
+                    assert configured_status.disposition == "committed"
+                    assert (
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).current(configured_operation_id)
+                        is not None
+                    )
+                finally:
+                    if configured_session is not None:
+                        asyncio.run(configured_session.dispose())
+                assert len(registry.snapshot(store_id=store_id).active_leases) == (
+                    prior_configured_leases
+                )
+
                 def compose_builtin_product(selected_state):
                     owner = open_coding_builtin_product_runtime_owner(
                         legacy_layout,
@@ -6721,20 +6814,21 @@ while True:
                 combined_runtime = compose_builtin_product(product_state)
                 try:
                     for capability_artifact in capability_artifacts:
-                        capability_outcome = combined_runtime.lifecycle.route(
-                            PackageProductLifecycleIntentV1(
-                                operation_id=(
-                                    f"operation:product-{capability_artifact.plugin_id}"
+                        if capability_artifact != configured_artifact:
+                            capability_outcome = combined_runtime.lifecycle.route(
+                                PackageProductLifecycleIntentV1(
+                                    operation_id=(
+                                        f"operation:product-{capability_artifact.plugin_id}"
+                                    ),
+                                    action="install",
+                                    source=str(capability_artifact.path),
+                                    scope="project",
                                 ),
-                                action="install",
-                                source=str(capability_artifact.path),
-                                scope="project",
-                            ),
-                            entrypoint="session",
-                        )
-                        assert capability_outcome.handled
-                        assert capability_outcome.record is not None
-                        assert capability_outcome.record.lifecycle == "installed"
+                                entrypoint="session",
+                            )
+                            assert capability_outcome.handled
+                            assert capability_outcome.record is not None
+                            assert capability_outcome.record.lifecycle == "installed"
                         capability_key = PluginInstallationKeyV1(
                             product_id="coding",
                             installation_scope="workspace",
