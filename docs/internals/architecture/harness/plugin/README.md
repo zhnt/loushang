@@ -365,9 +365,15 @@ Neither may silently override a narrower implemented owner contract.
   `in_process` Provider declarations remain unchanged. The real B Store fixture
   uses a three-package Coding Product owner and its leased Session factory to
   commit and enable both, capture their exact definition bytes, and reopen both
-  selected manifests while the pre-B roots are absent. This remains inert
-  Package evidence: Provider composition and default selection for those two
-  packages are still open. The
+  selected manifests while the pre-B roots are absent. A Product-selected
+  revision bridge now rechecks the live Store selection on every verified file
+  read and supplies those bytes to the existing Plugin Python loader; the
+  native fixture proves both Definitions load after the pre-B roots are hidden
+  and the bridge rejects a disposed Product runtime. Definition preflight also
+  yields pending Subjects bound to the B instance, Source, artifact, and trust
+  evidence. This is preflight input evidence only: Definition approval,
+  Provider composition, and default
+  selection for those two packages are still open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired
