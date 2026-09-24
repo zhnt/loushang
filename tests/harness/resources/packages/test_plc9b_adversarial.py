@@ -4216,6 +4216,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         coding_base_plugin_root,
         prepare_coding_base_product_plan,
     )
+    from loushang.coding._base_product_composition import (
+        compile_coding_base_product_selection,
+    )
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -4239,6 +4242,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.host.rpc.output import RpcOutput
     from loushang.harness.resources.packages.product_epoch_guard import (
         register_package_product_runtime_lease,
+    )
+    from loushang.harness.session.product_composition_assembly import (
+        ProductCompositionAssemblyError,
+        _assemble_product_contribution_candidates,
     )
 
     source_root = tmp_path / "sources"
@@ -5273,6 +5280,19 @@ while True:
                     "prompt-standard",
                     "skill-standard",
                 )
+                assert tuple(
+                    reservation.contribution_id
+                    for reservation, declaration in (
+                        selected_manifest.verified_data_only_declarations()
+                    )
+                    if declaration.reservation_fingerprint == reservation.fingerprint
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
                 from loushang.harness.environment import LocalHostEnvironmentProbe
                 from loushang.harness.resources.plugins.selection import (
                     PluginContributionRef,
@@ -5311,6 +5331,48 @@ while True:
                 )
                 assert base_tool == "coding.builtin"
                 assert base_tools
+                compiled_base = compile_coding_base_product_selection(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    source_trust_snapshot=trust,
+                    host_environment=LocalHostEnvironmentProbe().detect(),
+                    evaluated_at=1,
+                )
+                assert compiled_base.plan == base_plan
+                assert compiled_base.tool_contribution_id == base_tool
+                assert len(compiled_base.product_composition.resource_admissions) == 2
+                assert len(compiled_base.product_composition.catalog_admissions) == 2
+                assert {
+                    admission.candidate.contribution_id
+                    for admission in (
+                        *compiled_base.product_composition.resource_admissions,
+                        *compiled_base.product_composition.catalog_admissions,
+                    )
+                } == {
+                    "coding.builtin",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                }
+                changed_candidate = replace(
+                    compiled_base.product_composition.resource_admissions[0].candidate,
+                    source_trust_policy_revision="foreign-policy",
+                )
+                with pytest.raises(ProductCompositionAssemblyError) as changed_source:
+                    _assemble_product_contribution_candidates(
+                        plan=compiled_base.plan,
+                        candidates=(changed_candidate,),
+                        owner_bindings=(),
+                        mandatory_roots=(),
+                        definitions=(),
+                        select_optional_requirements=lambda _preview: (),
+                        evaluated_at=1,
+                    )
+                assert changed_source.value.code == (
+                    "product_contribution_candidate_mismatch"
+                )
                 with pytest.raises(ValueError, match="changed captured bytes"):
                     replace(
                         selected_manifest,

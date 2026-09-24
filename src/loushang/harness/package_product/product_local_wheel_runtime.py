@@ -152,6 +152,7 @@ from loushang.harness.resources.packages.product_transaction import (
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
+    PluginDeclaration,
     PluginDeclarationCodecError,
     PluginDeclarationDocument,
     PluginDeclarationDocumentCodec,
@@ -201,15 +202,12 @@ class PackageProductSelectedPluginManifestV1:
         if paths != tuple(sorted(set(paths))):
             raise ValueError("Selected Plugin declaration paths are not canonical")
         prefix = "" if root == "." else f"{root}/"
-        expected_paths = tuple(
-            sorted(
-                {
-                    f"{prefix}{item.declaration_source.relative_path.as_posix()}"
-                    for item in self.manifest.contribution_index.items
-                    if item.declaration_source.kind == "document"
-                }
-            )
-        )
+        reservations_by_path: dict[str, list[PluginContributionReservation]] = {}
+        for item in parsed.contribution_index.items:
+            if item.declaration_source.kind == "document":
+                path = f"{prefix}{item.declaration_source.relative_path.as_posix()}"
+                reservations_by_path.setdefault(path, []).append(item)
+        expected_paths = tuple(sorted(reservations_by_path))
         if paths != expected_paths:
             raise ValueError("Selected Plugin declarations are incomplete")
         for path, document in self.declaration_documents:
@@ -222,7 +220,64 @@ class PackageProductSelectedPluginManifestV1:
                 raise ValueError("Selected Plugin declaration changed root bytes")
             if PluginDeclarationDocumentCodec.decode_bytes(body) != document:
                 raise ValueError("Selected Plugin declaration changed captured bytes")
+            if not _declarations_match_reservations(
+                parsed.name, reservations_by_path[path], document
+            ):
+                raise ValueError("Selected Plugin declaration changed reservation")
         return parsed
+
+    def verified_data_only_declarations(
+        self,
+    ) -> tuple[tuple[PluginContributionReservation, PluginDeclaration], ...]:
+        """Return exact path-free reservation/declaration pairs from captured bytes."""
+
+        manifest = self.verified_manifest()
+        root = manifest.root_relative_path.as_posix()
+        prefix = "" if root == "." else f"{root}/"
+        documents = dict(self.declaration_documents)
+        pairs: list[tuple[PluginContributionReservation, PluginDeclaration]] = []
+        for reservation in manifest.contribution_index.items:
+            if (
+                reservation.contribution_execution_model != "data_only"
+                or reservation.declaration_source.kind != "document"
+            ):
+                raise ValueError("Selected Plugin contribution is not data-only")
+            path = (
+                f"{prefix}{reservation.declaration_source.relative_path.as_posix()}"
+            )
+            declaration = next(
+                item
+                for item in documents[path].declarations
+                if item.contribution_id == reservation.contribution_id
+            )
+            pairs.append((reservation, declaration))
+        return tuple(pairs)
+
+
+def _declarations_match_reservations(
+    plugin_id: str,
+    reservations: list[PluginContributionReservation],
+    document: PluginDeclarationDocument,
+) -> bool:
+    expected = {item.contribution_id: item for item in reservations}
+    actual = {item.contribution_id: item for item in document.declarations}
+    return set(expected) == set(actual) and all(
+        declaration.plugin_id == plugin_id
+        and declaration.kind == reservation.kind
+        and declaration.owner == reservation.owner
+        and declaration.reservation_fingerprint == reservation.fingerprint
+        and declaration.source_descriptor_fingerprint
+        == reservation.source_descriptor_fingerprint
+        and declaration.source_kind == "document"
+        and (
+            declaration.contribution_execution_model is None
+            or declaration.contribution_execution_model
+            == reservation.contribution_execution_model
+        )
+        and declaration.worker_configuration == reservation.worker_configuration
+        for contribution_id, reservation in expected.items()
+        for declaration in (actual[contribution_id],)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,18 +357,8 @@ class _LocalWheelSelectedManifestReader:
                     "Selected Plugin declaration document is invalid",
                     code="package_product_declaration_invalid",
                 ) from exc
-            expected = {item.contribution_id: item for item in reservations}
-            actual = {item.contribution_id: item for item in document.declarations}
-            if set(expected) != set(actual) or any(
-                declaration.plugin_id != manifest.name
-                or declaration.kind != reservation.kind
-                or declaration.owner != reservation.owner
-                or declaration.reservation_fingerprint != reservation.fingerprint
-                or declaration.source_descriptor_fingerprint
-                != reservation.source_descriptor_fingerprint
-                or declaration.source_kind != "document"
-                for contribution_id, reservation in expected.items()
-                for declaration in (actual[contribution_id],)
+            if not _declarations_match_reservations(
+                manifest.name, reservations, document
             ):
                 raise PackageProductRuntimeReadError(
                     "Selected Plugin declaration changed its manifest reservation",

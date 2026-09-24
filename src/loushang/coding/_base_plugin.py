@@ -752,9 +752,13 @@ def prepare_coding_base_product_plan(
             "Selected Coding base Product evidence is not admissible",
             code="coding_base_product_selection_mismatch",
         )
+    contributions = tuple(
+        reservation
+        for reservation, _ in selected.verified_data_only_declarations()
+    )
     scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
     plan, tool_id, tool_names = _build_selection_plan_from_evidence(
-        contributions=manifest.contribution_index.items,
+        contributions=contributions,
         source_trust_snapshot=source_trust_snapshot,
         instance_revision_ref=selected.snapshot.instance_revision_ref,
         policy_revision_base=(
