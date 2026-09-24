@@ -516,7 +516,10 @@ Neither may silently override a narrower implemented owner contract.
   base/LSP selection with pre-B roots hidden and legacy constructors disabled,
   then releases their runtime leases on close. CLI and RPC updates through that
   default Session each leave a durable Product refusal while their legacy
-  Session method is disabled. This is not a completed Product
+  Session method is disabled. A configured startup Package Source currently
+  stops at the Product/legacy-input composition gate without invoking the old
+  materializer or recording a B transaction; its Product ingress remains open.
+  This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution

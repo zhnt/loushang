@@ -4231,6 +4231,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
     from loushang.coding.bootstrap import (
+        CodingPackageProductLegacyPathError,
         create_agent_session,
         create_agent_session_runtime,
         create_services,
@@ -4281,6 +4282,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.resources.packages.product_pre_b_snapshot import (
         reopen_posix_product_cutover,
     )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
     from loushang.harness.resources.plugins.python_symbols import (
         load_verified_plugin_python_module,
     )
@@ -7523,6 +7525,63 @@ while True:
                                 ),
                                 composition_set="unsupported",
                             )
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        configured_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "configured-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        before_configured = len(
+                            PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                        )
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap._default_package_materializer",
+                                side_effect=AssertionError("legacy startup materializer"),
+                            ),
+                            pytest.raises(CodingPackageProductLegacyPathError),
+                        ):
+                            create_agent_session(
+                                session_manager=configured_manager,
+                                model=Model(
+                                    id="plc9b-configured-default",
+                                    name="PLC9B Configured Default",
+                                    provider="test",
+                                    endpoint="anthropic-messages",
+                                    capabilities=Capabilities(
+                                        reasoning=True,
+                                        input=("text",),
+                                        context_window=128000,
+                                        max_tokens=4096,
+                                    ),
+                                ),
+                                services=create_services(
+                                    settings_manager=SettingsManager(
+                                        ControlConfig(
+                                            package_sources=(
+                                                PackageSourceConfig(source=str(source)),
+                                            )
+                                        )
+                                    )
+                                ),
+                            )
+                        assert (
+                            len(PackageLifecycleJournal(state_root / "lifecycle.jsonl").records())
+                            == before_configured
+                        )
                         assert (
                             len(registry.snapshot(store_id=store_id).active_leases)
                             == prior_builtin_session_leases
