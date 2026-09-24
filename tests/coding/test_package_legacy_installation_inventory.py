@@ -26,6 +26,9 @@ from loushang.coding.package_legacy_lock_evidence import (
 from loushang.coding.package_legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source,
 )
+from loushang.coding.package_legacy_review import (
+    review_coding_legacy_reacquired_installation,
+)
 from loushang.coding.package_pre_b_snapshot import (
     prepare_and_cutover_coding_package_store_from_legacy,
     prepare_coding_package_cutover_roots,
@@ -253,6 +256,67 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert reacquired.installation == evidence.inventory.active_local[0]
         assert reacquired.wheel.original_source_identity == binding.source_identity
         assert reacquired.wheel.source_content_digest == binding.content_digest
+        review = review_coding_legacy_reacquired_installation(
+            lifecycle,
+            owner,
+            reacquired,
+            policy_revision="coding-product-package-policy:1",
+        )
+        assert review.first_fence_id == evidence.first_fence_id
+        assert review.snapshot_receipt_id == evidence.snapshot_receipt_id
+        assert review.desired_state == "installed_enabled"
+        assert review.wheel_artifact_digest == reacquired.wheel.artifact_digest
+        assert (
+            review.review_id
+            == sha256(
+                json.dumps(
+                    {
+                        key: value
+                        for key, value in review.to_dict().items()
+                        if key != "reviewId"
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+        )
+        assert (
+            replace(review, desired_state="installed_disabled").review_id
+            != review.review_id
+        )
+        assert (
+            review_coding_legacy_reacquired_installation(
+                lifecycle,
+                owner,
+                reacquired,
+                policy_revision="coding-product-package-policy:2",
+            ).review_id
+            != review.review_id
+        )
+        with pytest.raises(CodingLegacyInventoryError, match="review inputs differ"):
+            review_coding_legacy_reacquired_installation(
+                lifecycle,
+                owner,
+                replace(
+                    reacquired,
+                    wheel=replace(reacquired.wheel, wheel_bytes=b"substituted"),
+                ),
+                policy_revision="coding-product-package-policy:1",
+            )
+        with pytest.raises(CodingLegacyInventoryError, match="review inputs differ"):
+            review_coding_legacy_reacquired_installation(
+                lifecycle,
+                owner,
+                replace(
+                    reacquired,
+                    inventory_evidence=replace(
+                        reacquired.inventory_evidence,
+                        snapshot_receipt_id="f" * 64,
+                    ),
+                ),
+                policy_revision="coding-product-package-policy:1",
+            )
         shutil.rmtree(tmp_path / "source")
         with pytest.raises(FileNotFoundError):
             reacquire_coding_legacy_installed_local_source(
