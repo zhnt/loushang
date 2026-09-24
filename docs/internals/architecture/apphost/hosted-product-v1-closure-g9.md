@@ -208,8 +208,9 @@ are build artifacts rather than committed generated output.
   into G9.
 
 Later inventory maintenance adds the standalone POSIX offline Package Product
-cutover command in version 8. It does not enter Hosted composition or revise
-the G9 acceptance evidence and `RETAIN` decision.
+cutover command in version 8 and the offline root GC command in version 9.
+Neither enters Hosted composition or revises the G9 acceptance evidence and
+`RETAIN` decision.
 
 ## Current Owner Retention Or Deletion Gate
 
