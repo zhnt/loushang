@@ -44,9 +44,7 @@ def test_terminal_input_mode_holds_native_lease_until_protocol_cleanup(
         "loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: ""
     )
 
-    with TerminalInputMode(
-        stdin=_TtyInput(), stdout=stdout, keyboard_protocols=False
-    ):
+    with TerminalInputMode(stdin=_TtyInput(), stdout=stdout, keyboard_protocols=False):
         assert lease.restore_calls == 0
 
     assert factory.open_calls == 1
@@ -126,6 +124,86 @@ def test_read_input_chunk_or_render_tick_wakes_for_deferred_render_request() -> 
     assert result == ""
     assert rendered == 1
     assert decisions >= 2
+
+
+def test_render_waiter_is_cleaned_after_immediate_render() -> None:
+    async def run() -> tuple[str | None, int]:
+        release_input = asyncio.Event()
+
+        class ImmediateOnceRuntime:
+            decisions = 0
+
+            def request_next_animation_frame(self):
+                self.decisions += 1
+                return (
+                    _ImmediateDecision() if self.decisions == 1 else _DelayedDecision()
+                )
+
+            def render_now(self) -> None:
+                release_input.set()
+
+        async def read_after_render(_stdin: object) -> str:
+            await release_input.wait()
+            return "x"
+
+        existing = asyncio.all_tasks()
+        result = await read_input_chunk_or_render_tick(
+            StringIO(),
+            runtime=ImmediateOnceRuntime(),
+            active_task=None,
+            input_chunk_reader=read_after_render,
+            render_wakeup=asyncio.Event(),
+        )
+        pending = asyncio.all_tasks() - existing
+        try:
+            return result, len(pending)
+        finally:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    assert asyncio.run(run()) == ("x", 0)
+
+
+def test_render_waiter_is_cleaned_when_input_wait_is_cancelled() -> None:
+    async def run() -> int:
+        waiting = asyncio.Event()
+
+        class WaitingRuntime:
+            def request_next_animation_frame(self):
+                waiting.set()
+                return _DelayedDecision()
+
+            def render_now(self) -> None:
+                pass
+
+        async def blocked_read(_stdin: object) -> str:
+            await asyncio.Event().wait()
+            return "x"
+
+        existing = asyncio.all_tasks()
+        reader = asyncio.create_task(
+            read_input_chunk_or_render_tick(
+                StringIO(),
+                runtime=WaitingRuntime(),
+                active_task=None,
+                input_chunk_reader=blocked_read,
+                render_wakeup=asyncio.Event(),
+            )
+        )
+        await waiting.wait()
+        await asyncio.sleep(0)
+        reader.cancel()
+        await asyncio.gather(reader, return_exceptions=True)
+        pending = asyncio.all_tasks() - existing
+        try:
+            return len(pending)
+        finally:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    assert asyncio.run(run()) == 0
 
 
 def test_read_input_chunk_or_render_tick_wakes_for_terminal_runtime_deadline() -> None:

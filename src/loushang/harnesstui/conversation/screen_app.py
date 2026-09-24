@@ -73,15 +73,15 @@ class ScreenConversationApp:
     now: Callable[[], float] = time.monotonic
     composer: Composer = field(default_factory=Composer)
     state: ScreenConversationState = field(init=False)
-    capability_provider: Callable[[], ConversationCapabilities] | None = field(default=None, kw_only=True)
+    capability_provider: Callable[[], ConversationCapabilities] | None = field(
+        default=None, kw_only=True
+    )
     active_surface: Any | None = None
     surface_host: SurfaceHost | None = None
     transcript_theme: ThemeResolver | None = None
     welcome_theme: ThemeResolver | None = None
     active_transcript_line_budget: int = 0
-    compaction_summary_formatter: Callable[[str], str] = (
-        _normalized_compaction_summary
-    )
+    compaction_summary_formatter: Callable[[str], str] = _normalized_compaction_summary
     stable_render_cache_entry_limit: int = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
     render_requester: Callable[[RenderRequestKind], object] | None = None
     terminal_diagnostics_provider: Callable[[], str] | None = None
@@ -184,6 +184,7 @@ class ScreenConversationApp:
     def complete_run(self, *, elapsed_seconds: float | None = None) -> None:
         elapsed = self.elapsed_seconds() if elapsed_seconds is None else elapsed_seconds
         self.state.complete_run(elapsed_seconds=elapsed)
+        self._context_usage_refresh_key = None
         self._transcript_region.clear_transient_cache()
 
     def queue_followup(self, text: str) -> None:
@@ -406,7 +407,9 @@ class ScreenConversationApp:
         return layout.render(constraints)
 
     def _refresh_context_usage(self) -> None:
-        if self.context_usage_provider is None:
+        # Rebuilding a long session's context is synchronous and can stall
+        # animation and input while a tool is running. Refresh after the run.
+        if self.context_usage_provider is None or self.state.running:
             return
         refresh_key = (
             self.state.records_revision,

@@ -23,6 +23,7 @@ from loushang.harness.session.model_call import (
 )
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptInspector,
@@ -222,7 +223,7 @@ class AgentSessionInspector:
         branch_entries: list[object] = list(branch_records)
         transcript_revision = len(self.session.get_entries())
         leaf_id = self.session.get_leaf_id()
-        counts = self._transcript.message_counts()
+        counts = self._transcript.message_counts(messages=messages)
         snapshot = build_context_usage_snapshot(
             messages,
             branch_entries,
@@ -371,6 +372,14 @@ class AgentSessionInspector:
         self,
         branch_entries: Sequence[AgentTranscriptRecord],
     ) -> ProviderContextAnchor | None:
+        # A provider observation made before compaction describes the old full
+        # prompt. Rebuilding it is expensive and cannot calibrate the summary.
+        for index in range(len(branch_entries) - 1, -1, -1):
+            if branch_entries[index].kind == CONTEXT_COMPACTION_CHECKPOINT_KIND:
+                branch_entries = branch_entries[index + 1 :]
+                if not branch_entries:
+                    return None
+                break
         ledger = project_model_call_usage(tuple(branch_entries))
         for attempt in reversed(ledger.attempts):
             if not attempt.terminal:
