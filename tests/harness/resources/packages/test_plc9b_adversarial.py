@@ -4610,6 +4610,26 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         assert stat.S_IMODE(state_root.stat().st_mode) == 0o700
         assert (legacy_layout.root / "desired-state.jsonl").read_bytes() == b""
         if entrypoint == "session" and not with_dependency:
+            unsafe_source_root = control_root / "product-sources"
+            unsafe_source_root.mkdir(mode=0o700)
+            unsafe_source_root.chmod(0o770)
+            try:
+                with pytest.raises(ValueError, match="Source root is unsafe"):
+                    epoch_runtime.prepare_product_source_root()
+            finally:
+                unsafe_source_root.rmdir()
+            prior_umask = os.umask(0o777)
+            try:
+                product_source_root = epoch_runtime.prepare_product_source_root()
+            finally:
+                os.umask(prior_umask)
+            assert product_source_root == unsafe_source_root
+            assert stat.S_IMODE(product_source_root.stat().st_mode) == 0o700
+            assert epoch_runtime.prepare_product_source_root() == product_source_root
+            product_artifact = prepare_posix_coding_base_product_wheel(
+                product_source_root
+            )
+            assert product_artifact.artifact_digest == artifact.artifact_digest
             restore_root = tmp_path / "isolated-offline-restore"
             restore_root.mkdir(mode=0o700)
             activation_root = tmp_path / "isolated-legacy-activation"

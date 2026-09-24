@@ -164,9 +164,16 @@ class PackageProductPosixFencedRuntimeOwner:
     def prepare_product_state_root(self) -> Path:
         """Create the B Product journal root only after the fence is selected."""
 
+        return self._prepare_private_child("product-state", label="state")
+
+    def prepare_product_source_root(self) -> Path:
+        """Create the B Product Source root without touching pre-B Package paths."""
+
+        return self._prepare_private_child("product-sources", label="Source")
+
+    def _prepare_private_child(self, name: str, *, label: str) -> Path:
         with self._close_lock:
             self._assert_current_unlocked()
-            name = "product-state"
             try:
                 os.mkdir(name, mode=0o700, dir_fd=self._root_fd)
             except FileExistsError:
@@ -188,7 +195,7 @@ class PackageProductPosixFencedRuntimeOwner:
                     or (metadata.st_dev, metadata.st_ino)
                     != (visible.st_dev, visible.st_ino)
                 ):
-                    raise ValueError("Package Product state root is unsafe")
+                    raise ValueError(f"Package Product {label} root is unsafe")
             finally:
                 os.close(descriptor)
             self._assert_current_unlocked()

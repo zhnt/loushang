@@ -424,6 +424,9 @@ Neither may silently override a narrower implemented owner contract.
   in a private control-root child only after the fence. The native fixture
   refuses a foreign workspace or non-private child and verifies that Product
   work leaves the complete pre-B Package and lifecycle trees unchanged.
+  The same pinned owner can create a separate private Product Source child
+  after the fence; the native fixture rejects an unsafe existing child and
+  publishes the installed `coding.base` Wheel there under a restrictive umask.
   This is restart admission evidence, not default runtime selection. For
   `legacy_root_pointer`, the snapshot owner requires an empty source domain and
   records the verified old Store identity with the
