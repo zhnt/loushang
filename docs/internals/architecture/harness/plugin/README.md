@@ -514,7 +514,9 @@ Neither may silently override a narrower implemented owner contract.
   shared Hosted/managed factory, standalone Coding runtime, and direct Session
   API select a fenced Product owner by default. The real-Store fixture confirms
   base/LSP selection with pre-B roots hidden and legacy constructors disabled,
-  then releases their runtime leases on close. This is not a completed Product
+  then releases their runtime leases on close. CLI and RPC updates through that
+  default Session each leave a durable Product refusal while their legacy
+  Session method is disabled. This is not a completed Product
   cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution

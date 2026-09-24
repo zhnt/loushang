@@ -7432,6 +7432,56 @@ while True:
                                     direct_session._coding_base_product_compilation.plan.selected_plugin_ids
                                     == ("coding.base", "coding.lsp.default")
                                 )
+                                before_transports = len(
+                                    PackageLifecycleJournal(
+                                        state_root / "lifecycle.jsonl"
+                                    ).records()
+                                )
+                                with patch.object(
+                                    direct_session,
+                                    "update_package",
+                                    side_effect=AssertionError("legacy transport update"),
+                                ):
+                                    with pytest.raises(
+                                        PackageLifecycleError,
+                                        match="package_route_unavailable",
+                                    ):
+                                        asyncio.run(
+                                            run_package_lifecycle(
+                                                direct_session,
+                                                PackageLifecycleRequest(
+                                                    update=(str(source),),
+                                                    scope="project",
+                                                ),
+                                            )
+                                        )
+                                    direct_rpc_output = io.StringIO()
+                                    direct_rpc = RpcPackageCommands(
+                                        runtime=object(),
+                                        get_session=lambda: direct_session,
+                                        output=RpcOutput(direct_rpc_output),
+                                    )
+                                    asyncio.run(
+                                        dict(direct_rpc.bindings())["update_package"](
+                                            "request:default-product-update",
+                                            {"source": str(source), "scope": "project"},
+                                        )
+                                    )
+                                direct_rpc_result = json.loads(
+                                    direct_rpc_output.getvalue().splitlines()[-1]
+                                )
+                                assert direct_rpc_result["success"] is False
+                                transport_failures = [
+                                    record
+                                    for record in PackageLifecycleJournal(
+                                        state_root / "lifecycle.jsonl"
+                                    ).records()[before_transports:]
+                                    if record.request.action == "update"
+                                    and record.status.failure is not None
+                                    and record.status.failure.code
+                                    == "package_route_unavailable"
+                                ]
+                                assert len(transport_failures) == 2
                             finally:
                                 if direct_session is not None:
                                     asyncio.run(direct_session.dispose())
