@@ -19,7 +19,9 @@ CodingLegacyEvidenceDomain = Literal[
     "desired_state",
     "source_configuration",
 ]
-CodingLegacyInventoryDomain = CodingLegacyEvidenceDomain | Literal["store_bytes"]
+CodingLegacyInventoryDomain = CodingLegacyEvidenceDomain | Literal[
+    "enablement_state", "instance_state", "lock_history", "store_bytes"
+]
 
 
 class CodingLegacySnapshotError(ValueError):
@@ -60,6 +62,9 @@ def list_coding_first_b_snapshot_domain_members(
     if domain not in (
         "binding_history",
         "desired_state",
+        "enablement_state",
+        "instance_state",
+        "lock_history",
         "source_configuration",
         "store_bytes",
     ):

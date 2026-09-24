@@ -244,3 +244,51 @@ def test_inventory_reads_one_verified_first_b_snapshot_after_old_roots_change(
         assert evidence.inventory.desired_journal_digest == desired.journal_digest
     finally:
         owner.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product cutover")
+@pytest.mark.parametrize("old_desired", (False, True))
+def test_inventory_accepts_missing_lock_only_for_empty_old_state(
+    tmp_path: Path, old_desired: bool
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    epoch = prepare_coding_package_cutover_roots(lifecycle)
+    if old_desired:
+        lifecycle.desired_state.write_bytes(b"old desired state\n")
+    global_path = tmp_path / "global-settings.json"
+    global_path.write_text('{"disabled_plugins":["coding.base"]}\n')
+    settings = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover = prepare_and_cutover_coding_package_store_from_legacy(
+        lifecycle,
+        settings,
+        namespace_id="a" * 64,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+    assert cutover.attempt.result.disposition == "fenced"
+    owner = PackageProductPosixFencedRuntimeOwner.open(
+        authority_root=epoch.authority_root,
+        control_root=epoch.control_root,
+        store_id=epoch.store_id,
+        epochs_root_name=epoch.epochs_root_name,
+    )
+    try:
+        if old_desired:
+            with pytest.raises(
+                CodingLegacyInventoryError, match="without a binding lock"
+            ):
+                read_coding_legacy_installation_inventory(lifecycle, owner)
+            return
+        evidence = read_coding_legacy_installation_inventory(lifecycle, owner)
+        assert evidence.inventory.active_local == ()
+        assert evidence.inventory.lockfile_digest is None
+        assert evidence.inventory.desired_journal_digest is None
+    finally:
+        owner.close()

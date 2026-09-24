@@ -12,6 +12,10 @@ from loushang.coding._plugin_lifecycle import (
 from loushang.coding.package_legacy_classification import (
     CodingScopedLegacyDisableV1,
 )
+from loushang.coding.package_legacy_installation_inventory import (
+    CodingLegacyInventoryError,
+    read_coding_legacy_installation_inventory,
+)
 from loushang.coding.package_legacy_snapshot_member import (
     list_coding_first_b_snapshot_domain_members,
 )
@@ -74,6 +78,8 @@ def test_first_b_source_settings_survive_mutable_settings_change(
         assert list_coding_first_b_snapshot_domain_members(
             lifecycle, owner, domain="store_bytes"
         ) == ("installed",)
+        with pytest.raises(CodingLegacyInventoryError, match="without a binding lock"):
+            read_coding_legacy_installation_inventory(lifecycle, owner)
         evidence = read_coding_legacy_source_evidence(
             lifecycle,
             owner,

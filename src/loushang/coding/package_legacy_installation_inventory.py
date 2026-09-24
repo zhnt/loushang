@@ -18,8 +18,19 @@ from .package_legacy_lock_evidence import (
     CodingLegacyLocalBindingEvidenceV1,
     read_coding_legacy_local_binding_heads,
 )
+from .package_legacy_snapshot_member import (
+    CodingLegacyInventoryDomain,
+    list_coding_first_b_snapshot_domain_members,
+)
 
 _BUILTINS = frozenset({"coding.base", "coding.lsp.default", "coding.arch.default"})
+_STATE_DOMAINS: tuple[CodingLegacyInventoryDomain, ...] = (
+    "store_bytes",
+    "lock_history",
+    "desired_state",
+    "enablement_state",
+    "instance_state",
+)
 CodingLegacyInstalledState = Literal["installed_disabled", "installed_enabled"]
 
 
@@ -72,8 +83,28 @@ def read_coding_legacy_installation_inventory(
     if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
         raise TypeError("Fenced Product epoch owner is required")
     epoch_runtime.assert_current()
-    bindings = read_coding_legacy_local_binding_heads(lifecycle, epoch_runtime)
-    desired = read_coding_legacy_desired_evidence(lifecycle, epoch_runtime)
+    binding_members = list_coding_first_b_snapshot_domain_members(
+        lifecycle, epoch_runtime, domain="binding_history"
+    )
+    bindings: tuple[CodingLegacyLocalBindingEvidenceV1, ...]
+    desired: CodingLegacyDesiredEvidenceV1 | None
+    if binding_members == ():
+        if any(
+            list_coding_first_b_snapshot_domain_members(
+                lifecycle, epoch_runtime, domain=domain
+            )
+            for domain in _STATE_DOMAINS
+        ):
+            raise CodingLegacyInventoryError(
+                "Coding legacy state without a binding lock is unsupported"
+            )
+        bindings = ()
+        desired = None
+    elif binding_members == ("package-lock.json",):
+        bindings = read_coding_legacy_local_binding_heads(lifecycle, epoch_runtime)
+        desired = read_coding_legacy_desired_evidence(lifecycle, epoch_runtime)
+    else:
+        raise CodingLegacyInventoryError("Coding legacy binding members are ambiguous")
     inventory = classify_coding_legacy_installations(
         bindings, desired, scope_id=lifecycle.scope_id
     )
