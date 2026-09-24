@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
-import loushang.coding.package_product_runtime as product_runtime_module
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.package_legacy_binding_catalog import (
+    CodingLegacyLocalBindingCatalog,
+)
+from loushang.coding.package_legacy_local_wheel import (
+    reacquire_coding_legacy_local_plugin_wheel,
 )
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
@@ -20,14 +26,16 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWheelBindingV1,
+from loushang.harness.resources.plugins.dependencies import (
+    PluginDependencyClosureLock,
 )
+from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX Product cutover")
 def test_expanded_product_policy_reopens_existing_builtin_selections(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
@@ -46,31 +54,60 @@ def test_expanded_product_policy_reopens_existing_builtin_selections(
         runtime_version="2.0.0",
         runtime_protocol_epoch=2,
     )
-    original_policy = product_runtime_module.coding_builtin_product_local_wheel_policy
-
-    def extended_policy(*args, **kwargs):
-        policy = original_policy(*args, **kwargs)
-        extra = PackageProductLocalWheelBindingV1(
-            source_identity=str(policy.source_root / "review_pack-1-py3-none-any.whl"),
-            requested_package="review-pack==1",
-            plugin_id="review-pack",
-            artifact_digest="b" * 64,
-            plugin_manifest_path="review_pack/plugin.json",
-            source_trust_class="legacy-local-reacquired",
+    original_owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    try:
+        epoch = original_owner.epoch_runtime
+        source_root = epoch.prepare_product_source_root()
+        state_root = epoch.prepare_product_state_root()
+        store_id = epoch.registry.store_id
+        base_revision = (
+            original_owner.runtime_owner.product_owner.policy.authority_revision
         )
-        expanded = replace(
-            policy,
-            bindings=tuple(
-                sorted((*policy.bindings, extra), key=lambda item: item.source_identity)
-            ),
-        )
-        assert expanded.authority_revision != policy.authority_revision
-        return expanded
-
-    monkeypatch.setattr(
-        product_runtime_module,
-        "coding_builtin_product_local_wheel_policy",
-        extended_policy,
+    finally:
+        original_owner.close()
+    original_source = tmp_path / "original-source"
+    original_source.mkdir(mode=0o700)
+    (original_source / "plugin.json").write_text(
+        json.dumps({"name": "review-pack", "version": "1"})
+    )
+    published = PluginRevisionStore(tmp_path / "old-revisions").publish(
+        PluginManifestParser().parse(original_source)
+    )
+    published.revision_handle.close()
+    assert published.manifest_digest is not None
+    dependency_lock = PluginDependencyClosureLock(published.content_digest, ())
+    candidate = reacquire_coding_legacy_local_plugin_wheel(
+        original_source,
+        legacy_package_root=lifecycle.package_root,
+        staging_parent=source_root,
+        plugin_id="review-pack",
+        expected_source_identity=f"local:{original_source}",
+        expected_content_digest=published.content_digest,
+        expected_manifest_digest=published.manifest_digest,
+        expected_dependency_lock=dependency_lock,
+    )
+    artifact = source_root / candidate.filename
+    artifact.write_bytes(candidate.wheel_bytes)
+    artifact.chmod(0o600)
+    catalog = CodingLegacyLocalBindingCatalog(
+        state_root / "legacy-local-bindings.jsonl",
+        source_root=source_root,
+        store_id=store_id,
+        namespace_id="a" * 64,
+        scope_id=lifecycle.scope_id,
+        policy_revision="coding-product-package-policy:1",
+    )
+    catalog.append(
+        candidate,
+        legacy_source_identity=candidate.original_source_identity,
+        legacy_binding_digest=sha256(b"old binding evidence").hexdigest(),
+        dependency_lock_digest=dependency_lock.digest,
+        approval_id="operator:review-pack",
     )
     owner = open_coding_fenced_product_application_owner(
         lifecycle,
@@ -79,6 +116,14 @@ def test_expanded_product_policy_reopens_existing_builtin_selections(
         runtime_protocol_epoch=2,
     )
     try:
+        policy = owner.runtime_owner.product_owner.policy
+        assert policy.authority_revision != base_revision
+        assert {item.plugin_id for item in policy.bindings} == {
+            "coding.base",
+            "coding.lsp.default",
+            "coding.arch.default",
+            "review-pack",
+        }
         factory = owner.runtime_owner.product_owner.factory_for_session(
             session_id="policy-reopen",
             cwd=workspace,

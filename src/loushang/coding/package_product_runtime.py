@@ -57,6 +57,7 @@ from .package_epoch_layout import (
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
+from .package_legacy_binding_catalog import CodingLegacyLocalBindingCatalog
 from .session_manager import SessionManager
 
 CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH = 2
@@ -593,6 +594,14 @@ def _open_coding_product_runtime_owner(
         if include_capabilities
         else coding_base_product_local_wheel_policy(artifact, **policy_arguments)
     )
+    policy = CodingLegacyLocalBindingCatalog(
+        state_root / "legacy-local-bindings.jsonl",
+        source_root=source_root,
+        store_id=epoch.store_id,
+        namespace_id=switch.namespace_id,
+        scope_id=scope_id,
+        policy_revision=policy.policy_revision,
+    ).extend_policy(policy)
     return CodingPosixLocalWheelProductRuntimeOwner(
         product_owner=PosixLocalWheelProductSessionOwner(
             workspace=workspace,
