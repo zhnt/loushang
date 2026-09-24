@@ -4211,7 +4211,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding._base_plugin import coding_base_plugin_root
+    from loushang.coding._base_plugin import (
+        CodingBasePluginAssemblyError,
+        coding_base_plugin_root,
+        prepare_coding_base_product_plan,
+    )
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -4219,6 +4223,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
@@ -5232,6 +5237,9 @@ while True:
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
                 assert captured.installation_key == key
+                assert captured.instance_revision_ref == desired.snapshot().installation(
+                    key
+                ).selection.instance_revision_ref
                 assert (
                     captured.root_ref.artifact_digest
                     == captured.package_revision.package_content_digest
@@ -5265,6 +5273,90 @@ while True:
                     "prompt-standard",
                     "skill-standard",
                 )
+                from loushang.harness.environment import LocalHostEnvironmentProbe
+                from loushang.harness.resources.plugins.selection import (
+                    PluginContributionRef,
+                    PluginSourceTrustSnapshotV1,
+                )
+
+                trust = PluginSourceTrustSnapshotV1(
+                    plugin_id="coding.base",
+                    package_source_identity=(
+                        captured.package_revision.package_source_identity
+                    ),
+                    source_trust_class="host-equivalent-local",
+                    source_trust_policy_revision=policy.policy_revision,
+                    trusted=True,
+                )
+                base_plan, base_tool, base_tools = prepare_coding_base_product_plan(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    source_trust_snapshot=trust,
+                    host_environment=LocalHostEnvironmentProbe().detect(),
+                )
+                assert base_plan.context.instance_revision_refs == (
+                    captured.instance_revision_ref,
+                )
+                assert captured.committed_record.committed_set.set_id in (
+                    base_plan.context.policy_revision
+                )
+                assert base_plan.source_trust_snapshots == (trust,)
+                assert base_plan.selected_contributions == (
+                    PluginContributionRef("coding.base", "coding.builtin"),
+                    PluginContributionRef("coding.base", "coding.standard"),
+                    PluginContributionRef("coding.base", "prompt-standard"),
+                    PluginContributionRef("coding.base", "skill-standard"),
+                )
+                assert base_tool == "coding.builtin"
+                assert base_tools
+                missing_command = replace(
+                    selected_manifest,
+                    manifest=replace(
+                        selected_manifest.manifest,
+                        contribution_index=replace(
+                            selected_manifest.manifest.contribution_index,
+                            items=tuple(
+                                item
+                                for item in selected_manifest.manifest.contribution_index.items
+                                if item.contribution_id != "coding.standard"
+                            ),
+                        ),
+                    ),
+                )
+                with pytest.raises(CodingBasePluginAssemblyError) as missing_plan:
+                    prepare_coding_base_product_plan(
+                        missing_command,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
+                        source_trust_snapshot=trust,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert missing_plan.value.code == "coding_base_product_selection_mismatch"
+                with pytest.raises(CodingBasePluginAssemblyError) as foreign_trust:
+                    prepare_coding_base_product_plan(
+                        selected_manifest,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
+                        source_trust_snapshot=replace(
+                            trust, package_source_identity="foreign-source"
+                        ),
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert foreign_trust.value.code == "coding_base_product_selection_mismatch"
+                with pytest.raises(CodingBasePluginAssemblyError) as foreign_scope_plan:
+                    prepare_coding_base_product_plan(
+                        selected_manifest,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=replace(key, scope_id="workspace:foreign"),
+                        session_id=session_manager.get_header().conversation_id,
+                        source_trust_snapshot=trust,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert foreign_scope_plan.value.code == "coding_base_product_selection_mismatch"
                 from loushang.harness.resources.packages.product_local_wheel_runtime import (
                     _LocalWheelSelectedManifestReader,
                 )
