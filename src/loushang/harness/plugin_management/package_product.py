@@ -9,6 +9,7 @@ from loushang.harness.plugin_management.gc_fence import (
     PluginPackageGcReferenceGatePort,
     gc_reference_guard,
 )
+from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
@@ -23,6 +24,12 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
     PluginInstallationScope,
     PluginPackageRevisionRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
+    PluginRevisionRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDesiredStateCommitRequestV1,
@@ -76,6 +83,64 @@ class PackageProductGcBindingPort(Protocol):
 
 class PackageProductGcAdmissionError(RuntimeError):
     code = "package_product_gc_root_reserved"
+
+
+@dataclass(frozen=True, slots=True)
+class CommittedSetPackageRevisionProjection:
+    """Project one exact committed Package root into Product desired evidence."""
+
+    desired_state: PluginDesiredStateLedger
+    committed_sets: PackageCommittedSetJournal
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.desired_state, PluginDesiredStateLedger):
+            raise TypeError("Product desired-state ledger is required")
+        if not isinstance(self.committed_sets, PackageCommittedSetJournal):
+            raise TypeError("Package committed-set journal is required")
+
+    def project(
+        self, request: PackageDesiredStateCommitRequestV1
+    ) -> PluginPackageRevisionRefV1:
+        if not isinstance(request, PackageDesiredStateCommitRequestV1):
+            raise TypeError("Package desired-state commit request is required")
+        record = self.committed_sets.current(request.operation_id)
+        if record is None:
+            raise ValueError("Package desired revision lacks a committed set")
+        committed = record.committed_set
+        closure = record.closure_lock
+        if (
+            committed.operation_id != request.operation_id
+            or committed.request_fingerprint != request.request_fingerprint
+            or committed.attempt_epoch != request.attempt_epoch
+            or committed.product_id != request.product_id
+            or committed.scope_id != request.scope_id
+            or committed.installation_id != request.installation_id
+            or committed.plugin_id != request.plugin_id
+            or committed.set_id != request.committed_set_id
+            or committed.root_ref != request.root_ref
+            or committed.closure_lock_digest != closure.lock_digest
+            or self.committed_sets.is_tombstoned(committed.root_ref.ref_id)
+        ):
+            raise ValueError("Package desired revision changed committed set")
+        root = next(
+            node for node in closure.nodes if node.node_id == closure.root_node_id
+        )
+        if (
+            root.plan_node.role != "root"
+            or not isinstance(root.stable_ref, PluginRevisionRefV1)
+            or root.stable_ref != request.root_ref
+        ):
+            raise ValueError("Package desired revision changed committed set root")
+        return PluginPackageRevisionRefV1(
+            plugin_id=committed.plugin_id,
+            plugin_version=committed.root_ref.version,
+            package_content_digest=committed.root_ref.artifact_digest,
+            dependency_lock_digest=closure.lock_digest,
+            package_source_identity=root.plan_node.canonical_source_identity,
+        )
+
+    def inventory_revision(self) -> int:
+        return self.desired_state.snapshot().inventory_revision
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +304,7 @@ def _observed_inventory_revision(
 
 __all__ = [
     "PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION",
+    "CommittedSetPackageRevisionProjection",
     "PackageProductGcBindingPort",
     "PackageProductGcAdmissionError",
     "PackageProductDesiredRevisionProjectionPort",

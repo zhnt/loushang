@@ -34,6 +34,7 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_product import (
+    CommittedSetPackageRevisionProjection,
     PackageProductGcAdmissionError,
     PluginManagementPackageDesiredStateAdapter,
 )
@@ -209,14 +210,26 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
     PackageWindowsOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.product_composition import (
+    PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
+)
+from loushang.harness.resources.packages.product_handoff import (
+    PackageProductHandoffFinalizer,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
     PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductPublishAttemptV1,
+    PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+)
+from loushang.harness.resources.packages.product_root_target import (
+    PackageProductRootTargetAuthority,
+)
+from loushang.harness.resources.packages.product_transaction import (
+    PackageProductLifecycleTransaction,
+    PackageProductWheelExecutionFactory,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
@@ -1498,6 +1511,14 @@ class _ManifestProductTransaction:
     @property
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
+
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
 
     def execute(
         self,
@@ -3158,7 +3179,95 @@ class _ManifestNativeAdoptionFixture:
     product_projection_before: tuple[tuple[str, int, bytes], ...]
     coordination: _ManifestAdoptionCoordination
     commit: PackageCommitLifecycleOwner | _ManifestCrashAfterCommittedCommitOwner
+    closure_owner: PackageClosureLifecycleOwner
+    pin_owner: PackageTransactionPinLifecycleOwner
+    staging_owner: PackageStagingSetLifecycleOwner
     secret: str
+
+
+@dataclass(frozen=True)
+class _NativeProductHandoff:
+    finalizer: PackageProductHandoffFinalizer
+    desired: PluginDesiredStateLedger
+    bindings: PluginPackageGcBindingJournal
+    journal: PackageRetentionHandoffJournal
+    revisions: CommittedSetPackageRevisionProjection
+
+
+@dataclass
+class _FailOnceProductHandoff:
+    delegate: PackageProductHandoffFinalizer
+    calls: int = 0
+
+    def finalize(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("crash before Product handoff journal open")
+        self.delegate.finalize(request, current=current)
+
+
+def _native_product_handoff(
+    fixture: _ManifestNativeAdoptionFixture, tmp_path: Path
+) -> _NativeProductHandoff:
+    assert isinstance(fixture.commit, PackageCommitLifecycleOwner)
+    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
+    desired = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=tmp_path / "product-management.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "product-gc-bindings.jsonl")
+    projection = CommittedSetPackageRevisionProjection(
+        desired, fixture.committed_sets
+    )
+    desired_adapter = PluginManagementPackageDesiredStateAdapter(
+        management=management,
+        revisions=projection,
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+        gc_bindings=bindings,
+        gc_gate=gate,
+    )
+    admission = PackageCommitAdmissionOwner(
+        lifecycle_journal=fixture.lifecycle_journal,
+        committed_sets=fixture.committed_sets,
+        pin_journal=fixture.pin_journal,
+    )
+    journal = PackageRetentionHandoffJournal(
+        tmp_path / "product-handoff.jsonl"
+    )
+    handoff = PackageRetentionHandoffOwner(
+        journal=journal,
+        admission=admission,
+        retention=PackageProductRetentionSettlementOwner(
+            path=tmp_path / "product-retention.jsonl",
+            transaction_pins=fixture.pin_journal,
+        ),
+        desired_state=desired_adapter,
+    )
+    return _NativeProductHandoff(
+        finalizer=PackageProductHandoffFinalizer(
+            kernel=fixture.kernel,
+            commit=fixture.commit,
+            admission=admission,
+            transaction_pins=fixture.pin_journal,
+            journal=journal,
+            handoff=handoff,
+            inventory_revision=projection.inventory_revision,
+        ),
+        desired=desired,
+        bindings=bindings,
+        journal=journal,
+        revisions=projection,
+    )
 
 
 class _ManifestAdoptionCoordination:
@@ -3252,6 +3361,8 @@ def _manifest_native_adoption_fixture(
     staging_classification_recheck: (
         _StableClassificationRecheck | _ChangedClassificationRecheck | None
     ) = None,
+    product_ingress: PackageLifecycleIngressRequestV2 | None = None,
+    product_root_target: bool = False,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3274,7 +3385,7 @@ def _manifest_native_adoption_fixture(
         root_payload=root_payload,
     )
     classified = kernel.submit(
-        _request(
+        product_ingress or _request(
             source=(
                 f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
                 f"?token={secret}#{secret}"
@@ -3381,6 +3492,16 @@ def _manifest_native_adoption_fixture(
         )
     )
     root_targets = _ManifestRootTargetAuthority()
+    staging_root_targets = (
+        PackageProductRootTargetAuthority(
+            product_id="coding",
+            installation_scope="workspace",
+            authority_id="manifest-product-root-target",
+            authority_revision="manifest-product-root-target:1",
+        )
+        if product_root_target
+        else root_targets
+    )
     staging_journal = PackageArtifactStagingJournal(
         tmp_path / "manifest-adoption-staging.jsonl"
     )
@@ -3394,7 +3515,7 @@ def _manifest_native_adoption_fixture(
         ),
         closure_plans=resolution_journal,
         pin_journal=pin_journal,
-        root_targets=root_targets,
+        root_targets=staging_root_targets,
         dependency_staging=PosixPackageDependencyMaterializationStore(
             dependency_root,
             store_identity="manifest-dependency-store",
@@ -3459,6 +3580,9 @@ def _manifest_native_adoption_fixture(
         product_projection_before=product_projection_before,
         coordination=coordination,
         commit=commit,
+        closure_owner=closure_owner,
+        pin_owner=pin_owner,
+        staging_owner=staging_owner,
         secret=secret,
     )
 
@@ -3621,8 +3745,386 @@ def _restart_manifest_native_adoption_fixture(
         product_projection_before=fixture.product_projection_before,
         coordination=coordination,
         commit=commit,
+        closure_owner=closure_owner,
+        pin_owner=pin_owner,
+        staging_owner=staging_owner,
         secret=fixture.secret,
     )
+
+
+def test_product_root_target_requires_exact_classification(tmp_path: Path) -> None:
+    owner, _journal = _owner(
+        tmp_path, facts=_facts("explicit_plugin_intent")
+    )
+    status = owner.submit(_request())
+    request = owner.journal.request(status.operation_id)
+    classification = status.classification
+    assert request is not None and classification is not None
+    targets = PackageProductRootTargetAuthority(
+        product_id="coding",
+        installation_scope="workspace",
+        authority_id="manifest-product-root-target",
+        authority_revision="manifest-product-root-target:1",
+    )
+
+    target = targets.issue_target(request, classification)
+    assert targets.issue_target(request, classification) == target
+    assert target.plugin_id == "acme.plugin"
+    assert target.installation_id.startswith("installation:")
+    with pytest.raises(ValueError, match="classification"):
+        targets.issue_target(
+            request,
+            replace(classification, request_fingerprint="0" * 64),
+        )
+    with pytest.raises(ValueError, match="Product"):
+        PackageProductRootTargetAuthority(
+            product_id="other",
+            installation_scope="workspace",
+            authority_id="manifest-product-root-target",
+            authority_revision="manifest-product-root-target:1",
+        ).issue_target(request, classification)
+
+
+@pytest.mark.parametrize("entrypoint", ("cli", "rpc", "session", "startup", "operations"))
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_uses_real_store_and_durable_owner(
+    tmp_path: Path, entrypoint: PackageProductEntrypoint,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-transaction-secret"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
+        recovery_identity="manifest-product-transaction-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint=entrypoint, ingress=ingress, admission=admission
+    )
+
+    committed = router.route(route)
+    before = fixture.lifecycle_journal.records()
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert fixture.root_settlements.records()
+    assert fixture.committed_sets.records()
+    assert fixture.source_authority.authorize_calls == 1
+    durable_request = fixture.kernel.journal.request(committed.operation_id)
+    committed_set = fixture.committed_sets.current(committed.operation_id)
+    assert durable_request is not None and committed.classification is not None
+    assert committed_set is not None
+    expected_target = PackageProductRootTargetAuthority(
+        product_id="coding",
+        installation_scope="workspace",
+        authority_id="manifest-product-root-target",
+        authority_revision="manifest-product-root-target:1",
+    ).issue_target(durable_request, committed.classification)
+    assert committed_set.committed_set.installation_id == expected_target.installation_id
+    desired = product.desired.snapshot()
+    assert desired.inventory_revision == 1
+    assert desired.installations[0].selection.desired_state == "installed_disabled"
+    assert len(product.bindings.records()) == 1
+    assert product.journal.records()[-1].receipt is not None
+    assert product.journal.records()[-1].receipt.state == "settled"
+    handoff_receipt = product.journal.records()[-1].receipt
+    assert handoff_receipt is not None
+    admission_request = handoff_receipt.request.admission_request
+    forged_admission = PackageCommitAdmissionRequestV1.create(
+        operation_id=admission_request.operation_id,
+        request_fingerprint=admission_request.request_fingerprint,
+        product_id=admission_request.product_id,
+        scope_id="workspace:other",
+        installation_id=admission_request.installation_id,
+        plugin_id=admission_request.plugin_id,
+        claimed_root_ref=admission_request.claimed_root_ref,
+        committed_set_id=admission_request.committed_set_id,
+        closure_lock_digest=admission_request.closure_lock_digest,
+        publication_receipt=admission_request.publication_receipt,
+    )
+    forged_desired = PackageDesiredStateCommitRequestV1.create(
+        forged_admission,
+        command_id=handoff_receipt.request.desired_request.command_id,
+        command_fingerprint=(
+            handoff_receipt.request.desired_request.command_fingerprint
+        ),
+        expected_inventory_revision=(
+            handoff_receipt.request.desired_request.expected_inventory_revision
+        ),
+    )
+    with pytest.raises(ValueError, match="committed set"):
+        product.revisions.project(forged_desired)
+    handoff_before = product.journal.records()
+    recovered = PackageCommittedProductHandoffRecovery(
+        product_id="coding",
+        kernel=fixture.kernel,
+        journal=product.journal,
+        finalizer=product.finalizer,
+    ).recover(admission)
+    assert recovered == ()
+    assert router.route(route) == committed
+    assert fixture.lifecycle_journal.records() == before
+    assert fixture.source_authority.authorize_calls == 1
+    assert product.desired.snapshot() == desired
+    assert product.journal.records() == handoff_before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-handoff-recovery"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    handoff = _FailOnceProductHandoff(product.finalizer)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
+        recovery_identity="manifest-product-handoff-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=handoff,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint="cli", ingress=ingress, admission=admission
+    )
+
+    with pytest.raises(RuntimeError, match="crash before Product handoff"):
+        router.route(route)
+    committed = fixture.kernel.status(ingress.operation_id)
+    assert committed is not None
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert product.journal.records() == ()
+    assert product.desired.snapshot().inventory_revision == 0
+    lifecycle_before = fixture.lifecycle_journal.records()
+
+    recovered = PackageCommittedProductHandoffRecovery(
+        product_id="coding",
+        kernel=fixture.kernel,
+        journal=product.journal,
+        finalizer=product.finalizer,
+    ).recover(admission)
+    assert recovered == (committed.operation_id,)
+    assert router.route(route) == committed
+    assert fixture.lifecycle_journal.records() == lifecycle_before
+    assert product.desired.snapshot().inventory_revision == 1
+    assert product.journal.records()[-1].receipt is not None
+    assert product.journal.records()[-1].receipt.state == "settled"
+    assert handoff.calls == 2
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_refuses_non_wheel_source_without_store_fallback(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source="https://packages.example.test/acme_plugin-1.0.tar.gz",
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, product_ingress=ingress, product_root_target=True
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(),
+            budgets=PackageClosureBudgetV1(),
+        ),
+        recovery_identity="manifest-product-non-wheel-refusal",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel, transaction=transaction
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint="cli", ingress=ingress, admission=admission
+    )
+
+    refused = router.route(route)
+    before = fixture.lifecycle_journal.records()
+    assert refused.disposition == "rejected"
+    assert refused.failure is not None
+    assert refused.failure.code == "package_artifact_type_rejected"
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
+    assert product.desired.snapshot().inventory_revision == 0
+    assert router.route(route) == refused
+    assert fixture.lifecycle_journal.records() == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_direct_materializer_refusal_never_reaches_real_store(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-direct-refusal"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+
+    def unexpected_execution(
+        _request: PackageProductRouteRequestV1,
+        _current: PackageLifecycleStatusV1,
+    ) -> PackageClosureExecutionRequestV2:
+        raise AssertionError("Direct materializer reached the Package transaction")
+
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=unexpected_execution,
+        recovery_identity="manifest-product-direct-refusal-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    direct = PackageProductRouteRequestV1(
+        entrypoint="direct_materializer", ingress=ingress, admission=admission
+    )
+    current = fixture.kernel.status(ingress.operation_id)
+    assert current is not None
+    with pytest.raises(PackageProductRouteContractError):
+        transaction.execute(direct, current=current)
+    refused = router.route(direct)
+    assert (refused.phase, refused.disposition) == ("classified", "rejected")
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_staging.calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_refuses_changed_execution_before_source(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-identity-refusal"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    changed = replace(
+        fixture.execution,
+        artifact=replace(fixture.execution.artifact, request_fingerprint="0" * 64),
+    )
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=lambda _request, _current: changed,
+        recovery_identity="manifest-product-identity-refusal-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    refused = router.route(
+        PackageProductRouteRequestV1(
+            entrypoint="cli", ingress=ingress, admission=admission
+        )
+    )
+    assert (refused.phase, refused.disposition) == ("classified", "rejected")
+    assert refused.failure is not None
+    assert refused.failure.code == "package_operation_identity_conflict"
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_staging.calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
 
 
 @pytest.mark.parametrize(

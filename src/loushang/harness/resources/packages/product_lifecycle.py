@@ -94,6 +94,13 @@ class PackageProductLifecycleTransactionPort(Protocol):
         current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1: ...
 
+    def finalize_committed(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None: ...
+
 
 class PackageProductRouteContractError(RuntimeError):
     """A configured transaction Port violated the Product routing contract."""
@@ -115,6 +122,10 @@ class PackageProductLifecycleExecutionBinding:
         if transaction_owner != self.owner.binding_id:
             raise PackageProductRouteContractError(
                 "Package Product transaction is bound to a different owner"
+            )
+        if not callable(getattr(self.transaction, "finalize_committed", None)):
+            raise PackageProductRouteContractError(
+                "Package Product transaction lacks a committed handoff"
             )
 
 
@@ -142,6 +153,7 @@ class PackageProductLifecycleRouter:
             raise TypeError("Package Product route request is required")
         status = self._owner.submit(request.ingress)
         if status.disposition == "committed":
+            self._finalize_committed(request, status)
             return status
         if status.disposition != "active":
             return status
@@ -189,7 +201,33 @@ class PackageProductLifecycleRouter:
             raise PackageProductRouteContractError(
                 "Package Product transaction result changed route identity"
             )
+        if result.disposition == "committed":
+            self._finalize_committed(request, result)
         return result
+
+    def _finalize_committed(
+        self,
+        request: PackageProductRouteRequestV1,
+        status: PackageLifecycleStatusV1,
+    ) -> None:
+        if (
+            request.entrypoint not in _TRANSACTION_ENTRYPOINTS
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+            or self._transaction.owner_binding_id != self._owner_binding_id
+        ):
+            raise PackageProductRouteContractError(
+                "Committed Package Product route changed transaction authority"
+            )
+        finalizer = getattr(self._transaction, "finalize_committed", None)
+        if not callable(finalizer) or finalizer(request, current=status) is not None:
+            raise PackageProductRouteContractError(
+                "Package Product handoff finalizer returned invalid evidence"
+            )
+        if self._owner.status(status.operation_id) != status:
+            raise PackageProductRouteContractError(
+                "Package Product handoff changed committed Package evidence"
+            )
 
     def refuse_direct_publish(
         self,

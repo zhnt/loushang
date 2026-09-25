@@ -395,6 +395,27 @@
   guards, while Windows run `33709473605`/artifact `9876434660` executed 34
   native component tests and all 15 Windows manifest nodes. Every retained
   PLC9B report recorded zero skips, failures, and errors.
+- PLC9B Product transaction candidate:
+  `resources/packages/product_transaction.py` composes the existing closure,
+  transaction-pin, staging-set, commit, and Product handoff owners behind the
+  B5 router. Local Linux-native tests send each of the five transport
+  provenances through a real rooted Store, durable Package owner, and desired
+  state ledger. A route-bound wheel execution factory derives operation,
+  attempt, filename, and environment evidence for each request; unsupported
+  non-wheel Sources receive a durable refusal before Source or Store access.
+  Product issues the designated root target from exact classification and a
+  stable Product/scope/Plugin Installation identity, then projects the
+  installable revision from the exact
+  committed-set root and refuses a handoff with a changed scope. The Product
+  router requires a committed-handoff capability at
+  composition, and committed replay completes a handoff interrupted before its
+  first journal event. An admitted startup recovery can also scan durable
+  committed requests and complete that pre-journal handoff under the shared
+  epoch guard before activation; its Product factory binding is still pending.
+  A direct-materializer route and a changed execution
+  identity reach neither Source nor Store. This is not a Coding production
+  cutover: no Windows native transaction acceptance exists, and the legacy
+  materializer callers listed below remain live.
 - PLC9C1--PLC9C4 implementation candidate:
   [Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) retains the
   accepted threat model and implements the additive declaration topology,

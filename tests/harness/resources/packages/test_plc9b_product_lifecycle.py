@@ -98,6 +98,14 @@ class _CommittingTransaction:
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
 
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
@@ -130,6 +138,14 @@ class _InvalidTransaction:
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
 
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert current.disposition == "committed"
+
     def execute(
         self,
         _request: PackageProductRouteRequestV1,
@@ -138,6 +154,24 @@ class _InvalidTransaction:
     ) -> PackageLifecycleStatusV1:
         self.calls += 1
         return current
+
+
+@dataclass
+class _FinalizingTransaction(_CommittingTransaction):
+    finalization_calls: int = 0
+    interrupt_once: bool = True
+
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+        self.finalization_calls += 1
+        if self.interrupt_once:
+            self.interrupt_once = False
+            raise RuntimeError("handoff interrupted before journal open")
 
 
 def _ingress(
@@ -315,6 +349,32 @@ def test_direct_materializer_is_rejected_without_transaction_fallback(
     assert journal.records() == before
 
 
+def test_committed_replay_retries_required_product_handoff(tmp_path: Path) -> None:
+    journal = PackageLifecycleJournal(tmp_path / "product-handoff-replay.jsonl")
+    owner = PackageLifecycleOwner(
+        journal=journal,
+        classification_authority=_ClassificationAuthority(),
+        enabled=True,
+    )
+    transaction = _FinalizingTransaction(owner)
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(owner, transaction)
+    )
+    route = _route_request("cli")
+
+    with pytest.raises(RuntimeError, match="handoff interrupted"):
+        router.route(route)
+    committed = owner.status(route.ingress.operation_id)
+    assert committed is not None
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert transaction.calls == ["cli"]
+    assert transaction.finalization_calls == 1
+
+    assert router.route(route) == committed
+    assert transaction.calls == ["cli"]
+    assert transaction.finalization_calls == 2
+
+
 def test_direct_publish_is_durably_refused_without_publication_port(
     tmp_path: Path,
 ) -> None:
@@ -421,6 +481,30 @@ def test_execution_binding_rejects_transaction_from_a_different_owner(
 
     assert not owner.journal.path.exists()
     assert not foreign.journal.path.exists()
+
+
+def test_execution_binding_rejects_missing_committed_handoff(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "missing-handoff.jsonl"),
+        classification_authority=_ClassificationAuthority(),
+        enabled=True,
+    )
+
+    class MissingFinalizer:
+        owner_binding_id = owner.binding_id
+
+        def execute(
+            self,
+            _request: PackageProductRouteRequestV1,
+            *,
+            current: PackageLifecycleStatusV1,
+        ) -> PackageLifecycleStatusV1:
+            return current
+
+    with pytest.raises(PackageProductRouteContractError, match="handoff"):
+        PackageProductLifecycleExecutionBinding(owner, MissingFinalizer())
 
 
 def test_router_rechecks_mutable_transaction_owner_before_execution(
