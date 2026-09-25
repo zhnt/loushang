@@ -24,6 +24,9 @@ from threading import Lock
 import pytest
 
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    compose_posix_local_wheel_product,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -245,9 +248,6 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWheelDependencyV1,
     PackageProductLocalWheelPolicy,
-)
-from loushang.harness.resources.packages.product_local_wheel_runtime import (
-    compose_posix_local_wheel_product,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
