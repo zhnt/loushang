@@ -12,7 +12,7 @@
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
   dark reservation; D3a--D3e add writer and Store/committed-set fences, a
-  private deletion primitive, read-only root target resolution, and a dark
+  private deletion primitive, read-only root target resolution, and a durable
   result/debt journal. D3f connects those owners in an internal POSIX-tested
   root-GC executor. D3g adds an explicit Product command over an exact GC
   candidate and an explicit root Store method. D3h joins reservation, result,
@@ -27,6 +27,13 @@
   GC, and production private-data/backup owner composition remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
+- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
+  only; Current remains the default; no general third-party Worker
+  authoring/admission surface is published.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
