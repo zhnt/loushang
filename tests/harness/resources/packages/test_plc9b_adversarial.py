@@ -4221,13 +4221,23 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
+    from loushang.coding._product_capability_plugin_composition import (
+        prepare_coding_builtin_product_composition,
+        prepare_coding_product_capability_plugin_composition,
+    )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
         CodingResourceCatalogAdmissionError,
     )
-    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.arch._provider_api import CodingArchPluginConfigV1
+    from loushang.coding.bootstrap import (
+        create_agent_session,
+        create_agent_session_runtime,
+        create_services,
+    )
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
     from loushang.coding.package_builtin_wheel import (
         CODING_BASE_PRODUCT_WHEEL_FILENAME,
         build_coding_base_product_wheel,
@@ -4240,12 +4250,14 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         cutover_coding_package_store_from_legacy,
         reopen_coding_package_cutover,
     )
-    from loushang.coding.package_product_capabilities import (
+    from loushang.coding.package_product_revisions import (
+        open_coding_product_builtin_resolution,
         open_coding_product_capability_resolution,
     )
     from loushang.coding.package_product_runtime import (
         open_coding_base_product_runtime_owner,
         open_coding_builtin_product_runtime_owner,
+        open_coding_fenced_product_application_owner,
         open_coding_package_product_state,
     )
     from loushang.coding.plugin_dependency_grants import (
@@ -4262,7 +4274,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
-    from loushang.harness.plugin_authoring.host import PluginDeclarationHost
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
         register_package_product_runtime_lease,
@@ -4270,17 +4281,14 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.resources.packages.product_pre_b_snapshot import (
         reopen_posix_product_cutover,
     )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
     from loushang.harness.resources.plugins.python_symbols import (
         load_verified_plugin_python_module,
     )
     from loushang.harness.resources.plugins.revisions import PluginRevisionError
-    from loushang.harness.resources.plugins.selection import (
-        PluginContributionRef,
-        PluginEffectiveConfigurationEntry,
-        PluginEffectiveConfigurationSetV1,
-        PluginPreflightContextV1,
-        PluginPreflightPendingApprovalOutcome,
-        PluginSelectionPlanV2,
+    from loushang.harness.resources.plugins.selection import PluginContributionRef
+    from loushang.harness.session.bootstrap_configuration import (
+        PackageProductStartupSourceError,
     )
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
@@ -4489,6 +4497,59 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
+    if checked_in_base:
+        from loushang.harness.policy import PolicyDecision
+        from loushang.harness.resources.packages.materializer import PackageMaterializer
+        from loushang.harness.resources.plugins.manifest import PluginManifestParser
+        from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+
+        old_package = PluginManifestParser().parse(coding_base_plugin_root())
+        with pytest.raises(PluginRevisionError) as direct_publish:
+            PluginRevisionStore(legacy_layout.plugin_revision_root).publish(
+                old_package
+            )
+        assert direct_publish.value.code == "plugin_revision_epoch_fenced"
+        legacy_materializer = PackageMaterializer(
+            install_root=legacy_layout.package_install_root,
+            lockfile_path=legacy_layout.package_lockfile,
+            plugin_revision_root=legacy_layout.plugin_revision_root,
+        )
+        with pytest.raises(PluginRevisionError) as direct_materialize:
+            legacy_materializer.publish_plugin_packages((old_package,))
+        assert direct_materialize.value.code == "plugin_revision_epoch_fenced"
+        before_direct_prepare = legacy_layout.package_lockfile.read_bytes()
+        with pytest.raises(PluginRevisionError) as direct_prepare:
+            legacy_materializer.prepare_remote_source(
+                "https://packages.example.test/legacy-plugin.git"
+            )
+        assert direct_prepare.value.code == "plugin_revision_epoch_fenced"
+        assert legacy_layout.package_lockfile.read_bytes() == before_direct_prepare
+
+        class AllowLegacySource:
+            def evaluate_package_source(self, _source: str | Path) -> PolicyDecision:
+                return PolicyDecision.allow()
+
+        backend_calls = []
+
+        def direct_backend(record):
+            backend_calls.append(record.source)
+            record.target_path.mkdir(parents=True)
+            (record.target_path / "bypass.txt").write_bytes(b"legacy write")
+            return record.with_lifecycle("installed")
+
+        direct_backend_materializer = PackageMaterializer(
+            install_root=legacy_layout.package_install_root,
+            lockfile_path=legacy_layout.package_lockfile,
+            plugin_revision_root=legacy_layout.plugin_revision_root,
+            backend=direct_backend,
+            security_policy=AllowLegacySource(),
+        )
+        with pytest.raises(PluginRevisionError) as direct_backend_write:
+            direct_backend_materializer.materialize_temporary_remote_source_sync(
+                "https://packages.example.test/legacy-plugin.git"
+            )
+        assert direct_backend_write.value.code == "plugin_revision_epoch_fenced"
+        assert backend_calls == []
     snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
     assert snapshot_evidence is not None
     assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
@@ -4601,6 +4662,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         store_id=store_id,
         epochs_root_name=epoch_layout.epochs_root_name,
     )
+    application_owner = None
     try:
         registry = epoch_runtime.registry
         assert epoch_runtime.cutover_result == cutover_result
@@ -5334,18 +5396,18 @@ while True:
             with pytest.raises(ValueError, match="Product owner"):
                 compose(foreign_desired)
             assert lifecycle_journal.records() == before_restart
-            for entrypoint, source_value in (
+            for refused_entrypoint, source_value in (
                 ("rpc", "https://packages.example.test/unknown.whl"),
                 ("direct_materializer", str(source)),
             ):
                 refused = activation.route(
                     PackageProductLifecycleIntentV1(
-                        operation_id=f"operation:refused:{entrypoint}",
+                        operation_id=f"operation:refused:{refused_entrypoint}",
                         action="install",
                         source=source_value,
                         scope="project",
                     ),
-                    entrypoint=entrypoint,
+                    entrypoint=refused_entrypoint,
                 )
                 assert refused.handled
                 assert refused.record is not None
@@ -5592,16 +5654,9 @@ while True:
                         )
                         claimed = await candidate.claim()
                         identity = claimed.opaque_binding.record.identity
-                        selected_sessions: list[str] = []
                         prior_leases = len(
                             registry.snapshot(store_id=store_id).active_leases
                         )
-
-                        def select_hosted(manager: SessionManager):
-                            selected_sessions.append(
-                                manager.get_header().conversation_id
-                            )
-                            return hosted_product_owner.factory_for_session(manager)
 
                         hosted_factory = CodingRealHostedSessionFactoryV1(
                             services_factory=lambda _cwd: create_services(
@@ -5623,7 +5678,6 @@ while True:
                                 ),
                             ),
                             tools=[],
-                            package_product_runtime_factory_for_session=select_hosted,
                         )
                         hosted = None
                         try:
@@ -5636,6 +5690,14 @@ while True:
                                     "loushang.coding.bootstrap._default_package_materializer",
                                     side_effect=AssertionError("legacy package materializer"),
                                 ),
+                                patch(
+                                    "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                    return_value=legacy_layout,
+                                ),
+                                patch(
+                                    "loushang.coding.package_product_runtime.version",
+                                    return_value="2.0.0",
+                                ),
                             ):
                                 hosted = await hosted_factory.create_session(
                                     binding_key=SessionBindingKeyV1(
@@ -5645,7 +5707,7 @@ while True:
                                     ),
                                     opaque_session_binding=claimed.opaque_binding,
                                 )
-                            assert selected_sessions == [identity.session_id]
+                            assert len(hosted_factory._product_owner_selection._owners) == 1
                             assert hosted.control._package_controller.get_package_materializer() is None
                             assert any(
                                 command.name == "standard" and command.source == "prompt"
@@ -5660,6 +5722,7 @@ while True:
                                 await hosted.close()
                             await claimed.close()
                             await candidate.close()
+                            await hosted_factory.close()
                         assert len(
                             registry.snapshot(store_id=store_id).active_leases
                         ) == prior_leases
@@ -6672,6 +6735,244 @@ while True:
                         product_source_root
                     )
                 )
+                configured_artifact = next(
+                    artifact
+                    for artifact in capability_artifacts
+                    if artifact.plugin_id == "coding.arch.default"
+                )
+                configured_settings = workspace / ".loushang" / "product-sources.json"
+                configured_settings.write_text(
+                    json.dumps({"packages": [str(configured_artifact.path)]}),
+                    encoding="utf-8",
+                )
+                configured_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "configured-product-sessions",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+                configured_operation_id = sha256(
+                    (
+                        "startup:"
+                        + configured_manager.get_header().conversation_id
+                        + f":project:{configured_artifact.path}"
+                    ).encode()
+                ).hexdigest()
+                configured_session = None
+                prior_configured_leases = len(
+                    registry.snapshot(store_id=store_id).active_leases
+                )
+                try:
+                    with (
+                        patch(
+                            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                            return_value=legacy_layout,
+                        ),
+                        patch(
+                            "loushang.coding.package_product_runtime.version",
+                            return_value="2.0.0",
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            side_effect=AssertionError("legacy base assembly"),
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap._default_package_materializer",
+                            side_effect=AssertionError("legacy package materializer"),
+                        ),
+                    ):
+                        configured_session = create_agent_session(
+                            session_manager=configured_manager,
+                            model=Model(
+                                id="plc9b-configured-success",
+                                name="PLC9B Configured Success",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    reasoning=True,
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            services=create_services(
+                                settings_manager=SettingsManager(
+                                    project_settings_path=configured_settings
+                                )
+                            ),
+                            composition_set="coding-minimal",
+                            resource_catalog_source_policy=(
+                                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                            ),
+                        )
+                    assert (
+                        configured_session._package_controller.get_package_materializer()
+                        is None
+                    )
+                    configured_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(configured_operation_id)
+                    assert configured_status is not None
+                    assert configured_status.disposition == "committed"
+                    assert (
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).current(configured_operation_id)
+                        is not None
+                    )
+                    cli_artifact = next(
+                        artifact
+                        for artifact in capability_artifacts
+                        if artifact.plugin_id == "coding.lsp.default"
+                    )
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        cli_install = asyncio.run(
+                            run_package_lifecycle(
+                                configured_session,
+                                PackageLifecycleRequest(
+                                    install=(str(cli_artifact.path),), scope="project"
+                                ),
+                            )
+                        )
+                    cli_record = cli_install.outputs[0]["record"]
+                    assert isinstance(cli_record, dict)
+                    cli_operation_id = str(cli_record["operationId"])
+                    cli_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(cli_operation_id)
+                    assert cli_status is not None
+                    assert cli_status.disposition == "committed"
+                    assert (
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).current(cli_operation_id)
+                        is not None
+                    )
+                    rpc_install_output = io.StringIO()
+                    rpc_install = RpcPackageCommands(
+                        runtime=object(),
+                        get_session=lambda: configured_session,
+                        output=RpcOutput(rpc_install_output),
+                    )
+                    before_rpc_install = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    committed_before_rpc = len(
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).records()
+                    )
+                    desired_before_rpc = desired.snapshot()
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        asyncio.run(
+                            dict(rpc_install.bindings())["install_package"](
+                                "request:default-product-install-replay",
+                                {"source": str(cli_artifact.path), "scope": "project"},
+                            )
+                        )
+                    rpc_response = json.loads(rpc_install_output.getvalue())
+                    assert rpc_response["success"] is False
+                    rpc_records = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).records()[before_rpc_install:]
+                    assert rpc_records
+                    rpc_operation_ids = {
+                        record.request.operation_id for record in rpc_records
+                    }
+                    assert len(rpc_operation_ids) == 1
+                    rpc_status = PackageLifecycleJournal(
+                        state_root / "lifecycle.jsonl"
+                    ).status(next(iter(rpc_operation_ids)))
+                    assert rpc_status is not None
+                    assert rpc_status.failure is not None
+                    assert rpc_status.failure.code == "package_route_unavailable"
+                    assert len(
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).records()
+                    ) == committed_before_rpc
+                    assert desired.snapshot() == desired_before_rpc
+                    before_rpc_replay = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        asyncio.run(
+                            dict(rpc_install.bindings())["install_package"](
+                                "request:default-product-install-replay",
+                                {"source": str(cli_artifact.path), "scope": "project"},
+                            )
+                        )
+                    assert json.loads(rpc_install_output.getvalue().splitlines()[-1]) == (
+                        rpc_response
+                    )
+                    assert len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    ) == before_rpc_replay
+                    refused_source = "https://packages.example.test/unknown.whl"
+                    before_transport = len(
+                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                    )
+                    desired_before_transport = desired.snapshot()
+                    with patch.object(
+                        configured_session,
+                        "install_package",
+                        side_effect=AssertionError("legacy transport install"),
+                    ):
+                        with pytest.raises(PackageLifecycleError):
+                            asyncio.run(
+                                run_package_lifecycle(
+                                    configured_session,
+                                    PackageLifecycleRequest(
+                                        install=(refused_source,), scope="project"
+                                    ),
+                                )
+                            )
+                        rpc_output = io.StringIO()
+                        rpc = RpcPackageCommands(
+                            runtime=object(),
+                            get_session=lambda: configured_session,
+                            output=RpcOutput(rpc_output),
+                        )
+                        asyncio.run(
+                            dict(rpc.bindings())["install_package"](
+                                "request:default-product-install-refusal",
+                                {"source": refused_source, "scope": "project"},
+                            )
+                        )
+                    assert json.loads(rpc_output.getvalue())["success"] is False
+                    transport_failures = [
+                        record
+                        for record in PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()[before_transport:]
+                        if record.request.action == "install"
+                        and record.status.failure is not None
+                    ]
+                    assert len(transport_failures) == 2
+                    assert len(
+                        {record.request.operation_id for record in transport_failures}
+                    ) == 2
+                    assert desired.snapshot() == desired_before_transport
+                finally:
+                    if configured_session is not None:
+                        asyncio.run(configured_session.dispose())
+                assert len(registry.snapshot(store_id=store_id).active_leases) == (
+                    prior_configured_leases
+                )
+
                 def compose_builtin_product(selected_state):
                     owner = open_coding_builtin_product_runtime_owner(
                         legacy_layout,
@@ -6711,20 +7012,21 @@ while True:
                 combined_runtime = compose_builtin_product(product_state)
                 try:
                     for capability_artifact in capability_artifacts:
-                        capability_outcome = combined_runtime.lifecycle.route(
-                            PackageProductLifecycleIntentV1(
-                                operation_id=(
-                                    f"operation:product-{capability_artifact.plugin_id}"
+                        if capability_artifact not in (configured_artifact, cli_artifact):
+                            capability_outcome = combined_runtime.lifecycle.route(
+                                PackageProductLifecycleIntentV1(
+                                    operation_id=(
+                                        f"operation:product-{capability_artifact.plugin_id}"
+                                    ),
+                                    action="install",
+                                    source=str(capability_artifact.path),
+                                    scope="project",
                                 ),
-                                action="install",
-                                source=str(capability_artifact.path),
-                                scope="project",
-                            ),
-                            entrypoint="session",
-                        )
-                        assert capability_outcome.handled
-                        assert capability_outcome.record is not None
-                        assert capability_outcome.record.lifecycle == "installed"
+                                entrypoint="session",
+                            )
+                            assert capability_outcome.handled
+                            assert capability_outcome.record is not None
+                            assert capability_outcome.record.lifecycle == "installed"
                         capability_key = PluginInstallationKeyV1(
                             product_id="coding",
                             installation_scope="workspace",
@@ -6788,6 +7090,12 @@ while True:
                     legacy_layout, epoch_runtime
                 )
                 if checked_in_base:
+                    application_owner = open_coding_fenced_product_application_owner(
+                        legacy_layout,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
                     reopened_owner = open_coding_base_product_runtime_owner(
                         legacy_layout,
                         epoch_runtime,
@@ -6811,6 +7119,35 @@ while True:
                                 ),
                             )
                         )
+                        builtin_revisions = open_coding_product_builtin_resolution(
+                            reopened_builtin
+                        )
+                        try:
+                            assert {
+                                package.manifest.name
+                                for package in builtin_revisions.packages
+                            } == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            base_revision = next(
+                                package
+                                for package in builtin_revisions.packages
+                                if package.manifest.name == "coding.base"
+                            )
+                            with base_revision.revision_handle.open_file(
+                                "declarations/plugin.json"
+                            ) as stream:
+                                assert stream.read() == dict(
+                                    reopened_builtin.capture_selected_plugin_manifest_for(
+                                        "coding.base",
+                                        max_files=64,
+                                        max_total_bytes=1024 * 1024,
+                                    ).snapshot.files
+                                )["coding_base/declarations/plugin.json"]
+                        finally:
+                            builtin_revisions.close()
                         selected_capabilities = []
                         for capability_artifact in capability_artifacts:
                             selected_capability = (
@@ -6872,18 +7209,40 @@ while True:
                                 ),
                             )
                             assert callable(product_module.resolve("declare"))
-                        product_scope_id = (
-                            "session:"
-                            + session_manager.get_header().conversation_id
-                        )
-                        product_plan = PluginSelectionPlanV2(
-                            context=PluginPreflightContextV1(
-                                product_id="coding",
-                                scope_id=product_scope_id,
-                                policy_revision=(
-                                    reopened_owner.product_owner.policy.policy_revision
+                        product_configurations = {
+                            "coding.lsp.default": CodingLspPluginConfigV1.from_runtime_inputs(
+                                workspace_root=workspace,
+                                definitions=(),
+                                baseline_environment={},
+                            ),
+                            "coding.arch.default": CodingArchPluginConfigV1.from_runtime_inputs(
+                                workspace_root=workspace,
+                                private_data_root=(
+                                    reopened_state.state_root
+                                    / "private-data"
+                                    / "coding-arch-default"
                                 ),
-                                instance_revision_refs=tuple(
+                            ),
+                        }
+                        product_policy_revision = (
+                            reopened_owner.product_owner.policy.policy_revision
+                        )
+                        product_preparation = (
+                            prepare_coding_product_capability_plugin_composition(
+                                reopened_builtin,
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "product-capability-approval"),
+                                clock=lambda: 1_700_000_000_000,
+                                product_policy_revision=product_policy_revision,
+                            )
+                        )
+                        try:
+                            assert (
+                                product_preparation.selection.plan.context.instance_revision_refs
+                                == tuple(
                                     sorted(
                                         (
                                             item.snapshot.instance_revision_ref
@@ -6891,89 +7250,696 @@ while True:
                                         ),
                                         key=lambda item: item.plugin_id,
                                     )
-                                ),
-                            ),
-                            selected_plugin_ids=tuple(
-                                sorted(item.manifest.name for item in product_capabilities.packages)
-                            ),
-                            selected_contributions=tuple(
-                                sorted(
-                                    PluginContributionRef(
-                                        package.manifest.name,
-                                        reservation.contribution_id,
-                                    )
-                                    for package in product_capabilities.packages
-                                    for reservation in package.contribution_index.items
                                 )
-                            ),
-                            source_trust_snapshots=tuple(
-                                sorted(
-                                    (
-                                        item.source_trust_snapshot
-                                        for item in selected_capabilities
-                                        if item.source_trust_snapshot is not None
-                                    ),
-                                    key=lambda item: item.plugin_id,
-                                )
-                            ),
-                            effective_configuration_set=PluginEffectiveConfigurationSetV1(
-                                entries=tuple(
-                                    sorted(
-                                        (
-                                            PluginEffectiveConfigurationEntry(
-                                                plugin_id=package.manifest.name,
-                                                contribution_id=reservation.contribution_id,
-                                                configuration={},
-                                            )
-                                            for package in product_capabilities.packages
-                                            for reservation in package.contribution_index.items
-                                        ),
-                                        key=lambda item: (
-                                            item.plugin_id,
-                                            item.contribution_id,
-                                        ),
-                                    )
-                                ),
-                            ),
-                            allowed_authority_ceiling=("filesystem", "process"),
-                        )
-                        pending = PluginDeclarationHost().resolve(
-                            product_capabilities.packages,
-                            bindings=product_capabilities.bindings,
-                            plan=product_plan,
-                            decision_lookup=PluginExecutionDecisionJournal(
-                                tmp_path / "product-definition-decisions.jsonl",
-                                scope_kind="workspace",
-                                scope_id=product_scope_id,
-                                clock=lambda: 1_700_000_000_000,
-                            ),
-                        )
-                        assert isinstance(
-                            pending, PluginPreflightPendingApprovalOutcome
-                        )
-                        assert {item.plugin_id for item in pending.subjects} == {
-                            "coding.lsp.default",
-                            "coding.arch.default",
-                        }
-                        for subject in pending.subjects:
-                            selected_capability = next(
-                                item
-                                for item in selected_capabilities
-                                if item.manifest.name == subject.plugin_id
                             )
                             assert (
-                                subject.instance_revision_ref
-                                == selected_capability.snapshot.instance_revision_ref
+                                product_preparation.selection.plan.source_trust_snapshots
+                                == tuple(
+                                    sorted(
+                                        (
+                                            item.source_trust_snapshot
+                                            for item in selected_capabilities
+                                            if item.source_trust_snapshot is not None
+                                        ),
+                                        key=lambda item: item.plugin_id,
+                                    )
+                                )
                             )
-                            assert subject.package_source_identity == (
-                                selected_capability.snapshot.package_revision.package_source_identity
+                            decisions = PluginExecutionDecisionJournal(
+                                product_preparation.state_root
+                                / "definition-decisions.jsonl",
+                                scope_kind="workspace",
+                                scope_id=product_preparation.scope_id,
+                                clock=lambda: 1_700_000_000_000,
+                            ).snapshot().decisions
+                            assert len(decisions) == 2
+                            assert all(item.disposition == "approved" for item in decisions)
+                            assert {
+                                (
+                                    candidate.package.manifest.name,
+                                    candidate.declaration.contribution_id,
+                                )
+                                for candidate in product_preparation.selection.candidates
+                            } == {
+                                ("coding.lsp.default", "coding-lsp-default"),
+                                ("coding.lsp.default", "coding-lsp-tools"),
+                                ("coding.arch.default", "coding-arch-default"),
+                                ("coding.arch.default", "coding-arch-tools"),
+                            }
+                            product_assembly = product_preparation.bind_workspace(
+                                workspace_binding,
+                                host_boot_id="a" * 32,
+                                tool_modes={
+                                    capability_id: "on_demand"
+                                    for capability_id in (
+                                        product_preparation.provider_owner_authorities
+                                    )
+                                },
+                                clock=lambda: 1_700_000_000_000,
                             )
-                            assert subject.package_content_digest == (
-                                selected_capability.snapshot.root_ref.artifact_digest
+                            try:
+                                assert len(
+                                    product_assembly.session_inputs.component_requests
+                                ) == 2
+                                assert set(product_assembly.tool_owners) == {
+                                    "coding.lsp.default",
+                                    "coding.arch.default",
+                                }
+                            finally:
+                                product_assembly.abort_unpublished()
+                        finally:
+                            product_preparation.close()
+                        builtin_session_id = (
+                            session_manager.get_header().conversation_id
+                        )
+                        with pytest.raises(
+                            ValueError, match="base selection changed"
+                        ):
+                            prepare_coding_builtin_product_composition(
+                                reopened_builtin,
+                                base_compilation=compiled_base,
+                                session_id=builtin_session_id,
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "stale-builtin-approval"),
+                                clock=lambda: 1_700_000_000_000,
                             )
-                            assert subject.source_trust_policy_revision == (
-                                selected_capability.source_trust_snapshot.source_trust_policy_revision
+                        current_base_compilation = (
+                            compile_coding_base_product_selection(
+                                reopened_builtin.capture_selected_plugin_manifest_for(
+                                    "coding.base",
+                                    max_files=64,
+                                    max_total_bytes=1024 * 1024,
+                                ),
+                                resolve_coding_composition_set("coding-standard"),
+                                installation_key=key,
+                                session_id=builtin_session_id,
+                                host_environment=compiled_base.host_environment,
+                                evaluated_at=1,
                             )
+                        )
+                        builtin_preparation = (
+                            prepare_coding_builtin_product_composition(
+                                reopened_builtin,
+                                base_compilation=current_base_compilation,
+                                session_id=builtin_session_id,
+                                configurations=product_configurations,
+                                state_root=(tmp_path / "builtin-product-approval"),
+                                clock=lambda: 1_700_000_000_000,
+                            )
+                        )
+                        try:
+                            assert set(
+                                builtin_preparation.capability_preparation.selection.plan.selected_plugin_ids
+                            ) == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            assert (
+                                builtin_preparation.base_compilation.product_composition
+                                is builtin_preparation.capability_preparation.product_composition
+                            )
+                            builtin_session = builtin_preparation.bind_workspace(
+                                workspace_binding,
+                                host_boot_id="a" * 32,
+                                tool_modes={
+                                    capability_id: "on_demand"
+                                    for capability_id in (
+                                        builtin_preparation.capability_preparation.provider_owner_authorities
+                                    )
+                                },
+                                clock=lambda: 1_700_000_000_000,
+                            )
+                            try:
+                                assert (
+                                    builtin_session.base_session.session_inputs
+                                    is builtin_session.capability_assembly.session_inputs
+                                )
+                                assert len(
+                                    builtin_session.base_session.compilation.product_resource_inputs()
+                                ) == 2
+                                assert all(
+                                    admission.candidate.dependency_lock_digest
+                                    == current_base_compilation.selected_manifest.snapshot.package_revision.dependency_lock_digest
+                                    for admission in builtin_session.base_session.compilation.product_composition.resource_admissions
+                                )
+                                assert (
+                                    builtin_session.base_session.compilation.build_owners(
+                                        clock=lambda: 1,
+                                        tool_options=ToolsOptions(
+                                            host_environment=compiled_base.host_environment
+                                        ),
+                                    ).tool
+                                    is not None
+                                )
+                                assert len(
+                                    builtin_session.capability_assembly.session_inputs.component_requests
+                                ) == 2
+                            finally:
+                                builtin_session.abort_unpublished()
+                        finally:
+                            builtin_preparation.close()
+                        prior_builtin_session_leases = len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        )
+                        default_builtin_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "builtin-default-session",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        default_builtin_factory = (
+                            application_owner.factory_for_session(
+                                default_builtin_manager
+                            )
+                        )
+                        default_builtin_session = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy base route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer"),
+                                ),
+                            ):
+                                default_builtin_session = create_agent_session(
+                                    session_manager=default_builtin_manager,
+                                    model=Model(
+                                        id="plc9b-builtin-default",
+                                        name="PLC9B Builtin Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=default_builtin_factory,
+                                    composition_set="coding-standard",
+                                )
+                                asyncio.run(
+                                    default_builtin_session.prepare_model_call_runtime()
+                                )
+                                assert not (
+                                    default_builtin_session._coding_capability_plugin_assembly.state_root.exists()
+                                )
+                            assert (
+                                default_builtin_session._coding_base_product_compilation.plan.selected_plugin_ids
+                                == ("coding.base", "coding.lsp.default")
+                            )
+                            assert (
+                                default_builtin_session._coding_capability_plugin_assembly.session_inputs.product_composition
+                                is default_builtin_session._coding_base_product_compilation.product_composition
+                            )
+                            assert (
+                                default_builtin_session._package_controller.get_package_materializer()
+                                is None
+                            )
+                            with pytest.raises(
+                                RuntimeError, match="runtime leases remain active"
+                            ):
+                                application_owner.close()
+                        finally:
+                            if default_builtin_session is not None:
+                                asyncio.run(default_builtin_session.dispose())
+                            else:
+                                default_builtin_factory.dispose_unbound_runtime()
+                        missing_capability_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "missing-product-capability",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        missing_capability_factory = (
+                            reopened_owner.factory_for_session(
+                                missing_capability_manager
+                            )
+                        )
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability fallback"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer fallback"),
+                                ),
+                                pytest.raises(PackageProductRuntimeReadError),
+                            ):
+                                create_agent_session(
+                                    session_manager=missing_capability_manager,
+                                    model=Model(
+                                        id="plc9b-missing-capability",
+                                        name="PLC9B Missing Capability",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=(
+                                        missing_capability_factory
+                                    ),
+                                    composition_set="coding-standard",
+                                )
+                        finally:
+                            missing_capability_factory.dispose_unbound_runtime()
+                        architecture_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "builtin-architecture-session",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        architecture_factory = application_owner.factory_for_session(
+                            architecture_manager
+                        )
+                        assert (
+                            architecture_factory.epoch_runtime
+                            is default_builtin_factory.epoch_runtime
+                        )
+                        architecture_session = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy base route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                    side_effect=AssertionError("legacy Capability route"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy materializer"),
+                                ),
+                            ):
+                                architecture_session = create_agent_session(
+                                    session_manager=architecture_manager,
+                                    model=Model(
+                                        id="plc9b-builtin-architecture",
+                                        name="PLC9B Builtin Architecture",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
+                                    ),
+                                    package_product_runtime_factory=architecture_factory,
+                                    composition_set="coding-architecture",
+                                )
+                                asyncio.run(
+                                    architecture_session.prepare_model_call_runtime()
+                                )
+                            assert set(
+                                architecture_session._coding_base_product_compilation.plan.selected_plugin_ids
+                            ) == {
+                                "coding.base",
+                                "coding.lsp.default",
+                                "coding.arch.default",
+                            }
+                            assert set(
+                                architecture_session._coding_capability_plugin_assembly.tool_owners
+                            ) == {"coding.lsp.default", "coding.arch.default"}
+                        finally:
+                            if architecture_session is not None:
+                                asyncio.run(architecture_session.dispose())
+                            else:
+                                architecture_factory.dispose_unbound_runtime()
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        async def standalone_product_session() -> None:
+                            with patch(
+                                "loushang.coding.bootstrap.resolve_platform_home",
+                                return_value=tmp_path / "standalone-platform",
+                            ):
+                                standalone = create_agent_session_runtime(
+                                    session_dir=tmp_path / "standalone-b-sessions",
+                                    model=Model(
+                                        id="plc9b-standalone-default",
+                                        name="PLC9B Standalone Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(ControlConfig())
+                                    ),
+                                    persist=False,
+                                )
+                            try:
+                                with (
+                                    patch(
+                                        "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                        return_value=legacy_layout,
+                                    ),
+                                    patch(
+                                        "loushang.coding.package_product_runtime.version",
+                                        return_value="2.0.0",
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                        side_effect=AssertionError("legacy standalone base"),
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                        side_effect=AssertionError("legacy standalone Capability"),
+                                    ),
+                                    patch(
+                                        "loushang.coding.bootstrap._default_package_materializer",
+                                        side_effect=AssertionError("legacy standalone materializer"),
+                                    ),
+                                ):
+                                    selected = await standalone.create_session(
+                                        cwd=str(workspace)
+                                    )
+                                    await selected.prepare_model_call_runtime()
+                                assert (
+                                    selected._package_controller.get_package_materializer()
+                                    is None
+                                )
+                                assert (
+                                    selected._coding_base_product_compilation.plan.selected_plugin_ids
+                                    == ("coding.base", "coding.lsp.default")
+                                )
+                            finally:
+                                await standalone.dispose_session_runtime()
+
+                        asyncio.run(standalone_product_session())
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        direct_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "direct-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        direct_session = None
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                side_effect=AssertionError("legacy direct base"),
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
+                                side_effect=AssertionError("legacy direct Capability"),
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap._default_package_materializer",
+                                side_effect=AssertionError("legacy direct materializer"),
+                            ),
+                        ):
+                            try:
+                                direct_session = create_agent_session(
+                                    session_manager=direct_manager,
+                                    model=Model(
+                                        id="plc9b-direct-default",
+                                        name="PLC9B Direct Default",
+                                        provider="test",
+                                        endpoint="anthropic-messages",
+                                        capabilities=Capabilities(
+                                            reasoning=True,
+                                            input=("text",),
+                                            context_window=128000,
+                                            max_tokens=4096,
+                                        ),
+                                    ),
+                                    services=create_services(
+                                        settings_manager=SettingsManager(ControlConfig())
+                                    ),
+                                )
+                                asyncio.run(direct_session.prepare_model_call_runtime())
+                                assert (
+                                    direct_session._package_controller.get_package_materializer()
+                                    is None
+                                )
+                                assert (
+                                    direct_session._coding_base_product_compilation.plan.selected_plugin_ids
+                                    == ("coding.base", "coding.lsp.default")
+                                )
+                                before_transports = len(
+                                    PackageLifecycleJournal(
+                                        state_root / "lifecycle.jsonl"
+                                    ).records()
+                                )
+                                with patch.object(
+                                    direct_session,
+                                    "update_package",
+                                    side_effect=AssertionError("legacy transport update"),
+                                ):
+                                    with pytest.raises(
+                                        PackageLifecycleError,
+                                        match="package_route_unavailable",
+                                    ):
+                                        asyncio.run(
+                                            run_package_lifecycle(
+                                                direct_session,
+                                                PackageLifecycleRequest(
+                                                    update=(str(source),),
+                                                    scope="project",
+                                                ),
+                                            )
+                                        )
+                                    direct_rpc_output = io.StringIO()
+                                    direct_rpc = RpcPackageCommands(
+                                        runtime=object(),
+                                        get_session=lambda: direct_session,
+                                        output=RpcOutput(direct_rpc_output),
+                                    )
+                                    asyncio.run(
+                                        dict(direct_rpc.bindings())["update_package"](
+                                            "request:default-product-update",
+                                            {"source": str(source), "scope": "project"},
+                                        )
+                                    )
+                                direct_rpc_result = json.loads(
+                                    direct_rpc_output.getvalue().splitlines()[-1]
+                                )
+                                assert direct_rpc_result["success"] is False
+                                transport_failures = [
+                                    record
+                                    for record in PackageLifecycleJournal(
+                                        state_root / "lifecycle.jsonl"
+                                    ).records()[before_transports:]
+                                    if record.request.action == "update"
+                                    and record.status.failure is not None
+                                    and record.status.failure.code
+                                    == "package_route_unavailable"
+                                ]
+                                assert len(transport_failures) == 2
+                            finally:
+                                if direct_session is not None:
+                                    asyncio.run(direct_session.dispose())
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        rejected_direct_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "rejected-direct-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            pytest.raises(ValueError, match="Unsupported Coding composition set"),
+                        ):
+                            create_agent_session(
+                                session_manager=rejected_direct_manager,
+                                model=Model(
+                                    id="plc9b-direct-rejected",
+                                    name="PLC9B Direct Rejected",
+                                    provider="test",
+                                    endpoint="anthropic-messages",
+                                    capabilities=Capabilities(
+                                        reasoning=True,
+                                        input=("text",),
+                                        context_window=128000,
+                                        max_tokens=4096,
+                                    ),
+                                ),
+                                composition_set="unsupported",
+                            )
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        configured_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "configured-b-sessions",
+                                cwd=str(workspace),
+                                persist=False,
+                            )
+                        )
+                        before_configured = len(
+                            PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                        )
+                        configured_services = create_services(
+                            settings_manager=SettingsManager(
+                                ControlConfig(
+                                    package_sources=(
+                                        PackageSourceConfig(source=str(source)),
+                                    )
+                                )
+                            )
+                        )
+                        with (
+                            patch(
+                                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                                return_value=legacy_layout,
+                            ),
+                            patch(
+                                "loushang.coding.package_product_runtime.version",
+                                return_value="2.0.0",
+                            ),
+                            patch(
+                                "loushang.coding.bootstrap._default_package_materializer",
+                                side_effect=AssertionError("legacy startup materializer"),
+                            ),
+                            pytest.raises(PackageProductStartupSourceError),
+                        ):
+                            create_agent_session(
+                                session_manager=configured_manager,
+                                model=Model(
+                                    id="plc9b-configured-default",
+                                    name="PLC9B Configured Default",
+                                    provider="test",
+                                    endpoint="anthropic-messages",
+                                    capabilities=Capabilities(
+                                        reasoning=True,
+                                        input=("text",),
+                                        context_window=128000,
+                                        max_tokens=4096,
+                                    ),
+                                ),
+                                services=configured_services,
+                            )
+                        configured_records = PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()[before_configured:]
+                        assert any(
+                            record.request.action == "install"
+                            and record.status.failure is not None
+                            for record in configured_records
+                        )
+                        configured_failure_codes = {
+                            record.status.failure.code
+                            for record in configured_records
+                            if record.request.action == "install"
+                            and record.status.failure is not None
+                        }
+                        startup_diagnostics = (
+                            configured_services.diagnostics_service.get_diagnostics(
+                                phase="startup", source="package"
+                            )
+                        )
+                        assert configured_failure_codes <= {
+                            diagnostic.code for diagnostic in startup_diagnostics
+                        }
+                        assert all(
+                            diagnostic.type == "error"
+                            for diagnostic in startup_diagnostics
+                            if diagnostic.code in configured_failure_codes
+                        )
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_builtin_session_leases
+                        )
+                        # Other live Store owners do not retain this
+                        # application's rooted control handle.
+                        application_owner.close()
+                        with pytest.raises(ValueError, match="closed"):
+                            application_owner.epoch_runtime.assert_current()
+                        stale_preparation = (
+                            prepare_coding_product_capability_plugin_composition(
+                                reopened_builtin,
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                configurations=product_configurations,
+                                state_root=(
+                                    tmp_path / "stale-product-capability-approval"
+                                ),
+                                clock=lambda: 1_700_000_000_000,
+                                product_policy_revision=product_policy_revision,
+                            )
+                        )
+                        reopened_builtin.dispose_runtime()
+                        try:
+                            with pytest.raises(PluginRevisionError) as stale_selection:
+                                stale_preparation.bind_workspace(
+                                    workspace_binding,
+                                    host_boot_id="a" * 32,
+                                    tool_modes={
+                                        capability_id: "on_demand"
+                                        for capability_id in (
+                                            stale_preparation.provider_owner_authorities
+                                        )
+                                    },
+                                    clock=lambda: 1_700_000_000_000,
+                                )
+                            assert stale_selection.value.code == "plugin_revision_changed"
+                        finally:
+                            stale_preparation.close()
                     finally:
                         reopened_builtin.dispose_runtime()
                     try:
@@ -7004,7 +7970,7 @@ while True:
                     )
                 assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
-                with pytest.raises(ValueError, match="Store identity changed"):
+                with pytest.raises(ValueError, match="POSIX cutover evidence changed"):
                     factory.create(
                         PackageProductRuntimeRequestV1(
                             product_id="coding",
@@ -7063,6 +8029,8 @@ while True:
             runtime_lease.release()
         assert pre_b_tree() == frozen_pre_b_tree
     finally:
+        if application_owner is not None:
+            application_owner.close()
         epoch_runtime.close()
 
 

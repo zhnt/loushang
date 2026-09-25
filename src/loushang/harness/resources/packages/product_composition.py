@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
@@ -192,6 +194,7 @@ def compose_package_product_lifecycle(
     runtime_admission: PackageEpochRuntimeAdmissionOwner,
     admission_request: PackageEpochRuntimeAdmissionRequestV1,
     transaction_guard: PackageProductEpochTransactionGuardPort,
+    reference_guard: Callable[[], AbstractContextManager[object]] | None = None,
     recoveries: tuple[PackageProductRecoveryPort, ...] = (),
     admitted_recoveries: tuple[PackageProductAdmittedRecoveryPort, ...] = (),
 ) -> PackageProductLifecycleActivation:
@@ -206,6 +209,7 @@ def compose_package_product_lifecycle(
         binding_id=execution.owner.binding_id,
         router=PackageProductLifecycleRouter(
             execution=execution,
+            reference_guard=reference_guard,
         ),
         ingress_factory=ingress_factory,
         runtime_admission=runtime_admission,

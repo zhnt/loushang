@@ -364,8 +364,8 @@ Neither may silently override a narrower implemented owner contract.
   also installs that checked-in package through
   the Product transaction and reads its manifest, declaration, Prompt, and
   Skill members from the selected Store root after enablement. A concrete
-  fenced Coding Product owner constructor now serves explicit Hosted Sessions;
-  default selection remains unimplemented. The first-party LSP and Arch
+  fenced Coding Product owner constructor first served explicit Hosted Sessions;
+  default selection is described below. The first-party LSP and Arch
   Capability packages can now be frozen as distinct, digest-pinned Product
   Wheels alongside `coding.base` under one explicit Source policy. Their
   `in_process` Provider declarations remain unchanged. The real B Store fixture
@@ -375,11 +375,27 @@ Neither may silently override a narrower implemented owner contract.
   revision bridge now rechecks the live Store selection on every verified file
   read and supplies those bytes to the existing Plugin Python loader; the
   native fixture proves both Definitions load after the pre-B roots are hidden
-  and the bridge rejects a disposed Product runtime. Definition preflight also
-  yields pending Subjects bound to the B instance, Source, artifact, and trust
-  evidence. This is preflight input evidence only: Definition approval,
-  Provider composition, and default
-  selection for those two packages are still open. The
+  and the bridge rejects a disposed Product runtime. An explicit POSIX Product
+  preparation builds its Definition plan from the B instance, Source, artifact,
+  and trust evidence, then uses those selections to
+  approve and compile both Definitions, bind a workspace Provider into two
+  Capability requests and two Tool owners, and abort an unpublished assembly.
+  It rechecks the live Product selection before binding, so disposing the B
+  runtime after preparation fails closed. A second explicit preparation now
+  selects `coding.base` and both Capability packages in one Product plan,
+  rejects a base compilation from an older Store selection, and compiles the
+  base Resource admissions and Capability owners together. The base Resource
+  candidates retain the exact B transaction lock digest while the executable
+  Definition gate retains its Plugin lock; the only permitted owner-candidate
+  projection changes that lock field after matching current Store identity.
+  The native fixture binds the resulting base and Capability assemblies to
+  the same Session composition inputs. With an explicit Product factory,
+  `coding-standard` now starts a real Session from the selected base and LSP,
+  while `coding-architecture` starts from all three selected packages. Both
+  prepare the Session graph with pre-B roots hidden and legacy constructors
+  disabled. A base-only Product owner cannot satisfy the LSP request and does
+  not fall back to the legacy materializer. The later B-fence default selection
+  and its remaining migration gates are described below. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired
@@ -406,9 +422,17 @@ Neither may silently override a narrower implemented owner contract.
   factory construction fails. The native fixture also starts a Hosted Session
   on the committed `coding.base` Store root through this selector; Product
   Prompt and Skill are visible, the legacy materializer is not reached, and
-  closing releases the lease. Installed commands still do not construct this
-  owner by default. A POSIX snapshot owner now publishes a durable,
-  restore-compatible bundle from
+  closing releases the lease. A Coding application owner can now reopen one
+  fenced B epoch, supply factories to successive standard and architecture
+  Sessions, and close only after its own runtime leases have been released;
+  the real-Store fixture rejects an early close and permits closing while a
+  separate Store owner remains live. The shared Hosted/managed Session factory
+  and standalone Coding runtime now select this owner when a workspace has a
+  durable B fence. Their application close releases the owner after Session
+  cleanup; a failed B reopen cannot fall back to the legacy materializer.
+  Direct `create_agent_session` callers also select a fenced owner by default;
+  its Session binding releases that owner at disposal.
+  A POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:
@@ -489,13 +513,48 @@ Neither may silently override a narrower implemented owner contract.
   classification. Synchronous Session `uninstall_package` now routes an enforced
   Product binding before consulting the legacy synchronous-refresh gate; its
   real-Store refusal is durable even when catalog refresh is async-only.
-  Default Session composition, further transport coverage, and supervisor
-  launch still need a one-time switch.
+  Further transport coverage and supervisor launch still need a one-time switch.
   Trusted Hosted, local, and managed command constructors can now pass a fresh
   Product runtime factory for each Session into the same bootstrap gate. The
-  installed CLI and managed child do not yet supply that factory by default.
-  Default Coding does not select that factory; this is not a
-  completed Product cutover, Windows composition, or PLC9D execution claim.
+  shared Hosted/managed factory, standalone Coding runtime, and direct Session
+  API select a fenced Product owner by default. The real-Store fixture confirms
+  base/LSP selection with pre-B roots hidden and legacy constructors disabled,
+  then releases their runtime leases on close. CLI and RPC updates through that
+  default Session each leave a durable Product refusal while their legacy
+  Session method is disabled. A configured startup Package Source now enters
+  the Product transaction, and a failed Product record aborts Session startup;
+  later configured Sources are not attempted, and the exact Product failure
+  code is recorded in diagnostics. The old materializer is not called. Product
+  mode does not mount the configured Source path as a Resource root. A native
+  POSIX fixture now also proves that a default, fenced `coding-minimal` Session
+  commits a configured first-party capability Wheel through the real Product
+  Store, records the committed lifecycle and committed set, and releases its
+  runtime lease. The subsequent capability selection reads that committed root.
+  The same default Session commits the first-party LSP Wheel through the CLI
+  install route with its legacy Session install method disabled; the Product
+  lifecycle and committed set retain that separate transaction.
+  A second RPC install of that already installed Plugin now leaves a durable
+  classified refusal before another Package commit, with Desired state and
+  committed sets unchanged. The real Product route holds the GC reference gate
+  across its installed-target preflight, transaction, and handoff so concurrent
+  management mutations cannot cross those phases.
+  That default Session also sends unauthorized CLI and RPC installs through
+  Product: both leave distinct durable refusals with Desired state unchanged
+  while its legacy install method is disabled.
+  Direct legacy `PluginRevisionStore.publish` and
+  `PackageMaterializer.publish_plugin_packages` now refuse the old revision root
+  after an epoch namespace exists. They hold the same authority-root lock as
+  cutover through publication; the native B fixture proves both refusals and
+  preserves the pre-B tree. The same Linux fence now covers direct
+  `PackageMaterializer` lockfile/binding writes, synchronous and asynchronous
+  backend effects, and removal through their full write intervals. Native B
+  evidence covers lockfile and synchronous backend refusals; focused epoch-root
+  regressions cover binding, asynchronous update, and removal. Direct Git and
+  Python backend calls into the legacy `installed` tree, including aliases that
+  resolve there, now refuse before running either installer. Windows and
+  noncanonical external write roots remain outside this guard.
+  This is not a completed Product
+  cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution
   and direct configured-Source preparation. Dark mode retains its compatibility

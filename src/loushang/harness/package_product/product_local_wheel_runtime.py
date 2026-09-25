@@ -144,6 +144,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
 )
+from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductRouteRequestV1,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
@@ -662,6 +665,20 @@ def compose_posix_local_wheel_product(
         handoff=handoff,
         inventory_revision=projection.inventory_revision,
     )
+
+    def existing_installation(request: PackageProductRouteRequestV1) -> bool:
+        ingress = request.ingress
+        plugin_id = ingress.requested_plugin_id
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Package Product installation identity is missing")
+        key = PluginInstallationKeyV1(
+            product_id=ingress.product_id,
+            installation_scope="workspace",
+            scope_id=ingress.scope_id,
+            plugin_id=plugin_id,
+        )
+        return desired_state.snapshot().installation(key).selection.desired_state != "absent"
+
     transaction = PackageProductLifecycleTransaction(
         kernel=kernel,
         execution=PackageProductWheelExecutionFactory(
@@ -674,6 +691,7 @@ def compose_posix_local_wheel_product(
         staging=staging,
         commit=commit,
         handoff=finalizer,
+        existing_installation=existing_installation,
     )
     lifecycle = compose_package_product_lifecycle(
         product_id=policy.product_id,
@@ -690,6 +708,7 @@ def compose_posix_local_wheel_product(
             coordination_lock=registry.coordination_lock,
             file_io=registry._io,
         ),
+        reference_guard=gc_gate.guard,
         recoveries=(PackageRetentionHandoffRecovery(handoff_journal, handoff),),
         admitted_recoveries=(
             PackageCommittedProductHandoffRecovery(

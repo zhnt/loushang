@@ -36,6 +36,9 @@ from .appservice_adapter import (
 )
 from .bootstrap import BootstrapServices, create_agent_session
 from .hosted_catalog import CodingHostedCandidateBindingV1, CodingHostedCatalogError
+from .package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+)
 from .session.agent_session import AgentSession
 from .session_manager import SessionManager
 
@@ -252,6 +255,21 @@ class CodingRealHostedSessionFactoryV1:
         self._package_product_runtime_factory_for_session = (
             package_product_runtime_factory_for_session
         )
+        self._product_owner_selection = CodingFencedProductApplicationSelection()
+        self._closing = False
+        self._closed = False
+
+    def _default_product_factory_for_session(
+        self, manager: SessionManager
+    ) -> PackageProductRuntimeFactoryPort | None:
+        return self._product_owner_selection.factory_for_session(manager)
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closing = True
+        self._product_owner_selection.close()
+        self._closed = True
 
     async def create_session(
         self,
@@ -259,6 +277,8 @@ class CodingRealHostedSessionFactoryV1:
         binding_key: SessionBindingKeyV1,
         opaque_session_binding: object,
     ) -> CodingRealHostedSessionV1:
+        if self._closing:
+            raise CodingHostedCatalogError()
         if type(opaque_session_binding) is not CodingHostedCandidateBindingV1:
             raise CodingHostedCatalogError()
         identity = opaque_session_binding.record.identity
@@ -276,6 +296,8 @@ class CodingRealHostedSessionFactoryV1:
                 runtime_factory = self._package_product_runtime_factory_for_session(manager)
                 if runtime_factory is None:
                     raise TypeError("Package Product runtime factory is required")
+            else:
+                runtime_factory = self._default_product_factory_for_session(manager)
             session = create_agent_session(
                 session_manager=manager,
                 model=self._model,

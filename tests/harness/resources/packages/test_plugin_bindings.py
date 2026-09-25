@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -24,6 +26,7 @@ from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
+from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.types import PackageResourceSummary
 
@@ -78,6 +81,70 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     assert caught.value.code == "plugin_identity_changed"
     assert restored.get_plugin_binding(root) == binding
     assert (tmp_path / "package-lock.json").read_bytes() == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux epoch lock")
+def test_legacy_binding_cannot_change_after_epoch_namespace(tmp_path: Path) -> None:
+    authority = tmp_path / "authority"
+    legacy = authority / "coding-lifecycle"
+    legacy.mkdir(parents=True, mode=0o700)
+    materializer = PackageMaterializer(
+        install_root=legacy / "installed",
+        lockfile_path=legacy / "package-lock.json",
+        plugin_revision_root=legacy / "plugin-revisions",
+    )
+    source = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    published = _published_descriptor(materializer, source)
+    epochs = authority / "coding-lifecycle.epochs"
+    (epochs / ("a" * 64)).mkdir(parents=True, mode=0o700)
+
+    try:
+        with pytest.raises(PluginRevisionError) as refused:
+            materializer.bind_plugin_packages((published,))
+        assert refused.value.code == "plugin_revision_epoch_fenced"
+        assert not (legacy / "package-lock.json").exists()
+    finally:
+        published.revision_handle.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux epoch lock")
+def test_legacy_update_and_remove_stop_before_disk_effects(tmp_path: Path) -> None:
+    authority = tmp_path / "authority"
+    legacy = authority / "coding-lifecycle"
+    legacy.mkdir(parents=True, mode=0o700)
+    backend_calls: list[str] = []
+
+    async def backend(record: PackageMaterializationRecord) -> PackageMaterializationRecord:
+        backend_calls.append(record.source)
+        (record.target_path / "changed.txt").write_bytes(b"legacy update")
+        return record.with_lifecycle("installed")
+
+    materializer = PackageMaterializer(
+        install_root=legacy / "installed",
+        lockfile_path=legacy / "package-lock.json",
+        plugin_revision_root=legacy / "plugin-revisions",
+        backend=backend,
+        security_policy=_AllowPolicy(),
+    )
+    source = "https://packages.example.test/review.git"
+    record = materializer.prepare_remote_source(source)
+    record.target_path.mkdir(parents=True)
+    marker = record.target_path / "keep.txt"
+    marker.write_bytes(b"pre-B data")
+    lockfile_before = materializer.lockfile_path.read_bytes()
+    epochs = authority / "coding-lifecycle.epochs"
+    (epochs / ("a" * 64)).mkdir(parents=True, mode=0o700)
+
+    with pytest.raises(PluginRevisionError) as update_refusal:
+        asyncio.run(materializer.update_remote_source(source))
+    with pytest.raises(PluginRevisionError) as remove_refusal:
+        materializer.remove_remote_source(source)
+    assert update_refusal.value.code == "plugin_revision_epoch_fenced"
+    assert remove_refusal.value.code == "plugin_revision_epoch_fenced"
+    assert backend_calls == []
+    assert marker.read_bytes() == b"pre-B data"
+    assert not (record.target_path / "changed.txt").exists()
+    assert materializer.lockfile_path.read_bytes() == lockfile_before
 
 
 def test_stale_materializers_merge_disjoint_plugin_bindings_without_lost_update(

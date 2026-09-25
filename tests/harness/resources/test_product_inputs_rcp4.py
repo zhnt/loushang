@@ -581,6 +581,40 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
         assert extra.value.code == "product_contribution_owner_extra"
         assert extra.value.owner_keys == (extra_binding.owner_key,)
 
+        projected_candidates = tuple(
+            replace(
+                prepare_owner_contribution_candidate(selection, item),
+                dependency_lock_digest="a" * 64,
+            )
+            for item in contribution_candidates
+        )
+        projected = assemble_product_composition(
+            replace(assembly_request, owner_candidates=projected_candidates),
+            evaluated_at=150,
+        )
+        assert all(
+            item.candidate.dependency_lock_digest == "a" * 64
+            for item in (
+                *projected.resource_admissions,
+                *projected.catalog_admissions,
+            )
+        )
+        with pytest.raises(ProductCompositionAssemblyError) as changed_owner:
+            assemble_product_composition(
+                replace(
+                    assembly_request,
+                    owner_candidates=(
+                        replace(projected_candidates[0], owner_id="resources.rogue"),
+                        *projected_candidates[1:],
+                    ),
+                ),
+                evaluated_at=150,
+            )
+        assert (
+            changed_owner.value.code
+            == "product_contribution_candidate_projection_mismatch"
+        )
+
         composition = assemble_product_composition(
             assembly_request,
             evaluated_at=150,

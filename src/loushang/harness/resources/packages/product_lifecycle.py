@@ -8,6 +8,8 @@ and publication routes are refusals, never alternate implementations.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -136,12 +138,18 @@ class PackageProductLifecycleRouter:
         self,
         *,
         execution: PackageProductLifecycleExecutionBinding,
+        reference_guard: Callable[[], AbstractContextManager[object]] | None = None,
     ) -> None:
         if not isinstance(execution, PackageProductLifecycleExecutionBinding):
             raise TypeError("Package Product lifecycle execution binding is required")
+        if reference_guard is not None and not callable(reference_guard):
+            raise TypeError("Package Product reference guard is invalid")
         self._owner = execution.owner
         self._transaction = execution.transaction
         self._owner_binding_id = execution.owner.binding_id
+        self._reference_guard = (
+            reference_guard if reference_guard is not None else nullcontext
+        )
 
     def route(
         self,
@@ -149,61 +157,62 @@ class PackageProductLifecycleRouter:
     ) -> PackageLifecycleStatusV1:
         """Classify once and route without owning a compatibility fallback."""
 
-        if not isinstance(request, PackageProductRouteRequestV1):
-            raise TypeError("Package Product route request is required")
-        status = self._owner.submit(request.ingress)
-        if status.disposition == "committed":
-            self._finalize_committed(request, status)
-            return status
-        if status.disposition != "active":
-            return status
-        classification = status.classification
-        if classification is None:
-            raise PackageProductRouteContractError(
-                "Classified Package route has no classification evidence"
-            )
-        if classification.decision != "plugin_bound":
-            # A separately accepted non-Plugin authority may consume this
-            # classification.  This router deliberately holds no such peer.
-            return status
-        if request.entrypoint == "direct_materializer":
-            if status.phase != "classified":
+        with self._reference_guard():
+            if not isinstance(request, PackageProductRouteRequestV1):
+                raise TypeError("Package Product route request is required")
+            status = self._owner.submit(request.ingress)
+            if status.disposition == "committed":
+                self._finalize_committed(request, status)
+                return status
+            if status.disposition != "active":
+                return status
+            classification = status.classification
+            if classification is None:
                 raise PackageProductRouteContractError(
-                    "Direct Package materializer replay crossed a transaction edge"
+                    "Classified Package route has no classification evidence"
                 )
-            return self._reject_direct_materializer(status)
-        if request.entrypoint not in _TRANSACTION_ENTRYPOINTS:
-            raise PackageProductRouteContractError(
-                "Package Product entrypoint has no transaction route"
-            )
+            if classification.decision != "plugin_bound":
+                # A separately accepted non-Plugin authority may consume this
+                # classification.  This router deliberately holds no such peer.
+                return status
+            if request.entrypoint == "direct_materializer":
+                if status.phase != "classified":
+                    raise PackageProductRouteContractError(
+                        "Direct Package materializer replay crossed a transaction edge"
+                    )
+                return self._reject_direct_materializer(status)
+            if request.entrypoint not in _TRANSACTION_ENTRYPOINTS:
+                raise PackageProductRouteContractError(
+                    "Package Product entrypoint has no transaction route"
+                )
 
-        if self._transaction.owner_binding_id != self._owner_binding_id:
-            raise PackageProductRouteContractError(
-                "Package Product transaction owner changed after composition"
-            )
+            if self._transaction.owner_binding_id != self._owner_binding_id:
+                raise PackageProductRouteContractError(
+                    "Package Product transaction owner changed after composition"
+                )
 
-        result = self._transaction.execute(request, current=status)
-        if not isinstance(result, PackageLifecycleStatusV1):
-            raise PackageProductRouteContractError(
-                "Package Product transaction returned invalid status"
-            )
-        durable = self._owner.status(status.operation_id)
-        if durable is None or durable != result:
-            raise PackageProductRouteContractError(
-                "Package Product transaction result is not durable"
-            )
-        if (
-            result.operation_id != status.operation_id
-            or result.request_fingerprint != status.request_fingerprint
-            or result.classification != status.classification
-            or result.disposition == "active"
-        ):
-            raise PackageProductRouteContractError(
-                "Package Product transaction result changed route identity"
-            )
-        if result.disposition == "committed":
-            self._finalize_committed(request, result)
-        return result
+            result = self._transaction.execute(request, current=status)
+            if not isinstance(result, PackageLifecycleStatusV1):
+                raise PackageProductRouteContractError(
+                    "Package Product transaction returned invalid status"
+                )
+            durable = self._owner.status(status.operation_id)
+            if durable is None or durable != result:
+                raise PackageProductRouteContractError(
+                    "Package Product transaction result is not durable"
+                )
+            if (
+                result.operation_id != status.operation_id
+                or result.request_fingerprint != status.request_fingerprint
+                or result.classification != status.classification
+                or result.disposition == "active"
+            ):
+                raise PackageProductRouteContractError(
+                    "Package Product transaction result changed route identity"
+                )
+            if result.disposition == "committed":
+                self._finalize_committed(request, result)
+            return result
 
     def _finalize_committed(
         self,
