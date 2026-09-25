@@ -206,9 +206,7 @@ def coding_multiagent_system_prompt(
 ) -> str:
     """Describe the admitted Coding collaboration surface to the root model."""
 
-    resolved_host_environment = (
-        host_environment or LocalHostEnvironmentProbe().detect()
-    )
+    resolved_host_environment = host_environment or LocalHostEnvironmentProbe().detect()
 
     role_descriptions = {
         "explorer": (
@@ -241,7 +239,9 @@ def coding_multiagent_system_prompt(
         "## Multi-agent collaboration\n\n"
         "You may delegate focused work to session-owned child agents with "
         "`spawn_agent`. Spawning is asynchronous: use `wait_agent` to wait for "
-        "new collaboration activity, `list_agents` to inspect the visible tree, "
+        "new collaboration activity, `get_agent_result` to read a truncated "
+        "child report using the exact path, incarnation, and round_id from its "
+        "completion notice, `list_agents` to inspect the visible tree, "
         "and `send_message` for a follow-up. Use `interrupt_agent` or "
         "`close_agent` only for agents you own. Child completion notices enter "
         "your system mailbox, separate from editable follow-up and steering input "

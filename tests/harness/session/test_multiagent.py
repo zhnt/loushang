@@ -316,7 +316,7 @@ def test_child_completion_uses_root_mailbox_without_starting_a_root_turn() -> No
         mailbox = root_queue.drain_next_turn()
         assert len(mailbox) == 1
         assert mailbox[0].kind == "mailbox"
-        assert "Looks safe" in mailbox[0].text
+        assert "No blockers." in mailbox[0].text
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -356,7 +356,7 @@ def test_child_completion_uses_mailbox_while_root_is_running() -> None:
         mailbox = root_queue.drain_next_turn()
         assert len(mailbox) == 1
         assert mailbox[0].kind == "mailbox"
-        assert "Looks safe" in mailbox[0].text
+        assert "No blockers." in mailbox[0].text
         await runtime.dispose()
 
     asyncio.run(scenario())
