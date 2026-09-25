@@ -31,6 +31,7 @@ from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.plugin_management import (
@@ -40,6 +41,13 @@ from loushang.harness.plugin_management import (
     PluginManagementCommandV1,
     PluginManagementUpdateCommandV2,
     PluginPackageLifecycleError,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+    PackageEpochFenceRequestV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+    PackagePosixPreFenceRegistrationOwner,
 )
 from loushang.harness.resources.plugins import (
     PluginResolutionAuthority,
@@ -82,6 +90,78 @@ def _lifecycle(root: Path):
     lifecycle.reconcile_retirements()
     lifecycle.complete_startup_recovery()
     return lifecycle
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_coding_legacy_lifecycle_registers_before_state_and_rejects_fence(
+    tmp_path: Path,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session", cwd=tmp_path / "workspace"
+    )
+    epoch = resolve_coding_package_epoch_layout(layout)
+    lifecycle = build_coding_plugin_lifecycle(
+        layout, startup_id="legacy-coding-runtime"
+    )
+    fences = PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl")
+    owner = PackagePosixPreFenceRegistrationOwner(
+        epoch.authority_root, store_id=epoch.store_id, fences=fences
+    )
+    try:
+        with owner.exclusive_quiescence(store_id=epoch.store_id) as live:
+            assert len(live.active_registration_ids) == 1
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    with owner.exclusive_quiescence(store_id=epoch.store_id) as released:
+        assert released.active_registration_ids == ()
+
+    fences.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=epoch.store_id,
+            prior_fence=None,
+            legacy_root_identity="a" * 64,
+            fenced_root_identity="b" * 64,
+            namespace_id="c" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="d" * 64,
+            snapshot_receipt_id="e" * 64,
+            root_switch_receipt_id="f" * 64,
+        )
+    )
+    with pytest.raises(CodingPluginLifecycleError) as refused:
+        build_coding_plugin_lifecycle(layout, startup_id="legacy-coding-runtime")
+    assert refused.value.code == "package_runtime_epoch_unsupported"
+    with pytest.raises(CodingPluginLifecycleError) as management_refused:
+        build_coding_plugin_management_application(layout)
+    assert management_refused.value.code == "package_runtime_epoch_unsupported"
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_coding_management_application_holds_pre_fence_registration(
+    tmp_path: Path,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session", cwd=tmp_path / "workspace"
+    )
+    epoch = resolve_coding_package_epoch_layout(layout)
+    build_coding_plugin_management_application(layout)
+    owner = PackagePosixPreFenceRegistrationOwner(
+        epoch.authority_root,
+        store_id=epoch.store_id,
+        fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
+    )
+    try:
+        with owner.exclusive_quiescence(store_id=epoch.store_id) as live:
+            assert len(live.active_registration_ids) == 1
+    finally:
+        plugin_lifecycle_module._release_process_startup_lease(
+            layout, startup_id=plugin_lifecycle_module._CODING_PLUGIN_RUNTIME_BOOT_ID
+        )
 
 
 def _copy_base(root: Path, name: str) -> Path:

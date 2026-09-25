@@ -784,6 +784,8 @@ def _create_agent_session(
                     "workspace authority",
                     code="coding_base_package_authority_mismatch",
                 )
+            lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
+            coding_plugin_lifecycle = lifecycle
             base_package_materializer = package_materializer or PackageMaterializer(
                 install_root=lifecycle_layout.package_install_root,
                 lockfile_path=lifecycle_layout.package_lockfile,
@@ -799,8 +801,6 @@ def _create_agent_session(
                     diagnostics_service=services.diagnostics_service,
                     session_id=session_id,
                 )
-            lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
-            coding_plugin_lifecycle = lifecycle
             coding_plugin_package_materializer = base_package_materializer
             if base_ephemeral_state is not None:
                 ephemeral_lifecycle = lifecycle
@@ -903,7 +903,13 @@ def _create_agent_session(
                 base_state_cleanup()
             if capability_management_state_cleanup is not None:
                 capability_management_state_cleanup()
-            elif base_state_cleanup is None and base_ephemeral_state is not None:
+            if coding_plugin_lifecycle is not None:
+                coding_plugin_lifecycle.release_owned_process_startup_lease()
+            if (
+                capability_management_state_cleanup is None
+                and base_state_cleanup is None
+                and base_ephemeral_state is not None
+            ):
                 base_ephemeral_state.cleanup()
             raise
 
@@ -1972,8 +1978,11 @@ def _create_agent_session_runtime(
         runtime_factory=partial(
             AgentSessionRuntime,
             owned_transcripts=sys.platform == "linux",
-            store_state_root=(resolve_platform_home() / "state/session-stores"
-                              if sys.platform == "linux" else None),
+            store_state_root=(
+                resolve_platform_home() / "state/session-stores"
+                if sys.platform == "linux"
+                else None
+            ),
             enroll_legacy_shared_store=(
                 sys.platform == "linux"
                 and Path(session_dir).expanduser().resolve(strict=False)

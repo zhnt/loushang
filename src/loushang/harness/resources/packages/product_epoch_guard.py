@@ -7,11 +7,58 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from loushang.harness.journal import journal_file_lock
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+    PackagePosixPreFenceRegistrationError,
+    PackagePosixPreFenceRegistrationOwner,
+)
 
 _SAFE_STORE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+
+
+class PackageProductLegacyPreFenceAdmissionError(RuntimeError):
+    """Product-facing refusal for a fenced or concurrent old runtime launch."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PackageProductLegacyRuntimeRegistration(Protocol):
+    def release(self) -> None: ...
+
+
+def register_package_product_legacy_runtime(
+    authority_root: Path,
+    *,
+    control_root: Path,
+    store_id: str,
+    startup_id: str,
+) -> PackageProductLegacyRuntimeRegistration:
+    """Admit one legacy process through the internal Linux pre-fence owner."""
+
+    if (
+        not isinstance(control_root, Path)
+        or not control_root.is_absolute()
+        or ".." in control_root.parts
+    ):
+        raise ValueError("Package Product epoch control root is invalid")
+    try:
+        return PackagePosixPreFenceRegistrationOwner(
+            authority_root,
+            store_id=store_id,
+            fences=PackageEpochFenceJournal(control_root / "epoch.jsonl"),
+        ).register(startup_id=startup_id)
+    except PackagePosixPreFenceRegistrationError as exc:
+        raise PackageProductLegacyPreFenceAdmissionError(
+            str(exc), code=exc.code
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,4 +107,9 @@ class PackageProductFileEpochTransactionGuard:
                 yield
 
 
-__all__ = ["PackageProductFileEpochTransactionGuard"]
+__all__ = [
+    "PackageProductFileEpochTransactionGuard",
+    "PackageProductLegacyPreFenceAdmissionError",
+    "PackageProductLegacyRuntimeRegistration",
+    "register_package_product_legacy_runtime",
+]

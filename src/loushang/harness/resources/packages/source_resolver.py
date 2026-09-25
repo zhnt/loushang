@@ -34,7 +34,7 @@ PackageSourceScope = Literal["user", "project", "session", "merged"]
 
 @dataclass(frozen=True)
 class PackageResolveResult:
-    """Result of resolving configured remote package sources."""
+    """Result of resolving configured package sources."""
 
     records: tuple[
         PackageMaterializationRecord | PackageProductLifecycleRecordV1, ...
@@ -95,7 +95,10 @@ class PackageSourceResolver:
         scopes = package_source_scopes(self.settings_manager)
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source
-            if not is_remote_package_source(source):
+            if (
+                not is_remote_package_source(source)
+                and self.product_lifecycle_mode != "enforced"
+            ):
                 continue
             existing_record = (
                 self.materializer.get_record(source)
@@ -156,13 +159,21 @@ class PackageSourceResolver:
         outcome = lifecycle.route(
             PackageProductLifecycleIntentV1(
                 operation_id=operation_id,
-                action="materialize",
+                action=(
+                    "install"
+                    if self.product_lifecycle_mode == "enforced"
+                    else "materialize"
+                ),
                 source=source,
                 scope=scope,
             ),
             entrypoint="startup",
         )
         if not outcome.handled:
+            if self.product_lifecycle_mode == "enforced":
+                raise RuntimeError(
+                    "Package Product route has no accepted non-Plugin owner"
+                )
             if self.materializer is None:
                 raise RuntimeError("Package Product route has no legacy fallback")
             return self.materializer.materialize_remote_source_sync(source)
@@ -173,6 +184,10 @@ class PackageSourceResolver:
     def prepare_configured_remote_records(
         self,
     ) -> tuple[PackageMaterializationRecord, ...]:
+        if self.product_lifecycle_mode == "enforced":
+            raise RuntimeError(
+                "Package Product preparation has no accepted non-Plugin owner"
+            )
         if self.materializer is None:
             raise RuntimeError("Package materializer is unavailable")
         records: list[PackageMaterializationRecord] = []

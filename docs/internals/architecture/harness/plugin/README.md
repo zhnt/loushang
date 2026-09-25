@@ -349,15 +349,45 @@ Neither may silently override a narrower implemented owner contract.
   covers changed-Source refusal. The composition refuses a moved Store root.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
-  materializer. The concrete POSIX factory pins Product, Session, and
+  materializer. The same native fixture now also commits through shared CLI
+  and RPC install transports with Product-bound Session evidence. The concrete
+  POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime
-  lease/quiescence owner and reopens that registry for Session admission. Its
-  pre-fence and snapshot providers remain test doubles; production providers
-  remain required.
+  lease/quiescence owner and reopens that registry for Session admission. A
+  POSIX snapshot owner now publishes a durable, restore-compatible bundle from
+  nine explicitly configured pre-B domain roots; an independent reader still
+  verifies the evidence after the old source roots disappear. The integration
+  fixture supplies those roots and now uses a concrete Linux pre-fence owner:
+  process-held liveness locks and a root-directory launch barrier reject live
+  old processes before snapshot and refuse new old registrations after fence.
+  The cutover fixture now uses Coding's existing legacy Package directory as
+  the POSIX legacy root, with a sibling epoch namespace, and snapshots its
+  actual lifecycle state root. Other pre-B domains still use fixture roots;
+  Product mapping of their real Coding state remains required. On Linux, the
+  Coding lifecycle and management-application builders now hold process-level
+  pre-fence registrations before preparing their legacy state; default base
+  materializer construction follows that admission. Coding reaches the internal
+  Linux registration owner only through a Product-facing Package adapter.
+  Configured Continuity registers before compatibility reconciliation and
+  materializer construction;
+  a bound compatibility writer retains that registration after an empty bind.
+  Continuity without a settings owner or Plugin Source remains a non-Plugin
+  path. Generic Session Package materialization and remaining CLI/RPC/supervisor
+  launch coverage still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
+  An enforced Product route now refuses an unhandled non-Plugin outcome even
+  when a legacy materializer was supplied, including startup Source resolution
+  and direct configured-Source preparation. Dark mode retains its compatibility
+  behavior. Enforced startup now routes configured local Wheels as Product
+  `install` intents; a real POSIX Store/Product fixture commits both root-only
+  and dependency-Wheel cases through that resolver. A separately accepted
+  non-Plugin owner remains an activation gate.
+  Shared CLI now requires its typed source or collection executor whenever a
+  Session declares a Package Product binding; a missing executor cannot fall
+  back to legacy Package methods.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports

@@ -397,6 +397,10 @@ class SessionPackageController:
         return self.refresh_resources()
 
     async def prepare_configured_remote_package_records(self) -> None:
+        if self.product_lifecycle_mode == "enforced":
+            raise RuntimeError(
+                "Package Product preparation has no accepted non-Plugin owner"
+            )
         settings_manager = self.get_settings_manager()
         materializer = self.get_package_materializer()
         if settings_manager is None or materializer is None:

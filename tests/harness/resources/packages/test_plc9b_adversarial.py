@@ -151,7 +151,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
     PackagePosixEpochCutoverCoordination,
-    PackagePreFenceRegistrationSnapshotV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
@@ -160,12 +159,19 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
     PackagePosixEpochCutoverRequestV1,
     PackagePosixEpochCutoverResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
+    PackagePosixEpochSnapshotOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
     PackagePosixOfflineRestoreMaterializer,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+    PackagePosixPreFenceRegistrationError,
+    PackagePosixPreFenceRegistrationOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
     PackageProductRetentionSettlementOwner,
@@ -267,6 +273,7 @@ from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
 )
+from loushang.harness.resources.packages.source_resolver import PackageSourceResolver
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
@@ -4194,19 +4201,33 @@ def test_product_transaction_commits_configured_local_dependency(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
-@pytest.mark.parametrize("entrypoint", ("cli", "session"))
+@pytest.mark.parametrize(
+    "entrypoint", ("cli", "session", "cli_transport", "rpc_transport", "startup")
+)
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
     with_dependency: bool,
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
+    from loushang.coding._plugin_lifecycle import (
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import (
+        resolve_coding_package_epoch_layout,
+    )
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.cli.package_lifecycle import (
+        PackageLifecycleRequest,
+        run_package_lifecycle,
+    )
+    from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
+    from loushang.harness.host.rpc.output import RpcOutput
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
@@ -4252,9 +4273,33 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         authority_id="coding-local-source:runtime",
     )
     state_root = tmp_path / "package-state"
-    control_root = tmp_path / "epoch-control"
-    for directory in (state_root, control_root):
+    state_root.mkdir(mode=0o700)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    legacy_base = tmp_path / "legacy-coding"
+    legacy_layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        legacy_base, cwd=workspace
+    )
+    epoch_layout = resolve_coding_package_epoch_layout(legacy_layout)
+    control_root = epoch_layout.control_root
+    authority = epoch_layout.authority_root
+    legacy_root = epoch_layout.legacy_root
+    epochs_root = epoch_layout.epochs_root
+    snapshot_root = epoch_layout.snapshot_root
+    for directory in (
+        legacy_base,
+        authority,
+        legacy_layout.root.parent,
+        legacy_layout.root,
+        legacy_root,
+        epochs_root,
+        control_root,
+        snapshot_root,
+    ):
         directory.mkdir(mode=0o700)
+    assert legacy_root == legacy_layout.package_root
+    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_layout.root / "desired-state.jsonl").write_bytes(b"")
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
         tmp_path / "product-desired.jsonl", gc_gate=gate
@@ -4264,23 +4309,28 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         operation_journal_path=tmp_path / "product-management.jsonl",
     )
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
-    store_id = "package-store:product-runtime"
+    store_id = epoch_layout.store_id
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
-    authority = tmp_path / "package-epoch-authority"
-    legacy_root = authority / "legacy"
-    epochs_root = authority / "epochs"
-    for directory in (authority, legacy_root, epochs_root):
-        directory.mkdir(mode=0o700)
-    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
-    class _PreFenceScope:
-        @contextmanager
-        def exclusive_quiescence(self, *, store_id: str):
-            yield PackagePreFenceRegistrationSnapshotV1(
-                store_id=store_id,
-                owner_revision=1,
-                active_registration_ids=(),
-            )
-
+    source_root = tmp_path / "pre-b-domains"
+    source_root.mkdir(mode=0o700)
+    domain_roots = {
+        "store_bytes": legacy_root,
+        "desired_state": legacy_layout.root,
+    }
+    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+        if domain in domain_roots:
+            continue
+        domain_root = source_root / domain
+        domain_root.mkdir(mode=0o700)
+        domain_roots[domain] = domain_root
+    snapshots = PackagePosixEpochSnapshotOwner(
+        snapshot_root,
+        store_id=store_id,
+        domain_roots=domain_roots,
+    )
+    pre_fence = PackagePosixPreFenceRegistrationOwner(
+        authority, store_id=store_id, fences=fences
+    )
     cutover_root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4297,11 +4347,13 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             authority,
             store_id=store_id,
             epoch_journal=fences,
+            legacy_root_name=epoch_layout.legacy_root_name,
+            epochs_root_name=epoch_layout.epochs_root_name,
             coordination=PackagePosixEpochCutoverCoordination(
                 leases=cutover_registry,
-                pre_fence=_PreFenceScope(),
+                pre_fence=pre_fence,
             ),
-            snapshots=_ManifestEpochCutoverSnapshots(),
+            snapshots=snapshots,
         )
         cutover_request = PackagePosixEpochCutoverRequestV1.create(
             store_id=store_id,
@@ -4318,7 +4370,20 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None
-    plugin_root = epochs_root / cutover_request.namespace_id
+    with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
+        pre_fence.register(startup_id="legacy:after-cutover")
+    assert old_launch.value.code == "package_runtime_epoch_unsupported"
+    snapshot_evidence = snapshots.snapshot(fence.request.snapshot_receipt_id)
+    assert snapshot_evidence is not None
+    assert snapshot_evidence.snapshot.receipt_id == fence.request.snapshot_receipt_id
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "store_bytes"
+        / "state.json"
+    ).read_bytes() == b'{"legacy":1}\n'
+    plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4372,13 +4437,12 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     recovery_identity="product-runtime-recovery",
                 )
 
-            if entrypoint == "session":
+            committed_operation_id = "operation:product-runtime"
+            if entrypoint in {"session", "cli_transport", "rpc_transport"}:
                 from loushang.harness.resources.packages.product_runtime import (
                     PackageProductRuntimeRequestV1,
                 )
 
-                workspace = tmp_path / "workspace"
-                workspace.mkdir(mode=0o700)
                 session_manager = asyncio.run(
                     SessionManager.new(
                         session_dir=tmp_path / "sessions",
@@ -4490,15 +4554,45 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 runtime = created[0]
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
-                outcome = asyncio.run(
-                    session.execute_package_lifecycle(
-                        "install",
-                        str(source),
-                        entrypoint="session",
-                        operation_id="operation:product-runtime",
-                        scope="project",
+                if entrypoint == "cli_transport":
+                    cli_result = asyncio.run(
+                        run_package_lifecycle(
+                            session,
+                            PackageLifecycleRequest(
+                                install=(str(source),), scope="project"
+                            ),
+                        )
                     )
-                )
+                    outcome = cli_result.outputs[0]["record"]
+                    assert isinstance(outcome, dict)
+                    committed_operation_id = str(outcome["operationId"])
+                elif entrypoint == "rpc_transport":
+                    rpc_output = io.StringIO()
+                    rpc = RpcPackageCommands(
+                        runtime=object(),
+                        get_session=lambda: session,
+                        output=RpcOutput(rpc_output),
+                    )
+                    asyncio.run(
+                        dict(rpc.bindings())["install_package"](
+                            "request:product-runtime",
+                            {"source": str(source), "scope": "project"},
+                        )
+                    )
+                    response = json.loads(rpc_output.getvalue())
+                    assert response["success"] is True
+                    outcome = response["data"]["record"]
+                    committed_operation_id = str(outcome["operationId"])
+                else:
+                    outcome = asyncio.run(
+                        session.execute_package_lifecycle(
+                            "install",
+                            str(source),
+                            entrypoint="session",
+                            operation_id="operation:product-runtime",
+                            scope="project",
+                        )
+                    )
                 assert outcome["lifecycle"] == "installed"
                 assert outcome["path"] == ""
                 refused_by_session = asyncio.run(
@@ -4513,6 +4607,33 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 assert refused_by_session["lifecycle"] == "failed"
                 assert refused_by_session["path"] == ""
                 assert desired.snapshot().inventory_revision == 1
+            elif entrypoint == "startup":
+                runtime = compose()
+                activation = runtime.lifecycle
+                runtime.activate()
+
+                class Settings:
+                    def get_project_settings(self) -> dict[str, object]:
+                        return {"packages": [str(source)]}
+
+                    def get_global_settings(self) -> dict[str, object]:
+                        return {}
+
+                    def get_session_settings(self) -> dict[str, object]:
+                        return {}
+
+                committed_operation_id = sha256(
+                    f"startup:product-runtime:project:{source}".encode()
+                ).hexdigest()
+                resolved = PackageSourceResolver(
+                    settings_manager=Settings(),
+                    materializer=None,
+                    session_id="product-runtime",
+                    product_lifecycle=activation,
+                    product_lifecycle_mode="enforced",
+                ).resolve_configured_sources_sync()
+                assert len(resolved.records) == 1
+                assert resolved.records[0].lifecycle == "installed"
             else:
                 runtime = compose()
                 activation = runtime.lifecycle
@@ -4532,7 +4653,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert desired.snapshot().inventory_revision == 1
             committed_set = PackageCommittedSetJournal(
                 state_root / "committed-sets.jsonl"
-            ).current("operation:product-runtime")
+            ).current(committed_operation_id)
             assert committed_set is not None
             assert len(committed_set.committed_set.dependency_refs) == int(
                 with_dependency
