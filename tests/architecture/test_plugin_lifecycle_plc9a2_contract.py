@@ -14,7 +14,7 @@ ACTIVATION = Path("src/loushang/harness/resources/packages/product_activation.py
 PRODUCT_CONTRACT = Path("src/loushang/harness/resources/packages/product_contract.py")
 PRODUCT_INVENTORY = Path("src/loushang/harness/resources/packages/product_inventory.py")
 PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
-PRODUCT_RUNTIME = Path("src/loushang/harness/resources/packages/product_runtime.py")
+PRODUCT_RUNTIME = Path("src/loushang/harness/package_product/product_runtime.py")
 KERNEL_RECORDS = Path(
     "src/loushang/harness/resources/packages/plugin_lifecycle/records.py"
 )

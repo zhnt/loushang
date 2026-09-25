@@ -84,6 +84,9 @@ from loushang.harness.extensions.context import (
 )
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+)
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resource_catalog.session_bootstrap import (
     ExtensionGenerationRetirementPort,
@@ -107,9 +110,6 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
-)
-from loushang.harness.resources.packages.product_runtime import (
-    PackageProductRuntimeBindingV1,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.packages.session import (

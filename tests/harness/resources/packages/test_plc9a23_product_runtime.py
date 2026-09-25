@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from loushang.harness.resources.packages.product_runtime import (
+from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeActivationError,
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeRequestV1,

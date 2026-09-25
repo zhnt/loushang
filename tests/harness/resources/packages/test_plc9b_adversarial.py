@@ -602,6 +602,7 @@ def _package_wheel_bytes(
     project: str,
     version: str,
     *,
+    extra_files: dict[str, bytes] | None = None,
     requires_dist: tuple[str, ...] = (),
     requires_python: str | None = None,
 ) -> bytes:
@@ -623,6 +624,7 @@ def _package_wheel_bytes(
         ),
         f"{dist_info}/METADATA": metadata,
     }
+    files.update(extra_files or {})
     rows = [
         (name, _record_digest(payload), str(len(payload)))
         for name, payload in files.items()
@@ -4209,6 +4211,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
+    from loushang.coding._base_plugin import coding_base_plugin_root
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -4235,10 +4238,24 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
-    source = source_root / WHEEL_FILENAME
+    checked_in_base = entrypoint == "session" and not with_dependency
+    base_files: dict[str, bytes] = {}
+    if checked_in_base:
+        base_root = coding_base_plugin_root()
+        base_files = {
+            f"coding_base/{path.relative_to(base_root).as_posix()}": path.read_bytes()
+            for path in base_root.rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        }
+    source = source_root / (
+        "coding_base-1-py3-none-any.whl" if checked_in_base else WHEEL_FILENAME
+    )
     payload = _package_wheel_bytes(
-        "acme-plugin",
-        "1.0",
+        "coding-base" if checked_in_base else "acme-plugin",
+        "1" if checked_in_base else "1.0",
+        extra_files=base_files,
         requires_dist=("dependency==2.0",) if with_dependency else (),
     )
     source.write_bytes(payload)
@@ -4254,8 +4271,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         bindings=(
             PackageProductLocalWheelBindingV1(
                 source_identity=str(source),
-                requested_package="acme-plugin==1.0",
-                plugin_id="acme.plugin",
+                requested_package=(
+                    "coding-base==1" if checked_in_base else "acme-plugin==1.0"
+                ),
+                plugin_id="coding.base" if checked_in_base else "acme.plugin",
                 artifact_digest=sha256(payload).hexdigest(),
             ),
         ),
@@ -4641,7 +4660,7 @@ while True:
 
             committed_operation_id = "operation:product-runtime"
             if entrypoint in {"session", "cli_transport", "rpc_transport"}:
-                from loushang.harness.resources.packages.product_runtime import (
+                from loushang.harness.package_product.product_runtime import (
                     PackageProductRuntimeRequestV1,
                 )
 
@@ -5125,9 +5144,182 @@ while True:
                 assert refused.record is not None
                 assert refused.record.lifecycle == "failed"
             assert desired.snapshot().inventory_revision == 1
+            expected_inventory_revision = 1
+            if entrypoint == "session" and not with_dependency:
+                from loushang.harness.plugin_management.operations import (
+                    PluginManagementCommandV1,
+                )
+                from loushang.harness.plugin_management.package_product import (
+                    PackageProductRuntimeReadError,
+                    PackageProductSelectedRootReader,
+                )
+                from loushang.harness.plugin_management.records import (
+                    PluginDesiredStateMutationV1,
+                    PluginInstallationKeyV1,
+                )
+
+                (selected,) = desired.snapshot().installations
+                key = selected.installation_key
+                root_settlements = PackageStoreSettlementJournal(
+                    state_root / "root-settlements.jsonl"
+                )
+                root_store = PosixPackagePluginRootMaterializationStore(
+                    plugin_root,
+                    store_identity="product-runtime-root-store",
+                    package_store_id=store_id,
+                    settlement_journal=root_settlements,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as disabled:
+                    runtime.read_selected_plugin_file(
+                        key, "coding_base/plugin.json", max_bytes=4096
+                    )
+                assert disabled.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_batch:
+                    runtime.read_selected_plugin_files(
+                        key, ("coding_base/plugin.json",), max_total_bytes=4096
+                    )
+                assert disabled_batch.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_capture:
+                    runtime.capture_selected_plugin_root(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert disabled_capture.value.code == "package_product_root_not_selected"
+                enabled = management.submit(
+                    PluginManagementCommandV1(
+                        action="enable",
+                        mutation=PluginDesiredStateMutationV1(
+                            operation_id="operation:product-read-enable",
+                            idempotency_key="request:product-read-enable",
+                            expected_inventory_revision=1,
+                            installation_key=key,
+                            desired_state="installed_enabled",
+                            package_revision=None,
+                            actor_id="product-runtime",
+                            policy_revision="product-policy:1",
+                        ),
+                    )
+                )
+                assert enabled.result is not None
+                assert enabled.result.disposition == "succeeded"
+                expected_inventory_revision = 2
+                for logical_path in (
+                    "coding_base/plugin.json",
+                    "coding_base/declarations/plugin.json",
+                    "coding_base/prompts/standard.md",
+                    "coding_base/skills/standard/SKILL.md",
+                ):
+                    assert runtime.read_selected_plugin_file(
+                        key, logical_path, max_bytes=64 * 1024
+                    ) == base_files[logical_path]
+                selected_paths = (
+                    "coding_base/plugin.json",
+                    "coding_base/declarations/plugin.json",
+                    "coding_base/prompts/standard.md",
+                    "coding_base/skills/standard/SKILL.md",
+                )
+                assert runtime.read_selected_plugin_files(
+                    key, selected_paths, max_total_bytes=64 * 1024
+                ) == tuple(base_files[path] for path in selected_paths)
+                captured = runtime.capture_selected_plugin_root(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert captured.installation_key == key
+                assert (
+                    captured.root_ref.artifact_digest
+                    == captured.package_revision.package_content_digest
+                )
+                assert (
+                    captured.committed_record.committed_set.root_ref
+                    == captured.root_ref
+                )
+                assert tuple(path for path, _ in captured.files) == tuple(
+                    entry.logical_path for entry in captured.manifest.entries
+                )
+                assert all(
+                    dict(captured.files)[path] == body
+                    for path, body in base_files.items()
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as capture_budget:
+                    runtime.capture_selected_plugin_root(
+                        key, max_files=64, max_total_bytes=1
+                    )
+                assert (
+                    capture_budget.value.code
+                    == "package_product_root_capture_budget_exceeded"
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as over_budget:
+                    runtime.read_selected_plugin_files(
+                        key, selected_paths, max_total_bytes=1
+                    )
+                assert over_budget.value.code == "package_product_root_file_unavailable"
+                with pytest.raises(PackageProductRuntimeReadError) as undeclared:
+                    runtime.read_selected_plugin_files(
+                        key, ("coding_base/missing.py",), max_total_bytes=4096
+                    )
+                assert undeclared.value.code == "package_product_root_file_unavailable"
+                reopened = PackageProductSelectedRootReader(
+                    product_id=policy.product_id,
+                    scope_id=policy.project_scope_id,
+                    installation_scope="workspace",
+                    desired_state=PluginDesiredStateLedger(
+                        desired.path, gc_gate=gate
+                    ),
+                    bindings=PluginPackageGcBindingJournal(bindings.path),
+                    committed_sets=PackageCommittedSetJournal(
+                        state_root / "committed-sets.jsonl"
+                    ),
+                    root_settlements=PackageStoreSettlementJournal(
+                        root_settlements.path
+                    ),
+                    root_store=root_store,
+                    gc_gate=gate,
+                )
+                assert reopened.read_selected_file(
+                    key, "coding_base/plugin.json", max_bytes=4096
+                ) == base_files["coding_base/plugin.json"]
+                foreign_key = PluginInstallationKeyV1(
+                    product_id=key.product_id,
+                    installation_scope=key.installation_scope,
+                    scope_id="workspace:foreign",
+                    plugin_id=key.plugin_id,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as foreign:
+                    runtime.read_selected_plugin_file(
+                        foreign_key, "coding_base/plugin.json", max_bytes=4096
+                    )
+                assert foreign.value.code == "package_product_root_scope_changed"
+                with pytest.raises(PackageProductRuntimeReadError) as no_crosswalk:
+                    PackageProductSelectedRootReader(
+                        product_id=policy.product_id,
+                        scope_id=policy.project_scope_id,
+                        installation_scope="workspace",
+                        desired_state=desired,
+                        bindings=PluginPackageGcBindingJournal(
+                            tmp_path / "missing-product-crosswalk.jsonl"
+                        ),
+                        committed_sets=PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ),
+                        root_settlements=root_settlements,
+                        root_store=root_store,
+                        gc_gate=gate,
+                    ).read_selected_file(
+                        key, "coding_base/plugin.json", max_bytes=4096
+                    )
+                assert no_crosswalk.value.code == "package_product_root_unbound"
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
+            if entrypoint == "session" and not with_dependency:
+                from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+                    PackagePhysicalStagingError,
+                )
+
+                with pytest.raises(PackagePhysicalStagingError) as swapped:
+                    runtime.read_selected_plugin_file(
+                        key, "coding_base/plugin.json", max_bytes=4096
+                    )
+                assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
                 with pytest.raises(ValueError, match="Store identity changed"):
                     factory.create(
@@ -5149,10 +5341,32 @@ while True:
                 )
             assert changed_root.value.code == "package_runtime_epoch_unsupported"
             assert lifecycle_journal.records() == before_swap
-            assert desired.snapshot().inventory_revision == 1
+            assert desired.snapshot().inventory_revision == expected_inventory_revision
         finally:
             if session is not None:
                 asyncio.run(session.dispose())
+                if entrypoint == "session" and not with_dependency:
+                    from loushang.harness.package_product.product_runtime import (
+                        PackageProductRuntimeActivationError,
+                    )
+
+                    with pytest.raises(PackageProductRuntimeActivationError) as closed:
+                        runtime.read_selected_plugin_file(
+                            key, "coding_base/plugin.json", max_bytes=4096
+                        )
+                    assert closed.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(PackageProductRuntimeActivationError) as closed_batch:
+                        runtime.read_selected_plugin_files(
+                            key, ("coding_base/plugin.json",), max_total_bytes=4096
+                        )
+                    assert closed_batch.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(
+                        PackageProductRuntimeActivationError
+                    ) as closed_capture:
+                        runtime.capture_selected_plugin_root(
+                            key, max_files=64, max_total_bytes=1024 * 1024
+                        )
+                    assert closed_capture.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"
