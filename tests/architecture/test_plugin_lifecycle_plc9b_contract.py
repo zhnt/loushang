@@ -862,10 +862,10 @@ def test_plc9b_effect_inventory_freezes_owner_and_bypass_capabilities() -> None:
     documented = _documented_effect_counts()
     actual = _package_effect_scope_counts()
 
-    assert len(documented) == 141
-    assert sum(documented.values()) == 157
+    assert len(documented) == 143
+    assert sum(documented.values()) == 159
     assert actual == documented
-    assert "141 effect/capability rows\nwith 157 occurrences" in inventory
+    assert "143 effect/capability rows\nwith 159 occurrences" in inventory
     for required in (
         (
             PACKAGE_OPERATIONS,
@@ -2231,6 +2231,11 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             ):
                 production_importers.append(path)
     assert set(production_importers) == {
+        # Coding-only migration evidence consumes B records and snapshot reads;
+        # these modules expose no Plugin-author or transport owner.
+        Path("src/loushang/coding/package_legacy_binding_catalog.py"),
+        Path("src/loushang/coding/package_legacy_review.py"),
+        Path("src/loushang/coding/package_legacy_snapshot_member.py"),
         # Product-internal, default-dark GC evidence and target readers consume
         # B owner records without exposing a Package or Plugin-author facade.
         Path("src/loushang/harness/plugin_management/package_gc_binding.py"),

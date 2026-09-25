@@ -490,6 +490,7 @@ implemented.
 | Coding fresh B cutover and builtin bootstrap | `src/loushang/coding/package_pre_b_snapshot.py::cutover_and_bootstrap_coding_package_product`, `src/loushang/coding/package_product_runtime.py::bootstrap_coding_builtin_product_plugins`, `src/loushang/harness/package_product/product_local_wheel_runtime.py::PosixLocalWheelProductSessionOwner.settled_install_command_id`, and `src/loushang/coding/cli/package_cutover.py::main` | Declared offline `loushang-package-cutover` command prepares private roots, fences a fresh workspace, then installs and enables the three checked-in Plugins through the real Product transaction; retry reads the Product-owned settled handoff and resumes an interrupted enable only when its own install is still the latest desired transition. A fenced default Session routes five Package actions through the Product from Session, CLI, and RPC; synchronous uninstall also cannot use the legacy fallback | Retain as a fresh-workspace POSIX slice only. Any pre-B Plugin member or legacy Plugin/Package setting requires explicit adoption or migration; operator disable/remove is not overwritten. Default Session only reopens an existing fence, and Windows activation remains unproven |
 | Coding cutover backup status | `src/loushang/coding/package_cutover_backup.py::inspect_coding_package_cutover_backup` | D3m reopens the exact Product fence and verifies its real pre-B workspace snapshot owner; pathless `--backup-status` reports retained or unknown with expiry unknown | Do not interpret this workspace snapshot as per-Installation Plugin backup retention or as permission to expire/delete it |
 | Coding pre-B Source snapshot | `src/loushang/coding/package_source_snapshot.py` | Includes the legacy `disabled_plugins` settings field in an authenticated offline snapshot; it is evidence, not B Product selection | Retain as restore/adoption input; never infer a B desired Installation or enablement change from the snapshot alone |
+| Coding legacy migration foundation | `src/loushang/coding/package_legacy_classification.py`, `src/loushang/coding/package_legacy_snapshot_member.py`, `src/loushang/coding/package_legacy_local_wheel.py`, `src/loushang/coding/package_legacy_binding_catalog.py`, and `src/loushang/coding/package_legacy_review.py` | Classifies scoped legacy `disabled_plugins` and Source settings, verifies first-B snapshot members and old desired state, reacquires exact local Source bytes, and prepares an inert review; the local Wheel reacquisition uses the existing revision-store verifier | Retain as Product-internal evidence only; no operator approval or legacy Product installation entrypoint is bound, and fresh cutover still refuses migration inputs |
 | Coding B Product revision selection | `src/loushang/coding/package_product_revisions.py` | Checks built-in Plugin `manifest.enabled` against the selected B Product revision and mount policy | Retain as a selected-revision check; a manifest flag alone cannot replace Product desired-state authority |
 | Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
 | Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, migration, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and forward/reverse skew remains observable |
@@ -600,8 +601,8 @@ materializes packages.
 
 PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
 revises the same two independently checked source-wide inventories to 110
-ingress/declaration rows with 163 occurrences and 141 effect/capability rows
-with 157 occurrences. The executable
+ingress/declaration rows with 163 occurrences and 143 effect/capability rows
+with 159 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -790,6 +791,8 @@ src/loushang/coding/continuity_bootstrap.py::bind_coding_configured_continuity::
 src/loushang/coding/lsp/_plugin_opt_in.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::assemble_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
 src/loushang/coding/lsp/_plugin_opt_in.py::prepare_coding_lsp_plugin_opt_in::CodingPackageMaterializer = 1
+src/loushang/coding/package_legacy_local_wheel.py::<module>::PluginRevisionStore = 1
+src/loushang/coding/package_legacy_local_wheel.py::reacquire_coding_legacy_local_plugin_wheel::PluginRevisionStore = 1
 src/loushang/coding/resource_runtime.py::<module>::CodingPackageMaterializer = 1
 src/loushang/coding/resource_runtime.py::<module>::PackageMaterializer = 1
 src/loushang/coding/resource_runtime.py::CodingPackageMaterializer::CodingPackageMaterializer = 1
