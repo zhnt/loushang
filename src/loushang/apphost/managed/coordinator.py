@@ -171,6 +171,13 @@ class ManagedServiceCoordinatorV1:
                     raise
                 # Observe after unknown/CAS contention; never replay start.
                 state = await self._read(deadline)
+                # A competing start can hold the control lock before its
+                # generation becomes durable. Keep observing that same
+                # attempt's original budget instead of treating one empty
+                # read as proof that no winner exists.
+                while (state is None or state.cleanly_stopped) and error.code in {"busy", "conflict"}:
+                    await self._pause(deadline)
+                    state = await self._read(deadline)
                 if state is None or state.cleanly_stopped:
                     raise error
         assert state is not None
