@@ -19,6 +19,13 @@ from loushang.harness.plugin_management.gc_fence import (
     PluginPackageGcReferenceGatePort,
     gc_reference_guard,
 )
+from loushang.harness.plugin_management.gc_writer_epoch import (
+    PluginGcWriterEpochError,
+    PluginGcWriterEpochRecords,
+    PluginGcWriterEpochSealV1,
+    gc_writer_epoch_codec,
+    split_gc_writer_epoch_records,
+)
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
     PluginInstanceActivationV1,
@@ -314,6 +321,47 @@ class PluginInstanceRuntimeLedger:
     @property
     def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
         return self._gc_gate
+
+    def seal_gc_writer_epoch(self) -> None:
+        if self._gc_gate is None:
+            raise PluginInstanceRuntimeError(
+                "GC writer epoch requires a reservation gate",
+                code="plugin_package_gc_writer_epoch_unsupported",
+                path=self._path,
+            )
+        with ExitStack() as locks:
+            locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
+            records = self._load_epoch_records_unlocked()
+            _replay(records.records, path=self._path)
+            if not records.sealed:
+                append_jsonl_record(
+                    self._path,
+                    PluginGcWriterEpochSealV1.create(
+                        journal_kind="instance",
+                        owner_path=self._path,
+                        gate=self._gc_gate,
+                    ),
+                    record_codec=gc_writer_epoch_codec(
+                        PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC
+                    ),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                )
+
+    def gc_writer_epoch_sealed(self) -> bool:
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            return self._load_epoch_records_unlocked().sealed
 
     @property
     def management_operation_journal_path(self) -> Path:
@@ -1164,16 +1212,33 @@ class PluginInstanceRuntimeLedger:
                     )
 
     def _load_and_replay_unlocked(self) -> _ReplayedInstanceRuntime:
+        return _replay(self._load_epoch_records_unlocked().records, path=self._path)
+
+    def _load_epoch_records_unlocked(
+        self,
+    ) -> PluginGcWriterEpochRecords[PluginInstanceRuntimeEventV1]:
         if not self._path.exists():
-            return _empty_replay()
+            return PluginGcWriterEpochRecords(records=(), sealed=False)
         try:
-            snapshot: JsonlSnapshot[None, PluginInstanceRuntimeEventV1] = load_jsonl(
+            snapshot: JsonlSnapshot[
+                None, PluginInstanceRuntimeEventV1 | PluginGcWriterEpochSealV1
+            ] = load_jsonl(
                 self._path,
-                record_codec=PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
+                record_codec=gc_writer_epoch_codec(PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC),
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
             )
+            return split_gc_writer_epoch_records(
+                snapshot.records,
+                journal_kind="instance",
+                owner_path=self._path,
+                gate=self._gc_gate,
+            )
+        except PluginGcWriterEpochError as exc:
+            raise PluginInstanceRuntimeError(
+                str(exc), code=exc.code, path=self._path
+            ) from exc
         except JournalFileError as exc:
             code = (
                 exc.code
@@ -1189,7 +1254,6 @@ class PluginInstanceRuntimeLedger:
                 code=code,
                 path=self._path,
             ) from exc
-        return _replay(snapshot.records, path=self._path)
 
     def _append_and_apply_unlocked(
         self,

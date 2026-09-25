@@ -15,8 +15,28 @@
   It grants no Store deletion or GC reservation authority.
 - PLC9D2 refinement:
   [Dark Package GC Reservation Contract](plugin-lifecycle-plc9d2-contract.md)
-  adds a durable, opt-in reference-writer fence. It is not composed by a
-  Product and grants no Store deletion authority.
+  adds a durable, opt-in reference-writer fence. D3a composes its gate in
+  Coding, but D2 itself grants no Store deletion authority.
+- PLC9D3a refinement:
+  [Writer Fence And Store Deletion Primitive](plugin-lifecycle-plc9d3a-contract.md)
+  adds an explicit downgrade seal, irreversible reservation start, a durable
+  handoff crosswalk, and dark Store-owned rooted deletion primitives. It does
+  not add a Product GC route or a durable deletion result/debt receipt.
+- PLC9D3b refinement:
+  [Store GC Re-publication Fence](plugin-lifecycle-plc9d3b-contract.md)
+  adds a Store-owned exact-ref tombstone before rooted deletion. Store replay
+  excludes previous codecs and refuses re-staging, but no Product GC command
+  or settled result/debt receipt exists.
+- PLC9D3c refinement:
+  [Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
+  joins the Product handoff, committed set, and exact Store settlement only
+  when all identities and aliases are proven. It is a read-only checker, not
+  an atomic capture or deletion authority.
+- PLC9D3d refinement:
+  [Committed-Set Root Ref Fence](plugin-lifecycle-plc9d3d-contract.md)
+  adds a Package-owner tombstone for one exact committed set/root ref and
+  excludes previous codecs. The future executor must sequence it after a
+  Product deletion start and before the Store tombstone.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -845,7 +865,7 @@ publication outside those exact canaries.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
-| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state without a mutation port | Retain as internal read-only evidence; future executable GC must add an exclusive reservation, Store-owned rooted deletion, and a durable result/debt receipt |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state without a mutation port | Retain as internal read-only evidence; D2/D3a add a reservation and dark deletion primitive, but executable GC still needs an exact Product/Store binding and durable result/debt receipt |
 | GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
@@ -889,8 +909,8 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- executable artifact-GC owner and Store result/debt receipt (PLC9D1/D2 add
-  only the operator projection and dark reservation/fence mechanics);
+- executable artifact-GC owner and Store result/debt receipt (PLC9D3a adds
+  a dark exact Store primitive and writer fence, but no Product deletion route);
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

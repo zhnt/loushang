@@ -55,6 +55,9 @@ from loushang.harness.plugin_management import (
     decode_plugin_desired_state_snapshot,
     decode_plugin_enablement_migration_snapshots,
 )
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
+)
 from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
 )
@@ -194,6 +197,10 @@ class CodingPluginLifecycleStateLayout:
     def coordination_lock(self) -> Path:
         return self.root / "lifecycle-coordination"
 
+    @property
+    def package_gc_reservations(self) -> Path:
+        return self.root / "package-gc-reservations.jsonl"
+
 
 @dataclass(frozen=True, slots=True)
 class _CodingPluginEnablementStateCapture:
@@ -213,9 +220,37 @@ class CodingPluginLifecycle:
     instances: PluginInstanceRuntimeLedger = field(repr=False)
     retirement_sets: PluginRetirementSetLedger = field(repr=False)
     packages: PluginPackageLifecycleLedger = field(repr=False)
+    _gc_reservations: PluginPackageGcReservationJournal = field(repr=False)
     security: PluginInstanceSecurityRetirementJournal = field(repr=False)
     owner_evidence: CodingOwnerGenerationEvidenceLedger = field(repr=False)
     _owns_process_startup_lease: bool = field(repr=False)
+
+    def prepare_gc_writer_epoch(self) -> None:
+        """Seal every reference journal before any executable GC can be exposed."""
+
+        with journal_file_lock(self.layout.coordination_lock, "exclusive"):
+            if (
+                not self.packages.gc_reservation_graph_bound_to(self._gc_reservations)
+                or self._gc_reservations.snapshot().active
+            ):
+                raise CodingPluginLifecycleError(
+                    "Coding Plugin GC writer graph is not quiescent and bound",
+                    code="coding_plugin_gc_writer_epoch_unavailable",
+                )
+            self.packages.gc_candidates()
+            self.desired.seal_gc_writer_epoch()
+            self.instances.seal_gc_writer_epoch()
+            self.packages.seal_gc_writer_epoch()
+
+    def gc_writer_epoch_ready(self) -> bool:
+        """Report the durable Product downgrade fence without enabling deletion."""
+
+        return (
+            self.packages.gc_reservation_graph_bound_to(self._gc_reservations)
+            and self.desired.gc_writer_epoch_sealed()
+            and self.instances.gc_writer_epoch_sealed()
+            and self.packages.gc_writer_epoch_sealed()
+        )
 
     def release_owned_process_startup_lease(self) -> None:
         """Release a startup lease acquired specifically by this lifecycle.
@@ -977,7 +1012,8 @@ def build_coding_plugin_lifecycle(
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
     _prepare_private_state_layout(layout)
-    desired = PluginDesiredStateLedger(layout.desired_state)
+    gc_reservations = PluginPackageGcReservationJournal(layout.package_gc_reservations)
+    desired = PluginDesiredStateLedger(layout.desired_state, gc_gate=gc_reservations)
     intents = PluginRetirementIntentLedger(layout.retirement_intents)
     retirement_sets = PluginRetirementSetLedger(
         layout.retirement_sets,
@@ -1011,6 +1047,7 @@ def build_coding_plugin_lifecycle(
         retirement_intents=intents,
         retirement_sets=retirement_sets,
         security_acceptances=security,
+        gc_gate=gc_reservations,
     )
     resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
     owns_process_startup_lease = _hold_process_startup_lease(
@@ -1024,6 +1061,7 @@ def build_coding_plugin_lifecycle(
             desired_state=desired,
             instance_runtime=instances,
             retirement_sets=retirement_sets,
+            gc_gate=gc_reservations,
         )
         owner_evidence = CodingOwnerGenerationEvidenceLedger(
             layout.owner_generation_evidence
@@ -1037,6 +1075,7 @@ def build_coding_plugin_lifecycle(
             instances=instances,
             retirement_sets=retirement_sets,
             packages=packages,
+            _gc_reservations=gc_reservations,
             security=security,
             owner_evidence=owner_evidence,
             _owns_process_startup_lease=owns_process_startup_lease,
@@ -1060,7 +1099,8 @@ def build_coding_plugin_management_application(
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
     _prepare_private_state_layout(layout)
-    desired = PluginDesiredStateLedger(layout.desired_state)
+    gc_reservations = PluginPackageGcReservationJournal(layout.package_gc_reservations)
+    desired = PluginDesiredStateLedger(layout.desired_state, gc_gate=gc_reservations)
     intents = PluginRetirementIntentLedger(layout.retirement_intents)
     retirement_sets = PluginRetirementSetLedger(
         layout.retirement_sets,
@@ -1106,6 +1146,7 @@ def project_coding_plugin_enablement_compatibility(
     desired = decode_plugin_desired_state_snapshot(
         _capture.desired_raw,
         path=layout.desired_state,
+        gc_gate=PluginPackageGcReservationJournal(layout.package_gc_reservations),
     )
     migrations = tuple(
         item

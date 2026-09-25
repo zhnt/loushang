@@ -58,6 +58,31 @@ CLASSIFICATION_FINGERPRINT = "8" * 64
 ENVIRONMENT_FINGERPRINT = "7" * 64
 
 
+def test_windows_store_gc_deletes_exact_root_and_replays_absence(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = WindowsPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    receipt = store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    assert settlement.receipt == receipt
+
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "deleted"
+    assert not (root / settlement.final_name).exists()
+    assert store._store.delete_settlement(settlement).disposition == "already_absent"
+    assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_root(request, candidate)
+
+
 @dataclass
 class _MemoryAcquired:
     payloads: dict[str, bytes]

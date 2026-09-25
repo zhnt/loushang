@@ -10,9 +10,10 @@
   are implementation evidence.
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
-  Coding Worker canaries. PLC9D1/D2 add local-candidate Package GC operator
-  projection and dark reservation/fence mechanics; physical artifact GC remains
-  absent. The remaining platform gaps are summarized by `architecture.md` and
+  Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
+  dark reservation; D3a--D3d add writer and Store/committed-set fences, a
+  private deletion primitive, and read-only root target resolution.
+  Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
   tracked in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
@@ -59,6 +60,16 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D2 Dark Package GC Reservation Contract](plugin-lifecycle-plc9d2-contract.md)
   bounds opt-in reference fencing and durable reservation replay; no Product or
   Store deletion route is active.
+- [PLC9D3a Writer Fence And Store Deletion Primitive](plugin-lifecycle-plc9d3a-contract.md)
+  records the dark Product downgrade fence, exact Store primitive, and the
+  remaining gates before executable GC or PLC9D completion.
+- [PLC9D3b Store GC Re-publication Fence](plugin-lifecycle-plc9d3b-contract.md)
+  prevents a deleted Store ref from being staged again; Product GC remains dark.
+- [PLC9D3c Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
+  checks the desired handoff, committed set, and physical Store settlement
+  without granting deletion authority.
+- [PLC9D3d Committed-Set Root Ref Fence](plugin-lifecycle-plc9d3d-contract.md)
+  refuses a newly committed alias after one root ref enters GC.
 
 ## Frozen Contracts
 

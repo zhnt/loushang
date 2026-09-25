@@ -31,9 +31,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
+    PackageStoreGcResultV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PackageStoreSettlementJournal,
     PackageStoreSettlementJournalError,
+    PackageStoreSettlementRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
@@ -267,6 +271,132 @@ class _PosixRoleStore:
             finally:
                 self._lock.release()
 
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Delete only the exact recorded tree; support a partial-delete retry."""
+
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        self._lock.acquire()
+        owner_lock = self._settlement_journal.owner_lock()
+        owner_locked = False
+        try:
+            owner_lock.__enter__()
+            owner_locked = True
+            root = _PinnedPosixRoot.open(
+                self._root, expected_identities=self._root_identities
+            )
+            try:
+                if (
+                    tuple(
+                        identity.to_native() for identity in settlement.root_identities
+                    )
+                    != root.identities
+                    or settlement not in self._settlement_journal.records()
+                ):
+                    raise _collision()
+                self._settlement_journal.tombstone(settlement)
+                try:
+                    tree_fd = _open_directory(
+                        settlement.final_name, dir_fd=root.descriptor
+                    )
+                except FileNotFoundError:
+                    root.validate_visible()
+                    return PackageStoreGcResultV1.create(
+                        settlement, disposition="already_absent"
+                    )
+                try:
+                    if (
+                        _identity(os.fstat(tree_fd))
+                        != settlement.tree_identity.to_native()
+                    ):
+                        raise _collision()
+                    directories = {
+                        tuple(
+                            item.logical_path.split("/")
+                        ): item.native_identity.to_native()
+                        for item in settlement.directory_identities
+                    }
+                    files = {
+                        tuple(
+                            item.logical_path.split("/")
+                        ): item.native_identity.to_native()
+                        for item in settlement.file_identities
+                    }
+                    expected = {
+                        item.logical_path: item for item in settlement.manifest.entries
+                    }
+                    observed, present_directories, present_files = _collect_tree(
+                        tree_fd,
+                        expected,
+                        directory_identities=directories,
+                        file_identities=files,
+                        allow_partial=True,
+                    )
+                    if any(
+                        observed[path]
+                        != (expected[path].byte_count, expected[path].content_digest)
+                        for path in observed
+                    ):
+                        raise _collision()
+                    for parts in sorted(present_files, reverse=True):
+                        parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                        try:
+                            current = os.stat(
+                                parts[-1], dir_fd=parent_fd, follow_symlinks=False
+                            )
+                            if (
+                                not stat.S_ISREG(current.st_mode)
+                                or _identity(current) != present_files[parts]
+                            ):
+                                raise _collision()
+                            os.unlink(parts[-1], dir_fd=parent_fd)
+                        finally:
+                            os.close(parent_fd)
+                    for parts in sorted(
+                        present_directories,
+                        key=lambda value: (len(value), value),
+                        reverse=True,
+                    ):
+                        parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                        try:
+                            current = os.stat(
+                                parts[-1], dir_fd=parent_fd, follow_symlinks=False
+                            )
+                            if (
+                                not stat.S_ISDIR(current.st_mode)
+                                or _identity(current) != present_directories[parts]
+                            ):
+                                raise _collision()
+                            os.rmdir(parts[-1], dir_fd=parent_fd)
+                        finally:
+                            os.close(parent_fd)
+                    os.fsync(tree_fd)
+                finally:
+                    os.close(tree_fd)
+                root.validate_visible()
+                os.rmdir(settlement.final_name, dir_fd=root.descriptor)
+                os.fsync(root.descriptor)
+                root.validate_visible()
+                return PackageStoreGcResultV1.create(settlement, disposition="deleted")
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                if owner_locked:
+                    owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
     def authorizes_root_identity(self, expected_identity: str) -> bool:
         if self._role != "root" or not isinstance(expected_identity, str):
             return False
@@ -304,8 +434,13 @@ class _PosixRoleStore:
         stable_ref = receipt.stable_ref
         if (
             stable_ref.store_identity != self._store_identity
-            or (self._role == "dependency" and not isinstance(stable_ref, VerifiedArtifactRefV1))
-            or (self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1))
+            or (
+                self._role == "dependency"
+                and not isinstance(stable_ref, VerifiedArtifactRefV1)
+            )
+            or (
+                self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1)
+            )
         ):
             raise _collision()
         settlements = self._settlement_journal.settlements_for_receipt(
@@ -545,6 +680,8 @@ class _PosixVerifiedTreeSink:
     def _prepare(self) -> None:
         try:
             self._root.validate_visible()
+            if self._settlement_journal.is_tombstoned(self._stable_ref.ref_id):
+                raise _collision()
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):
@@ -1184,6 +1321,7 @@ def _collect_tree(
     *,
     directory_identities: dict[tuple[str, ...], _Identity] | None,
     file_identities: dict[tuple[str, ...], _Identity] | None,
+    allow_partial: bool = False,
 ) -> tuple[
     dict[str, tuple[int, str]],
     dict[tuple[str, ...], _Identity],
@@ -1240,9 +1378,8 @@ def _collect_tree(
                     if entry is None or metadata.st_nlink != 1:
                         raise OSError("Published Package tree has an unexpected file")
                     identity = _identity(metadata)
-                    if (
-                        file_identities is not None
-                        and identity != file_identities.get(parts)
+                    if file_identities is not None and identity != file_identities.get(
+                        parts
                     ):
                         raise OSError("Published Package file identity changed")
                     descriptor = _open_regular_file(
@@ -1273,15 +1410,21 @@ def _collect_tree(
                     observed_files[parts] = identity
                 else:
                     raise OSError("Published Package tree entry type changed")
-        if not saw_entry and prefix:
+        if not saw_entry and prefix and not allow_partial:
             raise OSError("Published Package tree contains an empty directory")
 
     visit(root_fd, ())
-    if directory_identities is not None and set(observed_directories) != set(
-        directory_identities
+    if (
+        not allow_partial
+        and directory_identities is not None
+        and set(observed_directories) != set(directory_identities)
     ):
         raise OSError("Published Package directory set changed")
-    if file_identities is not None and set(observed_files) != set(file_identities):
+    if (
+        not allow_partial
+        and file_identities is not None
+        and set(observed_files) != set(file_identities)
+    ):
         raise OSError("Published Package file set changed")
     return observed, observed_directories, observed_files
 

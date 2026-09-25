@@ -1,19 +1,20 @@
-"""Dark, durable PLC9D2 reservation of one retention-eligible Package revision.
+"""Durable PLC9D Package reservation and irreversible deletion-start fence.
 
-This journal has no Store or deletion capability. It fences only owner graphs
-that explicitly bind the same journal to desired, Instance, and Package writers.
+This journal has no Store capability. It fences only owner graphs that
+explicitly bind the same journal to desired, Instance, and Package writers.
 """
 
 from __future__ import annotations
 
 import json
 import threading
+import weakref
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, TypeAlias, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -46,6 +47,27 @@ class PluginPackageGcReservationError(RuntimeError):
 
 class _ReservationCodecError(JournalCodecError):
     pass
+
+
+@dataclass
+class _GateLockState:
+    thread_lock: threading.RLock
+    depth: int = 0
+
+
+_GATE_STATES_LOCK = threading.Lock()
+_GATE_STATES: weakref.WeakValueDictionary[Path, _GateLockState] = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _gate_lock_state(path: Path) -> _GateLockState:
+    with _GATE_STATES_LOCK:
+        state = _GATE_STATES.get(path)
+        if state is None:
+            state = _GateLockState(thread_lock=threading.RLock())
+            _GATE_STATES[path] = state
+        return state
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,9 +166,102 @@ class PluginPackageGcReservationEventV1:
             ) from exc
 
 
+@dataclass(frozen=True, slots=True)
+class PluginPackageGcDeletionStartV2:
+    """Irreversible fence recorded before any physical Store mutation."""
+
+    journal_revision: int
+    reservation_id: str
+    operation_id: str
+    idempotency_key: str
+    target_settlement_ids: tuple[str, ...]
+    kind: Literal["deletion_started"] = "deletion_started"
+    event_version: int = 2
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.journal_revision) is not int
+            or self.journal_revision < 1
+            or not _is_sha256(self.reservation_id)
+            or not self.operation_id
+            or not self.idempotency_key
+            or not self.target_settlement_ids
+            or self.target_settlement_ids
+            != tuple(sorted(set(self.target_settlement_ids)))
+            or not all(_is_sha256(value) for value in self.target_settlement_ids)
+            or self.kind != "deletion_started"
+            or self.event_version != 2
+        ):
+            raise ValueError("GC deletion start record is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "eventVersion": self.event_version,
+            "idempotencyKey": self.idempotency_key,
+            "journalRevision": self.journal_revision,
+            "kind": self.kind,
+            "operationId": self.operation_id,
+            "reservationId": self.reservation_id,
+            "targetSettlementIds": list(self.target_settlement_ids),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginPackageGcDeletionStartV2:
+        try:
+            item = _exact_dict(
+                value,
+                {
+                    "eventVersion",
+                    "idempotencyKey",
+                    "journalRevision",
+                    "kind",
+                    "operationId",
+                    "reservationId",
+                    "targetSettlementIds",
+                },
+            )
+            targets = item["targetSettlementIds"]
+            if type(targets) is not list:
+                raise ValueError("GC target settlements are invalid")
+            return cls(
+                journal_revision=_integer(item["journalRevision"]),
+                reservation_id=_string(item["reservationId"]),
+                operation_id=_string(item["operationId"]),
+                idempotency_key=_string(item["idempotencyKey"]),
+                target_settlement_ids=tuple(_string(value) for value in targets),
+                kind=cast(Literal["deletion_started"], item["kind"]),
+                event_version=_integer(item["eventVersion"]),
+            )
+        except (JournalCodecError, TypeError, ValueError) as exc:
+            raise _ReservationCodecError(
+                "Invalid GC deletion start record",
+                code="invalid_plugin_package_gc_reservation_record",
+            ) from exc
+
+
+GcJournalEvent: TypeAlias = (
+    PluginPackageGcReservationEventV1 | PluginPackageGcDeletionStartV2
+)
+
+
+def _encode_event(event: GcJournalEvent) -> dict[str, object]:
+    return event.to_dict()
+
+
+def _decode_event(value: object) -> GcJournalEvent:
+    if type(value) is not dict:
+        raise _ReservationCodecError(
+            "Invalid GC reservation record",
+            code="invalid_plugin_package_gc_reservation_record",
+        )
+    if value.get("eventVersion") == 2:
+        return PluginPackageGcDeletionStartV2.from_dict(value)
+    return PluginPackageGcReservationEventV1.from_dict(value)
+
+
 _EVENT_CODEC = FunctionalJournalRecordCodec(
-    encoder=PluginPackageGcReservationEventV1.to_dict,
-    decoder=PluginPackageGcReservationEventV1.from_dict,
+    encoder=_encode_event,
+    decoder=_decode_event,
 )
 
 
@@ -161,8 +276,7 @@ class PluginPackageGcReservationJournal:
 
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path).resolve()
-        self._thread_lock = threading.RLock()
-        self._lock_depth = 0
+        self._lock_state = _gate_lock_state(self._path)
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
 
@@ -172,28 +286,29 @@ class PluginPackageGcReservationJournal:
 
     @contextmanager
     def guard(self) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
-        with self._thread_lock:
-            if self._lock_depth:
-                self._lock_depth += 1
+        state = self._lock_state
+        with state.thread_lock:
+            if state.depth:
+                state.depth += 1
                 try:
                     yield self._active_packages_unlocked()
                 finally:
-                    self._lock_depth -= 1
+                    state.depth -= 1
                 return
             with journal_file_lock(
                 self._path,
                 "exclusive",
                 lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
             ):
-                self._lock_depth = 1
+                state.depth = 1
                 try:
                     yield self._active_packages_unlocked()
                 finally:
-                    self._lock_depth = 0
+                    state.depth = 0
 
     def snapshot(self) -> PluginPackageGcReservationSnapshotV1:
         with self.guard():
-            events, active = self._replay_unlocked()
+            events, active, _ = self._replay_unlocked()
             return PluginPackageGcReservationSnapshotV1(
                 journal_revision=len(events),
                 active=tuple(
@@ -225,10 +340,10 @@ class PluginPackageGcReservationJournal:
             )
         _require_identity(operation_id, idempotency_key)
         with self.guard():
-            events, active = self._replay_unlocked()
+            events, active, _ = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
-                if repeated.kind != "reserved" or repeated.candidate != candidate:
+                if not isinstance(repeated, PluginPackageGcReservationEventV1) or repeated.kind != "reserved" or repeated.candidate != candidate:
                     raise self._error(
                         "GC operation identity was reused", "plugin_package_gc_conflict"
                     )
@@ -274,11 +389,12 @@ class PluginPackageGcReservationJournal:
                 "Exact GC reservation and cancellation reason are required"
             )
         with self.guard():
-            events, active = self._replay_unlocked()
+            events, active, started = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
                 if (
-                    repeated.kind != "cancelled"
+                    not isinstance(repeated, PluginPackageGcReservationEventV1)
+                    or repeated.kind != "cancelled"
                     or repeated.reservation_id != reservation_id
                     or repeated.reason_code != reason_code
                 ):
@@ -289,6 +405,10 @@ class PluginPackageGcReservationJournal:
             if reservation_id not in active:
                 raise self._error(
                     "GC reservation is not active", "plugin_package_gc_stale"
+                )
+            if reservation_id in started:
+                raise self._error(
+                    "GC deletion has started", "plugin_package_gc_deletion_started"
                 )
             event = PluginPackageGcReservationEventV1(
                 journal_revision=len(events) + 1,
@@ -302,8 +422,60 @@ class PluginPackageGcReservationJournal:
             self._append_unlocked(event)
             return event
 
+    def begin_delete(
+        self,
+        reservation_id: str,
+        *,
+        lifecycle: PluginPackageLifecycleLedger,
+        target_settlement_ids: tuple[str, ...],
+        operation_id: str,
+        idempotency_key: str,
+    ) -> PluginPackageGcDeletionStartV2:
+        """Persist the irreversible fence while the complete owner graph is locked."""
+
+        _require_identity(operation_id, idempotency_key)
+        if not _is_sha256(reservation_id):
+            raise ValueError("Exact GC reservation is required")
+        if not lifecycle.gc_reservation_graph_bound_to(self):
+            raise self._error("GC owner graph is not fully fenced", "plugin_package_gc_graph_unbound")
+        with self.guard():
+            events, active, started = self._replay_unlocked()
+            repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
+            if repeated is not None:
+                if (
+                    not isinstance(repeated, PluginPackageGcDeletionStartV2)
+                    or repeated.reservation_id != reservation_id
+                    or repeated.target_settlement_ids != target_settlement_ids
+                ):
+                    raise self._error("GC operation identity was reused", "plugin_package_gc_conflict")
+                return repeated
+            if reservation_id not in active:
+                raise self._error("GC reservation is not active", "plugin_package_gc_stale")
+            if reservation_id in started:
+                raise self._error("GC deletion already started", "plugin_package_gc_conflict")
+            if not lifecycle.gc_writer_epoch_sealed():
+                raise self._error("GC writer epoch is not sealed", "plugin_package_gc_writer_epoch_unsealed")
+            candidate = active[reservation_id].candidate
+            if candidate is None:
+                raise self._error("GC reservation is corrupt", "plugin_package_gc_journal_corrupt")
+            lifecycle.recheck_gc_candidate(candidate)
+            event = PluginPackageGcDeletionStartV2(
+                journal_revision=len(events) + 1,
+                reservation_id=reservation_id,
+                operation_id=operation_id,
+                idempotency_key=idempotency_key,
+                target_settlement_ids=target_settlement_ids,
+            )
+            self._append_unlocked(event)
+            return event
+
+    def deletion_start(self, reservation_id: str) -> PluginPackageGcDeletionStartV2 | None:
+        with self.guard():
+            _, _, started = self._replay_unlocked()
+            return started.get(reservation_id)
+
     def _active_packages_unlocked(self) -> frozenset[PluginPackageRevisionRefV1]:
-        _, active = self._replay_unlocked()
+        _, active, _ = self._replay_unlocked()
         return frozenset(
             item.candidate.package_revision
             for item in active.values()
@@ -313,13 +485,14 @@ class PluginPackageGcReservationJournal:
     def _replay_unlocked(
         self,
     ) -> tuple[
-        tuple[PluginPackageGcReservationEventV1, ...],
+        tuple[GcJournalEvent, ...],
         dict[str, PluginPackageGcReservationEventV1],
+        dict[str, PluginPackageGcDeletionStartV2],
     ]:
         if not self._path.exists():
-            return (), {}
+            return (), {}, {}
         try:
-            loaded: JsonlSnapshot[None, PluginPackageGcReservationEventV1] = load_jsonl(
+            loaded: JsonlSnapshot[None, GcJournalEvent] = load_jsonl(
                 self._path,
                 record_codec=_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
@@ -332,6 +505,7 @@ class PluginPackageGcReservationJournal:
                 "GC reservation journal is corrupt", "plugin_package_gc_journal_corrupt"
             ) from exc
         active: dict[str, PluginPackageGcReservationEventV1] = {}
+        started: dict[str, PluginPackageGcDeletionStartV2] = {}
         active_packages: set[PluginPackageRevisionRefV1] = set()
         operations: set[str] = set()
         idempotency: set[str] = set()
@@ -345,7 +519,11 @@ class PluginPackageGcReservationJournal:
                     "GC reservation history is corrupt",
                     "plugin_package_gc_journal_corrupt",
                 )
-            if event.kind == "reserved":
+            if isinstance(event, PluginPackageGcDeletionStartV2):
+                if event.reservation_id not in active or event.reservation_id in started:
+                    raise self._error("GC deletion start lacks one reservation", "plugin_package_gc_journal_corrupt")
+                started[event.reservation_id] = event
+            elif event.kind == "reserved":
                 candidate = event.candidate
                 if (
                     candidate is None
@@ -358,7 +536,7 @@ class PluginPackageGcReservationJournal:
                     )
                 active[event.reservation_id] = event
                 active_packages.add(candidate.package_revision)
-            elif event.reservation_id not in active:
+            elif event.reservation_id not in active or event.reservation_id in started:
                 raise self._error(
                     "GC cancellation lacks a reservation",
                     "plugin_package_gc_journal_corrupt",
@@ -373,9 +551,9 @@ class PluginPackageGcReservationJournal:
                 active_packages.remove(prior.candidate.package_revision)
             operations.add(event.operation_id)
             idempotency.add(event.idempotency_key)
-        return events, active
+        return events, active, started
 
-    def _append_unlocked(self, event: PluginPackageGcReservationEventV1) -> None:
+    def _append_unlocked(self, event: GcJournalEvent) -> None:
         try:
             append_jsonl_record(
                 self._path,
@@ -394,12 +572,12 @@ class PluginPackageGcReservationJournal:
 
 
 def _repeated(
-    events: tuple[PluginPackageGcReservationEventV1, ...],
+    events: tuple[GcJournalEvent, ...],
     operation_id: str,
     idempotency_key: str,
     *,
     path: Path,
-) -> PluginPackageGcReservationEventV1 | None:
+) -> GcJournalEvent | None:
     by_operation = next(
         (item for item in events if item.operation_id == operation_id), None
     )
@@ -495,6 +673,7 @@ __all__ = [
     "PLUGIN_PACKAGE_GC_RESERVATION_EVENT_VERSION",
     "PluginPackageGcReservationError",
     "PluginPackageGcReservationEventV1",
+    "PluginPackageGcDeletionStartV2",
     "PluginPackageGcReservationJournal",
     "PluginPackageGcReservationSnapshotV1",
 ]

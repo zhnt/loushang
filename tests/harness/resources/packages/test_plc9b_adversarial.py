@@ -24,6 +24,9 @@ from threading import Lock
 import pytest
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingJournal,
+)
 from loushang.harness.plugin_management.package_product import (
     PluginManagementPackageDesiredStateAdapter,
 )
@@ -97,7 +100,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     VerifiedArtifactRefV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PACKAGE_COMMITTED_SET_JOURNAL_CODEC,
     PackageCommittedSetJournal,
+    PackageCommittedSetJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
@@ -1789,6 +1794,36 @@ class _ManifestCommitAdmissionFixture:
     admission_owner: PackageCommitAdmissionOwner
 
 
+def test_committed_set_gc_tombstone_blocks_exact_root_republication(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_commit_admission_fixture(tmp_path)
+    (record,) = fixture.committed_sets.records()
+    marker = fixture.committed_sets.tombstone(record)
+    assert fixture.committed_sets.tombstone(record) == marker
+    assert fixture.committed_sets.is_tombstoned(record.committed_set.root_ref.ref_id)
+    old_record = json.loads(
+        fixture.committed_sets.path.read_text(encoding="utf-8").splitlines()[-1]
+    )
+    with pytest.raises(ValueError):
+        PACKAGE_COMMITTED_SET_JOURNAL_CODEC.decode_record(old_record)
+    restarted = PackageCommittedSetJournal(fixture.committed_sets.path)
+    with pytest.raises(PackageCommittedSetJournalError) as caught:
+        restarted.publish(
+            record.closure_lock,
+            request_fingerprint=record.committed_set.request_fingerprint,
+            product_id=record.committed_set.product_id,
+            scope_id=record.committed_set.scope_id,
+            installation_id=record.committed_set.installation_id,
+            plugin_id=record.committed_set.plugin_id,
+            classification_fingerprint=(
+                record.committed_set.classification_fingerprint
+            ),
+        )
+    assert caught.value.code == "package_committed_set_gc_tombstoned"
+    assert restarted.records() == (record,)
+
+
 def _manifest_commit_admission_fixture(
     tmp_path: Path,
 ) -> _ManifestCommitAdmissionFixture:
@@ -2228,12 +2263,14 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         desired_state=ledger,
         operation_journal_path=tmp_path / "product-operations.jsonl",
     )
+    gc_bindings = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
     adapter = PluginManagementPackageDesiredStateAdapter(
         management=service,
         revisions=_ManifestDesiredRevisionProjection(ledger),
         installation_scope="workspace",
         actor_id="product-runtime",
         policy_revision="product-policy:1",
+        gc_bindings=gc_bindings,
     )
 
     result = adapter.commit(fixture.request.desired_request)
@@ -2247,8 +2284,13 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         state.selection.package_revision.package_content_digest
         == fixture.request.desired_request.root_ref.artifact_digest
     )
+    bindings = gc_bindings.for_revision(state.selection.package_revision)
+    assert len(bindings) == 1
+    assert bindings[0].request == fixture.request.desired_request
+    assert bindings[0].desired_transition_revision == 1
     repeated = adapter.commit(fixture.request.desired_request)
     assert repeated == result
+    assert gc_bindings.for_revision(state.selection.package_revision) == bindings
 
     conflicting_request = PackageDesiredStateCommitRequestV1.create(
         fixture.request.admission_request,

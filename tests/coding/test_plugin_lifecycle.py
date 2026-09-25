@@ -24,7 +24,9 @@ from loushang.coding._base_plugin import (
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
+    build_coding_plugin_management_application,
     package_revision_ref,
+    project_coding_plugin_enablement_compatibility,
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
@@ -33,8 +35,11 @@ from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.plugin_management import (
     PluginDesiredStateMutationV1,
+    PluginLifecycleError,
+    PluginManagementApplicationCommandV1,
     PluginManagementCommandV1,
     PluginManagementUpdateCommandV2,
+    PluginPackageLifecycleError,
 )
 from loushang.harness.resources.plugins import (
     PluginResolutionAuthority,
@@ -104,6 +109,83 @@ def _package_ref(plugin_id: str = "coding.base"):
         dependency_lock_digest="b" * 64,
         package_source_identity=f"embedded:{plugin_id}",
     )
+
+
+def test_product_management_writer_observes_reserved_package_revision(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    assert not lifecycle.gc_writer_epoch_ready()
+    lifecycle.prepare_gc_writer_epoch()
+    lifecycle.prepare_gc_writer_epoch()
+    assert lifecycle.gc_writer_epoch_ready()
+    project_coding_plugin_enablement_compatibility(lifecycle.layout)
+    key = lifecycle.installation_key("coding.base")
+    package = _package_ref()
+    for action, revision, desired_state, selected in (
+        ("install", 0, "installed_disabled", package),
+        ("remove", 1, "absent", None),
+    ):
+        lifecycle.management.submit(
+            PluginManagementCommandV1(
+                action=action,
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id=f"product-gc-{action}",
+                    idempotency_key=f"product-gc-{action}",
+                    expected_inventory_revision=revision,
+                    installation_key=key,
+                    desired_state=desired_state,
+                    package_revision=selected,
+                    actor_id="test:operator",
+                    policy_revision="test-policy-v1",
+                    approval_reference="test",
+                ),
+            )
+        )
+    candidate = lifecycle.packages.gc_candidates()[0]
+    lifecycle._gc_reservations.reserve(
+        candidate,
+        lifecycle=lifecycle.packages,
+        operation_id="product-gc-reserve",
+        idempotency_key="product-gc-reserve",
+    )
+    application = build_coding_plugin_management_application(lifecycle.layout)
+    with pytest.raises(PluginLifecycleError) as caught:
+        application.commands.submit(
+            PluginManagementApplicationCommandV1(
+                correlation_id="product-gc-selection",
+                command=PluginManagementCommandV1(
+                    action="install",
+                    mutation=PluginDesiredStateMutationV1(
+                        operation_id="product-gc-reinstall",
+                        idempotency_key="product-gc-reinstall",
+                        expected_inventory_revision=2,
+                        installation_key=key,
+                        desired_state="installed_disabled",
+                        package_revision=package,
+                        actor_id="test:operator",
+                        policy_revision="test-policy-v1",
+                        approval_reference="test",
+                    ),
+                ),
+            )
+        )
+    assert caught.value.code == "plugin_package_gc_reserved"
+
+
+def test_product_gc_writer_epoch_requires_completed_startup_recovery(
+    tmp_path: Path,
+) -> None:
+    lifecycle = build_coding_plugin_lifecycle(
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+            tmp_path / "state", cwd=tmp_path / "workspace"
+        ),
+        startup_id="gc-epoch-unrecovered",
+    )
+    with pytest.raises(PluginPackageLifecycleError) as caught:
+        lifecycle.prepare_gc_writer_epoch()
+    assert caught.value.code == "plugin_package_recovery_incomplete"
+    assert not lifecycle.gc_writer_epoch_ready()
 
 
 _TEST_OWNER_CONTRIBUTIONS = (

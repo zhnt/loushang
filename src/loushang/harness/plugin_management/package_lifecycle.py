@@ -20,6 +20,13 @@ from loushang.harness.plugin_management.gc_fence import (
     PluginPackageGcReferenceGatePort,
     gc_reference_guard,
 )
+from loushang.harness.plugin_management.gc_writer_epoch import (
+    PluginGcWriterEpochError,
+    PluginGcWriterEpochRecords,
+    PluginGcWriterEpochSealV1,
+    gc_writer_epoch_codec,
+    split_gc_writer_epoch_records,
+)
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
@@ -79,6 +86,8 @@ class PluginPackageDesiredStateSourcePort(Protocol):
 
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]: ...
 
+    def gc_writer_epoch_sealed(self) -> bool: ...
+
 
 class PluginPackageInstanceRuntimeSourcePort(Protocol):
     @property
@@ -87,6 +96,8 @@ class PluginPackageInstanceRuntimeSourcePort(Protocol):
     def snapshot(self) -> PluginInstanceRuntimeInventorySnapshotV1: ...
 
     def events(self) -> tuple[PluginInstanceRuntimeEventV1, ...]: ...
+
+    def gc_writer_epoch_sealed(self) -> bool: ...
 
     def release_family(
         self,
@@ -392,6 +403,42 @@ class PluginPackageLifecycleLedger:
     @property
     def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
         return self._gc_gate
+
+    def seal_gc_writer_epoch(self) -> None:
+        if self._gc_gate is None:
+            raise PluginPackageLifecycleError(
+                "GC writer epoch requires a reservation gate",
+                code="plugin_package_gc_writer_epoch_unsupported",
+                path=self._path,
+            )
+        with ExitStack() as locks:
+            locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(self._exclusive_lock())
+            records = self._load_epoch_records_unlocked()
+            _replay(records.records, path=self._path)
+            if not records.sealed:
+                append_jsonl_record(
+                    self._path,
+                    PluginGcWriterEpochSealV1.create(
+                        journal_kind="package",
+                        owner_path=self._path,
+                        gate=self._gc_gate,
+                    ),
+                    record_codec=gc_writer_epoch_codec(
+                        PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC
+                    ),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                )
+
+    def gc_writer_epoch_sealed(self) -> bool:
+        with self._exclusive_lock():
+            package_sealed = self._load_epoch_records_unlocked().sealed
+        return (
+            package_sealed
+            and self._desired_state.gc_writer_epoch_sealed()
+            and self._instance_runtime.gc_writer_epoch_sealed()
+        )
 
     def gc_reservation_graph_bound_to(
         self, gate: PluginPackageGcReferenceGatePort
@@ -942,16 +989,35 @@ class PluginPackageLifecycleLedger:
             )
 
     def _load_and_replay_unlocked(self) -> _ReplayedPackageLifecycle:
+        return _replay(self._load_epoch_records_unlocked().records, path=self._path)
+
+    def _load_epoch_records_unlocked(
+        self,
+    ) -> PluginGcWriterEpochRecords[PluginPackageLifecycleEventV1]:
         if not self._path.exists():
-            return _empty_replay()
+            return PluginGcWriterEpochRecords(records=(), sealed=False)
         try:
-            snapshot: JsonlSnapshot[None, PluginPackageLifecycleEventV1] = load_jsonl(
+            snapshot: JsonlSnapshot[
+                None, PluginPackageLifecycleEventV1 | PluginGcWriterEpochSealV1
+            ] = load_jsonl(
                 self._path,
-                record_codec=PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC,
+                record_codec=gc_writer_epoch_codec(
+                    PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC
+                ),
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
             )
+            return split_gc_writer_epoch_records(
+                snapshot.records,
+                journal_kind="package",
+                owner_path=self._path,
+                gate=self._gc_gate,
+            )
+        except PluginGcWriterEpochError as exc:
+            raise PluginPackageLifecycleError(
+                str(exc), code=exc.code, path=self._path
+            ) from exc
         except JournalFileError as exc:
             code = (
                 exc.code
@@ -967,7 +1033,6 @@ class PluginPackageLifecycleLedger:
                 code=code,
                 path=self._path,
             ) from exc
-        return _replay(snapshot.records, path=self._path)
 
     def _append_and_apply_unlocked(
         self,

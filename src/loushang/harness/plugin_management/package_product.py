@@ -11,6 +11,7 @@ from loushang.harness.plugin_management.operations import (
 )
 from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
+    PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
     PluginInstallationScope,
     PluginPackageRevisionRefV1,
@@ -43,6 +44,15 @@ class PackageProductDesiredRevisionProjectionPort(Protocol):
     def inventory_revision(self) -> int: ...
 
 
+class PackageProductGcBindingPort(Protocol):
+    def record(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+        package_revision: PluginPackageRevisionRefV1,
+        transition: PluginDesiredStateTransitionV1,
+    ) -> object: ...
+
+
 @dataclass(frozen=True, slots=True)
 class PluginManagementPackageDesiredStateAdapter:
     """Commit an admitted PLC9B root through the sole management service."""
@@ -53,6 +63,7 @@ class PluginManagementPackageDesiredStateAdapter:
     actor_id: str
     policy_revision: str
     approval_reference: str | None = None
+    gc_bindings: PackageProductGcBindingPort | None = None
     owner_identity: str = "plugin-management-service"
     adapter_version: int = PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION
 
@@ -121,11 +132,13 @@ class PluginManagementPackageDesiredStateAdapter:
         if event.result.disposition == "succeeded":
             transition = event.result.transition
             if (
-                transition is None
+                not isinstance(transition, PluginDesiredStateTransitionV1)
                 or transition.inventory_revision
                 != request.expected_inventory_revision + 1
             ):
                 raise RuntimeError("Plugin management desired receipt changed")
+            if self.gc_bindings is not None:
+                self.gc_bindings.record(request, package_revision, transition)
             return PackageDesiredStateCommitResultV1.committed(
                 request,
                 owner_identity=self.owner_identity,
@@ -161,6 +174,7 @@ def _observed_inventory_revision(
 
 __all__ = [
     "PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION",
+    "PackageProductGcBindingPort",
     "PackageProductDesiredRevisionProjectionPort",
     "PluginManagementCommandSubmitPort",
     "PluginManagementPackageDesiredStateAdapter",
