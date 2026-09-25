@@ -830,7 +830,7 @@ def test_plc9_inventories_every_legacy_plugin_enablement_token_file() -> None:
         assert str(path) in inventory, path
 
 
-def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
+def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> None:
     assert _desired_state_mutation_sites() == {
         (MANAGEMENT_SERVICE, "PluginManagementService._execute_unlocked", "commit"),
         (
@@ -847,6 +847,12 @@ def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
         (
             Path("src/loushang/coding/_plugin_lifecycle.py"),
             "build_coding_plugin_management_application",
+        ),
+        # Fresh B state is opened only behind the fenced Coding Product owner;
+        # the management service remains the sole desired-state mutation site.
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "open_coding_package_product_state",
         ),
     }
 
