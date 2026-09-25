@@ -2240,6 +2240,12 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/harness/resources/packages/product_activation.py"),
         Path("src/loushang/harness/resources/packages/product_composition.py"),
         Path("src/loushang/harness/resources/packages/product_handoff.py"),
+        # Product-owned local Wheel ingress/facts consume the internal records
+        # and Source Port without granting a materialization capability.
+        Path("src/loushang/harness/resources/packages/product_local_wheel_policy.py"),
+        # Explicit POSIX Product composition consumes Package owners behind
+        # admitted epoch and existing Product management/GC authorities.
+        Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
         Path("src/loushang/harness/resources/packages/product_root_target.py"),
         Path("src/loushang/harness/resources/packages/product_transaction.py"),
         LINUX_LEGACY_RUNTIME,

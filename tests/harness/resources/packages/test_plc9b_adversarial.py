@@ -23,6 +23,10 @@ from threading import Lock
 
 import pytest
 
+from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    compose_posix_local_wheel_product,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -124,6 +128,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistry,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
 )
@@ -196,6 +203,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinReceiptV1,
     PackageTransactionPinRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.transaction_retention import (
+    PackageJournaledTransactionRetentionOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
@@ -213,9 +223,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
+from loushang.harness.resources.packages.product_activation import (
+    PackageProductActivationError,
+)
 from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
+)
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleIntentV1,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -227,6 +243,11 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductPublishAttemptV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+)
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+    PackageProductLocalWheelDependencyV1,
+    PackageProductLocalWheelPolicy,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
@@ -1601,12 +1622,16 @@ def _b2_owner(
     cleanup_debt: bool = False,
     crash_after_phase: PackageLifecyclePhase | None = None,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
 ):
     lifecycle_journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
     kernel = (
         PackageLifecycleOwner(
             journal=lifecycle_journal,
-            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            classification_authority=(
+                classification_authority
+                or _Authority(_facts("explicit_plugin_intent"))
+            ),
             enabled=True,
         )
         if crash_after_phase is None
@@ -1643,7 +1668,9 @@ def _b2_owner(
     )
     artifact_owner = PackageArtifactLifecycleOwner(
         kernel=kernel,
-        classification_recheck=_StableClassificationRecheck(),
+        classification_recheck=(
+            classification_authority or _StableClassificationRecheck()
+        ),
         acquisition_owner=PackageAcquisitionOwner(
             source_authority=source_authority,
             quarantine_store=store,
@@ -1690,10 +1717,13 @@ def _b3d_owner(
     secret: str,
     root_payload: bytes | None = None,
     payloads: dict[str, bytes] | None = None,
-    resolver: _NoDependencyResolver | _ManifestResolver | None = None,
+    resolver: (
+        _NoDependencyResolver | _ManifestResolver | PackageProductLocalWheelPolicy | None
+    ) = None,
     closure_builder: _LegacyClosureBuilder | None = None,
     crash_after_phase: PackageLifecyclePhase | None = None,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
 ):
     components = _b2_owner(
         tmp_path,
@@ -1703,6 +1733,7 @@ def _b3d_owner(
         payloads=payloads,
         crash_after_phase=crash_after_phase,
         configured_source_authority=configured_source_authority,
+        classification_authority=classification_authority,
     )
     (
         kernel,
@@ -3389,6 +3420,9 @@ def _manifest_native_adoption_fixture(
     product_ingress: PackageLifecycleIngressRequestV2 | None = None,
     product_root_target: bool = False,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
+    journaled_transaction_retention: bool = False,
+    classification_authority: PackageProductLocalWheelPolicy | None = None,
+    configured_resolver: PackageProductLocalWheelPolicy | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3410,6 +3444,8 @@ def _manifest_native_adoption_fixture(
         crash_after_phase=crash_after_phase,
         root_payload=root_payload,
         configured_source_authority=configured_source_authority,
+        classification_authority=classification_authority,
+        resolver=configured_resolver,
     )
     classified = kernel.submit(
         product_ingress or _request(
@@ -3501,7 +3537,11 @@ def _manifest_native_adoption_fixture(
     pin_owner = PackageTransactionPinLifecycleOwner(
         kernel=kernel,
         closure_plans=resolution_journal,
-        retention=retention,
+        retention=(
+            PackageJournaledTransactionRetentionOwner(journal=pin_journal)
+            if journaled_transaction_retention
+            else retention
+        ),
         pin_journal=pin_journal,
     )
     dependency_settlements = PackageStoreSettlementJournal(
@@ -3538,7 +3578,9 @@ def _manifest_native_adoption_fixture(
     staging_owner = PackageStagingSetLifecycleOwner(
         kernel=kernel,
         classification_recheck=(
-            staging_classification_recheck or _StableClassificationRecheck()
+            staging_classification_recheck
+            or classification_authority
+            or _StableClassificationRecheck()
         ),
         closure_plans=resolution_journal,
         pin_journal=pin_journal,
@@ -3932,20 +3974,36 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
     payload = _wheel_bytes()
     source.write_bytes(payload)
     admission = _manifest_product_admission()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(source),
+                requested_package="acme==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(payload).hexdigest(),
+            ),
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=_closure_environment().fingerprint,
+        authority_id="coding-local-source:manifest",
+    )
     ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
-        _request(
-            source=str(source),
-            environment_fingerprint=_closure_environment().fingerprint,
+        policy.create(
+            PackageProductLifecycleIntentV1(
+                operation_id="manifest-operation",
+                action="install",
+                source=str(source),
+                scope="project",
+            )
         ),
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     local_source = _PinnedLocalSourceAuthority(
-        PackagePinnedLocalWheelSourceAuthority(
-            source_root=source_root,
-            allowed_digests={str(source): sha256(payload).hexdigest()},
-            policy_revision=ingress.policy_revision,
-            authority_id="coding-local-source:manifest",
-        )
+        policy.source_authority()
     )
     fixture = _manifest_native_adoption_fixture(
         tmp_path,
@@ -3953,6 +4011,8 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         product_ingress=ingress,
         product_root_target=True,
         configured_source_authority=local_source,
+        journaled_transaction_retention=True,
+        classification_authority=policy,
     )
     product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
@@ -3981,9 +4041,19 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
     )
 
     assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert committed.classification is not None
+    assert (
+        committed.classification.basis_facts.facts[0].owner_revision
+        == policy.authority_revision
+    )
     assert local_source.authorize_calls == 1
+    assert fixture.retention.physical_acquisitions == 0
     assert fixture.root_settlements.records()
     assert fixture.committed_sets.current(committed.operation_id) is not None
+    assert tuple(record.receipt.state for record in fixture.pin_journal.records()) == (
+        "acquired",
+        "released",
+    )
     assert product.desired.snapshot().inventory_revision == 1
     source_evidence = fixture.evidence_journal.find(
         operation_id=committed.operation_id,
@@ -3996,6 +4066,326 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         source_evidence.evidence, PackageAuthenticatedSourceEvidenceV1
     )
     assert source_evidence.evidence.envelope.origin_kind == "local"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.parametrize("dependency_tampered", (False, True))
+def test_product_transaction_commits_configured_local_dependency(
+    tmp_path: Path,
+    dependency_tampered: bool,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    root_source = source_root / WHEEL_FILENAME
+    dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
+    root_payload = _package_wheel_bytes(
+        "acme-plugin", "1.0", requires_dist=("dependency==2.0",)
+    )
+    dependency_payload = _package_wheel_bytes("dependency", "2.0")
+    root_source.write_bytes(root_payload)
+    dependency_source.write_bytes(dependency_payload)
+    environment = _closure_environment()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(root_source),
+                requested_package="acme-plugin==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(root_payload).hexdigest(),
+            ),
+        ),
+        dependencies=(
+            PackageProductLocalWheelDependencyV1(
+                source_identity=str(dependency_source),
+                project_name="dependency",
+                version="2.0",
+                artifact_digest=sha256(dependency_payload).hexdigest(),
+            ),
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=environment.fingerprint,
+        authority_id="coding-local-source:manifest",
+    )
+    admission = _manifest_product_admission()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        policy.create(
+            PackageProductLifecycleIntentV1(
+                operation_id="manifest-operation",
+                action="install",
+                source=str(root_source),
+                scope="project",
+            )
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    local_source = _PinnedLocalSourceAuthority(policy.source_authority())
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path,
+        product_ingress=ingress,
+        product_root_target=True,
+        configured_source_authority=local_source,
+        journaled_transaction_retention=True,
+        classification_authority=policy,
+        configured_resolver=policy,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=environment, budgets=PackageClosureBudgetV1()
+        ),
+        recovery_identity="manifest-local-dependency-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel, transaction=transaction
+        )
+    )
+    if dependency_tampered:
+        dependency_source.write_bytes(b"changed-after-Product-approval")
+
+    committed = router.route(
+        PackageProductRouteRequestV1(
+            entrypoint="cli", ingress=ingress, admission=admission
+        )
+    )
+
+    if dependency_tampered:
+        assert committed.disposition == "rejected"
+        assert committed.failure is not None
+        assert committed.failure.code == "package_closure_artifact_invalid"
+        assert fixture.committed_sets.records() == ()
+        assert product.desired.snapshot().inventory_revision == 0
+        return
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    committed_set = fixture.committed_sets.current(committed.operation_id)
+    assert committed_set is not None
+    assert tuple(
+        ref.artifact_digest for ref in committed_set.committed_set.dependency_refs
+    ) == (sha256(dependency_payload).hexdigest(),)
+    assert local_source.authorize_calls == 2
+    assert fixture.resolution_journal.records()
+    assert tuple(record.receipt.state for record in fixture.pin_journal.records()) == (
+        "acquired",
+        "released",
+    )
+    assert product.desired.snapshot().inventory_revision == 1
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+@pytest.mark.parametrize("with_dependency", (False, True))
+def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
+    tmp_path: Path,
+    with_dependency: bool,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    source = source_root / WHEEL_FILENAME
+    payload = _package_wheel_bytes(
+        "acme-plugin",
+        "1.0",
+        requires_dist=("dependency==2.0",) if with_dependency else (),
+    )
+    source.write_bytes(payload)
+    dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
+    dependency_payload = _package_wheel_bytes("dependency", "2.0")
+    if with_dependency:
+        dependency_source.write_bytes(dependency_payload)
+    environment = _closure_environment()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(source),
+                requested_package="acme-plugin==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(payload).hexdigest(),
+            ),
+        ),
+        dependencies=(
+            (
+                PackageProductLocalWheelDependencyV1(
+                    source_identity=str(dependency_source),
+                    project_name="dependency",
+                    version="2.0",
+                    artifact_digest=sha256(dependency_payload).hexdigest(),
+                ),
+            )
+            if with_dependency
+            else ()
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=environment.fingerprint,
+        authority_id="coding-local-source:runtime",
+    )
+    state_root = tmp_path / "package-state"
+    plugin_root = tmp_path / "plugin-store"
+    control_root = tmp_path / "epoch-control"
+    for directory in (state_root, plugin_root, control_root):
+        directory.mkdir(mode=0o700)
+    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
+    desired = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=tmp_path / "product-management.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
+    store_id = "package-store:product-runtime"
+    fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
+    fence = fences.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity="1" * 64,
+            fenced_root_identity=_manifest_directory_identity(plugin_root),
+            namespace_id="2" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="3" * 64,
+            snapshot_receipt_id="4" * 64,
+            root_switch_receipt_id="5" * 64,
+        )
+    )
+    root_fd = os.open(
+        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    file_io = RootedFileIO(control_root, root_fd)
+    try:
+        registry = PackageEpochRuntimeLeaseRegistry(
+            path=control_root / "runtime-leases.jsonl",
+            coordination_lock=control_root / "coordination",
+            file_io=file_io,
+            fences=fences,
+            store_id=store_id,
+        )
+        handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        try:
+            admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
+                fence=fence,
+                runtime_id=handle.lease.runtime_id,
+                runtime_version="2.0.0",
+                runtime_protocol_epoch=2,
+                runtime_epoch=handle.lease.runtime_epoch,
+                store_root_identity=handle.lease.store_root_identity,
+                lease_id=handle.lease.lease_id,
+            )
+            def compose(
+                selected_desired: PluginDesiredStateLedger = desired,
+            ):
+                return compose_posix_local_wheel_product(
+                    state_root=state_root,
+                    plugin_store_root=plugin_root,
+                    policy=policy,
+                    environment=environment,
+                    acquisition_budgets=PackageAcquisitionBudgetV1(
+                        max_transport_bytes=256 * 1024,
+                        max_requests=1,
+                        max_redirects=0,
+                        max_wall_time_ms=1000,
+                    ),
+                    inspection_budgets=PackageInspectionBudgetV1(),
+                    closure_budgets=PackageClosureBudgetV1(),
+                    root_store_identity="product-runtime-root-store",
+                    dependency_store_identity="product-runtime-dependency-store",
+                    registry=registry,
+                    admission_request=admission_request,
+                    management=management,
+                    desired_state=selected_desired,
+                    gc_bindings=bindings,
+                    gc_gate=gate,
+                    actor_id="product-runtime",
+                    desired_policy_revision="product-policy:1",
+                    recovery_identity="product-runtime-recovery",
+                )
+
+            activation = compose()
+            activation.activate()
+            outcome = activation.route(
+                PackageProductLifecycleIntentV1(
+                    operation_id="operation:product-runtime",
+                    action="install",
+                    source=str(source),
+                    scope="project",
+                ),
+                entrypoint="cli",
+            )
+            assert outcome.handled
+            assert outcome.record is not None
+            assert outcome.record.lifecycle == "installed"
+            assert desired.snapshot().inventory_revision == 1
+            committed_set = PackageCommittedSetJournal(
+                state_root / "committed-sets.jsonl"
+            ).current("operation:product-runtime")
+            assert committed_set is not None
+            assert len(committed_set.committed_set.dependency_refs) == int(
+                with_dependency
+            )
+            lifecycle_journal = PackageLifecycleJournal(
+                state_root / "lifecycle.jsonl"
+            )
+            before_restart = lifecycle_journal.records()
+            restarted = compose()
+            restarted.activate()
+            assert lifecycle_journal.records() == before_restart
+            assert desired.snapshot().inventory_revision == 1
+            foreign_desired = PluginDesiredStateLedger(
+                tmp_path / "foreign-product-desired.jsonl", gc_gate=gate
+            )
+            with pytest.raises(ValueError, match="Product owner"):
+                compose(foreign_desired)
+            assert lifecycle_journal.records() == before_restart
+            for entrypoint, source_value in (
+                ("rpc", "https://packages.example.test/unknown.whl"),
+                ("direct_materializer", str(source)),
+            ):
+                refused = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id=f"operation:refused:{entrypoint}",
+                        action="install",
+                        source=source_value,
+                        scope="project",
+                    ),
+                    entrypoint=entrypoint,
+                )
+                assert refused.handled
+                assert refused.record is not None
+                assert refused.record.lifecycle == "failed"
+            assert desired.snapshot().inventory_revision == 1
+            before_swap = lifecycle_journal.records()
+            plugin_root.rename(tmp_path / "moved-plugin-store")
+            plugin_root.mkdir(mode=0o700)
+            with pytest.raises(PackageProductActivationError) as changed_root:
+                activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:changed-root",
+                        action="install",
+                        source=str(source),
+                        scope="project",
+                    ),
+                    entrypoint="startup",
+                )
+            assert changed_root.value.code == "package_runtime_epoch_unsupported"
+            assert lifecycle_journal.records() == before_swap
+            assert desired.snapshot().inventory_revision == 1
+        finally:
+            handle.release()
+    finally:
+        file_io.cleanup()
+        os.close(root_fd)
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")

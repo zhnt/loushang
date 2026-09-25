@@ -341,6 +341,14 @@ Neither may silently override a narrower implemented owner contract.
   guards; Windows run `33709473605`/artifact `9876434660` executed 34 native
   component tests and all 15 Windows manifest nodes. All retained PLC9B XML
   reports recorded zero skips, failures, and errors.
+  The current PLC9B integration branch adds an explicit POSIX local-Wheel
+  Product composition over a live epoch lease, the existing Product desired
+  and GC owners, digest-pinned Source, journaled transaction pins, and native
+  Package Stores. Native end-to-end tests cover root-only and dependency-Wheel
+  commits through this composition; a separate real-Store/Product fixture
+  covers changed-Source refusal. The composition refuses a moved Store root. No
+  Coding entrypoint calls this composition yet; it is not a completed Product
+  cutover, Windows composition, or PLC9D execution claim.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,
