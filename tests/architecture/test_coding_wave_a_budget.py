@@ -142,6 +142,9 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B startup routing: bootstrap +51/-14, Product runtime +178/-2,
     # agent Session runtime +22. All three existing paths remain core.
     plc9b_startup_routing_allowance = (51 - 14) + (178 - 2) + 22
+    # PLC9B fresh cutover adds exact CLI +100, pre-B snapshot +118, and
+    # fenced Product runtime +193/-1; all remain counted in core.
+    plc9b_fresh_cutover_allowance = 100 + 118 + (193 - 1)
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -158,6 +161,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_capability_ingress_allowance
         + plc9b_capability_selection_allowance
         + plc9b_startup_routing_allowance
+        + plc9b_fresh_cutover_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
