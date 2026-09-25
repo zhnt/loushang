@@ -145,6 +145,8 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B fresh cutover adds exact CLI +100, pre-B snapshot +118, and
     # fenced Product runtime +193/-1; all remain counted in core.
     plc9b_fresh_cutover_allowance = 100 + 118 + (193 - 1)
+    # PLC9D's explicit offline GC CLI is one exact new 164-line core path.
+    plc9d_offline_gc_allowance = 164
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -162,6 +164,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_capability_selection_allowance
         + plc9b_startup_routing_allowance
         + plc9b_fresh_cutover_allowance
+        + plc9d_offline_gc_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.

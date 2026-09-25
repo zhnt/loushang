@@ -84,7 +84,6 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/_capability_plugin_composition.py"),
     Path("src/loushang/coding/package_product_revisions.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
-    Path("src/loushang/coding/package_product_revisions.py"),
     Path("src/loushang/coding/plugin_management_cli.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
@@ -103,11 +102,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/coding/package_product_runtime.py"),
             "require_fresh_coding_product_inputs",
         ): 1,
-        (
-            Path("src/loushang/coding/package_product_runtime.py"),
-            "require_fresh_coding_product_inputs",
-        ): 1,
-        (Path("src/loushang/coding/package_source_snapshot.py"), "<module>"): 1,
         (
             Path("src/loushang/harness/config/agent/_settings_patch.py"),
             "AgentSettingsUpdate",
