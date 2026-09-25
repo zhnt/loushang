@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from loushang.harness.multiagent import (
     AgentCaller,
@@ -8,6 +9,7 @@ from loushang.harness.multiagent import (
     AgentPath,
     AgentTypeRegistry,
     AgentTypeSpec,
+    HostCaller,
     MultiAgentControl,
     SubagentDisposeResult,
     SubagentRoundResult,
@@ -27,9 +29,10 @@ from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 
 class _Driver:
-    def __init__(self) -> None:
+    def __init__(self, final_message: str | None = None) -> None:
         self.messages: list[AgentInputMessage] = []
         self.rounds = 0
+        self.final_message = final_message
 
     def deliver(self, message: AgentInputMessage) -> None:
         self.messages.append(message)
@@ -39,7 +42,7 @@ class _Driver:
         self.rounds += 1
         return SubagentRoundResult(
             status="completed",
-            final_message=f"result {self.rounds}",
+            final_message=self.final_message or f"result {self.rounds}",
             summary=f"summary {self.rounds}",
         )
 
@@ -51,11 +54,12 @@ class _Driver:
 
 
 class _Factory:
-    def __init__(self) -> None:
+    def __init__(self, final_messages: dict[str, str] | None = None) -> None:
         self.drivers: dict[AgentPath, _Driver] = {}
+        self.final_messages = final_messages or {}
 
     async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
-        driver = _Driver()
+        driver = _Driver(self.final_messages.get(request.record.path.parts[-1]))
         self.drivers[request.record.path] = driver
         return SessionSubagentBinding(driver=driver)
 
@@ -212,6 +216,90 @@ def test_wait_expiration_is_a_normal_tool_result_not_an_execution_timeout() -> N
 
         assert result.details["wait_expired"] is True
         assert "timed_out" not in result.details
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_parallel_completion_reports_can_be_retrieved_without_loss() -> None:
+    async def scenario() -> None:
+        reports = {
+            "first": "First finding.\nSecond finding.",
+            "second": "第二份报告。\n" + "详细证据。" * 250,
+            "third": "Third finding.",
+        }
+        control = MultiAgentControl(
+            agent_types=AgentTypeRegistry(
+                (AgentTypeSpec(name="reviewer", maximum_children=3),)
+            )
+        )
+        root_queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
+        runtime = SessionMultiAgentRuntime(
+            control=control,
+            child_factory=_Factory(reports),
+            root_input=AgentInputFacade(
+                queue=root_queue,
+                build_payload=lambda message: message,
+                submit_mailbox=root_queue.append_next_turn,
+            ),
+        )
+        pack = MultiAgentToolPack(runtime=runtime, caller=AgentCaller(control.root_ref))
+        registry = pack.register(WorkspaceToolRegistry())
+        tools = {
+            name: registry.materialize_tool(name) for name in MULTIAGENT_TOOL_NAMES
+        }
+        references = {}
+        for name in reports:
+            spawned = await tools["spawn_agent"].execute(
+                f"spawn-{name}",
+                {"name": name, "agent_type": "reviewer", "prompt": "Review."},
+                None,
+                None,
+            )
+            references[name] = spawned.details
+        for name in reports:
+            await runtime.await_completion(
+                caller=HostCaller(), target=AgentPath.parse(f"/root/{name}")
+            )
+
+        notices = root_queue.drain_next_turn()
+        assert len(notices) == 3
+        by_path = {str(notice.sender.ref.path): notice.text for notice in notices}
+        assert reports["first"] in by_path["/root/first"]
+        assert "[Report truncated]" in by_path["/root/second"]
+        assert (
+            f'get_agent_result(path="/root/second", '
+            f"incarnation={references['second']['incarnation']}, round_id=1)"
+            in by_path["/root/second"]
+        )
+        assert reports["third"] in by_path["/root/third"]
+
+        second = references["second"]
+        await tools["close_agent"].execute(
+            "close-second", {"target": second["path"]}, None, None
+        )
+        chunks = []
+        offset = 0
+        while True:
+            page = await tools["get_agent_result"].execute(
+                "read-second",
+                {
+                    "path": second["path"],
+                    "incarnation": second["incarnation"],
+                    "round_id": 1,
+                    "offset": offset,
+                    "limit": 37,
+                },
+                None,
+                None,
+            )
+            payload = json.loads(page.content[0].text)
+            assert payload == page.details
+            chunks.append(payload["chunk"])
+            if payload["next_offset"] is None:
+                break
+            offset = payload["next_offset"]
+        assert "".join(chunks) == reports["second"]
         await runtime.dispose()
 
     asyncio.run(scenario())
