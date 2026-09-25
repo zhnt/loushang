@@ -27,7 +27,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_builtin_wheel import (
     coding_base_product_local_wheel_policy,
+    coding_builtin_product_local_wheel_policy,
     prepare_posix_coding_base_product_wheel,
+    prepare_posix_coding_capability_product_wheels,
 )
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .session_manager import SessionManager
@@ -118,6 +120,49 @@ def open_coding_base_product_runtime_owner(
 ) -> CodingPosixLocalWheelProductRuntimeOwner:
     """Compose the installed base Plugin from one fenced Product authority."""
 
+    return _open_coding_product_runtime_owner(
+        lifecycle,
+        epoch_runtime,
+        state,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+        include_capabilities=False,
+    )
+
+
+def open_coding_builtin_product_runtime_owner(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    state: CodingPackageProductStateOwners,
+    *,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> CodingPosixLocalWheelProductRuntimeOwner:
+    """Compose all three first-party Packages without granting execution."""
+
+    return _open_coding_product_runtime_owner(
+        lifecycle,
+        epoch_runtime,
+        state,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+        include_capabilities=True,
+    )
+
+
+def _open_coding_product_runtime_owner(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    state: CodingPackageProductStateOwners,
+    *,
+    workspace: Path,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+    include_capabilities: bool,
+) -> CodingPosixLocalWheelProductRuntimeOwner:
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Package lifecycle layout is required")
     if not isinstance(epoch_runtime, PackageProductPosixFencedRuntimeOwner):
@@ -171,13 +216,21 @@ def open_coding_base_product_runtime_owner(
     host_inputs = PosixLocalWheelProductHostInputs.current_host(
         max_transport_bytes=2 * 1024 * 1024
     )
-    policy = coding_base_product_local_wheel_policy(
-        artifact,
+    policy_arguments = dict(
         project_scope_id=scope_id,
         resolution_environment_fingerprint=host_inputs.environment.fingerprint,
         policy_revision="coding-product-package-policy:1",
         quota_profile_revision="coding-product-package-quota:1",
         authority_id="coding-product-local-source",
+    )
+    policy = (
+        coding_builtin_product_local_wheel_policy(
+            artifact,
+            prepare_posix_coding_capability_product_wheels(source_root),
+            **policy_arguments,
+        )
+        if include_capabilities
+        else coding_base_product_local_wheel_policy(artifact, **policy_arguments)
     )
     return CodingPosixLocalWheelProductRuntimeOwner(
         product_owner=PosixLocalWheelProductSessionOwner(
@@ -209,5 +262,6 @@ __all__ = [
     "CodingPackageProductStateOwners",
     "CodingPosixLocalWheelProductRuntimeOwner",
     "open_coding_base_product_runtime_owner",
+    "open_coding_builtin_product_runtime_owner",
     "open_coding_package_product_state",
 ]

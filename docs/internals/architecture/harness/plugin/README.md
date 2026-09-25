@@ -363,8 +363,23 @@ Neither may silently override a narrower implemented owner contract.
   artifact through the PLC9B Wheel verifier and real Store. A real Coding Session
   also installs that checked-in package through
   the Product transaction and reads its manifest, declaration, Prompt, and
-  Skill members from the selected Store root after enablement; default Product
-  owner construction and selection remain unimplemented. The
+  Skill members from the selected Store root after enablement. A concrete
+  fenced Coding Product owner constructor now serves explicit Hosted Sessions;
+  default selection remains unimplemented. The first-party LSP and Arch
+  Capability packages can now be frozen as distinct, digest-pinned Product
+  Wheels alongside `coding.base` under one explicit Source policy. Their
+  `in_process` Provider declarations remain unchanged. The real B Store fixture
+  uses a three-package Coding Product owner and its leased Session factory to
+  commit and enable both, capture their exact definition bytes, and reopen both
+  selected manifests while the pre-B roots are absent. A Product-selected
+  revision bridge now rechecks the live Store selection on every verified file
+  read and supplies those bytes to the existing Plugin Python loader; the
+  native fixture proves both Definitions load after the pre-B roots are hidden
+  and the bridge rejects a disposed Product runtime. Definition preflight also
+  yields pending Subjects bound to the B instance, Source, artifact, and trust
+  evidence. This is preflight input evidence only: Definition approval,
+  Provider composition, and default
+  selection for those two packages are still open. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired

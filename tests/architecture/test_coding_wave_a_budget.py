@@ -129,6 +129,9 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B fenced owner adds exact new Coding Product modules: built-in Wheel
     # +232 and runtime +213, plus pre-B snapshot +17. All remain core.
     plc9b_fenced_owner_allowance = 232 + 213 + 17
+    # PLC9B Capability ingress: built-in Wheel +181/-28, new Product
+    # Capability selection +328, and Product runtime +56/-2. All stay core.
+    plc9b_capability_ingress_allowance = (181 - 28) + 328 + (56 - 2)
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -142,6 +145,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_selected_resources_allowance
         + plc9b_hosted_routing_allowance
         + plc9b_fenced_owner_allowance
+        + plc9b_capability_ingress_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.

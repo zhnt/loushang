@@ -4233,17 +4233,28 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         build_coding_base_product_wheel,
         coding_base_product_local_wheel_policy,
         prepare_posix_coding_base_product_wheel,
+        prepare_posix_coding_capability_product_wheels,
     )
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
         cutover_coding_package_store_from_legacy,
         reopen_coding_package_cutover,
     )
+    from loushang.coding.package_product_capabilities import (
+        open_coding_product_capability_resolution,
+    )
     from loushang.coding.package_product_runtime import (
         open_coding_base_product_runtime_owner,
+        open_coding_builtin_product_runtime_owner,
         open_coding_package_product_state,
     )
+    from loushang.coding.plugin_dependency_grants import (
+        coding_plugin_distribution_evidence_resolver,
+    )
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval.plugin_execution import (
+        PluginExecutionDecisionJournal,
+    )
     from loushang.harness.cli.package_lifecycle import (
         PackageLifecycleError,
         PackageLifecycleRequest,
@@ -4251,12 +4262,25 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
+    from loushang.harness.plugin_authoring.host import PluginDeclarationHost
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
         register_package_product_runtime_lease,
     )
     from loushang.harness.resources.packages.product_pre_b_snapshot import (
         reopen_posix_product_cutover,
+    )
+    from loushang.harness.resources.plugins.python_symbols import (
+        load_verified_plugin_python_module,
+    )
+    from loushang.harness.resources.plugins.revisions import PluginRevisionError
+    from loushang.harness.resources.plugins.selection import (
+        PluginContributionRef,
+        PluginEffectiveConfigurationEntry,
+        PluginEffectiveConfigurationSetV1,
+        PluginPreflightContextV1,
+        PluginPreflightPendingApprovalOutcome,
+        PluginSelectionPlanV2,
     )
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
@@ -6635,6 +6659,126 @@ while True:
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
             if checked_in_base:
+                from loushang.harness.plugin_management.operations import (
+                    PluginManagementCommandV1,
+                )
+                from loushang.harness.plugin_management.records import (
+                    PluginDesiredStateMutationV1,
+                    PluginInstallationKeyV1,
+                )
+
+                capability_artifacts = (
+                    prepare_posix_coding_capability_product_wheels(
+                        product_source_root
+                    )
+                )
+                def compose_builtin_product(selected_state):
+                    owner = open_coding_builtin_product_runtime_owner(
+                        legacy_layout,
+                        epoch_runtime,
+                        selected_state,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
+                    assert {item.plugin_id for item in owner.product_owner.policy.bindings} == {
+                        "coding.base",
+                        "coding.arch.default",
+                        "coding.lsp.default",
+                    }
+                    capability_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "builtin-product-sessions",
+                            cwd=str(workspace),
+                            persist=False,
+                        )
+                    )
+                    capability_factory = owner.factory_for_session(capability_manager)
+                    try:
+                        return capability_factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=(
+                                    capability_manager.get_header().conversation_id
+                                ),
+                                cwd=str(workspace),
+                            )
+                        ).activate()
+                    except BaseException:
+                        capability_factory.dispose_unbound_runtime()
+                        raise
+
+                combined_runtime = compose_builtin_product(product_state)
+                try:
+                    for capability_artifact in capability_artifacts:
+                        capability_outcome = combined_runtime.lifecycle.route(
+                            PackageProductLifecycleIntentV1(
+                                operation_id=(
+                                    f"operation:product-{capability_artifact.plugin_id}"
+                                ),
+                                action="install",
+                                source=str(capability_artifact.path),
+                                scope="project",
+                            ),
+                            entrypoint="session",
+                        )
+                        assert capability_outcome.handled
+                        assert capability_outcome.record is not None
+                        assert capability_outcome.record.lifecycle == "installed"
+                        capability_key = PluginInstallationKeyV1(
+                            product_id="coding",
+                            installation_scope="workspace",
+                            scope_id=policy.project_scope_id,
+                            plugin_id=capability_artifact.plugin_id,
+                        )
+                        capability_enablement = management.submit(
+                            PluginManagementCommandV1(
+                                action="enable",
+                                mutation=PluginDesiredStateMutationV1(
+                                    operation_id=(
+                                        f"operation:enable-{capability_artifact.plugin_id}"
+                                    ),
+                                    idempotency_key=(
+                                        f"request:enable-{capability_artifact.plugin_id}"
+                                    ),
+                                    expected_inventory_revision=(
+                                        desired.snapshot().inventory_revision
+                                    ),
+                                    installation_key=capability_key,
+                                    desired_state="installed_enabled",
+                                    package_revision=None,
+                                    actor_id=factory.actor_id,
+                                    policy_revision=factory.desired_policy_revision,
+                                ),
+                            )
+                        )
+                        assert capability_enablement.result is not None
+                        assert capability_enablement.result.disposition == "succeeded"
+                        selected_capability = (
+                            combined_runtime.capture_selected_plugin_manifest_for(
+                                capability_artifact.plugin_id,
+                                max_files=64,
+                                max_total_bytes=1024 * 1024,
+                            )
+                        )
+                        assert (
+                            selected_capability.verified_manifest().name
+                            == capability_artifact.plugin_id
+                        )
+                        definition_path = (
+                            capability_artifact.plugin_id.replace(".", "_")
+                            + "/definition.py"
+                        )
+                        with zipfile.ZipFile(capability_artifact.path) as wheel:
+                            assert dict(selected_capability.snapshot.files)[
+                                definition_path
+                            ] == wheel.read(definition_path)
+                        with pytest.raises(ValueError, match="not data-only"):
+                            selected_capability.verified_data_only_declarations()
+                finally:
+                    combined_runtime.dispose_runtime()
+                expected_inventory_revision = desired.snapshot().inventory_revision
+            if checked_in_base:
                 hidden_package = tmp_path / "hidden-post-b-package"
                 hidden_lifecycle = tmp_path / "hidden-post-b-lifecycle"
                 legacy_root.rename(hidden_package)
@@ -6656,6 +6800,189 @@ while True:
                         reopened_owner.product_owner.policy
                         == product_runtime_owner.product_owner.policy
                     )
+                    reopened_builtin = compose_builtin_product(reopened_state)
+                    try:
+                        product_capabilities = (
+                            open_coding_product_capability_resolution(
+                                reopened_builtin,
+                                plugin_ids=(
+                                    "coding.lsp.default",
+                                    "coding.arch.default",
+                                ),
+                            )
+                        )
+                        selected_capabilities = []
+                        for capability_artifact in capability_artifacts:
+                            selected_capability = (
+                                reopened_builtin.capture_selected_plugin_manifest_for(
+                                    capability_artifact.plugin_id,
+                                    max_files=64,
+                                    max_total_bytes=1024 * 1024,
+                                )
+                            )
+                            assert (
+                                selected_capability.verified_manifest().name
+                                == capability_artifact.plugin_id
+                            )
+                            selected_capabilities.append(selected_capability)
+                            package = next(
+                                item
+                                for item in product_capabilities.packages
+                                if item.manifest.name == capability_artifact.plugin_id
+                            )
+                            assert (
+                                package.content_digest
+                                == capability_artifact.artifact_digest
+                            )
+                            binding = next(
+                                item
+                                for item in product_capabilities.bindings
+                                if item.plugin_id == capability_artifact.plugin_id
+                            )
+                            assert binding.source_identity == (
+                                selected_capability.snapshot.package_revision.package_source_identity
+                            )
+                            definition_path = (
+                                capability_artifact.plugin_id.replace(".", "_")
+                                + "/definition.py"
+                            )
+                            with pytest.raises(PluginRevisionError) as wheel_path:
+                                package.revision_handle.open_file(definition_path)
+                            assert wheel_path.value.code == "invalid_plugin_revision_path"
+                            with zipfile.ZipFile(capability_artifact.path) as wheel:
+                                with package.revision_handle.open_file(
+                                    "definition.py"
+                                ) as stream:
+                                    assert stream.read() == wheel.read(definition_path)
+                            product_module = load_verified_plugin_python_module(
+                                revision_handle=package.revision_handle,
+                                dependency_lock=package.dependency_lock,
+                                relative_path="definition.py",
+                                module_name=(
+                                    "coding_product_probe_"
+                                    + capability_artifact.plugin_id.replace(".", "_")
+                                ),
+                                host_api_prefixes=(
+                                    "loushang.plugin",
+                                    "loushang.harness.capabilities",
+                                    "loushang.harness.plugin_authoring",
+                                ),
+                                distribution_evidence_resolver=(
+                                    coding_plugin_distribution_evidence_resolver()
+                                ),
+                            )
+                            assert callable(product_module.resolve("declare"))
+                        product_scope_id = (
+                            "session:"
+                            + session_manager.get_header().conversation_id
+                        )
+                        product_plan = PluginSelectionPlanV2(
+                            context=PluginPreflightContextV1(
+                                product_id="coding",
+                                scope_id=product_scope_id,
+                                policy_revision=(
+                                    reopened_owner.product_owner.policy.policy_revision
+                                ),
+                                instance_revision_refs=tuple(
+                                    sorted(
+                                        (
+                                            item.snapshot.instance_revision_ref
+                                            for item in selected_capabilities
+                                        ),
+                                        key=lambda item: item.plugin_id,
+                                    )
+                                ),
+                            ),
+                            selected_plugin_ids=tuple(
+                                sorted(item.manifest.name for item in product_capabilities.packages)
+                            ),
+                            selected_contributions=tuple(
+                                sorted(
+                                    PluginContributionRef(
+                                        package.manifest.name,
+                                        reservation.contribution_id,
+                                    )
+                                    for package in product_capabilities.packages
+                                    for reservation in package.contribution_index.items
+                                )
+                            ),
+                            source_trust_snapshots=tuple(
+                                sorted(
+                                    (
+                                        item.source_trust_snapshot
+                                        for item in selected_capabilities
+                                        if item.source_trust_snapshot is not None
+                                    ),
+                                    key=lambda item: item.plugin_id,
+                                )
+                            ),
+                            effective_configuration_set=PluginEffectiveConfigurationSetV1(
+                                entries=tuple(
+                                    sorted(
+                                        (
+                                            PluginEffectiveConfigurationEntry(
+                                                plugin_id=package.manifest.name,
+                                                contribution_id=reservation.contribution_id,
+                                                configuration={},
+                                            )
+                                            for package in product_capabilities.packages
+                                            for reservation in package.contribution_index.items
+                                        ),
+                                        key=lambda item: (
+                                            item.plugin_id,
+                                            item.contribution_id,
+                                        ),
+                                    )
+                                ),
+                            ),
+                            allowed_authority_ceiling=("filesystem", "process"),
+                        )
+                        pending = PluginDeclarationHost().resolve(
+                            product_capabilities.packages,
+                            bindings=product_capabilities.bindings,
+                            plan=product_plan,
+                            decision_lookup=PluginExecutionDecisionJournal(
+                                tmp_path / "product-definition-decisions.jsonl",
+                                scope_kind="workspace",
+                                scope_id=product_scope_id,
+                                clock=lambda: 1_700_000_000_000,
+                            ),
+                        )
+                        assert isinstance(
+                            pending, PluginPreflightPendingApprovalOutcome
+                        )
+                        assert {item.plugin_id for item in pending.subjects} == {
+                            "coding.lsp.default",
+                            "coding.arch.default",
+                        }
+                        for subject in pending.subjects:
+                            selected_capability = next(
+                                item
+                                for item in selected_capabilities
+                                if item.manifest.name == subject.plugin_id
+                            )
+                            assert (
+                                subject.instance_revision_ref
+                                == selected_capability.snapshot.instance_revision_ref
+                            )
+                            assert subject.package_source_identity == (
+                                selected_capability.snapshot.package_revision.package_source_identity
+                            )
+                            assert subject.package_content_digest == (
+                                selected_capability.snapshot.root_ref.artifact_digest
+                            )
+                            assert subject.source_trust_policy_revision == (
+                                selected_capability.source_trust_snapshot.source_trust_policy_revision
+                            )
+                    finally:
+                        reopened_builtin.dispose_runtime()
+                    try:
+                        for package in product_capabilities.packages:
+                            with pytest.raises(PluginRevisionError) as closed:
+                                package.revision_handle.verify()
+                            assert closed.value.code == "plugin_revision_changed"
+                    finally:
+                        product_capabilities.close()
             finally:
                 if checked_in_base:
                     hidden_lifecycle.rename(legacy_layout.root)
