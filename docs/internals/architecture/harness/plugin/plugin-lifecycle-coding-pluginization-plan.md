@@ -84,6 +84,12 @@
   [PLC9D3e](plugin-lifecycle-plc9d3e-contract.md) records typed Store success
   or retryable debt with exact settlement matching, but no Product executor
   calls it yet.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
+  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
+  implemented; executable Product GC absent; PLC9 remains open.
+- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
+  only; Current remains the default; no general third-party Worker
+  authoring/admission surface is published.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
