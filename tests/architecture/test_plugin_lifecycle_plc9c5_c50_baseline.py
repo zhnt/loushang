@@ -64,7 +64,7 @@ EXPECTED_CURRENT_SOURCE_PATHS = {
     "src/loushang/harness/resources/packages/product_activation.py",
     "src/loushang/harness/resources/packages/product_composition.py",
     "src/loushang/harness/resources/packages/product_contract.py",
-    "src/loushang/harness/resources/packages/product_runtime.py",
+    "src/loushang/harness/package_product/product_runtime.py",
     "src/loushang/harness/resources/plugins/declarations.py",
     "src/loushang/harness/resources/plugins/selection.py",
     "src/loushang/harness/sandbox/runtime.py",

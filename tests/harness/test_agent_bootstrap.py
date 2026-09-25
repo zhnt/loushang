@@ -11,7 +11,7 @@ from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
 from loushang.harness.config.agent import ControlConfig
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.resources.packages.product_runtime import (
+from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
 from loushang.harness.session.bootstrap import (

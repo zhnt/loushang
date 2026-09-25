@@ -350,8 +350,20 @@ Neither may silently override a narrower implemented owner contract.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
   materializer. The same native fixture now also commits through shared CLI
-  and RPC install transports with Product-bound Session evidence. The concrete
-  POSIX factory pins Product, Session, and
+  and RPC install transports with Product-bound Session evidence. The checked-in
+  `coding.base` files pass the PLC9B Wheel verifier when assembled into a test
+  Wheel. A real Coding Session now also installs that checked-in package through
+  the Product transaction and reads its manifest, declaration, Prompt, and
+  Skill members from the selected Store root after enablement; production
+  artifact preparation and default selection remain unimplemented. The
+  POSIX root Store now exposes a bounded, exact-member read from a live,
+  untombstoned settlement after verifying the full tree and native identities.
+  The POSIX Product factory binds that read to its current enabled desired
+  selection, exact Product crosswalk and committed set under the GC reference
+  gate; the reader returns only verified bytes within the bound Product scope.
+  Plugin runtime package reconstruction, Session contribution admission, and
+  the `coding.base` default cutover remain open. The
+  concrete POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime

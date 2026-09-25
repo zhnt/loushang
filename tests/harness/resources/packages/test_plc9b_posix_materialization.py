@@ -328,6 +328,10 @@ def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     assert result.disposition == "deleted"
     assert result.stable_ref_id == receipt.stable_ref.ref_id
     assert not (root / settlement.final_name).exists()
+    with pytest.raises(PackagePhysicalStagingError):
+        store.read_root_file(
+            settlement, "root_plugin/__init__.py", max_bytes=4096
+        )
     replay = store._store.delete_settlement(settlement)
     assert replay.disposition == "already_absent"
     assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
@@ -353,6 +357,102 @@ def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     )
     other_store.stage_dependency(dependency_request, dependency_candidate)
     assert len(settlements.records()) == 2
+
+
+def test_posix_root_store_reads_only_live_exact_settlement_bytes(tmp_path: Path) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    logical_path = "root_plugin/__init__.py"
+
+    assert store.read_root_file(settlement, logical_path, max_bytes=4096) == root_payloads[
+        logical_path
+    ]
+    reopened = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    assert reopened.read_root_file(
+        settlement, logical_path, max_bytes=4096
+    ) == root_payloads[logical_path]
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, "../outside", max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4)
+
+    published = root / settlement.final_name / logical_path
+    published.chmod(0o600)
+    published.write_bytes(b"tampered")
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4096)
+
+
+def test_posix_root_store_read_refuses_replaced_store_root(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    root.rename(tmp_path / "moved-store")
+    root.mkdir(mode=0o700)
+
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        store.read_root_file(
+            settlement, "root_plugin/__init__.py", max_bytes=4096
+        )
+    assert refused.value.code == "package_publication_root_untrusted"
+
+
+def test_posix_root_store_read_refuses_file_swap_after_tree_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"outside-secret")
+    published = root / settlement.final_name / "root_plugin" / "__init__.py"
+    original = posix_materialization._validate_existing_tree
+
+    def swap_after_validation(*args: object, **kwargs: object):
+        result = original(*args, **kwargs)
+        published.parent.chmod(0o700)
+        published.unlink()
+        published.symlink_to(outside)
+        return result
+
+    monkeypatch.setattr(
+        posix_materialization, "_validate_existing_tree", swap_after_validation
+    )
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        store.read_root_file(
+            settlement, "root_plugin/__init__.py", max_bytes=4096
+        )
+    assert refused.value.code == "package_publication_collision"
+    assert outside.read_bytes() == b"outside-secret"
 
 
 def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) -> None:
