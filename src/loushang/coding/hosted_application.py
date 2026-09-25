@@ -263,11 +263,12 @@ class _ForegroundProductRuntime:
 class CodingForegroundProductFactoryV1:
     """Create foreground Product Sessions without a Hosting/Worker owner."""
 
-    __slots__ = ("_active", "_create_session", "_debt", "_session_owner")
+    __slots__ = ("_active", "_create_session", "_debt", "_session_factory", "_session_owner")
 
     def __init__(self, factory: CodingForegroundSessionFactoryV1, *, session_owner: CodingHostedSessionOwnerV1 | None = None) -> None:
         _require_async_method(factory, "create_session")
         self._create_session = factory.create_session
+        self._session_factory = factory
         self._active: set[_ForegroundSessionOwner] = set()
         self._debt: set[_ForegroundSessionOwner] = set()
         self._session_owner = session_owner
@@ -328,6 +329,12 @@ class CodingForegroundProductFactoryV1:
         if self._session_owner is not None:
             try:
                 await self._session_owner.close()
+            except Exception as error:
+                failures.append(error)
+        close_factory = getattr(self._session_factory, "close", None)
+        if inspect.iscoroutinefunction(close_factory):
+            try:
+                await close_factory()
             except Exception as error:
                 failures.append(error)
         if failures:

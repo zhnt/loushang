@@ -7,6 +7,7 @@ coordinates the accepted Package owners; it has no legacy materializer path.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -178,6 +179,9 @@ class PackageProductLifecycleTransaction:
         staging: PackageProductStagingPort,
         commit: PackageProductCommitPort,
         handoff: PackageProductHandoffPort,
+        existing_installation: (
+            Callable[[PackageProductRouteRequestV1], bool] | None
+        ) = None,
     ) -> None:
         if not isinstance(kernel, PackageLifecycleOwner):
             raise TypeError("Package lifecycle owner is required")
@@ -185,6 +189,8 @@ class PackageProductLifecycleTransaction:
             raise TypeError("Package Product execution factory is required")
         if not isinstance(recovery_identity, str) or not recovery_identity:
             raise ValueError("Package recovery identity is required")
+        if existing_installation is not None and not callable(existing_installation):
+            raise TypeError("Package Product installation preflight is invalid")
         for owner, methods, name in (
             (closure, ("execute", "reacquire"), "closure owner"),
             (pins, ("pin",), "pin owner"),
@@ -202,6 +208,7 @@ class PackageProductLifecycleTransaction:
         self._staging = staging
         self._commit = commit
         self._handoff = handoff
+        self._existing_installation = existing_installation
 
     @property
     def owner_binding_id(self) -> str:
@@ -249,6 +256,16 @@ class PackageProductLifecycleTransaction:
             return current
         if lifecycle_request.action != "install":
             return self._reject(current, code="package_route_unavailable")
+        if current.phase == "classified" and self._existing_installation is not None:
+            installed = self._existing_installation(request)
+            if type(installed) is not bool:
+                raise PackageProductRouteContractError(
+                    "Package Product installation preflight is invalid"
+                )
+            if installed:
+                # A second install requires an update transaction and must
+                # refuse before publication or a committed handoff can diverge.
+                return self._reject(current, code="package_route_unavailable")
         try:
             execution = self._execution(request, current)
         except _ProductWheelSourceUnavailable:

@@ -12,13 +12,25 @@
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
   dark reservation; D3a--D3e add writer and Store/committed-set fences, a
-  private deletion primitive, read-only root target resolution, and a dark
-  result/debt journal.
-  Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
-  tracked in the lifecycle plan.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
-  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
-  implemented; executable Product GC absent; PLC9 remains open.
+  private deletion primitive, read-only root target resolution, and a durable
+  result/debt journal. D3f connects those owners in an internal POSIX-tested
+  root-GC executor. D3g adds an explicit Product command over an exact GC
+  candidate and an explicit root Store method. D3h joins reservation, result,
+  and root fences in a read-only operator view. D3i composes the real fenced
+  POSIX Product Store for explicit offline GC; D3j adds its declared operator
+  CLI. D3k adds a separate private-data confirmation seam and a backup-owner
+  projection port; D3l adds durable private-data confirmation evidence.
+  D3m reports the actual PLC9B cutover snapshot owner's workspace-level
+  retention evidence without claiming Plugin-level backup expiry. The D3k/D3l
+  seams remain without production owner bindings. Default
+  management/RPC selection, Windows execution evidence, shared dependency
+  GC, and production private-data/backup owner composition remain open.
+  The remaining gaps are summarized by `architecture.md` and tracked in the
+  lifecycle plan.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.
@@ -79,6 +91,30 @@ Neither may silently override a narrower implemented owner contract.
   refuses a newly committed alias after one root ref enters GC.
 - [PLC9D3e Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
   journals Store result or retryable debt without enabling a Product GC route.
+- [PLC9D3f Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md)
+  connects reservation, exact root deletion, and durable result in a
+  POSIX-tested internal coordinator; Product ingress remains closed.
+- [PLC9D3g Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
+  reserves an exact candidate and executes its root settlement under one
+  Product gate; default management and transport routes remain closed.
+- [PLC9D3h Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md)
+  shows reserved, started, debt, success, or evidence conflict from durable
+  owners without granting deletion or asserting private-data/backup effects.
+- [PLC9D3i Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
+  joins the real B Product owners behind offline runtime quiescence, transaction
+  recovery, and an exact Store root.
+- [PLC9D3j Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md)
+  exposes separate preparation, candidate/status, exact deletion, and
+  durable-start retry through an offline POSIX operator CLI.
+- [PLC9D3k Private-Data Confirmation And Backup Projection Seams](plugin-lifecycle-plc9d3k-contract.md)
+  requires independent confirmation and domain-owned deletion evidence, and
+  projects backup status only when a backup owner is bound.
+- [PLC9D3l Durable Private-Data Confirmation Evidence](plugin-lifecycle-plc9d3l-contract.md)
+  persists exact separately issued confirmation evidence; no operator or
+  destructive command is exposed.
+- [PLC9D3m Cutover Backup Status Projection](plugin-lifecycle-plc9d3m-contract.md)
+  verifies the real pre-B workspace snapshot owner through the current fence;
+  per-Plugin retention and expiry remain unknown.
 
 ## Frozen Contracts
 
@@ -363,8 +399,39 @@ Neither may silently override a narrower implemented owner contract.
   artifact through the PLC9B Wheel verifier and real Store. A real Coding Session
   also installs that checked-in package through
   the Product transaction and reads its manifest, declaration, Prompt, and
-  Skill members from the selected Store root after enablement; default Product
-  owner construction and selection remain unimplemented. The
+  Skill members from the selected Store root after enablement. A concrete
+  fenced Coding Product owner constructor first served explicit Hosted Sessions;
+  default selection is described below. The first-party LSP and Arch
+  Capability packages can now be frozen as distinct, digest-pinned Product
+  Wheels alongside `coding.base` under one explicit Source policy. Their
+  `in_process` Provider declarations remain unchanged. The real B Store fixture
+  uses a three-package Coding Product owner and its leased Session factory to
+  commit and enable both, capture their exact definition bytes, and reopen both
+  selected manifests while the pre-B roots are absent. A Product-selected
+  revision bridge now rechecks the live Store selection on every verified file
+  read and supplies those bytes to the existing Plugin Python loader; the
+  native fixture proves both Definitions load after the pre-B roots are hidden
+  and the bridge rejects a disposed Product runtime. An explicit POSIX Product
+  preparation builds its Definition plan from the B instance, Source, artifact,
+  and trust evidence, then uses those selections to
+  approve and compile both Definitions, bind a workspace Provider into two
+  Capability requests and two Tool owners, and abort an unpublished assembly.
+  It rechecks the live Product selection before binding, so disposing the B
+  runtime after preparation fails closed. A second explicit preparation now
+  selects `coding.base` and both Capability packages in one Product plan,
+  rejects a base compilation from an older Store selection, and compiles the
+  base Resource admissions and Capability owners together. The base Resource
+  candidates retain the exact B transaction lock digest while the executable
+  Definition gate retains its Plugin lock; the only permitted owner-candidate
+  projection changes that lock field after matching current Store identity.
+  The native fixture binds the resulting base and Capability assemblies to
+  the same Session composition inputs. With an explicit Product factory,
+  `coding-standard` now starts a real Session from the selected base and LSP,
+  while `coding-architecture` starts from all three selected packages. Both
+  prepare the Session graph with pre-B roots hidden and legacy constructors
+  disabled. A base-only Product owner cannot satisfy the LSP request and does
+  not fall back to the legacy materializer. The later B-fence default selection
+  and its remaining migration gates are described below. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired
@@ -391,9 +458,17 @@ Neither may silently override a narrower implemented owner contract.
   factory construction fails. The native fixture also starts a Hosted Session
   on the committed `coding.base` Store root through this selector; Product
   Prompt and Skill are visible, the legacy materializer is not reached, and
-  closing releases the lease. Installed commands still do not construct this
-  owner by default. A POSIX snapshot owner now publishes a durable,
-  restore-compatible bundle from
+  closing releases the lease. A Coding application owner can now reopen one
+  fenced B epoch, supply factories to successive standard and architecture
+  Sessions, and close only after its own runtime leases have been released;
+  the real-Store fixture rejects an early close and permits closing while a
+  separate Store owner remains live. The shared Hosted/managed Session factory
+  and standalone Coding runtime now select this owner when a workspace has a
+  durable B fence. Their application close releases the owner after Session
+  cleanup; a failed B reopen cannot fall back to the legacy materializer.
+  Direct `create_agent_session` callers also select a fenced owner by default;
+  its Session binding releases that owner at disposal.
+  A POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:
@@ -474,13 +549,48 @@ Neither may silently override a narrower implemented owner contract.
   classification. Synchronous Session `uninstall_package` now routes an enforced
   Product binding before consulting the legacy synchronous-refresh gate; its
   real-Store refusal is durable even when catalog refresh is async-only.
-  Default Session composition, further transport coverage, and supervisor
-  launch still need a one-time switch.
+  Further transport coverage and supervisor launch still need a one-time switch.
   Trusted Hosted, local, and managed command constructors can now pass a fresh
   Product runtime factory for each Session into the same bootstrap gate. The
-  installed CLI and managed child do not yet supply that factory by default.
-  Default Coding does not select that factory; this is not a
-  completed Product cutover, Windows composition, or PLC9D execution claim.
+  shared Hosted/managed factory, standalone Coding runtime, and direct Session
+  API select a fenced Product owner by default. The real-Store fixture confirms
+  base/LSP selection with pre-B roots hidden and legacy constructors disabled,
+  then releases their runtime leases on close. CLI and RPC updates through that
+  default Session each leave a durable Product refusal while their legacy
+  Session method is disabled. A configured startup Package Source now enters
+  the Product transaction, and a failed Product record aborts Session startup;
+  later configured Sources are not attempted, and the exact Product failure
+  code is recorded in diagnostics. The old materializer is not called. Product
+  mode does not mount the configured Source path as a Resource root. A native
+  POSIX fixture now also proves that a default, fenced `coding-minimal` Session
+  commits a configured first-party capability Wheel through the real Product
+  Store, records the committed lifecycle and committed set, and releases its
+  runtime lease. The subsequent capability selection reads that committed root.
+  The same default Session commits the first-party LSP Wheel through the CLI
+  install route with its legacy Session install method disabled; the Product
+  lifecycle and committed set retain that separate transaction.
+  A second RPC install of that already installed Plugin now leaves a durable
+  classified refusal before another Package commit, with Desired state and
+  committed sets unchanged. The real Product route holds the GC reference gate
+  across its installed-target preflight, transaction, and handoff so concurrent
+  management mutations cannot cross those phases.
+  That default Session also sends unauthorized CLI and RPC installs through
+  Product: both leave distinct durable refusals with Desired state unchanged
+  while its legacy install method is disabled.
+  Direct legacy `PluginRevisionStore.publish` and
+  `PackageMaterializer.publish_plugin_packages` now refuse the old revision root
+  after an epoch namespace exists. They hold the same authority-root lock as
+  cutover through publication; the native B fixture proves both refusals and
+  preserves the pre-B tree. The same Linux fence now covers direct
+  `PackageMaterializer` lockfile/binding writes, synchronous and asynchronous
+  backend effects, and removal through their full write intervals. Native B
+  evidence covers lockfile and synchronous backend refusals; focused epoch-root
+  regressions cover binding, asynchronous update, and removal. Direct Git and
+  Python backend calls into the legacy `installed` tree, including aliases that
+  resolve there, now refuse before running either installer. Windows and
+  noncanonical external write roots remain outside this guard.
+  This is not a completed Product
+  cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution
   and direct configured-Source preparation. Dark mode retains its compatibility

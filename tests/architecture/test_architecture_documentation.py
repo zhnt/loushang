@@ -16,9 +16,9 @@ PLUGIN_STATUS_ENTRYPOINTS = (
     PLUGIN_ROOT / "plugin-lifecycle-coding-pluginization-plan.md",
 )
 PLUGIN_DELIVERY_ANCHOR = (
-    "PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2 reservation and "
-    "PLC9D3a-e fences, target resolution, and result/debt journal implemented; "
-    "executable Product GC absent; PLC9 remains open."
+    "PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m internal/offline "
+    "POSIX root-GC execution, durable private-data confirmation evidence, and "
+    "pre-B workspace-snapshot status projection implemented; PLC9 remains open."
 )
 PLUGIN_WORKER_CANARY_BOUNDARY = (
     "explicit Linux/Windows AMD64 Coding Product opt-in only; Current remains "

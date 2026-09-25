@@ -36,7 +36,7 @@ a later attempt without a separate repair decision. This is not a repair or
 permission to delete the altered tree. Older result readers reject the new
 terminal disposition rather than silently retrying it.
 
-The future executor must hold the Product reservation gate while resolving
+The D3f internal executor holds the Product reservation gate while resolving
 the target, recording the deletion start, fencing the committed set and Store,
 calling the exact Store owner, and appending this result or debt. The journal
 alone is not a GC acceptance receipt. Product ingress, operator recovery,

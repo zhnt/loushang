@@ -374,12 +374,16 @@ def test_product_base_missing_selected_manifest_cannot_fall_back(
 
 
 @pytest.mark.parametrize("composition_set_id", (None, "coding-minimal"))
-def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
+def test_package_product_runtime_rejects_incompatible_resource_policy_before_effects(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     composition_set_id: str | None,
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
 
@@ -415,6 +419,11 @@ def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
             model=_model(),
             package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
             composition_set=composition_set_id,
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                if composition_set_id is None
+                else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
         )
     assert calls == {"legacy_assembly": 0, "factory": 0, "released": 1}
 
@@ -498,7 +507,7 @@ def test_package_product_runtime_rejects_supplied_peer_materializer(
 
 
 @pytest.mark.parametrize(
-    "configured_input", ("package_roots", "plugin_sources", "package_sources")
+    "configured_input", ("package_roots", "plugin_sources")
 )
 def test_package_product_runtime_rejects_configured_legacy_sources_before_effects(
     tmp_path: Path,
@@ -1032,6 +1041,9 @@ def test_default_base_materializer_is_not_constructed_after_package_fence(
         PackageEpochFenceJournal,
         PackageEpochFenceRequestV1,
     )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+        PackagePosixEpochCutoverError,
+    )
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
@@ -1072,7 +1084,7 @@ def test_default_base_materializer_is_not_constructed_after_package_fence(
             persist=True,
         )
     )
-    with pytest.raises(plugin_lifecycle_module.CodingPluginLifecycleError) as refused:
+    with pytest.raises(PackagePosixEpochCutoverError) as refused:
         create_agent_session(
             session_manager=manager,
             model=_model(),
@@ -1082,8 +1094,110 @@ def test_default_base_materializer_is_not_constructed_after_package_fence(
                 )
             ),
         )
-    assert refused.value.code == "package_runtime_epoch_unsupported"
+    assert refused.value.code == "package_epoch_cutover_identity_changed"
     assert default_base_materializers == []
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product runtime owner"
+)
+def test_standalone_runtime_fenced_default_refuses_without_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced standalone startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(ControlConfig())
+            ),
+            persist=False,
+        )
+        try:
+            with pytest.raises(ValueError, match="invalid B fence"):
+                await runtime.create_session(cwd=str(workspace))
+            assert selected == ["product"]
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product runtime owner"
+)
+def test_direct_session_fenced_default_refuses_without_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced direct startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    with pytest.raises(ValueError, match="invalid B fence"):
+        create_agent_session(session_manager=manager, model=_model())
+    assert selected == ["product"]
 
 
 def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(

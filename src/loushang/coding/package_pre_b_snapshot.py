@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -10,14 +12,20 @@ from tempfile import TemporaryDirectory
 
 from loushang.coding._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from loushang.coding.package_epoch_layout import (
+    CodingPackageEpochLayoutV1,
     resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
+)
+from loushang.coding.package_product_runtime import (
+    bootstrap_coding_builtin_product_plugins,
+    require_fresh_coding_product_inputs,
 )
 from loushang.coding.package_source_snapshot import (
     hold_coding_pre_b_source_configuration,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     PackagePosixEpochCutoverResultV1,
     PackageProductPosixCutoverAttemptV1,
@@ -39,6 +47,113 @@ class CodingPreBSnapshotPreparation:
 class CodingPackagePreBCutover:
     attempt: PackageProductPosixCutoverAttemptV1
     snapshots: PackageProductPreBSnapshotOwner
+
+
+def prepare_coding_package_cutover_roots(
+    lifecycle: CodingPluginLifecycleStateLayout,
+) -> CodingPackageEpochLayoutV1:
+    """Prepare only missing private roots for an offline first B cutover."""
+
+    if os.name != "posix":
+        raise RuntimeError("POSIX Package cutover preparation is required")
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    for root, private_base in (
+        (lifecycle.root, lifecycle.private_state_base),
+        (epoch.control_root, lifecycle.private_state_base),
+        (epoch.snapshot_root, lifecycle.private_state_base),
+        (lifecycle.package_root, lifecycle.private_data_base),
+        (epoch.epochs_root, lifecycle.private_data_base),
+    ):
+        _prepare_private_cutover_root(root, private_base=private_base)
+    return epoch
+
+
+def prepare_and_cutover_coding_package_store_from_legacy(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    namespace_id: str,
+    minimum_runtime_version: str,
+    minimum_runtime_protocol_epoch: int,
+) -> CodingPackagePreBCutover:
+    """Run one offline B cutover from an empty or existing Coding workspace."""
+
+    prepare_coding_package_cutover_roots(lifecycle)
+    with TemporaryDirectory(
+        prefix="coding-pre-b-projection-", dir=lifecycle.root.parent
+    ) as projection_parent:
+        return cutover_coding_package_store_from_legacy(
+            lifecycle,
+            settings_manager,
+            projection_parent=Path(projection_parent),
+            namespace_id=namespace_id,
+            minimum_runtime_version=minimum_runtime_version,
+            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        )
+
+
+def cutover_and_bootstrap_coding_package_product(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    workspace: Path,
+    namespace_id: str,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> CodingPackagePreBCutover:
+    """Offline first B cutover of a fresh workspace, then install builtins.
+
+    A failed Product bootstrap leaves the durable B fence in force. The caller
+    may retry bootstrap, but may not resume a pre-fence writer against it.
+    """
+
+    prepare_coding_package_cutover_roots(lifecycle)
+    require_fresh_coding_product_inputs(lifecycle, settings_manager)
+    cutover = prepare_and_cutover_coding_package_store_from_legacy(
+        lifecycle,
+        settings_manager,
+        namespace_id=namespace_id,
+        minimum_runtime_version=runtime_version,
+        minimum_runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    if cutover.attempt.result.disposition != "fenced":
+        raise RuntimeError("Coding Package Product cutover refused")
+    bootstrap_coding_builtin_product_plugins(
+        lifecycle,
+        settings_manager,
+        workspace=workspace,
+        runtime_version=runtime_version,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    return cutover
+
+
+def _prepare_private_cutover_root(root: Path, *, private_base: Path) -> None:
+    if not private_base.is_absolute() or not root.is_absolute():
+        raise ValueError("Coding Package cutover roots must be absolute")
+    try:
+        relative = root.relative_to(private_base)
+    except ValueError:
+        raise ValueError(
+            "Coding Package cutover root is outside its private base"
+        ) from None
+    create_private_directory_chain(private_base)
+    current = private_base
+    _require_private_cutover_directory(current)
+    for part in relative.parts:
+        current /= part
+        create_private_directory_chain(current)
+        _require_private_cutover_directory(current)
+
+
+def _require_private_cutover_directory(path: Path) -> None:
+    metadata = path.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError("Coding Package cutover directory is not private")
 
 
 def reopen_coding_package_cutover(
@@ -158,7 +273,10 @@ def hold_coding_pre_b_snapshot_owner(
 __all__ = [
     "CodingPackagePreBCutover",
     "CodingPreBSnapshotPreparation",
+    "cutover_and_bootstrap_coding_package_product",
     "cutover_coding_package_store_from_legacy",
     "hold_coding_pre_b_snapshot_owner",
+    "prepare_and_cutover_coding_package_store_from_legacy",
+    "prepare_coding_package_cutover_roots",
     "reopen_coding_package_cutover",
 ]

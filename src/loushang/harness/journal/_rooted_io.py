@@ -233,6 +233,12 @@ class RootedFileIO:
             return bool(self._operations or (self._publication is not None
                         and self._publication[1].operation.descriptors))
 
+    @property
+    def active_operations(self) -> bool:
+        self._same_process()
+        with self._mutex:
+            return any(operation.active for operation in self._operations)
+
     def retain_next_publication(self, path: Path) -> _PublicationWitness:
         """Purely register at most one inode pin, released by this port's cleanup.
 

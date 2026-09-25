@@ -205,6 +205,32 @@ loushang --check-package-updates
 loushang --update-packages
 ```
 
+Linux 上没有旧 Plugin 状态、旧 Plugin/Package 设置的新工作区，可离线切换到带 fence 的 Product Store：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径
+```
+
+先停止该工作区的 Loushang 进程；命令也会拒绝仍在运行的旧 writer。已有的 Loushang 私有主目录必须归当前用户所有、不可供其他用户访问；命令不会改写它的权限。它通过 Product 事务安装内置的 base、LSP、架构三个插件，中断后可以重试。需要旧状态采纳或设置迁移的工作区会被拒绝。写入 fence 后只能使用理解该 fence 的 Loushang 版本。
+
+可运行 `loushang-package-cutover --workspace /工作区/绝对路径 --backup-status` 只读检查切换备份。`retained` 表示切换前的**整个工作区**快照通过所有者验证；`unknown` 表示无法验证。该命令不报告单个插件的备份保留或到期状态。
+
+Linux 上，已切换工作区的不可变 Plugin 根可通过单独的离线 GC 命令清理。先停止所有 Loushang Session。`prepare` 会恢复 Product 事务并持久封存 GC 写入者，这是单向维护步骤；`list` 返回不含文件路径的精确候选和 reservation ID。复制候选 ID 后只删除该根：
+
+```bash
+loushang-package-gc --workspace /工作区/绝对路径 prepare
+loushang-package-gc --workspace /工作区/绝对路径 list
+loushang-package-gc --workspace /工作区/绝对路径 delete --candidate-id <候选ID> --attempt-key <本次尝试标识>
+```
+
+保留尝试标识可安全重放同一请求。如果已开始删除但未结算，用结果或 `list` 中的 reservation ID 和新的尝试标识重试：
+
+```bash
+loushang-package-gc --workspace /工作区/绝对路径 retry --reservation-id <reservation-ID> --attempt-key <新尝试标识>
+```
+
+该命令仅删除精确匹配的不可变 Plugin 根，不会删除 Plugin 私有数据，也不会推断备份已过期。
+
 ## 方法与技能
 
 方法与技能把可复用工作实践变成运行时资产。CLI 中可以使用：

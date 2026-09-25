@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from loushang.coding.package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+)
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import (
     SessionManager,
@@ -53,6 +56,7 @@ class AgentSessionRuntime(
         owned_transcripts: bool = False,
         store_state_root: Path | None = None,
         enroll_legacy_shared_store: bool = False,
+        product_owner_selection: CodingFencedProductApplicationSelection | None = None,
     ) -> None:
         if type(owned_transcripts) is not bool or type(enroll_legacy_shared_store) is not bool:
             raise TypeError("invalid owned transcript activation")
@@ -62,12 +66,17 @@ class AgentSessionRuntime(
             raise ValueError("store admission requires owned transcripts")
         if enroll_legacy_shared_store and store_state_root is None:
             raise ValueError("legacy store enrollment requires store admission")
+        if product_owner_selection is not None and not isinstance(
+            product_owner_selection, CodingFencedProductApplicationSelection
+        ):
+            raise TypeError("Coding Product owner selection is invalid")
         self._owned_transcript_factory = (
             _create_owned_session_factory(
                 store_state_root=store_state_root,
                 enroll_legacy_shared_store=enroll_legacy_shared_store,
             ) if owned_transcripts else None
         )
+        self._product_owner_selection = product_owner_selection
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)
             if self._owned_transcript_factory is not None else SessionManager
@@ -102,6 +111,9 @@ class AgentSessionRuntime(
 
         failure: BaseException | None = None
         factory = self._owned_transcript_factory
+        product_selection = self._product_owner_selection
+        if product_selection is not None:
+            product_selection.fence()
         if factory is not None:
             factory._on_loop()
             try:
@@ -130,5 +142,15 @@ class AgentSessionRuntime(
                 failure = error
             else:
                 failure.add_note(f"continuity cleanup retained: {type(error).__name__}")
+        if product_selection is not None:
+            try:
+                product_selection.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(
+                        f"Product owner cleanup retained: {type(error).__name__}"
+                    )
         if failure is not None:
             raise failure

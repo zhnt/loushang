@@ -129,6 +129,27 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B fenced owner adds exact new Coding Product modules: built-in Wheel
     # +232 and runtime +213, plus pre-B snapshot +17. All remain core.
     plc9b_fenced_owner_allowance = 232 + 213 + 17
+    # PLC9B Capability ingress: built-in Wheel +181/-28, new Product
+    # Capability selection +328, and Product runtime +56/-2. All stay core.
+    plc9b_capability_ingress_allowance = (181 - 28) + 328 + (56 - 2)
+    # PLC9B selected revision composition replaces the 328-line prior
+    # Capability selector: base Product +23, legacy Capability +25/-2,
+    # new Product Capability +604, bootstrap +144/-15, selected revision
+    # +388, and agent Session +59/-1. Exact files remain in core.
+    plc9b_capability_selection_allowance = (
+        23 + (25 - 2) + 604 + (144 - 15) - 328 + 388 + (59 - 1)
+    )
+    # PLC9B startup routing: bootstrap +51/-14, Product runtime +178/-2,
+    # agent Session runtime +22. All three existing paths remain core.
+    plc9b_startup_routing_allowance = (51 - 14) + (178 - 2) + 22
+    # PLC9B fresh cutover adds exact CLI +100, pre-B snapshot +118, and
+    # fenced Product runtime +193/-1; all remain counted in core.
+    plc9b_fresh_cutover_allowance = 100 + 118 + (193 - 1)
+    # PLC9D's explicit offline GC CLI is one exact new 164-line core path.
+    plc9d_offline_gc_allowance = 164
+    # PLC9D confirmation backup extends the exact cutover CLI +12 and adds
+    # one private per-Installation backup owner +137; both remain core.
+    plc9d_confirmation_backup_allowance = 12 + 137
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -142,12 +163,19 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_selected_resources_allowance
         + plc9b_hosted_routing_allowance
         + plc9b_fenced_owner_allowance
+        + plc9b_capability_ingress_allowance
+        + plc9b_capability_selection_allowance
+        + plc9b_startup_routing_allowance
+        + plc9b_fresh_cutover_allowance
+        + plc9d_offline_gc_allowance
+        + plc9d_confirmation_backup_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
     assert sum(groups["g11"].values()) <= 420, groups["g11"]
     # LMUX-M0: original Product/catalog cleanup and managed activation (+84).
-    assert sum(groups["g12"].values()) <= 800 + 84, groups["g12"]
+    # PLC9B: Product Session ownership closes the injected factory (+7).
+    assert sum(groups["g12"].values()) <= 800 + 84 + 7, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
     # LMUX-M0: original catalog ownership, readonly hooks and validation (+205).
     assert sum(groups["g14"].values()) <= 1_300 + 205, groups["g14"]

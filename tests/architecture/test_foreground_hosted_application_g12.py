@@ -195,9 +195,9 @@ def test_g12_new_owners_remain_independently_reviewable() -> None:
         # lmux vs a3dbec60 adds 16 lines for explicit managed binding, borrowed
         # getters and rejection without continuity; retain the original margin.
         APPHOST_APPLICATION: 550 + 16,
-        # Same reviewed +84 owned-transcript composition allowance as the G12
-        # slice in test_coding_wave_a_budget; not an additional allowance there.
-        CODING_APPLICATION: 800 + 84,
+        # PLC9B Product Session ownership closes the injected factory (+7).
+        # Keep this exact owner under its own review gate.
+        CODING_APPLICATION: 800 + 84 + 7,
     }
     for path, limit in limits.items():
         lines = len(_read(path).splitlines())

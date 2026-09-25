@@ -43,7 +43,37 @@
   [Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
   adds a journal for exact-start Store results, retryable errors, and
   non-retryable Store collisions, with exact-settlement result matching; no
-  coordinator has yet proven that a result follows actual Store mutation.
+  coordinator was activated by this slice.
+- PLC9D3f/D3g refinement:
+  [Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md) and
+  [Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
+  join the exact candidate, reservation, root Store deletion, and durable
+  result in a POSIX-tested Product owner graph. The command is explicitly
+  composed; no default management or transport route selects it.
+- PLC9D3h refinement:
+  [Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md) joins
+  active reservations, exact Store settlements, result attempts, and both
+  root tombstones. It refuses to project success if their evidence diverges.
+- PLC9D3i refinement:
+  [Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
+  binds the real B Product owners and exact POSIX Store behind an explicit
+  offline, no-active-Session gate. No default transport route selects it.
+- PLC9D3j refinement:
+  [Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md) selects
+  that owner through a declared POSIX operator CLI with separate prepare,
+  candidate/status, exact delete, and durable-start retry actions.
+- PLC9D3k refinement:
+  [Private-Data Confirmation And Backup Projection Seams](plugin-lifecycle-plc9d3k-contract.md)
+  adds separately authorized domain delegation and a conditional backup-owner
+  read projection. Neither production data nor backup owner is bound.
+- PLC9D3l refinement:
+  [Durable Private-Data Confirmation Evidence](plugin-lifecycle-plc9d3l-contract.md)
+  adds replayable exact-plan confirmation records for the D3k authority Port.
+  No Product operator command or real data-domain owner is bound.
+- PLC9D3m refinement:
+  [Cutover Backup Status Projection](plugin-lifecycle-plc9d3m-contract.md)
+  verifies a real pre-B workspace snapshot under the current Product fence.
+  This workspace evidence cannot stand in for Plugin-level backup retention.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -457,6 +487,10 @@ implemented.
 | Package retention and cleanup | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Durable pins, cleanup leases/attempts/repair decisions, recovery barrier, retention snapshots, and GC candidates | Retain as lifecycle evidence; PLC9D must add deletion execution/result without weakening candidate recheck |
 | Dark GC reservation and reference fence | `src/loushang/harness/plugin_management/package_gc_reservation.py::PluginPackageGcReservationJournal` and `src/loushang/harness/plugin_management/gc_fence.py::PluginPackageGcReferenceGatePort` | PLC9D2 journals exact reservation/cancellation, replays active fences, and guards opt-in desired/Instance/Package reference writers in one lock order | Retain dark; D3 needs Product-wide writer binding and downgrade exclusion before Store-owned rooted deletion; a reservation alone is not authorization |
 | Coding Product composition | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycle` | Product adapter composes the generic ledgers under one workspace identity and coordination lock | Retain as an outer Product adapter until common application ports replace Product-specific call sites; it must not become a second generic owner |
+| Coding fresh B cutover and builtin bootstrap | `src/loushang/coding/package_pre_b_snapshot.py::cutover_and_bootstrap_coding_package_product`, `src/loushang/coding/package_product_runtime.py::bootstrap_coding_builtin_product_plugins`, `src/loushang/harness/package_product/product_local_wheel_runtime.py::PosixLocalWheelProductSessionOwner.settled_install_command_id`, and `src/loushang/coding/cli/package_cutover.py::main` | Declared offline `loushang-package-cutover` command prepares private roots, fences a fresh workspace, then installs and enables the three checked-in Plugins through the real Product transaction; retry reads the Product-owned settled handoff and resumes an interrupted enable only when its own install is still the latest desired transition. A fenced default Session routes five Package actions through the Product from Session, CLI, and RPC; synchronous uninstall also cannot use the legacy fallback | Retain as a fresh-workspace POSIX slice only. Any pre-B Plugin member or legacy Plugin/Package setting requires explicit adoption or migration; operator disable/remove is not overwritten. Default Session only reopens an existing fence, and Windows activation remains unproven |
+| Coding cutover backup status | `src/loushang/coding/package_cutover_backup.py::inspect_coding_package_cutover_backup` | D3m reopens the exact Product fence and verifies its real pre-B workspace snapshot owner; pathless `--backup-status` reports retained or unknown with expiry unknown | Do not interpret this workspace snapshot as per-Installation Plugin backup retention or as permission to expire/delete it |
+| Coding pre-B Source snapshot | `src/loushang/coding/package_source_snapshot.py` | Includes the legacy `disabled_plugins` settings field in an authenticated offline snapshot; it is evidence, not B Product selection | Retain as restore/adoption input; never infer a B desired Installation or enablement change from the snapshot alone |
+| Coding B Product revision selection | `src/loushang/coding/package_product_revisions.py` | Checks built-in Plugin `manifest.enabled` against the selected B Product revision and mount policy | Retain as a selected-revision check; a manifest flag alone cannot replace Product desired-state authority |
 | Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
 | Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, migration, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and forward/reverse skew remains observable |
 | Source projection snapshot | `src/loushang/harness/plugin_management/application.py::PluginManagementSourceSnapshotV1` | A1-1 describes source identity, availability, version, and manifest install default as inert input facts | Retain behind a Product Source adapter; availability and install default never become live desired-selection writers |
@@ -467,6 +501,7 @@ implemented.
 | Coding migration composition | `src/loushang/coding/_plugin_lifecycle.py::build_coding_plugin_lifecycle` | A1-2 binds the generic journal under the private workspace lifecycle root and checks the epoch fence before management recovery; A1-3 base, Capability, and Continuity paths import exact legacy inputs before mount | Retain as Product composition; `build_coding_plugin_management_application` and `project_coding_plugin_enablement_compatibility` keep durable owner construction out of transport adapters |
 | Coding fresh B Product state | `src/loushang/coding/package_product_runtime.py::open_coding_package_product_state` | Opens a distinct desired-state ledger and management service only after the Store epoch is fenced | Retain as Product-owned B composition; command mutations still flow through the management service |
 | Coding pre-B Source snapshot | `src/loushang/coding/package_source_snapshot.py` | Includes the legacy `disabled_plugins` settings field in an authenticated offline snapshot | Retain as restore/adoption input; never infer a B desired Installation or enablement change from the snapshot alone |
+| Coding B Product revision selection | `src/loushang/coding/package_product_revisions.py` | Checks built-in `manifest.enabled` against the selected Product revision and mount policy | Retain as a selected-revision check; a manifest flag alone cannot replace Product desired-state authority |
 | Coding configured Source projection | `src/loushang/coding/plugin_management_cli.py::CodingConfiguredPluginSourceProjection` | A1-3 projects configured Source facts relative to the expanded workspace path | Retain as an inert Product query adapter; it may inspect configured Sources but cannot construct or mutate a durable lifecycle ledger |
 | Coding management CLI composition | `src/loushang/coding/plugin_management_cli.py::build_coding_plugin_management_cli_binding` | A1-3 composes common command/query ports and invokes the Product-owned compatibility reconciler before returning the transport binding | Retain as Product composition; command admission requires a common projected migration receipt |
 | Coding base migration caller | `src/loushang/coding/_base_plugin.py::prepare_managed_coding_base_plugin_assembly` | A1-3 imports the base manifest default and legacy disable input before mount; an existing desired history wins | Retain during migration; delete the legacy input only after PLC9E finalization evidence |
@@ -911,14 +946,14 @@ publication outside those exact canaries.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
-| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state without a mutation port | Retain as internal read-only evidence; D2/D3a add a reservation and dark deletion primitive, but executable GC still needs an exact Product/Store binding and durable result/debt receipt |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel`, `src/loushang/harness/package_product/product_gc_executor.py::PackageProductRootGcReadModel`, and `src/loushang/coding/cli/package_gc.py::main` | D1 projects every known revision and cleanup blocker; D3h projects active root-GC reservations and durable result/debt, verifying both root fences before success; D3i composes real POSIX Product owners while excluding active Session leases; D3j exposes explicit offline CLI preparation, status, deletion, and started-deletion retry | Retain pathless operator evidence; default management/RPC selection, terminal debt repair, and Windows native execution remain open |
 | GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
 | Continuity destructive commit | `src/loushang/harness/continuity/mutation.py::AuthorizedContinuityDeletionLease._commit_complete_and_release` over the source-owned `PreparedContinuityDeletion.commit` port, prepared by `src/loushang/harness/continuity/plugin_provider.py::PluginContinuityProvider._prepare_delete` | Calls the source/data-domain candidate commit first, validates its receipt, then asks the Product authority to settle | Retain the plan -> authorization -> source commit -> receipt settlement order for any future domain deletion contract |
 | Continuity lifecycle adapter | `src/loushang/harness/plugin_management/continuity_adapter.py::PluginInstanceLedgerContinuityFamilyAuthority` | Adapts Continuity provider family lifetime to generic Instance/package ledgers | Retain until the same exact domain contract has another accepted composition; never delete merely because its filename says adapter |
-| Generic private-data deletion | no common owner/contract on this baseline | Plugin removal does not generically delete private mutable data | PLC9D requires separate confirmation, domain-owned plan/receipt, and tests proving remove/GC cannot invoke it |
-| Backup retention/expiry | no common Plugin projection on this baseline | Local deletion has no authority to claim backup expiry | PLC9D projects the exact backup owner or reports unsupported/unknown; it never guesses completion |
+| Generic private-data deletion | `src/loushang/harness/plugin_management/private_data_deletion.py::PluginPrivateDataDeletionCoordinator` and `private_data_confirmation.py::PluginPrivateDataConfirmationJournal` | D3k checks an exact plan and domain-owned receipt; D3l persists independently issued confirmation evidence; no production owner or command is bound | Bind an exact data-domain owner and authenticated Product/operator confirmation command before enabling deletion; remove/GC cannot invoke this coordinator |
+| Backup retention/expiry | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | D3k conditionally projects a backup-owner snapshot and receipt-backed expiry; no production per-Installation backup owner is bound. D3m separately verifies the real workspace cutover snapshot | Bind and authenticate the exact per-Installation backup owner or continue reporting unsupported/unknown; never infer expiry from local deletion or workspace-level backup availability |
 
 ## Compatibility Candidate Ledger
 
@@ -955,10 +990,11 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- executable artifact-GC owner and Store result/debt receipt (PLC9D3a adds
-  a dark exact Store primitive and writer fence, but no Product deletion route);
-- generic Plugin-private data deletion command/receipt; and
-- correlated backup-retention projection.
+- default management/RPC selection beyond the declared D3j offline GC CLI,
+  terminal GC debt repair, and Windows native Product execution evidence;
+- a production private-data owner, authenticated confirmation issuer, and bound
+  deletion command beyond the D3k/D3l contracts; and
+- production backup-owner binding beyond the D3k conditional projection.
 
 Later slices must first add a focused contract and negative tests for the
 relevant boundary, then revise this inventory in the same change. Absence is a

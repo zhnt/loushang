@@ -11,7 +11,8 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,7 +43,10 @@ from loushang.harness.resources.plugins.distribution_evidence import (
     InstalledPythonDistributionEvidenceResolver,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
-from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionStore,
+    _legacy_package_epoch_write_guard,
+)
 from loushang.harness.resources.plugins.types import (
     PluginRevisionKind,
     PluginSource,
@@ -175,6 +179,21 @@ PackageMaterializerBackend = Callable[
 ]
 
 
+@contextmanager
+def _legacy_backend_write_guard(target: Path) -> Iterator[None]:
+    """Fence direct backend effects targeting a legacy installed tree."""
+
+    roots = {
+        parent.parent
+        for parent in target.expanduser().resolve(strict=False).parents
+        if parent.name == "installed"
+    }
+    with ExitStack() as stack:
+        for root in sorted(roots):
+            stack.enter_context(_legacy_package_epoch_write_guard(root))
+        yield
+
+
 class GitPackageMaterializerBackend:
     """Materialize git-backed package sources into a local install root."""
 
@@ -184,48 +203,49 @@ class GitPackageMaterializerBackend:
     def __call__(
         self, record: PackageMaterializationRecord
     ) -> PackageMaterializationRecord:
-        target = Path(record.target_path)
-        source, ref = _git_clone_source(record.source)
-        identity = PackageSourceIdentity.parse(record.source)
-        record = (
-            record.with_git_state(requested_ref=ref, pinned=identity.pinned)
-            if ref
-            else record
-        )
-        try:
-            if target.exists():
-                if not (target / ".git").is_dir():
-                    raise RuntimeError(
-                        f"Package target already exists and is not a git checkout: {target}"
+        with _legacy_backend_write_guard(Path(record.target_path)):
+            target = Path(record.target_path)
+            source, ref = _git_clone_source(record.source)
+            identity = PackageSourceIdentity.parse(record.source)
+            record = (
+                record.with_git_state(requested_ref=ref, pinned=identity.pinned)
+                if ref
+                else record
+            )
+            try:
+                if target.exists():
+                    if not (target / ".git").is_dir():
+                        raise RuntimeError(
+                            f"Package target already exists and is not a git checkout: {target}"
+                        )
+                    local_state = _record_with_local_git_state(
+                        record.with_lifecycle("installed", target_path=target), self
                     )
-                local_state = _record_with_local_git_state(
-                    record.with_lifecycle("installed", target_path=target), self
-                )
-                if local_state.dirty:
-                    return local_state.with_lifecycle(
-                        "failed",
-                        error_message="Package checkout is dirty; commit or discard local changes before updating.",
+                    if local_state.dirty:
+                        return local_state.with_lifecycle(
+                            "failed",
+                            error_message="Package checkout is dirty; commit or discard local changes before updating.",
+                        )
+                    if identity.pinned:
+                        return local_state
+                    self._update_existing_checkout(target)
+                    return _record_with_local_git_state(
+                        record.with_lifecycle("installed", target_path=target), self
                     )
-                if identity.pinned:
-                    return local_state
-                self._update_existing_checkout(target)
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                self._run_git(["clone", source, str(target)])
+                if ref:
+                    self._run_git(["checkout", ref], cwd=target)
                 return _record_with_local_git_state(
                     record.with_lifecycle("installed", target_path=target), self
                 )
-
-            target.parent.mkdir(parents=True, exist_ok=True)
-            self._run_git(["clone", source, str(target)])
-            if ref:
-                self._run_git(["checkout", ref], cwd=target)
-            return _record_with_local_git_state(
-                record.with_lifecycle("installed", target_path=target), self
-            )
-        except Exception as exc:
-            if target.exists() and not (target / ".git").is_dir():
-                shutil.rmtree(target, ignore_errors=True)
-            return record.with_lifecycle(
-                "failed", error_message=str(exc), target_path=target
-            )
+            except Exception as exc:
+                if target.exists() and not (target / ".git").is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+                return record.with_lifecycle(
+                    "failed", error_message=str(exc), target_path=target
+                )
 
     def _run_git(
         self, args: list[str], *, cwd: Path | None = None, check: bool = True
@@ -310,36 +330,39 @@ class PythonPackageInstallerBackend:
     def __call__(
         self, record: PackageMaterializationRecord
     ) -> PackageMaterializationRecord:
-        requirement = record.requirement or python_package_requirement(record.source)
-        if requirement is None:
-            return record.with_lifecycle(
-                "failed",
-                error_message=f"Invalid Python package source: {record.source}",
+        with _legacy_backend_write_guard(Path(record.target_path)):
+            requirement = record.requirement or python_package_requirement(
+                record.source
             )
-        target = Path(record.target_path)
-        temp_path = target.with_name(f".{target.name}.{id(self)}.tmp")
-        shutil.rmtree(temp_path, ignore_errors=True)
-        try:
-            temp_path.mkdir(parents=True, exist_ok=True)
-            installer = self._install_requirement(requirement, temp_path)
-            if target.exists():
-                shutil.rmtree(target)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            temp_path.replace(target)
-            metadata = _python_distribution_metadata(target, record.name)
-            return record.with_lifecycle(
-                "installed", target_path=target, error_message=None
-            ).with_python_state(
-                installer=installer,
-                resolved_name=metadata["name"],
-                resolved_version=metadata["version"],
-                installed_distributions=tuple(metadata["distributions"]),
-            )
-        except Exception as exc:
+            if requirement is None:
+                return record.with_lifecycle(
+                    "failed",
+                    error_message=f"Invalid Python package source: {record.source}",
+                )
+            target = Path(record.target_path)
+            temp_path = target.with_name(f".{target.name}.{id(self)}.tmp")
             shutil.rmtree(temp_path, ignore_errors=True)
-            return record.with_lifecycle(
-                "failed", error_message=str(exc), target_path=target
-            )
+            try:
+                temp_path.mkdir(parents=True, exist_ok=True)
+                installer = self._install_requirement(requirement, temp_path)
+                if target.exists():
+                    shutil.rmtree(target)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temp_path.replace(target)
+                metadata = _python_distribution_metadata(target, record.name)
+                return record.with_lifecycle(
+                    "installed", target_path=target, error_message=None
+                ).with_python_state(
+                    installer=installer,
+                    resolved_name=metadata["name"],
+                    resolved_version=metadata["version"],
+                    installed_distributions=tuple(metadata["distributions"]),
+                )
+            except Exception as exc:
+                shutil.rmtree(temp_path, ignore_errors=True)
+                return record.with_lifecycle(
+                    "failed", error_message=str(exc), target_path=target
+                )
 
     def _install_requirement(
         self, requirement: str, target: Path
@@ -454,6 +477,18 @@ class PackageMaterializer:
             str, PluginSourceBinding
         ] = {}
         self._load_lockfile()
+
+    @contextmanager
+    def _legacy_write_guard(self) -> Iterator[None]:
+        roots = set()
+        if self.install_root.name == "installed":
+            roots.add(self.install_root.parent)
+        if self.lockfile_path.name == "package-lock.json":
+            roots.add(self.lockfile_path.parent)
+        with ExitStack() as stack:
+            for root in sorted(roots):
+                stack.enter_context(_legacy_package_epoch_write_guard(root))
+            yield
 
     def set_progress_callback(
         self, callback: Callable[[PackageProgressEvent], None] | None
@@ -967,8 +1002,9 @@ class PackageMaterializer:
                 f"Package materialization requires a remote source: {source}"
             )
         record = self._source_record(source)
-        self._records[_record_key(source)] = record
-        self._save_lockfile()
+        with self._legacy_write_guard():
+            self._records[_record_key(source)] = record
+            self._save_lockfile()
         return record
 
     async def materialize_remote_source(
@@ -1027,37 +1063,38 @@ class PackageMaterializer:
         record = self.get_record(source)
         if record is None:
             record = self._source_record(source).with_lifecycle("remote_registered")
-        self._emit_progress(
-            "start",
-            "remove",
-            source,
-            message=_progress_message("remove", source),
-            target_path=record.target_path,
-        )
-        try:
-            if record.target_path.exists():
-                shutil.rmtree(record.target_path)
-            removed = record.with_lifecycle(
-                "remote_registered", error_message=None
-            ).with_git_state(
-                installed_commit="",
-                resolved_commit="",
-                dirty=False,
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                "remove",
+                source,
+                message=_progress_message("remove", source),
+                target_path=record.target_path,
             )
-            progress_type: PackageProgressEventType = "complete"
-        except Exception as exc:
-            removed = record.with_lifecycle("failed", error_message=str(exc))
-            progress_type = "error"
-        self._records[_record_key(source)] = removed
-        self._save_lockfile()
-        self._emit_progress(
-            progress_type,
-            "remove",
-            source,
-            message=removed.error_message,
-            target_path=removed.target_path,
-        )
-        return removed
+            try:
+                if record.target_path.exists():
+                    shutil.rmtree(record.target_path)
+                removed = record.with_lifecycle(
+                    "remote_registered", error_message=None
+                ).with_git_state(
+                    installed_commit="",
+                    resolved_commit="",
+                    dirty=False,
+                )
+                progress_type: PackageProgressEventType = "complete"
+            except Exception as exc:
+                removed = record.with_lifecycle("failed", error_message=str(exc))
+                progress_type = "error"
+            self._records[_record_key(source)] = removed
+            self._save_lockfile()
+            self._emit_progress(
+                progress_type,
+                "remove",
+                source,
+                message=removed.error_message,
+                target_path=removed.target_path,
+            )
+            return removed
 
     def forget_remote_source(self, source: str) -> None:
         record_key = _record_key(source)
@@ -1272,30 +1309,31 @@ class PackageMaterializer:
         backend = self._backend_for_record(record)
         if backend is None:
             return record
-        self._emit_progress(
-            "start",
-            action,
-            source,
-            message=_progress_message(action, source),
-            target_path=record.target_path,
-        )
-        try:
-            result = backend(record)
-            if inspect.isawaitable(result):
-                result = await result
-        except Exception as exc:
-            result = record.with_lifecycle("failed", error_message=str(exc))
-        self._emit_progress(
-            "error" if result.lifecycle == "failed" else "complete",
-            action,
-            source,
-            message=result.error_message,
-            target_path=result.target_path,
-        )
-        if persist:
-            self._records[_record_key(source)] = result
-            self._save_lockfile()
-        return result
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                action,
+                source,
+                message=_progress_message(action, source),
+                target_path=record.target_path,
+            )
+            try:
+                result = backend(record)
+                if inspect.isawaitable(result):
+                    result = await result
+            except Exception as exc:
+                result = record.with_lifecycle("failed", error_message=str(exc))
+            self._emit_progress(
+                "error" if result.lifecycle == "failed" else "complete",
+                action,
+                source,
+                message=result.error_message,
+                target_path=result.target_path,
+            )
+            if persist:
+                self._records[_record_key(source)] = result
+                self._save_lockfile()
+            return result
 
     def _run_backend_for_record_sync(
         self,
@@ -1324,32 +1362,33 @@ class PackageMaterializer:
         backend = self._backend_for_record(record)
         if backend is None:
             return record
-        self._emit_progress(
-            "start",
-            action,
-            source,
-            message=_progress_message(action, source),
-            target_path=record.target_path,
-        )
-        try:
-            result = backend(record)
-            if inspect.isawaitable(result):
-                raise RuntimeError(
-                    "Package materializer backend is async and cannot run during synchronous bootstrap."
-                )
-        except Exception as exc:
-            result = record.with_lifecycle("failed", error_message=str(exc))
-        self._emit_progress(
-            "error" if result.lifecycle == "failed" else "complete",
-            action,
-            source,
-            message=result.error_message,
-            target_path=result.target_path,
-        )
-        if persist:
-            self._records[_record_key(source)] = result
-            self._save_lockfile()
-        return result
+        with self._legacy_write_guard():
+            self._emit_progress(
+                "start",
+                action,
+                source,
+                message=_progress_message(action, source),
+                target_path=record.target_path,
+            )
+            try:
+                result = backend(record)
+                if inspect.isawaitable(result):
+                    raise RuntimeError(
+                        "Package materializer backend is async and cannot run during synchronous bootstrap."
+                    )
+            except Exception as exc:
+                result = record.with_lifecycle("failed", error_message=str(exc))
+            self._emit_progress(
+                "error" if result.lifecycle == "failed" else "complete",
+                action,
+                source,
+                message=result.error_message,
+                target_path=result.target_path,
+            )
+            if persist:
+                self._records[_record_key(source)] = result
+                self._save_lockfile()
+            return result
 
     def _source_record(self, source: str) -> PackageMaterializationRecord:
         identity = PackageSourceIdentity.parse(source)
@@ -1702,10 +1741,13 @@ class PackageMaterializer:
             if local_binding_history.get(key) != baseline_binding_history.get(key)
         }
         try:
-            with journal_file_lock(
-                self.lockfile_path,
-                "exclusive",
-                lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            with (
+                self._legacy_write_guard(),
+                journal_file_lock(
+                    self.lockfile_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                ),
             ):
                 self._replace_lockfile_state_from_disk_unlocked()
                 if (

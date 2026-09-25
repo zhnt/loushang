@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementPreview,
@@ -65,6 +65,8 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
+
+
 class ProductCompositionAssemblyError(RuntimeError):
     """Stable Product-visible failure before contribution admission completes."""
 
@@ -131,6 +133,11 @@ class ProductCompositionAssemblyRequest:
         repr=False,
         compare=False,
     )
+    owner_candidates: tuple[OwnerContributionCandidateEnvelope, ...] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.selection, PluginSelection):
@@ -150,6 +157,14 @@ class ProductCompositionAssemblyRequest:
             raise TypeError("Product composition Definitions are invalid")
         if not callable(self.select_optional_requirements):
             raise TypeError("Product optional requirement selector must be callable")
+        if self.owner_candidates is not None:
+            candidates = tuple(self.owner_candidates)
+            if any(
+                not isinstance(item, OwnerContributionCandidateEnvelope)
+                for item in candidates
+            ):
+                raise TypeError("Product projected owner candidates are invalid")
+            object.__setattr__(self, "owner_candidates", candidates)
         object.__setattr__(self, "owner_bindings", bindings)
         object.__setattr__(self, "mandatory_roots", mandatory_roots)
         object.__setattr__(self, "definitions", definitions)
@@ -241,9 +256,7 @@ def _validate_product_plugin_seed_evidence(
             or binding.dependency_lock != package.dependency_lock
         ):
             raise ValueError("Product Plugin seed binding lineage is invalid")
-    if any(
-        not isinstance(item, ProductContributionOwnerBinding) for item in owners
-    ):
+    if any(not isinstance(item, ProductContributionOwnerBinding) for item in owners):
         raise TypeError("Product Plugin seed contribution owners are invalid")
     owner_keys = tuple(item.owner_key for item in owners)
     if len(owner_keys) != len(set(owner_keys)):
@@ -583,6 +596,21 @@ def assemble_product_composition(
         for item in selection.candidates
         if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
+    if request.owner_candidates is not None:
+        projected = request.owner_candidates
+        if len(projected) != len(candidates) or any(
+            actual
+            != replace(
+                expected,
+                dependency_lock_digest=actual.dependency_lock_digest,
+            )
+            for expected, actual in zip(candidates, projected, strict=True)
+        ):
+            raise ProductCompositionAssemblyError(
+                "Product owner projection changed Plugin selection facts.",
+                code="product_contribution_candidate_projection_mismatch",
+            )
+        candidates = projected
     return _assemble_product_contribution_candidates(
         plan=selection.plan,
         candidates=candidates,
@@ -608,9 +636,13 @@ def _assemble_product_contribution_candidates(
 
     if not isinstance(plan, PluginSelectionPlanV2):
         raise TypeError("Product contribution plan is invalid")
-    if any(not isinstance(item, OwnerContributionCandidateEnvelope) for item in candidates):
+    if any(
+        not isinstance(item, OwnerContributionCandidateEnvelope) for item in candidates
+    ):
         raise TypeError("Product contribution candidates are invalid")
-    if any(not isinstance(item, ProductContributionOwnerBinding) for item in owner_bindings):
+    if any(
+        not isinstance(item, ProductContributionOwnerBinding) for item in owner_bindings
+    ):
         raise TypeError("Product contribution owner bindings are invalid")
     if not callable(select_optional_requirements):
         raise TypeError("Product optional requirement selector must be callable")
@@ -625,9 +657,7 @@ def _assemble_product_contribution_candidates(
         for item in candidates
     )
     trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
-    instance_by_id = {
-        item.plugin_id: item for item in context.instance_revision_refs
-    }
+    instance_by_id = {item.plugin_id: item for item in context.instance_revision_refs}
     if len(candidate_refs) != len(set(candidate_refs)) or any(
         ref not in selected_refs
         or candidate.product_id != context.product_id
@@ -637,8 +667,7 @@ def _assemble_product_contribution_candidates(
         or (trust := trust_by_id.get(candidate.plugin_id)) is None
         or candidate.package_source_identity != trust.package_source_identity
         or candidate.source_trust_class != trust.source_trust_class
-        or candidate.source_trust_policy_revision
-        != trust.source_trust_policy_revision
+        or candidate.source_trust_policy_revision != trust.source_trust_policy_revision
         or candidate.source_trusted != trust.trusted
         for ref, candidate in zip(candidate_refs, candidates, strict=True)
     ):
@@ -672,9 +701,7 @@ def _assemble_product_contribution_candidates(
         ].admit(candidate, evaluated_at=evaluated_at)
         for candidate in candidates
     )
-    owner_snapshots = tuple(
-        item.authority.snapshot() for item in owner_bindings
-    )
+    owner_snapshots = tuple(item.authority.snapshot() for item in owner_bindings)
     authority_context = ProductCompositionAuthorityContext(
         product_id=context.product_id,
         scope_id=context.scope_id,

@@ -1211,7 +1211,12 @@ def test_enforced_startup_non_plugin_cannot_fall_to_supplied_materializer(
 
 def test_enforced_startup_routes_configured_local_wheel_through_product(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        "loushang.harness.resources.packages.source_resolver.package_offline_enabled",
+        lambda: True,
+    )
     source = str(tmp_path / "acme-1.0-py3-none-any.whl")
     activation, transaction = _activation(tmp_path)
     activation.activate()
@@ -1236,6 +1241,36 @@ def test_enforced_startup_routes_configured_local_wheel_through_product(
     assert len(resolved.records) == 1
     assert resolved.records[0].lifecycle == "installed"
     assert transaction.calls == ["startup"]
+
+
+def test_enforced_startup_stops_after_first_durable_refusal(tmp_path: Path) -> None:
+    sources = (
+        "https://example.test/first.whl",
+        "https://example.test/second.whl",
+    )
+    activation, transaction = _activation(tmp_path, decision="indeterminate")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": list(sources)}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    result = PackageSourceResolver(
+        settings_manager=Settings(),
+        materializer=None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    ).resolve_configured_sources_sync()
+
+    assert result.failed_sources == (sources[0],)
+    assert result.records == ()
+    assert transaction.calls == []
 
 
 def test_enforced_startup_local_non_plugin_cannot_be_silently_skipped(

@@ -144,6 +144,9 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
 )
+from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductRouteRequestV1,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
@@ -662,6 +665,20 @@ def compose_posix_local_wheel_product(
         handoff=handoff,
         inventory_revision=projection.inventory_revision,
     )
+
+    def existing_installation(request: PackageProductRouteRequestV1) -> bool:
+        ingress = request.ingress
+        plugin_id = ingress.requested_plugin_id
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Package Product installation identity is missing")
+        key = PluginInstallationKeyV1(
+            product_id=ingress.product_id,
+            installation_scope="workspace",
+            scope_id=ingress.scope_id,
+            plugin_id=plugin_id,
+        )
+        return desired_state.snapshot().installation(key).selection.desired_state != "absent"
+
     transaction = PackageProductLifecycleTransaction(
         kernel=kernel,
         execution=PackageProductWheelExecutionFactory(
@@ -674,6 +691,7 @@ def compose_posix_local_wheel_product(
         staging=staging,
         commit=commit,
         handoff=finalizer,
+        existing_installation=existing_installation,
     )
     lifecycle = compose_package_product_lifecycle(
         product_id=policy.product_id,
@@ -690,6 +708,7 @@ def compose_posix_local_wheel_product(
             coordination_lock=registry.coordination_lock,
             file_io=registry._io,
         ),
+        reference_guard=gc_gate.guard,
         recoveries=(PackageRetentionHandoffRecovery(handoff_journal, handoff),),
         admitted_recoveries=(
             PackageCommittedProductHandoffRecovery(
@@ -854,6 +873,65 @@ class PosixLocalWheelProductSessionOwner:
         except BaseException:
             lease.release()
             raise
+
+    def settled_install_command_id(
+        self, *, operation_id: str, plugin_id: str
+    ) -> str | None:
+        """Read the exact Product handoff for a completed install retry."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package Product operation id is required")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Package Product Plugin id is required")
+        self.epoch_runtime.assert_current()
+        state_identity = _directory_identity(self.state_root)
+        if state_identity is None:
+            raise ValueError("Package Product state root is unsafe")
+        journal = PackageRetentionHandoffJournal(self.state_root / "handoff.jsonl")
+        receipts = tuple(
+            record.receipt
+            for record in journal.records()
+            if record.receipt is not None
+            and record.receipt.request.operation_id == operation_id
+        )
+        if _directory_identity(self.state_root) != state_identity:
+            raise ValueError("Package Product state root changed during handoff read")
+        self.epoch_runtime.assert_current()
+        if not receipts:
+            return None
+        if len({receipt.request.handoff_id for receipt in receipts}) != 1:
+            raise ValueError("Package Product operation has multiple handoffs")
+        latest = receipts[-1]
+        desired = latest.request.desired_request
+        if (
+            latest.state != "settled"
+            or latest.desired_receipt is None
+            or desired.product_id != self.policy.product_id
+            or desired.scope_id != self.policy.project_scope_id
+            or desired.plugin_id != plugin_id
+            or journal.current(latest.request.handoff_id) != latest
+        ):
+            raise ValueError("Package Product install handoff is not settled")
+        if _directory_identity(self.state_root) != state_identity:
+            raise ValueError("Package Product state root changed during handoff read")
+        self.epoch_runtime.assert_current()
+        return desired.command_id
+
+    def assert_root_gc_authority_current(self) -> None:
+        """Require the same fenced Product, workspace, state, and Store roots."""
+
+        self.epoch_runtime.assert_current()
+        if self._current_workspace_identity() != self._workspace_identity:
+            raise ValueError("Package Product workspace identity changed")
+        if _directory_identity(self.state_root) is None:
+            raise ValueError("Package Product state root is unsafe")
+        fence = self.epoch_runtime.cutover_result.fence
+        if (
+            fence is None
+            or _directory_identity(self.plugin_store_root) != fence.fenced_root_identity
+        ):
+            raise ValueError("Package Product fenced Store root changed")
+        self.epoch_runtime.assert_current()
 
     def _current_workspace_identity(self) -> tuple[int, int] | None:
         try:

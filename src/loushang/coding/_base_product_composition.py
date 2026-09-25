@@ -104,6 +104,9 @@ class CodingBaseProductCompilation:
     tool_contribution_id: str | None
     tool_names: tuple[str, ...]
     resource_bodies: tuple[CodingBaseProductResourceBody, ...] = field(repr=False)
+    selected_capability_manifests: tuple[
+        PackageProductSelectedPluginManifestV1, ...
+    ] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
         context = self.product_composition.authority_context
@@ -125,6 +128,26 @@ class CodingBaseProductCompilation:
         }
         if actual != expected or len(actual) != len(self.resource_bodies):
             raise ValueError("Product Resource bodies changed owner admissions")
+        capability_ids = tuple(
+            item.verified_manifest().name for item in self.selected_capability_manifests
+        )
+        if capability_ids != tuple(
+            plugin_id
+            for plugin_id in self.plan.selected_plugin_ids
+            if plugin_id != "coding.base"
+        ):
+            raise ValueError("Product Capability manifests changed the selected plan")
+        instance_refs = {
+            item.plugin_id: item for item in self.plan.context.instance_revision_refs
+        }
+        trust = {item.plugin_id: item for item in self.plan.source_trust_snapshots}
+        if any(
+            selected.snapshot.instance_revision_ref
+            != instance_refs.get(selected.manifest.name)
+            or selected.source_trust_snapshot != trust.get(selected.manifest.name)
+            for selected in self.selected_capability_manifests
+        ):
+            raise ValueError("Product Capability manifests changed B selection facts")
         for admission in self.product_composition.resource_admissions:
             captured = next(
                 item

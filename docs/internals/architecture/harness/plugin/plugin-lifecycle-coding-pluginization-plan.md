@@ -82,11 +82,18 @@
   [PLC9D3d](plugin-lifecycle-plc9d3d-contract.md) fences the committed-set
   owner against a new alias of a root ref after GC starts.
   [PLC9D3e](plugin-lifecycle-plc9d3e-contract.md) records typed Store success
-  or retryable debt with exact settlement matching, but no Product executor
-  calls it yet.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
-  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
-  implemented; executable Product GC absent; PLC9 remains open.
+  or retryable debt with exact settlement matching. [PLC9D3f--D3j]
+  (plugin-lifecycle-plc9d3f-contract.md) add an internal POSIX-tested executor
+  and explicit offline Product root-GC command. [PLC9D3k--D3l]
+  (plugin-lifecycle-plc9d3k-contract.md) add private-data confirmation seams
+  and durable evidence; [PLC9D3m](plugin-lifecycle-plc9d3m-contract.md)
+  projects the pre-B workspace-snapshot status. Production private-data and
+  backup owner bindings, default management/RPC selection, Windows GC, and
+  shared-dependency GC remain open.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.
