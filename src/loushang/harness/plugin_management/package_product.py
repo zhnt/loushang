@@ -48,6 +48,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.store_settlements impo
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackageVerifiedTreeManifestV1,
 )
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION = 1
 
@@ -317,6 +318,7 @@ class PackageProductSelectedRootSnapshotV1:
 
     installation_key: PluginInstallationKeyV1
     package_revision: PluginPackageRevisionRefV1
+    instance_revision_ref: PluginInstanceRevisionRef
     committed_record: PackageCommittedSetRecordV1
     root_ref: PluginRevisionRefV1
     manifest: PackageVerifiedTreeManifestV1
@@ -327,6 +329,8 @@ class PackageProductSelectedRootSnapshotV1:
             raise TypeError("Selected root requires a Product installation key")
         if not isinstance(self.package_revision, PluginPackageRevisionRefV1):
             raise TypeError("Selected root requires a Product package revision")
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError("Selected root requires a Product Instance revision")
         if not isinstance(self.committed_record, PackageCommittedSetRecordV1):
             raise TypeError("Selected root requires a committed Package set")
         if not isinstance(self.root_ref, PluginRevisionRefV1):
@@ -341,6 +345,7 @@ class PackageProductSelectedRootSnapshotV1:
         )
         if (
             self.installation_key.plugin_id != self.root_ref.plugin_id
+            or self.instance_revision_ref.plugin_id != self.root_ref.plugin_id
             or self.installation_key.product_id != committed.product_id
             or self.installation_key.scope_id != committed.scope_id
             or committed.plugin_id != self.root_ref.plugin_id
@@ -438,7 +443,7 @@ class PackageProductSelectedRootReader:
         max_bytes: int,
     ) -> bytes:
         with self.gc_gate.guard() as reserved:
-            _, _, settlement = self._selected_settlement(installation_key, reserved)
+            _, _, _, settlement = self._selected_settlement(installation_key, reserved)
             return self.root_store.read_root_file(
                 settlement, logical_path, max_bytes=max_bytes
             )
@@ -467,7 +472,7 @@ class PackageProductSelectedRootReader:
         ):
             raise ValueError("Product selected-root read budget is invalid")
         with self.gc_gate.guard() as reserved:
-            _, _, settlement = self._selected_settlement(installation_key, reserved)
+            _, _, _, settlement = self._selected_settlement(installation_key, reserved)
             members = {
                 entry.logical_path: entry for entry in settlement.manifest.entries
             }
@@ -504,9 +509,12 @@ class PackageProductSelectedRootReader:
         ):
             raise ValueError("Product selected-root byte budget is invalid")
         with self.gc_gate.guard() as reserved:
-            package_revision, committed_record, settlement = self._selected_settlement(
-                installation_key, reserved
-            )
+            (
+                package_revision,
+                instance_revision_ref,
+                committed_record,
+                settlement,
+            ) = self._selected_settlement(installation_key, reserved)
             root_ref = settlement.receipt.stable_ref
             if not isinstance(root_ref, PluginRevisionRefV1):
                 raise self._error(
@@ -534,6 +542,7 @@ class PackageProductSelectedRootReader:
             return PackageProductSelectedRootSnapshotV1(
                 installation_key=installation_key,
                 package_revision=package_revision,
+                instance_revision_ref=instance_revision_ref,
                 committed_record=committed_record,
                 root_ref=root_ref,
                 manifest=settlement.manifest,
@@ -546,6 +555,7 @@ class PackageProductSelectedRootReader:
         reserved: frozenset[PluginPackageRevisionRefV1],
     ) -> tuple[
         PluginPackageRevisionRefV1,
+        PluginInstanceRevisionRef,
         PackageCommittedSetRecordV1,
         PackageStoreSettlementRecordV1,
     ]:
@@ -643,7 +653,12 @@ class PackageProductSelectedRootReader:
                 "Selected Store root is unavailable",
                 "package_product_root_unavailable",
             )
-        return package_revision, committed_record, settlements[0]
+        return (
+            package_revision,
+            selection.instance_revision_ref,
+            committed_record,
+            settlements[0],
+        )
 
     @staticmethod
     def _error(message: str, code: str) -> PackageProductRuntimeReadError:

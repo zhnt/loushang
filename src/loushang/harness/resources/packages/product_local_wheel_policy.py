@@ -34,6 +34,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
 )
+from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -55,6 +56,8 @@ class PackageProductLocalWheelBindingV1:
     requested_package: str
     plugin_id: str
     artifact_digest: str
+    plugin_manifest_path: str | None = None
+    source_trust_class: str | None = None
 
     def __post_init__(self) -> None:
         _require_local_wheel_source(self.source_identity)
@@ -72,6 +75,20 @@ class PackageProductLocalWheelBindingV1:
             or _SHA256.fullmatch(self.artifact_digest) is None
         ):
             raise ValueError("Product local Wheel digest is invalid")
+        if self.plugin_manifest_path is not None:
+            try:
+                logical_path = canonical_plugin_relative_path(
+                    self.plugin_manifest_path
+                )
+            except ValueError as exc:
+                raise ValueError("Product Plugin manifest path is invalid") from exc
+            if logical_path.name != "plugin.json":
+                raise ValueError("Product Plugin manifest path must name plugin.json")
+        if self.source_trust_class is not None and (
+            not isinstance(self.source_trust_class, str)
+            or _SAFE_ID.fullmatch(self.source_trust_class) is None
+        ):
+            raise ValueError("Product Plugin source trust class is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +201,16 @@ class PackageProductLocalWheelPolicy:
                     "pluginId": item.plugin_id,
                     "requestedPackage": item.requested_package,
                     "sourceIdentity": item.source_identity,
+                    **(
+                        {"pluginManifestPath": item.plugin_manifest_path}
+                        if item.plugin_manifest_path is not None
+                        else {}
+                    ),
+                    **(
+                        {"sourceTrustClass": item.source_trust_class}
+                        if item.source_trust_class is not None
+                        else {}
+                    ),
                 }
                 for item in self.bindings
             ],
