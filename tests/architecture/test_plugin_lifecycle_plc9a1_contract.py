@@ -260,8 +260,10 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
     assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
     assert continuity.count("compatibility.reconcile()") == 3
+    # PLC9B reads an existing composition early to hold the startup lease;
+    # compatibility still reconciles before any cached composition can return.
     assert continuity.index("compatibility.reconcile()") < continuity.index(
-        'existing = getattr(runtime, "_loushang_coding_continuity", None)'
+        "if existing is not None:"
     )
     assert "coding_plugin_compatibility_fence_unavailable" in _source(
         CODING_COMPATIBILITY
