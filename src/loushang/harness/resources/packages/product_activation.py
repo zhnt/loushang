@@ -8,7 +8,7 @@ single pathless routing port to Product transports.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, nullcontext
 from hashlib import sha256
 from threading import Lock
 from typing import Protocol, TypeVar, cast
@@ -160,15 +160,17 @@ class PackageProductLifecycleActivation:
                 return self._receipt
             for recovery in self._recoveries:
                 recovery.recover()
-            if self._admitted_recoveries:
-                with self._transaction_guard.shared_runtime(
+            guard: AbstractContextManager[None] = (
+                self._transaction_guard.shared_runtime(
                     store_id=self._admission_request.store_id
-                ):
-                    receipt = self._admit()
-                    for admitted_recovery in self._admitted_recoveries:
-                        admitted_recovery.recover(receipt)
-            else:
+                )
+                if self._admitted_recoveries
+                else nullcontext()
+            )
+            with guard:
                 receipt = self._admit()
+                for admitted_recovery in self._admitted_recoveries:
+                    admitted_recovery.recover(receipt)
             self._receipt = receipt
             return receipt
 
