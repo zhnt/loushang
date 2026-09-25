@@ -139,6 +139,9 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     plc9b_capability_selection_allowance = (
         23 + (25 - 2) + 604 + (144 - 15) - 328 + 388 + (59 - 1)
     )
+    # PLC9B startup routing: bootstrap +51/-14, Product runtime +178/-2,
+    # agent Session runtime +22. All three existing paths remain core.
+    plc9b_startup_routing_allowance = (51 - 14) + (178 - 2) + 22
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -154,6 +157,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_fenced_owner_allowance
         + plc9b_capability_ingress_allowance
         + plc9b_capability_selection_allowance
+        + plc9b_startup_routing_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
