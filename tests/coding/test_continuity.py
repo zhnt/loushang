@@ -459,10 +459,13 @@ def test_delete_action_filters_before_provider_pagination(tmp_path: Path) -> Non
 
 def test_clipboard_image_persists_through_transcript_and_continuity_preview(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     session_dir = tmp_path / "data" / "sessions"
     project = tmp_path / "project"
-    session_dir.mkdir(parents=True)
+    session_dir.parent.mkdir(mode=0o700)
+    session_dir.mkdir(mode=0o700)
     project.mkdir()
     clipboard_bytes = b"real clipboard png payload"
     outcome = stage_clipboard_image(

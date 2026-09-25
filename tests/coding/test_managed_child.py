@@ -136,6 +136,16 @@ def test_real_coding_prepare_timeout_can_close_while_journal_observation_is_unkn
         entered, release = asyncio.Event(), asyncio.Event()
         original_open, original_read = type(command._attempt).open, journal.read
 
+        async def read_after_contention():
+            async with asyncio.timeout(5):
+                while True:
+                    try:
+                        return journal.read()
+                    except ManagedStorageError as error:
+                        if error.code != "busy":
+                            raise
+                        await asyncio.sleep(0.005)
+
         async def late_open(self):
             entered.set()
             await release.wait()
@@ -156,11 +166,22 @@ def test_real_coding_prepare_timeout_can_close_while_journal_observation_is_unkn
             await until(lambda: not command.cleanup_pending)
             await until(lambda: owner._close_task.done())
             assert owner.cleanup_pending  # Product closed is not persisted proof.
+            busy_once = True
+
+            def restored_with_busy_once(**kwargs):
+                nonlocal busy_once
+                if busy_once:
+                    busy_once = False
+                    raise ManagedStorageError("busy")
+                return original_read(**kwargs)
+
+            monkeypatch.setattr(journal, "read", restored_with_busy_once)
+            assert not (await read_after_contention()).evidence.application_cleanup_completed
+            assert not busy_once
             monkeypatch.setattr(journal, "read", original_read)
-            assert not journal.read().evidence.application_cleanup_completed
             await owner.close(retry_timeout=5)
             assert not owner.cleanup_pending
-            assert journal.read().evidence.application_cleanup_completed
+            assert (await read_after_contention()).evidence.application_cleanup_completed
             assert command._activate_task is None
         finally:
             release.set()

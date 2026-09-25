@@ -100,6 +100,65 @@ def test_start_reply_loss_is_observed_not_replayed(owners, monkeypatch):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("contention", ["busy", "conflict"])
+def test_contended_start_waits_for_later_durable_winner_without_replay(
+    owners, monkeypatch, contention
+):
+    owner = coordinator(owners)
+    created = fake_leases(monkeypatch)
+    starts = []
+    reads = []
+
+    def contended(**kwargs):
+        starts.append(kwargs)
+        raise ManagedStorageError(contention)
+
+    async def delayed_winner(deadline):
+        reads.append(deadline)
+        if len(reads) <= 2:
+            return None
+        return committed(owners)
+
+    monkeypatch.setattr(owner._starter, "start", contended)
+    monkeypatch.setattr(owner, "_read", delayed_winner)
+
+    async def scenario():
+        try:
+            result = await owner.ensure_started(deadline=monotonic() + 5)
+            assert result is created[0]
+            assert result.instance == owner.instance
+            assert len(starts) == 1
+            assert len(reads) >= 3
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_contended_start_without_durable_winner_stops_at_original_deadline(
+    owners, monkeypatch
+):
+    owner = coordinator(owners)
+    starts = []
+
+    def contended(**kwargs):
+        starts.append(kwargs)
+        raise ManagedStorageError("busy")
+
+    monkeypatch.setattr(owner._starter, "start", contended)
+
+    async def scenario():
+        try:
+            with pytest.raises(ManagedStorageError, match="busy"):
+                await owner.ensure_started(deadline=monotonic() + 0.15)
+            assert len(starts) == 1
+            assert owner.instance is None
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
 def test_unknown_start_without_durable_result_is_not_replayed(owners, monkeypatch):
     owner = coordinator(owners)
     calls = []
