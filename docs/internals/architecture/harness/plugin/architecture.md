@@ -18,15 +18,20 @@
   Coding `local_worker` canaries. PLC9D1/D2 add the local-candidate Package GC
   operator projection and dark reservation/reference-writer fence. D3a--D3e
   add the Store deletion primitive, writer and committed-set fences, exact
-  target resolution, and durable result/debt journal; executable Product GC
-  remains absent. Remaining platform closure includes one complete CLI/RPC/UI/SDK
-  management and repair projection, physical retained-version GC and
-  destructive-data policy, removal of compatibility enablement vetoes, a
+  target resolution, and durable result/debt journal. D3f--D3j connect an
+  internal POSIX-tested executor and explicit offline Product root-GC command;
+  D3k--D3l add durable private-data confirmation evidence, and D3m projects
+  the pre-B workspace-snapshot status. Production private-data/backup owner
+  bindings remain absent. Remaining platform closure includes one complete
+  default CLI/RPC/UI/SDK management and repair projection, general and Windows
+  retained-version GC, shared-dependency handling and destructive-data policy,
+  removal of compatibility enablement vetoes, a
   general third-party Worker authoring/admission experience, and an implemented
   `remote_service` topology.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
-  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
-  implemented; executable Product GC absent; PLC9 remains open.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.

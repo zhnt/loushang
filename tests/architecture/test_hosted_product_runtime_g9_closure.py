@@ -311,7 +311,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 7
+    assert inventory["inventoryVersion"] == 9
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
@@ -326,6 +326,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.hosted-tui.command",
         "coding.mux.command",
         "coding.lmux.command",
+        "coding.package-cutover.command",
+        "coding.package-gc.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -369,6 +371,16 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert rows["coding.mux.command"]["importsComposition"] is False
     assert rows["coding.mux.command"]["omissionOwner"] is None
     assert rows["coding.mux.command"]["source"] == "src/loushang/coding/cli/mux.py"
+    assert rows["coding.package-cutover.command"]["disposition"] == (
+        "explicit-offline-posix-product-cutover"
+    )
+    assert rows["coding.package-cutover.command"]["importsComposition"] is False
+    assert rows["coding.package-cutover.command"]["omissionOwner"] is None
+    assert rows["coding.package-gc.command"]["disposition"] == (
+        "explicit-offline-posix-product-gc"
+    )
+    assert rows["coding.package-gc.command"]["importsComposition"] is False
+    assert rows["coding.package-gc.command"]["omissionOwner"] is None
     for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
         assert rows[entrypoint_id]["disposition"] == "non-product-tool"
         assert rows[entrypoint_id]["omissionOwner"] is None
@@ -412,6 +424,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.hosted-tui.command": ("hosted", "installed"),
         "coding.mux.command": ("mux", "installed"),
         "coding.lmux.command": ("mux", "installed-preview"),
+        "coding.package-cutover.command": ("cli", "installed"),
+        "coding.package-gc.command": ("cli", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
         "harnesstui.named-mux": ("mux", "client-library"),
@@ -426,6 +440,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang-hosted-tui": "loushang.coding.cli.hosted_client:main",
         "loushang-mux": "loushang.coding.cli.mux:main",
         "lmux": "loushang.coding.cli.lmux:main",
+        "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
+        "loushang-package-gc": "loushang.coding.cli.package_gc:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -440,6 +456,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.loushang-hosted-tui": "coding.hosted-tui.command",
         "project.scripts.loushang-mux": "coding.mux.command",
         "project.scripts.lmux": "coding.lmux.command",
+        "project.scripts.loushang-package-cutover": "coding.package-cutover.command",
+        "project.scripts.loushang-package-gc": "coding.package-gc.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }

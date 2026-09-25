@@ -874,6 +874,65 @@ class PosixLocalWheelProductSessionOwner:
             lease.release()
             raise
 
+    def settled_install_command_id(
+        self, *, operation_id: str, plugin_id: str
+    ) -> str | None:
+        """Read the exact Product handoff for a completed install retry."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package Product operation id is required")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Package Product Plugin id is required")
+        self.epoch_runtime.assert_current()
+        state_identity = _directory_identity(self.state_root)
+        if state_identity is None:
+            raise ValueError("Package Product state root is unsafe")
+        journal = PackageRetentionHandoffJournal(self.state_root / "handoff.jsonl")
+        receipts = tuple(
+            record.receipt
+            for record in journal.records()
+            if record.receipt is not None
+            and record.receipt.request.operation_id == operation_id
+        )
+        if _directory_identity(self.state_root) != state_identity:
+            raise ValueError("Package Product state root changed during handoff read")
+        self.epoch_runtime.assert_current()
+        if not receipts:
+            return None
+        if len({receipt.request.handoff_id for receipt in receipts}) != 1:
+            raise ValueError("Package Product operation has multiple handoffs")
+        latest = receipts[-1]
+        desired = latest.request.desired_request
+        if (
+            latest.state != "settled"
+            or latest.desired_receipt is None
+            or desired.product_id != self.policy.product_id
+            or desired.scope_id != self.policy.project_scope_id
+            or desired.plugin_id != plugin_id
+            or journal.current(latest.request.handoff_id) != latest
+        ):
+            raise ValueError("Package Product install handoff is not settled")
+        if _directory_identity(self.state_root) != state_identity:
+            raise ValueError("Package Product state root changed during handoff read")
+        self.epoch_runtime.assert_current()
+        return desired.command_id
+
+    def assert_root_gc_authority_current(self) -> None:
+        """Require the same fenced Product, workspace, state, and Store roots."""
+
+        self.epoch_runtime.assert_current()
+        if self._current_workspace_identity() != self._workspace_identity:
+            raise ValueError("Package Product workspace identity changed")
+        if _directory_identity(self.state_root) is None:
+            raise ValueError("Package Product state root is unsafe")
+        fence = self.epoch_runtime.cutover_result.fence
+        if (
+            fence is None
+            or _directory_identity(self.plugin_store_root) != fence.fenced_root_identity
+        ):
+            raise ValueError("Package Product fenced Store root changed")
+        self.epoch_runtime.assert_current()
+
     def _current_workspace_identity(self) -> tuple[int, int] | None:
         try:
             metadata = self.workspace.lstat()

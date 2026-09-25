@@ -217,6 +217,67 @@ class PluginPackageGcResultJournal:
                 if item.reservation_id == start.reservation_id
             )
 
+    def records(self) -> tuple[PluginPackageGcAttemptV1, ...]:
+        """Read the validated result chain for Product operator projection."""
+
+        with journal_file_lock(self._path, "exclusive"):
+            return self._load_unlocked()
+
+    def preflight(
+        self,
+        start: PluginPackageGcDeletionStartV2,
+        *,
+        settlement: PackageStoreSettlementRecordV1,
+        operation_id: str,
+        idempotency_key: str,
+    ) -> None:
+        """Reject known result-identity conflicts before a Store effect."""
+
+        if not isinstance(start, PluginPackageGcDeletionStartV2):
+            raise TypeError("Exact GC deletion start is required")
+        if not isinstance(settlement, PackageStoreSettlementRecordV1):
+            raise TypeError("Exact Store settlement is required")
+        if settlement.settlement_id not in start.target_settlement_ids:
+            raise ValueError("GC settlement is outside the deletion start")
+        if (
+            type(operation_id) is not str
+            or not operation_id
+            or type(idempotency_key) is not str
+            or not idempotency_key
+        ):
+            raise ValueError("Package GC attempt identity is required")
+        with journal_file_lock(self._path, "exclusive"):
+            records = self._load_unlocked()
+            self._validate_start_records(records, start)
+            if any(
+                item.settlement_id == settlement.settlement_id
+                and item.reservation_id != start.reservation_id
+                for item in records
+            ):
+                raise self._error(
+                    "GC physical settlement has another reservation",
+                    "plugin_package_gc_result_conflict",
+                )
+            by_operation = next(
+                (item for item in records if item.operation_id == operation_id), None
+            )
+            by_key = next(
+                (item for item in records if item.idempotency_key == idempotency_key),
+                None,
+            )
+            if by_operation != by_key or (
+                by_operation is not None
+                and (
+                    by_operation.reservation_id != start.reservation_id
+                    or by_operation.deletion_start_operation_id != start.operation_id
+                    or by_operation.settlement_id != settlement.settlement_id
+                )
+            ):
+                raise self._error(
+                    "GC attempt identity was reused",
+                    "plugin_package_gc_result_conflict",
+                )
+
     def record(
         self,
         start: PluginPackageGcDeletionStartV2,

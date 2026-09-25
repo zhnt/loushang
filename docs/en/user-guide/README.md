@@ -230,6 +230,32 @@ loushang --check-package-updates
 loushang --update-packages
 ```
 
+On Linux, a fresh workspace with no prior Plugin state or legacy Plugin/Package settings can be switched offline to the fenced Product store:
+
+```bash
+loushang-package-cutover --workspace /absolute/path/to/workspace
+```
+
+Stop its Loushang processes first; the command also refuses a live pre-fence writer. The existing Loushang private home must be owned by you and inaccessible to other users; the command does not change its permissions. It installs the checked-in base, LSP, and architecture Plugins through Product transactions and can be retried after interruption. It refuses workspaces that need legacy-state adoption or settings migration. Once fenced, use a fence-aware Loushang version; an older runtime cannot safely write the workspace.
+
+To check the cutover backup without changing Plugin state, run `loushang-package-cutover --workspace /absolute/path/to/workspace --backup-status`. `retained` means the pre-B **workspace** snapshot passed owner verification; `unknown` means it could not be verified. The command does not report per-Plugin backup retention or expiry.
+
+On Linux, immutable Plugin roots in a fenced workspace have a separate offline GC command. Stop all Loushang Sessions first. `prepare` recovers Product transactions and durably seals GC writers; it is a one-way maintenance step. `list` shows exact candidate and reservation IDs without filesystem paths. Copy an exact candidate ID to delete one root:
+
+```bash
+loushang-package-gc --workspace /absolute/path/to/workspace prepare
+loushang-package-gc --workspace /absolute/path/to/workspace list
+loushang-package-gc --workspace /absolute/path/to/workspace delete --candidate-id <candidate-id> --attempt-key <your-attempt-key>
+```
+
+Keep the attempt key to repeat the same request safely. If deletion started but did not settle, use the reservation ID shown in the result or `list` with a new attempt key:
+
+```bash
+loushang-package-gc --workspace /absolute/path/to/workspace retry --reservation-id <reservation-id> --attempt-key <new-attempt-key>
+```
+
+This command deletes only the exact immutable Plugin root. It leaves Plugin private data untouched and makes no claim that backups have expired.
+
 ## Methods And Skills
 
 Methods and skills turn reusable working practices into runtime assets. In the CLI, use:

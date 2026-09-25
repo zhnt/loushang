@@ -12,13 +12,25 @@
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
   dark reservation; D3a--D3e add writer and Store/committed-set fences, a
-  private deletion primitive, read-only root target resolution, and a dark
-  result/debt journal.
-  Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
-  tracked in the lifecycle plan.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
-  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
-  implemented; executable Product GC absent; PLC9 remains open.
+  private deletion primitive, read-only root target resolution, and a durable
+  result/debt journal. D3f connects those owners in an internal POSIX-tested
+  root-GC executor. D3g adds an explicit Product command over an exact GC
+  candidate and an explicit root Store method. D3h joins reservation, result,
+  and root fences in a read-only operator view. D3i composes the real fenced
+  POSIX Product Store for explicit offline GC; D3j adds its declared operator
+  CLI. D3k adds a separate private-data confirmation seam and a backup-owner
+  projection port; D3l adds durable private-data confirmation evidence.
+  D3m reports the actual PLC9B cutover snapshot owner's workspace-level
+  retention evidence without claiming Plugin-level backup expiry. The D3k/D3l
+  seams remain without production owner bindings. Default
+  management/RPC selection, Windows execution evidence, shared dependency
+  GC, and production private-data/backup owner composition remain open.
+  The remaining gaps are summarized by `architecture.md` and tracked in the
+  lifecycle plan.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.
@@ -79,6 +91,30 @@ Neither may silently override a narrower implemented owner contract.
   refuses a newly committed alias after one root ref enters GC.
 - [PLC9D3e Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
   journals Store result or retryable debt without enabling a Product GC route.
+- [PLC9D3f Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md)
+  connects reservation, exact root deletion, and durable result in a
+  POSIX-tested internal coordinator; Product ingress remains closed.
+- [PLC9D3g Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
+  reserves an exact candidate and executes its root settlement under one
+  Product gate; default management and transport routes remain closed.
+- [PLC9D3h Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md)
+  shows reserved, started, debt, success, or evidence conflict from durable
+  owners without granting deletion or asserting private-data/backup effects.
+- [PLC9D3i Fenced Product Root GC Composition](plugin-lifecycle-plc9d3i-contract.md)
+  joins the real B Product owners behind offline runtime quiescence, transaction
+  recovery, and an exact Store root.
+- [PLC9D3j Offline Root GC Command](plugin-lifecycle-plc9d3j-contract.md)
+  exposes separate preparation, candidate/status, exact deletion, and
+  durable-start retry through an offline POSIX operator CLI.
+- [PLC9D3k Private-Data Confirmation And Backup Projection Seams](plugin-lifecycle-plc9d3k-contract.md)
+  requires independent confirmation and domain-owned deletion evidence, and
+  projects backup status only when a backup owner is bound.
+- [PLC9D3l Durable Private-Data Confirmation Evidence](plugin-lifecycle-plc9d3l-contract.md)
+  persists exact separately issued confirmation evidence; no operator or
+  destructive command is exposed.
+- [PLC9D3m Cutover Backup Status Projection](plugin-lifecycle-plc9d3m-contract.md)
+  verifies the real pre-B workspace snapshot owner through the current fence;
+  per-Plugin retention and expiry remain unknown.
 
 ## Frozen Contracts
 
