@@ -136,6 +136,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistry,
+    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
@@ -155,13 +156,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordinati
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
     PackageEpochCutoverSnapshotReceiptV1,
+    PackagePosixEpochCutoverError,
     PackagePosixEpochCutoverOwner,
     PackagePosixEpochCutoverRequestV1,
     PackagePosixEpochCutoverResultV1,
-)
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
-    PackagePosixEpochSnapshotOwner,
-    PackagePosixSnapshotSharedMemberV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
@@ -4219,10 +4217,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_epoch_layout import (
-        resolve_coding_lifecycle_pre_b_members,
-        resolve_coding_package_epoch_layout,
-        resolve_coding_package_pre_b_store_members,
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package_pre_b_snapshot import (
+        cutover_coding_package_store_from_legacy,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4232,6 +4229,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
+    from loushang.harness.resources.packages.product_epoch_guard import (
+        register_package_product_runtime_lease,
+    )
 
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
@@ -4327,87 +4327,61 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
-    package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
-    lifecycle_members = resolve_coding_lifecycle_pre_b_members(legacy_layout)
-    domain_roots = {
-        "store_bytes": legacy_root,
-        "binding_history": legacy_root,
-        "lock_history": legacy_root,
-        "desired_state": legacy_layout.root,
-        "enablement_state": legacy_layout.root,
-        "instance_state": legacy_layout.root,
-        "fence_record": control_root,
-    }
-    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
-        if domain in domain_roots:
-            continue
-        domain_root = source_root / domain
-        domain_root.mkdir(mode=0o700)
-        domain_roots[domain] = domain_root
-    selected_members: dict[str, tuple[str, ...] | None] = {
-        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
-    }
-    selected_members.update(package_members.domain_members())
-    selected_members.update(lifecycle_members.domain_members())
-    snapshots = PackagePosixEpochSnapshotOwner(
-        snapshot_root,
-        store_id=store_id,
-        domain_roots=domain_roots,
-        domain_members=selected_members,
-        shared_members=(
-            (
-                PackagePosixSnapshotSharedMemberV1(
-                    source_root=package_members.source_root,
-                    member_name="package-lock.json",
-                    domains=("binding_history", "lock_history"),
-                ),
-            )
-            if package_members.binding_history
-            else ()
-        ),
+    global_settings = tmp_path / "global-settings" / "settings.json"
+    global_settings.parent.mkdir(mode=0o700)
+    global_settings.write_text(
+        json.dumps({"plugin_sources": [str(workspace / "legacy-plugin")]}),
+        encoding="utf-8",
+    )
+    project_settings = workspace / ".loushang" / "settings.json"
+    project_settings.parent.mkdir(mode=0o700)
+    project_settings.write_text(
+        json.dumps({"package_roots": [str(legacy_root)]}), encoding="utf-8"
+    )
+    settings_manager = SettingsManager(
+        global_settings_path=global_settings,
+        project_settings_path=project_settings,
     )
     pre_fence = PackagePosixPreFenceRegistrationOwner(
         authority, store_id=store_id, fences=fences
     )
-    cutover_root_fd = os.open(
-        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    )
-    cutover_io = RootedFileIO(control_root, cutover_root_fd)
-    try:
-        cutover_registry = PackageEpochRuntimeLeaseRegistry(
-            path=control_root / "runtime-leases.jsonl",
-            coordination_lock=control_root / "coordination",
-            file_io=cutover_io,
-            fences=fences,
-            store_id=store_id,
-        )
-        cutover_owner = PackagePosixEpochCutoverOwner(
-            authority,
-            store_id=store_id,
-            epoch_journal=fences,
-            legacy_root_name=epoch_layout.legacy_root_name,
-            epochs_root_name=epoch_layout.epochs_root_name,
-            coordination=PackagePosixEpochCutoverCoordination(
-                leases=cutover_registry,
-                pre_fence=pre_fence,
-            ),
-            snapshots=snapshots,
-        )
-        cutover_request = PackagePosixEpochCutoverRequestV1.create(
-            store_id=store_id,
-            prior_fence=None,
-            expected_legacy_root_identity=cutover_owner.current_root_identity(),
-            namespace_id="2" * 64,
+
+    def attempt_cutover(namespace_id: str = "2" * 64):
+        return cutover_coding_package_store_from_legacy(
+            legacy_layout,
+            settings_manager,
+            projection_parent=source_root,
+            namespace_id=namespace_id,
             minimum_runtime_version="2.0.0",
             minimum_runtime_protocol_epoch=2,
         )
-        cutover_result = cutover_owner.cutover(cutover_request)
-    finally:
-        cutover_io.cleanup()
-        os.close(cutover_root_fd)
+
+    if entrypoint == "session" and not with_dependency:
+        live_old_runtime = pre_fence.register(startup_id="legacy:live")
+        try:
+            denied = attempt_cutover().attempt.result
+            assert denied.disposition == "rejected"
+            assert denied.code == "package_runtime_epoch_unsupported"
+            assert denied.failure is not None
+            assert denied.failure.barrier == "pre_fence"
+            assert fences.current(store_id) is None
+            assert not tuple(snapshot_root.glob("*.evidence.json"))
+        finally:
+            live_old_runtime.release()
+    cutover_binding = attempt_cutover()
+    cutover_attempt = cutover_binding.attempt
+    snapshots = cutover_binding.snapshots
+    cutover_request = cutover_attempt.request
+    cutover_result = cutover_attempt.result
     assert cutover_result.disposition == "fenced"
+    if entrypoint == "session" and not with_dependency:
+        assert attempt_cutover().attempt == cutover_attempt
+        with pytest.raises(PackagePosixEpochCutoverError) as stale_cutover:
+            attempt_cutover("3" * 64)
+        assert stale_cutover.value.code == "package_epoch_fence_stale"
     fence = cutover_result.fence
     assert fence is not None
+    assert fences.current(store_id) == fence
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
@@ -4473,6 +4447,36 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / "epoch.jsonl"
     ).exists()
     assert (control_root / "epoch.jsonl").is_file()
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "legacy_root_pointer"
+        / "legacy-root-pointer.json"
+    ).read_bytes() == canonical_json_bytes(
+        {
+            "legacyRootIdentity": cutover_request.expected_legacy_root_identity,
+            "legacyRootName": epoch_layout.legacy_root_name,
+            "recordVersion": 1,
+            "storeId": store_id,
+        }
+    )
+    assert not tuple(source_root.iterdir())
+    projected_sources = json.loads(
+        (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / "source_configuration"
+            / "coding-source-configuration.json"
+        ).read_bytes()
+    )
+    assert projected_sources["scopes"]["global"]["sourcePatch"] == {
+        "plugin_sources": [str(workspace / "legacy-plugin")]
+    }
+    assert projected_sources["scopes"]["project"]["sourcePatch"] == {
+        "package_roots": [str(legacy_root)]
+    }
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -4486,18 +4490,126 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             fences=fences,
             store_id=store_id,
         )
-        handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        if entrypoint == "session" and not with_dependency:
+            restore_root = tmp_path / "isolated-offline-restore"
+            restore_root.mkdir(mode=0o700)
+            activation_root = tmp_path / "isolated-legacy-activation"
+            activation_root.mkdir(mode=0o700)
+            b_marker = plugin_root / "epoch-b.json"
+            b_marker.write_bytes(b'{"epoch":"B"}\n')
+            materializer = PackagePosixOfflineRestoreMaterializer(
+                snapshot_root,
+                restore_root,
+                current_b_authority_root=plugin_root,
+                store_id=store_id,
+            )
+            restore_request = PackageOfflineRestoreRequestV1.create(
+                current_fence=fence,
+                genesis_fence=fence,
+                snapshot_evidence=snapshot_evidence,
+                restore_namespace_id=sha256(b"real-coding-pre-b-restore").hexdigest(),
+                legacy_runtime_version="1.9.0",
+            )
+            coordination = PackagePosixEpochCutoverCoordination(
+                leases=registry,
+                pre_fence=pre_fence,
+            )
+            script = f"""
+import os
+import pathlib
+import time
+
+if pathlib.Path("store_bytes/installed/state.json").read_bytes() != b'{{"legacy":1}}\\n':
+    raise SystemExit(41)
+try:
+    pathlib.Path({str(plugin_root)!r}, "epoch-b.json").read_bytes()
+except OSError:
+    pass
+else:
+    raise SystemExit(42)
+descriptor = int(os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_FD"))
+token = os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_TOKEN")
+os.write(descriptor, f"ready:{{token}}\\n".encode())
+os.close(descriptor)
+while True:
+    time.sleep(60)
+"""
+            activation = PackageLinuxLegacyRuntimeActivationOwner(
+                restore_root,
+                activation_root,
+                current_b_authority_root=plugin_root,
+                store_id=store_id,
+                legacy_runtime_version=restore_request.legacy_runtime_version,
+                command=("/usr/bin/python3", "-I", "-S", "-c", script),
+            )
+            restore_owner = PackageOfflineRestoreOwner(
+                store_id=store_id,
+                epoch_journal=fences,
+                coordination=coordination,
+                snapshots=snapshots,
+                materialization=materializer,
+                activation=activation,
+            )
+            fence_bytes = (control_root / "epoch.jsonl").read_bytes()
+            restored = None
+            try:
+                restored = restore_owner.restore(restore_request)
+                assert restored == restore_owner.restore(restore_request)
+                assert restored.disposition == "restored"
+                assert restored.materialization is not None
+                assert restored.activation is not None
+                assert restored.materialization.legacy_snapshot_exact
+                assert restored.materialization.b_namespace_unreachable
+                assert restored.activation.exclusive_old_runtime
+                assert b_marker.read_bytes() == b'{"epoch":"B"}\n'
+                restored_payload = (
+                    restore_root / restore_request.restore_namespace_id / "payload"
+                )
+                assert (
+                    restored_payload / "store_bytes" / "installed" / "state.json"
+                ).read_bytes() == b'{"legacy":1}\n'
+                assert (
+                    restored_payload
+                    / "source_configuration"
+                    / "coding-source-configuration.json"
+                ).read_bytes() == (
+                    snapshot_root
+                    / snapshot_evidence.snapshot.snapshot_id
+                    / "payload"
+                    / "source_configuration"
+                    / "coding-source-configuration.json"
+                ).read_bytes()
+            finally:
+                if restored is not None and restored.activation is not None:
+                    activation.deactivate(restored.activation)
+                if restored is not None and restored.materialization is not None:
+                    materializer.discard(restored.materialization)
+                b_marker.unlink()
+            assert not (
+                restore_root / restore_request.restore_namespace_id
+            ).exists()
+            assert not (activation_root / "active-runtime.json").exists()
+            assert (control_root / "epoch.jsonl").read_bytes() == fence_bytes
+            assert fences.current(store_id) == fence
+        if entrypoint == "session" and not with_dependency:
+            with pytest.raises(ValueError, match="runtime version"):
+                register_package_product_runtime_lease(
+                    registry,
+                    fence=fence,
+                    runtime_id="runtime:product",
+                    runtime_version="",
+                    runtime_protocol_epoch=2,
+                )
+        runtime_lease = register_package_product_runtime_lease(
+            registry,
+            fence=fence,
+            runtime_id="runtime:product",
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+        )
         session = None
         try:
-            admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
-                fence=fence,
-                runtime_id=handle.lease.runtime_id,
-                runtime_version="2.0.0",
-                runtime_protocol_epoch=2,
-                runtime_epoch=handle.lease.runtime_epoch,
-                store_root_identity=handle.lease.store_root_identity,
-                lease_id=handle.lease.lease_id,
-            )
+            admission_request = runtime_lease.admission_request
             def compose(
                 selected_desired: PluginDesiredStateLedger = desired,
             ):
@@ -4559,8 +4671,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     closure_budgets=PackageClosureBudgetV1(),
                     root_store_identity="product-runtime-root-store",
                     dependency_store_identity="product-runtime-dependency-store",
-                    registry=registry,
-                    admission_request=admission_request,
+                    runtime_lease=runtime_lease,
                     cutover_result=cutover_result,
                     management=management,
                     desired_state=desired,
@@ -4642,6 +4753,17 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 )
                 assert len(created) == 1
                 runtime = created[0]
+                if entrypoint == "session" and not with_dependency:
+                    with pytest.raises(ValueError, match="already used"):
+                        factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=session_manager.get_header().conversation_id,
+                                cwd=str(workspace),
+                            )
+                        )
+                    factory.dispose_unbound_runtime()
+                    assert registry.snapshot(store_id=store_id).active_leases
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
                 transport_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
@@ -5031,7 +5153,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         finally:
             if session is not None:
                 asyncio.run(session.dispose())
-            handle.release()
+                with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
+                    registry.snapshot(store_id=store_id)
+                assert released.value.code == "package_epoch_lease_absent"
+            runtime_lease.release()
     finally:
         file_io.cleanup()
         os.close(root_fd)

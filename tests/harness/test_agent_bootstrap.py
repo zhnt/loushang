@@ -450,9 +450,11 @@ def test_agent_product_construction_binding_compiles_research_policy(
     assert session_capabilities == [capability_runtime]
 
 
+@pytest.mark.parametrize("fail_construction", (False, True))
 def test_agent_product_construction_activates_aggregate_package_runtime_first(
     monkeypatch,
     tmp_path,
+    fail_construction: bool,
 ) -> None:
     calls: list[object] = []
 
@@ -478,11 +480,18 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
                 lifecycle=cast(Any, lifecycle),
                 inventory=cast(Any, inventory),
                 mode="enforced",
+                on_dispose=(
+                    (lambda: calls.append("dispose:packages"))
+                    if fail_construction
+                    else None
+                ),
             )
 
     def construct(_self, request):
         calls.append("construct:session")
         assert lifecycle.active
+        if fail_construction:
+            raise RuntimeError("forced Session construction failure")
         session = request.session_factory(
             object(),
             object(),
@@ -531,40 +540,55 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
         get_tool_source_info=lambda _runtime, _name: None,
     )
 
-    binding.construct(
-        services=services,
-        package_materializer=cast(Any, "materializer"),
-        package_product_runtime_factory=cast(Any, Factory()),
-        session_id="session:research",
-        cwd=str(tmp_path),
-        extension_flag_values=None,
-        explicit_system_prompt=None,
-        append_system_prompt=(),
-        model=None,
-        thinking_level=None,
-        tools=None,
-        tool_registry=None,
-        allowed_tool_names=None,
-        active_tool_names=None,
-        no_tools=None,
-        stream_fn=None,
-        convert_to_llm=lambda value: value,
-        agent_factory=lambda **_kwargs: object(),
-        session_factory=lambda _capabilities, _agent, _bundle, _extensions, _registry, _active, _prompt, _mode, product_lifecycle, product_inventory, product_mode: (
-            captured.append((product_lifecycle, product_inventory, product_mode))
-            or object()
-        ),
-        on_default_model_unavailable=lambda *_args: None,
-        set_scoped_models=lambda *_args: None,
-    )
+    def run_construct() -> None:
+        binding.construct(
+            services=services,
+            package_materializer=cast(Any, "materializer"),
+            package_product_runtime_factory=cast(Any, Factory()),
+            session_id="session:research",
+            cwd=str(tmp_path),
+            extension_flag_values=None,
+            explicit_system_prompt=None,
+            append_system_prompt=(),
+            model=None,
+            thinking_level=None,
+            tools=None,
+            tool_registry=None,
+            allowed_tool_names=None,
+            active_tool_names=None,
+            no_tools=None,
+            stream_fn=None,
+            convert_to_llm=lambda value: value,
+            agent_factory=lambda **_kwargs: object(),
+            session_factory=lambda _capabilities, _agent, _bundle, _extensions, _registry, _active, _prompt, _mode, product_lifecycle, product_inventory, product_mode: (
+                captured.append((product_lifecycle, product_inventory, product_mode))
+                or object()
+            ),
+            on_default_model_unavailable=lambda *_args: None,
+            set_scoped_models=lambda *_args: None,
+        )
+
+    if fail_construction:
+        with pytest.raises(RuntimeError, match="forced Session construction failure"):
+            run_construct()
+    else:
+        run_construct()
 
     assert calls[0][0] == "create:packages"
     request = calls[0][1]
     assert request.product_id == "research"
     assert request.session_id == "session:research"
     assert request.cwd == str(tmp_path.resolve())
-    assert calls[1:] == ["activate:packages", "construct:session"]
-    assert captured == [(lifecycle, inventory, "enforced")]
+    if fail_construction:
+        assert calls[1:] == [
+            "activate:packages",
+            "construct:session",
+            "dispose:packages",
+        ]
+        assert captured == []
+    else:
+        assert calls[1:] == ["activate:packages", "construct:session"]
+        assert captured == [(lifecycle, inventory, "enforced")]
 
 
 def test_agent_product_construction_resolves_final_profile_without_rebinding_resources(

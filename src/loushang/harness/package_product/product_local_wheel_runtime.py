@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import os
 import stat
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 from typing import cast
 
 from loushang.harness.package_product.product_local_wheel_inventory import (
@@ -126,6 +127,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductFileEpochTransactionGuard,
+    PackageProductRuntimeLease,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -451,8 +453,7 @@ class PosixLocalWheelProductRuntimeFactory:
     closure_budgets: PackageClosureBudgetV1
     root_store_identity: str
     dependency_store_identity: str
-    registry: PackageEpochRuntimeLeaseRegistry
-    admission_request: PackageEpochRuntimeAdmissionRequestV1
+    runtime_lease: PackageProductRuntimeLease
     cutover_result: PackagePosixEpochCutoverResultV1
     management: PluginManagementService
     desired_state: PluginDesiredStateLedger
@@ -462,10 +463,20 @@ class PosixLocalWheelProductRuntimeFactory:
     desired_policy_revision: str
     recovery_identity: str
     _cwd_identity: tuple[int, int] = field(init=False, repr=False)
+    _create_lock: Lock = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
+    _create_started: bool = field(default=False, init=False, repr=False, compare=False)
+    _binding_issued: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.expected_session_id, str) or not self.expected_session_id:
+        if (
+            not isinstance(self.expected_session_id, str)
+            or not self.expected_session_id
+        ):
             raise ValueError("Package Product Session identity is required")
+        if not isinstance(self.runtime_lease, PackageProductRuntimeLease):
+            raise TypeError("Package Product runtime lease is required")
         if (
             not isinstance(self.cutover_result, PackagePosixEpochCutoverResultV1)
             or self.cutover_result.disposition != "fenced"
@@ -498,11 +509,13 @@ class PosixLocalWheelProductRuntimeFactory:
         cutover = self.cutover_result
         fence = cutover.fence
         switch = cutover.switch_receipt
+        registry = self.runtime_lease.registry
+        admission_request = self.runtime_lease.admission_request
         if fence is None or switch is None:
             raise ValueError("Package Product requires completed POSIX cutover")
         if (
-            self.registry.fences.current(self.registry.store_id) != fence
-            or switch.store_id != self.registry.store_id
+            registry.fences.current(registry.store_id) != fence
+            or switch.store_id != registry.store_id
             or fence.request.store_id != switch.store_id
             or fence.request.prior_epoch != switch.prior_epoch
             or fence.request.next_epoch != switch.next_epoch
@@ -514,34 +527,48 @@ class PosixLocalWheelProductRuntimeFactory:
             or self.plugin_store_root.name != switch.namespace_id
             or _directory_identity(self.plugin_store_root)
             != switch.fenced_root_identity
-            or self.admission_request.fence_id != fence.fence_id
-            or self.admission_request.store_root_identity
-            != switch.fenced_root_identity
+            or admission_request.fence_id != fence.fence_id
+            or admission_request.store_root_identity != switch.fenced_root_identity
         ):
             raise ValueError("Package Product POSIX cutover evidence changed")
-        binding = compose_posix_local_wheel_product(
-            state_root=self.state_root,
-            plugin_store_root=self.plugin_store_root,
-            policy=self.policy,
-            environment=self.environment,
-            acquisition_budgets=self.acquisition_budgets,
-            inspection_budgets=self.inspection_budgets,
-            closure_budgets=self.closure_budgets,
-            root_store_identity=self.root_store_identity,
-            dependency_store_identity=self.dependency_store_identity,
-            registry=self.registry,
-            admission_request=self.admission_request,
-            management=self.management,
-            desired_state=self.desired_state,
-            gc_bindings=self.gc_bindings,
-            gc_gate=self.gc_gate,
-            actor_id=self.actor_id,
-            desired_policy_revision=self.desired_policy_revision,
-            recovery_identity=self.recovery_identity,
-        )
-        if self._current_cwd_identity() != self._cwd_identity:
-            raise ValueError("Package Product workspace changed during composition")
-        return binding
+        with self._create_lock:
+            if self._create_started:
+                raise ValueError("Package Product runtime factory already used")
+            object.__setattr__(self, "_create_started", True)
+            binding = compose_posix_local_wheel_product(
+                state_root=self.state_root,
+                plugin_store_root=self.plugin_store_root,
+                policy=self.policy,
+                environment=self.environment,
+                acquisition_budgets=self.acquisition_budgets,
+                inspection_budgets=self.inspection_budgets,
+                closure_budgets=self.closure_budgets,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                registry=registry,
+                admission_request=admission_request,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if self._current_cwd_identity() != self._cwd_identity:
+                raise ValueError("Package Product workspace changed during composition")
+            bound = replace(binding, on_dispose=self.runtime_lease.release)
+            object.__setattr__(self, "_binding_issued", True)
+            return bound
+
+    def dispose_unbound_runtime(self) -> None:
+        """Release the lease if Session bootstrap rejects before binding exists."""
+
+        with self._create_lock:
+            if self._binding_issued:
+                return
+            object.__setattr__(self, "_create_started", True)
+            self.runtime_lease.release()
 
     def _current_cwd_identity(self) -> tuple[int, int] | None:
         try:

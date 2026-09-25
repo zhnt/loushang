@@ -108,6 +108,9 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
 )
+from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeBindingV1,
+)
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.packages.session import (
     SessionPackageController,
@@ -837,6 +840,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             product_inventory=package_product_inventory,
             product_lifecycle_mode=package_product_lifecycle_mode,
         )
+        self._package_product_runtime_binding: PackageProductRuntimeBindingV1 | None = None
         self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,
             api_registry=self.api_registry,
@@ -1269,10 +1273,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
     ) -> None:
         self._require_external_dispose_task()
         await super().dispose(session_shutdown_event)
+        self._release_package_product_runtime()
 
     async def _dispose_after_session_shutdown(self) -> None:
         self._require_external_dispose_task()
         await super()._dispose_after_session_shutdown()
+        self._release_package_product_runtime()
 
     def _require_external_dispose_task(self) -> None:
         owner: str | None = None
@@ -2317,6 +2323,25 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if runtime_host is None:
             return True
         return getattr(runtime_host, "current_session", None) is self
+
+    def _bind_package_product_runtime(
+        self, binding: PackageProductRuntimeBindingV1
+    ) -> None:
+        controller = self._package_controller
+        if (
+            self._package_product_runtime_binding is not None
+            or controller.product_lifecycle is not binding.lifecycle
+            or controller.product_inventory is not binding.inventory
+            or controller.product_lifecycle_mode != binding.mode
+            or binding.on_dispose is None
+        ):
+            raise ValueError("Package Product Session runtime owner changed")
+        self._package_product_runtime_binding = binding
+
+    def _release_package_product_runtime(self) -> None:
+        binding = self._package_product_runtime_binding
+        if binding is not None:
+            binding.dispose_runtime()
 
     def _finalize_after_session_shutdown(self) -> None:
         self.cancel_side_question()

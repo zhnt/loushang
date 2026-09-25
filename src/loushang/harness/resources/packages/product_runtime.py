@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 from typing import Protocol
 
 from loushang.harness.resources.packages.product_contract import (
@@ -58,6 +60,13 @@ class PackageProductRuntimeBindingV1:
     inventory: PackageProductLifecycleInventoryPort
     mode: PackageProductLifecycleMode
     binding_version: int = PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION
+    on_dispose: Callable[[], None] | None = field(
+        default=None, kw_only=True, repr=False, compare=False
+    )
+    _dispose_lock: Lock = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
+    _disposed: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.product_id, str) or not self.product_id:
@@ -76,10 +85,22 @@ class PackageProductRuntimeBindingV1:
             raise ValueError("Package Product runtime owners changed binding")
         if self.binding_version != PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION:
             raise ValueError("Unsupported Package Product runtime binding")
+        if self.on_dispose is not None and not callable(self.on_dispose):
+            raise TypeError("Package Product runtime disposal must be callable")
 
     @property
     def binding_id(self) -> str:
         return self.lifecycle.binding_id
+
+    def dispose_runtime(self) -> None:
+        """Release the Product-owned runtime authority at most once."""
+
+        with self._dispose_lock:
+            if self._disposed:
+                return
+            if self.on_dispose is not None:
+                self.on_dispose()
+            object.__setattr__(self, "_disposed", True)
 
     def activate(self) -> PackageProductRuntimeBindingV1:
         """Activate recovery/admission and re-attest the aggregate afterwards."""
@@ -128,21 +149,51 @@ def activate_package_product_runtime(
     try:
         binding = create(request)
     except BaseException as error:
-        raise PackageProductRuntimeActivationError(
+        failure = PackageProductRuntimeActivationError(
             "Package Product runtime factory failed",
             code="package_product_runtime_factory_failed",
-        ) from error
+        )
+        _dispose_unbound_factory_after_failure(factory, failure)
+        raise failure from error
     if not isinstance(binding, PackageProductRuntimeBindingV1):
-        raise PackageProductRuntimeActivationError(
+        failure = PackageProductRuntimeActivationError(
             "Package Product runtime factory returned an invalid binding",
             code="package_product_runtime_binding_invalid",
         )
+        _dispose_unbound_factory_after_failure(factory, failure)
+        raise failure
     if binding.product_id != request.product_id:
-        raise PackageProductRuntimeActivationError(
+        failure = PackageProductRuntimeActivationError(
             "Package Product runtime changed Product identity",
             code="package_product_runtime_product_changed",
         )
-    return binding.activate()
+        _dispose_after_failure(binding, failure)
+        raise failure
+    try:
+        return binding.activate()
+    except BaseException as failure:
+        _dispose_after_failure(binding, failure)
+        raise
+
+
+def _dispose_after_failure(
+    binding: PackageProductRuntimeBindingV1, failure: BaseException
+) -> None:
+    try:
+        binding.dispose_runtime()
+    except BaseException:
+        failure.add_note("Package Product runtime cleanup also failed")
+
+
+def _dispose_unbound_factory_after_failure(
+    factory: PackageProductRuntimeFactoryPort, failure: BaseException
+) -> None:
+    dispose = getattr(factory, "dispose_unbound_runtime", None)
+    if callable(dispose):
+        try:
+            dispose()
+        except BaseException:
+            failure.add_note("Package Product runtime cleanup also failed")
 
 
 __all__ = [

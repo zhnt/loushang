@@ -356,6 +356,15 @@ Neither may silently override a narrower implemented owner contract.
   current fence, namespace, and Store root before composing those owners. Its
   integration fixture runs the native cutover owner with the durable runtime
   lease/quiescence owner and reopens that registry for Session admission. A
+  Product-facing lease helper binds the registered runtime to that exact fence
+  and releases the lease if admission construction fails. The explicit POSIX
+  factory now transfers that lease through its runtime binding to the Session:
+  failed factory activation or post-activation Session construction releases
+  it, and successful Session disposal releases it after cleanup completes. A
+  failed disposal retains the lease for safe retry or operator repair. The
+  POSIX factory issues only one binding per lease, and Coding bootstrap
+  releases an unbound lease if startup refuses before activation. The Product
+  caller owns failures while constructing the factory itself. A
   POSIX snapshot owner now publishes a durable, restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
@@ -370,14 +379,31 @@ Neither may silently override a narrower implemented owner contract.
   JSON file is explicitly copied into both history domains. The real Coding
   lifecycle root is now partitioned into Desired, enablement, and Instance
   domains, including known journal locks and old lease directories. Both
-  mappings reject unknown top-level members. The native fixture snapshots the
+  mappings reject unknown top-level members. A Coding-owned preparation context
+  now composes these mappings and holds the Source settings locks through
+  cutover; a Product-facing owner contains native snapshot publication, and the
+  native fixture exercises both entries. The same Product owner now composes
+  the native pre-fence, runtime-lease, and cutover authorities for the first B
+  fence. A live old runtime refuses before publication; exact replay reads the
+  persisted old-root identity, and a changed namespace refuses. Coding has one
+  explicit call that holds the Source locks through this Product cutover; the
+  default bootstrap has not selected it. The cutover snapshots the
   real pre-fence control root as `fence_record`; the new B fence appears only
-  after that snapshot. `legacy_root_pointer` and `source_configuration` still
-  use fixture roots; Product mapping of their real Coding state remains
-  required. The snapshot owner rejects overlapping whole-tree roots and accepts
+  after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
+  empty source domain and records the verified old Store identity with the
+  Product-declared root name. The native fixture now holds real Coding global
+  and project settings transaction locks through cutover, verifies their file
+  bytes against the loaded settings layers, and snapshots a private Source-only
+  projection; transient session Source overrides and unmapped Source keys
+  refuse. The independent reader verifies it after the projection source is
+  deleted. The native Session fixture also restores that exact nine-domain
+  bundle through the POSIX offline-restore owner, starts an isolated legacy
+  runtime, replays the request, and verifies the B root and fence survive
+  restoration and cleanup. This is recovery evidence, not default activation.
+  The snapshot owner rejects overlapping whole-tree roots and accepts
   colocated roots only with exact top-level member coverage, including declared
-  shared members. Coding still needs a complete mapping for these remaining
-  domains before a real default cutover.
+  shared members. This completes the nine-domain native fixture geometry, not
+  a default Coding cutover or Plugin entry switch.
   On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
@@ -414,8 +440,9 @@ Neither may silently override a narrower implemented owner contract.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports
-  unknown or legacy-unverified installed Sources as check failures. Coding has
-  not yet supplied this binding through its runtime factory.
+  unknown or legacy-unverified installed Sources as check failures. Coding
+  supplies this binding only through the explicit minimal Product factory
+  composition, not its default bootstrap.
   Coding bootstrap now refuses an explicitly supplied Package Product runtime
   factory when its composition requests legacy Plugins, its Catalog policy
   includes Package resources, configured Package roots/sources are present,

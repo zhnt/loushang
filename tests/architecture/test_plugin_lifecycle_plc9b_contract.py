@@ -2252,6 +2252,9 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/harness/package_product/product_local_wheel_inventory.py"),
         Path("src/loushang/harness/resources/packages/product_root_target.py"),
         Path("src/loushang/harness/resources/packages/product_transaction.py"),
+        # Product-facing pre-B snapshot publication keeps Coding away from the
+        # internal Package snapshot owner and exposes no peer writer.
+        Path("src/loushang/harness/resources/packages/product_pre_b_snapshot.py"),
         LINUX_LEGACY_RUNTIME,
         PRODUCT_LIFECYCLE,
         WINDOWS_LEGACY_RUNTIME,
