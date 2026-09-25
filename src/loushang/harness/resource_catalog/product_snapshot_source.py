@@ -13,6 +13,9 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     ResourceContributionSpec,
 )
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
+)
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryRequest,
 )
@@ -37,9 +40,6 @@ from loushang.harness.resources._catalog_source_contracts import (
     ResourceDiscoveryRequest,
 )
 from loushang.harness.resources._resource_item_projection import project_catalog_item
-from loushang.harness.resources.packages.product_local_wheel_runtime import (
-    PackageProductSelectedPluginManifestV1,
-)
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     RevisionResourceRef,

@@ -54,7 +54,7 @@ from loushang.harness.session.product_composition_assembly import (
 )
 
 if TYPE_CHECKING:
-    from loushang.harness.resources.packages.product_local_wheel_runtime import (
+    from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
 
