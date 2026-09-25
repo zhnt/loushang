@@ -120,6 +120,12 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B selected Resources: base Plugin +11/-4 and new exact Product
     # composition +403. Both remain counted in core.
     plc9b_selected_resources_allowance = (11 - 4) + 403
+    # PLC9B hosted routing keeps these existing core owners bounded: base
+    # Plugin +48/-12, Product composition +110/-7, Resource shadow +26/-1,
+    # bootstrap +189/-28, and agent Session +151/-40.
+    plc9b_hosted_routing_allowance = (
+        (48 - 12) + (110 - 7) + (26 - 1) + (189 - 28) + (151 - 40)
+    )
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -131,6 +137,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_cutover_transaction_allowance
         + plc9b_selected_manifest_allowance
         + plc9b_selected_resources_allowance
+        + plc9b_hosted_routing_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
@@ -157,9 +164,12 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     creation_recovery_composition_allowance = 14 + 75
     # Reviewed child-only backend import and ownership explanation: net +3.
     child_import_boundary_allowance = 3
+    # PLC9B hosted routing adds managed-bootstrap +7 and managed-local +12/-2
+    # for the same Product Session binding; no new LMUX path is approved.
+    plc9b_hosted_lmux_allowance = 7 + (12 - 2)
     assert sum(groups["lmux"].values()) <= (
         1_579 + 13 + managed_composition_allowance + creation_recovery_composition_allowance
-        + child_import_boundary_allowance
+        + child_import_boundary_allowance + plc9b_hosted_lmux_allowance
     ), groups["lmux"]
 
 
