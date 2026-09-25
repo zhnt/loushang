@@ -827,6 +827,7 @@ def _inspect_tree(
     maximum_entries: int,
     maximum_bytes: int,
     maximum_depth: int,
+    top_level_names: frozenset[str] | None = None,
 ) -> _TreeInspection:
     entries: list[_TreeEntry] = []
     identities: dict[tuple[str, ...], _NativeIdentity] = {}
@@ -834,7 +835,12 @@ def _inspect_tree(
 
     def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
         nonlocal total_bytes
-        for name in sorted(os.listdir(directory_fd)):
+        names = sorted(os.listdir(directory_fd))
+        if not prefix and top_level_names is not None:
+            if not top_level_names.issubset(names):
+                raise OSError("Snapshot selected source member is missing")
+            names = sorted(top_level_names)
+        for name in names:
             _validate_entry_name(name)
             metadata = os.stat(
                 name,

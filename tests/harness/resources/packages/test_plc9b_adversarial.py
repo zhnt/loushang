@@ -161,6 +161,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotOwner,
+    PackagePosixSnapshotSharedMemberV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
@@ -4219,10 +4220,13 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import (
+        resolve_coding_lifecycle_pre_b_members,
         resolve_coding_package_epoch_layout,
+        resolve_coding_package_pre_b_store_members,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
+        PackageLifecycleError,
         PackageLifecycleRequest,
         run_package_lifecycle,
     )
@@ -4298,8 +4302,18 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     ):
         directory.mkdir(mode=0o700)
     assert legacy_root == legacy_layout.package_root
-    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_root / "installed").mkdir(mode=0o700)
+    (legacy_root / "installed" / "state.json").write_bytes(b'{"legacy":1}\n')
+    (legacy_root / "plugin-revisions").mkdir(mode=0o700)
+    (legacy_root / "package-lock.json").write_bytes(
+        b'{"version":4,"packages":[],"pluginBindings":[],"pluginBindingHeads":[]}\n'
+    )
+    (legacy_root / "package-lock.json.lock").write_bytes(b"")
     (legacy_layout.root / "desired-state.jsonl").write_bytes(b"")
+    (legacy_layout.root / "enablement-migration.jsonl").write_bytes(b"")
+    (legacy_layout.root / "instance-runtime.jsonl").write_bytes(b"")
+    (legacy_layout.root / "process-startups").mkdir(mode=0o700)
+    (legacy_layout.root / "session-owners").mkdir(mode=0o700)
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
         tmp_path / "product-desired.jsonl", gc_gate=gate
@@ -4313,9 +4327,16 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
+    package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
+    lifecycle_members = resolve_coding_lifecycle_pre_b_members(legacy_layout)
     domain_roots = {
         "store_bytes": legacy_root,
+        "binding_history": legacy_root,
+        "lock_history": legacy_root,
         "desired_state": legacy_layout.root,
+        "enablement_state": legacy_layout.root,
+        "instance_state": legacy_layout.root,
+        "fence_record": control_root,
     }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
         if domain in domain_roots:
@@ -4323,10 +4344,27 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         domain_root = source_root / domain
         domain_root.mkdir(mode=0o700)
         domain_roots[domain] = domain_root
+    selected_members: dict[str, tuple[str, ...] | None] = {
+        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+    }
+    selected_members.update(package_members.domain_members())
+    selected_members.update(lifecycle_members.domain_members())
     snapshots = PackagePosixEpochSnapshotOwner(
         snapshot_root,
         store_id=store_id,
         domain_roots=domain_roots,
+        domain_members=selected_members,
+        shared_members=(
+            (
+                PackagePosixSnapshotSharedMemberV1(
+                    source_root=package_members.source_root,
+                    member_name="package-lock.json",
+                    domains=("binding_history", "lock_history"),
+                ),
+            )
+            if package_members.binding_history
+            else ()
+        ),
     )
     pre_fence = PackagePosixPreFenceRegistrationOwner(
         authority, store_id=store_id, fences=fences
@@ -4381,8 +4419,60 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / snapshot_evidence.snapshot.snapshot_id
         / "payload"
         / "store_bytes"
+        / "installed"
         / "state.json"
     ).read_bytes() == b'{"legacy":1}\n'
+    for domain in ("binding_history", "lock_history"):
+        assert (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / domain
+            / "package-lock.json"
+        ).read_bytes() == (
+            b'{"version":4,"packages":[],"pluginBindings":[],"pluginBindingHeads":[]}\n'
+        )
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "lock_history"
+        / "package-lock.json.lock"
+    ).read_bytes() == b""
+    for domain, name in (
+        ("desired_state", "desired-state.jsonl"),
+        ("enablement_state", "enablement-migration.jsonl"),
+        ("instance_state", "instance-runtime.jsonl"),
+    ):
+        assert (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / domain
+            / name
+        ).read_bytes() == b""
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "instance_state"
+        / "process-startups"
+    ).is_dir()
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "fence_record"
+        / "epoch.jsonl.lock"
+    ).is_file()
+    assert not (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "fence_record"
+        / "epoch.jsonl"
+    ).exists()
+    assert (control_root / "epoch.jsonl").is_file()
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -4554,6 +4644,31 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 runtime = created[0]
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
+                transport_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
+                refusal_codes = {
+                    "materialize": "package_route_unavailable",
+                    "update": "package_route_unavailable",
+                    "remove": "package_target_classification_indeterminate",
+                    "uninstall": "package_target_classification_indeterminate",
+                }
+
+                def assert_product_refusal(action: str, prior_count: int) -> None:
+                    new_records = transport_journal.records()[prior_count:]
+                    assert any(
+                        record.request.action == action
+                        and record.status.failure is not None
+                        and record.status.failure.code == refusal_codes[action]
+                        for record in new_records
+                    ), [
+                        (
+                            record.request.action,
+                            record.status.failure.code
+                            if record.status.failure is not None
+                            else None,
+                        )
+                        for record in new_records
+                    ]
+
                 if entrypoint == "cli_transport":
                     cli_result = asyncio.run(
                         run_package_lifecycle(
@@ -4566,6 +4681,20 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     outcome = cli_result.outputs[0]["record"]
                     assert isinstance(outcome, dict)
                     committed_operation_id = str(outcome["operationId"])
+                    for action in ("materialize", "update", "remove", "uninstall"):
+                        prior_count = len(transport_journal.records())
+                        with pytest.raises(
+                            PackageLifecycleError, match=refusal_codes[action]
+                        ):
+                            asyncio.run(
+                                run_package_lifecycle(
+                                    session,
+                                    PackageLifecycleRequest(
+                                        **{action: (str(source),)}, scope="project"
+                                    ),
+                                )
+                            )
+                        assert_product_refusal(action, prior_count)
                 elif entrypoint == "rpc_transport":
                     rpc_output = io.StringIO()
                     rpc = RpcPackageCommands(
@@ -4583,6 +4712,28 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     assert response["success"] is True
                     outcome = response["data"]["record"]
                     committed_operation_id = str(outcome["operationId"])
+                    for command in (
+                        "materialize_package",
+                        "update_package",
+                        "remove_package",
+                        "uninstall_package",
+                    ):
+                        prior_count = len(transport_journal.records())
+                        asyncio.run(
+                            dict(rpc.bindings())[command](
+                                f"request:product-runtime:{command}",
+                                {"source": str(source), "scope": "project"},
+                            )
+                        )
+                        refusal = json.loads(rpc_output.getvalue().splitlines()[-1])
+                        assert refusal["command"] == command
+                        assert refusal["success"] is False
+                        assert_product_refusal(command.removesuffix("_package"), prior_count)
+                elif entrypoint == "session":
+                    outcome = asyncio.run(
+                        session.install_package(str(source), scope="project")
+                    )
+                    committed_operation_id = str(outcome["operationId"])
                 else:
                     outcome = asyncio.run(
                         session.execute_package_lifecycle(
@@ -4595,6 +4746,36 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     )
                 assert outcome["lifecycle"] == "installed"
                 assert outcome["path"] == ""
+                if entrypoint == "session":
+                    rejected = (
+                        asyncio.run(session.materialize_package(str(source))),
+                        asyncio.run(session.update_package(str(source))),
+                        session.remove_package(str(source)),
+                        asyncio.run(
+                            session.uninstall_package_async(
+                                str(source), scope="project"
+                            )
+                        ),
+                    )
+                    assert all(item["lifecycle"] == "failed" for item in rejected)
+                    assert all(item["path"] == "" for item in rejected)
+                    legacy_refresh_checks = []
+
+                    def legacy_refresh_available() -> bool:
+                        legacy_refresh_checks.append(True)
+                        return False
+
+                    session._package_controller.supports_synchronous_refresh = (
+                        legacy_refresh_available
+                    )
+                    sync_refusal = session.uninstall_package(
+                        str(source), scope="project"
+                    )
+                    assert sync_refusal["lifecycle"] == "failed"
+                    assert sync_refusal["errorCode"] == (
+                        "package_target_classification_indeterminate"
+                    )
+                    assert legacy_refresh_checks == []
                 refused_by_session = asyncio.run(
                     session.execute_package_lifecycle(
                         "install",
