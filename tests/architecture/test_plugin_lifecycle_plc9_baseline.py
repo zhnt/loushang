@@ -65,6 +65,7 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/bootstrap.py"),
     Path("src/loushang/coding/cli/application.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
+    Path("src/loushang/coding/package_legacy_classification.py"),
     Path("src/loushang/coding/package_product_runtime.py"),
     Path("src/loushang/coding/package_source_snapshot.py"),
     Path("src/loushang/harness/config/agent/_settings_codec.py"),
@@ -97,6 +98,23 @@ SOURCE_ENABLED_FILES = {
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
     {
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "CodingLegacyWorkspaceClassificationV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "CodingLegacySourceConfigurationV1",
+        ): 1,
+        (Path("src/loushang/coding/package_legacy_classification.py"), "<module>"): 1,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "classify_coding_legacy_workspace",
+        ): 3,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "classify_coding_legacy_source_configuration",
+        ): 2,
         (Path("src/loushang/coding/package_source_snapshot.py"), "<module>"): 1,
         (
             Path("src/loushang/coding/package_product_runtime.py"),

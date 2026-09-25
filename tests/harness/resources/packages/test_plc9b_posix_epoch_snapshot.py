@@ -204,12 +204,32 @@ def test_snapshot_copies_only_explicit_shared_member_alias(
     for domain in alias.domains:
         assert (payload / domain / alias.member_name).read_bytes() == b'{"version":4}\n'
     shutil.rmtree(source_root)
+    reopened = PackagePosixEpochSnapshotEvidenceStore(snapshot_root, store_id=_STORE_ID)
+    assert reopened.snapshot(receipt.receipt_id) is not None
+    for domain in alias.domains:
+        assert (
+            reopened.read_regular_member(
+                receipt.receipt_id,
+                domain=domain,
+                member_name=alias.member_name,
+            )
+            == b'{"version":4}\n'
+        )
     assert (
-        PackagePosixEpochSnapshotEvidenceStore(
-            snapshot_root, store_id=_STORE_ID
-        ).snapshot(receipt.receipt_id)
-        is not None
+        reopened.read_regular_member(
+            receipt.receipt_id,
+            domain="binding_history",
+            member_name="absent.json",
+        )
+        is None
     )
+    (payload / "binding_history" / "package-lock.json").write_bytes(b'{"version":3}\n')
+    with pytest.raises(PackageOfflineRestoreError, match="snapshot"):
+        reopened.read_regular_member(
+            receipt.receipt_id,
+            domain="lock_history",
+            member_name=alias.member_name,
+        )
 
 
 def test_snapshot_derives_legacy_root_pointer_from_verified_store_identity(
@@ -271,11 +291,14 @@ def test_snapshot_is_durable_and_reopen_validates_complete_domains(
         legacy_root_identity=legacy_identity,
         quiescence_receipt_id=_QUIESCENCE_ID,
     )
-    assert owner.capture(
-        store_id=_STORE_ID,
-        legacy_root_identity=legacy_identity,
-        quiescence_receipt_id=_QUIESCENCE_ID,
-    ) == receipt
+    assert (
+        owner.capture(
+            store_id=_STORE_ID,
+            legacy_root_identity=legacy_identity,
+            quiescence_receipt_id=_QUIESCENCE_ID,
+        )
+        == receipt
+    )
     shutil.rmtree(legacy_root.parent)
     snapshot_root.chmod(0o500)
     try:
@@ -291,6 +314,36 @@ def test_snapshot_is_durable_and_reopen_validates_complete_domains(
     assert (
         snapshot_root / receipt.snapshot_id / "payload" / "store_bytes" / "state.json"
     ).read_bytes() == b'{"legacy":1}\n'
+
+
+def test_snapshot_lists_only_authenticated_immediate_domain_members(
+    tmp_path: Path,
+) -> None:
+    owner, snapshot_root, legacy_root, domains = _snapshot_fixture(tmp_path)
+    installed = domains["store_bytes"] / "installed"
+    installed.mkdir(mode=0o700)
+    (installed / "revision.json").write_bytes(b"old Store recovery bytes\n")
+    receipt = owner.capture(
+        store_id=_STORE_ID,
+        legacy_root_identity=_directory_identity(legacy_root),
+        quiescence_receipt_id=_QUIESCENCE_ID,
+    )
+    shutil.rmtree(legacy_root.parent)
+    reopened = PackagePosixEpochSnapshotEvidenceStore(snapshot_root, store_id=_STORE_ID)
+    assert reopened.list_domain_members(receipt.receipt_id, domain="store_bytes") == (
+        "installed",
+        "state.json",
+    )
+    assert (
+        reopened.list_domain_members(receipt.receipt_id, domain="binding_history") == ()
+    )
+    with pytest.raises(ValueError, match="domain"):
+        reopened.list_domain_members(receipt.receipt_id, domain="unknown")
+
+    payload = snapshot_root / receipt.snapshot_id / "payload"
+    (payload / "store_bytes" / "installed" / "revision.json").write_bytes(b"changed")
+    with pytest.raises(PackageOfflineRestoreError, match="snapshot"):
+        reopened.list_domain_members(receipt.receipt_id, domain="binding_history")
 
 
 def test_snapshot_retries_after_bundle_publication_before_evidence_index(
