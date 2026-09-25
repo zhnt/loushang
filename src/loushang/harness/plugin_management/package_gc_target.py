@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
@@ -28,6 +29,7 @@ class PluginPackageGcTargetError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class PluginPackageGcRootTargetV1:
+    claim: PluginPackageGcClaimV1
     binding: PluginPackageGcBindingV1
     committed_set: PackageCommittedSetRecordV1
     settlement: PackageStoreSettlementRecordV1
@@ -41,6 +43,7 @@ def resolve_plugin_package_gc_root_target(
     package_revision: PluginPackageRevisionRefV1,
     *,
     bindings: tuple[PluginPackageGcBindingV1, ...],
+    claims: tuple[PluginPackageGcClaimV1, ...],
     committed_sets: tuple[PackageCommittedSetRecordV1, ...],
     settlements: tuple[PackageStoreSettlementRecordV1, ...],
 ) -> PluginPackageGcRootTargetV1:
@@ -50,6 +53,8 @@ def resolve_plugin_package_gc_root_target(
         raise TypeError("Exact Package revision is required")
     if not all(isinstance(item, PluginPackageGcBindingV1) for item in bindings):
         raise TypeError("Durable Package GC bindings are required")
+    if not all(isinstance(item, PluginPackageGcClaimV1) for item in claims):
+        raise TypeError("Durable Package GC precommit claims are required")
     if not all(isinstance(item, PackageCommittedSetRecordV1) for item in committed_sets):
         raise TypeError("Durable committed Package sets are required")
     if not all(isinstance(item, PackageStoreSettlementRecordV1) for item in settlements):
@@ -66,6 +71,25 @@ def resolve_plugin_package_gc_root_target(
     binding = matching_bindings[0]
     request = binding.request
     ref = request.root_ref
+    matching_claims = tuple(
+        item
+        for item in claims
+        if item.request == request and item.package_revision == package_revision
+    )
+    if len(matching_claims) != 1:
+        raise PluginPackageGcTargetError(
+            "Package root lacks a unique precommit claim",
+            code="plugin_package_gc_claim_unavailable",
+        )
+    if any(
+        item != matching_claims[0]
+        and item.request.root_ref.ref_id == ref.ref_id
+        for item in claims
+    ):
+        raise PluginPackageGcTargetError(
+            "Store root ref has another pending or committed claim",
+            code="plugin_package_gc_root_aliased",
+        )
     if any(
         item != binding and item.request.root_ref.ref_id == ref.ref_id
         for item in bindings
@@ -159,6 +183,7 @@ def resolve_plugin_package_gc_root_target(
             code="plugin_package_gc_root_aliased",
         )
     return PluginPackageGcRootTargetV1(
+        claim=matching_claims[0],
         binding=binding,
         committed_set=committed_record,
         settlement=settlement,

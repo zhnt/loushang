@@ -15,7 +15,10 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
-from loushang.harness.plugin_management.gc_fence import gc_reference_guard
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
+)
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
     PluginDesiredStateJournalTransition,
@@ -172,6 +175,10 @@ class PluginManagementService:
     @property
     def operation_journal_path(self) -> Path:
         return self._path
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return getattr(self._desired_state, "gc_gate", None)
 
     @property
     def retirement_intent_journal_path(self) -> Path:

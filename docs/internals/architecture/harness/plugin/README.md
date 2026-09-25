@@ -11,8 +11,9 @@
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
   PLC9 is partially implemented through the explicit Linux and Windows AMD64
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
-  dark reservation; D3a--D3d add writer and Store/committed-set fences, a
-  private deletion primitive, and read-only root target resolution.
+  dark reservation; D3a--D3e add writer and Store/committed-set fences, a
+  private deletion primitive, read-only root target resolution, and a dark
+  result/debt journal.
   Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
   tracked in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
@@ -70,6 +71,8 @@ Neither may silently override a narrower implemented owner contract.
   without granting deletion authority.
 - [PLC9D3d Committed-Set Root Ref Fence](plugin-lifecycle-plc9d3d-contract.md)
   refuses a newly committed alias after one root ref enters GC.
+- [PLC9D3e Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
+  journals Store result or retryable debt without enabling a Product GC route.
 
 ## Frozen Contracts
 

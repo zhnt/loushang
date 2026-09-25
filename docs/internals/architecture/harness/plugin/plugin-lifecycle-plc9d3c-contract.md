@@ -9,10 +9,13 @@
 ## Resolution Rule
 
 `resolve_plugin_package_gc_root_target()` consumes typed snapshots from the
-Product GC binding, PLC9B committed-set, and Store settlement owners. It
+Product GC precommit claims and confirmed bindings, PLC9B committed-set, and
+Store settlement owners. It
 returns one exact root settlement only when:
 
 - the logical Package revision has exactly one successful desired handoff;
+- that handoff has exactly one prior durable precommit root claim, with no
+  other pending or committed claim for the same physical root ref;
 - the handoff's Product/scope/installation, operation, attempt, request,
   committed-set ID, and root ref match the committed set;
 - the logical dependency lock digest and canonical source identity match the
@@ -34,3 +37,23 @@ or authorize deletion. The POSIX integration regression builds actual
 published root/dependency Store refs and a committed set, then proves exact
 resolution and missing/ambiguous/alias refusal. Product-wide composition and
 a durable result/debt coordinator remain open.
+
+The PLC9B desired handoff adapter holds the same reference gate as its
+management owner from projection through the committed crosswalk append. It
+rejects a second logical revision for a reserved physical root. Before the
+desired command, it durably appends a claim to the binding journal's separate
+claim ledger. A crash after desired commit but before confirmed binding leaves
+that claim visible to the target resolver; idempotent handoff replay can finish
+the binding. A failed command can leave a conservative claim, which requires
+an independently proven repair path before GC can proceed. Direct management
+commands outside this adapter are not covered, and Product still has no PLC9B
+transaction caller. This is not an end-to-end acceptance claim.
+
+An internal, read-only claim audit captures the binding, management operation,
+and desired transition histories under their shared gate. It distinguishes an
+unsubmitted claim, in-flight operation, terminal failure without a transition,
+successful desired transition missing its confirmed binding, confirmed claim,
+and contradictory evidence. `failed_unproven` is diagnostic debt, not
+permission to release the claim: the claim record does not yet identify the
+exact durable management and desired journals whose negative evidence would
+be needed for a safe repair. No release marker or GC unblock is added.

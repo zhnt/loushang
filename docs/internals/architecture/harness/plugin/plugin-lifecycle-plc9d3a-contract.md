@@ -37,8 +37,10 @@ durable GC receipt. The primitive has no public Materialization Store port and
 is not called by Product.
 
 A durable crosswalk can record a successful PLC9B desired handoff's exact
-committed-set root ref and management Package revision. Missing crosswalks are
-not reconstructed from path, plugin name, or digest similarity.
+committed-set root ref and management Package revision. The later precommit
+claim refinement records that root before the desired command, so an
+interrupted crosswalk append remains a conservative GC blocker. Missing
+crosswalks are not reconstructed from path, plugin name, or digest similarity.
 
 ## Remaining Closure Gates
 

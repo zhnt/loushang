@@ -7,13 +7,22 @@ import shutil
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import loushang.harness.resources.packages.plugin_lifecycle.posix_materialization as posix_materialization
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
     _binding_id,
+)
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcDeletionStartV2,
+)
+from loushang.harness.plugin_management.package_gc_results import (
+    PluginPackageGcResultError,
+    PluginPackageGcResultJournal,
 )
 from loushang.harness.plugin_management.package_gc_target import (
     PluginPackageGcTargetError,
@@ -50,6 +59,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
+    PackageStoreGcResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PACKAGE_STORE_SETTLEMENT_JOURNAL_CODEC,
@@ -186,18 +198,26 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
         package_revision=package_revision,
         desired_transition_revision=1,
     )
+    claim = PluginPackageGcClaimV1.create(
+        record_revision=1,
+        request=desired_request,
+        package_revision=package_revision,
+    )
     sets = committed_sets.records()
     settlements = root_settlements.records()
     target = resolve_plugin_package_gc_root_target(
         package_revision,
         bindings=(binding,),
+        claims=(claim,),
         committed_sets=sets,
         settlements=settlements,
     )
     assert target.settlement_id == settlements[0].settlement_id
+    assert target.claim == claim
 
     for evidence, expected_code in (
         ({"bindings": ()}, "plugin_package_gc_binding_unavailable"),
+        ({"claims": ()}, "plugin_package_gc_claim_unavailable"),
         ({"committed_sets": ()}, "plugin_package_gc_set_unavailable"),
         ({"settlements": ()}, "plugin_package_gc_settlement_unavailable"),
         (
@@ -209,6 +229,7 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
             resolve_plugin_package_gc_root_target(
                 package_revision,
                 bindings=evidence.get("bindings", (binding,)),
+                claims=evidence.get("claims", (claim,)),
                 committed_sets=evidence.get("committed_sets", sets),
                 settlements=evidence.get("settlements", settlements),
             )
@@ -226,14 +247,59 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
         resolve_plugin_package_gc_root_target(
             package_revision,
             bindings=(binding, alias),
+            claims=(claim,),
             committed_sets=sets,
             settlements=settlements,
         )
     assert aliased.value.code == "plugin_package_gc_root_aliased"
+    alias_command_id = "gc-target-pending-alias"
+    alias_fingerprint = sha256(alias_command_id.encode()).hexdigest()
+    alias_identity = _desired_request_identity(
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+        request_version=1,
+    )
+    pending_request = replace(
+        desired_request,
+        desired_request_id=_fingerprint(alias_identity),
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+    )
+    pending_claim = PluginPackageGcClaimV1.create(
+        record_revision=2,
+        request=pending_request,
+        package_revision=mismatched,
+    )
+    with pytest.raises(PluginPackageGcTargetError) as pending_alias:
+        resolve_plugin_package_gc_root_target(
+            package_revision,
+            bindings=(binding,),
+            claims=(claim, pending_claim),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert pending_alias.value.code == "plugin_package_gc_root_aliased"
     with pytest.raises(PluginPackageGcTargetError) as source_changed:
         resolve_plugin_package_gc_root_target(
             mismatched,
             bindings=(alias,),
+            claims=(PluginPackageGcClaimV1.create(
+                record_revision=1,
+                request=desired_request,
+                package_revision=mismatched,
+            ),),
             committed_sets=sets,
             settlements=settlements,
         )
@@ -289,6 +355,123 @@ def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
     assert len(settlements.records()) == 2
 
 
+def test_store_gc_result_debt_replays_and_success_is_terminal(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    failed = journal.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code="store.transient_failure",
+    )
+    assert failed.disposition == "retryable_failure"
+    reopened = PluginPackageGcResultJournal(journal.path)
+    assert reopened.attempts(start) == (failed,)
+    with pytest.raises(PluginPackageGcResultError) as wrong_start:
+        reopened.attempts(replace(start, operation_id="different-deletion-start"))
+    assert wrong_start.value.code == "plugin_package_gc_result_conflict"
+    with pytest.raises(PluginPackageGcResultError) as reused_key:
+        reopened.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-conflicting",
+            idempotency_key="gc-attempt-1-request",
+            error_code="store.other_failure",
+        )
+    assert reused_key.value.code == "plugin_package_gc_result_conflict"
+
+    store._store.delete_settlement(settlement)
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "already_absent"
+    succeeded = reopened.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-2",
+        idempotency_key="gc-attempt-2-request",
+        store_result=result,
+    )
+    assert succeeded.disposition == "succeeded"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (
+        failed,
+        succeeded,
+    )
+    assert reopened.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-2",
+        idempotency_key="gc-attempt-2-request",
+        store_result=result,
+    ) == succeeded
+    with pytest.raises(PluginPackageGcResultError) as terminal:
+        reopened.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-3",
+            idempotency_key="gc-attempt-3-request",
+            error_code="store.retry_after_success",
+        )
+    assert terminal.value.code == "plugin_package_gc_result_terminal"
+
+
+def test_store_gc_result_refuses_a_different_store_identity(tmp_path: Path) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    other_store_result = PackageStoreGcResultV1.create(
+        SimpleNamespace(
+            settlement_id=settlement.settlement_id,
+            store_identity="other-store",
+            receipt=settlement.receipt,
+            tree_identity=settlement.tree_identity,
+        ),
+        disposition="deleted",
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    with pytest.raises(PluginPackageGcResultError) as mismatch:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-1",
+            idempotency_key="gc-attempt-1-request",
+            store_result=other_store_result,
+        )
+    assert mismatch.value.code == "plugin_package_gc_result_mismatch"
+    assert journal.attempts(start) == ()
+
+
 def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
     tmp_path: Path,
 ) -> None:
@@ -311,10 +494,38 @@ def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
     victim.unlink()
     victim.symlink_to(outside)
 
-    with pytest.raises(PackagePhysicalStagingError):
+    with pytest.raises(PackagePhysicalStagingError) as collision:
         store._store.delete_settlement(settlement)
+    assert collision.value.retryable is False
     assert outside.read_bytes() == b"preserve"
     assert published.is_dir()
+    start = PluginPackageGcDeletionStartV2(
+        journal_revision=1,
+        reservation_id="a" * 64,
+        operation_id="gc-delete-start",
+        idempotency_key="gc-delete-start-request",
+        target_settlement_ids=(settlement.settlement_id,),
+    )
+    journal = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    debt = journal.record(
+        start,
+        settlement=settlement,
+        operation_id="gc-attempt-1",
+        idempotency_key="gc-attempt-1-request",
+        error_code=collision.value.code,
+        terminal=True,
+    )
+    assert debt.disposition == "terminal_failure"
+    assert PluginPackageGcResultJournal(journal.path).attempts(start) == (debt,)
+    with pytest.raises(PluginPackageGcResultError) as blocked:
+        journal.record(
+            start,
+            settlement=settlement,
+            operation_id="gc-attempt-2",
+            idempotency_key="gc-attempt-2-request",
+            error_code="store.retry_without_repair",
+        )
+    assert blocked.value.code == "plugin_package_gc_result_terminal"
 
 
 def test_posix_store_gc_retries_after_partial_file_removal(

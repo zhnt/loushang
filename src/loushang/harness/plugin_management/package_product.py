@@ -5,9 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
+)
 from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
+)
+from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
 )
 from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
@@ -27,6 +35,9 @@ PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION = 1
 class PluginManagementCommandSubmitPort(Protocol):
     """Narrow command surface retained by the Package desired adapter."""
 
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None: ...
+
     def submit(
         self,
         command: PluginManagementCommandV1,
@@ -45,12 +56,26 @@ class PackageProductDesiredRevisionProjectionPort(Protocol):
 
 
 class PackageProductGcBindingPort(Protocol):
+    def records(self) -> tuple[PluginPackageGcBindingV1, ...]: ...
+
+    def claims(self) -> tuple[PluginPackageGcClaimV1, ...]: ...
+
+    def prepare(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> PluginPackageGcClaimV1: ...
+
     def record(
         self,
         request: PackageDesiredStateCommitRequestV1,
         package_revision: PluginPackageRevisionRefV1,
         transition: PluginDesiredStateTransitionV1,
     ) -> object: ...
+
+
+class PackageProductGcAdmissionError(RuntimeError):
+    code = "package_product_gc_root_reserved"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +89,7 @@ class PluginManagementPackageDesiredStateAdapter:
     policy_revision: str
     approval_reference: str | None = None
     gc_bindings: PackageProductGcBindingPort | None = None
+    gc_gate: PluginPackageGcReferenceGatePort | None = None
     owner_identity: str = "plugin-management-service"
     adapter_version: int = PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION
 
@@ -75,6 +101,18 @@ class PluginManagementPackageDesiredStateAdapter:
             for method in ("project", "inventory_revision")
         ):
             raise TypeError("Package desired revision projector is required")
+        if self.gc_bindings is not None:
+            if not all(
+                callable(getattr(self.gc_bindings, method, None))
+                for method in ("records", "claims", "prepare", "record")
+            ):
+                raise TypeError("Package GC binding journal is required")
+            if not callable(getattr(self.gc_gate, "guard", None)):
+                raise TypeError("Package GC binding requires the shared reference gate")
+            if getattr(self.management, "gc_gate", None) is not self.gc_gate:
+                raise ValueError("Package GC adapter and management gate differ")
+        elif self.gc_gate is not None:
+            raise ValueError("Package GC reference gate requires the binding journal")
         if self.installation_scope not in {"process", "tenant", "workspace"}:
             raise ValueError("Unsupported Package Product installation scope")
         for value, name in (
@@ -93,6 +131,15 @@ class PluginManagementPackageDesiredStateAdapter:
     ) -> PackageDesiredStateCommitResultV1:
         if not isinstance(request, PackageDesiredStateCommitRequestV1):
             raise TypeError("Package desired-state commit request is required")
+        with gc_reference_guard(self.gc_gate) as reserved:
+            return self._commit_guarded(request, reserved=reserved)
+
+    def _commit_guarded(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+        *,
+        reserved: frozenset[PluginPackageRevisionRefV1],
+    ) -> PackageDesiredStateCommitResultV1:
         package_revision = self.revisions.project(request)
         if not isinstance(package_revision, PluginPackageRevisionRefV1):
             raise TypeError(
@@ -105,6 +152,24 @@ class PluginManagementPackageDesiredStateAdapter:
             != request.root_ref.artifact_digest
         ):
             raise ValueError("Package desired revision evidence changed")
+        if self.gc_bindings is not None and (
+            package_revision in reserved
+            or any(
+                binding.package_revision in reserved
+                and binding.request.root_ref.ref_id == request.root_ref.ref_id
+                for binding in self.gc_bindings.records()
+            )
+            or any(
+                claim.package_revision in reserved
+                and claim.request.root_ref.ref_id == request.root_ref.ref_id
+                for claim in self.gc_bindings.claims()
+            )
+        ):
+            raise PackageProductGcAdmissionError(
+                "Package root is reserved for GC"
+            )
+        if self.gc_bindings is not None:
+            self.gc_bindings.prepare(request, package_revision)
         command = PluginManagementCommandV1(
             action="install",
             mutation=PluginDesiredStateMutationV1(
@@ -175,6 +240,7 @@ def _observed_inventory_revision(
 __all__ = [
     "PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION",
     "PackageProductGcBindingPort",
+    "PackageProductGcAdmissionError",
     "PackageProductDesiredRevisionProjectionPort",
     "PluginManagementCommandSubmitPort",
     "PluginManagementPackageDesiredStateAdapter",
