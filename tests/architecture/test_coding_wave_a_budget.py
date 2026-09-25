@@ -115,6 +115,11 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9B cutover preparation: bootstrap +70/-37, pre-B state snapshot
     # +147, and settings-locked Source snapshot +231. Exact paths stay core.
     plc9b_cutover_transaction_allowance = (70 - 37) + 147 + 231
+    # PLC9B selected manifest extends the existing base Plugin owner +142/-21.
+    plc9b_selected_manifest_allowance = 142 - 21
+    # PLC9B selected Resources: base Plugin +11/-4 and new exact Product
+    # composition +403. Both remain counted in core.
+    plc9b_selected_resources_allowance = (11 - 4) + 403
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -124,6 +129,8 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + plc9b_startup_ingress_allowance
         + plc9b_snapshot_domains_allowance
         + plc9b_cutover_transaction_allowance
+        + plc9b_selected_manifest_allowance
+        + plc9b_selected_resources_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.

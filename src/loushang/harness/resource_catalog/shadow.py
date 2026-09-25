@@ -16,6 +16,7 @@ from loushang.harness.resource_catalog.components import (
     EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID,
     NATIVE_RESOURCE_SOURCE_COMPONENT_ID,
     PACKAGE_RESOURCE_SOURCE_COMPONENT_ID,
+    PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID,
     RESOURCE_CATALOG_ENGINE_COMPONENT_KIND,
     RESOURCE_SOURCE_COMPONENT_KIND,
     FirstPartyResourceComponentResolution,
@@ -25,6 +26,9 @@ from loushang.harness.resource_catalog.components import (
     validate_resource_catalog_proposal,
 )
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedResourceCollectionHandle,
     EmbeddedResourceDiscoveryBudget,
@@ -261,6 +265,7 @@ async def run_first_party_resource_catalog_shadow(
     catalog_generation: int = 1,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     issued_at: int,
     expires_at: int,
@@ -326,6 +331,7 @@ async def run_first_party_resource_catalog_shadow(
         product_policy_revision=product_policy_revision,
         root_handles=root_handles,
         package_resources=package_resources,
+        product_snapshot_resources=product_snapshot_resources,
         embedded_collections=embedded_collections,
         issued_at=issued_at,
         expires_at=expires_at,
@@ -388,6 +394,18 @@ async def run_first_party_resource_catalog_shadow(
                     source_generation_ref=source.source_generation_ref,
                     admission_fingerprints=tuple(
                         item.admission.fingerprint for item in package_resources
+                    ),
+                    budget=package_discovery_budget,
+                    deadline_monotonic_ns=discovery_deadline_monotonic_ns,
+                    cancellation_probe=discovery_cancellation_probe,
+                )
+            elif lease.component_id == PRODUCT_SNAPSHOT_RESOURCE_SOURCE_COMPONENT_ID:
+                request = build_package_resource_discovery_request(
+                    product_id=product_id,
+                    source_generation_ref=source.source_generation_ref,
+                    admission_fingerprints=tuple(
+                        item.admission.fingerprint
+                        for item in product_snapshot_resources
                     ),
                     budget=package_discovery_budget,
                     deadline_monotonic_ns=discovery_deadline_monotonic_ns,

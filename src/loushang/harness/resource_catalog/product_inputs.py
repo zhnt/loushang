@@ -24,6 +24,9 @@ from loushang.harness.resource_catalog.inputs import (
     AdmittedPackageResource,
     acquire_admitted_package_resource,
 )
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resource_catalog.session_bootstrap import (
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourceCatalogInputs,
@@ -172,6 +175,7 @@ class InitialResourceCatalogProductSelection:
     )
     native_roots: tuple[ProductNativeResourceRootSpec, ...] = ()
     package_resources: tuple[ProductAdmittedPackageResourceSpec, ...] = ()
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = ()
     embedded_collections: tuple[ProductEmbeddedResourceCollectionSpec, ...] = ()
     source_disposition: Literal["selected", "intentionally_empty"] = "selected"
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
@@ -188,6 +192,7 @@ class InitialResourceCatalogProductSelection:
             raise ValueError("Product Resource policy revision must not be empty")
         native_roots = tuple(self.native_roots)
         package_resources = tuple(self.package_resources)
+        product_snapshot_resources = tuple(self.product_snapshot_resources)
         embedded_collections = tuple(self.embedded_collections)
         product_composition = self.product_composition
         if product_composition is not None and not isinstance(
@@ -205,13 +210,23 @@ class InitialResourceCatalogProductSelection:
         ):
             raise TypeError("Product package Resource specifications are invalid")
         if any(
+            not isinstance(item, ProductSelectedResourceInput)
+            for item in product_snapshot_resources
+        ):
+            raise TypeError("Product snapshot Resource specifications are invalid")
+        if any(
             not isinstance(item, ProductEmbeddedResourceCollectionSpec)
             for item in embedded_collections
         ):
             raise TypeError("Product embedded Resource specifications are invalid")
         if self.source_disposition not in {"selected", "intentionally_empty"}:
             raise ValueError("Product Resource source disposition is invalid")
-        has_sources = bool(native_roots or package_resources or embedded_collections)
+        has_sources = bool(
+            native_roots
+            or package_resources
+            or product_snapshot_resources
+            or embedded_collections
+        )
         if not has_sources and self.source_disposition != "intentionally_empty":
             raise ValueError("Product Resource selection must contain a source")
         if has_sources and self.source_disposition == "intentionally_empty":
@@ -224,6 +239,13 @@ class InitialResourceCatalogProductSelection:
             package_resources
         ):
             raise ValueError("Product package Resource admissions must not repeat")
+        snapshot_fingerprints = {
+            item.admission.fingerprint for item in product_snapshot_resources
+        }
+        if len(snapshot_fingerprints) != len(product_snapshot_resources):
+            raise ValueError("Product snapshot Resource admissions must not repeat")
+        if package_resources and product_snapshot_resources:
+            raise ValueError("Legacy package and Product snapshot routes cannot mix")
         composition_resources = (
             tuple(product_composition.resource_admissions)
             if product_composition is not None
@@ -244,9 +266,11 @@ class InitialResourceCatalogProductSelection:
         composition_admission_fingerprints = {
             item.fingerprint for item in composition_resources
         }
-        if package_admission_fingerprints != composition_admission_fingerprints:
+        if (
+            package_admission_fingerprints | snapshot_fingerprints
+        ) != composition_admission_fingerprints:
             raise ValueError(
-                "Product package Resources must exact-match Product composition"
+                "Product Resources must exact-match Product composition"
             )
         if product_composition is not None and (
             product_composition.authority_context.product_policy_revision
@@ -288,6 +312,7 @@ class InitialResourceCatalogProductSelection:
             raise ValueError("Product disabled Skill selectors must not repeat")
         object.__setattr__(self, "native_roots", native_roots)
         object.__setattr__(self, "package_resources", package_resources)
+        object.__setattr__(self, "product_snapshot_resources", product_snapshot_resources)
         object.__setattr__(self, "embedded_collections", embedded_collections)
         object.__setattr__(self, "context_file_names", context_file_names)
         object.__setattr__(
@@ -409,6 +434,7 @@ class InitialResourceCatalogProductAdapter:
                 cwd=cwd,
                 root_handles=root_handles,
                 package_resources=tuple(package_resources),
+                product_snapshot_resources=selection.product_snapshot_resources,
                 embedded_collections=tuple(embedded_handles),
                 context_file_names=selection.context_file_names,
                 disabled_skill_selectors=selection.disabled_skill_selectors,
@@ -531,6 +557,7 @@ class InitialResourceCatalogProductAdapter:
                     catalog_generation=catalog_generation,
                     root_handles=root_handles,
                     package_resources=tuple(package_resources),
+                    product_snapshot_resources=selection.product_snapshot_resources,
                     embedded_collections=tuple(embedded_handles),
                     issued_at=now,
                     expires_at=now + _INITIAL_ADMISSION_TTL_SECONDS,
@@ -575,8 +602,11 @@ class InitialResourceCatalogProductAdapter:
             and product_composition.authority_context.product_id != product_id
         ):
             raise ValueError("Product Resource composition belongs elsewhere")
-        for spec in selection.package_resources:
-            admission = spec.admission
+        admissions = (
+            *(spec.admission for spec in selection.package_resources),
+            *(spec.admission for spec in selection.product_snapshot_resources),
+        )
+        for admission in admissions:
             if admission.product_id != product_id:
                 raise ValueError("Product package Resource admission belongs elsewhere")
             if (

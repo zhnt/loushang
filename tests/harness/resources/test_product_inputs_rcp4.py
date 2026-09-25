@@ -37,6 +37,9 @@ from loushang.harness.resource_catalog.product_inputs import (
     ProductEmbeddedResourceCollectionSpec,
     ProductNativeResourceRootSpec,
 )
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
@@ -287,6 +290,27 @@ def test_product_selection_rejects_duplicate_package_admissions(
                 product_policy_revision="policy-v1",
                 product_composition=_product_composition(admission),
                 package_resources=(package, package),
+            )
+    finally:
+        handle.close()
+
+
+def test_product_snapshot_resource_refuses_unverified_caller_bytes(
+    tmp_path: Path,
+) -> None:
+    admission, handle = _package_skill_admission(tmp_path)
+    try:
+        with pytest.raises(TypeError, match="selected Store manifest"):
+            ProductSelectedResourceInput(
+                admission=admission,
+                selected_manifest=object(),  # type: ignore[arg-type]
+                relative_path="skills/review/SKILL.md",
+            )
+        with pytest.raises(TypeError):
+            ProductSelectedResourceInput(  # type: ignore[call-arg]
+                admission=admission,
+                relative_path="skills/review/SKILL.md",
+                body=b"caller-controlled",
             )
     finally:
         handle.close()

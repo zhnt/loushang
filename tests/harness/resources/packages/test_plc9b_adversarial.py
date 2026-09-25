@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
+from unittest.mock import patch
 
 import pytest
 
@@ -4211,7 +4212,14 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     entrypoint: str,
 ) -> None:
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding._base_plugin import coding_base_plugin_root
+    from loushang.coding._base_plugin import (
+        CodingBasePluginAssemblyError,
+        coding_base_plugin_root,
+        prepare_coding_base_product_plan,
+    )
+    from loushang.coding._base_product_composition import (
+        compile_coding_base_product_selection,
+    )
     from loushang.coding._plugin_lifecycle import (
         resolve_ephemeral_coding_plugin_lifecycle_state_layout,
     )
@@ -4219,6 +4227,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
@@ -4234,6 +4243,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.host.rpc.output import RpcOutput
     from loushang.harness.resources.packages.product_epoch_guard import (
         register_package_product_runtime_lease,
+    )
+    from loushang.harness.session.product_composition_assembly import (
+        ProductCompositionAssemblyError,
+        _assemble_product_contribution_candidates,
     )
 
     source_root = tmp_path / "sources"
@@ -4276,6 +4289,12 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 ),
                 plugin_id="coding.base" if checked_in_base else "acme.plugin",
                 artifact_digest=sha256(payload).hexdigest(),
+                plugin_manifest_path=(
+                    "coding_base/plugin.json" if checked_in_base else None
+                ),
+                source_trust_class=(
+                    "host-equivalent-local" if checked_in_base else None
+                ),
             ),
         ),
         dependencies=(
@@ -5184,6 +5203,11 @@ while True:
                         key, max_files=64, max_total_bytes=1024 * 1024
                     )
                 assert disabled_capture.value.code == "package_product_root_not_selected"
+                with pytest.raises(PackageProductRuntimeReadError) as disabled_manifest:
+                    runtime.capture_selected_plugin_manifest(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert disabled_manifest.value.code == "package_product_root_not_selected"
                 enabled = management.submit(
                     PluginManagementCommandV1(
                         action="enable",
@@ -5224,6 +5248,9 @@ while True:
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
                 assert captured.installation_key == key
+                assert captured.instance_revision_ref == desired.snapshot().installation(
+                    key
+                ).selection.instance_revision_ref
                 assert (
                     captured.root_ref.artifact_digest
                     == captured.package_revision.package_content_digest
@@ -5239,6 +5266,572 @@ while True:
                     dict(captured.files)[path] == body
                     for path, body in base_files.items()
                 )
+                selected_manifest = runtime.capture_selected_plugin_manifest(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert selected_manifest.snapshot == captured
+                assert tuple(
+                    path for path, _ in selected_manifest.declaration_documents
+                ) == ("coding_base/declarations/plugin.json",)
+                assert tuple(
+                    declaration.contribution_id
+                    for _, document in selected_manifest.declaration_documents
+                    for declaration in document.declarations
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
+                assert tuple(
+                    reservation.contribution_id
+                    for reservation, declaration in (
+                        selected_manifest.verified_data_only_declarations()
+                    )
+                    if declaration.reservation_fingerprint == reservation.fingerprint
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
+                from loushang.harness.environment import LocalHostEnvironmentProbe
+                from loushang.harness.resources.plugins.selection import (
+                    PluginContributionRef,
+                )
+
+                trust = selected_manifest.source_trust_snapshot
+                assert trust is not None
+                assert trust.source_trust_policy_revision == policy.authority_revision
+                base_plan, base_tool, base_tools = prepare_coding_base_product_plan(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    host_environment=LocalHostEnvironmentProbe().detect(),
+                )
+                assert base_plan.context.instance_revision_refs == (
+                    captured.instance_revision_ref,
+                )
+                assert captured.committed_record.committed_set.set_id in (
+                    base_plan.context.policy_revision
+                )
+                assert base_plan.source_trust_snapshots == (trust,)
+                assert base_plan.selected_contributions == (
+                    PluginContributionRef("coding.base", "coding.builtin"),
+                    PluginContributionRef("coding.base", "coding.standard"),
+                    PluginContributionRef("coding.base", "prompt-standard"),
+                    PluginContributionRef("coding.base", "skill-standard"),
+                )
+                assert base_tool == "coding.builtin"
+                assert base_tools
+                compiled_base = compile_coding_base_product_selection(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    host_environment=LocalHostEnvironmentProbe().detect(),
+                    evaluated_at=1,
+                )
+                assert compiled_base.plan == base_plan
+                assert compiled_base.tool_contribution_id == base_tool
+                assert len(compiled_base.product_composition.resource_admissions) == 2
+                assert len(compiled_base.product_composition.catalog_admissions) == 2
+                assert {
+                    admission.candidate.contribution_id
+                    for admission in (
+                        *compiled_base.product_composition.resource_admissions,
+                        *compiled_base.product_composition.catalog_admissions,
+                    )
+                } == {
+                    "coding.builtin",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                }
+                resource_bodies = {
+                    admission.contribution_id: compiled_base.read_resource_body(
+                        admission.fingerprint, max_bytes=64 * 1024
+                    )
+                    for admission in compiled_base.product_composition.resource_admissions
+                }
+                assert resource_bodies == {
+                    "prompt-standard": base_files["coding_base/prompts/standard.md"],
+                    "skill-standard": base_files[
+                        "coding_base/skills/standard/SKILL.md"
+                    ],
+                }
+                from loushang.harness.resource_catalog.product_snapshot_source import (
+                    ProductSelectedResourceSource,
+                    ProductSnapshotResourceSourceError,
+                    product_snapshot_source_policy_fingerprint,
+                )
+                from loushang.harness.resources._catalog_engine import (
+                    compose_resource_catalog,
+                    default_resource_merge_policy,
+                )
+                from loushang.harness.resources._catalog_package_source import (
+                    PackageResourceDiscoveryBudget,
+                    build_package_resource_discovery_request,
+                )
+                from loushang.harness.resources._catalog_projection import (
+                    project_resource_catalog,
+                )
+                from loushang.harness.resources._catalog_records import (
+                    ResourceCatalogHandle,
+                    ResourceComponentProducer,
+                    ResourceLoadHandle,
+                    ResourceLoadReceipt,
+                    ResourceSourceGenerationRef,
+                    build_activation_policy_snapshot,
+                )
+
+                product_inputs = compiled_base.product_resource_inputs()
+                assert {item.relative_path for item in product_inputs} == {
+                    "prompts/standard.md",
+                    "skills/standard/SKILL.md",
+                }
+                from loushang.harness.resource_catalog.product_inputs import (
+                    InitialResourceCatalogProductAdapter,
+                    InitialResourceCatalogProductSelection,
+                )
+
+                product_adapter = InitialResourceCatalogProductAdapter(
+                    InitialResourceCatalogProductSelection(
+                        product_policy_revision=(
+                            compiled_base.product_composition.authority_context.product_policy_revision
+                        ),
+                        product_composition=compiled_base.product_composition,
+                        product_snapshot_resources=product_inputs,
+                    ),
+                    clock=lambda: 1,
+                )
+                adapter_bundle = product_adapter.prepare_bootstrap_projection(
+                    product_id="coding",
+                    session_id="product-selected-coding-base",
+                    cwd=tmp_path,
+                )
+                assert len(adapter_bundle.skills) == 1
+                bootstrap = product_adapter.construct_session(
+                    product_id="coding",
+                    session_id="product-selected-coding-base",
+                    base_resource_bundle=adapter_bundle,
+                    construct=lambda value: value,
+                )
+                assert bootstrap._inputs.package_resources == ()
+                assert bootstrap._inputs.product_snapshot_resources == product_inputs
+
+                async def _verify_product_session_bootstrap() -> None:
+                    from loushang.harness.capabilities import (
+                        stage_resource_composition_candidate,
+                        standard_capability_composition_plan,
+                    )
+                    from loushang.harness.extensions.agent import ExtensionRunner
+                    from loushang.harness.extensions.context import (
+                        ExtensionRuntimeBindings,
+                    )
+                    from loushang.harness.runtime import RuntimeProfileResolver
+
+                    async def _ignore(_value: object) -> None:
+                        return None
+
+                    bindings = ExtensionRuntimeBindings(
+                        cwd=str(tmp_path),
+                        get_active_tool_names=lambda: [],
+                        get_model_selection=lambda: None,
+                        set_active_tools=_ignore,
+                        set_model=_ignore,
+                        request_resource_refresh=lambda: None,
+                        shutdown=lambda: None,
+                        record_diagnostic=lambda _diagnostic: None,
+                    )
+                    extension_runtime = ExtensionRunner([])
+                    await extension_runtime.activate_runtime_generation(bindings)
+                    profile = RuntimeProfileResolver().resolve(
+                        standard_capability_composition_plan(product_id="coding")
+                    )
+                    staged = stage_resource_composition_candidate(profile)
+                    try:
+                        await bootstrap.prepare(
+                            extension_host=extension_runtime,
+                            staged_resource_candidate=staged,
+                            bindings=bindings,
+                        )
+                        generation = staged._require_prepared_owner_generation()
+                        assert len(generation.catalog_snapshot.effective_entries) == 2
+                        assert generation.ownership_state == "root_owned"
+                        for entry in generation.catalog_snapshot.effective_entries:
+                            candidate = generation.catalog_snapshot.candidate_by_fingerprint(
+                                entry.primary_candidate_fingerprint
+                            )
+                            assert candidate.expected_content_digest == sha256(
+                                resource_bodies[
+                                    candidate.content_origin.resource_contribution_id
+                                ]
+                            ).hexdigest()
+                    finally:
+                        await bootstrap.abort()
+
+                asyncio.run(_verify_product_session_bootstrap())
+                source_ref = ResourceSourceGenerationRef(
+                    source_id="test.product.selected.resources",
+                    product_id=product_inputs[0].admission.product_id,
+                    generation="store-product-selection:1",
+                    source_policy_fingerprint=product_snapshot_source_policy_fingerprint(
+                        product_id=product_inputs[0].admission.product_id,
+                        resources=product_inputs,
+                    ),
+                    producer=ResourceComponentProducer(
+                        component_contribution_id="test.product.selected.resources",
+                        component_candidate_fingerprint="a" * 64,
+                        component_admission_fingerprint="b" * 64,
+                        binding_fingerprint="c" * 64,
+                        plugin_instance_revision_ref="first-party:product-snapshot@1",
+                        package_content_digest="d" * 64,
+                    ),
+                )
+                product_source = ProductSelectedResourceSource(
+                    source_generation_ref=source_ref,
+                    resources=product_inputs,
+                )
+                with pytest.raises(ValueError, match="policy changed"):
+                    ProductSelectedResourceSource(
+                        source_generation_ref=replace(
+                            source_ref, source_policy_fingerprint="0" * 64
+                        ),
+                        resources=product_inputs,
+                    )
+                with pytest.raises(ProductSnapshotResourceSourceError) as foreign_source:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=replace(
+                                source_ref, generation="foreign-generation"
+                            ),
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                assert foreign_source.value.reason == "foreign_source_generation"
+                with pytest.raises(ProductSnapshotResourceSourceError) as missing_admission:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=(product_inputs[0].admission.fingerprint,),
+                        )
+                    )
+                assert missing_admission.value.reason == "admission_set_mismatch"
+                with pytest.raises(ProductSnapshotResourceSourceError) as over_budget:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                            budget=PackageResourceDiscoveryBudget(maximum_items=1),
+                        )
+                    )
+                assert over_budget.value.reason == "item_count_exceeded"
+                with (
+                    patch.object(
+                        Path, "open", side_effect=AssertionError("host path read")
+                    ),
+                    patch.object(
+                        Path, "read_bytes", side_effect=AssertionError("host path read")
+                    ),
+                ):
+                    source_snapshot = product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                catalog = compose_resource_catalog(
+                    (source_snapshot,),
+                    catalog_generation=1,
+                    engine_binding_fingerprint="e" * 64,
+                    merge_policy=default_resource_merge_policy(),
+                    activation_policy=build_activation_policy_snapshot(
+                        policy_revision="test-product-selected-resources"
+                    ),
+                )
+                projection = project_resource_catalog(
+                    catalog_snapshot=catalog,
+                    cwd=tmp_path,
+                    descriptor_bindings=product_source.projection_bindings,
+                )
+                assert projection is not None
+                assert all(
+                    not item.descriptor.source_path.is_absolute()
+                    for item in projection.selected_bindings
+                )
+                for entry in catalog.effective_entries:
+                    candidate = catalog.candidate_by_fingerprint(
+                        entry.primary_candidate_fingerprint
+                    )
+                    handle = ResourceLoadHandle.from_catalog(
+                        catalog_handle=ResourceCatalogHandle(
+                            catalog_generation=catalog.catalog_generation,
+                            snapshot_fingerprint=catalog.snapshot_fingerprint,
+                            identity=entry.identity,
+                            candidate_fingerprint=candidate.candidate_fingerprint,
+                        ),
+                        candidate=candidate,
+                    )
+                    with (
+                        patch.object(
+                            Path, "open", side_effect=AssertionError("host path read")
+                        ),
+                        patch.object(
+                            Path,
+                            "read_bytes",
+                            side_effect=AssertionError("host path read"),
+                        ),
+                    ):
+                        read = product_source.load(handle)
+                    assert ResourceLoadReceipt.from_validated_read(
+                        load_handle=handle, body_read=read
+                    )
+                    assert (
+                        read.body
+                        == resource_bodies[
+                            candidate.content_origin.resource_contribution_id
+                        ]
+                    )
+                    with pytest.raises(ProductSnapshotResourceSourceError) as wrong_body:
+                        product_source.load(
+                            replace(handle, expected_content_digest="0" * 64)
+                        )
+                    assert wrong_body.value.reason == "load_handle_identity_mismatch"
+                product_source.dispose()
+                with pytest.raises(ProductSnapshotResourceSourceError) as disposed_source:
+                    product_source.discover_initial(
+                        build_package_resource_discovery_request(
+                            product_id=source_ref.product_id,
+                            source_generation_ref=source_ref,
+                            admission_fingerprints=tuple(
+                                item.admission.fingerprint for item in product_inputs
+                            ),
+                        )
+                    )
+                assert disposed_source.value.reason == "source_disposed"
+                from loushang.harness.resource_catalog.shadow import (
+                    run_first_party_resource_catalog_shadow,
+                )
+
+                async def _verify_product_catalog_owner() -> None:
+                    generation = await run_first_party_resource_catalog_shadow(
+                        product_id=source_ref.product_id,
+                        scope_id="product-selected-coding-base",
+                        runtime_id="product-selected-coding-base",
+                        product_policy_revision="product-selected-coding-base-v1",
+                        root_handles=(),
+                        product_snapshot_resources=product_inputs,
+                        issued_at=1,
+                        expires_at=100,
+                        now=1,
+                        projection_cwd=tmp_path,
+                    )
+                    try:
+                        assert generation.catalog_projection is not None
+                        assert len(generation.catalog_snapshot.effective_entries) == 2
+                        assert len(generation.source_snapshots) == 1
+                        assert generation.source_snapshots[
+                            0
+                        ].source_generation_ref.source_id == (
+                            "harness.resources.source.product_snapshot"
+                        )
+                        for entry in generation.catalog_snapshot.effective_entries:
+                            handle = generation.load_handle(entry.identity)
+                            loaded = await generation.load(handle)
+                            assert (
+                                loaded.body
+                                == resource_bodies[
+                                    generation.catalog_snapshot.candidate_by_fingerprint(
+                                        entry.primary_candidate_fingerprint
+                                    ).content_origin.resource_contribution_id
+                                ]
+                            )
+                    finally:
+                        assert await generation.dispose() == ()
+
+                asyncio.run(_verify_product_catalog_owner())
+                from loushang.harness.resource_catalog.bootstrap_projection import (
+                    prepare_resource_catalog_bootstrap_projection,
+                )
+
+                product_bundle = prepare_resource_catalog_bootstrap_projection(
+                    product_id=source_ref.product_id,
+                    runtime_id="product-selected-coding-base",
+                    product_policy_revision="product-selected-coding-base-v1",
+                    cwd=tmp_path,
+                    root_handles=(),
+                    product_snapshot_resources=product_inputs,
+                )
+                assert len(product_bundle.prompts) == 1
+                assert product_bundle.prompts[0].text == (
+                    base_files["coding_base/prompts/standard.md"].decode("utf-8").strip()
+                )
+                assert len(product_bundle.skills) == 1
+                assert product_bundle.skills[0].name == "standard"
+                with pytest.raises(CodingBasePluginAssemblyError) as foreign_body:
+                    compiled_base.read_resource_body("foreign-admission", max_bytes=64 * 1024)
+                assert foreign_body.value.code == "coding_base_product_resource_unavailable"
+                with pytest.raises(CodingBasePluginAssemblyError) as over_budget_body:
+                    compiled_base.read_resource_body(
+                        compiled_base.product_composition.resource_admissions[0].fingerprint,
+                        max_bytes=0,
+                    )
+                assert over_budget_body.value.code == (
+                    "coding_base_product_resource_unavailable"
+                )
+                changed_candidate = replace(
+                    compiled_base.product_composition.resource_admissions[0].candidate,
+                    source_trust_policy_revision="foreign-policy",
+                )
+                with pytest.raises(ProductCompositionAssemblyError) as changed_source:
+                    _assemble_product_contribution_candidates(
+                        plan=compiled_base.plan,
+                        candidates=(changed_candidate,),
+                        owner_bindings=(),
+                        mandatory_roots=(),
+                        definitions=(),
+                        select_optional_requirements=lambda _preview: (),
+                        evaluated_at=1,
+                    )
+                assert changed_source.value.code == (
+                    "product_contribution_candidate_mismatch"
+                )
+                with pytest.raises(ValueError, match="changed captured bytes"):
+                    replace(
+                        selected_manifest,
+                        manifest=replace(
+                            selected_manifest.manifest,
+                            contribution_index=replace(
+                                selected_manifest.manifest.contribution_index,
+                                items=tuple(
+                                    item
+                                    for item in selected_manifest.manifest.contribution_index.items
+                                    if item.contribution_id != "coding.standard"
+                                ),
+                            ),
+                        ),
+                    )
+                with pytest.raises(ValueError, match="source trust changed"):
+                    replace(
+                        selected_manifest,
+                        source_trust_snapshot=replace(
+                            trust, package_source_identity="foreign-source"
+                        ),
+                    )
+                with pytest.raises(CodingBasePluginAssemblyError) as missing_trust:
+                    prepare_coding_base_product_plan(
+                        replace(selected_manifest, source_trust_snapshot=None),
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert missing_trust.value.code == "coding_base_product_source_untrusted"
+                with pytest.raises(CodingBasePluginAssemblyError) as foreign_scope_plan:
+                    prepare_coding_base_product_plan(
+                        selected_manifest,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=replace(key, scope_id="workspace:foreign"),
+                        session_id=session_manager.get_header().conversation_id,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert foreign_scope_plan.value.code == "coding_base_product_selection_mismatch"
+                from loushang.harness.package_product.product_local_wheel_runtime import (
+                    _LocalWheelSelectedManifestReader,
+                )
+
+                assert isinstance(
+                    runtime._selected_root_reader, PackageProductSelectedRootReader
+                )
+                untrusted_reader = _LocalWheelSelectedManifestReader(
+                    policy=replace(
+                        policy,
+                        bindings=(
+                            replace(policy.bindings[0], source_trust_class=None),
+                        ),
+                    ),
+                    root_reader=runtime._selected_root_reader,
+                )
+                untrusted_selected = untrusted_reader.capture_selected_manifest(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert untrusted_selected.source_trust_snapshot is None
+                with pytest.raises(CodingBasePluginAssemblyError) as untrusted_plan:
+                    prepare_coding_base_product_plan(
+                        untrusted_selected,
+                        resolve_coding_composition_set("coding-standard"),
+                        installation_key=key,
+                        session_id=session_manager.get_header().conversation_id,
+                        host_environment=LocalHostEnvironmentProbe().detect(),
+                    )
+                assert untrusted_plan.value.code == "coding_base_product_source_untrusted"
+                wrong_path_reader = _LocalWheelSelectedManifestReader(
+                    policy=replace(
+                        policy,
+                        bindings=(
+                            replace(
+                                policy.bindings[0],
+                                plugin_manifest_path=(
+                                    "coding_base/declarations/plugin.json"
+                                ),
+                            ),
+                        ),
+                    ),
+                    root_reader=runtime._selected_root_reader,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as wrong_path:
+                    wrong_path_reader.capture_selected_manifest(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                assert wrong_path.value.code == "package_product_manifest_invalid"
+                from loushang.harness.resources.plugins.manifest import (
+                    PluginManifestError,
+                    PluginManifestParser,
+                )
+
+                manifest_path = policy.bindings[0].plugin_manifest_path
+                assert manifest_path == "coding_base/plugin.json"
+                parsed = selected_manifest.manifest
+                assert parsed.name == "coding.base"
+                assert parsed.version == "1"
+                assert parsed.root_relative_path.as_posix() == "coding_base"
+                assert tuple(
+                    item.contribution_id for item in parsed.contribution_index.items
+                ) == (
+                    "coding.builtin",
+                    "coding.builtin.windows",
+                    "coding.standard",
+                    "prompt-standard",
+                    "skill-standard",
+                )
+                missing_declaration = dict(captured.files)
+                del missing_declaration["coding_base/declarations/plugin.json"]
+                with pytest.raises(PluginManifestError) as missing_source:
+                    PluginManifestParser().parse_file_set(
+                        missing_declaration,
+                        manifest_logical_path=manifest_path,
+                    )
+                assert missing_source.value.code == "invalid_plugin_contribution_entrypoint"
+                with pytest.raises(PluginManifestError) as wrong_manifest:
+                    PluginManifestParser().parse_file_set(
+                        dict(captured.files),
+                        manifest_logical_path="coding_base/declarations/plugin.json",
+                    )
+                assert wrong_manifest.value.code == "invalid_plugin_manifest"
                 with pytest.raises(PackageProductRuntimeReadError) as capture_budget:
                     runtime.capture_selected_plugin_root(
                         key, max_files=64, max_total_bytes=1
@@ -5367,6 +5960,13 @@ while True:
                             key, max_files=64, max_total_bytes=1024 * 1024
                         )
                     assert closed_capture.value.code == "package_product_runtime_inactive"
+                    with pytest.raises(
+                        PackageProductRuntimeActivationError
+                    ) as closed_manifest:
+                        runtime.capture_selected_plugin_manifest(
+                            key, max_files=64, max_total_bytes=1024 * 1024
+                        )
+                    assert closed_manifest.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"
