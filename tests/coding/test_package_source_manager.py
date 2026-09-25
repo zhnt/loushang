@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -11,6 +13,17 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.packages.source_resolver import PackageSourceResolver
+
+
+@pytest.mark.parametrize("mode", ("legacy", "dark"))
+def test_materializer_free_source_resolver_requires_enforced_product(mode: str) -> None:
+    with pytest.raises(ValueError, match="requires enforced Product activation"):
+        PackageSourceResolver(
+            settings_manager=SettingsManager(ControlConfig()),
+            materializer=None,
+            product_lifecycle=object(),  # type: ignore[arg-type]
+            product_lifecycle_mode=mode,  # type: ignore[arg-type]
+        )
 
 
 def test_package_source_resolver_installs_missing_configured_sources_and_emits_progress(tmp_path) -> None:

@@ -346,9 +346,32 @@ Neither may silently override a narrower implemented owner contract.
   and GC owners, digest-pinned Source, journaled transaction pins, and native
   Package Stores. Native end-to-end tests cover root-only and dependency-Wheel
   commits through this composition; a separate real-Store/Product fixture
-  covers changed-Source refusal. The composition refuses a moved Store root. No
-  Coding entrypoint calls this composition yet; it is not a completed Product
-  cutover, Windows composition, or PLC9D execution claim.
+  covers changed-Source refusal. The composition refuses a moved Store root.
+  An explicit minimal Coding Session now exercises this real binding through
+  the Product factory Port and commits a local Wheel without a legacy
+  materializer. The concrete POSIX factory pins Product, Session, and
+  workspace identity, and now requires a native cutover result matching the
+  current fence, namespace, and Store root before composing those owners. Its
+  integration fixture runs the native cutover owner with the durable runtime
+  lease/quiescence owner and reopens that registry for Session admission. Its
+  pre-fence and snapshot providers remain test doubles; production providers
+  remain required.
+  Default Coding does not select that factory; this is not a
+  completed Product cutover, Windows composition, or PLC9D execution claim.
+  The composition now returns one enforced lifecycle/inventory runtime binding.
+  Its Product-owned local-Wheel inventory reads the same desired and
+  committed-set journals, binds bulk-update targets durably, and reports
+  unknown or legacy-unverified installed Sources as check failures. Coding has
+  not yet supplied this binding through its runtime factory.
+  Coding bootstrap now refuses an explicitly supplied Package Product runtime
+  factory when its composition requests legacy Plugins, its Catalog policy
+  includes Package resources, configured Package roots/sources are present,
+  or an initial Product composition or peer materializer is supplied.
+  Only an explicit minimal composition with the canonical read-only Catalog
+  policy can exercise the factory before those legacy inputs are migrated; it
+  constructs and exposes no legacy Package materializer. Default Coding
+  remains on its existing path. An enforced Product route with no materializer
+  also refuses explicit non-Plugin fallback before settings mutation.
 - [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
   threat model and implements C1--C4's additive `local_worker` declaration,
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,

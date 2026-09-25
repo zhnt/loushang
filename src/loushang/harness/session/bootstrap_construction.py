@@ -477,7 +477,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         self,
         *,
         services: BootstrapServices,
-        package_materializer: PackageMaterializer,
+        package_materializer: PackageMaterializer | None,
         package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
         package_product_inventory: PackageProductLifecycleInventoryPort | None = None,
         package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",

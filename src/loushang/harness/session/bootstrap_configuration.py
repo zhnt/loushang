@@ -64,7 +64,7 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     model_registry: ModelCatalog
     resource_loader: ResourceLoader
     diagnostics_service: DiagnosticsService
-    package_materializer: PackageMaterializer
+    package_materializer: PackageMaterializer | None
     skill_activation_runtime: SkillActivationRuntime
     session_id: str
     cwd: str
@@ -106,6 +106,13 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
         ):
             raise ValueError(
                 "Legacy authority cannot receive a Catalog projection preparer"
+            )
+        if self.package_materializer is None and (
+            self.package_product_lifecycle is None
+            or self.package_product_lifecycle_mode != "enforced"
+        ):
+            raise ValueError(
+                "Session without a materializer requires enforced Product activation"
             )
 
 
@@ -166,11 +173,12 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
     ) -> None:
         del selection
         request = context.request
-        record_package_lockfile_diagnostics(
-            request.package_materializer.get_lockfile_diagnostics(),
-            diagnostics_service=request.diagnostics_service,
-            session_id=request.session_id,
-        )
+        if request.package_materializer is not None:
+            record_package_lockfile_diagnostics(
+                request.package_materializer.get_lockfile_diagnostics(),
+                diagnostics_service=request.diagnostics_service,
+                session_id=request.session_id,
+            )
         run_standard_startup_checks(
             request.diagnostics_service,
             cwd=request.cwd,

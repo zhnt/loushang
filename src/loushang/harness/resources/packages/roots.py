@@ -144,7 +144,7 @@ def configure_resource_loader_roots(
     *,
     resource_loader: ResourceRootLoader,
     settings_manager: ResourceRootSettingsManager,
-    materializer: PackageMaterializer,
+    materializer: PackageMaterializer | None,
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
     selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
@@ -200,7 +200,7 @@ def resolve_package_resource_roots(
     package_roots: tuple[str, ...],
     plugin_sources: tuple[str, ...],
     package_sources: tuple[PackageSourceConfig, ...],
-    materializer: PackageMaterializer,
+    materializer: PackageMaterializer | None,
     package_source_scopes: dict[str, str] | None = None,
     global_base_dir: str | Path | None = None,
     project_base_dir: str | Path | None = None,
@@ -210,6 +210,10 @@ def resolve_package_resource_roots(
     selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
 ) -> ResolvedPackageResourceRoots:
     selected_inputs = tuple(selected_plugin_packages)
+    if materializer is None:
+        if package_roots or plugin_sources or package_sources or selected_inputs:
+            raise RuntimeError("Package roots require an admitted Product mount owner")
+        return ResolvedPackageResourceRoots()
     if any(not isinstance(item, SelectedPluginPackageInput) for item in selected_inputs):
         raise TypeError("Selected Plugin package inputs are invalid")
     selected_plugin_ids = tuple(

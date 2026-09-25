@@ -60,6 +60,28 @@ class _SettingsManager:
         return {"resource_roots": ["resources"]}
 
 
+@pytest.mark.parametrize(
+    ("package_roots", "plugin_sources", "package_sources"),
+    (
+        (("/configured/package",), (), ()),
+        ((), ("/configured/plugin",), ()),
+        ((), (), (PackageSourceConfig(source="https://example.invalid/plugin.git"),)),
+    ),
+)
+def test_materializer_free_product_roots_refuse_legacy_package_inputs(
+    package_roots: tuple[str, ...],
+    plugin_sources: tuple[str, ...],
+    package_sources: tuple[PackageSourceConfig, ...],
+) -> None:
+    with pytest.raises(RuntimeError, match="admitted Product mount owner"):
+        resolve_package_resource_roots(
+            package_roots=package_roots,
+            plugin_sources=plugin_sources,
+            package_sources=package_sources,
+            materializer=None,
+        )
+
+
 class _Loader:
     def __init__(self) -> None:
         self.mounts: tuple[PackageResourceMount, ...] = ()

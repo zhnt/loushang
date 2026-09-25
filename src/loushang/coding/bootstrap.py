@@ -155,6 +155,9 @@ from loushang.harness.resources.packages.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
+from loushang.harness.resources.packages.source_resolver import (
+    configured_package_sources,
+)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
     AgentProductConstructionBinding,
@@ -483,6 +486,12 @@ def _resolve_coding_kernel_prompt(plan: CodingCompositionSetPlan) -> str:
     return CODING_KERNEL_SYSTEM_PROMPT
 
 
+class CodingPackageProductLegacyPathError(RuntimeError):
+    """Reject a Product runtime before any peer Plugin Package preparation."""
+
+    code = "coding_package_product_legacy_plugin_path"
+
+
 def _create_agent_session(
     *,
     session_manager: SessionManager,
@@ -530,6 +539,9 @@ def _create_agent_session(
         raise TypeError(
             "initial Resource Catalog Product composition assembly is invalid"
         )
+    resource_catalog_source_policy = canonical_coding_resource_catalog_source_policy(
+        resource_catalog_source_policy
+    )
     session_no_tools_mode = normalize_no_tools(no_tools)
     resolved_composition_set = _canonical_coding_composition_set(composition_set)
     resolved_invocation_profile = (
@@ -571,6 +583,15 @@ def _create_agent_session(
     requested_plugin_ids = {
         item.plugin_id for item in resolved_composition_set.plugin_requests
     }
+    if package_product_runtime_factory is not None and (
+        requested_plugin_ids
+        or resource_catalog_source_policy.include_package_resources
+        or initial_resource_catalog_product_composition_assembly is not None
+        or package_materializer is not None
+    ):
+        raise CodingPackageProductLegacyPathError(
+            "Package Product runtime cannot coexist with legacy Plugin inputs"
+        )
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
@@ -589,6 +610,17 @@ def _create_agent_session(
                 "child approval actor must match its delegated execution profile"
             )
     services = services or create_services()
+    if package_product_runtime_factory is not None:
+        settings = services.settings_manager.get_settings()
+        if (
+            settings.package_roots
+            or settings.plugin_sources
+            or settings.package_sources
+            or configured_package_sources(services.settings_manager)
+        ):
+            raise CodingPackageProductLegacyPathError(
+                "Package Product runtime cannot coexist with legacy Plugin inputs"
+            )
     legacy_disabled_plugin_ids = frozenset(
         getattr(services.settings_manager.get_settings(), "disabled_plugins", ())
     )
@@ -692,18 +724,21 @@ def _create_agent_session(
         if tools is not None:
             construction_tools = None
     resolved_package_materializer = (
-        package_materializer or _default_package_materializer(session_manager)
+        None
+        if package_product_runtime_factory is not None
+        else package_materializer or _default_package_materializer(session_manager)
     )
     session_id = session_manager.get_header().conversation_id
     # PLC6 prepares Product-selected package evidence before the standard
     # activation graph reaches its startup-check step. Preserve the existing
     # diagnostic-before-failure contract when a corrupt binding lock prevents
     # that preparation from completing.
-    record_package_lockfile_diagnostics(
-        resolved_package_materializer.get_lockfile_diagnostics(),
-        diagnostics_service=services.diagnostics_service,
-        session_id=session_id,
-    )
+    if resolved_package_materializer is not None:
+        record_package_lockfile_diagnostics(
+            resolved_package_materializer.get_lockfile_diagnostics(),
+            diagnostics_service=services.diagnostics_service,
+            session_id=session_id,
+        )
     coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
     base_ephemeral_state = None
     base_state_cleanup: Callable[[], None] | None = None
@@ -1644,6 +1679,9 @@ def create_agent_session(
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
+    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -1673,6 +1711,7 @@ def create_agent_session(
         session_start_event=session_start_event,
         package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
+        resource_catalog_source_policy=resource_catalog_source_policy,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
@@ -1703,6 +1742,9 @@ def create_agent_session_from_services(
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
+    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
@@ -1733,6 +1775,7 @@ def create_agent_session_from_services(
         session_start_event=session_start_event,
         package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
+        resource_catalog_source_policy=resource_catalog_source_policy,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
@@ -1763,6 +1806,9 @@ def create_agent_session_result(
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
+    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -1791,6 +1837,7 @@ def create_agent_session_result(
         session_start_event=session_start_event,
         package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
+        resource_catalog_source_policy=resource_catalog_source_policy,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,

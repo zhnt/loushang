@@ -53,7 +53,7 @@ class PackageSourceResolver:
     """
 
     settings_manager: object
-    materializer: PackageMaterializer
+    materializer: PackageMaterializer | None
     diagnostics_service: DiagnosticsService | None = None
     session_id: str | None = None
     product_lifecycle: PackageProductLifecycleOperationPort | None = None
@@ -62,6 +62,12 @@ class PackageSourceResolver:
     def __post_init__(self) -> None:
         if self.product_lifecycle_mode not in {"legacy", "dark", "enforced"}:
             raise ValueError("Unsupported Package Product lifecycle mode")
+        if self.materializer is None and (
+            self.product_lifecycle is None or self.product_lifecycle_mode != "enforced"
+        ):
+            raise ValueError(
+                "Materializer-free Package Source resolver requires enforced Product activation"
+            )
         if self.product_lifecycle_mode == "legacy":
             if self.product_lifecycle is not None:
                 raise ValueError(
@@ -91,7 +97,11 @@ class PackageSourceResolver:
             source = package_source.source
             if not is_remote_package_source(source):
                 continue
-            existing_record = self.materializer.get_record(source)
+            existing_record = (
+                self.materializer.get_record(source)
+                if self.product_lifecycle is None and self.materializer is not None
+                else None
+            )
             if (
                 self.product_lifecycle is None
                 and existing_record is not None
@@ -137,6 +147,8 @@ class PackageSourceResolver:
     ) -> PackageMaterializationRecord | PackageProductLifecycleRecordV1:
         lifecycle = self.product_lifecycle
         if lifecycle is None:
+            if self.materializer is None:
+                raise RuntimeError("Package materializer is unavailable")
             return self.materializer.materialize_remote_source_sync(source)
         operation_id = sha256(
             f"startup:{self.session_id or 'product'}:{scope}:{source}".encode()
@@ -151,6 +163,8 @@ class PackageSourceResolver:
             entrypoint="startup",
         )
         if not outcome.handled:
+            if self.materializer is None:
+                raise RuntimeError("Package Product route has no legacy fallback")
             return self.materializer.materialize_remote_source_sync(source)
         if outcome.record is None:
             raise RuntimeError("Plugin Package startup route returned no record")
@@ -159,6 +173,8 @@ class PackageSourceResolver:
     def prepare_configured_remote_records(
         self,
     ) -> tuple[PackageMaterializationRecord, ...]:
+        if self.materializer is None:
+            raise RuntimeError("Package materializer is unavailable")
         records: list[PackageMaterializationRecord] = []
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source

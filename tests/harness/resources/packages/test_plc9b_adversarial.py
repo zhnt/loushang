@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
 import inspect
@@ -24,7 +25,11 @@ from threading import Lock
 import pytest
 
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product.product_local_wheel_inventory import (
+    PackageProductLocalWheelInventory,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductRuntimeFactory,
     compose_posix_local_wheel_product,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
@@ -44,6 +49,7 @@ from loushang.harness.plugin_management.package_product import (
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.operations import PackageOperationsRuntime
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
@@ -143,6 +149,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+    PackagePosixEpochCutoverCoordination,
+    PackagePreFenceRegistrationSnapshotV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
     PackageEpochCutoverSnapshotReceiptV1,
@@ -232,6 +242,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
+    PackageProductUpdateCheckRequestV1,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -4183,10 +4194,20 @@ def test_product_transaction_commits_configured_local_dependency(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
+@pytest.mark.parametrize("entrypoint", ("cli", "session"))
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
     with_dependency: bool,
+    entrypoint: str,
 ) -> None:
+    from loushang.ai.model import Capabilities, Model
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
     source = source_root / WHEEL_FILENAME
@@ -4231,9 +4252,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         authority_id="coding-local-source:runtime",
     )
     state_root = tmp_path / "package-state"
-    plugin_root = tmp_path / "plugin-store"
     control_root = tmp_path / "epoch-control"
-    for directory in (state_root, plugin_root, control_root):
+    for directory in (state_root, control_root):
         directory.mkdir(mode=0o700)
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
@@ -4246,20 +4266,59 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
     store_id = "package-store:product-runtime"
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
-    fence = fences.publish(
-        PackageEpochFenceRequestV1.create(
+    authority = tmp_path / "package-epoch-authority"
+    legacy_root = authority / "legacy"
+    epochs_root = authority / "epochs"
+    for directory in (authority, legacy_root, epochs_root):
+        directory.mkdir(mode=0o700)
+    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    class _PreFenceScope:
+        @contextmanager
+        def exclusive_quiescence(self, *, store_id: str):
+            yield PackagePreFenceRegistrationSnapshotV1(
+                store_id=store_id,
+                owner_revision=1,
+                active_registration_ids=(),
+            )
+
+    cutover_root_fd = os.open(
+        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    cutover_io = RootedFileIO(control_root, cutover_root_fd)
+    try:
+        cutover_registry = PackageEpochRuntimeLeaseRegistry(
+            path=control_root / "runtime-leases.jsonl",
+            coordination_lock=control_root / "coordination",
+            file_io=cutover_io,
+            fences=fences,
+            store_id=store_id,
+        )
+        cutover_owner = PackagePosixEpochCutoverOwner(
+            authority,
+            store_id=store_id,
+            epoch_journal=fences,
+            coordination=PackagePosixEpochCutoverCoordination(
+                leases=cutover_registry,
+                pre_fence=_PreFenceScope(),
+            ),
+            snapshots=_ManifestEpochCutoverSnapshots(),
+        )
+        cutover_request = PackagePosixEpochCutoverRequestV1.create(
             store_id=store_id,
             prior_fence=None,
-            legacy_root_identity="1" * 64,
-            fenced_root_identity=_manifest_directory_identity(plugin_root),
+            expected_legacy_root_identity=cutover_owner.current_root_identity(),
             namespace_id="2" * 64,
             minimum_runtime_version="2.0.0",
             minimum_runtime_protocol_epoch=2,
-            quiescence_receipt_id="3" * 64,
-            snapshot_receipt_id="4" * 64,
-            root_switch_receipt_id="5" * 64,
         )
-    )
+        cutover_result = cutover_owner.cutover(cutover_request)
+    finally:
+        cutover_io.cleanup()
+        os.close(cutover_root_fd)
+    assert cutover_result.disposition == "fenced"
+    fence = cutover_result.fence
+    assert fence is not None
+    plugin_root = epochs_root / cutover_request.namespace_id
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4273,6 +4332,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             store_id=store_id,
         )
         handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        session = None
         try:
             admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
                 fence=fence,
@@ -4312,20 +4372,163 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     recovery_identity="product-runtime-recovery",
                 )
 
-            activation = compose()
-            activation.activate()
-            outcome = activation.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id="operation:product-runtime",
-                    action="install",
-                    source=str(source),
-                    scope="project",
-                ),
-                entrypoint="cli",
-            )
-            assert outcome.handled
-            assert outcome.record is not None
-            assert outcome.record.lifecycle == "installed"
+            if entrypoint == "session":
+                from loushang.harness.resources.packages.product_runtime import (
+                    PackageProductRuntimeRequestV1,
+                )
+
+                workspace = tmp_path / "workspace"
+                workspace.mkdir(mode=0o700)
+                session_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "sessions",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+                factory = PosixLocalWheelProductRuntimeFactory(
+                    expected_session_id=(
+                        session_manager.get_header().conversation_id
+                    ),
+                    expected_cwd=workspace,
+                    state_root=state_root,
+                    plugin_store_root=plugin_root,
+                    policy=policy,
+                    environment=environment,
+                    acquisition_budgets=PackageAcquisitionBudgetV1(
+                        max_transport_bytes=256 * 1024,
+                        max_requests=1,
+                        max_redirects=0,
+                        max_wall_time_ms=1000,
+                    ),
+                    inspection_budgets=PackageInspectionBudgetV1(),
+                    closure_budgets=PackageClosureBudgetV1(),
+                    root_store_identity="product-runtime-root-store",
+                    dependency_store_identity="product-runtime-dependency-store",
+                    registry=registry,
+                    admission_request=admission_request,
+                    cutover_result=cutover_result,
+                    management=management,
+                    desired_state=desired,
+                    gc_bindings=bindings,
+                    gc_gate=gate,
+                    actor_id="product-runtime",
+                    desired_policy_revision="product-policy:1",
+                    recovery_identity="product-runtime-recovery",
+                )
+                with pytest.raises(ValueError, match="completed POSIX cutover"):
+                    replace(factory, cutover_result=None)  # type: ignore[arg-type]
+                for rejected_request in (
+                    PackageProductRuntimeRequestV1(
+                        product_id="other",
+                        session_id=session_manager.get_header().conversation_id,
+                        cwd=str(workspace),
+                    ),
+                    PackageProductRuntimeRequestV1(
+                        product_id="coding",
+                        session_id="foreign-session",
+                        cwd=str(workspace),
+                    ),
+                    PackageProductRuntimeRequestV1(
+                        product_id="coding",
+                        session_id=session_manager.get_header().conversation_id,
+                        cwd=str(source_root),
+                    ),
+                ):
+                    with pytest.raises(ValueError, match="identity changed"):
+                        factory.create(rejected_request)
+                moved_workspace = tmp_path / "moved-workspace"
+                workspace.rename(moved_workspace)
+                workspace.mkdir(mode=0o700)
+                try:
+                    with pytest.raises(ValueError, match="identity changed"):
+                        factory.create(
+                            PackageProductRuntimeRequestV1(
+                                product_id="coding",
+                                session_id=(
+                                    session_manager.get_header().conversation_id
+                                ),
+                                cwd=str(workspace),
+                            )
+                        )
+                finally:
+                    workspace.rmdir()
+                    moved_workspace.rename(workspace)
+                assert not (state_root / "lifecycle.jsonl").exists()
+                created = []
+
+                class ProductFactory:
+                    def create(self, request):
+                        binding = factory.create(request)
+                        created.append(binding)
+                        return binding
+
+                session = create_agent_session(
+                    session_manager=session_manager,
+                    model=Model(
+                        id="plc9b-test",
+                        name="PLC9B",
+                        provider="test",
+                        endpoint="anthropic-messages",
+                        capabilities=Capabilities(
+                            reasoning=True,
+                            input=("text",),
+                            context_window=128000,
+                            max_tokens=4096,
+                        ),
+                    ),
+                    services=create_services(
+                        settings_manager=SettingsManager(ControlConfig())
+                    ),
+                    package_product_runtime_factory=ProductFactory(),
+                    composition_set="coding-minimal",
+                    resource_catalog_source_policy=(
+                        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                    ),
+                )
+                assert len(created) == 1
+                runtime = created[0]
+                activation = runtime.lifecycle
+                assert session._package_controller.get_package_materializer() is None
+                outcome = asyncio.run(
+                    session.execute_package_lifecycle(
+                        "install",
+                        str(source),
+                        entrypoint="session",
+                        operation_id="operation:product-runtime",
+                        scope="project",
+                    )
+                )
+                assert outcome["lifecycle"] == "installed"
+                assert outcome["path"] == ""
+                refused_by_session = asyncio.run(
+                    session.execute_package_lifecycle(
+                        "install",
+                        "https://packages.example.test/unknown.whl",
+                        entrypoint="rpc",
+                        operation_id="operation:session-refused",
+                        scope="project",
+                    )
+                )
+                assert refused_by_session["lifecycle"] == "failed"
+                assert refused_by_session["path"] == ""
+                assert desired.snapshot().inventory_revision == 1
+            else:
+                runtime = compose()
+                activation = runtime.lifecycle
+                runtime.activate()
+                direct_outcome = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:product-runtime",
+                        action="install",
+                        source=str(source),
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+                assert direct_outcome.handled
+                assert direct_outcome.record is not None
+                assert direct_outcome.record.lifecycle == "installed"
             assert desired.snapshot().inventory_revision == 1
             committed_set = PackageCommittedSetJournal(
                 state_root / "committed-sets.jsonl"
@@ -4334,12 +4537,145 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert len(committed_set.committed_set.dependency_refs) == int(
                 with_dependency
             )
+            inventory = runtime.inventory
+            targets = inventory.list_update_targets(scope="project")
+            assert tuple(target.source for target in targets) == (str(source),)
+            update_manifest = inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            )
+            assert update_manifest.target_refs == (targets[0].target_ref,)
+            assert inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            ) == update_manifest
+            checks = asyncio.run(
+                inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:product-check-updates",
+                        entrypoint="rpc",
+                        scope="project",
+                    )
+                )
+            )
+            assert len(checks) == 1
+            assert checks[0].target_ref == targets[0].target_ref
+            assert not checks[0].update_available
+            assert checks[0].failure_code is None
+            def forbidden_legacy(*_args: object, **_kwargs: object) -> None:
+                raise AssertionError("Plugin operation reached a legacy Package effect")
+
+            operations = PackageOperationsRuntime(
+                get_materializer=forbidden_legacy,
+                add_source=forbidden_legacy,
+                remove_source=forbidden_legacy,
+                refresh_resources=forbidden_legacy,
+                product_lifecycle=runtime.lifecycle,
+                product_inventory=runtime.inventory,
+                product_lifecycle_mode=runtime.mode,
+            )
+            refused_operation = asyncio.run(
+                operations.install(
+                    "https://packages.example.test/unknown.whl",
+                    scope="project",
+                    entrypoint="rpc",
+                    operation_id="operation:product-operations-refused",
+                )
+            )
+            assert refused_operation.lifecycle == "failed"
+            assert desired.snapshot().inventory_revision == 1
+            restarted_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=policy,
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "update-manifests.jsonl",
+            )
+            assert restarted_inventory.bind_update_targets(
+                operation_id="operation:product-update-all",
+                scope="project",
+                targets=targets,
+            ) == update_manifest
+            unknown_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=replace(policy, bindings=()),
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "unknown-update-manifests.jsonl",
+            )
+            unknown_checks = asyncio.run(
+                unknown_inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:unknown-check",
+                        entrypoint="session",
+                        scope="project",
+                    )
+                )
+            )
+            assert unknown_checks[0].failure_code == "package_update_source_unavailable"
+            changed_root_policy = replace(
+                policy,
+                bindings=(replace(policy.bindings[0], artifact_digest="f" * 64),),
+            )
+            changed_root_inventory = PackageProductLocalWheelInventory(
+                binding_id=activation.binding_id,
+                policy=changed_root_policy,
+                desired_state=desired,
+                committed_sets=PackageCommittedSetJournal(
+                    state_root / "committed-sets.jsonl"
+                ),
+                manifest_path=state_root / "changed-update-manifests.jsonl",
+            )
+            changed_root_checks = asyncio.run(
+                changed_root_inventory.check_updates(
+                    request=PackageProductUpdateCheckRequestV1(
+                        operation_id="operation:changed-root-check",
+                        entrypoint="rpc",
+                        scope="project",
+                    )
+                )
+            )
+            assert changed_root_checks[0].update_available
+            if with_dependency:
+                changed_dependency_inventory = PackageProductLocalWheelInventory(
+                    binding_id=activation.binding_id,
+                    policy=replace(
+                        policy,
+                        dependencies=(
+                            replace(
+                                policy.dependencies[0], artifact_digest="f" * 64
+                            ),
+                        ),
+                    ),
+                    desired_state=desired,
+                    committed_sets=PackageCommittedSetJournal(
+                        state_root / "committed-sets.jsonl"
+                    ),
+                    manifest_path=state_root / "changed-dependency-manifests.jsonl",
+                )
+                changed_dependency_checks = asyncio.run(
+                    changed_dependency_inventory.check_updates(
+                        request=PackageProductUpdateCheckRequestV1(
+                            operation_id="operation:changed-dependency-check",
+                            entrypoint="rpc",
+                            scope="project",
+                        )
+                    )
+                )
+                assert changed_dependency_checks[0].update_available
             lifecycle_journal = PackageLifecycleJournal(
                 state_root / "lifecycle.jsonl"
             )
             before_restart = lifecycle_journal.records()
             restarted = compose()
             restarted.activate()
+            assert restarted.binding_id == runtime.binding_id
             assert lifecycle_journal.records() == before_restart
             assert desired.snapshot().inventory_revision == 1
             foreign_desired = PluginDesiredStateLedger(
@@ -4368,6 +4704,15 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
+            if entrypoint == "session":
+                with pytest.raises(ValueError, match="Store identity changed"):
+                    factory.create(
+                        PackageProductRuntimeRequestV1(
+                            product_id="coding",
+                            session_id=session_manager.get_header().conversation_id,
+                            cwd=str(workspace),
+                        )
+                    )
             with pytest.raises(PackageProductActivationError) as changed_root:
                 activation.route(
                     PackageProductLifecycleIntentV1(
@@ -4382,6 +4727,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert lifecycle_journal.records() == before_swap
             assert desired.snapshot().inventory_revision == 1
         finally:
+            if session is not None:
+                asyncio.run(session.dispose())
             handle.release()
     finally:
         file_io.cleanup()

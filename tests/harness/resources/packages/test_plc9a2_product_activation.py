@@ -1157,6 +1157,42 @@ def test_operations_preserves_only_explicit_non_plugin_behavior(tmp_path: Path) 
     assert materializer.materialize_calls == ["https://example.test/legacy.git"]
 
 
+@pytest.mark.parametrize("action", ("remove", "uninstall", "uninstall_sync"))
+def test_materializer_free_product_refuses_non_plugin_before_legacy_effects(
+    tmp_path: Path,
+    action: str,
+) -> None:
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    def forbidden_effect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("non-Plugin route reached a legacy effect")
+
+    operations = PackageOperationsRuntime(
+        get_materializer=lambda: None,
+        add_source=forbidden_effect,  # type: ignore[arg-type]
+        remove_source=forbidden_effect,  # type: ignore[arg-type]
+        refresh_resources=forbidden_effect,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    )
+    source = "https://example.test/non-plugin.whl"
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        if action == "remove":
+            operations.remove(source, operation_id=f"operation:{action}")
+        elif action == "uninstall":
+            asyncio.run(
+                operations.uninstall(
+                    source, scope="project", operation_id=f"operation:{action}"
+                )
+            )
+        else:
+            operations.uninstall_sync(
+                source, scope="project", operation_id=f"operation:{action}"
+            )
+
+
 @pytest.mark.parametrize("transport", ("cli", "rpc"))
 @pytest.mark.parametrize("action", ("install", "uninstall"))
 def test_non_plugin_global_scope_reaches_global_legacy_settings(
@@ -1820,7 +1856,10 @@ def test_cli_preserves_scope_for_every_typed_single_source_action() -> None:
     ]
 
 
-def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) -> None:
+@pytest.mark.parametrize("without_materializer", (False, True))
+def test_startup_routes_missing_plugin_before_sync_materializer(
+    tmp_path: Path, without_materializer: bool
+) -> None:
     source = "https://example.test/acme.whl"
     activation, transaction = _activation(tmp_path)
     activation.activate()
@@ -1837,14 +1876,14 @@ def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) 
 
     class Materializer:
         def get_record(self, _source: str) -> None:
-            return None
+            raise AssertionError("Product startup consulted a legacy record")
 
         def materialize_remote_source_sync(self, value: str) -> object:
             raise AssertionError(f"legacy startup materializer used for {value}")
 
     result = PackageSourceResolver(
         settings_manager=Settings(),
-        materializer=Materializer(),  # type: ignore[arg-type]
+        materializer=(None if without_materializer else Materializer()),  # type: ignore[arg-type]
         session_id="session:test",
         product_lifecycle=activation,
         product_lifecycle_mode="enforced",
