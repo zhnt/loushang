@@ -5348,7 +5348,7 @@ while True:
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
                 assert foreign_scope_plan.value.code == "coding_base_product_selection_mismatch"
-                from loushang.harness.resources.packages.product_local_wheel_runtime import (
+                from loushang.harness.package_product.product_local_wheel_runtime import (
                     _LocalWheelSelectedManifestReader,
                 )
 

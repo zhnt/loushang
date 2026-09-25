@@ -80,7 +80,7 @@ from loushang.harness.session.product_composition_assembly import (
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
 if TYPE_CHECKING:
-    from loushang.harness.resources.packages.product_local_wheel_runtime import (
+    from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
 
@@ -717,7 +717,7 @@ def prepare_coding_base_product_plan(
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     """Build an inert Coding plan from one Product-selected data-only root."""
 
-    from loushang.harness.resources.packages.product_local_wheel_runtime import (
+    from loushang.harness.package_product.product_local_wheel_runtime import (
         PackageProductSelectedPluginManifestV1,
     )
 

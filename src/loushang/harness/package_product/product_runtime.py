@@ -15,13 +15,13 @@ from loushang.harness.resources.packages.product_contract import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
     from loushang.harness.plugin_management.package_product import (
         PackageProductSelectedRootSnapshotV1,
     )
     from loushang.harness.plugin_management.records import PluginInstallationKeyV1
-    from loushang.harness.resources.packages.product_local_wheel_runtime import (
-        PackageProductSelectedPluginManifestV1,
-    )
 
 PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION = 1
 PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION = 1
