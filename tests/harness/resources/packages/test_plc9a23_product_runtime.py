@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -66,12 +67,14 @@ def _binding(
     inventory: _Inventory | None = None,
     *,
     product_id: str = "product:test",
+    on_dispose: Callable[[], None] | None = None,
 ) -> PackageProductRuntimeBindingV1:
     return PackageProductRuntimeBindingV1(
         product_id=product_id,
         lifecycle=cast(Any, lifecycle or _Lifecycle()),
         inventory=cast(Any, inventory or _Inventory()),
         mode="enforced",
+        on_dispose=on_dispose,
     )
 
 
@@ -94,6 +97,20 @@ def test_package_product_runtime_activates_one_aggregate_before_use(
     assert lifecycle.activations == 1
     assert lifecycle.active
     assert result.binding_id == "owner:one"
+
+
+def test_package_product_runtime_releases_owner_once_after_use(tmp_path: Path) -> None:
+    releases: list[str] = []
+    binding = _binding(on_dispose=lambda: releases.append("released"))
+    request = PackageProductRuntimeRequestV1(
+        product_id="product:test", session_id="session:test", cwd=str(tmp_path)
+    )
+
+    assert activate_package_product_runtime(_Factory(binding), request) is binding
+    assert releases == []
+    binding.dispose_runtime()
+    binding.dispose_runtime()
+    assert releases == ["released"]
 
 
 def test_package_product_runtime_rejects_split_owner_binding() -> None:
@@ -170,6 +187,47 @@ def test_package_product_runtime_activation_fails_closed_without_detail(
 
     assert raised.value.code == code
     assert "secret" not in str(raised.value)
+
+
+def test_package_product_runtime_activation_failure_releases_owner(
+    tmp_path: Path,
+) -> None:
+    releases: list[str] = []
+    binding = _binding(
+        _Lifecycle(fail=RuntimeError("cannot activate")),
+        on_dispose=lambda: releases.append("released"),
+    )
+    with pytest.raises(PackageProductRuntimeActivationError):
+        activate_package_product_runtime(
+            _Factory(binding),
+            PackageProductRuntimeRequestV1(
+                product_id="product:test", session_id="session:test", cwd=str(tmp_path)
+            ),
+        )
+    assert releases == ["released"]
+
+
+def test_package_product_runtime_factory_failure_releases_unbound_owner(
+    tmp_path: Path,
+) -> None:
+    releases: list[str] = []
+
+    class RejectingFactory:
+        def create(self, _request: PackageProductRuntimeRequestV1) -> None:
+            raise ValueError("wrong Session")
+
+        def dispose_unbound_runtime(self) -> None:
+            releases.append("released")
+
+    with pytest.raises(PackageProductRuntimeActivationError) as rejected:
+        activate_package_product_runtime(
+            cast(Any, RejectingFactory()),
+            PackageProductRuntimeRequestV1(
+                product_id="product:test", session_id="session:test", cwd=str(tmp_path)
+            ),
+        )
+    assert rejected.value.code == "package_product_runtime_factory_failed"
+    assert releases == ["released"]
 
 
 def test_package_product_runtime_request_requires_absolute_cwd() -> None:

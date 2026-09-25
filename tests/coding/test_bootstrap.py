@@ -7,6 +7,7 @@ import sys
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 
 import pytest
@@ -321,7 +322,7 @@ def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
             session_dir=tmp_path / "sessions", cwd=str(project), persist=False
         )
     )
-    calls = {"legacy_assembly": 0, "factory": 0}
+    calls = {"legacy_assembly": 0, "factory": 0, "released": 0}
 
     def legacy_assembly(*_args: object, **_kwargs: object) -> None:
         calls["legacy_assembly"] += 1
@@ -331,6 +332,9 @@ def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
         def create(self, _request: object) -> None:
             calls["factory"] += 1
             raise AssertionError("Product factory was reached before exclusion")
+
+        def dispose_unbound_runtime(self) -> None:
+            calls["released"] += 1
 
     monkeypatch.setattr(
         coding_bootstrap,
@@ -344,7 +348,49 @@ def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
             package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
             composition_set=composition_set_id,
         )
-    assert calls == {"legacy_assembly": 0, "factory": 0}
+    assert calls == {"legacy_assembly": 0, "factory": 0, "released": 1}
+
+
+@pytest.mark.parametrize("entrypoint", ("result", "from_services"))
+def test_package_product_runtime_releases_unbound_lease_on_entry_preflight_error(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    from typing import Any, cast
+
+    import loushang.coding.bootstrap as coding_bootstrap
+
+    releases: list[str] = []
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory was reached before preflight")
+
+        def dispose_unbound_runtime(self) -> None:
+            releases.append("released")
+
+    def fail_preflight() -> None:
+        raise RuntimeError("preflight failed")
+
+    if entrypoint == "result":
+        monkeypatch.setattr(coding_bootstrap, "create_services", fail_preflight)
+        with pytest.raises(RuntimeError, match="preflight failed"):
+            coding_bootstrap.create_agent_session_result(
+                session_manager=cast(Any, object()),
+                package_product_runtime_factory=cast(Any, Factory()),
+            )
+    else:
+        agent_services = SimpleNamespace(
+            extension_runner=SimpleNamespace(get_flag_values=fail_preflight),
+            services=object(),
+        )
+        with pytest.raises(RuntimeError, match="preflight failed"):
+            coding_bootstrap.create_agent_session_from_services(
+                agent_services=cast(Any, agent_services),
+                session_manager=cast(Any, object()),
+                package_product_runtime_factory=cast(Any, Factory()),
+            )
+    assert releases == ["released"]
 
 
 def test_package_product_runtime_rejects_supplied_peer_materializer(

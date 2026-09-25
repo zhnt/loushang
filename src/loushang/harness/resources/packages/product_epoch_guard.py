@@ -13,6 +13,12 @@ from loushang.harness.journal import journal_file_lock
 from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
+    PackageEpochFenceReceiptV1,
+    PackageEpochRuntimeAdmissionRequestV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseHandle,
+    PackageEpochRuntimeLeaseRegistry,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
     PackagePosixPreFenceRegistrationError,
@@ -32,6 +38,70 @@ class PackageProductLegacyPreFenceAdmissionError(RuntimeError):
 
 class PackageProductLegacyRuntimeRegistration(Protocol):
     def release(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductRuntimeLease:
+    """Keep one exact Product runtime admission live until Session disposal."""
+
+    registry: PackageEpochRuntimeLeaseRegistry
+    admission_request: PackageEpochRuntimeAdmissionRequestV1
+    _handle: PackageEpochRuntimeLeaseHandle = field(repr=False, compare=False)
+
+    def release(self) -> None:
+        self._handle.release()
+
+    def __enter__(self) -> PackageProductRuntimeLease:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.release()
+
+
+def register_package_product_runtime_lease(
+    registry: PackageEpochRuntimeLeaseRegistry,
+    *,
+    fence: PackageEpochFenceReceiptV1,
+    runtime_id: str,
+    runtime_version: str,
+    runtime_protocol_epoch: int,
+) -> PackageProductRuntimeLease:
+    """Register one B runtime and bind its admission to the selected fence."""
+
+    if not isinstance(registry, PackageEpochRuntimeLeaseRegistry):
+        raise TypeError("Package Product runtime lease registry is required")
+    if not isinstance(fence, PackageEpochFenceReceiptV1):
+        raise TypeError("Package Product current fence is required")
+    if registry.store_id != fence.store_id or registry.fences.current(registry.store_id) != fence:
+        raise ValueError("Package Product runtime fence changed")
+    handle = registry.register(
+        runtime_id=runtime_id,
+        runtime_protocol_epoch=runtime_protocol_epoch,
+    )
+    try:
+        if (
+            registry.fences.current(registry.store_id) != fence
+            or handle.lease.runtime_epoch != fence.epoch
+            or handle.lease.store_root_identity != fence.fenced_root_identity
+        ):
+            raise ValueError("Package Product runtime fence changed")
+        admission = PackageEpochRuntimeAdmissionRequestV1.create(
+            fence=fence,
+            runtime_id=handle.lease.runtime_id,
+            runtime_version=runtime_version,
+            runtime_protocol_epoch=runtime_protocol_epoch,
+            runtime_epoch=handle.lease.runtime_epoch,
+            store_root_identity=handle.lease.store_root_identity,
+            lease_id=handle.lease.lease_id,
+        )
+        return PackageProductRuntimeLease(
+            registry=registry,
+            admission_request=admission,
+            _handle=handle,
+        )
+    except BaseException:
+        handle.release()
+        raise
 
 
 def register_package_product_legacy_runtime(
@@ -111,5 +181,7 @@ __all__ = [
     "PackageProductFileEpochTransactionGuard",
     "PackageProductLegacyPreFenceAdmissionError",
     "PackageProductLegacyRuntimeRegistration",
+    "PackageProductRuntimeLease",
+    "register_package_product_runtime_lease",
     "register_package_product_legacy_runtime",
 ]
