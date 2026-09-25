@@ -16,6 +16,12 @@
   result/debt journal.
   Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
   tracked in the lifecycle plan.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D2
+  reservation and PLC9D3a-e fences, target resolution, and result/debt journal
+  implemented; executable Product GC absent; PLC9 remains open.
+- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
+  only; Current remains the default; no general third-party Worker
+  authoring/admission surface is published.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
