@@ -88,9 +88,12 @@ fixture before it is enabled.
 `compose_package_product_lifecycle` is the sole composition helper. It binds
 one `PackageLifecycleOwner`, one injected PLC9B transaction port, one
 Product-owned ingress factory, one epoch admission owner/request, and an
-ordered tuple of recovery ports. Construction is inert. `activate()` runs all
-recoveries and admits the exact runtime epoch before publishing the internal
-active receipt; a failed or stale recovery leaves the route unavailable.
+ordered tuple of recovery ports. Construction is inert. `activate()` holds the
+Product's shared epoch guard across a preflight runtime admission, all ordinary
+recoveries, a second admission check, and admitted recoveries. The two
+admission receipts must agree before it publishes the internal active receipt;
+a failed or stale admission or recovery leaves the route unavailable without
+running ordinary recovery under an unadmitted epoch.
 
 `PluginManagementPackageDesiredStateAdapter` translates the post-publication
 PLC9B desired handoff into the sole management command owner. V1 covers the

@@ -144,7 +144,7 @@ def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
         PRODUCT_CONTRACT, "PackageProductLifecycleRecordV1.to_dict"
     )
     assert "for recovery in self._recoveries" in source
-    assert source.count("self._admit()") == 3
+    assert source.count("self._admit()") == 4
 
 
 def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
@@ -152,6 +152,10 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     inventory = _source(PRODUCT_INVENTORY)
     records = _source(KERNEL_RECORDS)
 
+    activate = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation.activate",
+    )
     route = _function_source(ACTIVATION, "PackageProductLifecycleActivation.route")
     query = _function_source(
         ACTIVATION,
@@ -160,6 +164,13 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     guarded = _function_source(
         ACTIVATION,
         "PackageProductLifecycleActivation._route_guarded",
+    )
+    assert (
+        activate.index("with self._transaction_guard.shared_runtime(")
+        < activate.index("preflight = self._admit()")
+        < activate.index("for recovery in self._recoveries")
+        < activate.index("receipt = self._admit()")
+        < activate.index("self._receipt = receipt")
     )
     assert (
         route.index("with guard:")
