@@ -361,6 +361,7 @@ class PackageOperationsRuntime:
         scope: str,
         entrypoint: PackageProductEntrypoint = "operations",
         operation_id: str | None = None,
+        legacy_refresh_available: Callable[[], bool] | None = None,
     ) -> PackageOperationRecord:
         """Preserve the legacy synchronous contract behind an explicit gate."""
 
@@ -373,6 +374,10 @@ class PackageOperationsRuntime:
         )
         if routed is not None:
             return routed
+        if legacy_refresh_available is not None and not legacy_refresh_available():
+            raise PackageMutationRequiresAsyncError(
+                "Catalog-backed package uninstall requires uninstall_package_async()"
+            )
 
         outcome = self._refresh_settings_mutation_sync(
             lambda: self.remove_source(source, scope)

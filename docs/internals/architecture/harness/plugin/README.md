@@ -364,8 +364,21 @@ Neither may silently override a narrower implemented owner contract.
   old processes before snapshot and refuse new old registrations after fence.
   The cutover fixture now uses Coding's existing legacy Package directory as
   the POSIX legacy root, with a sibling epoch namespace, and snapshots its
-  actual lifecycle state root. Other pre-B domains still use fixture roots;
-  Product mapping of their real Coding state remains required. On Linux, the
+  actual lifecycle state root. Its Package-root mapping now partitions deployed
+  `installed` and `plugin-revisions` Store data from `package-lock.json` binding
+  and lock history, and refuses any unaccounted top-level member. The combined
+  JSON file is explicitly copied into both history domains. The real Coding
+  lifecycle root is now partitioned into Desired, enablement, and Instance
+  domains, including known journal locks and old lease directories. Both
+  mappings reject unknown top-level members. The native fixture snapshots the
+  real pre-fence control root as `fence_record`; the new B fence appears only
+  after that snapshot. `legacy_root_pointer` and `source_configuration` still
+  use fixture roots; Product mapping of their real Coding state remains
+  required. The snapshot owner rejects overlapping whole-tree roots and accepts
+  colocated roots only with exact top-level member coverage, including declared
+  shared members. Coding still needs a complete mapping for these remaining
+  domains before a real default cutover.
+  On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
   materializer construction follows that admission. Coding reaches the internal
@@ -374,8 +387,18 @@ Neither may silently override a narrower implemented owner contract.
   materializer construction;
   a bound compatibility writer retains that registration after an empty bind.
   Continuity without a settings owner or Plugin Source remains a non-Plugin
-  path. Generic Session Package materialization and remaining CLI/RPC/supervisor
-  launch coverage still need a one-time switch.
+  path. The explicit minimal Product-bound Session now proves its public
+  `install_package` call commits through the transaction, while its public
+  `materialize_package`, `update_package`, `remove_package`, and
+  `uninstall_package_async` calls refuse Plugin-bound targets without a legacy
+  materializer. The real CLI/RPC transport fixture also proves durable Product
+  refusals for these four commands: materialize/update reach the unavailable
+  transaction route, while remove/uninstall stop at indeterminate target
+  classification. Synchronous Session `uninstall_package` now routes an enforced
+  Product binding before consulting the legacy synchronous-refresh gate; its
+  real-Store refusal is durable even when catalog refresh is async-only.
+  Default Session composition, further transport coverage, and supervisor
+  launch still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

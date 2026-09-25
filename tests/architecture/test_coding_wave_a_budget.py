@@ -109,6 +109,9 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # Continuity +48/-3, new epoch layout +96, management CLI +38/-21.
     # All five paths stay in core; retain the prior one-line margin.
     plc9b_startup_ingress_allowance = (142 - 67) + (14 - 5) + (48 - 3) + 96 + (38 - 21)
+    # PLC9B pre-B snapshot domains extend the exact epoch layout +206/-1;
+    # the path remains in core and retains the one-line margin.
+    plc9b_snapshot_domains_allowance = 206 - 1
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
@@ -116,6 +119,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         + canonical_legacy_enrollment_allowance + plc9d_writer_fence_allowance
         + plc9b_session_inventory_allowance
         + plc9b_startup_ingress_allowance
+        + plc9b_snapshot_domains_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
