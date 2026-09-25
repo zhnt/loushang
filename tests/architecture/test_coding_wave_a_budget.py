@@ -102,11 +102,15 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # PLC9D's dark writer seal stays in the existing Coding lifecycle owner:
     # _plugin_lifecycle.py +43/-2; no new Coding path is exempt.
     plc9d_writer_fence_allowance = 43 - 2
+    # PLC9B's Session-bound Product factory uses the existing Coding bootstrap:
+    # bootstrap.py +53/-6; no new Coding path is exempt.
+    plc9b_session_inventory_allowance = 53 - 6
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
         + capability_projection_allowance + lmux_default_owned_allowance
         + canonical_legacy_enrollment_allowance + plc9d_writer_fence_allowance
+        + plc9b_session_inventory_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
