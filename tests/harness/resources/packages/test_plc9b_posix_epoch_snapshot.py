@@ -334,7 +334,9 @@ def test_snapshot_lists_only_authenticated_immediate_domain_members(
         "installed",
         "state.json",
     )
-    assert reopened.list_domain_members(receipt.receipt_id, domain="binding_history") == ()
+    assert (
+        reopened.list_domain_members(receipt.receipt_id, domain="binding_history") == ()
+    )
     with pytest.raises(ValueError, match="domain"):
         reopened.list_domain_members(receipt.receipt_id, domain="unknown")
 

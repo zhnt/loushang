@@ -25,6 +25,12 @@
   seams remain without production owner bindings. Default
   management/RPC selection, Windows execution evidence, shared dependency
   GC, and production private-data/backup owner composition remain open.
+  Coding legacy-workspace migration now has a foundation for classifying
+  pre-B inputs, reading authenticated first-B snapshot evidence, reacquiring
+  an exact local Source, and producing an inert adoption review. It has no
+  operator approval or Product installation entrypoint. The offline cutover
+  command still refuses workspaces requiring legacy-state adoption or settings
+  migration.
   The remaining gaps are summarized by `architecture.md` and tracked in the
   lifecycle plan.
 - Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m

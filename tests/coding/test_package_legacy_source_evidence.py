@@ -72,9 +72,12 @@ def test_first_b_source_settings_survive_mutable_settings_change(
         epochs_root_name=epoch.epochs_root_name,
     )
     try:
-        assert list_coding_first_b_snapshot_domain_members(
-            lifecycle, owner, domain="binding_history"
-        ) == ()
+        assert (
+            list_coding_first_b_snapshot_domain_members(
+                lifecycle, owner, domain="binding_history"
+            )
+            == ()
+        )
         assert list_coding_first_b_snapshot_domain_members(
             lifecycle, owner, domain="store_bytes"
         ) == ("installed",)

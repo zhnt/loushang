@@ -90,6 +90,12 @@
   projects the pre-B workspace-snapshot status. Production private-data and
   backup owner bindings, default management/RPC selection, Windows GC, and
   shared-dependency GC remain open.
+- Coding legacy-workspace migration foundation classifies pre-B inputs,
+  verifies first-B snapshot members and old Installation intent, reacquires
+  exact local Source bytes, and prepares an inert adoption review. It does not
+  authorize adoption or install a legacy Plugin through Product. The offline
+  cutover command remains limited to fresh workspaces; operator approval,
+  Product installation, and settings migration remain separate delivery work.
 - Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
   internal/offline POSIX root-GC execution, durable private-data confirmation
   evidence, and pre-B workspace-snapshot status projection implemented; PLC9
