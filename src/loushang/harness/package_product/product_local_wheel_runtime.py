@@ -18,6 +18,10 @@ from typing import cast
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+    PackageProductRuntimeRequestV1,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -138,10 +142,6 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
-)
-from loushang.harness.resources.packages.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeRequestV1,
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,

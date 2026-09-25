@@ -4660,7 +4660,7 @@ while True:
 
             committed_operation_id = "operation:product-runtime"
             if entrypoint in {"session", "cli_transport", "rpc_transport"}:
-                from loushang.harness.resources.packages.product_runtime import (
+                from loushang.harness.package_product.product_runtime import (
                     PackageProductRuntimeRequestV1,
                 )
 
@@ -5346,7 +5346,7 @@ while True:
             if session is not None:
                 asyncio.run(session.dispose())
                 if entrypoint == "session" and not with_dependency:
-                    from loushang.harness.resources.packages.product_runtime import (
+                    from loushang.harness.package_product.product_runtime import (
                         PackageProductRuntimeActivationError,
                     )
 

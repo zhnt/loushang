@@ -19,6 +19,12 @@ from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeBindingV1,
+    PackageProductRuntimeFactoryPort,
+    PackageProductRuntimeRequestV1,
+    activate_package_product_runtime,
+)
 from loushang.harness.resources.activation import (
     ResourceActivation,
     SkillActivationRuntime,
@@ -28,12 +34,6 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
-)
-from loushang.harness.resources.packages.product_runtime import (
-    PackageProductRuntimeBindingV1,
-    PackageProductRuntimeFactoryPort,
-    PackageProductRuntimeRequestV1,
-    activate_package_product_runtime,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle

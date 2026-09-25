@@ -237,7 +237,7 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.product_plan import CODING_PRODUCT_ID
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.resources.packages.product_runtime import (
+    from loushang.harness.package_product.product_runtime import (
         PackageProductRuntimeBindingV1,
     )
 
