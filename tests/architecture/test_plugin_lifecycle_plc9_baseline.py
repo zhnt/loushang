@@ -81,7 +81,6 @@ LEGACY_DISABLED_PLUGIN_FILES = {
 MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/_base_plugin.py"),
     Path("src/loushang/coding/_capability_plugin_composition.py"),
-    Path("src/loushang/coding/package_product_capabilities.py"),
     Path("src/loushang/coding/package_product_revisions.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
     Path("src/loushang/coding/plugin_management_cli.py"),
@@ -202,14 +201,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
 )
 MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
     {
-        (
-            Path("src/loushang/coding/package_product_capabilities.py"),
-            "_validate_builtin_selection",
-        ): 1,
-        (
-            Path("src/loushang/coding/package_product_capabilities.py"),
-            "open_coding_product_capability_resolution",
-        ): 2,
         (
             Path("src/loushang/coding/package_product_revisions.py"),
             "_validate_builtin_selection",
