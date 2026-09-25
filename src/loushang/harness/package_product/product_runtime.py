@@ -64,9 +64,21 @@ class PackageProductSelectedRootReadPort(Protocol):
 
 
 class PackageProductSelectedManifestReadPort(Protocol):
+    def assert_selected_manifest_current(
+        self, selected: PackageProductSelectedPluginManifestV1
+    ) -> None: ...
+
     def capture_selected_manifest(
         self,
         installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1: ...
+
+    def capture_selected_manifest_for_plugin(
+        self,
+        plugin_id: str,
         *,
         max_files: int,
         max_total_bytes: int,
@@ -156,6 +168,22 @@ class PackageProductRuntimeBindingV1:
             getattr(self._selected_manifest_reader, "capture_selected_manifest", None)
         ):
             raise TypeError("Package Product selected-manifest reader is invalid")
+        if self._selected_manifest_reader is not None and not callable(
+            getattr(
+                self._selected_manifest_reader,
+                "capture_selected_manifest_for_plugin",
+                None,
+            )
+        ):
+            raise TypeError("Package Product Plugin selection reader is invalid")
+        if self._selected_manifest_reader is not None and not callable(
+            getattr(
+                self._selected_manifest_reader,
+                "assert_selected_manifest_current",
+                None,
+            )
+        ):
+            raise TypeError("Package Product selection recheck is invalid")
 
     @property
     def binding_id(self) -> str:
@@ -260,6 +288,50 @@ class PackageProductRuntimeBindingV1:
                 max_files=max_files,
                 max_total_bytes=max_total_bytes,
             )
+
+    def capture_selected_plugin_manifest_for(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        """Select an installed Plugin through the active Product policy."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_manifest_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-manifest reader is unavailable",
+                    code="package_product_manifest_reader_unavailable",
+                )
+            return self._selected_manifest_reader.capture_selected_manifest_for_plugin(
+                plugin_id,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
+
+    def assert_selected_plugin_manifest_current(
+        self, selected: PackageProductSelectedPluginManifestV1
+    ) -> None:
+        """Fail closed when a Session's pinned Product selection has changed."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_manifest_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-manifest reader is unavailable",
+                    code="package_product_manifest_reader_unavailable",
+                )
+            self._selected_manifest_reader.assert_selected_manifest_current(selected)
 
     def dispose_runtime(self) -> None:
         """Release the Product-owned runtime authority at most once."""

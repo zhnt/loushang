@@ -356,19 +356,22 @@ Neither may silently override a narrower implemented owner contract.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
   materializer. The same native fixture now also commits through shared CLI
-  and RPC install transports with Product-bound Session evidence. The checked-in
-  `coding.base` files pass the PLC9B Wheel verifier when assembled into a test
-  Wheel. A real Coding Session now also installs that checked-in package through
+  and RPC install transports with Product-bound Session evidence. Coding now
+  assembles the installed `coding.base` data files into a deterministic Wheel,
+  publishes it once in a private POSIX Source root, and pins its digest and
+  trust class in a Product local-Wheel policy. The native fixture consumes that
+  artifact through the PLC9B Wheel verifier and real Store. A real Coding Session
+  also installs that checked-in package through
   the Product transaction and reads its manifest, declaration, Prompt, and
-  Skill members from the selected Store root after enablement; production
-  artifact preparation and default selection remain unimplemented. The
+  Skill members from the selected Store root after enablement; default Product
+  owner construction and selection remain unimplemented. The
   POSIX root Store now exposes a bounded, exact-member read from a live,
   untombstoned settlement after verifying the full tree and native identities.
   The POSIX Product factory binds that read to its current enabled desired
   selection, exact Product crosswalk and committed set under the GC reference
   gate; the reader returns only verified bytes within the bound Product scope.
-  Plugin runtime package reconstruction, Session contribution admission, and
-  the `coding.base` default cutover remain open. The
+  The `coding.base` default cutover and migration of the remaining Plugin
+  inputs remain open. The
   concrete POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its
@@ -381,9 +384,16 @@ Neither may silently override a narrower implemented owner contract.
   it, and successful Session disposal releases it after cleanup completes. A
   failed disposal retains the lease for safe retry or operator repair. The
   POSIX factory issues only one binding per lease, and Coding bootstrap
-  releases an unbound lease if startup refuses before activation. The Product
-  caller owns failures while constructing the factory itself. A
-  POSIX snapshot owner now publishes a durable, restore-compatible bundle from
+  releases an unbound lease if startup refuses before activation. A Product-facing
+  Session owner accepts the already fenced authorities, registers a distinct
+  runtime lease, and returns a one-shot factory through a thin Coding selector;
+  it refuses a foreign workspace before registration and releases the lease if
+  factory construction fails. The native fixture also starts a Hosted Session
+  on the committed `coding.base` Store root through this selector; Product
+  Prompt and Skill are visible, the legacy materializer is not reached, and
+  closing releases the lease. Installed commands still do not construct this
+  owner by default. A POSIX snapshot owner now publishes a durable,
+  restore-compatible bundle from
   nine explicitly configured pre-B domain roots; an independent reader still
   verifies the evidence after the old source roots disappear. The integration
   fixture supplies those roots and now uses a concrete Linux pre-fence owner:
@@ -407,8 +417,31 @@ Neither may silently override a narrower implemented owner contract.
   explicit call that holds the Source locks through this Product cutover; the
   default bootstrap has not selected it. The cutover snapshots the
   real pre-fence control root as `fence_record`; the new B fence appears only
-  after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
-  empty source domain and records the verified old Store identity with the
+  after that snapshot. The current POSIX Product fence can now be reopened from
+  the durable journal and exact selected-root identity without reading the old
+  Package or lifecycle Source roots; missing fences and replaced B roots refuse.
+  A Product-facing runtime owner now retains the private control-root descriptor
+  and rooted lease registry across Sessions, and refuses shutdown while a live
+  runtime lease remains. The Session selector issues leases through that owner,
+  which rechecks the visible control root and B fence at selection and factory
+  activation; a replaced control path cannot reuse the pinned registry. The
+  real Store fixture uses this owner instead of assembling the registry itself.
+  Coding now opens B Product desired, management, GC gate, and binding journals
+  in a private control-root child only after the fence. The native fixture
+  refuses a foreign workspace or non-private child and verifies that Product
+  work leaves the complete pre-B Package and lifecycle trees unchanged.
+  The same pinned owner can create a separate private Product Source child
+  after the fence; the native fixture rejects an unsafe existing child and
+  publishes the installed `coding.base` Wheel there under a restrictive umask.
+  A Coding Product owner constructor now joins that Source, the B-only state
+  owners, the selected Store namespace, the canonical workspace scope, and the
+  host's resolution environment. The real Hosted Session fixture uses this
+  constructor to reopen the selected `coding.base` files from the Store;
+  foreign workspaces and mismatched B journals refuse before composition. The
+  constructor also reopens with both pre-B roots temporarily absent.
+  This is restart admission evidence, not default runtime selection. For
+  `legacy_root_pointer`, the snapshot owner requires an empty source domain and
+  records the verified old Store identity with the
   Product-declared root name. The native fixture now holds real Coding global
   and project settings transaction locks through cutover, verifies their file
   bytes against the loaded settings layers, and snapshots a private Source-only
@@ -443,6 +476,9 @@ Neither may silently override a narrower implemented owner contract.
   real-Store refusal is durable even when catalog refresh is async-only.
   Default Session composition, further transport coverage, and supervisor
   launch still need a one-time switch.
+  Trusted Hosted, local, and managed command constructors can now pass a fresh
+  Product runtime factory for each Session into the same bootstrap gate. The
+  installed CLI and managed child do not yet supply that factory by default.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   An enforced Product route now refuses an unhandled non-Plugin outcome even

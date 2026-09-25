@@ -13,6 +13,9 @@ from loushang.coding._base_plugin import (
     build_coding_base_plugin_owners,
 )
 from loushang.coding._base_plugin_owners import CodingBaseToolRegistrationSlot
+from loushang.coding._base_product_composition import (
+    CodingBaseProductSessionAssembly,
+)
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
@@ -77,6 +80,13 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeActivationError,
+    PackageProductRuntimeBindingV1,
+)
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.product_contract import (
@@ -218,6 +228,12 @@ class AgentSession(AgentProductSession):
         coding_base_plugin_session_assembly: (
             CodingBasePluginSessionAssembly | None
         ) = None,
+        coding_base_product_session_assembly: (
+            CodingBaseProductSessionAssembly | None
+        ) = None,
+        coding_base_product_runtime_binding: (
+            PackageProductRuntimeBindingV1 | None
+        ) = None,
         coding_plugin_clock: Callable[[], int] | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
@@ -230,20 +246,17 @@ class AgentSession(AgentProductSession):
             and coding_lsp_plugin_assembly is not None
         ):
             raise ValueError("Coding Capability Plugin assembly was supplied twice")
-        capability_plugin_assembly = (
-            coding_capability_plugin_assembly
-            or (
-                (
-                    coding_lsp_plugin_assembly.capability_assembly
-                    if isinstance(
-                        coding_lsp_plugin_assembly,
-                        CodingLspPluginOptInAssembly,
-                    )
-                    else coding_lsp_plugin_assembly
+        capability_plugin_assembly = coding_capability_plugin_assembly or (
+            (
+                coding_lsp_plugin_assembly.capability_assembly
+                if isinstance(
+                    coding_lsp_plugin_assembly,
+                    CodingLspPluginOptInAssembly,
                 )
-                if coding_lsp_plugin_assembly is not None
-                else None
+                else coding_lsp_plugin_assembly
             )
+            if coding_lsp_plugin_assembly is not None
+            else None
         )
         if capability_plugin_assembly is not None and not isinstance(
             capability_plugin_assembly,
@@ -260,6 +273,45 @@ class AgentSession(AgentProductSession):
             CodingBasePluginSessionAssembly,
         ):
             raise TypeError("Coding base Plugin Session assembly is invalid")
+        if coding_base_product_session_assembly is not None and not isinstance(
+            coding_base_product_session_assembly,
+            CodingBaseProductSessionAssembly,
+        ):
+            raise TypeError("Coding base Product Session assembly is invalid")
+        if coding_base_product_session_assembly is not None and any(
+            (
+                coding_base_plugin_assembly,
+                coding_base_plugin_session_assembly,
+                capability_plugin_assembly,
+            )
+        ):
+            raise ValueError("Coding base Product cannot mix Plugin session routes")
+        if coding_base_product_session_assembly is not None:
+            if package_materializer is not None:
+                raise ValueError("Coding base Product cannot use a peer materializer")
+            if initial_resource_catalog_bootstrap is None:
+                raise ValueError("Coding base Product requires Catalog bootstrap")
+            if (
+                workspace_capability_binding
+                is not coding_base_product_session_assembly.workspace_binding
+            ):
+                raise ValueError("Coding base Product workspace binding changed")
+            if coding_base_product_runtime_binding is None:
+                raise ValueError("Coding base Product requires runtime binding")
+            if (
+                coding_base_product_session_assembly.compilation.plan.context.scope_id
+                != f"session:{session_manager.get_header().conversation_id}"
+            ):
+                raise ValueError("Coding base Product Session identity changed")
+        if coding_base_product_runtime_binding is not None and (
+            coding_base_product_session_assembly is None
+            or not isinstance(
+                coding_base_product_runtime_binding, PackageProductRuntimeBindingV1
+            )
+            or coding_base_product_runtime_binding.product_id
+            != coding_base_product_session_assembly.compilation.plan.context.product_id
+        ):
+            raise ValueError("Coding base Product runtime binding is invalid")
         if coding_base_plugin_assembly is not None and (
             capability_plugin_assembly is None
             and coding_base_plugin_session_assembly is None
@@ -289,11 +341,16 @@ class AgentSession(AgentProductSession):
         ):
             raise TypeError("Coding Arch Plugin selected an invalid Tool owner")
         self._coding_lsp_plugin_assembly = (
-            capability_plugin_assembly
-            if lsp_tool_owner is not None
-            else None
+            capability_plugin_assembly if lsp_tool_owner is not None else None
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
+        self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
+        product_base = (
+            coding_base_product_session_assembly.compilation
+            if coding_base_product_session_assembly is not None
+            else None
+        )
+        self._coding_base_product_compilation = product_base
         self._coding_base_owner_retirement_receipts: tuple[
             OwnerGenerationRetirementReceipt,
             ...,
@@ -340,9 +397,16 @@ class AgentSession(AgentProductSession):
                 else None
             )
         )
-        if coding_base_plugin_assembly is not None:
-            if plugin_assembly is None or coding_plugin_clock is None:
-                raise ValueError("Coding base Plugin owner inputs are unavailable")
+        if coding_base_plugin_assembly is not None or product_base is not None:
+            if coding_plugin_clock is None or (
+                product_base is None and plugin_assembly is None
+            ):
+                raise ValueError("Coding base owner inputs are unavailable")
+            if product_base is not None:
+                base_host_environment = product_base.host_environment
+            else:
+                assert coding_base_plugin_assembly is not None
+                base_host_environment = coding_base_plugin_assembly.host_environment
             if command_generations is None:
                 command_generations = SessionCommandGenerationRegistry()
             get_external_tool_policy = getattr(
@@ -356,26 +420,35 @@ class AgentSession(AgentProductSession):
                 "get_shell_command_prefix",
                 None,
             )
-            base_owners = build_coding_base_plugin_owners(
-                coding_base_plugin_assembly,
-                plugin_assembly,
-                clock=coding_plugin_clock,
-                tool_options=ToolsOptions(
-                    diagnostics_service=diagnostics_service,
-                    external_tool_policy=(
-                        get_external_tool_policy()
-                        if callable(get_external_tool_policy)
-                        else None
-                    ),
-                    host_environment=coding_base_plugin_assembly.host_environment,
-                    shell_path=(get_shell_path() if callable(get_shell_path) else None),
-                    command_prefix=(
-                        get_shell_command_prefix()
-                        if callable(get_shell_command_prefix)
-                        else None
-                    ),
+            tool_options = ToolsOptions(
+                diagnostics_service=diagnostics_service,
+                external_tool_policy=(
+                    get_external_tool_policy()
+                    if callable(get_external_tool_policy)
+                    else None
+                ),
+                host_environment=base_host_environment,
+                shell_path=(get_shell_path() if callable(get_shell_path) else None),
+                command_prefix=(
+                    get_shell_command_prefix()
+                    if callable(get_shell_command_prefix)
+                    else None
                 ),
             )
+            if product_base is not None:
+                base_owners = product_base.build_owners(
+                    clock=coding_plugin_clock,
+                    tool_options=tool_options,
+                )
+            else:
+                assert coding_base_plugin_assembly is not None
+                assert plugin_assembly is not None
+                base_owners = build_coding_base_plugin_owners(
+                    coding_base_plugin_assembly,
+                    plugin_assembly,
+                    clock=coding_plugin_clock,
+                    tool_options=tool_options,
+                )
             if base_owners.tool is not None:
                 base_tool_registration_slot = CodingBaseToolRegistrationSlot()
                 owner_bindings = (base_owners.tool.bind(base_tool_registration_slot),)
@@ -414,12 +487,16 @@ class AgentSession(AgentProductSession):
         elif resolution is not None:
             resolved_capability_runtime.select_final_profile(resolution.profile)
         host_environment = (
-            coding_base_plugin_assembly.host_environment
+            product_base.host_environment
+            if product_base is not None
+            else coding_base_plugin_assembly.host_environment
             if coding_base_plugin_assembly is not None
             else LocalHostEnvironmentProbe().detect()
         )
         selected_base_tool_names = (
-            set(coding_base_plugin_assembly.tool_names)
+            set(product_base.tool_names)
+            if product_base is not None
+            else set(coding_base_plugin_assembly.tool_names)
             if coding_base_plugin_assembly is not None
             else set(coding_default_active_tool_names(host_environment))
         )
@@ -496,7 +573,10 @@ class AgentSession(AgentProductSession):
                 output_capture_factory=output_capture_factory,
                 tool_exec_service=(
                     None
-                    if coding_base_plugin_session_assembly is not None
+                    if (
+                        coding_base_plugin_session_assembly is not None
+                        or coding_base_product_session_assembly is not None
+                    )
                     else (
                         exec_service
                         if (
@@ -516,7 +596,11 @@ class AgentSession(AgentProductSession):
                     else (
                         coding_base_plugin_session_assembly.session_inputs
                         if coding_base_plugin_session_assembly is not None
-                        else None
+                        else (
+                            coding_base_product_session_assembly.session_inputs
+                            if coding_base_product_session_assembly is not None
+                            else None
+                        )
                     )
                 ),
                 capability_component_host=(
@@ -726,6 +810,33 @@ class AgentSession(AgentProductSession):
         super()._prepare_resource_refresh()
 
     async def prepare_model_call_runtime(self) -> None:
+        product_runtime = self._coding_base_product_runtime_binding
+        product_compilation = self._coding_base_product_compilation
+        if product_runtime is not None and product_compilation is not None:
+            try:
+                product_runtime.assert_selected_plugin_manifest_current(
+                    product_compilation.selected_manifest
+                )
+            except (
+                PackageProductRuntimeActivationError,
+                PackageProductRuntimeReadError,
+            ) as exc:
+                self._record_runtime_diagnostic(
+                    DiagnosticDraft(
+                        code="coding_base_product_restart_required",
+                        message=(
+                            "coding.base Product selection changed; the active "
+                            "Session must restart."
+                        ),
+                        details={"causeCode": exc.code},
+                    ),
+                    source="session",
+                    level="error",
+                )
+                raise CodingBasePluginAssemblyError(
+                    "Active Coding Session requires restart after Product selection change",
+                    code="coding_base_product_restart_required",
+                ) from exc
         capability_plugins = self._coding_capability_plugin_assembly
         runtime_claim_id = (
             "coding-session-runtime:"

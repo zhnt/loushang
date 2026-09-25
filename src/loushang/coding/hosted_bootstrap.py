@@ -54,7 +54,10 @@ from .hosted_continuity import (
     CodingHostedContinuityRequestV1,
     create_coding_hosted_continuity_attempt,
 )
-from .hosted_session import CodingRealHostedSessionFactoryV1
+from .hosted_session import (
+    CodingHostedProductRuntimeFactoryForSession,
+    CodingRealHostedSessionFactoryV1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +152,9 @@ def create_coding_hosted_attempt(
     tools: list[ToolDefinition] | None = None,
     session_discovery: bool = False,
     owned_transcripts: bool = False,
+    package_product_runtime_factory_for_session: (
+        CodingHostedProductRuntimeFactoryForSession | None
+    ) = None,
 ) -> CodingHostedContinuityAttemptV1:
     """Bind real Coding/G13 once; test seams never enter command-line input."""
     if type(session_discovery) is not bool:
@@ -160,6 +166,9 @@ def create_coding_hosted_attempt(
         catalog=catalog, generation=generation, model=model, stream_fn=stream_fn, tools=tools,
         session_discovery=session_discovery, owned_transcripts=owned_transcripts,
         profile_id=CODING_HOSTED_APPLICATION_PROFILE_ID,
+        package_product_runtime_factory_for_session=(
+            package_product_runtime_factory_for_session
+        ),
     )
 
 
@@ -170,6 +179,9 @@ def _create_coding_attempt(
     profile_id: str, managed_selection: bool = False,
     managed_mux: ManagedMuxServiceBindingV1 | None = None,
     output_capture_factory: ExecCaptureFactory | None = None,
+    package_product_runtime_factory_for_session: (
+        CodingHostedProductRuntimeFactoryForSession | None
+    ) = None,
 ) -> CodingHostedContinuityAttemptV1:
     """Installed Product wiring shared by explicit legacy/managed launch facts."""
     admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
@@ -206,6 +218,9 @@ def _create_coding_attempt(
             stream_fn=stream_fn,
             tools=tools,
             output_capture_factory=output_capture_factory,
+            package_product_runtime_factory_for_session=(
+                package_product_runtime_factory_for_session
+            ),
         ),
         shutdown_budget=AppHostShutdownBudgetV1(10.0, 5.0),
         session_owner=catalog if owned_transcripts else None,

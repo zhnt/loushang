@@ -305,6 +305,74 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
         asyncio.run(session.dispose())
 
 
+def test_product_base_missing_selected_manifest_cannot_fall_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeBindingV1,
+    )
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    events: list[str] = []
+
+    class Lifecycle:
+        binding_id = "owner:coding-package"
+        active = False
+
+        def activate(self) -> None:
+            self.active = True
+
+    class Inventory:
+        binding_id = "owner:coding-package"
+
+    class Factory:
+        def create(self, _request):
+            events.append("product_factory")
+            return PackageProductRuntimeBindingV1(
+                product_id="coding",
+                lifecycle=Lifecycle(),  # type: ignore[arg-type]
+                inventory=Inventory(),  # type: ignore[arg-type]
+                mode="enforced",
+                on_dispose=lambda: events.append("product_dispose"),
+            )
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Product startup reached the legacy Plugin path")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "prepare_managed_coding_base_plugin_assembly", reject_legacy
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+    with pytest.raises(PackageProductRuntimeActivationError) as failure:
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+            composition_set="coding-standard",
+        )
+    assert failure.value.code == "package_product_manifest_reader_unavailable"
+    assert events == ["product_factory", "product_dispose"]
+
+
 @pytest.mark.parametrize("composition_set_id", (None, "coding-minimal"))
 def test_package_product_runtime_rejects_legacy_plugin_inputs_before_effects(
     tmp_path: Path,

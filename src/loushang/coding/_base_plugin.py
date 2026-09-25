@@ -26,6 +26,9 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
@@ -561,18 +564,47 @@ def build_coding_base_plugin_owners(
         raise TypeError("Coding base owners require base assembly")
     if not isinstance(plugin_assembly, ProductPluginCompositionAssembly):
         raise TypeError("Coding base owners require Product Plugin assembly")
+    return _build_coding_base_owners_from_admissions(
+        plan=assembly.plan_seed.plan,
+        product_composition=plugin_assembly.product_composition,
+        owner_bindings=plugin_assembly.contribution_request.owner_bindings,
+        scope_id=assembly.scope_id,
+        tool_contribution_id=assembly.tool_contribution_id,
+        clock=clock,
+        tool_options=tool_options,
+    )
+
+
+def _build_coding_base_owners_from_admissions(
+    *,
+    plan: PluginSelectionPlanV2,
+    product_composition: ProductCompositionCompilation,
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    scope_id: str,
+    tool_contribution_id: str | None,
+    clock: Callable[[], int],
+    tool_options: ToolsOptions,
+) -> CodingBasePluginOwners:
+    """Bind owner adapters to one exact Product compilation and its authorities."""
+
+    if not isinstance(plan, PluginSelectionPlanV2):
+        raise TypeError("Coding base owner plan is invalid")
+    if not isinstance(product_composition, ProductCompositionCompilation):
+        raise TypeError("Coding base owner Product composition is invalid")
+    if plan.context.scope_id != scope_id:
+        raise ValueError("Coding base owner scope changed Product selection")
     if not callable(clock):
         raise TypeError("Coding base owner clock is invalid")
     if not isinstance(tool_options, ToolsOptions):
         raise TypeError("Coding base Tool options are invalid")
     admissions = {
         (item.owner_id, item.contribution_kind, item.contribution_id): item
-        for item in plugin_assembly.product_composition.catalog_admissions
+        for item in product_composition.catalog_admissions
         if item.plugin_id == _PLUGIN_ID
     }
     tool_admission = (
-        admissions.get(("tools.workspace", "tool_pack", assembly.tool_contribution_id))
-        if assembly.tool_contribution_id is not None
+        admissions.get(("tools.workspace", "tool_pack", tool_contribution_id))
+        if tool_contribution_id is not None
         else None
     )
     command_admission = admissions.get(
@@ -580,25 +612,29 @@ def build_coding_base_plugin_owners(
     )
     selected_contribution_ids = {
         item.contribution_id
-        for item in assembly.plan_seed.plan.selected_contributions
+        for item in plan.selected_contributions
         if item.plugin_id == _PLUGIN_ID
     }
     command_selected = "coding.standard" in selected_contribution_ids
-    expected_admissions = int(assembly.tool_contribution_id is not None) + int(
+    expected_admissions = int(tool_contribution_id is not None) + int(
         command_selected
     )
     if (
         len(admissions) != expected_admissions
         or (command_selected and command_admission is None)
         or (not command_selected and command_admission is not None)
-        or (assembly.tool_contribution_id is not None and tool_admission is None)
+        or (tool_contribution_id is not None and tool_admission is None)
     ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
     authorities = {
         item.owner_key: item.authority
-        for item in plugin_assembly.contribution_request.owner_bindings
+        for item in owner_bindings
     }
-    context = plugin_assembly.product_composition.authority_context
+    context = product_composition.authority_context
+    if tuple(item.authority.snapshot() for item in owner_bindings) != (
+        context.owner_snapshots
+    ):
+        raise ValueError("Coding base owner authority changed Product compilation")
 
     def read_owner(
         owner_id: str,
@@ -642,7 +678,7 @@ def build_coding_base_plugin_owners(
                 admission=tool_admission,
                 authority_gate=gate,
                 options=tool_options,
-                scope_id=assembly.scope_id,
+                scope_id=scope_id,
             )
             if tool_admission is not None
             else None
@@ -651,7 +687,7 @@ def build_coding_base_plugin_owners(
             CodingBaseCommandOwner(
                 admission=command_admission,
                 authority_gate=gate,
-                scope_id=assembly.scope_id,
+                scope_id=scope_id,
             )
             if command_admission is not None
             else None

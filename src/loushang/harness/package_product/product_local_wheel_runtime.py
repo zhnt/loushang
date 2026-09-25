@@ -15,6 +15,9 @@ from pathlib import Path
 from threading import Lock
 from typing import cast
 
+from packaging.markers import default_environment
+from packaging.tags import sys_tags
+
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
@@ -135,6 +138,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductFileEpochTransactionGuard,
+    PackageProductPosixFencedRuntimeOwner,
     PackageProductRuntimeLease,
 )
 from loushang.harness.resources.packages.product_handoff import (
@@ -253,9 +257,7 @@ class PackageProductSelectedPluginManifestV1:
                 or reservation.declaration_source.kind != "document"
             ):
                 raise ValueError("Selected Plugin contribution is not data-only")
-            path = (
-                f"{prefix}{reservation.declaration_source.relative_path.as_posix()}"
-            )
+            path = f"{prefix}{reservation.declaration_source.relative_path.as_posix()}"
             declaration = next(
                 item
                 for item in documents[path].declarations
@@ -295,6 +297,33 @@ def _declarations_match_reservations(
 class _LocalWheelSelectedManifestReader:
     policy: PackageProductLocalWheelPolicy
     root_reader: PackageProductSelectedRootReader
+
+    def assert_selected_manifest_current(
+        self, selected: PackageProductSelectedPluginManifestV1
+    ) -> None:
+        if not isinstance(selected, PackageProductSelectedPluginManifestV1):
+            raise TypeError("Product selected Plugin manifest is required")
+        self.root_reader.assert_selected_root_current(selected.snapshot)
+
+    def capture_selected_manifest_for_plugin(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedPluginManifestV1:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Product Plugin selection id is invalid")
+        return self.capture_selected_manifest(
+            PluginInstallationKeyV1(
+                product_id=self.policy.product_id,
+                installation_scope="workspace",
+                scope_id=self.policy.project_scope_id,
+                plugin_id=plugin_id,
+            ),
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
 
     def capture_selected_manifest(
         self,
@@ -701,6 +730,141 @@ def compose_posix_local_wheel_product(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class PosixLocalWheelProductHostInputs:
+    """Host resolution facts and bounded local-Wheel work for one Product."""
+
+    environment: PackageResolutionEnvironmentV1
+    acquisition_budgets: PackageAcquisitionBudgetV1
+    inspection_budgets: PackageInspectionBudgetV1
+    closure_budgets: PackageClosureBudgetV1
+
+    @classmethod
+    def current_host(
+        cls, *, max_transport_bytes: int
+    ) -> PosixLocalWheelProductHostInputs:
+        return cls(
+            environment=PackageResolutionEnvironmentV1.from_mapping(
+                {key: str(value) for key, value in default_environment().items()},
+                supported_tags=tuple(str(tag) for tag in sys_tags()),
+            ),
+            acquisition_budgets=PackageAcquisitionBudgetV1(
+                max_transport_bytes=max_transport_bytes,
+                max_requests=1,
+                max_redirects=0,
+                max_wall_time_ms=30_000,
+            ),
+            inspection_budgets=PackageInspectionBudgetV1(),
+            closure_budgets=PackageClosureBudgetV1(),
+        )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PosixLocalWheelProductSessionOwner:
+    """Issue one Session factory from fixed, fenced Product authorities."""
+
+    workspace: Path
+    state_root: Path
+    plugin_store_root: Path
+    policy: PackageProductLocalWheelPolicy
+    environment: PackageResolutionEnvironmentV1
+    acquisition_budgets: PackageAcquisitionBudgetV1
+    inspection_budgets: PackageInspectionBudgetV1
+    closure_budgets: PackageClosureBudgetV1
+    root_store_identity: str
+    dependency_store_identity: str
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner
+    management: PluginManagementService
+    desired_state: PluginDesiredStateLedger
+    gc_bindings: PluginPackageGcBindingJournal
+    gc_gate: PluginPackageGcReservationJournal
+    actor_id: str
+    desired_policy_revision: str
+    recovery_identity: str
+    runtime_version: str
+    runtime_protocol_epoch: int
+    _workspace_identity: tuple[int, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            getattr(self.management, "_desired_state", None) is not self.desired_state
+            or self.management.gc_gate is not self.gc_gate
+            or self.desired_state.gc_gate is not self.gc_gate
+            or not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
+        ):
+            raise ValueError("Package Product owners are not bound")
+        self.epoch_runtime.assert_current()
+        if (
+            not isinstance(self.workspace, Path)
+            or not self.workspace.is_absolute()
+            or self.workspace != self.workspace.resolve(strict=True)
+        ):
+            raise ValueError("Package Product workspace is not canonical")
+        metadata = self.workspace.stat()
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("Package Product workspace is not a directory")
+        object.__setattr__(
+            self, "_workspace_identity", (metadata.st_dev, metadata.st_ino)
+        )
+
+    def factory_for_session(
+        self, *, session_id: str, cwd: Path, runtime_id: str
+    ) -> PosixLocalWheelProductRuntimeFactory:
+        """Register a live lease and transfer it to a one-shot Session factory."""
+
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("Package Product Session identity is required")
+        if not isinstance(cwd, Path) or cwd.resolve(strict=True) != self.workspace:
+            raise ValueError("Package Product Session workspace changed")
+        if self._current_workspace_identity() != self._workspace_identity:
+            raise ValueError("Package Product workspace identity changed")
+        lease = self.epoch_runtime.issue_runtime_lease(
+            runtime_id=runtime_id,
+            runtime_version=self.runtime_version,
+            runtime_protocol_epoch=self.runtime_protocol_epoch,
+        )
+        try:
+            factory = PosixLocalWheelProductRuntimeFactory(
+                expected_session_id=session_id,
+                expected_cwd=self.workspace,
+                state_root=self.state_root,
+                plugin_store_root=self.plugin_store_root,
+                policy=self.policy,
+                environment=self.environment,
+                acquisition_budgets=self.acquisition_budgets,
+                inspection_budgets=self.inspection_budgets,
+                closure_budgets=self.closure_budgets,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                runtime_lease=lease,
+                cutover_result=self.epoch_runtime.cutover_result,
+                epoch_runtime=self.epoch_runtime,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if self._current_workspace_identity() != self._workspace_identity:
+                raise ValueError("Package Product workspace identity changed")
+            self.epoch_runtime.assert_current()
+            return factory
+        except BaseException:
+            lease.release()
+            raise
+
+    def _current_workspace_identity(self) -> tuple[int, int] | None:
+        try:
+            metadata = self.workspace.lstat()
+        except OSError:
+            return None
+        if not stat.S_ISDIR(metadata.st_mode):
+            return None
+        return metadata.st_dev, metadata.st_ino
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PosixLocalWheelProductRuntimeFactory:
     """Bind one Session to Product-supplied owners of a fenced local Store."""
@@ -725,6 +889,7 @@ class PosixLocalWheelProductRuntimeFactory:
     actor_id: str
     desired_policy_revision: str
     recovery_identity: str
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner | None = None
     _cwd_identity: tuple[int, int] = field(init=False, repr=False)
     _create_lock: Lock = field(
         default_factory=Lock, init=False, repr=False, compare=False
@@ -747,6 +912,14 @@ class PosixLocalWheelProductRuntimeFactory:
             or self.cutover_result.switch_receipt is None
         ):
             raise ValueError("Package Product requires completed POSIX cutover")
+        if self.epoch_runtime is not None:
+            if (
+                not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
+                or self.epoch_runtime.registry is not self.runtime_lease.registry
+                or self.epoch_runtime.cutover_result != self.cutover_result
+            ):
+                raise ValueError("Package Product epoch owner changed")
+            self.epoch_runtime.assert_current()
         cwd = self.expected_cwd
         if not isinstance(cwd, Path) or not cwd.is_absolute() or ".." in cwd.parts:
             raise ValueError("Package Product workspace must be absolute")
@@ -769,6 +942,8 @@ class PosixLocalWheelProductRuntimeFactory:
             or self._current_cwd_identity() != self._cwd_identity
         ):
             raise ValueError("Package Product Session or workspace identity changed")
+        if self.epoch_runtime is not None:
+            self.epoch_runtime.assert_current()
         cutover = self.cutover_result
         fence = cutover.fence
         switch = cutover.switch_receipt
@@ -820,6 +995,8 @@ class PosixLocalWheelProductRuntimeFactory:
             )
             if self._current_cwd_identity() != self._cwd_identity:
                 raise ValueError("Package Product workspace changed during composition")
+            if self.epoch_runtime is not None:
+                self.epoch_runtime.assert_current()
             bound = replace(binding, on_dispose=self.runtime_lease.release)
             object.__setattr__(self, "_binding_issued", True)
             return bound
@@ -886,6 +1063,8 @@ def _directory_identity(path: Path) -> str | None:
 
 __all__ = [
     "PackageProductSelectedPluginManifestV1",
+    "PosixLocalWheelProductHostInputs",
+    "PosixLocalWheelProductSessionOwner",
     "PosixLocalWheelProductRuntimeFactory",
     "compose_posix_local_wheel_product",
 ]

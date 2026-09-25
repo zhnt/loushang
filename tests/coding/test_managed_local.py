@@ -52,6 +52,36 @@ def test_invocation_selects_same_canonical_scopes_without_effects(deployment, tm
     asyncio.run(scenario())
 
 
+def test_managed_command_keeps_product_runtime_selection_lazy_and_trusted(
+    deployment, tmp_path
+):
+    async def scenario():
+        value = invocation(deployment, tmp_path)
+        launch = create_coding_managed_local_launch(
+            value,
+            session_root=tmp_path / "sessions",
+            application_id="coding.default",
+            endpoint="workspace",
+        )
+        before = tree(tmp_path)
+        called = []
+
+        def select(manager):
+            called.append(manager)
+            raise AssertionError("construction must not select a Session runtime")
+
+        command = CodingManagedLocalCommandV1(
+            launch, package_product_runtime_factory_for_session=select
+        )
+        factory = command._attempt._request.foreground.session_factory
+        assert factory._package_product_runtime_factory_for_session is select
+        assert called == []
+        await command.close()
+        assert tree(tmp_path) == before
+
+    asyncio.run(scenario())
+
+
 def test_managed_close_keeps_factory_debt_after_application_closes(deployment, tmp_path):
     async def scenario():
         value = invocation(deployment, tmp_path)

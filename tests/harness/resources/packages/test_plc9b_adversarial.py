@@ -25,7 +25,6 @@ from unittest.mock import patch
 
 import pytest
 
-from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
@@ -136,7 +135,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeLeaseV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
-    PackageEpochRuntimeLeaseRegistry,
     PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
@@ -4225,13 +4223,25 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding._resource_catalog_shadow import (
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CodingResourceCatalogAdmissionError,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.composition_sets import resolve_coding_composition_set
     from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_builtin_wheel import (
+        CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        build_coding_base_product_wheel,
+        coding_base_product_local_wheel_policy,
+        prepare_posix_coding_base_product_wheel,
+    )
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
         cutover_coding_package_store_from_legacy,
+        reopen_coding_package_cutover,
+    )
+    from loushang.coding.package_product_runtime import (
+        open_coding_base_product_runtime_owner,
+        open_coding_package_product_state,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4242,7 +4252,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
     from loushang.harness.resources.packages.product_epoch_guard import (
+        PackageProductPosixFencedRuntimeOwner,
         register_package_product_runtime_lease,
+    )
+    from loushang.harness.resources.packages.product_pre_b_snapshot import (
+        reopen_posix_product_cutover,
     )
     from loushang.harness.session.product_composition_assembly import (
         ProductCompositionAssemblyError,
@@ -4263,59 +4277,62 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             and path.suffix != ".pyc"
         }
     source = source_root / (
-        "coding_base-1-py3-none-any.whl" if checked_in_base else WHEEL_FILENAME
+        CODING_BASE_PRODUCT_WHEEL_FILENAME if checked_in_base else WHEEL_FILENAME
     )
-    payload = _package_wheel_bytes(
-        "coding-base" if checked_in_base else "acme-plugin",
-        "1" if checked_in_base else "1.0",
-        extra_files=base_files,
-        requires_dist=("dependency==2.0",) if with_dependency else (),
-    )
-    source.write_bytes(payload)
+    if checked_in_base:
+        artifact = prepare_posix_coding_base_product_wheel(source_root)
+        assert artifact.path == source
+        assert artifact == prepare_posix_coding_base_product_wheel(source_root)
+        payload = source.read_bytes()
+        assert payload == build_coding_base_product_wheel()
+        assert artifact.artifact_digest == sha256(payload).hexdigest()
+    else:
+        payload = _package_wheel_bytes(
+            "acme-plugin",
+            "1.0",
+            requires_dist=("dependency==2.0",) if with_dependency else (),
+        )
+        source.write_bytes(payload)
     dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
     dependency_payload = _package_wheel_bytes("dependency", "2.0")
     if with_dependency:
         dependency_source.write_bytes(dependency_payload)
     environment = _closure_environment()
-    policy = PackageProductLocalWheelPolicy(
-        product_id="coding",
-        project_scope_id="workspace:manifest",
-        source_root=source_root,
-        bindings=(
-            PackageProductLocalWheelBindingV1(
-                source_identity=str(source),
-                requested_package=(
-                    "coding-base==1" if checked_in_base else "acme-plugin==1.0"
-                ),
-                plugin_id="coding.base" if checked_in_base else "acme.plugin",
-                artifact_digest=sha256(payload).hexdigest(),
-                plugin_manifest_path=(
-                    "coding_base/plugin.json" if checked_in_base else None
-                ),
-                source_trust_class=(
-                    "host-equivalent-local" if checked_in_base else None
+    if checked_in_base:
+        policy = coding_base_product_local_wheel_policy(
+            artifact,
+            project_scope_id="workspace:manifest",
+            resolution_environment_fingerprint=environment.fingerprint,
+            policy_revision="package-policy:1",
+            quota_profile_revision="quota:1",
+            authority_id="coding-local-source:runtime",
+        )
+    else:
+        policy = PackageProductLocalWheelPolicy(
+            product_id="coding",
+            project_scope_id="workspace:manifest",
+            source_root=source_root,
+            bindings=(
+                PackageProductLocalWheelBindingV1(
+                    source_identity=str(source),
+                    requested_package="acme-plugin==1.0",
+                    plugin_id="acme.plugin",
+                    artifact_digest=sha256(payload).hexdigest(),
                 ),
             ),
-        ),
-        dependencies=(
-            (
+            dependencies=(
                 PackageProductLocalWheelDependencyV1(
                     source_identity=str(dependency_source),
                     project_name="dependency",
                     version="2.0",
                     artifact_digest=sha256(dependency_payload).hexdigest(),
                 ),
-            )
-            if with_dependency
-            else ()
-        ),
-        policy_revision="package-policy:1",
-        quota_profile_revision="quota:1",
-        resolution_environment_fingerprint=environment.fingerprint,
-        authority_id="coding-local-source:runtime",
-    )
-    state_root = tmp_path / "package-state"
-    state_root.mkdir(mode=0o700)
+            ) if with_dependency else (),
+            policy_revision="package-policy:1",
+            quota_profile_revision="quota:1",
+            resolution_environment_fingerprint=environment.fingerprint,
+            authority_id="coding-local-source:runtime",
+        )
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
     legacy_base = tmp_path / "legacy-coding"
@@ -4352,15 +4369,6 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     (legacy_layout.root / "instance-runtime.jsonl").write_bytes(b"")
     (legacy_layout.root / "process-startups").mkdir(mode=0o700)
     (legacy_layout.root / "session-owners").mkdir(mode=0o700)
-    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
-    desired = PluginDesiredStateLedger(
-        tmp_path / "product-desired.jsonl", gc_gate=gate
-    )
-    management = PluginManagementService(
-        desired_state=desired,
-        operation_journal_path=tmp_path / "product-management.jsonl",
-    )
-    bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
     store_id = epoch_layout.store_id
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
@@ -4395,6 +4403,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         )
 
     if entrypoint == "session" and not with_dependency:
+        with pytest.raises(PackagePosixEpochCutoverError) as missing_fence:
+            reopen_coding_package_cutover(legacy_layout)
+        assert missing_fence.value.code == "package_epoch_fence_stale"
         live_old_runtime = pre_fence.register(startup_id="legacy:live")
         try:
             denied = attempt_cutover().attempt.result
@@ -4407,6 +4418,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         finally:
             live_old_runtime.release()
     cutover_binding = attempt_cutover()
+    assert not (control_root / "product-state").exists()
     cutover_attempt = cutover_binding.attempt
     snapshots = cutover_binding.snapshots
     cutover_request = cutover_attempt.request
@@ -4420,6 +4432,36 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fence = cutover_result.fence
     assert fence is not None
     assert fences.current(store_id) == fence
+    if entrypoint == "session" and not with_dependency:
+        hidden_store = tmp_path / "hidden-legacy-package-root"
+        hidden_lifecycle = tmp_path / "hidden-legacy-lifecycle-root"
+        legacy_root.rename(hidden_store)
+        legacy_layout.root.rename(hidden_lifecycle)
+        try:
+            assert reopen_coding_package_cutover(legacy_layout) == cutover_result
+        finally:
+            hidden_lifecycle.rename(legacy_layout.root)
+            hidden_store.rename(legacy_root)
+        aliased_control = tmp_path / "aliased-package-control"
+        aliased_control.symlink_to(control_root, target_is_directory=True)
+        with pytest.raises(ValueError, match="not canonical"):
+            reopen_posix_product_cutover(
+                authority_root=authority,
+                control_root=aliased_control,
+                store_id=store_id,
+                epochs_root_name=epoch_layout.epochs_root_name,
+            )
+        selected_root = epoch_layout.epoch_root(cutover_request.namespace_id)
+        hidden_selected = tmp_path / "hidden-selected-package-root"
+        selected_root.rename(hidden_selected)
+        selected_root.mkdir(mode=0o700)
+        try:
+            with pytest.raises(PackagePosixEpochCutoverError) as changed_root:
+                reopen_coding_package_cutover(legacy_layout)
+            assert changed_root.value.code == "package_epoch_cutover_identity_changed"
+        finally:
+            selected_root.rmdir()
+            hidden_selected.rename(selected_root)
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
@@ -4515,20 +4557,129 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     assert projected_sources["scopes"]["project"]["sourcePatch"] == {
         "package_roots": [str(legacy_root)]
     }
-    plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
-    root_fd = os.open(
-        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    )
-    file_io = RootedFileIO(control_root, root_fd)
-    try:
-        registry = PackageEpochRuntimeLeaseRegistry(
-            path=control_root / "runtime-leases.jsonl",
-            coordination_lock=control_root / "coordination",
-            file_io=file_io,
-            fences=fences,
-            store_id=store_id,
+
+    def pre_b_tree() -> tuple[tuple[str, str, bytes | None], ...]:
+        return tuple(
+            (
+                label,
+                path.relative_to(root).as_posix(),
+                None if path.is_dir() else path.read_bytes(),
+            )
+            for label, root in (("package", legacy_root), ("lifecycle", legacy_layout.root))
+            for path in sorted(root.rglob("*"))
         )
+
+    frozen_pre_b_tree = pre_b_tree()
+    plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
+    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
+        authority_root=authority,
+        control_root=control_root,
+        store_id=store_id,
+        epochs_root_name=epoch_layout.epochs_root_name,
+    )
+    try:
+        registry = epoch_runtime.registry
+        assert epoch_runtime.cutover_result == cutover_result
         if entrypoint == "session" and not with_dependency:
+            foreign_layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+                legacy_base, cwd=tmp_path / "foreign-product-workspace"
+            )
+            with pytest.raises(ValueError, match="workspace authority changed"):
+                open_coding_package_product_state(foreign_layout, epoch_runtime)
+            unsafe_state_root = control_root / "product-state"
+            unsafe_state_root.mkdir(mode=0o700)
+            unsafe_state_root.chmod(0o770)
+            try:
+                with pytest.raises(ValueError, match="state root is unsafe"):
+                    open_coding_package_product_state(legacy_layout, epoch_runtime)
+            finally:
+                unsafe_state_root.rmdir()
+            prior_umask = os.umask(0o777)
+            try:
+                assert epoch_runtime.prepare_product_state_root() == unsafe_state_root
+            finally:
+                os.umask(prior_umask)
+        product_state = open_coding_package_product_state(
+            legacy_layout, epoch_runtime
+        )
+        state_root = product_state.state_root
+        gate = product_state.gc_gate
+        desired = product_state.desired_state
+        management = product_state.management
+        bindings = product_state.gc_bindings
+        assert state_root == control_root / "product-state"
+        assert stat.S_IMODE(state_root.stat().st_mode) == 0o700
+        assert (legacy_layout.root / "desired-state.jsonl").read_bytes() == b""
+        if entrypoint == "session" and not with_dependency:
+            unsafe_source_root = control_root / "product-sources"
+            unsafe_source_root.mkdir(mode=0o700)
+            unsafe_source_root.chmod(0o770)
+            try:
+                with pytest.raises(ValueError, match="Source root is unsafe"):
+                    epoch_runtime.prepare_product_source_root()
+            finally:
+                unsafe_source_root.rmdir()
+            prior_umask = os.umask(0o777)
+            try:
+                product_source_root = epoch_runtime.prepare_product_source_root()
+            finally:
+                os.umask(prior_umask)
+            assert product_source_root == unsafe_source_root
+            assert stat.S_IMODE(product_source_root.stat().st_mode) == 0o700
+            assert epoch_runtime.prepare_product_source_root() == product_source_root
+            product_artifact = prepare_posix_coding_base_product_wheel(
+                product_source_root
+            )
+            assert product_artifact.artifact_digest == artifact.artifact_digest
+            foreign_workspace = tmp_path / "foreign-product-owner-workspace"
+            foreign_workspace.mkdir(mode=0o700)
+            with pytest.raises(ValueError, match="workspace scope changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    product_state,
+                    workspace=foreign_workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            with pytest.raises(ValueError, match="state authority changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    replace(product_state, state_root=product_source_root),
+                    workspace=workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            with pytest.raises(ValueError, match="state authority changed"):
+                open_coding_base_product_runtime_owner(
+                    legacy_layout,
+                    epoch_runtime,
+                    replace(
+                        product_state,
+                        desired_state=PluginDesiredStateLedger(
+                            legacy_layout.desired_state, gc_gate=gate
+                        ),
+                    ),
+                    workspace=workspace,
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+            product_runtime_owner = open_coding_base_product_runtime_owner(
+                legacy_layout,
+                epoch_runtime,
+                product_state,
+                workspace=workspace,
+                runtime_version="2.0.0",
+                runtime_protocol_epoch=2,
+            )
+            assert (
+                product_runtime_owner.product_owner.policy.source_root
+                == product_source_root
+            )
+            policy = product_runtime_owner.product_owner.policy
+            environment = product_runtime_owner.product_owner.environment
+            source = product_artifact.path
             restore_root = tmp_path / "isolated-offline-restore"
             restore_root.mkdir(mode=0o700)
             activation_root = tmp_path / "isolated-legacy-activation"
@@ -4645,6 +4796,19 @@ while True:
             runtime_version="2.0.0",
             runtime_protocol_epoch=2,
         )
+        root_store_identity = (
+            product_runtime_owner.product_owner.root_store_identity
+            if checked_in_base
+            else "product-runtime-root-store"
+        )
+        dependency_store_identity = (
+            product_runtime_owner.product_owner.dependency_store_identity
+            if checked_in_base
+            else "product-runtime-dependency-store"
+        )
+        if entrypoint == "session" and not with_dependency:
+            with pytest.raises(RuntimeError, match="leases remain active"):
+                epoch_runtime.close()
         session = None
         try:
             admission_request = runtime_lease.admission_request
@@ -4664,8 +4828,8 @@ while True:
                     ),
                     inspection_budgets=PackageInspectionBudgetV1(),
                     closure_budgets=PackageClosureBudgetV1(),
-                    root_store_identity="product-runtime-root-store",
-                    dependency_store_identity="product-runtime-dependency-store",
+                    root_store_identity=root_store_identity,
+                    dependency_store_identity=dependency_store_identity,
                     registry=registry,
                     admission_request=admission_request,
                     management=management,
@@ -4707,8 +4871,8 @@ while True:
                     ),
                     inspection_budgets=PackageInspectionBudgetV1(),
                     closure_budgets=PackageClosureBudgetV1(),
-                    root_store_identity="product-runtime-root-store",
-                    dependency_store_identity="product-runtime-dependency-store",
+                    root_store_identity=root_store_identity,
+                    dependency_store_identity=dependency_store_identity,
                     runtime_lease=runtime_lease,
                     cutover_result=cutover_result,
                     management=management,
@@ -5184,7 +5348,7 @@ while True:
                 )
                 root_store = PosixPackagePluginRootMaterializationStore(
                     plugin_root,
-                    store_identity="product-runtime-root-store",
+                    store_identity=root_store_identity,
                     package_store_id=store_id,
                     settlement_journal=root_settlements,
                 )
@@ -5269,7 +5433,363 @@ while True:
                 selected_manifest = runtime.capture_selected_plugin_manifest(
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
+                assert (
+                    runtime.capture_selected_plugin_manifest_for(
+                        "coding.base", max_files=64, max_total_bytes=1024 * 1024
+                    )
+                    == selected_manifest
+                )
+                runtime.assert_selected_plugin_manifest_current(selected_manifest)
+                with pytest.raises(PackageProductRuntimeReadError):
+                    runtime.capture_selected_plugin_manifest_for(
+                        "coding.absent", max_files=64, max_total_bytes=1024 * 1024
+                    )
                 assert selected_manifest.snapshot == captured
+                product_coding_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "product-coding-startup",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                )
+                product_coding_lease = register_package_product_runtime_lease(
+                    registry,
+                    fence=fence,
+                    runtime_id="runtime:product-coding-startup",
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+                product_coding_factory = replace(
+                    factory,
+                    expected_session_id=(
+                        product_coding_manager.get_header().conversation_id
+                    ),
+                    runtime_lease=product_coding_lease,
+                )
+                product_coding_session = None
+                try:
+                    with (
+                        patch(
+                            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                            side_effect=AssertionError("legacy coding.base assembly"),
+                        ),
+                        patch(
+                            "loushang.coding.bootstrap._default_package_materializer",
+                            side_effect=AssertionError("legacy package materializer"),
+                        ),
+                    ):
+                        product_coding_session = create_agent_session(
+                            session_manager=product_coding_manager,
+                            model=Model(
+                                id="plc9b-product-coding",
+                                name="PLC9B Product Coding",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    reasoning=True,
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            services=create_services(
+                                settings_manager=SettingsManager(
+                                    ControlConfig(
+                                        capabilities={"coding.lsp": "disabled"}
+                                    )
+                                )
+                            ),
+                            package_product_runtime_factory=product_coding_factory,
+                            composition_set="coding-standard",
+                        )
+                    asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    native_skill = workspace / "skills" / "review" / "SKILL.md"
+                    native_skill.parent.mkdir(parents=True)
+                    native_skill.write_text(
+                        "---\nname: review\ndescription: Local review\n---\nLocal review.\n",
+                        encoding="utf-8",
+                    )
+                    asyncio.run(product_coding_session.refresh_resources())
+                    assert "review" in {
+                        item.name
+                        for item in product_coding_session.list_skill_statuses()
+                    }
+                    native_skill.unlink()
+                    assert (
+                        product_coding_session._package_controller.get_package_materializer()
+                        is None
+                    )
+                    assert {
+                        tool.name
+                        for tool in product_coding_session._composition.tool_controller.get_all_tools()
+                    } == {"bash", "edit", "find", "grep", "ls", "read", "write"}
+                    assert "changelog" in {
+                        command.name
+                        for command in product_coding_session.list_commands()
+                    }
+                    assert "skill:standard" in {
+                        command.name
+                        for command in product_coding_session.list_commands()
+                    }
+                    from loushang.apphost import (
+                        SessionBindingKeyV1,
+                        SessionCreateIntentV1,
+                        SessionCreateRequestV1,
+                    )
+                    from loushang.appserver.protocol import SessionScopeV1
+                    from loushang.coding.hosted_catalog import (
+                        CODING_HOSTED_COMPATIBILITY_ID,
+                        CodingHostedScopeV1,
+                        CodingHostedSessionCatalogV1,
+                    )
+                    from loushang.coding.hosted_session import (
+                        CodingRealHostedSessionFactoryV1,
+                    )
+                    hosted_product_owner = product_runtime_owner
+
+                    async def product_hosted_session() -> None:
+                        hosted_scope = CodingHostedScopeV1(
+                            SessionScopeV1.CWD,
+                            tmp_path / "product-hosted-sessions",
+                            workspace,
+                        )
+                        catalog = CodingHostedSessionCatalogV1((hosted_scope,))
+                        candidate = await catalog.create_candidate(
+                            SessionCreateIntentV1(
+                                SessionCreateRequestV1(
+                                    "coding",
+                                    hosted_scope.fingerprint,
+                                    "b" * 32,
+                                    requested_continuity_id="product-hosted",
+                                    requested_scope=hosted_scope.discovery_scope,
+                                ),
+                                CODING_HOSTED_COMPATIBILITY_ID,
+                            )
+                        )
+                        claimed = await candidate.claim()
+                        identity = claimed.opaque_binding.record.identity
+                        selected_sessions: list[str] = []
+                        prior_leases = len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        )
+
+                        def select_hosted(manager: SessionManager):
+                            selected_sessions.append(
+                                manager.get_header().conversation_id
+                            )
+                            return hosted_product_owner.factory_for_session(manager)
+
+                        hosted_factory = CodingRealHostedSessionFactoryV1(
+                            services_factory=lambda _cwd: create_services(
+                                settings_manager=SettingsManager(
+                                    ControlConfig(
+                                        capabilities={"coding.lsp": "disabled"}
+                                    )
+                                )
+                            ),
+                            model=Model(
+                                id="plc9b-product-hosted",
+                                name="PLC9B Product Hosted",
+                                provider="test",
+                                endpoint="anthropic-messages",
+                                capabilities=Capabilities(
+                                    input=("text",),
+                                    context_window=128000,
+                                    max_tokens=4096,
+                                ),
+                            ),
+                            tools=[],
+                            package_product_runtime_factory_for_session=select_hosted,
+                        )
+                        hosted = None
+                        try:
+                            with (
+                                patch(
+                                    "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+                                    side_effect=AssertionError("legacy coding.base assembly"),
+                                ),
+                                patch(
+                                    "loushang.coding.bootstrap._default_package_materializer",
+                                    side_effect=AssertionError("legacy package materializer"),
+                                ),
+                            ):
+                                hosted = await hosted_factory.create_session(
+                                    binding_key=SessionBindingKeyV1(
+                                        identity.product_id,
+                                        identity.continuity_id,
+                                        identity.session_id,
+                                    ),
+                                    opaque_session_binding=claimed.opaque_binding,
+                                )
+                            assert selected_sessions == [identity.session_id]
+                            assert hosted.control._package_controller.get_package_materializer() is None
+                            assert any(
+                                command.name == "standard" and command.source == "prompt"
+                                for command in hosted.control.list_commands()
+                            )
+                            await hosted.control.prepare_model_call_runtime()
+                            assert "skill:standard" in {
+                                command.name for command in hosted.control.list_commands()
+                            }
+                        finally:
+                            if hosted is not None:
+                                await hosted.close()
+                            await claimed.close()
+                            await candidate.close()
+                        assert len(
+                            registry.snapshot(store_id=store_id).active_leases
+                        ) == prior_leases
+
+                    asyncio.run(product_hosted_session())
+                    foreign_workspace = tmp_path / "foreign-product-hosted-workspace"
+                    foreign_workspace.mkdir(mode=0o700)
+                    foreign_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "foreign-product-hosted-sessions",
+                            cwd=str(foreign_workspace),
+                            persist=False,
+                        )
+                    )
+                    prior_leases = len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    )
+                    with pytest.raises(ValueError, match="workspace changed"):
+                        hosted_product_owner.factory_for_session(foreign_manager)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    moved_workspace = tmp_path / "moved-product-hosted-workspace"
+                    workspace.rename(moved_workspace)
+                    workspace.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="identity changed"):
+                            hosted_product_owner.factory_for_session(
+                                product_coding_manager
+                            )
+                    finally:
+                        workspace.rmdir()
+                        moved_workspace.rename(workspace)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    failed_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "failed-product-hosted-sessions",
+                            cwd=str(workspace),
+                            persist=False,
+                        )
+                    )
+                    with patch(
+                        "loushang.harness.package_product.product_local_wheel_runtime.PosixLocalWheelProductRuntimeFactory",
+                        side_effect=RuntimeError("factory construction failed"),
+                    ):
+                        with pytest.raises(RuntimeError, match="factory construction failed"):
+                            hosted_product_owner.factory_for_session(failed_manager)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    moved_control = tmp_path / "moved-product-hosted-control"
+                    control_root.rename(moved_control)
+                    control_root.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="control root changed"):
+                            hosted_product_owner.factory_for_session(failed_manager)
+                    finally:
+                        control_root.rmdir()
+                        moved_control.rename(control_root)
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    pending_factory = hosted_product_owner.factory_for_session(
+                        failed_manager
+                    )
+                    control_root.rename(moved_control)
+                    control_root.mkdir(mode=0o700)
+                    try:
+                        with pytest.raises(ValueError, match="control root changed"):
+                            pending_factory.create(
+                                PackageProductRuntimeRequestV1(
+                                    product_id="coding",
+                                    session_id=failed_manager.get_header().conversation_id,
+                                    cwd=str(workspace),
+                                )
+                            )
+                    finally:
+                        control_root.rmdir()
+                        moved_control.rename(control_root)
+                        pending_factory.dispose_unbound_runtime()
+                    assert len(
+                        registry.snapshot(store_id=store_id).active_leases
+                    ) == prior_leases
+                    disabled_again = management.submit(
+                        PluginManagementCommandV1(
+                            action="disable",
+                            mutation=PluginDesiredStateMutationV1(
+                                operation_id="operation:product-session-disable",
+                                idempotency_key="request:product-session-disable",
+                                expected_inventory_revision=2,
+                                installation_key=key,
+                                desired_state="installed_disabled",
+                                package_revision=None,
+                                actor_id="product-runtime",
+                                policy_revision="product-policy:1",
+                            ),
+                        )
+                    )
+                    assert disabled_again.result is not None
+                    assert disabled_again.result.disposition == "succeeded"
+                    with pytest.raises(PackageProductRuntimeReadError) as disabled_pin:
+                        runtime.assert_selected_plugin_manifest_current(
+                            selected_manifest
+                        )
+                    assert disabled_pin.value.code == "package_product_root_not_selected"
+                    with pytest.raises(CodingBasePluginAssemblyError) as disabled_call:
+                        asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    assert (
+                        disabled_call.value.code
+                        == "coding_base_product_restart_required"
+                    )
+                    enabled_again = management.submit(
+                        PluginManagementCommandV1(
+                            action="enable",
+                            mutation=PluginDesiredStateMutationV1(
+                                operation_id="operation:product-session-enable",
+                                idempotency_key="request:product-session-enable",
+                                expected_inventory_revision=3,
+                                installation_key=key,
+                                desired_state="installed_enabled",
+                                package_revision=None,
+                                actor_id="product-runtime",
+                                policy_revision="product-policy:1",
+                            ),
+                        )
+                    )
+                    assert enabled_again.result is not None
+                    assert enabled_again.result.disposition == "succeeded"
+                    with pytest.raises(PackageProductRuntimeReadError) as stale_pin:
+                        runtime.assert_selected_plugin_manifest_current(
+                            selected_manifest
+                        )
+                    assert (
+                        stale_pin.value.code
+                        == "package_product_root_selection_changed"
+                    )
+                    with pytest.raises(CodingBasePluginAssemblyError) as stale_call:
+                        asyncio.run(product_coding_session.prepare_model_call_runtime())
+                    assert stale_call.value.code == "coding_base_product_restart_required"
+                    with pytest.raises(
+                        CodingResourceCatalogAdmissionError
+                    ) as stale_refresh:
+                        asyncio.run(product_coding_session.refresh_resources())
+                    assert "product_selected_base_refresh_requires_restart" in str(
+                        stale_refresh.value
+                    )
+                    expected_inventory_revision = 4
+                finally:
+                    if product_coding_session is not None:
+                        asyncio.run(product_coding_session.dispose())
+                    else:
+                        product_coding_lease.release()
                 assert tuple(
                     path for path, _ in selected_manifest.declaration_documents
                 ) == ("coding_base/declarations/plugin.json",)
@@ -5337,8 +5857,61 @@ while True:
                 )
                 assert compiled_base.plan == base_plan
                 assert compiled_base.tool_contribution_id == base_tool
+                from loushang.harness.tools.workspace.factory import ToolsOptions
+
+                product_owners = compiled_base.build_owners(
+                    clock=lambda: 1,
+                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                )
+                assert product_owners.tool is not None
+                assert product_owners.command is not None
+                without_tools = compile_coding_base_product_selection(
+                    selected_manifest,
+                    resolve_coding_composition_set("coding-standard"),
+                    installation_key=key,
+                    session_id=session_manager.get_header().conversation_id,
+                    host_environment=compiled_base.host_environment,
+                    evaluated_at=1,
+                    include_tool_contribution=False,
+                    include_tool_claim_prompt=False,
+                )
+                tool_free_owners = without_tools.build_owners(
+                    clock=lambda: 1,
+                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                )
+                assert tool_free_owners.tool is None
+                assert tool_free_owners.command is not None
                 assert len(compiled_base.product_composition.resource_admissions) == 2
                 assert len(compiled_base.product_composition.catalog_admissions) == 2
+                from loushang.harness.capabilities.workspace_provider import (
+                    workspace_capability_provider_binding,
+                )
+                from loushang.harness.workspace.operations import LocalToolOperations
+
+                class _UnusedProcessLauncher:
+                    async def start(self, request, *, correlation_id, signal=None):
+                        raise AssertionError("Product compilation must not launch a process")
+
+                workspace_binding = workspace_capability_provider_binding(
+                    operations=LocalToolOperations(),
+                    process_launcher=_UnusedProcessLauncher(),
+                    scope_instance_id="workspace:product-store-session",
+                    binding_input_fingerprint="f" * 64,
+                    source_id="product-store-test",
+                )
+                product_session = compiled_base.bind_workspace(workspace_binding)
+                assert (
+                    product_session.session_inputs.product_composition
+                    is compiled_base.product_composition
+                )
+                assert product_session.session_inputs.resolved_providers.entries == ()
+                assert product_session.session_inputs.component_requests == ()
+                assert {
+                    admission.candidate.owner_id
+                    for admission in (
+                        product_session.session_inputs.product_composition.catalog_admissions
+                    )
+                } == {"tools.workspace", "commands.session"}
                 assert {
                     admission.candidate.contribution_id
                     for admission in (
@@ -5393,6 +5966,167 @@ while True:
                     "prompts/standard.md",
                     "skills/standard/SKILL.md",
                 }
+                from loushang.coding._resource_catalog_shadow import (
+                    build_coding_initial_resource_catalog_adapter,
+                )
+                from loushang.harness.resources._catalog_input_receipt import (
+                    ResourceCatalogInputReceipt,
+                )
+
+                coding_receipt = ResourceCatalogInputReceipt(
+                    cwd=workspace,
+                    project_resource_root=workspace,
+                    project_context_roots=(),
+                    package_mounts=(),
+                    package_resource_candidates=(),
+                    package_diagnostic_codes=(),
+                    user_resource_roots=(),
+                    explicit_user_resource_roots=frozenset(),
+                    additional_extension_paths=(),
+                    additional_skill_paths=(),
+                    additional_prompt_template_paths=(),
+                    additional_theme_paths=(),
+                    no_extensions=False,
+                    no_skills=False,
+                    no_prompt_templates=False,
+                    no_themes=False,
+                    no_context_files=False,
+                    built_in_resource_packages=(),
+                    context_file_names=("AGENTS.md", "CLAUDE.md"),
+                )
+                coding_adapter = build_coding_initial_resource_catalog_adapter(
+                    coding_receipt,
+                    product_scope_id=session_manager.get_header().conversation_id,
+                    product_composition=compiled_base.product_composition,
+                    product_snapshot_resources=product_inputs,
+                    package_admission_now=1,
+                    clock=lambda: 1,
+                )
+                coding_bundle = coding_adapter.prepare_bootstrap_projection(
+                    product_id="coding",
+                    session_id=session_manager.get_header().conversation_id,
+                    cwd=workspace,
+                )
+                assert len(coding_bundle.skills) == 1
+                from loushang.agent import Agent
+                from loushang.coding.session.agent_session import AgentSession
+                from loushang.harness.extensions.agent import ExtensionRunner
+                from loushang.harness.extensions.context import ExtensionRuntimeBindings
+
+                async def _verify_product_coding_session() -> None:
+                    async def _ignore(_value: object) -> None:
+                        return None
+
+                    product_manager = await SessionManager.new(
+                        session_dir=tmp_path / "product-coding-session",
+                        cwd=str(workspace),
+                        persist=False,
+                        session_id=session_manager.get_header().conversation_id,
+                    )
+                    extension_runner = ExtensionRunner([])
+                    await extension_runner.activate_runtime_generation(
+                        ExtensionRuntimeBindings(
+                            cwd=str(workspace),
+                            get_active_tool_names=lambda: [],
+                            get_model_selection=lambda: None,
+                            set_active_tools=_ignore,
+                            set_model=_ignore,
+                            request_resource_refresh=lambda: None,
+                            shutdown=lambda: None,
+                            record_diagnostic=lambda _diagnostic: None,
+                        )
+                    )
+                    coding_bootstrap = coding_adapter.construct_session(
+                        product_id="coding",
+                        session_id=session_manager.get_header().conversation_id,
+                        base_resource_bundle=coding_bundle,
+                        construct=lambda value: value,
+                    )
+                    with pytest.raises(ValueError, match="requires Catalog bootstrap"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
+                            workspace_capability_binding=workspace_binding,
+                            coding_plugin_clock=lambda: 1,
+                        )
+                    with pytest.raises(ValueError, match="workspace binding changed"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
+                            coding_plugin_clock=lambda: 1,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    with pytest.raises(ValueError, match="requires runtime binding"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=product_manager,
+                            coding_base_product_session_assembly=product_session,
+                            workspace_capability_binding=workspace_binding,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    foreign_manager = await SessionManager.new(
+                        session_dir=tmp_path / "foreign-product-coding-session",
+                        cwd=str(workspace),
+                        persist=False,
+                    )
+                    with pytest.raises(ValueError, match="Session identity changed"):
+                        AgentSession(
+                            agent=Agent(),
+                            session_manager=foreign_manager,
+                            coding_base_product_session_assembly=product_session,
+                            coding_base_product_runtime_binding=runtime,
+                            workspace_capability_binding=workspace_binding,
+                            initial_resource_catalog_bootstrap=coding_bootstrap,
+                        )
+                    product_agent_session = AgentSession(
+                        agent=Agent(),
+                        session_manager=product_manager,
+                        resource_bundle=coding_bundle,
+                        extension_runner=extension_runner,
+                        coding_base_product_session_assembly=product_session,
+                        coding_base_product_runtime_binding=runtime,
+                        workspace_capability_binding=workspace_binding,
+                        coding_plugin_clock=lambda: 1,
+                        initial_resource_catalog_bootstrap=coding_bootstrap,
+                    )
+                    try:
+                        with pytest.raises(CodingBasePluginAssemblyError) as stale_direct:
+                            await product_agent_session.prepare_model_call_runtime()
+                        assert (
+                            stale_direct.value.code
+                            == "coding_base_product_restart_required"
+                        )
+                        assert coding_bootstrap.state != "published"
+                    finally:
+                        await product_agent_session.dispose()
+
+                asyncio.run(_verify_product_coding_session())
+                with pytest.raises(ValueError, match="requires a composition"):
+                    build_coding_initial_resource_catalog_adapter(
+                        coding_receipt,
+                        product_snapshot_resources=product_inputs,
+                        package_admission_now=1,
+                    )
+                with pytest.raises(
+                    CodingResourceCatalogAdmissionError,
+                    match="legacy_package_inputs_with_product_snapshot",
+                ):
+                    build_coding_initial_resource_catalog_adapter(
+                        replace(
+                            coding_receipt,
+                            package_diagnostic_codes=("legacy_package_probe",),
+                        ),
+                        product_scope_id=(
+                            session_manager.get_header().conversation_id
+                        ),
+                        product_composition=compiled_base.product_composition,
+                        product_snapshot_resources=product_inputs,
+                        package_admission_now=1,
+                    )
                 from loushang.harness.resource_catalog.product_inputs import (
                     InitialResourceCatalogProductAdapter,
                     InitialResourceCatalogProductSelection,
@@ -5900,6 +6634,35 @@ while True:
                         key, "coding_base/plugin.json", max_bytes=4096
                     )
                 assert no_crosswalk.value.code == "package_product_root_unbound"
+            if checked_in_base:
+                hidden_package = tmp_path / "hidden-post-b-package"
+                hidden_lifecycle = tmp_path / "hidden-post-b-lifecycle"
+                legacy_root.rename(hidden_package)
+                legacy_layout.root.rename(hidden_lifecycle)
+            try:
+                reopened_state = open_coding_package_product_state(
+                    legacy_layout, epoch_runtime
+                )
+                if checked_in_base:
+                    reopened_owner = open_coding_base_product_runtime_owner(
+                        legacy_layout,
+                        epoch_runtime,
+                        reopened_state,
+                        workspace=workspace,
+                        runtime_version="2.0.0",
+                        runtime_protocol_epoch=2,
+                    )
+                    assert (
+                        reopened_owner.product_owner.policy
+                        == product_runtime_owner.product_owner.policy
+                    )
+            finally:
+                if checked_in_base:
+                    hidden_lifecycle.rename(legacy_layout.root)
+                    hidden_package.rename(legacy_root)
+            assert reopened_state.state_root == state_root
+            assert reopened_state.desired_state.snapshot() == desired.snapshot()
+            assert reopened_state.gc_bindings.records() == bindings.records()
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
@@ -5971,9 +6734,9 @@ while True:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"
             runtime_lease.release()
+        assert pre_b_tree() == frozen_pre_b_tree
     finally:
-        file_io.cleanup()
-        os.close(root_fd)
+        epoch_runtime.close()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")

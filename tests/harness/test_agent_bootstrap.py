@@ -14,6 +14,7 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
@@ -490,6 +491,12 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
     def construct(_self, request):
         calls.append("construct:session")
         assert lifecycle.active
+        catalog_preparer = request.configuration.prepare_catalog_bootstrap_projection
+        assert callable(catalog_preparer)
+        assert isinstance(
+            catalog_preparer(request.configuration.resource_loader, tmp_path),
+            ResourceBundle,
+        )
         if fail_construction:
             raise RuntimeError("forced Session construction failure")
         session = request.session_factory(
@@ -540,6 +547,15 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
         get_tool_source_info=lambda _runtime, _name: None,
     )
 
+    def prepare_product_catalog(_loader, cwd, runtime):
+        assert runtime.lifecycle is lifecycle
+        assert runtime.inventory is inventory
+        calls.append("prepare:product-catalog")
+        return ResourceBundle(cwd=cwd)
+
+    def reject_legacy_catalog(_loader, _cwd):
+        raise AssertionError("legacy Catalog preparation was used")
+
     def run_construct() -> None:
         binding.construct(
             services=services,
@@ -548,6 +564,11 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
             session_id="session:research",
             cwd=str(tmp_path),
             extension_flag_values=None,
+            catalog_authoritative=True,
+            prepare_catalog_bootstrap_projection=reject_legacy_catalog,
+            prepare_package_product_catalog_bootstrap_projection=(
+                prepare_product_catalog
+            ),
             explicit_system_prompt=None,
             append_system_prompt=(),
             model=None,
@@ -583,11 +604,16 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
         assert calls[1:] == [
             "activate:packages",
             "construct:session",
+            "prepare:product-catalog",
             "dispose:packages",
         ]
         assert captured == []
     else:
-        assert calls[1:] == ["activate:packages", "construct:session"]
+        assert calls[1:] == [
+            "activate:packages",
+            "construct:session",
+            "prepare:product-catalog",
+        ]
         assert captured == [(lifecycle, inventory, "enforced")]
 
 

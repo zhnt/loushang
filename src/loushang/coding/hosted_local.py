@@ -24,6 +24,7 @@ from loushang.harness.tools.core import ToolDefinition
 
 from .hosted_bootstrap import CodingHostedLaunchV1, create_coding_hosted_attempt
 from .hosted_continuity import CodingHostedContinuityAttemptV1
+from .hosted_session import CodingHostedProductRuntimeFactoryForSession
 
 
 class _LocalLaunchFacts(Protocol):
@@ -114,11 +115,17 @@ class CodingLocalCommandV1:
         tools: list[ToolDefinition] | None = None,
         startup_timeout: float = 30.0,
         settlement_timeout: float = 30.0,
+        package_product_runtime_factory_for_session: (
+            CodingHostedProductRuntimeFactoryForSession | None
+        ) = None,
     ) -> None:
         self._validate_launch(launch)
         for timeout in (startup_timeout, settlement_timeout):
             _require_budget(timeout)
         self._launch = launch
+        self._package_product_runtime_factory_for_session = (
+            package_product_runtime_factory_for_session
+        )
         self._directory = LocalConnectionDirectoryV1(launch.connection_root)
         self._attempt = self._create_attempt(launch, model=model, stream_fn=stream_fn, tools=tools)
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
@@ -153,6 +160,9 @@ class CodingLocalCommandV1:
         return create_coding_hosted_attempt(
             launch.application, model=model, stream_fn=stream_fn, tools=tools,
             session_discovery=launch.session_discovery,
+            package_product_runtime_factory_for_session=(
+                self._package_product_runtime_factory_for_session
+            ),
         )
 
     @property
