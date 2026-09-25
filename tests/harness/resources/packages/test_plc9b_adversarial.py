@@ -25,6 +25,9 @@ from threading import Lock
 import pytest
 
 from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.package_product.product_local_wheel_inventory import (
+    PackageProductLocalWheelInventory,
+)
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductRuntimeFactory,
     compose_posix_local_wheel_product,
@@ -251,9 +254,6 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductPublishAttemptV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
-)
-from loushang.harness.resources.packages.product_local_wheel_inventory import (
-    PackageProductLocalWheelInventory,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,

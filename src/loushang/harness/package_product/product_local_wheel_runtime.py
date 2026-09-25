@@ -14,6 +14,9 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
+from loushang.harness.package_product.product_local_wheel_inventory import (
+    PackageProductLocalWheelInventory,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -126,9 +129,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
-)
-from loushang.harness.resources.packages.product_local_wheel_inventory import (
-    PackageProductLocalWheelInventory,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
