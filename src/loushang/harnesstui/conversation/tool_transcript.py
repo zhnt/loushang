@@ -415,7 +415,10 @@ def workspace_tool_body_visibility(
         return visible_tool
     if status not in {"error", "timed_out", "cancelled"}:
         return False
-    return any(part in normalized for part in ("bash", "shell", "exec", "run", "test", "lint", "ruff", "pytest"))
+    return any(
+        part in normalized
+        for part in ("bash", "shell", "exec", "run", "test", "lint", "ruff", "pytest")
+    )
 
 
 def workspace_tool_command(
@@ -452,6 +455,8 @@ def tool_block_to_record(
     block: ToolTranscriptBlock, *, elapsed_seconds: float = 0.0
 ) -> ToolExecutionRecord:
     output = block.body or ""
+    if not output and block.tool_name == "spawn_agent" and block.status == "ok":
+        output = block.detail or ""
     detail = block.detail or ""
     output_kind = _output_kind(output)
     return ToolExecutionRecord(
@@ -471,6 +476,10 @@ def tool_block_to_record(
 
 
 def _title(tool_name: str, args: object | None, rendered_call: str | None) -> str:
+    if tool_name == "spawn_agent" and isinstance(args, Mapping):
+        name = args.get("name")
+        if isinstance(name, str) and name:
+            return f"spawn_agent {name}"
     if rendered_call:
         first_line = rendered_call.splitlines()[0].strip()
         if first_line.startswith("$ "):
@@ -492,6 +501,10 @@ def _arg_detail(args: object | None) -> str | None:
 
 def _detail(view: ToolResultView, *, tool_name: str) -> str | None:
     if view.status == "ok":
+        if tool_name == "spawn_agent":
+            path = view.details.get("path")
+            if isinstance(path, str) and path:
+                return f"created: {path}"
         return _ok_detail(view.details, tool_name=tool_name)
     if view.status == "error":
         return f"failed: {view.error_summary}" if view.error_summary else "failed"
