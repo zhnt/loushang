@@ -788,6 +788,10 @@ def _render_agent_tool_event(
 
 
 def _standard_tool_title(snapshot: ToolCallSnapshot) -> str:
+    if snapshot.tool_name == "spawn_agent" and isinstance(snapshot.args, Mapping):
+        name = snapshot.args.get("name")
+        if isinstance(name, str) and name:
+            return f"spawn_agent {name}"
     if snapshot.rendered_call_text:
         return snapshot.rendered_call_text.splitlines()[0].strip()
     return snapshot.tool_name
