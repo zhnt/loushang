@@ -99,11 +99,14 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # Canonical legacy-store enrollment stays in the same three Product owners:
     # bootstrap +5, runtime +6 and manager +4. Preserve the existing margin.
     canonical_legacy_enrollment_allowance = 5 + 6 + 4
+    # PLC9D's dark writer seal stays in the existing Coding lifecycle owner:
+    # _plugin_lifecycle.py +43/-2; no new Coding path is exempt.
+    plc9d_writer_fence_allowance = 43 - 2
     assert (
         sum(groups["core"].values())
         <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
         + capability_projection_allowance + lmux_default_owned_allowance
-        + canonical_legacy_enrollment_allowance
+        + canonical_legacy_enrollment_allowance + plc9d_writer_fence_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
