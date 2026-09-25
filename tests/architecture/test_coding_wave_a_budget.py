@@ -159,7 +159,8 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # Preserve main's optional execution projection allowance.
     assert sum(groups["g11"].values()) <= 420, groups["g11"]
     # LMUX-M0: original Product/catalog cleanup and managed activation (+84).
-    assert sum(groups["g12"].values()) <= 800 + 84, groups["g12"]
+    # PLC9B: Product Session ownership closes the injected factory (+7).
+    assert sum(groups["g12"].values()) <= 800 + 84 + 7, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
     # LMUX-M0: original catalog ownership, readonly hooks and validation (+205).
     assert sum(groups["g14"].values()) <= 1_300 + 205, groups["g14"]
