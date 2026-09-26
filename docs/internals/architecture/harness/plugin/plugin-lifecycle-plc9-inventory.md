@@ -634,7 +634,9 @@ forwarding calls, module-level transport specifications, and dynamic strings.
 
 <!-- plc9b-entrypoint-inventory:start -->
 ```text
+src/loushang/coding/cli/application.py::_run_coding_pre_runtime_operation::update_packages = 2
 src/loushang/coding/cli/application.py::_run_list_packages::get_packages = 5
+src/loushang/coding/package_product_cli.py::uninstall_coding_fenced_data_wheels::uninstall_package = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::check_package_updates = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::update_packages = 1
 src/loushang/harness/cli/agent_args.py::agent_cli_argument_values::check_package_updates = 2

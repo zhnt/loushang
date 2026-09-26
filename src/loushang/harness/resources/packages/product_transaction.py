@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    PackageQuarantineCleanupTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupStatusV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     PackageClosureBudgetV1,
     PackageResolutionEnvironmentV1,
@@ -31,6 +37,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.owner import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
+    PackageLifecyclePhase,
     PackageLifecycleRequestV2,
     PackageLifecycleStatusV1,
     canonicalize_source_identity,
@@ -69,6 +76,10 @@ _WHEEL_BASENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\.whl\Z")
 
 class _ProductWheelSourceUnavailable(ValueError):
     pass
+
+
+class PackageProductCandidateRejected(ValueError):
+    """The Product rejected an already verified, still quarantined closure."""
 
 
 class PackageProductExecutionPort(Protocol):
@@ -165,6 +176,16 @@ class PackageProductCommitPort(Protocol):
     def commit(self, operation_id: str) -> PackagePublicationReceiptV1: ...
 
 
+class PackageProductCleanupPort(Protocol):
+    def record_pending(
+        self,
+        target: PackageQuarantineCleanupTargetV1,
+        *,
+        rejection_code: str,
+        rejection_stage: PackageLifecyclePhase,
+    ) -> PackageQuarantineCleanupStatusV1: ...
+
+
 class PackageProductLifecycleTransaction:
     """Run one admitted install through exact Package owners and real Stores."""
 
@@ -182,6 +203,11 @@ class PackageProductLifecycleTransaction:
         existing_installation: (
             Callable[[PackageProductRouteRequestV1], bool] | None
         ) = None,
+        candidate_admission: (
+            Callable[[PackageProductRouteRequestV1, VerifiedPackageClosureCandidate], None]
+            | None
+        ) = None,
+        cleanup: PackageProductCleanupPort | None = None,
     ) -> None:
         if not isinstance(kernel, PackageLifecycleOwner):
             raise TypeError("Package lifecycle owner is required")
@@ -191,6 +217,12 @@ class PackageProductLifecycleTransaction:
             raise ValueError("Package recovery identity is required")
         if existing_installation is not None and not callable(existing_installation):
             raise TypeError("Package Product installation preflight is invalid")
+        if candidate_admission is not None and (
+            not callable(candidate_admission)
+            or cleanup is None
+            or not callable(getattr(cleanup, "record_pending", None))
+        ):
+            raise TypeError("Package Product candidate admission requires cleanup")
         for owner, methods, name in (
             (closure, ("execute", "reacquire"), "closure owner"),
             (pins, ("pin",), "pin owner"),
@@ -209,6 +241,8 @@ class PackageProductLifecycleTransaction:
         self._commit = commit
         self._handoff = handoff
         self._existing_installation = existing_installation
+        self._candidate_admission = candidate_admission
+        self._cleanup = cleanup
 
     @property
     def owner_binding_id(self) -> str:
@@ -254,7 +288,7 @@ class PackageProductLifecycleTransaction:
             )
         if current.disposition != "active":
             return current
-        if lifecycle_request.action != "install":
+        if lifecycle_request.action not in {"install", "update"}:
             return self._reject(current, code="package_route_unavailable")
         if current.phase == "classified" and self._existing_installation is not None:
             installed = self._existing_installation(request)
@@ -262,9 +296,9 @@ class PackageProductLifecycleTransaction:
                 raise PackageProductRouteContractError(
                     "Package Product installation preflight is invalid"
                 )
-            if installed:
-                # A second install requires an update transaction and must
-                # refuse before publication or a committed handoff can diverge.
+            if installed == (lifecycle_request.action == "install"):
+                # Install requires absence; update requires an existing
+                # Product selection before any new Package publication.
                 return self._reject(current, code="package_route_unavailable")
         try:
             execution = self._execution(request, current)
@@ -300,6 +334,14 @@ class PackageProductLifecycleTransaction:
                 self._require_durable(status, current)
                 if candidate is None:
                     return self._require_terminal(status)
+                if self._candidate_admission is not None:
+                    try:
+                        self._candidate_admission(request, candidate)
+                    except PackageProductCandidateRejected:
+                        self._cleanup_rejected_candidate(candidate, stage=status.phase)
+                        return self._reject(
+                            status, code="package_plugin_contribution_rejected"
+                        )
                 pinned = self._pins.pin(
                     candidate, recovery_identity=self._recovery_identity
                 )
@@ -327,6 +369,23 @@ class PackageProductLifecycleTransaction:
         raise PackageProductRouteContractError(
             "Package Product transaction has no phase owner"
         )
+
+    def _cleanup_rejected_candidate(
+        self, candidate: VerifiedPackageClosureCandidate, *, stage: PackageLifecyclePhase
+    ) -> None:
+        cleanup = self._cleanup
+        assert cleanup is not None
+        for wheel in reversed(candidate.candidates):
+            try:
+                wheel.cleanup()
+            except OSError:
+                target = wheel.cleanup_target()
+                cleanup.record_pending(
+                    target,
+                    rejection_code="package_plugin_contribution_rejected",
+                    rejection_stage=stage,
+                )
+                wheel.defer_cleanup()
 
     def _after_staging(
         self,
@@ -412,6 +471,7 @@ class PackageProductLifecycleTransaction:
 
 
 __all__ = [
+    "PackageProductCandidateRejected",
     "PackageProductLifecycleTransaction",
     "PackageProductWheelExecutionFactory",
 ]

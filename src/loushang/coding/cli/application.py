@@ -17,6 +17,9 @@ from loushang.coding._invocation_product_profile import (
     CodingAgentInvocationProductProfile,
     resolve_coding_agent_invocation_product_profile,
 )
+from loushang.coding._plugin_lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
@@ -71,8 +74,16 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
+from loushang.coding.package_product_cli import (
+    route_coding_fenced_data_wheels,
+    uninstall_coding_fenced_data_wheels,
+)
+from loushang.coding.package_product_management_cli import (
+    coding_fenced_product_exists,
+)
 from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_binding,
+    build_coding_plugin_management_cli_read_binding,
 )
 from loushang.coding.prompt_command import (
     run_prompt_command,
@@ -129,6 +140,10 @@ from loushang.harness.cli import (
 )
 from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
+)
+from loushang.harness.cli.plugin_listing import (
+    format_plugin_records,
+    list_plugin_records,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.continuity import consume_prepared_activation
@@ -719,6 +734,7 @@ def _coding_state_preparation_ports(
         ),
         run_resource_toggle=run_resource_toggle_operation,
         build_plugin_management=build_coding_plugin_management_cli_binding,
+        build_plugin_management_read=build_coding_plugin_management_cli_read_binding,
         evaluate_plugin_source=_package_source_policy_reason,
         is_remote_plugin_source=is_remote_plugin_source,
         on_policy_denied=lambda services, package_source, reason: (
@@ -738,6 +754,51 @@ async def _run_coding_pre_runtime_operation(
     workflow_runner: Any,
 ) -> int | None:
     args = context.args
+    layout = resolve_coding_plugin_lifecycle_state_layout(context.project_root)
+    if args.list_plugins:
+        try:
+            records = list_plugin_records(
+                build_coding_plugin_management_cli_read_binding(
+                    context.project_root,
+                    getattr(context.services, "settings_manager", None),
+                )
+            )
+            context.stdout.write(
+                format_plugin_records(records, args.list_plugins_format)
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as error:
+            context.stderr.write(f"Error: {error}\n")
+            return 1
+    if coding_fenced_product_exists(layout):
+        if args.install_packages:
+            return route_coding_fenced_data_wheels(
+                layout,
+                action="install",
+                workspace=context.project_root,
+                sources=args.install_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+        if args.update_packages:
+            return route_coding_fenced_data_wheels(
+                layout,
+                action="update",
+                workspace=context.project_root,
+                sources=args.update_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+        if args.uninstall_packages:
+            return uninstall_coding_fenced_data_wheels(
+                layout,
+                plugin_ids=args.uninstall_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
     if args.capability_modes:
         settings_manager = getattr(context.services, "settings_manager", None)
         apply_overrides = getattr(settings_manager, "apply_overrides", None)

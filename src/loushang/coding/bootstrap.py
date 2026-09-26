@@ -27,6 +27,7 @@ from loushang.coding._base_plugin import (
 from loushang.coding._base_product_composition import (
     CodingBaseProductCompilation,
     compile_coding_base_product_selection,
+    extend_coding_base_product_data_skills,
 )
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionError,
@@ -1325,6 +1326,9 @@ def _create_agent_session(
                         base_compilation=compiled,
                         session_id=session_id,
                         configurations=configurations,
+                        external_data_plugin_ids=(
+                            product_runtime.selected_external_data_plugin_ids()
+                        ),
                         state_root=state_root,
                         clock=coding_plugin_clock,
                     )
@@ -1366,6 +1370,21 @@ def _create_agent_session(
                 else None
             )
             compiled = builtin_product_preparation.base_compilation
+        else:
+            external_ids = product_runtime.selected_external_data_plugin_ids()
+            if external_ids:
+                compiled = extend_coding_base_product_data_skills(
+                    compiled,
+                    tuple(
+                        product_runtime.capture_selected_plugin_manifest_for(
+                            plugin_id,
+                            max_files=64,
+                            max_total_bytes=1024 * 1024,
+                        )
+                        for plugin_id in external_ids
+                    ),
+                    evaluated_at=evaluated_at,
+                )
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
@@ -1431,6 +1450,18 @@ def _create_agent_session(
                     ) as exc:
                         raise CodingResourceCatalogAdmissionError(
                             ("product_selected_capability_refresh_requires_restart",)
+                        ) from exc
+                for selected in product_base_compilation.selected_external_data_manifests:
+                    try:
+                        product_base_runtime.assert_selected_plugin_manifest_current(
+                            selected
+                        )
+                    except (
+                        PackageProductRuntimeActivationError,
+                        PackageProductRuntimeReadError,
+                    ) as exc:
+                        raise CodingResourceCatalogAdmissionError(
+                            ("product_selected_resource_refresh_requires_restart",)
                         ) from exc
             resolved_cwd = Path(session_manager.get_cwd())
             try:

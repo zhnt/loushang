@@ -254,10 +254,12 @@ class _ReplayedRetirementIntents:
 class PluginRetirementIntentLedger:
     """Durable, inert handoff of exact graceful retirement subjects."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self, path: str | Path, *, load_policy: JournalLoadPolicy | None = None
+    ) -> None:
         self._path = Path(path)
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

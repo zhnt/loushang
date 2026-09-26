@@ -372,6 +372,14 @@ class VerifiedWheelCandidate:
             raise ValueError("Verified-tree entry is outside the candidate manifest")
         return self._acquired._open_verified_tree_file(entry.logical_path)
 
+    def open_verified_tree_file(
+        self,
+        entry: PackageVerifiedTreeEntryV1,
+    ) -> BinaryIO:
+        """Read one manifest-bound verified file without exposing quarantine paths."""
+
+        return self._open_verified_tree_file(entry)
+
     def cleanup(self) -> None:
         if self._closed:
             return

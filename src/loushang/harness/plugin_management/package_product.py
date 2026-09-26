@@ -29,6 +29,8 @@ from loushang.harness.plugin_management.records import (
 )
 from loushang.harness.plugin_management.updates import (
     PluginDesiredStateUpdateTransitionV2,
+    PluginManagementUpdateCommandV2,
+    PluginUpdateOperationEventV2,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
@@ -36,6 +38,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
     PackageCommittedSetRecordV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleRequestV2,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDesiredStateCommitRequestV1,
@@ -61,8 +69,8 @@ class PluginManagementCommandSubmitPort(Protocol):
 
     def submit(
         self,
-        command: PluginManagementCommandV1,
-    ) -> PluginManagementOperationEventV1: ...
+        command: PluginManagementCommandV1 | PluginManagementUpdateCommandV2,
+    ) -> PluginManagementOperationEventV1 | PluginUpdateOperationEventV2: ...
 
 
 class PackageProductDesiredRevisionProjectionPort(Protocol):
@@ -91,7 +99,7 @@ class PackageProductGcBindingPort(Protocol):
         self,
         request: PackageDesiredStateCommitRequestV1,
         package_revision: PluginPackageRevisionRefV1,
-        transition: PluginDesiredStateTransitionV1,
+        transition: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2,
     ) -> object: ...
 
 
@@ -169,6 +177,8 @@ class PluginManagementPackageDesiredStateAdapter:
     approval_reference: str | None = None
     gc_bindings: PackageProductGcBindingPort | None = None
     gc_gate: PluginPackageGcReferenceGatePort | None = None
+    lifecycle_journal: PackageLifecycleJournal | None = None
+    desired_state: PluginDesiredStateLedger | None = None
     owner_identity: str = "plugin-management-service"
     adapter_version: int = PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION
 
@@ -194,6 +204,14 @@ class PluginManagementPackageDesiredStateAdapter:
             raise ValueError("Package GC reference gate requires the binding journal")
         if self.installation_scope not in {"process", "tenant", "workspace"}:
             raise ValueError("Unsupported Package Product installation scope")
+        if self.lifecycle_journal is not None and not isinstance(
+            self.lifecycle_journal, PackageLifecycleJournal
+        ):
+            raise TypeError("Package Product lifecycle journal is invalid")
+        if self.desired_state is not None and not isinstance(
+            self.desired_state, PluginDesiredStateLedger
+        ):
+            raise TypeError("Package Product desired state is invalid")
         for value, name in (
             (self.actor_id, "Package Product actor id"),
             (self.policy_revision, "Package Product policy revision"),
@@ -247,6 +265,17 @@ class PluginManagementPackageDesiredStateAdapter:
             raise PackageProductGcAdmissionError("Package root is reserved for GC")
         if self.gc_bindings is not None:
             self.gc_bindings.prepare(request, package_revision)
+        if self.lifecycle_journal is not None:
+            lifecycle_request = self.lifecycle_journal.request(request.operation_id)
+            if (
+                not isinstance(lifecycle_request, PackageLifecycleRequestV2)
+                or lifecycle_request.request_fingerprint != request.request_fingerprint
+            ):
+                raise ValueError("Product desired handoff changed Package request")
+            if lifecycle_request.action == "update":
+                return self._commit_update(request, package_revision)
+            if lifecycle_request.action != "install":
+                raise ValueError("Product desired handoff action is unsupported")
         command = PluginManagementCommandV1(
             action="install",
             mutation=PluginDesiredStateMutationV1(
@@ -299,6 +328,80 @@ class PluginManagementPackageDesiredStateAdapter:
         raise RuntimeError(
             "Plugin management desired operation failed: "
             f"{event.result.error_code or 'unknown'}"
+        )
+
+    def _commit_update(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> PackageDesiredStateCommitResultV1:
+        desired = self.desired_state
+        if desired is None:
+            raise ValueError("Product update lacks the desired-state owner")
+        key = PluginInstallationKeyV1(
+            product_id=request.product_id,
+            installation_scope=self.installation_scope,
+            scope_id=request.scope_id,
+            plugin_id=request.plugin_id,
+        )
+        snapshot, transitions = desired.capture()
+        if snapshot.inventory_revision < request.expected_inventory_revision:
+            raise ValueError("Product update expected inventory is unavailable")
+        prior = next(
+            (
+                item.committed_state.selection.package_revision
+                for item in reversed(transitions)
+                if item.inventory_revision <= request.expected_inventory_revision
+                and item.committed_state.installation_key == key
+            ),
+            None,
+        )
+        if prior is None:
+            raise ValueError("Product update has no predecessor Package revision")
+        event = self.management.submit(
+            PluginManagementUpdateCommandV2(
+                operation_id=request.command_id,
+                idempotency_key=request.desired_request_id,
+                expected_inventory_revision=request.expected_inventory_revision,
+                installation_key=key,
+                expected_package_revision=prior,
+                staged_package_revision=package_revision,
+                actor_id=self.actor_id,
+                policy_revision=self.policy_revision,
+                approval_reference=self.approval_reference,
+            )
+        )
+        if not isinstance(event, PluginUpdateOperationEventV2):
+            raise TypeError("Plugin update owner returned incompatible evidence")
+        terminal = event.result
+        if event.status != "terminal" or terminal is None:
+            raise RuntimeError("Plugin update desired operation is not terminal")
+        if terminal.disposition in {"succeeded", "restart_required"}:
+            transition = terminal.transition
+            if (
+                not isinstance(transition, PluginDesiredStateUpdateTransitionV2)
+                or transition.inventory_revision != request.expected_inventory_revision + 1
+            ):
+                raise RuntimeError("Plugin update desired receipt changed")
+            if self.gc_bindings is not None:
+                self.gc_bindings.record(request, package_revision, transition)
+            return PackageDesiredStateCommitResultV1.committed(
+                request,
+                owner_identity=self.owner_identity,
+                owner_revision=event.journal_revision,
+            )
+        if terminal.error_code == "plugin_inventory_revision_conflict":
+            return PackageDesiredStateCommitResultV1.rejected(
+                request,
+                observed_inventory_revision=_observed_inventory_revision(
+                    self.revisions, request
+                ),
+                owner_identity=self.owner_identity,
+                owner_revision=event.journal_revision,
+            )
+        raise RuntimeError(
+            "Plugin update desired operation failed: "
+            f"{terminal.error_code or 'unknown'}"
         )
 
 
@@ -621,19 +724,19 @@ class PackageProductSelectedRootReader:
                 "Selected root has no Product commit", "package_product_root_unbound"
             )
         selected_commit = provenance[-1]
-        if not isinstance(selected_commit, PluginDesiredStateTransitionV1):
-            raise self._error(
-                "Selected update lacks a PLC9B Product binding",
-                "package_product_root_unbound",
-            )
+        selected_command = (
+            selected_commit.mutation
+            if isinstance(selected_commit, PluginDesiredStateTransitionV1)
+            else selected_commit.mutation.command
+        )
         matches = tuple(
             binding
             for binding in self.bindings.records()
             if binding.desired_transition_revision == selected_commit.inventory_revision
             and binding.package_revision == package_revision
-            and binding.request.command_id == selected_commit.mutation.operation_id
+            and binding.request.command_id == selected_command.operation_id
             and binding.request.desired_request_id
-            == selected_commit.mutation.idempotency_key
+            == selected_command.idempotency_key
             and binding.request.product_id == installation_key.product_id
             and binding.request.scope_id == installation_key.scope_id
             and binding.request.plugin_id == installation_key.plugin_id

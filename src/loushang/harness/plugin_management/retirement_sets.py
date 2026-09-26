@@ -635,13 +635,14 @@ class PluginRetirementSetLedger:
         path: str | Path,
         *,
         retirement_intents: PluginRetirementIntentSourcePort,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._path = Path(path)
         self._retirement_intents = retirement_intents
         if self._path.resolve() == retirement_intents.path.resolve():
             raise ValueError("Retirement intent and set journals must be distinct")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

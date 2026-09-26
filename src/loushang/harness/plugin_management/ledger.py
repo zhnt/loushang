@@ -118,6 +118,7 @@ class PluginDesiredStateLedger:
         *,
         instance_id_factory: PluginInstanceIdFactory | None = None,
         gc_gate: PluginPackageGcReferenceGatePort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._path = Path(path)
         self._instance_id_factory = instance_id_factory or _new_instance_id
@@ -126,7 +127,7 @@ class PluginDesiredStateLedger:
             DURABLE_LOCKED_JOURNAL,
             locking=False,
         )
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

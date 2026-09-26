@@ -171,6 +171,9 @@ class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
     build_plugin_management: (
         Callable[[Path, object | None], PluginManagementCliBinding | None] | None
     ) = None
+    build_plugin_management_read: (
+        Callable[[Path, object | None], PluginManagementCliBinding | None] | None
+    ) = None
     evaluate_plugin_source: Callable[[str], str | None] | None = None
     is_remote_plugin_source: Callable[[str], bool] | None = None
     on_policy_denied: Callable[[object, str, str | None], None] | None = None
@@ -188,9 +191,16 @@ async def prepare_agent_cli_application_state(
     args = context.args
     resolved_services = services or ports.build_services(context.project_root)
     settings_manager = getattr(resolved_services, "settings_manager", None)
+    toggle_request = agent_resource_toggle_request(args)
+    read_only_list = args.list_plugins and toggle_request is None
+    management_factory = (
+        ports.build_plugin_management_read
+        if read_only_list and ports.build_plugin_management_read is not None
+        else ports.build_plugin_management
+    )
     plugin_management = (
-        ports.build_plugin_management(context.project_root, settings_manager)
-        if ports.build_plugin_management is not None
+        management_factory(context.project_root, settings_manager)
+        if management_factory is not None
         and (args.list_plugins or args.enable_plugins or args.disable_plugins)
         else None
     )
@@ -201,7 +211,7 @@ async def prepare_agent_cli_application_state(
     )
     toggle_result = ports.run_resource_toggle(
         settings_manager,
-        agent_resource_toggle_request(args),
+        toggle_request,
         stdout=context.stdout,
         stderr=context.stderr,
         plugin_management=plugin_management,

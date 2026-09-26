@@ -22,6 +22,7 @@ class PluginManagementCliBinding:
     actor_id: str
     policy_revision: str
     publish_compatibility_projection: Callable[[], None] | None = None
+    fresh_product: bool = False
 
     def __post_init__(self) -> None:
         for value, name in (
@@ -34,6 +35,8 @@ class PluginManagementCliBinding:
                 raise ValueError(f"{name} must be non-empty")
         if self.installation_scope not in {"process", "tenant", "workspace"}:
             raise ValueError("Unsupported Plugin Installation scope")
+        if type(self.fresh_product) is not bool:
+            raise TypeError("Plugin management Product mode is invalid")
 
     def query(
         self,

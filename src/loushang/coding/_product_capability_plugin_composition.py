@@ -47,6 +47,7 @@ from loushang.harness.session.product_composition_assembly import (
     prepare_product_plugin_composition,
 )
 
+from ._base_plugin import _owner_bindings
 from ._base_product_composition import (
     CodingBaseProductCompilation,
     CodingBaseProductSessionAssembly,
@@ -130,6 +131,7 @@ def prepare_coding_builtin_product_composition(
     base_compilation: CodingBaseProductCompilation,
     session_id: str,
     configurations: Mapping[str, CodingCapabilityPluginConfig],
+    external_data_plugin_ids: tuple[str, ...] = (),
     state_root: Path,
     clock: Callable[[], int],
 ) -> CodingBuiltinProductCompositionPreparation:
@@ -162,6 +164,7 @@ def prepare_coding_builtin_product_composition(
     runtime = open_coding_product_builtin_resolution(
         product_runtime,
         capability_plugin_ids=tuple(spec.plugin_id for spec in specs),
+        external_data_plugin_ids=external_data_plugin_ids,
     )
     try:
         selected = tuple(
@@ -221,7 +224,11 @@ def prepare_coding_builtin_product_composition(
             _assembly_request(
                 selected_seed,
                 provider_authorities=provider_authorities,
-                owner_candidates=_selected_store_owner_candidates(selection, base=base),
+                owner_candidates=_selected_store_owner_candidates(
+                    selection,
+                    base=base,
+                    selected=tuple(by_id[item] for item in external_data_plugin_ids),
+                ),
             ),
             evaluated_at=_read_clock(clock),
         )
@@ -246,9 +253,18 @@ def prepare_coding_builtin_product_composition(
             plan=selection.plan,
             product_composition=product.product_composition,
             owner_bindings=selected_seed.owner_bindings,
-            resource_bodies=_resource_bodies(base, product.product_composition),
+            resource_bodies=_resource_bodies(
+                base,
+                product.product_composition,
+                external_selected=tuple(
+                    by_id[plugin_id] for plugin_id in external_data_plugin_ids
+                ),
+            ),
             selected_capability_manifests=tuple(
                 by_id[plugin_id] for plugin_id in sorted(plugin_ids)
+            ),
+            selected_external_data_manifests=tuple(
+                by_id[plugin_id] for plugin_id in external_data_plugin_ids
             ),
         )
         return CodingBuiltinProductCompositionPreparation(
@@ -483,6 +499,48 @@ def _builtin_plan_seed(
     )
 
     base_plan = base_compilation.plan
+    selected_data_ids = {
+        item.manifest.name
+        for item in selected
+        if item.source_trust_snapshot is not None
+        and item.source_trust_snapshot.source_trust_class == "local-data-only"
+    }
+    initial_owner_bindings = (
+        *base_compilation.owner_bindings,
+        *(
+            _owner_bindings(
+                include_tools=False,
+                include_prompt=False,
+                include_skill=True,
+                include_command=False,
+            )
+            if selected_data_ids
+            and not any(
+                item.owner_key[0] == "resources.skill"
+                for item in base_compilation.owner_bindings
+            )
+            else ()
+        ),
+    )
+    base_owner_bindings = tuple(
+        ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                replace(
+                    binding.authority.policy,
+                    allowed_source_trust_classes=(
+                        ("host-equivalent-local", "local-data-only")
+                        if PluginContributionRef("coding.base", "skill-standard")
+                        in base_plan.selected_contributions
+                        else ("local-data-only",)
+                    ),
+                )
+            ),
+            admission_ttl_seconds=binding.admission_ttl_seconds,
+        )
+        if selected_data_ids and binding.owner_key[0] == "resources.skill"
+        else binding
+        for binding in initial_owner_bindings
+    )
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id=base_plan.context.product_id,
@@ -504,6 +562,7 @@ def _builtin_plan_seed(
                         )
                         for package, _ in pairs
                         if package.manifest.name in configurations
+                        or package.manifest.name in selected_data_ids
                         for item in package.contribution_index.items
                     ),
                 )
@@ -529,6 +588,7 @@ def _builtin_plan_seed(
                             )
                             for package, _ in pairs
                             if package.manifest.name in configurations
+                            or package.manifest.name in selected_data_ids
                             for item in package.contribution_index.items
                         ),
                     ),
@@ -543,7 +603,7 @@ def _builtin_plan_seed(
         packages=tuple(package for package, _ in pairs),
         bindings=tuple(binding for _, binding in pairs),
         owner_bindings=(
-            *base_compilation.owner_bindings,
+            *base_owner_bindings,
             ProductContributionOwnerBinding(authority=tool_authority),
         ),
     )
@@ -553,10 +613,11 @@ def _selected_store_owner_candidates(
     selection: PluginSelection,
     *,
     base: PackageProductSelectedPluginManifestV1,
+    selected: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
 ) -> tuple[OwnerContributionCandidateEnvelope, ...]:
     """Carry B's lock digest without changing Plugin declaration facts."""
 
-    snapshot = base.snapshot
+    snapshots = {item.manifest.name: item.snapshot for item in (base, *selected)}
     candidates = tuple(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
@@ -564,7 +625,8 @@ def _selected_store_owner_candidates(
     )
     projected: list[OwnerContributionCandidateEnvelope] = []
     for candidate in candidates:
-        if candidate.plugin_id != "coding.base":
+        snapshot = snapshots.get(candidate.plugin_id)
+        if snapshot is None:
             projected.append(candidate)
             continue
         if (

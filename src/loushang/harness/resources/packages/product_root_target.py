@@ -53,7 +53,7 @@ class PackageProductRootTargetAuthority:
         if request.product_id != self.product_id:
             raise ValueError("Package Product root target changed Product identity")
         if (
-            request.action != "install"
+            request.action not in {"install", "update"}
             or request.requested_plugin_id is None
             or classification.decision != "plugin_bound"
             or classification != classify_package_request(request)

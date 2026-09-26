@@ -159,6 +159,7 @@ _FAILURE_POLICIES: dict[
     "package_retention_handoff_stale": (False, "none", "none"),
     "package_runtime_epoch_unsupported": (False, "none", "upgrade_runtime"),
     "package_route_unavailable": (False, "none", "none"),
+    "package_plugin_contribution_rejected": (False, "none", "none"),
 }
 
 

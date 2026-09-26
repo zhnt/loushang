@@ -71,6 +71,11 @@ class StrictPluginJsonCodec:
                 f"Plugin JSON syntax is invalid: {exc.msg}",
                 code="plugin_declaration_invalid_json",
             ) from exc
+        except RecursionError as exc:
+            raise PluginJsonCodecError(
+                f"Plugin JSON nesting exceeds the maximum depth of {max_depth}",
+                code="plugin_declaration_json_depth_exceeded",
+            ) from exc
         _validate_json_tree(value, max_depth=max_depth)
         return value
 

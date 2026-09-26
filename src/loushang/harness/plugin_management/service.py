@@ -145,15 +145,18 @@ class PluginManagementService:
         operation_journal_path: str | Path,
         retirement_intents: PluginRetirementIntentLedgerPort | None = None,
         retirement_sets: PluginRetirementSetLedgerPort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._desired_state = desired_state
         self._path = Path(operation_journal_path)
         self._retirement_intents = retirement_intents or PluginRetirementIntentLedger(
-            self._path.with_name(f"{self._path.name}.retirement-intents")
+            self._path.with_name(f"{self._path.name}.retirement-intents"),
+            load_policy=load_policy,
         )
         self._retirement_sets = retirement_sets or PluginRetirementSetLedger(
             self._path.with_name(f"{self._path.name}.retirement-sets"),
             retirement_intents=self._retirement_intents,
+            load_policy=load_policy,
         )
         journal_paths = {
             self._path.resolve(),
@@ -170,7 +173,7 @@ class PluginManagementService:
             DURABLE_LOCKED_JOURNAL,
             locking=False,
         )
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def operation_journal_path(self) -> Path:

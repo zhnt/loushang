@@ -8810,6 +8810,86 @@ def test_run_cli_lists_plugins_as_tsv(
     assert stderr.getvalue() == ""
 
 
+def test_run_cli_lists_pending_plugin_operation_without_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.plugin_management import (
+        PluginDesiredStateMutationV1,
+        PluginInstallationKeyV1,
+        PluginManagementCommandV1,
+        PluginManagementOperationEventV1,
+        PluginPackageRevisionRefV1,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    layout.root.mkdir(parents=True)
+    package = PluginPackageRevisionRefV1(
+        plugin_id="pending-pack",
+        plugin_version="1",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity="local:/plugins/pending-pack",
+    )
+    key = PluginInstallationKeyV1(
+        product_id="coding",
+        installation_scope="workspace",
+        scope_id=layout.scope_id,
+        plugin_id="pending-pack",
+    )
+    command = PluginManagementCommandV1(
+        action="install",
+        mutation=PluginDesiredStateMutationV1(
+            operation_id="pending-install",
+            idempotency_key="pending-install",
+            expected_inventory_revision=0,
+            installation_key=key,
+            desired_state="installed_disabled",
+            package_revision=package,
+            actor_id="operator",
+            policy_revision="test",
+        ),
+    )
+    accepted = PluginManagementOperationEventV1.accepted(
+        journal_revision=1, command=command
+    )
+    before = (
+        json.dumps(accepted.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
+    ).encode()
+    layout.management_operations.write_bytes(before)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        assert (
+            await run_cli(
+                ["--list-plugins", "--list-plugins-format", "json"],
+                stdin=StringIO(""),
+                stdout=stdout,
+                stderr=stderr,
+                cwd=workspace,
+                services=_fake_services(),
+                runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+            )
+            == 0
+        )
+
+    asyncio.run(scenario())
+
+    assert layout.management_operations.read_bytes() == before
+    assert not layout.desired_state.exists()
+    assert stderr.getvalue() == ""
+    [record] = json.loads(stdout.getvalue())
+    assert record["management"]["operations"][0]["status"] == "accepted"
+
+
 def test_run_cli_lists_disabled_plugins_as_tsv(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

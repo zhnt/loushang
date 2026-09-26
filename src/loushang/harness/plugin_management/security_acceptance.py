@@ -135,17 +135,24 @@ class PluginInstanceSecurityRetirementJournal:
     )
     _conflict_code: ClassVar[str] = "plugin_security_acceptance_conflict"
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self, path: str | Path, *, load_policy: JournalLoadPolicy | None = None
+    ) -> None:
         self._path = Path(path).resolve()
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @classmethod
     def for_instance_runtime(
         cls,
         runtime_path: str | Path,
+        *,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> Self:
-        return cls(plugin_instance_security_acceptance_journal_path(runtime_path))
+        return cls(
+            plugin_instance_security_acceptance_journal_path(runtime_path),
+            load_policy=load_policy,
+        )
 
     @property
     def path(self) -> Path:

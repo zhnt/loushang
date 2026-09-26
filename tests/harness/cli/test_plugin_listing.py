@@ -75,8 +75,8 @@ def test_plugin_listing_projects_common_read_model_without_settings_peer(
 
     records = list_plugin_records(binding)
 
-    assert records == [
-        {
+    [record] = records
+    assert {key: value for key, value in record.items() if key != "management"} == {
             "name": "review-pack",
             "version": "1",
             "path": "/plugins/review-pack",
@@ -86,8 +86,12 @@ def test_plugin_listing_projects_common_read_model_without_settings_peer(
             "desiredState": "installed_disabled",
             "convergence": "unknown",
             "migrationStatus": None,
-        }
-    ]
+    }
+    management = record["management"]
+    assert isinstance(management, dict)
+    assert management["installationKey"]["pluginId"] == "review-pack"
+    assert management["selectedPackageRevision"] == _package().to_dict()
+    assert management["ownerRevisions"]["desiredState"] == 1
 
 
 class _Source:

@@ -306,6 +306,7 @@ class AgentSession(AgentProductSession):
             selected = (
                 compilation.selected_manifest,
                 *compilation.selected_capability_manifests,
+                *compilation.selected_external_data_manifests,
             )
             packages = capability_plugin_assembly.runtime.packages
             if tuple(package.manifest.name for package in packages) != tuple(

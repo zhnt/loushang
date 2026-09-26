@@ -57,6 +57,10 @@ from .package_epoch_layout import (
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
+from .package_external_data_wheel import (
+    CodingExternalDataWheelBindingV1,
+    CodingExternalDataWheelCatalog,
+)
 from .package_legacy_binding_catalog import CodingLegacyLocalBindingCatalog
 from .session_manager import SessionManager
 
@@ -162,6 +166,7 @@ class CodingFencedProductApplicationSelection:
 
     def __init__(self) -> None:
         self._owners: dict[Path, CodingFencedProductApplicationOwner] = {}
+        self._retained_owners: list[CodingFencedProductApplicationOwner] = []
         self._lock = Lock()
         self._fenced = False
 
@@ -194,7 +199,47 @@ class CodingFencedProductApplicationSelection:
                     runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
                 )
                 self._owners[workspace] = owner
+            elif not self._external_bindings_current(owner, lifecycle=resolve_coding_plugin_lifecycle_state_layout(workspace)):
+                lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+                replacement = open_coding_fenced_product_application_owner(
+                    lifecycle,
+                    workspace=workspace,
+                    runtime_version=version("loushang"),
+                    runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                )
+                self._retained_owners.append(owner)
+                owner = replacement
+                self._owners[workspace] = owner
             return owner.factory_for_session(manager)
+
+    @staticmethod
+    def _external_bindings_current(
+        owner: CodingFencedProductApplicationOwner,
+        *,
+        lifecycle: CodingPluginLifecycleStateLayout,
+    ) -> bool:
+        product = owner.runtime_owner.product_owner
+        switch = owner.epoch_runtime.cutover_result.switch_receipt
+        if switch is None:
+            return False
+        catalog = CodingExternalDataWheelCatalog(
+            product.state_root / "external-data-wheel-bindings.jsonl",
+            source_root=product.policy.source_root,
+            store_id=owner.epoch_runtime.registry.store_id,
+            namespace_id=switch.namespace_id,
+            scope_id=lifecycle.scope_id,
+        )
+        expected = tuple(
+            sorted(
+                (record.policy_binding(catalog.source_root) for record in catalog.records()),
+                key=lambda item: item.source_identity,
+            )
+        )
+        observed = tuple(
+            item for item in product.policy.bindings
+            if item.source_trust_class == "local-data-only"
+        )
+        return expected == observed
 
     def fence(self) -> None:
         with self._lock:
@@ -211,6 +256,13 @@ class CodingFencedProductApplicationSelection:
                     failures.append(error)
                 else:
                     del self._owners[workspace]
+            for owner in tuple(self._retained_owners):
+                try:
+                    owner.close()
+                except BaseException as error:
+                    failures.append(error)
+                else:
+                    self._retained_owners.remove(owner)
             if failures:
                 raise failures[0]
 
@@ -294,6 +346,36 @@ def open_coding_fenced_product_application_owner(
         except BaseException:
             error.add_note("Coding Product epoch cleanup also failed")
         raise
+
+
+def admit_coding_external_data_wheel(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    *,
+    source: Path,
+) -> CodingExternalDataWheelBindingV1:
+    """Capture one local data Wheel under the current fenced Product Source root."""
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    epoch_runtime = PackageProductPosixFencedRuntimeOwner.open(
+        authority_root=epoch.authority_root,
+        control_root=epoch.control_root,
+        store_id=epoch.store_id,
+        epochs_root_name=epoch.epochs_root_name,
+    )
+    try:
+        switch = epoch_runtime.cutover_result.switch_receipt
+        if switch is None:
+            raise ValueError("Coding Package Product root is not fenced")
+        return CodingExternalDataWheelCatalog(
+            epoch_runtime.prepare_product_state_root()
+            / "external-data-wheel-bindings.jsonl",
+            source_root=epoch_runtime.prepare_product_source_root(),
+            store_id=epoch.store_id,
+            namespace_id=switch.namespace_id,
+            scope_id=lifecycle.scope_id,
+        ).capture(source, epoch_runtime=epoch_runtime)
+    finally:
+        epoch_runtime.close()
 
 
 def bootstrap_coding_builtin_product_plugins(
@@ -602,6 +684,13 @@ def _open_coding_product_runtime_owner(
         scope_id=scope_id,
         policy_revision=policy.policy_revision,
     ).extend_policy(policy)
+    policy = CodingExternalDataWheelCatalog(
+        state_root / "external-data-wheel-bindings.jsonl",
+        source_root=source_root,
+        store_id=epoch.store_id,
+        namespace_id=switch.namespace_id,
+        scope_id=scope_id,
+    ).extend_policy(policy)
     return CodingPosixLocalWheelProductRuntimeOwner(
         product_owner=PosixLocalWheelProductSessionOwner(
             workspace=workspace,
@@ -629,6 +718,7 @@ def _open_coding_product_runtime_owner(
 
 
 __all__ = [
+    "admit_coding_external_data_wheel",
     "CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH",
     "CodingFencedProductApplicationSelection",
     "CodingFencedProductApplicationOwner",

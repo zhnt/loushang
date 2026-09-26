@@ -128,7 +128,7 @@ class PackageCommittedProductHandoffRecovery:
             prior = tuple(handoffs.get(operation_id, {}).values())
             if len(prior) > 1:
                 raise self._incomplete("Package handoff has multiple identities")
-            if prior and prior[0].state == "settled":
+            if prior and prior[0].state in {"settled", "aborted"}:
                 publication = prior[0].request.admission_request.publication_receipt
                 if (
                     publication is None
@@ -139,11 +139,20 @@ class PackageCommittedProductHandoffRecovery:
                     or publication.product_id != request.product_id
                     or publication.scope_id != request.scope_id
                     or publication.plugin_id != request.requested_plugin_id
-                    or prior[0].desired_receipt is None
                     or prior[0].dependency_pin_receipt is None
+                ):
+                    raise self._incomplete("Terminal Package handoff changed owner")
+                if prior[0].state == "settled" and (
+                    prior[0].desired_receipt is None
                     or prior[0].dependency_pin_receipt.state != "settled"
                 ):
                     raise self._incomplete("Settled Package handoff changed owner")
+                if prior[0].state == "aborted" and (
+                    prior[0].desired_failure is None
+                    or prior[0].desired_receipt is not None
+                    or prior[0].dependency_pin_receipt.state != "aborted"
+                ):
+                    raise self._incomplete("Aborted Package handoff changed owner")
                 continue
             if request.runtime_admission_request_id != (
                 admission.request.admission_request_id
@@ -195,6 +204,7 @@ def compose_package_product_lifecycle(
     admission_request: PackageEpochRuntimeAdmissionRequestV1,
     transaction_guard: PackageProductEpochTransactionGuardPort,
     reference_guard: Callable[[], AbstractContextManager[object]] | None = None,
+    update_preflight: Callable[[PackageProductRouteRequestV1], None] | None = None,
     recoveries: tuple[PackageProductRecoveryPort, ...] = (),
     admitted_recoveries: tuple[PackageProductAdmittedRecoveryPort, ...] = (),
 ) -> PackageProductLifecycleActivation:
@@ -210,6 +220,7 @@ def compose_package_product_lifecycle(
         router=PackageProductLifecycleRouter(
             execution=execution,
             reference_guard=reference_guard,
+            update_preflight=update_preflight,
         ),
         ingress_factory=ingress_factory,
         runtime_admission=runtime_admission,

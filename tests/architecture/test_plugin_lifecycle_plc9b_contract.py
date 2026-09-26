@@ -849,8 +849,8 @@ def test_plc9b_canonical_entrypoint_inventory_exactly_matches_source_ast() -> No
     documented = _documented_entrypoint_counts()
     actual = _package_entrypoint_scope_counts()
 
-    assert len(documented) == 116
-    assert sum(documented.values()) == 170
+    assert len(documented) == 118
+    assert sum(documented.values()) == 173
     assert actual == documented
     assert "test_plc9_freezes_named_package_lifecycle_sites_and_occurrences" in (
         _source(BASELINE_TEST)
@@ -2236,6 +2236,10 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/coding/package_legacy_binding_catalog.py"),
         Path("src/loushang/coding/package_legacy_review.py"),
         Path("src/loushang/coding/package_legacy_snapshot_member.py"),
+        # PLC9 Product Source capture and management list consume inert B
+        # helpers only; neither grants Package publication to Coding.
+        Path("src/loushang/coding/package_external_data_wheel.py"),
+        Path("src/loushang/coding/package_product_management_cli.py"),
         # Product-internal, default-dark GC evidence and target readers consume
         # B owner records without exposing a Package or Plugin-author facade.
         Path("src/loushang/harness/plugin_management/package_gc_binding.py"),
