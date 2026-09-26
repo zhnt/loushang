@@ -18,6 +18,7 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding._plugin_lifecycle import (
+    CodingPluginLifecycleStateLayout,
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
@@ -42,6 +43,7 @@ from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_read_binding,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.capabilities.consumer_requirements import ProductCompositionError
 from loushang.harness.cli.plugin_listing import list_plugin_records
 from loushang.harness.cli.resource_toggles import (
     ResourceToggleRequest,
@@ -56,6 +58,8 @@ from loushang.harness.plugin_management import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
     PluginManagementQueryV1,
+    PluginRetirementIntentLedger,
+    PluginRetirementSetLedger,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
@@ -83,21 +87,22 @@ from loushang.plugin import package, resource, skill_action
 
 
 def _data_wheel(
-    *, version: str = "1", executable_member: bool = False,
+    *, version: str = "1", plugin_id: str = "reviewpack",
+    skill_name: str = "review", executable_member: bool = False,
     actions_member: bool = False, requires_dist: bool = False,
     manifest_bytes: bytes | None = None,
     managed_actions_reservation: bool = False,
     skill_size: int | None = None,
 ) -> bytes:
     compiled = package(
-        id="reviewpack",
+        id=plugin_id,
         version=version,
         contributions=(
             resource.skill(
-                contribution_id="review-skill", locator="skills/review",
+                contribution_id=f"{skill_name}-skill", locator=f"skills/{skill_name}",
                 actions=(
                     skill_action(
-                        id="review", script="scripts/review.py",
+                        id=skill_name, script=f"scripts/{skill_name}.py",
                         script_digest=sha256(b"print('review')\n").hexdigest(),
                         runtime="python",
                     ),
@@ -106,29 +111,28 @@ def _data_wheel(
         ),
     )
     files = {
-        f"reviewpack/{item.path}": item.content for item in compiled.artifacts
+        f"{plugin_id}/{item.path}": item.content for item in compiled.artifacts
         if not (managed_actions_reservation and item.path.endswith("/actions.json"))
     }
     if manifest_bytes is not None:
-        files["reviewpack/plugin.json"] = manifest_bytes
-    files["reviewpack/skills/review/SKILL.md"] = (
-        f"---\nname: review\ndescription: Review files v{version}\n---\n"
-        f"# Review v{version}\n"
+        files[f"{plugin_id}/plugin.json"] = manifest_bytes
+    skill_path = f"{plugin_id}/skills/{skill_name}/SKILL.md"
+    files[skill_path] = (
+        f"---\nname: {skill_name}\ndescription: {skill_name} files v{version}\n---\n"
+        f"# {skill_name.title()} v{version}\n"
     ).encode()
     if skill_size is not None:
-        files["reviewpack/skills/review/SKILL.md"] = files[
-            "reviewpack/skills/review/SKILL.md"
-        ].ljust(skill_size, b" ")
+        files[skill_path] = files[skill_path].ljust(skill_size, b" ")
     if executable_member:
-        files["reviewpack/entry.py"] = b"raise RuntimeError('must never execute')\n"
+        files[f"{plugin_id}/entry.py"] = b"raise RuntimeError('must never execute')\n"
     if actions_member:
-        files["reviewpack/skills/review/actions.json"] = b"{}\n"
-    files[f"reviewpack-{version}.dist-info/METADATA"] = (
-        f"Metadata-Version: 2.1\nName: reviewpack\nVersion: {version}\n"
+        files[f"{plugin_id}/skills/{skill_name}/actions.json"] = b"{}\n"
+    files[f"{plugin_id}-{version}.dist-info/METADATA"] = (
+        f"Metadata-Version: 2.1\nName: {plugin_id}\nVersion: {version}\n"
         + ("Requires-Dist: requests\n" if requires_dist else "")
         + "\n"
     ).encode()
-    files[f"reviewpack-{version}.dist-info/WHEEL"] = (
+    files[f"{plugin_id}-{version}.dist-info/WHEEL"] = (
         b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n\n"
     )
     record = io.StringIO(newline="")
@@ -136,8 +140,8 @@ def _data_wheel(
     for name, body in sorted(files.items()):
         digest = urlsafe_b64encode(sha256(body).digest()).rstrip(b"=").decode("ascii")
         writer.writerow((name, f"sha256={digest}", str(len(body))))
-    writer.writerow((f"reviewpack-{version}.dist-info/RECORD", "", ""))
-    files[f"reviewpack-{version}.dist-info/RECORD"] = record.getvalue().encode()
+    writer.writerow((f"{plugin_id}-{version}.dist-info/RECORD", "", ""))
+    files[f"{plugin_id}-{version}.dist-info/RECORD"] = record.getvalue().encode()
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
         for name, body in sorted(files.items()):
@@ -147,6 +151,100 @@ def _data_wheel(
             member.compress_type = zipfile.ZIP_STORED
             archive.writestr(member, body)
     return output.getvalue()
+
+
+def _p2_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, CodingPluginLifecycleStateLayout, SettingsManager]:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        layout, settings, workspace=workspace, namespace_id="9" * 64,
+        runtime_version=version("loushang"), runtime_protocol_epoch=2,
+    )
+    return workspace, layout, settings
+
+
+def _p2_cli(workspace: Path, *args: str) -> tuple[int, str, str]:
+    stdout, stderr = StringIO(), StringIO()
+    result = asyncio.run(run_cli(
+        list(args), cwd=workspace, stdin=StringIO(),
+        stdout=stdout, stderr=stderr,
+    ))
+    return result, stdout.getvalue(), stderr.getvalue()
+
+
+def _p2_session(workspace: Path, settings: SettingsManager, path: Path):
+    manager = asyncio.run(SessionManager.new(
+        session_dir=path, cwd=str(workspace), persist=False,
+    ))
+    return create_agent_session(
+        session_manager=manager,
+        model=Model(
+            id="multi-data-skill-model", name="Multi Data Skill Model",
+            provider="test", endpoint="anthropic-messages",
+            capabilities=Capabilities(
+                reasoning=True, input=("text",), context_window=128000,
+                max_tokens=4096,
+            ),
+        ),
+        services=create_services(settings_manager=settings),
+        composition_set="coding-standard",
+    )
+
+
+def _p2_wheel_source(
+    tmp_path: Path, *, plugin_id: str, skill_name: str, version_id: str = "1",
+    executable_member: bool = False,
+) -> Path:
+    source = tmp_path / f"{plugin_id}-{version_id}-py3-none-any.whl"
+    source.write_bytes(_data_wheel(
+        plugin_id=plugin_id, skill_name=skill_name, version=version_id,
+        executable_member=executable_member,
+    ))
+    return source
+
+
+def _p2_preflight(session, skill_name: str):  # type: ignore[no-untyped-def]
+    async def inspect():  # type: ignore[no-untyped-def]
+        await session.prepare_model_call_runtime()
+        return await session._preflight_user_input_async(f"/skill:{skill_name}")
+
+    return asyncio.run(inspect())
+
+
+def _p2_list_plugins(workspace: Path) -> dict[str, dict[str, object]]:
+    code, stdout, stderr = _p2_cli(
+        workspace, "--list-plugins", "--list-plugins-format", "json"
+    )
+    assert code == 0, stderr
+    return {
+        str(item["name"]): item
+        for item in json.loads(stdout)
+    }
+
+
+def _p2_installation(
+    layout: CodingPluginLifecycleStateLayout, workspace: Path, plugin_id: str
+):
+    owner = open_coding_fenced_product_application_owner(
+        layout, workspace=workspace, runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+    try:
+        key = PluginInstallationKeyV1(
+            product_id="coding", installation_scope="workspace",
+            scope_id=layout.scope_id, plugin_id=plugin_id,
+        )
+        return owner.runtime_owner.product_owner.desired_state.snapshot().installation(key)
+    finally:
+        owner.close()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
@@ -1169,3 +1267,398 @@ def test_stale_interrupted_update_cannot_replace_newer_selection(
     finally:
         first.dispose_runtime()
         owner.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
+def test_two_external_data_skills_share_one_product_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, layout, settings = _p2_workspace(tmp_path, monkeypatch)
+    for plugin_id, skill_name in (("reviewpack", "review"), ("auditpack", "audit")):
+        source = _p2_wheel_source(
+            tmp_path, plugin_id=plugin_id, skill_name=skill_name
+        )
+        for args in (
+            ("--install-package", str(source), "--package-scope", "project"),
+            ("--enable-plugin", plugin_id),
+        ):
+            code, _stdout, stderr = _p2_cli(workspace, *args)
+            assert code == 0, stderr
+    session = _p2_session(workspace, settings, tmp_path / "sessions")
+    opened = [session]
+    try:
+        a_before_update = _p2_installation(layout, workspace, "reviewpack")
+        b_before_update = _p2_installation(layout, workspace, "auditpack")
+        assert session.resource_bundle is not None
+        external = {
+            item.name: item for item in session.resource_bundle.skills
+            if item.source_kind == "external_package"
+        }
+        assert {"standard", "review", "audit"} <= set(external)
+        assert all(item.revision_ref is not None for item in external.values())
+        inputs = session._capability_composition_inputs
+        assert inputs is not None
+        assert {"coding.base", "reviewpack", "auditpack"} <= {
+            item.plugin_id for item in inputs.product_composition.resource_admissions
+        }
+
+        loaded = {}
+        for name in ("review", "audit"):
+            preflight = _p2_preflight(session, name)
+            assert len(preflight.loaded_skills) == 1
+            body = preflight.loaded_skills[0]
+            assert body.summary.source_kind == "external_package"
+            assert body.summary.revision_ref == external[name].revision_ref
+            assert body.receipt.content_digest == body.summary.expected_content_digest
+            loaded[name] = body
+        assert loaded["review"].summary.catalog_generation == (
+            loaded["audit"].summary.catalog_generation
+        )
+        assert "# Review v1" in loaded["review"].content
+        assert "# Audit v1" in loaded["audit"].content
+        old_consumer = session._skill_catalog_consumer
+        assert old_consumer is not None
+        old_generation = old_consumer.catalog_generation
+
+        replacement = _p2_wheel_source(
+            tmp_path, plugin_id="reviewpack", skill_name="review", version_id="2"
+        )
+        code, _stdout, stderr = _p2_cli(
+            workspace, "--update-package", str(replacement),
+            "--package-scope", "project",
+        )
+        assert code == 0, stderr
+        listing = _p2_list_plugins(workspace)
+        assert (listing["reviewpack"]["version"], listing["reviewpack"]["desiredState"]) == (
+            "2", "installed_enabled"
+        )
+        assert (listing["auditpack"]["version"], listing["auditpack"]["desiredState"]) == (
+            "1", "installed_enabled"
+        )
+        assert _p2_installation(layout, workspace, "auditpack") == b_before_update
+        a_before_remove = _p2_installation(layout, workspace, "reviewpack")
+        assert a_before_remove.selection.package_revision.plugin_version == "2"
+        assert session._skill_catalog_consumer is old_consumer
+        assert old_consumer.catalog_generation == old_generation
+        assert session.resource_bundle is not None
+        old_bundle_skills = {item.name: item for item in session.resource_bundle.skills}
+        for name in ("review", "audit"):
+            assert old_bundle_skills[name].revision_ref == external[name].revision_ref
+            current_summary = old_consumer.get_effective_skill(name)
+            assert current_summary is not None
+            assert current_summary.revision_ref == loaded[name].summary.revision_ref
+        updated = _p2_session(workspace, settings, tmp_path / "updated-sessions")
+        opened.append(updated)
+        assert updated.resource_bundle is not None
+        updated_skills = {item.name: item for item in updated.resource_bundle.skills}
+        assert updated_skills["review"].revision_ref != external["review"].revision_ref
+        assert updated_skills["audit"].revision_ref == external["audit"].revision_ref
+        assert "# Review v2" in _p2_preflight(updated, "review").loaded_skills[0].content
+        assert "# Audit v1" in _p2_preflight(updated, "audit").loaded_skills[0].content
+
+        b_before_disable = _p2_installation(layout, workspace, "auditpack")
+        code, _stdout, stderr = _p2_cli(workspace, "--disable-plugin", "auditpack")
+        assert code == 0, stderr
+        assert _p2_installation(layout, workspace, "reviewpack") == a_before_remove
+        listing = _p2_list_plugins(workspace)
+        assert listing["reviewpack"]["desiredState"] == "installed_enabled"
+        assert listing["reviewpack"]["version"] == "2"
+        assert listing["auditpack"]["desiredState"] == "installed_disabled"
+        review_only = _p2_session(workspace, settings, tmp_path / "review-only-sessions")
+        opened.append(review_only)
+        assert "# Review v2" in _p2_preflight(
+            review_only, "review"
+        ).loaded_skills[0].content
+        assert _p2_preflight(review_only, "audit").loaded_skills == ()
+
+        assert _p2_installation(layout, workspace, "reviewpack") == a_before_remove
+        code, _stdout, stderr = _p2_cli(
+            workspace, "--uninstall-package", "reviewpack",
+            "--package-scope", "project",
+        )
+        assert code == 0, stderr
+        listing = _p2_list_plugins(workspace)
+        assert listing["reviewpack"]["desiredState"] == "absent"
+        assert listing["auditpack"]["desiredState"] == "installed_disabled"
+        assert _p2_installation(layout, workspace, "auditpack").selection.package_revision == (
+            b_before_disable.selection.package_revision
+        )
+        neither = _p2_session(workspace, settings, tmp_path / "neither-sessions")
+        opened.append(neither)
+        assert _p2_preflight(neither, "review").loaded_skills == ()
+        assert _p2_preflight(neither, "audit").loaded_skills == ()
+
+        code, _stdout, stderr = _p2_cli(workspace, "--enable-plugin", "auditpack")
+        assert code == 0, stderr
+        audit_only = _p2_session(workspace, settings, tmp_path / "audit-only-sessions")
+        opened.append(audit_only)
+        assert _p2_preflight(audit_only, "review").loaded_skills == ()
+        audit_restored = _p2_preflight(audit_only, "audit").loaded_skills[0]
+        assert "# Audit v1" in audit_restored.content
+        assert audit_restored.summary.revision_ref == external["audit"].revision_ref
+
+        owner = open_coding_fenced_product_application_owner(
+            layout, workspace=workspace, runtime_version=version("loushang"),
+            runtime_protocol_epoch=2,
+        )
+        try:
+            management = owner.runtime_owner.product_owner.management
+            intents = PluginRetirementIntentLedger(
+                management.retirement_intent_journal_path
+            )
+            sets = PluginRetirementSetLedger(
+                management.retirement_set_journal_path,
+                retirement_intents=intents,
+            ).snapshot()
+            subjects = {
+                (item.trigger, item.source_transition.mutation.installation_key.plugin_id): item
+                for item in intents.snapshot().intents
+            }
+            assert {("update", "reviewpack"), ("disable", "auditpack"),
+                    ("remove", "reviewpack")} <= set(subjects)
+            for subject, predecessor in (
+                (("update", "reviewpack"), a_before_update),
+                (("disable", "auditpack"), b_before_disable),
+                (("remove", "reviewpack"), a_before_remove),
+            ):
+                intent = subjects[subject]
+                assert intent.source_transition.mutation.installation_key == (
+                    predecessor.installation_key
+                )
+                assert intent.instance_revision_ref == (
+                    predecessor.selection.instance_revision_ref
+                )
+                assert intent.package_revision == predecessor.selection.package_revision
+                settlement = sets.retirement_set(intent.retirement_id)
+                assert settlement is not None and settlement.intent == intent
+        finally:
+            owner.close()
+    finally:
+        for opened_session in reversed(opened):
+            asyncio.run(opened_session.dispose())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
+def test_two_external_data_skills_conflict_without_loading_a_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, layout, settings = _p2_workspace(tmp_path, monkeypatch)
+    for plugin_id in ("reviewpack", "auditpack"):
+        source = _p2_wheel_source(
+            tmp_path, plugin_id=plugin_id, skill_name="review",
+        )
+        for args in (
+            ("--install-package", str(source), "--package-scope", "project"),
+            ("--enable-plugin", plugin_id),
+        ):
+            code, _stdout, stderr = _p2_cli(workspace, *args)
+            assert code == 0, stderr
+    with pytest.raises(ProductCompositionError) as collision:
+        _p2_session(workspace, settings, tmp_path / "conflict-sessions")
+    assert collision.value.code == "duplicate_owner_contribution_identity"
+    assert len(set(collision.value.admission_fingerprints)) == 2
+    listing = _p2_list_plugins(workspace)
+    assert listing["reviewpack"]["desiredState"] == "installed_enabled"
+    assert listing["auditpack"]["desiredState"] == "installed_enabled"
+    code, _stdout, stderr = _p2_cli(workspace, "--disable-plugin", "auditpack")
+    assert code == 0, stderr
+    remaining = _p2_session(workspace, settings, tmp_path / "resolved-sessions")
+    try:
+        loaded = _p2_preflight(remaining, "review").loaded_skills
+        assert len(loaded) == 1
+        assert "# Review v1" in loaded[0].content
+        owner = open_coding_fenced_product_application_owner(
+            layout, workspace=workspace, runtime_version=version("loushang"),
+            runtime_protocol_epoch=2,
+        )
+        try:
+            key = PluginInstallationKeyV1(
+                product_id="coding", installation_scope="workspace",
+                scope_id=layout.scope_id, plugin_id="reviewpack",
+            )
+            revision = owner.runtime_owner.product_owner.desired_state.snapshot(
+            ).installation(key).selection.package_revision
+            assert revision is not None
+            assert revision.package_source_identity.endswith(
+                "/reviewpack-1-py3-none-any.whl"
+            )
+            assert loaded[0].summary.revision_ref is not None
+            assert loaded[0].summary.revision_ref.content_digest == (
+                revision.package_content_digest
+            )
+        finally:
+            owner.close()
+    finally:
+        asyncio.run(remaining.dispose())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
+def test_two_external_data_skills_reject_bad_update_without_changing_peer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, layout, settings = _p2_workspace(tmp_path, monkeypatch)
+    for plugin_id, skill_name in (("reviewpack", "review"), ("auditpack", "audit")):
+        source = _p2_wheel_source(
+            tmp_path, plugin_id=plugin_id, skill_name=skill_name
+        )
+        for args in (
+            ("--install-package", str(source), "--package-scope", "project"),
+            ("--enable-plugin", plugin_id),
+        ):
+            code, _stdout, stderr = _p2_cli(workspace, *args)
+            assert code == 0, stderr
+    owner = open_coding_fenced_product_application_owner(
+        layout, workspace=workspace, runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+    try:
+        key = PluginInstallationKeyV1(
+            product_id="coding", installation_scope="workspace",
+            scope_id=layout.scope_id, plugin_id="auditpack",
+        )
+        before = owner.runtime_owner.product_owner.desired_state.snapshot().installation(key)
+    finally:
+        owner.close()
+    bad = _p2_wheel_source(
+        tmp_path, plugin_id="reviewpack", skill_name="review",
+        version_id="2", executable_member=True,
+    )
+    code, _stdout, stderr = _p2_cli(
+        workspace, "--update-package", str(bad), "--package-scope", "project",
+    )
+    assert code == 1
+    assert "package_plugin_contribution_rejected" in stderr
+    owner = open_coding_fenced_product_application_owner(
+        layout, workspace=workspace, runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+    try:
+        after = owner.runtime_owner.product_owner.desired_state.snapshot().installation(key)
+        assert after == before
+    finally:
+        owner.close()
+    listing = _p2_list_plugins(workspace)
+    assert listing["reviewpack"]["version"] == "1"
+    assert listing["auditpack"]["version"] == "1"
+    session = _p2_session(workspace, settings, tmp_path / "after-bad-update")
+    try:
+        assert "# Review v1" in _p2_preflight(session, "review").loaded_skills[0].content
+        assert "# Audit v1" in _p2_preflight(session, "audit").loaded_skills[0].content
+    finally:
+        asyncio.run(session.dispose())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
+def test_interrupted_a_update_cannot_overwrite_b_disable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, layout, settings = _p2_workspace(tmp_path, monkeypatch)
+    for plugin_id, skill_name in (("reviewpack", "review"), ("auditpack", "audit")):
+        source = _p2_wheel_source(
+            tmp_path, plugin_id=plugin_id, skill_name=skill_name
+        )
+        for args in (
+            ("--install-package", str(source), "--package-scope", "project"),
+            ("--enable-plugin", plugin_id),
+        ):
+            code, _stdout, stderr = _p2_cli(workspace, *args)
+            assert code == 0, stderr
+    replacement = _p2_wheel_source(
+        tmp_path, plugin_id="reviewpack", skill_name="review", version_id="2"
+    )
+    source_record = admit_coding_external_data_wheel(layout, source=replacement)
+    owner = open_coding_fenced_product_application_owner(
+        layout, workspace=workspace, runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+    product = owner.runtime_owner.product_owner
+    runtime_id = "interrupted-a-update"
+    factory = product.factory_for_session(
+        session_id=runtime_id, cwd=workspace, runtime_id=runtime_id
+    )
+    runtime = factory.create(PackageProductRuntimeRequestV1(
+        product_id="coding", session_id=runtime_id, cwd=str(workspace)
+    ))
+    try:
+        runtime.activate()
+        original_finalize = PackageProductHandoffFinalizer.finalize
+
+        def interrupt(owner, request, *, current):  # type: ignore[no-untyped-def]
+            if current.operation_id == "test:interrupted-a-update":
+                raise OSError("injected interruption before first handoff")
+            return original_finalize(owner, request, current=current)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PackageProductHandoffFinalizer, "finalize", interrupt)
+            with pytest.raises(OSError, match="injected interruption"):
+                runtime.lifecycle.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="test:interrupted-a-update", action="update",
+                        source=str(
+                            owner.epoch_runtime.control_root / "product-sources"
+                            / source_record.wheel_filename
+                        ),
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+        anchor = product.gc_bindings.update_anchor("test:interrupted-a-update")
+        assert anchor is not None
+        assert anchor.expected_package_revision.plugin_version == "1"
+        snapshot = product.desired_state.snapshot()
+        b_key = PluginInstallationKeyV1(
+            product_id="coding", installation_scope="workspace",
+            scope_id=layout.scope_id, plugin_id="auditpack",
+        )
+        disabled = product.management.submit(PluginManagementCommandV1(
+            action="disable",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id="test:disable-b-during-a-update",
+                idempotency_key="test:disable-b-during-a-update",
+                expected_inventory_revision=snapshot.inventory_revision,
+                installation_key=b_key, desired_state="installed_disabled",
+                package_revision=None, actor_id="operator", policy_revision="test",
+            ),
+        ))
+        assert disabled.result is not None
+        assert disabled.result.disposition == "succeeded"
+        disabled_revision = product.desired_state.snapshot().inventory_revision
+        with suppress(RuntimeError):
+            runtime.activate()
+        settled = product.desired_state.snapshot()
+        a_key = PluginInstallationKeyV1(
+            product_id="coding", installation_scope="workspace",
+            scope_id=layout.scope_id, plugin_id="reviewpack",
+        )
+        assert settled.installation(a_key).selection.package_revision.plugin_version == "1"
+        assert settled.installation(b_key).selection.desired_state == "installed_disabled"
+        assert settled.installation(b_key).selection.package_revision == (
+            snapshot.installation(b_key).selection.package_revision
+        )
+    finally:
+        runtime.dispose_runtime()
+        owner.close()
+    session = _p2_session(workspace, settings, tmp_path / "after-interruption")
+    try:
+        assert "# Review v1" in _p2_preflight(session, "review").loaded_skills[0].content
+        assert _p2_preflight(session, "audit").loaded_skills == ()
+    finally:
+        asyncio.run(session.dispose())
+    handoff = PackageRetentionHandoffJournal(product.state_root / "handoff.jsonl")
+    matching = [
+        item.receipt for item in handoff.records()
+        if item.receipt is not None
+        and item.receipt.request.operation_id == "test:interrupted-a-update"
+    ]
+    assert matching
+    recovered = matching[-1]
+    assert recovered.state == "aborted"
+    assert recovered.desired_receipt is None
+    assert recovered.desired_failure is not None
+    assert recovered.desired_failure.code == "package_desired_revision_conflict"
+    assert recovered.desired_failure.request.expected_inventory_revision == (
+        anchor.expected_inventory_revision
+    )
+    assert recovered.desired_failure.observed_inventory_revision == disabled_revision
+    assert recovered.dependency_pin_receipt is not None
+    assert recovered.dependency_pin_receipt.state == "aborted"
