@@ -886,6 +886,12 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
             Path("src/loushang/coding/package_product_runtime.py"),
             "open_coding_package_product_state",
         ),
+        # Fenced B CLI list opens the existing ledger with a strict read-only
+        # load policy; it does not add a Desired State mutation site.
+        (
+            Path("src/loushang/coding/package_product_management_cli.py"),
+            "_ProductCliOwner.open",
+        ),
     }
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")
