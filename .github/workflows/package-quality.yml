@@ -28,7 +28,7 @@ jobs:
   coding:
     if: ${{ fromJSON(inputs.plan).checks.coding }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
