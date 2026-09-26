@@ -203,6 +203,7 @@ class PackageProductLifecycleTransaction:
         existing_installation: (
             Callable[[PackageProductRouteRequestV1], bool] | None
         ) = None,
+        update_allowed: Callable[[PackageProductRouteRequestV1], bool] | None = None,
         candidate_admission: (
             Callable[[PackageProductRouteRequestV1, VerifiedPackageClosureCandidate], None]
             | None
@@ -217,6 +218,8 @@ class PackageProductLifecycleTransaction:
             raise ValueError("Package recovery identity is required")
         if existing_installation is not None and not callable(existing_installation):
             raise TypeError("Package Product installation preflight is invalid")
+        if update_allowed is not None and not callable(update_allowed):
+            raise TypeError("Package Product update admission is invalid")
         if candidate_admission is not None and (
             not callable(candidate_admission)
             or cleanup is None
@@ -241,6 +244,7 @@ class PackageProductLifecycleTransaction:
         self._commit = commit
         self._handoff = handoff
         self._existing_installation = existing_installation
+        self._update_allowed = update_allowed
         self._candidate_admission = candidate_admission
         self._cleanup = cleanup
 
@@ -290,6 +294,14 @@ class PackageProductLifecycleTransaction:
             return current
         if lifecycle_request.action not in {"install", "update"}:
             return self._reject(current, code="package_route_unavailable")
+        if lifecycle_request.action == "update" and self._update_allowed is not None:
+            allowed = self._update_allowed(request)
+            if type(allowed) is not bool:
+                raise PackageProductRouteContractError(
+                    "Package Product update admission is invalid"
+                )
+            if not allowed:
+                return self._reject(current, code="package_route_unavailable")
         if current.phase == "classified" and self._existing_installation is not None:
             installed = self._existing_installation(request)
             if type(installed) is not bool:

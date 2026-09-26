@@ -828,7 +828,17 @@ def compose_posix_local_wheel_product(
         update_inventory_revision=update_inventory_revision,
     )
 
+    def update_allowed(request: PackageProductRouteRequestV1) -> bool:
+        bindings = tuple(
+            binding
+            for binding in policy.bindings
+            if binding.source_identity == request.ingress.source_locator
+        )
+        return len(bindings) == 1 and bindings[0].source_trust_class == "local-data-only"
+
     def anchor_update(request: PackageProductRouteRequestV1) -> None:
+        if not update_allowed(request):
+            return
         ingress = request.ingress
         plugin_id = ingress.requested_plugin_id
         if not isinstance(plugin_id, str) or not plugin_id:
@@ -888,6 +898,7 @@ def compose_posix_local_wheel_product(
         commit=commit,
         handoff=finalizer,
         existing_installation=existing_installation,
+        update_allowed=update_allowed,
         candidate_admission=lambda request, candidate: _admit_external_data_only_candidate(
             policy, request, candidate
         ),
