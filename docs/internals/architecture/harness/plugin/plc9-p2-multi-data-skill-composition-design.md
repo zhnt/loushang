@@ -1,6 +1,6 @@
 # PLC9 P2: independent data Skill composition
 
-Status: implemented and reviewed in the PLC9 P2 task branch; delivery pending.
+Status: implemented and reviewed.
 Tracking: PLC9 issue #509.
 
 ## Goal and boundary
