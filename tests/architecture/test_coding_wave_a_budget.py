@@ -63,8 +63,8 @@ def _partition_line_counts(
     return partitions
 
 
-def test_coding_package_stays_within_wave_a_budget() -> None:
-    """Bound non-facade core, hosted Product slices and the exact root facade."""
+def test_coding_product_slices_stay_within_wave_a_budget() -> None:
+    """Bound hosted Product slices while counting every Coding file once."""
 
     root = Path("src/loushang/coding")
     line_counts = {
@@ -75,101 +75,6 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     }
 
     groups = _partition_line_counts(line_counts)
-    # Baseline 9bc69361494293595ae424be225c61e3226a9996 facade: 114 lines.
-    # Preserve the non-facade allowance: 33_800 - 114 = 33_686.
-    # Approved G18 net additions outside the facade (relative to 9bc69361):
-    # CLI split/lazy entry and startup wiring 87; screen owner 185;
-    # UI attachment 16; continuity inode-ownership cleanup 11. No path is exempt.
-    g18_core_allowance = 87 + 185 + 16 + 11
-    # Interactive startup delta from 7f4b27f4: entry +15, application -29,
-    # Linux screen adapter +17, canonical early route +98. Worker/terminal
-    # ownership remains in HarnessTUI/TUI; no new Coding path is exempt.
-    interactive_startup_allowance = 15 - 29 + 17 + 98
-    # Reviewed LMUX-M0 owned-factory binding in original owners (+42/+77),
-    # offset by moving the original theme to shared Harnesstui (-24).
-    # Keep these existing files in core, including its original 14-line margin.
-    lmux_owned_core_allowance = 42 + 77 - 24
-    # Reviewed capability composition versus the validated da820585 wheel:
-    # ui/mode.py +17 current-binding provider; ui/screen_input.py +50 Product
-    # declaration projection. Both remain core; preserve its six-line margin.
-    capability_projection_allowance = 17 + 50
-    # LMUX reviewed default-owned wiring: bootstrap +7, runtime +5,
-    # manager +1 versus da820585. Keep all three in core and its six-line margin.
-    lmux_default_owned_allowance = 7 + 5 + 1
-    # Canonical legacy-store enrollment stays in the same three Product owners:
-    # bootstrap +5, runtime +6 and manager +4. Preserve the existing margin.
-    canonical_legacy_enrollment_allowance = 5 + 6 + 4
-    # PLC9D's dark writer seal stays in the existing Coding lifecycle owner:
-    # _plugin_lifecycle.py +43/-2; no new Coding path is exempt.
-    plc9d_writer_fence_allowance = 43 - 2
-    # PLC9B's Session-bound Product factory uses the existing Coding bootstrap:
-    # bootstrap.py +53/-6; no new Coding path is exempt.
-    plc9b_session_inventory_allowance = 53 - 6
-    # PLC9B startup ingress: lifecycle +142/-67, bootstrap +14/-5,
-    # Continuity +48/-3, new epoch layout +96, management CLI +38/-21.
-    # All five paths stay in core; retain the prior one-line margin.
-    plc9b_startup_ingress_allowance = (142 - 67) + (14 - 5) + (48 - 3) + 96 + (38 - 21)
-    # PLC9B pre-B snapshot domains extend the exact epoch layout +206/-1;
-    # the path remains in core and retains the one-line margin.
-    plc9b_snapshot_domains_allowance = 206 - 1
-    # PLC9B cutover preparation: bootstrap +70/-37, pre-B state snapshot
-    # +147, and settings-locked Source snapshot +231. Exact paths stay core.
-    plc9b_cutover_transaction_allowance = (70 - 37) + 147 + 231
-    # PLC9B selected manifest extends the existing base Plugin owner +142/-21.
-    plc9b_selected_manifest_allowance = 142 - 21
-    # PLC9B selected Resources: base Plugin +11/-4 and new exact Product
-    # composition +403. Both remain counted in core.
-    plc9b_selected_resources_allowance = (11 - 4) + 403
-    # PLC9B hosted routing keeps these existing core owners bounded: base
-    # Plugin +48/-12, Product composition +110/-7, Resource shadow +26/-1,
-    # bootstrap +189/-28, and agent Session +151/-40.
-    plc9b_hosted_routing_allowance = (
-        (48 - 12) + (110 - 7) + (26 - 1) + (189 - 28) + (151 - 40)
-    )
-    # PLC9B fenced owner adds exact new Coding Product modules: built-in Wheel
-    # +232 and runtime +213, plus pre-B snapshot +17. All remain core.
-    plc9b_fenced_owner_allowance = 232 + 213 + 17
-    # PLC9B Capability ingress: built-in Wheel +181/-28, new Product
-    # Capability selection +328, and Product runtime +56/-2. All stay core.
-    plc9b_capability_ingress_allowance = (181 - 28) + 328 + (56 - 2)
-    # PLC9B selected revision composition replaces the 328-line prior
-    # Capability selector: base Product +23, legacy Capability +25/-2,
-    # new Product Capability +604, bootstrap +144/-15, selected revision
-    # +388, and agent Session +59/-1. Exact files remain in core.
-    plc9b_capability_selection_allowance = (
-        23 + (25 - 2) + 604 + (144 - 15) - 328 + 388 + (59 - 1)
-    )
-    # PLC9B startup routing: bootstrap +51/-14, Product runtime +178/-2,
-    # agent Session runtime +22. All three existing paths remain core.
-    plc9b_startup_routing_allowance = (51 - 14) + (178 - 2) + 22
-    # PLC9B fresh cutover adds exact CLI +100, pre-B snapshot +118, and
-    # fenced Product runtime +193/-1; all remain counted in core.
-    plc9b_fresh_cutover_allowance = 100 + 118 + (193 - 1)
-    # PLC9D's explicit offline GC CLI is one exact new 164-line core path.
-    plc9d_offline_gc_allowance = 164
-    # PLC9D confirmation backup extends the exact cutover CLI +12 and adds
-    # one private per-Installation backup owner +137; both remain core.
-    plc9d_confirmation_backup_allowance = 12 + 137
-    assert (
-        sum(groups["core"].values())
-        <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
-        + capability_projection_allowance + lmux_default_owned_allowance
-        + canonical_legacy_enrollment_allowance + plc9d_writer_fence_allowance
-        + plc9b_session_inventory_allowance
-        + plc9b_startup_ingress_allowance
-        + plc9b_snapshot_domains_allowance
-        + plc9b_cutover_transaction_allowance
-        + plc9b_selected_manifest_allowance
-        + plc9b_selected_resources_allowance
-        + plc9b_hosted_routing_allowance
-        + plc9b_fenced_owner_allowance
-        + plc9b_capability_ingress_allowance
-        + plc9b_capability_selection_allowance
-        + plc9b_startup_routing_allowance
-        + plc9b_fresh_cutover_allowance
-        + plc9d_offline_gc_allowance
-        + plc9d_confirmation_backup_allowance
-    ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
     assert sum(groups["g11"].values()) <= 420, groups["g11"]

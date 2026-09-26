@@ -74,7 +74,9 @@ def _embedded(root):
         driver.read_until(
             lambda out: (
                 "Welcome to Loushang CLI" in strip_control_sequences(out)
-                and " | idle" in strip_control_sequences(out)
+                # The workspace field appears only after startup completes.
+                # The lower-priority idle field can be omitted at 100 columns.
+                and f" | {root.name} |" in strip_control_sequences(out)
                 and "\x1b[?2004h" in out
                 and "\x1b[?1004h" in out
             ),
