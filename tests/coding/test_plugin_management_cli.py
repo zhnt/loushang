@@ -26,6 +26,7 @@ from loushang.coding.plugin_enablement_compatibility import (
 )
 from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_binding,
+    build_coding_plugin_management_cli_read_binding,
 )
 from loushang.harness.cli.plugin_listing import list_plugin_records
 from loushang.harness.cli.resource_toggles import (
@@ -103,6 +104,28 @@ class _FailingCompatibilitySettingsManager(_SettingsManager):
         return publish
 
 
+def test_legacy_management_read_binding_preserves_partial_journal_tail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    layout.root.mkdir(parents=True)
+    layout.desired_state.write_bytes(b'{"partial":')
+    layout.management_operations.write_bytes(b'{"partial":')
+
+    with pytest.raises(RuntimeError):
+        list_plugin_records(
+            build_coding_plugin_management_cli_read_binding(
+                workspace, _SettingsManager(_Settings())
+            )
+        )
+
+    assert layout.desired_state.read_bytes() == b'{"partial":'
+    assert layout.management_operations.read_bytes() == b'{"partial":'
+
+
 def test_management_cli_failure_releases_its_process_registration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -146,8 +169,8 @@ def test_coding_management_cli_projects_relative_sources_from_workspace(
         _SettingsManager(_Settings(plugin_sources=("plugins/debug-pack",))),
     )
 
-    assert list_plugin_records(binding) == [
-        {
+    [record] = list_plugin_records(binding)
+    assert {key: value for key, value in record.items() if key != "management"} == {
             "name": "debug-pack",
             "version": "1.2.3",
             "path": str(plugin_root.resolve()),
@@ -157,8 +180,56 @@ def test_coding_management_cli_projects_relative_sources_from_workspace(
             "desiredState": "unknown",
             "convergence": "unknown",
             "migrationStatus": None,
-        }
-    ]
+    }
+    management = record["management"]
+    assert isinstance(management, dict)
+    assert management["installationKey"]["pluginId"] == "debug-pack"
+    assert "instances" not in management["unknownDimensions"]
+    assert management["ownerRevisions"]["instances"] == 0
+
+
+def test_coding_management_read_binding_exposes_real_owner_skew(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = build_coding_plugin_lifecycle(
+        resolve_coding_plugin_lifecycle_state_layout(workspace),
+        startup_id="management-skew",
+    )
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=False,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=False,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+
+    [record] = list_plugin_records(
+        build_coding_plugin_management_cli_read_binding(
+            workspace, _SettingsManager(_Settings())
+        )
+    )
+
+    management = record["management"]
+    assert isinstance(management, dict)
+    assert management["ownerRevisions"]["instances"] == 0
+    assert management["ownerRevisions"]["packages"] == 0
+    assert "instances" in management["unknownDimensions"]
+    assert "packages" not in management["unknownDimensions"]
+    assert {item["code"] for item in management["skew"]} == {
+        "desired_selected_instance_not_observed",
+    }
 
 
 def test_management_binding_expands_tilde_before_workspace_identity(

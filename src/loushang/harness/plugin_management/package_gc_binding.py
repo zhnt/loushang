@@ -28,6 +28,9 @@ from loushang.harness.plugin_management.records import (
     PluginDesiredStateTransitionV1,
     PluginPackageRevisionRefV1,
 )
+from loushang.harness.plugin_management.updates import (
+    PluginDesiredStateUpdateTransitionV2,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDesiredStateCommitRequestV1,
 )
@@ -147,18 +150,23 @@ class PluginPackageGcBindingV1:
         record_revision: int,
         request: PackageDesiredStateCommitRequestV1,
         package_revision: PluginPackageRevisionRefV1,
-        transition: PluginDesiredStateTransitionV1,
+        transition: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2,
     ) -> PluginPackageGcBindingV1:
+        mutation = (
+            transition.mutation
+            if isinstance(transition, PluginDesiredStateTransitionV1)
+            else transition.mutation.command
+        )
         if (
             transition.inventory_revision
             != request.expected_inventory_revision + 1
-            or transition.mutation.operation_id != request.command_id
-            or transition.mutation.idempotency_key != request.desired_request_id
+            or mutation.operation_id != request.command_id
+            or mutation.idempotency_key != request.desired_request_id
             or transition.committed_state.selection.package_revision
             != package_revision
-            or transition.mutation.installation_key.product_id != request.product_id
-            or transition.mutation.installation_key.scope_id != request.scope_id
-            or transition.mutation.installation_key.plugin_id != request.plugin_id
+            or mutation.installation_key.product_id != request.product_id
+            or mutation.installation_key.scope_id != request.scope_id
+            or mutation.installation_key.plugin_id != request.plugin_id
         ):
             raise ValueError("Package GC crosswalk does not match desired commit")
         return cls(
@@ -221,12 +229,82 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PluginPackageUpdateAnchorV1:
+    record_revision: int
+    operation_id: str
+    source_identity: str
+    plugin_id: str
+    expected_inventory_revision: int
+    expected_package_revision: PluginPackageRevisionRefV1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.record_revision) is not int
+            or self.record_revision < 1
+            or not self.operation_id
+            or not self.source_identity
+            or not self.plugin_id
+            or type(self.expected_inventory_revision) is not int
+            or self.expected_inventory_revision < 1
+            or not isinstance(
+                self.expected_package_revision, PluginPackageRevisionRefV1
+            )
+            or self.expected_package_revision.plugin_id != self.plugin_id
+        ):
+            raise ValueError("Package update anchor is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "expectedInventoryRevision": self.expected_inventory_revision,
+            "expectedPackageRevision": self.expected_package_revision.to_dict(),
+            "operationId": self.operation_id,
+            "pluginId": self.plugin_id,
+            "recordRevision": self.record_revision,
+            "sourceIdentity": self.source_identity,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginPackageUpdateAnchorV1:
+        if type(value) is not dict or set(value) != {
+            "expectedInventoryRevision", "expectedPackageRevision", "operationId",
+            "pluginId", "recordRevision", "sourceIdentity",
+        }:
+            raise JournalCodecError(
+                "Invalid Package update anchor record",
+                code="invalid_plugin_package_update_anchor_record",
+            )
+        try:
+            return cls(
+                record_revision=_integer(value["recordRevision"]),
+                operation_id=_string(value["operationId"]),
+                source_identity=_string(value["sourceIdentity"]),
+                plugin_id=_string(value["pluginId"]),
+                expected_inventory_revision=_integer(value["expectedInventoryRevision"]),
+                expected_package_revision=PluginPackageRevisionRefV1.from_dict(
+                    value["expectedPackageRevision"]
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            raise JournalCodecError(
+                "Invalid Package update anchor record",
+                code="invalid_plugin_package_update_anchor_record",
+            ) from exc
+
+
+_UPDATE_ANCHOR_CODEC = FunctionalJournalRecordCodec(
+    encoder=PluginPackageUpdateAnchorV1.to_dict,
+    decoder=PluginPackageUpdateAnchorV1.from_dict,
+)
+
+
 class PluginPackageGcBindingJournal:
     """One append-only, idempotent mapping for each B desired handoff."""
 
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path).resolve()
         self._claim_path = self._path.with_name(f"{self._path.name}.claims")
+        self._update_anchor_path = self._path.with_name(f"{self._path.name}.updates")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
 
@@ -237,6 +315,79 @@ class PluginPackageGcBindingJournal:
     @property
     def claim_path(self) -> Path:
         return self._claim_path
+
+    def anchor_update(
+        self,
+        *,
+        operation_id: str,
+        source_identity: str,
+        plugin_id: str,
+        expected_inventory_revision: int,
+        expected_package_revision: PluginPackageRevisionRefV1,
+    ) -> PluginPackageUpdateAnchorV1:
+        """Bind an update predecessor before its Package operation is accepted."""
+
+        with journal_file_lock(self._update_anchor_path, "exclusive"):
+            records = self._load_update_anchors_unlocked()
+            existing = next(
+                (item for item in records if item.operation_id == operation_id), None
+            )
+            if existing is not None:
+                if (
+                    existing.source_identity != source_identity
+                    or existing.plugin_id != plugin_id
+                ):
+                    raise self._error(
+                        "Package update anchor identity was reused",
+                        "plugin_package_update_anchor_conflict",
+                    )
+                return existing
+            anchor = PluginPackageUpdateAnchorV1(
+                record_revision=len(records) + 1,
+                operation_id=operation_id,
+                source_identity=source_identity,
+                plugin_id=plugin_id,
+                expected_inventory_revision=expected_inventory_revision,
+                expected_package_revision=expected_package_revision,
+            )
+            append_jsonl_record(
+                self._update_anchor_path,
+                anchor,
+                record_codec=_UPDATE_ANCHOR_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+            )
+            return anchor
+
+    def update_anchor(self, operation_id: str) -> PluginPackageUpdateAnchorV1 | None:
+        with journal_file_lock(self._update_anchor_path, "shared"):
+            return next(
+                (
+                    item for item in self._load_update_anchors_unlocked()
+                    if item.operation_id == operation_id
+                ),
+                None,
+            )
+
+    def _load_update_anchors_unlocked(self) -> tuple[PluginPackageUpdateAnchorV1, ...]:
+        if not self._update_anchor_path.exists():
+            return ()
+        records = load_jsonl(
+            self._update_anchor_path,
+            record_codec=_UPDATE_ANCHOR_CODEC,
+            format_profile=SORTED_UNICODE_JSONL_FORMAT,
+            durability=self._unlocked_durability,
+            load_policy=JournalLoadPolicy(partial_tail="raise"),
+        ).records
+        if any(
+            item.record_revision != index
+            for index, item in enumerate(records, start=1)
+        ) or len({item.operation_id for item in records}) != len(records):
+            raise self._error(
+                "Package update anchor chain changed",
+                "plugin_package_update_anchor_corrupt",
+            )
+        return records
 
     def prepare(
         self,
@@ -285,7 +436,7 @@ class PluginPackageGcBindingJournal:
         self,
         request: PackageDesiredStateCommitRequestV1,
         package_revision: PluginPackageRevisionRefV1,
-        transition: PluginDesiredStateTransitionV1,
+        transition: PluginDesiredStateTransitionV1 | PluginDesiredStateUpdateTransitionV2,
     ) -> PluginPackageGcBindingV1:
         if not any(
             claim.request == request and claim.package_revision == package_revision

@@ -200,8 +200,9 @@ def open_coding_product_builtin_resolution(
         "coding.arch.default",
         "coding.lsp.default",
     ),
+    external_data_plugin_ids: tuple[str, ...] = (),
 ) -> PluginRuntimeResolution:
-    """Reopen the selected first-party set from one Product binding."""
+    """Reopen first-party and admitted data-only roots from one Product binding."""
 
     if (
         not isinstance(capability_plugin_ids, tuple)
@@ -213,15 +214,26 @@ def open_coding_product_builtin_resolution(
     if len(specs) != len(capability_plugin_ids):
         raise ValueError("Coding Product Capability selection is invalid")
 
+    if (
+        not isinstance(external_data_plugin_ids, tuple)
+        or tuple(sorted(set(external_data_plugin_ids))) != external_data_plugin_ids
+        or set(external_data_plugin_ids)
+        & {"coding.base", *(spec.plugin_id for spec in specs)}
+        or external_data_plugin_ids != runtime.selected_external_data_plugin_ids()
+    ):
+        raise ValueError("Coding external data selection changed")
     return _open_selected_resolution(
         runtime,
-        tuple(sorted(("coding.base", *(spec.plugin_id for spec in specs)))),
+        tuple(sorted(("coding.base", *(spec.plugin_id for spec in specs), *external_data_plugin_ids))),
+        external_data_plugin_ids=frozenset(external_data_plugin_ids),
     )
 
 
 def _open_selected_resolution(
     runtime: PackageProductRuntimeBindingV1,
     plugin_ids: tuple[str, ...],
+    *,
+    external_data_plugin_ids: frozenset[str] = frozenset(),
 ) -> PluginRuntimeResolution:
     if not isinstance(runtime, PackageProductRuntimeBindingV1):
         raise TypeError("Coding Product Plugin requires a Product runtime")
@@ -235,11 +247,21 @@ def _open_selected_resolution(
                 max_files=_MAX_FILES,
                 max_total_bytes=_MAX_BYTES,
             )
-            _validate_builtin_selection(selected, plugin_id)
+            if plugin_id in external_data_plugin_ids:
+                _validate_external_data_selection(selected, plugin_id)
+            else:
+                _validate_builtin_selection(selected, plugin_id)
             handle = _ProductSelectedRevisionHandle(runtime, selected)
             try:
-                lock = _host_distribution_lock(
-                    plugin_id, selected.snapshot.root_ref.artifact_digest
+                lock = (
+                    PluginDependencyClosureLock(
+                        package_content_digest=selected.snapshot.root_ref.artifact_digest,
+                        python_distributions=(),
+                    )
+                    if plugin_id in external_data_plugin_ids
+                    else _host_distribution_lock(
+                        plugin_id, selected.snapshot.root_ref.artifact_digest
+                    )
                 )
                 manifest = selected.verified_manifest()
                 root = handle.root
@@ -351,6 +373,26 @@ def _validate_builtin_selection(
         != selected.snapshot.root_ref.artifact_digest
     ):
         raise ValueError("Coding Product Capability selection is not first-party")
+
+
+def _validate_external_data_selection(
+    selected: PackageProductSelectedPluginManifestV1, plugin_id: str
+) -> None:
+    manifest = selected.verified_manifest()
+    trust = selected.source_trust_snapshot
+    pairs = selected.verified_data_only_declarations()
+    if (
+        selected.snapshot.installation_key.product_id != "coding"
+        or manifest.name != plugin_id
+        or trust is None
+        or not trust.trusted
+        or trust.plugin_id != plugin_id
+        or trust.source_trust_class != "local-data-only"
+        or len(pairs) != 1
+        or pairs[0][0].kind != "resource_item"
+        or pairs[0][0].owner != "resources.skill"
+    ):
+        raise ValueError("Coding external data selection is not admissible")
 
 
 def _host_distribution_lock(

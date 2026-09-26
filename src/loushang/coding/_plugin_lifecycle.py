@@ -21,6 +21,7 @@ from loushang.coding._plugin_owner_generations import (
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.journal import (
+    JournalLoadPolicy,
     JournalLockUnavailable,
     journal_file_lock,
     journal_file_lock_at,
@@ -1101,40 +1102,71 @@ def build_coding_plugin_management_application(
     layout: CodingPluginLifecycleStateLayout,
     *,
     source: PluginSourceProjectionSourcePort | None = None,
+    read_only: bool = False,
 ) -> PluginManagementApplicationPorts:
     """Compose command/query ports without acquiring a Product runtime lease."""
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    owns_process_startup_lease = sys.platform.startswith(
+    owns_process_startup_lease = not read_only and sys.platform.startswith(
         "linux"
     ) and _hold_process_startup_lease(
         layout,
         startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
     )
     try:
-        if not owns_process_startup_lease:
+        if not read_only and not owns_process_startup_lease:
             _prepare_private_state_layout(layout)
+        load_policy = JournalLoadPolicy(partial_tail="raise") if read_only else None
         gc_reservations = PluginPackageGcReservationJournal(
-            layout.package_gc_reservations
+            layout.package_gc_reservations, load_policy=load_policy
         )
         desired = PluginDesiredStateLedger(
-            layout.desired_state, gc_gate=gc_reservations
+            layout.desired_state, gc_gate=gc_reservations, load_policy=load_policy
         )
-        intents = PluginRetirementIntentLedger(layout.retirement_intents)
+        intents = PluginRetirementIntentLedger(
+            layout.retirement_intents, load_policy=load_policy
+        )
         retirement_sets = PluginRetirementSetLedger(
             layout.retirement_sets,
             retirement_intents=intents,
+            load_policy=load_policy,
         )
         management = PluginManagementService(
             desired_state=desired,
             operation_journal_path=layout.management_operations,
             retirement_intents=intents,
             retirement_sets=retirement_sets,
+            load_policy=load_policy,
         )
-        migrations = PluginEnablementMigrationJournal(layout.enablement_migration)
+        migrations = PluginEnablementMigrationJournal(
+            layout.enablement_migration, load_policy=load_policy
+        )
         migrations.assert_runtime_compatible(supported_migration_epoch=1)
-        management.recover()
+        if not read_only:
+            management.recover()
+        security = PluginInstanceSecurityRetirementJournal.for_instance_runtime(
+            layout.instance_runtime, load_policy=load_policy
+        )
+        instances = PluginInstanceRuntimeLedger(
+            layout.instance_runtime,
+            management_operation_journal_path=layout.management_operations,
+            desired_state=desired,
+            retirement_intents=intents,
+            retirement_sets=retirement_sets,
+            security_acceptances=security,
+            gc_gate=gc_reservations,
+            load_policy=load_policy,
+        )
+        packages = PluginPackageLifecycleLedger(
+            layout.package_lifecycle,
+            startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
+            desired_state=desired,
+            instance_runtime=instances,
+            retirement_sets=retirement_sets,
+            gc_gate=gc_reservations,
+            load_policy=load_policy,
+        )
         return PluginManagementApplicationPorts(
             commands=PluginManagementCommandApplication(management),
             queries=PluginManagementReadModelProjector(
@@ -1142,6 +1174,9 @@ def build_coding_plugin_management_application(
                 operations=management,
                 migrations=migrations,
                 source=source,
+                instances=instances,
+                packages=packages,
+                retirement=retirement_sets,
             ),
         )
     except BaseException:

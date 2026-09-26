@@ -274,11 +274,13 @@ class PluginPackageGcReservationSnapshotV1:
 class PluginPackageGcReservationJournal:
     """One explicit gate shared by every writer in an opted-in owner graph."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self, path: str | Path, *, load_policy: JournalLoadPolicy | None = None
+    ) -> None:
         self._path = Path(path).resolve()
         self._lock_state = _gate_lock_state(self._path)
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

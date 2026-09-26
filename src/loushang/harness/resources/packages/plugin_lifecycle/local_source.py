@@ -107,7 +107,7 @@ class _LocalWheelStream:
 
     def transfer_to(self, sink: BoundedAcquisitionSinkPort) -> SourceAdapterResultV1:
         try:
-            fd = _open_regular_no_follow(self._source)
+            fd = open_regular_no_follow(self._source)
         except OSError as exc:
             raise PackageAcquisitionError(
                 "Local Package Source identity changed",
@@ -144,7 +144,8 @@ def _validate_path(identity: str, root: Path) -> None:
         raise ValueError("Local Package Source must be below configured root")
 
 
-def _open_regular_no_follow(path: Path) -> int:
+def open_regular_no_follow(path: Path) -> int:
+    """Open a POSIX regular file through no-follow directory descriptors."""
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
     parent_fd = os.open("/", directory_flags)
@@ -177,4 +178,4 @@ def _source_refusal(message: str) -> PackageAcquisitionError:
     )
 
 
-__all__ = ["PackagePinnedLocalWheelSourceAuthority"]
+__all__ = ["PackagePinnedLocalWheelSourceAuthority", "open_regular_no_follow"]

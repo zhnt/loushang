@@ -64,6 +64,8 @@ class PackageProductSelectedRootReadPort(Protocol):
 
 
 class PackageProductSelectedManifestReadPort(Protocol):
+    def selected_external_data_plugin_ids(self) -> tuple[str, ...]: ...
+
     def assert_selected_manifest_current(
         self, selected: PackageProductSelectedPluginManifestV1
     ) -> None: ...
@@ -314,6 +316,22 @@ class PackageProductRuntimeBindingV1:
                 max_files=max_files,
                 max_total_bytes=max_total_bytes,
             )
+
+    def selected_external_data_plugin_ids(self) -> tuple[str, ...]:
+        """List enabled, Product-bound local data roots for Session capture."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_manifest_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-manifest reader is unavailable",
+                    code="package_product_manifest_reader_unavailable",
+                )
+            return self._selected_manifest_reader.selected_external_data_plugin_ids()
 
     def assert_selected_plugin_manifest_current(
         self, selected: PackageProductSelectedPluginManifestV1

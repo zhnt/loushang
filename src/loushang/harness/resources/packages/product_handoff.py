@@ -62,6 +62,7 @@ class PackageProductHandoffFinalizer:
         journal: PackageRetentionHandoffJournal,
         handoff: PackageRetentionHandoffOwner,
         inventory_revision: Callable[[], int],
+        update_inventory_revision: Callable[[str], int] | None = None,
     ) -> None:
         for value, expected, name in (
             (kernel, PackageLifecycleOwner, "lifecycle owner"),
@@ -82,6 +83,7 @@ class PackageProductHandoffFinalizer:
         self._journal = journal
         self._handoff = handoff
         self._inventory_revision = inventory_revision
+        self._update_inventory_revision = update_inventory_revision
 
     def finalize(
         self,
@@ -104,7 +106,7 @@ class PackageProductHandoffFinalizer:
             or not isinstance(durable_request, PackageLifecycleRequestV2)
             or durable_request
             != request.ingress.bind_classification_facts(classification.basis_facts)
-            or durable_request.action != "install"
+            or durable_request.action not in {"install", "update"}
         ):
             raise self._error("Committed Package route changed", "package_product_handoff_stale")
         command_id, command_fingerprint = _command_identity(current)
@@ -217,7 +219,13 @@ class PackageProductHandoffFinalizer:
             or pin.receipt_id != publication.transaction_pin_receipt_id
         ):
             raise self._error("Package handoff admission failed", "package_product_handoff_stale")
-        revision = self._inventory_revision()
+        durable_request = self._kernel.journal.request(status.operation_id)
+        if durable_request is not None and durable_request.action == "update":
+            if self._update_inventory_revision is None:
+                raise self._error("Product update anchor is unavailable", "package_product_handoff_stale")
+            revision = self._update_inventory_revision(status.operation_id)
+        else:
+            revision = self._inventory_revision()
         if type(revision) is not int or revision < 0:
             raise self._error("Product inventory revision is invalid", "package_product_handoff_stale")
         desired = PackageDesiredStateCommitRequestV1.create(

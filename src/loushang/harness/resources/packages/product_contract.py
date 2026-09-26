@@ -104,6 +104,7 @@ PACKAGE_PRODUCT_LIFECYCLE_FAILURE_CODES = frozenset(
         "package_retention_handoff_interrupted",
         "package_retention_handoff_stale",
         "package_route_unavailable",
+        "package_plugin_contribution_rejected",
         "package_runtime_epoch_unsupported",
         "package_source_provenance_changed",
         "package_source_unauthorized",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
@@ -25,6 +25,7 @@ from loushang.harness.capabilities.consumer_requirements import (
 )
 from loushang.harness.capabilities.contribution_admission import (
     CatalogConsumerContributionSpec,
+    OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionSpec,
     ResourceContributionSpec,
@@ -57,6 +58,9 @@ from loushang.harness.resources.plugins.engine import (
 )
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginPreflightContextV1,
     PluginSelectionPlanV2,
 )
 from loushang.harness.session.capability_composition_inputs import (
@@ -107,6 +111,9 @@ class CodingBaseProductCompilation:
     selected_capability_manifests: tuple[
         PackageProductSelectedPluginManifestV1, ...
     ] = field(default=(), repr=False, compare=False)
+    selected_external_data_manifests: tuple[
+        PackageProductSelectedPluginManifestV1, ...
+    ] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
         context = self.product_composition.authority_context
@@ -129,14 +136,18 @@ class CodingBaseProductCompilation:
         if actual != expected or len(actual) != len(self.resource_bodies):
             raise ValueError("Product Resource bodies changed owner admissions")
         capability_ids = tuple(
-            item.verified_manifest().name for item in self.selected_capability_manifests
+            item.verified_manifest().name
+            for item in (
+                *self.selected_capability_manifests,
+                *self.selected_external_data_manifests,
+            )
         )
-        if capability_ids != tuple(
+        if tuple(sorted(capability_ids)) != tuple(
             plugin_id
             for plugin_id in self.plan.selected_plugin_ids
             if plugin_id != "coding.base"
         ):
-            raise ValueError("Product Capability manifests changed the selected plan")
+            raise ValueError("Product manifests changed the selected plan")
         instance_refs = {
             item.plugin_id: item for item in self.plan.context.instance_revision_refs
         }
@@ -145,9 +156,19 @@ class CodingBaseProductCompilation:
             selected.snapshot.instance_revision_ref
             != instance_refs.get(selected.manifest.name)
             or selected.source_trust_snapshot != trust.get(selected.manifest.name)
-            for selected in self.selected_capability_manifests
+            for selected in (
+                *self.selected_capability_manifests,
+                *self.selected_external_data_manifests,
+            )
         ):
-            raise ValueError("Product Capability manifests changed B selection facts")
+            raise ValueError("Product manifests changed B selection facts")
+        selected_by_id = {
+            item.manifest.name: item
+            for item in (
+                self.selected_manifest,
+                *self.selected_external_data_manifests,
+            )
+        }
         for admission in self.product_composition.resource_admissions:
             captured = next(
                 item
@@ -156,7 +177,7 @@ class CodingBaseProductCompilation:
             )
             input_record = ProductSelectedResourceInput(
                 admission=admission,
-                selected_manifest=self.selected_manifest,
+                selected_manifest=selected_by_id[admission.plugin_id],
                 relative_path=captured.logical_path,
             )
             if input_record.body != captured.body:
@@ -185,10 +206,17 @@ class CodingBaseProductCompilation:
         by_fingerprint = {
             item.admission_fingerprint: item for item in self.resource_bodies
         }
+        selected_by_id = {
+            item.manifest.name: item
+            for item in (
+                self.selected_manifest,
+                *self.selected_external_data_manifests,
+            )
+        }
         return tuple(
             ProductSelectedResourceInput(
                 admission=admission,
-                selected_manifest=self.selected_manifest,
+                selected_manifest=selected_by_id[admission.plugin_id],
                 relative_path=by_fingerprint[admission.fingerprint].logical_path,
             )
             for admission in self.product_composition.resource_admissions
@@ -339,17 +367,174 @@ def compile_coding_base_product_selection(
     )
 
 
+def extend_coding_base_product_data_skills(
+    base: CodingBaseProductCompilation,
+    external: tuple[PackageProductSelectedPluginManifestV1, ...],
+    *,
+    evaluated_at: int,
+) -> CodingBaseProductCompilation:
+    """Compile selected external Skills with the base under one exact owner set."""
+
+    if not external:
+        return base
+    if base.plan.selected_plugin_ids != ("coding.base",):
+        raise ValueError("External data extension requires the base-only plan")
+    if tuple(sorted(item.manifest.name for item in external)) != tuple(
+        item.manifest.name for item in external
+    ):
+        raise ValueError("External data selections must be sorted and unique")
+    for selected in external:
+        trust = selected.source_trust_snapshot
+        pairs = selected.verified_data_only_declarations()
+        if (
+            trust is None
+            or not trust.trusted
+            or trust.source_trust_class != "local-data-only"
+            or len(pairs) != 1
+            or pairs[0][0].kind != "resource_item"
+            or pairs[0][0].owner != "resources.skill"
+        ):
+            raise ValueError("External Product Skill selection changed")
+    original = base.plan
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id=original.context.product_id,
+            scope_id=original.context.scope_id,
+            policy_revision=original.context.policy_revision,
+            instance_revision_refs=tuple(
+                sorted(
+                    (
+                        *original.context.instance_revision_refs,
+                        *(item.snapshot.instance_revision_ref for item in external),
+                    ),
+                    key=lambda item: item.plugin_id,
+                )
+            ),
+        ),
+        selected_plugin_ids=tuple(
+            sorted(("coding.base", *(item.manifest.name for item in external)))
+        ),
+        selected_contributions=tuple(
+            sorted(
+                (
+                    *original.selected_contributions,
+                    *(
+                        PluginContributionRef(item.manifest.name, reservation.contribution_id)
+                        for item in external
+                        for reservation, _ in item.verified_data_only_declarations()
+                    ),
+                )
+            )
+        ),
+        source_trust_snapshots=tuple(
+            sorted(
+                (
+                    *original.source_trust_snapshots,
+                    *(
+                        item.source_trust_snapshot
+                        for item in external
+                        if item.source_trust_snapshot is not None
+                    ),
+                ),
+                key=lambda item: item.plugin_id,
+            )
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                sorted(
+                    (
+                        *original.effective_configuration_set.entries,
+                        *(
+                            PluginEffectiveConfigurationEntry(
+                                plugin_id=item.manifest.name,
+                                contribution_id=reservation.contribution_id,
+                                configuration=reservation.configuration,
+                            )
+                            for item in external
+                            for reservation, _ in item.verified_data_only_declarations()
+                        ),
+                    ),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
+                )
+            )
+        ),
+        allowed_authority_ceiling=original.allowed_authority_ceiling,
+    )
+    candidates = tuple(
+        _candidate(selected, plan, reservation, declaration)
+        for selected in (base.selected_manifest, *external)
+        for reservation, declaration in selected.verified_data_only_declarations()
+        if PluginContributionRef(selected.manifest.name, reservation.contribution_id)
+        in plan.selected_contributions
+    )
+    bindings = list(base.owner_bindings)
+    if not any(item.owner_key[0] == "resources.skill" for item in bindings):
+        bindings.extend(
+            _owner_bindings(
+                include_tools=False, include_prompt=False,
+                include_skill=True, include_command=False,
+            )
+        )
+    trust_classes = (
+        ("host-equivalent-local", "local-data-only")
+        if any(
+            item.plugin_id == "coding.base" and item.owner_id == "resources.skill"
+            for item in candidates
+        )
+        else ("local-data-only",)
+    )
+    owners = tuple(
+        ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                replace(
+                    binding.authority.policy,
+                    allowed_source_trust_classes=trust_classes,
+                )
+            ),
+            admission_ttl_seconds=binding.admission_ttl_seconds,
+        )
+        if binding.owner_key[0] == "resources.skill"
+        else binding
+        for binding in bindings
+    )
+    composition = _assemble_product_contribution_candidates(
+        plan=plan,
+        candidates=candidates,
+        owner_bindings=owners,
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, WORKSPACE_CAPABILITY_DEFINITION),
+        select_optional_requirements=lambda _preview: (),
+        evaluated_at=evaluated_at,
+    )
+    return replace(
+        base,
+        plan=plan,
+        product_composition=composition,
+        owner_bindings=owners,
+        resource_bodies=_resource_bodies(
+            base.selected_manifest, composition, external_selected=external
+        ),
+        selected_external_data_manifests=external,
+    )
+
+
 def _resource_bodies(
     selected: PackageProductSelectedPluginManifestV1,
     compilation: ProductCompositionCompilation,
+    *,
+    external_selected: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
 ) -> tuple[CodingBaseProductResourceBody, ...]:
-    snapshot = selected.snapshot
-    members = dict(snapshot.files)
-    root = selected.manifest.root_relative_path.as_posix()
+    by_id = {
+        item.manifest.name: item for item in (selected, *external_selected)
+    }
     bodies: list[CodingBaseProductResourceBody] = []
     for admission in compilation.resource_admissions:
         candidate = admission.candidate
         resource = candidate.contribution
+        selected_root = by_id[admission.plugin_id]
+        snapshot = selected_root.snapshot
+        members = dict(snapshot.files)
+        root = selected_root.manifest.root_relative_path.as_posix()
         if (
             not isinstance(resource, ResourceContributionSpec)
             or candidate.package_content_digest
@@ -395,9 +580,9 @@ def _candidate(
 ) -> OwnerContributionCandidateEnvelope:
     snapshot = selected.snapshot
     manifest = selected.manifest
-    if declaration.plugin_id != "coding.base":
+    if declaration.plugin_id != manifest.name:
         raise CodingBasePluginAssemblyError(
-            "Selected Coding base declaration changed Plugin identity",
+            "Selected Product declaration changed Plugin identity",
             code="coding_base_product_selection_mismatch",
         )
     contribution: OwnerContributionSpec
@@ -459,7 +644,10 @@ def _candidate(
             "rootRef": snapshot.root_ref.to_dict(),
         },
     )
-    trust = plan.source_trust_snapshots[0]
+    trust = next(
+        item for item in plan.source_trust_snapshots
+        if item.plugin_id == manifest.name
+    )
     candidate_fingerprint = _digest(
         "loushang.product-selected-plugin-candidate/v1",
         {
@@ -526,4 +714,5 @@ __all__ = [
     "CodingBaseProductCompilation",
     "CodingBaseProductResourceBody",
     "compile_coding_base_product_selection",
+    "extend_coding_base_product_data_skills",
 ]

@@ -377,6 +377,7 @@ class PluginPackageLifecycleLedger:
         instance_runtime: PluginPackageInstanceRuntimeSourcePort,
         retirement_sets: PluginPackageRetirementSetSourcePort,
         gc_gate: PluginPackageGcReferenceGatePort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._path = Path(path)
         _require_nonempty(startup_id, name="Plugin Package startup id")
@@ -394,7 +395,7 @@ class PluginPackageLifecycleLedger:
         if len(paths) != 4:
             raise ValueError("Plugin Package lifecycle journals must be distinct")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

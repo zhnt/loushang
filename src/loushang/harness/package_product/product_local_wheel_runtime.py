@@ -25,6 +25,9 @@ from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeRequestV1,
 )
+from loushang.harness.plugin_authoring.resource_item import (
+    ResourceItemDeclarationPayload,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -61,6 +64,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
     PackageRecursiveClosureOwner,
+    VerifiedPackageClosureCandidate,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_runtime import (
     PackageClosureLifecycleOwner,
@@ -154,6 +158,7 @@ from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
 )
 from loushang.harness.resources.packages.product_transaction import (
+    PackageProductCandidateRejected,
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
 )
@@ -296,10 +301,138 @@ def _declarations_match_reservations(
     )
 
 
+def _admit_external_data_only_candidate(
+    policy: PackageProductLocalWheelPolicy,
+    request: PackageProductRouteRequestV1,
+    closure: VerifiedPackageClosureCandidate,
+) -> None:
+    """Check the fixed Resource/Skill shape only after PLC9B wheel verification."""
+
+    source = request.ingress.source_locator
+    bindings = tuple(item for item in policy.bindings if item.source_identity == source)
+    if len(bindings) != 1 or bindings[0].source_trust_class != "local-data-only":
+        return
+    binding = bindings[0]
+
+    def reject() -> None:
+        raise PackageProductCandidateRejected("External data Wheel shape is unsupported")
+
+    if len(closure.candidates) != 1 or binding.plugin_manifest_path is None:
+        reject()
+    wheel = closure.candidates[0]
+    tree = wheel.transfer_manifest
+    dist_info = f"{binding.plugin_id}-{tree.version}.dist-info"
+    metadata_paths = {
+        f"{dist_info}/WHEEL",
+        f"{dist_info}/METADATA",
+        f"{dist_info}/RECORD",
+    }
+    root = binding.plugin_id
+    fixed_paths = {
+        f"{root}/plugin.json",
+        f"{root}/declarations/resources.json",
+    }
+    if (
+        tree.node_id != "root"
+        or tree.distribution != binding.plugin_id
+        or wheel.evidence.artifact_digest != binding.artifact_digest
+        or binding.plugin_manifest_path != f"{root}/plugin.json"
+        or binding.requested_package != f"{root}=={tree.version}"
+        or wheel.requires_dist
+        or wheel.provides_extra
+        or len(tree.entries) > 16
+        or tree.total_byte_count > 1024 * 1024
+    ):
+        reject()
+    files: dict[str, bytes] = {}
+    for entry in tree.entries:
+        path = entry.logical_path
+        skill_path = (
+            path.startswith(f"{root}/skills/")
+            and len(path.split("/")) == 4
+            and path.endswith("/SKILL.md")
+        )
+        if path not in metadata_paths | fixed_paths and not skill_path:
+            reject()
+        if entry.byte_count > 1024 * 1024:
+            reject()
+        with wheel.open_verified_tree_file(entry) as handle:
+            body = handle.read(entry.byte_count + 1)
+        if len(body) != entry.byte_count or sha256(body).hexdigest() != entry.content_digest:
+            reject()
+        files[path] = body
+    if not fixed_paths | metadata_paths <= files.keys():
+        reject()
+    try:
+        manifest = PluginManifestParser().parse_file_set(
+            files, manifest_logical_path=f"{root}/plugin.json"
+        )
+        if (
+            manifest.name != binding.plugin_id
+            or manifest.version != tree.version
+            or len(manifest.contribution_index.items) != 1
+        ):
+            reject()
+        reservation = manifest.contribution_index.items[0]
+        if (
+            reservation.kind != "resource_item"
+            or reservation.contribution_execution_model != "data_only"
+            or reservation.declaration_source.kind != "document"
+            or reservation.declaration_source.relative_path.as_posix()
+            != "declarations/resources.json"
+            or reservation.requested_authorities
+            or reservation.configuration
+            or reservation.worker_configuration is not None
+        ):
+            reject()
+        document = PluginDeclarationDocumentCodec.decode_bytes(
+            files[f"{root}/declarations/resources.json"]
+        )
+        if not _declarations_match_reservations(
+            binding.plugin_id, [reservation], document
+        ):
+            reject()
+        declaration = document.declarations[0]
+        payload = ResourceItemDeclarationPayload.from_dict(dict(declaration.payload))
+        if (
+            payload.resource_kind != "skill"
+            or payload.locator_kind != "directory"
+            or payload.schema_id != "loushang.resource.skill"
+            or f"{root}/{payload.locator}/SKILL.md" not in files
+            or set(files) - fixed_paths - metadata_paths
+            != {f"{root}/{payload.locator}/SKILL.md"}
+        ):
+            reject()
+    except (KeyError, ValueError, TypeError, PluginManifestError, PluginDeclarationCodecError) as exc:
+        raise PackageProductCandidateRejected(
+            "External data Wheel declaration is unsupported"
+        ) from exc
+
+
 @dataclass(frozen=True, slots=True)
 class _LocalWheelSelectedManifestReader:
     policy: PackageProductLocalWheelPolicy
     root_reader: PackageProductSelectedRootReader
+
+    def selected_external_data_plugin_ids(self) -> tuple[str, ...]:
+        selected = self.root_reader.desired_state.snapshot().installations
+        return tuple(
+            sorted(
+                item.installation_key.plugin_id
+                for item in selected
+                if item.selection.desired_state == "installed_enabled"
+                and item.selection.package_revision is not None
+                and any(
+                    binding.plugin_id == item.installation_key.plugin_id
+                    and binding.source_trust_class == "local-data-only"
+                    and binding.source_identity
+                    == item.selection.package_revision.package_source_identity
+                    and binding.artifact_digest
+                    == item.selection.package_revision.package_content_digest
+                    for binding in self.policy.bindings
+                )
+            )
+        )
 
     def assert_selected_manifest_current(
         self, selected: PackageProductSelectedPluginManifestV1
@@ -654,8 +787,36 @@ def compose_posix_local_wheel_product(
             policy_revision=desired_policy_revision,
             gc_bindings=gc_bindings,
             gc_gate=gc_gate,
+            lifecycle_journal=lifecycle_journal,
+            desired_state=desired_state,
         ),
     )
+    def update_inventory_revision(operation_id: str) -> int:
+        anchor = gc_bindings.update_anchor(operation_id)
+        if anchor is None:
+            raise PackageProductRuntimeReadError(
+                "Product update predecessor is unbound",
+                code="package_product_update_anchor_missing",
+            )
+        _, transitions = desired_state.capture()
+        anchored_prior = next(
+            (
+                item.committed_state.selection.package_revision
+                for item in reversed(transitions)
+                if item.inventory_revision <= anchor.expected_inventory_revision
+                and item.committed_state.installation_key.plugin_id == anchor.plugin_id
+                and item.committed_state.installation_key.product_id == policy.product_id
+                and item.committed_state.installation_key.scope_id == policy.project_scope_id
+            ),
+            None,
+        )
+        if anchored_prior != anchor.expected_package_revision:
+            raise PackageProductRuntimeReadError(
+                "Product update predecessor changed",
+                code="package_product_update_anchor_conflict",
+            )
+        return anchor.expected_inventory_revision
+
     finalizer = PackageProductHandoffFinalizer(
         kernel=kernel,
         commit=commit,
@@ -664,7 +825,42 @@ def compose_posix_local_wheel_product(
         journal=handoff_journal,
         handoff=handoff,
         inventory_revision=projection.inventory_revision,
+        update_inventory_revision=update_inventory_revision,
     )
+
+    def anchor_update(request: PackageProductRouteRequestV1) -> None:
+        ingress = request.ingress
+        plugin_id = ingress.requested_plugin_id
+        if not isinstance(plugin_id, str) or not plugin_id:
+            return
+        existing = gc_bindings.update_anchor(ingress.operation_id)
+        if existing is not None:
+            if (
+                existing.plugin_id != plugin_id
+                or existing.source_identity != ingress.source_locator
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Product update predecessor identity changed",
+                    code="package_product_update_anchor_conflict",
+                )
+            return
+        key = PluginInstallationKeyV1(
+            product_id=ingress.product_id,
+            installation_scope="workspace",
+            scope_id=ingress.scope_id,
+            plugin_id=plugin_id,
+        )
+        snapshot = desired_state.snapshot()
+        prior = snapshot.installation(key).selection.package_revision
+        if prior is None:
+            return
+        gc_bindings.anchor_update(
+            operation_id=ingress.operation_id,
+            source_identity=ingress.source_locator,
+            plugin_id=plugin_id,
+            expected_inventory_revision=snapshot.inventory_revision,
+            expected_package_revision=prior,
+        )
 
     def existing_installation(request: PackageProductRouteRequestV1) -> bool:
         ingress = request.ingress
@@ -692,6 +888,10 @@ def compose_posix_local_wheel_product(
         commit=commit,
         handoff=finalizer,
         existing_installation=existing_installation,
+        candidate_admission=lambda request, candidate: _admit_external_data_only_candidate(
+            policy, request, candidate
+        ),
+        cleanup=cleanup,
     )
     lifecycle = compose_package_product_lifecycle(
         product_id=policy.product_id,
@@ -708,6 +908,7 @@ def compose_posix_local_wheel_product(
             coordination_lock=registry.coordination_lock,
             file_io=registry._io,
         ),
+        update_preflight=anchor_update,
         reference_guard=gc_gate.guard,
         recoveries=(PackageRetentionHandoffRecovery(handoff_journal, handoff),),
         admitted_recoveries=(

@@ -290,6 +290,7 @@ class PluginInstanceRuntimeLedger:
         retirement_sets: PluginInstanceRetirementSetSourcePort,
         security_acceptances: PluginInstanceSecurityAcceptanceSourcePort,
         gc_gate: PluginPackageGcReferenceGatePort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         # Lock sidecars are derived from these stored paths, so normalize once
         # before any equality check or cross-process operation gate is used.
@@ -312,7 +313,7 @@ class PluginInstanceRuntimeLedger:
         if len(journal_paths) != 6:
             raise ValueError("Plugin Instance runtime journals must be distinct")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:

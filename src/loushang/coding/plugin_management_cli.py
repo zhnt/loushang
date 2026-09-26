@@ -15,6 +15,10 @@ from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_management_application,
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding.package_product_management_cli import (
+    build_coding_fenced_product_management_cli_ports,
+    coding_fenced_product_exists,
+)
 from loushang.coding.plugin_enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
 )
@@ -152,6 +156,16 @@ def build_coding_plugin_management_cli_binding(
 ) -> PluginManagementCliBinding:
     workspace_root = Path(cwd).expanduser().resolve(strict=False)
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace_root)
+    if coding_fenced_product_exists(layout):
+        return PluginManagementCliBinding(
+            ports=build_coding_fenced_product_management_cli_ports(layout),
+            product_id=CODING_PRODUCT_ID,
+            installation_scope="workspace",
+            scope_id=layout.scope_id,
+            actor_id=_CLI_ACTOR_ID,
+            policy_revision=_CLI_POLICY_REVISION,
+            fresh_product=True,
+        )
     owns_process_startup_lease = sys.platform.startswith(
         "linux"
     ) and _hold_process_startup_lease(
@@ -190,8 +204,44 @@ def build_coding_plugin_management_cli_binding(
         raise
 
 
+def build_coding_plugin_management_cli_read_binding(
+    cwd: str | Path,
+    settings_manager: object | None,
+) -> PluginManagementCliBinding:
+    """Bind CLI listing without startup recovery or compatibility publication."""
+
+    workspace_root = Path(cwd).expanduser().resolve(strict=False)
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace_root)
+    if coding_fenced_product_exists(layout):
+        return PluginManagementCliBinding(
+            ports=build_coding_fenced_product_management_cli_ports(layout),
+            product_id=CODING_PRODUCT_ID,
+            installation_scope="workspace",
+            scope_id=layout.scope_id,
+            actor_id=_CLI_ACTOR_ID,
+            policy_revision=_CLI_POLICY_REVISION,
+            fresh_product=True,
+        )
+    source = CodingConfiguredPluginSourceProjection(
+        settings_manager=settings_manager,
+        scope_id=layout.scope_id,
+        workspace_root=workspace_root,
+    )
+    return PluginManagementCliBinding(
+        ports=build_coding_plugin_management_application(
+            layout, source=source, read_only=True
+        ),
+        product_id=CODING_PRODUCT_ID,
+        installation_scope="workspace",
+        scope_id=layout.scope_id,
+        actor_id=_CLI_ACTOR_ID,
+        policy_revision=_CLI_POLICY_REVISION,
+    )
+
+
 __all__ = [
     "CodingConfiguredPluginSourceProjection",
     "CodingPluginManagementCliError",
     "build_coding_plugin_management_cli_binding",
+    "build_coding_plugin_management_cli_read_binding",
 ]

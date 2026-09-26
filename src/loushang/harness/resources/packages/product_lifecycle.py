@@ -139,6 +139,7 @@ class PackageProductLifecycleRouter:
         *,
         execution: PackageProductLifecycleExecutionBinding,
         reference_guard: Callable[[], AbstractContextManager[object]] | None = None,
+        update_preflight: Callable[[PackageProductRouteRequestV1], None] | None = None,
     ) -> None:
         if not isinstance(execution, PackageProductLifecycleExecutionBinding):
             raise TypeError("Package Product lifecycle execution binding is required")
@@ -150,6 +151,7 @@ class PackageProductLifecycleRouter:
         self._reference_guard = (
             reference_guard if reference_guard is not None else nullcontext
         )
+        self._update_preflight = update_preflight
 
     def route(
         self,
@@ -160,6 +162,12 @@ class PackageProductLifecycleRouter:
         with self._reference_guard():
             if not isinstance(request, PackageProductRouteRequestV1):
                 raise TypeError("Package Product route request is required")
+            if (
+                request.ingress.action == "update"
+                and request.entrypoint in _TRANSACTION_ENTRYPOINTS
+                and self._update_preflight is not None
+            ):
+                self._update_preflight(request)
             status = self._owner.submit(request.ingress)
             if status.disposition == "committed":
                 self._finalize_committed(request, status)

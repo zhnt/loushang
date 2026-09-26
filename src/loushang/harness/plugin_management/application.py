@@ -881,7 +881,11 @@ def _project_installation(
             {
                 item.state
                 for item in (() if retirement is None else retirement.sets)
-                if item.intent.instance_revision_ref in instance_refs
+                if item.intent.source_transition.committed_state.installation_key == key
+                and (
+                    not instances_supported
+                    or item.intent.instance_revision_ref in instance_refs
+                )
             }
         )
     )

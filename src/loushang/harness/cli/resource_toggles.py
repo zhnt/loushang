@@ -251,7 +251,13 @@ def _apply_plugin_toggle(
             )
         [view] = projection.installations
         migration_phase = view.enablement_migration_phase
-        if migration_phase not in {"compatibility_window", "finalized"}:
+        if management.fresh_product:
+            if view.selected_package_revision is None:
+                raise ResourceToggleError(
+                    f"plugin Installation has no Product Package revision: {name}",
+                    code="plugin_installation_not_installed",
+                )
+        elif migration_phase not in {"compatibility_window", "finalized"}:
             in_progress = migration_phase in {"accepted", "desired_committed"}
             raise ResourceToggleError(
                 (

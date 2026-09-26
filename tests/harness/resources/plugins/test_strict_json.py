@@ -41,6 +41,15 @@ def test_strict_plugin_json_enforces_the_frozen_depth_limit() -> None:
     assert caught.value.code == "plugin_declaration_json_depth_exceeded"
 
 
+def test_strict_plugin_json_normalizes_parser_recursion_limit() -> None:
+    encoded = b"[" * 1500 + b"0" + b"]" * 1500
+
+    with pytest.raises(PluginJsonCodecError) as caught:
+        StrictPluginJsonCodec.decode_bytes(encoded)
+
+    assert caught.value.code == "plugin_declaration_json_depth_exceeded"
+
+
 def test_strict_plugin_json_canonical_bytes_are_stable_and_ascii_escaped() -> None:
     composed = {"text": "\u00e9\u4e2d", "values": [2, 1]}
     decomposed = {"text": "e\u0301\u4e2d", "values": [2, 1]}
