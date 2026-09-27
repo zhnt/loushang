@@ -118,9 +118,23 @@ def commands(
 
 
 def run(scope: str, *, plan: dict | None = None) -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(ROOT / "src"), env.get("PYTHONPATH")) if part
+    )
     for command in commands(scope, plan=plan):
         print("Running:", " ".join(command), flush=True)
-        subprocess.run(command, cwd=ROOT, check=True)
+        completed = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        if (
+            scope == "host_runtime"
+            and plan is not None
+            and not all(plan["checks"].values())
+            and completed.returncode == 5
+        ):
+            # A scoped package may have no tests with this opt-in marker.
+            print("No host-runtime cases selected in the scoped packages.", flush=True)
+            continue
+        completed.check_returncode()
 
 
 def main() -> None:

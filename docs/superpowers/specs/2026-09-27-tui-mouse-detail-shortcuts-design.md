@@ -15,7 +15,7 @@ path is ready.
 
 ## Existing boundaries
 
-- `TerminalSession` already owns 1002/1006 setup and cleanup, with
+- `TerminalSession` owns 1000/1002/1006 setup and cleanup, with
   `mouse_selection_owner=terminal|application` and terminal ownership as its
   default. `InputReader` parses SGR and X10 mouse sequences but leaves the SGR
   button bit field uninterpreted. `SurfaceHost` translates coordinates for the
@@ -96,8 +96,9 @@ a clipboard route exists. An explicit `application` request with tmux off or
 without a clipboard route remains possible, but diagnostics state that copy
 or click may fail; `auto` never takes that risk silently.
 
-The protocol requests button and drag reporting (1002) and SGR coordinates
-(1006). It does not request all-motion hover (1003). Input normalization
+The protocol requests button reporting (1000), button and drag reporting
+(1002), and SGR coordinates (1006). It does not request all-motion hover
+(1003). Input normalization
 decodes the SGR button field into button, press/release/drag/wheel, and
 Ctrl/Alt/Shift flags, with zero-based columns and rows. Preserve the existing
 `InputEvent` fields for compatibility while adding a typed mouse view; consumers
@@ -110,8 +111,9 @@ terminal permission prompt or infer its answer from silence.
 ## Hit testing, ownership, and performance
 
 Rendering stores control row positions in the committed transcript segment
-and clips that map to the visible viewport. The main screen has no region
-above the transcript, so those row positions match painted rows. Modal input
+and clips that map to the visible viewport. The runner translates physical
+terminal rows through the committed render loop's viewport top before main
+transcript hit testing or text selection. Modal input
 goes through `SurfaceHost`; the reader receives translated mouse coordinates.
 On release, the main screen checks the current record identity and revision.
 The tool identity map rebuilds only after a transcript revision; pointer

@@ -18,7 +18,9 @@ Check these interactions in each environment:
    whole-view detail/raw modes.
 3. When mouse reporting is active, click and release on a control, then drag
    transcript text and copy it. A drag starting on a control must not toggle it.
-   A copied range spanning tools must omit Show Detail/Show Less labels.
+   A copied range spanning tools must omit Show Detail/Show Less labels. The
+   example includes older lines beyond the viewport: test the visible control
+   and visible text after the terminal scrolls.
 4. With a selection, Ctrl+C copies; Esc clears selection; Ctrl+C without a
    selection resumes the usual cancel behavior. A failed copy must report its
    failure and leave the selection available.
