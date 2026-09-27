@@ -110,7 +110,26 @@ def test_mouse_rows_follow_the_rendered_terminal_viewport() -> None:
             )
         )
     expanded = app.render(RenderConstraints(width=80, max_height=1_000_000, visible_height=24))
-    assert any("Show Less" in line.text for line in expanded.lines)
+    expanded_lines = tuple(strip_control_sequences(line.text) for line in expanded.lines)
+    expanded_control_row = next(
+        index for index, line in enumerate(expanded_lines) if "Show Less" in line
+    )
+    expanded_physical_row = expanded_control_row - (len(expanded_lines) - 24)
+    assert 0 <= expanded_physical_row < 24
+    expanded_column = expanded_lines[expanded_control_row].index("Show Less")
+    router.set_transcript_viewport_top(len(expanded_lines) - 24)
+    for action in ("press", "release"):
+        router.handle(
+            InputEvent(
+                kind="mouse",
+                mouse_action=action,
+                mouse_button=0,
+                mouse_row=expanded_physical_row,
+                mouse_column=expanded_column,
+            )
+        )
+    collapsed = app.render(RenderConstraints(width=80, max_height=1_000_000, visible_height=24))
+    assert any("Show Detail" in line.text for line in collapsed.lines)
 
 
 def test_mouse_selection_uses_rendered_terminal_viewport() -> None:
