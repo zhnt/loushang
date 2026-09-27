@@ -746,7 +746,7 @@ def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
     assert app.state.records == []
 
 
-def test_screen_input_router_ctrl_t_opens_transcript_reader_overlay() -> None:
+def test_screen_input_router_ctrl_t_preserves_draft_when_opening_reader() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
