@@ -8,16 +8,20 @@ from loushang.tui.mouse_policy import (
     requested_mouse_policy,
     resolve_mouse_policy,
 )
+from loushang.tui.text_clipboard import (
+    select_text_clipboard_writer,
+    user_clipboard_route_available,
+)
 
 
-def test_auto_mouse_policy_preserves_selection_without_clipboard_or_tmux_forwarding() -> (
+def test_auto_mouse_policy_enables_clicks_when_mouse_reports_can_arrive() -> (
     None
 ):
     cases = (
         ("off", True, "terminal", "tmux_mouse_off"),
         ("unknown", True, "terminal", "tmux_mouse_unknown"),
-        ("on", False, "terminal", "no_user_clipboard"),
-        ("absent", False, "terminal", "no_user_clipboard"),
+        ("on", False, "application", "interactive_clicks_no_clipboard"),
+        ("absent", False, "application", "interactive_clicks_no_clipboard"),
         ("on", True, "application", "interactive_copy_available"),
         ("absent", True, "application", "interactive_copy_available"),
     )
@@ -27,6 +31,23 @@ def test_auto_mouse_policy_preserves_selection_without_clipboard_or_tmux_forward
             MouseEnvironment(tmux_mouse=tmux_mouse, user_clipboard_available=clipboard),
         )
         assert (result.owner, result.reason) == (owner, reason)
+
+
+def test_direct_ssh_auto_policy_enables_clicks_without_remote_clipboard() -> None:
+    env = {"SSH_CONNECTION": "client 1234 server 22", "TERM": "xterm-256color"}
+    writer = select_text_clipboard_writer(env, platform="linux", which=lambda _: None)
+    assert writer is None
+    result = resolve_mouse_policy(
+        requested_mouse_policy(env),
+        MouseEnvironment(
+            tmux_mouse=probe_tmux_mouse(env),
+            user_clipboard_available=user_clipboard_route_available(writer, env),
+        ),
+    )
+    assert (result.owner, result.reason) == (
+        "application",
+        "interactive_clicks_no_clipboard",
+    )
 
 
 def test_explicit_mouse_policy_overrides_environment() -> None:

@@ -76,8 +76,8 @@ Silence is not proof that a terminal refused mouse reporting.
 | --- | --- | --- |
 | `terminal` | terminal | No mouse report request; keyboard details and transcript remain. |
 | `auto` + tmux explicitly off | terminal | Preserve terminal/tmux copy path; never request app capture. |
-| `auto` + tmux on, or direct terminal, with a usable user-clipboard route | application | Request 1002/1006; use app click and app transcript selection. |
-| `auto` + no user-clipboard route, including SSH without a trusted terminal route or headless Linux | terminal | Retain host/tmux selection and keyboard detail access. |
+| `auto` + tmux on, or direct terminal, with a usable user-clipboard route | application | Request 1000/1002/1006; use app click and app transcript selection. |
+| `auto` + tmux on, or direct terminal, without a user-clipboard route, including direct SSH and headless Linux | application | Request 1000/1002/1006 so Show Detail can be clicked. Copy reports that the clipboard is unavailable; the explicit `terminal` policy restores native selection. |
 | `auto` + inconclusive tmux probe | terminal | Preserve copy and expose an explicit application override. |
 | `application` | application | Request capture even when probe is inconclusive; diagnostics explain an explicit tmux-off conflict. |
 
@@ -140,8 +140,9 @@ presentation prefixes are copied if visibly selected, while synthetic controls
 are omitted. Dragging across wrapped lines and tool records retains displayed
 order. A selection copies on release or Ctrl+C. Clipboard writes use an
 injected asynchronous `TextClipboardWriter` port with a declared destination:
-terminal user's machine or remote host. SSH `auto` accepts only a route to
-the terminal user's machine; remote host command success does not satisfy it.
+terminal user's machine or remote host. SSH `auto` enables pointer input
+independently of copying and accepts only a copy route to the terminal user's
+machine; remote host command success does not satisfy it.
 Host-specific writers (Linux Wayland/X11, macOS, Windows) are selected lazily
 from a registry; a terminal OSC 52 writer is an optional bounded route for
 SSH/tmux. A write result distinguishes confirmed, sent-without-ack, and

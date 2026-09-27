@@ -31,7 +31,7 @@ def test_clipboard_route_loads_only_selected_host_adapter() -> None:
     assert loads == ["loushang.tui.clipboard_backends.darwin"]
 
 
-def test_platform_adapters_are_lazy_and_headless_linux_retains_terminal_selection() -> (
+def test_platform_adapters_are_lazy_and_headless_linux_has_no_clipboard_writer() -> (
     None
 ):
     assert (
