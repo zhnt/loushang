@@ -7,6 +7,7 @@ from typing import Any, Generic, Self, TypeVar, assert_never, cast
 from loushang.harnesstui.conversation.input import (
     ConversationAbortResult,
     ConversationClipboardResult,
+    ConversationCopyTextResult,
     ConversationExitResult,
     ConversationFollowupResult,
     ConversationInputHandled,
@@ -94,6 +95,8 @@ def default_conversation_result_payload(
         payload["exit_code"] = result.exit_code
     elif isinstance(result, ConversationClipboardResult):
         pass
+    elif isinstance(result, ConversationCopyTextResult):
+        payload["copy_text"] = result.text
     elif isinstance(result, ConversationInputHandled):
         pass
     elif isinstance(result, ConversationInputIgnored):
