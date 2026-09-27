@@ -79,9 +79,9 @@ def _run_transcript_reader_copy_command() -> object:
     controller = build_coding_ui_controller(session=session)
 
     result = playback.run(
-        (0.00, "\x0f"),
+        (0.00, "\x14"),
         (0.01, "\x02"),
-        (0.02, "\x0f"),
+        (0.02, "\x14"),
         (0.03, "/copy 2\r"),
         (0.05, ""),
         handle_prompt=coding_screen_prompt_handler(
@@ -94,7 +94,7 @@ def _run_transcript_reader_copy_command() -> object:
 
     result.assert_exit_code(0)
     result.assert_text_contains("Transcript window")
-    result.assert_text_contains("Ctrl+O/Ctrl+T/q/Esc close")
+    result.assert_text_contains("Ctrl+T/q/Esc close")
     result.assert_text_contains("Copied /copy 2 from structured source.")
     result.assert_no_clear_screen()
     assert session.commands == [("copy", "2")]

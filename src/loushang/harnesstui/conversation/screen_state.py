@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from loushang.harnesstui.conversation.input_policy import (
     ConversationCapabilities,
@@ -48,7 +48,9 @@ class ScreenConversationState:
     capabilities: ConversationCapabilities | None = field(default=None, kw_only=True)
     interruption_message: str | None = None
     status_message: str | None = None
-    request_presentation: ConversationRequestPresentation | None = field(default=None, kw_only=True)
+    request_presentation: ConversationRequestPresentation | None = field(
+        default=None, kw_only=True
+    )
     startup_pending: bool = False
     model_label: str | None = None
     cwd: str = ""
@@ -68,7 +70,9 @@ class ScreenConversationState:
     def presentation_status_message(self) -> str | None:
         if self.request_presentation is None:
             return self.status_message
-        return self.request_presentation.message + ("; " + self.status_message if self.status_message else "")
+        return self.request_presentation.message + (
+            "; " + self.status_message if self.status_message else ""
+        )
 
     @property
     def running(self) -> bool:
@@ -238,14 +242,13 @@ class ScreenConversationState:
 
     def set_status(self, message: str | None) -> None:
         self.status_message = (
-            message.strip()
-            if isinstance(message, str) and message.strip()
-            else None
+            message.strip() if isinstance(message, str) and message.strip() else None
         )
 
     def upsert_tool_record(
         self, tool_call_id: str, record: ToolExecutionRecord
     ) -> None:
+        record = replace(record, activity_id=tool_call_id)
         existing = self._tool_record_indices.get(tool_call_id)
         if existing is not None and 0 <= existing < len(self.records):
             if self.records[existing] == record:

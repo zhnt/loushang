@@ -746,7 +746,7 @@ def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
     assert app.state.records == []
 
 
-def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
+def test_screen_input_router_ctrl_t_opens_transcript_reader_overlay() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
@@ -765,7 +765,7 @@ def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     app.composer.set_text("draft")
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(
-        InputEvent(kind="key", key="ctrl+o")
+        InputEvent(kind="key", key="ctrl+t")
     )
 
     assert isinstance(result, ConversationInputHandled)
@@ -804,7 +804,7 @@ def test_screen_input_router_ctrl_t_opens_transcript_reader_overlay() -> None:
     )
 
 
-def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> (
+def test_screen_input_router_ctrl_t_fallback_reader_includes_streaming_assistant_draft() -> (
     None
 ):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -832,7 +832,7 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
     app.append_assistant_chunk("streaming fallback draft")
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(
-        InputEvent(kind="key", key="ctrl+o")
+        InputEvent(kind="key", key="ctrl+t")
     )
 
     assert result.render_requested is True
@@ -846,7 +846,7 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
     assert any("streaming fallback draft" in line for line in lines)
 
 
-def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
+def test_screen_input_router_ctrl_t_uses_transcript_source_factory() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
@@ -878,7 +878,7 @@ def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
     app.state.records.append(AssistantMessageRecord("active window answer"))
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(
-        InputEvent(kind="key", key="ctrl+o")
+        InputEvent(kind="key", key="ctrl+t")
     )
 
     assert result.render_requested is True
@@ -888,7 +888,7 @@ def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
     assert reader.source is source
 
 
-def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record() -> (
+def test_screen_input_router_ctrl_t_session_reader_includes_running_tool_record() -> (
     None
 ):
     from dataclasses import dataclass
@@ -969,7 +969,7 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     )
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(
-        InputEvent(kind="key", key="ctrl+o")
+        InputEvent(kind="key", key="ctrl+t")
     )
 
     assert result.render_requested is True
@@ -983,7 +983,7 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     assert any("live output" in line for line in lines)
 
 
-def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_draft() -> (
+def test_screen_input_router_ctrl_t_session_reader_includes_streaming_assistant_draft() -> (
     None
 ):
     from dataclasses import dataclass
@@ -1055,7 +1055,7 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     )
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(
-        InputEvent(kind="key", key="ctrl+o")
+        InputEvent(kind="key", key="ctrl+t")
     )
 
     assert result.render_requested is True
@@ -1090,7 +1090,7 @@ def test_screen_input_router_reader_strict_modal_consumes_tab_without_completion
     app.composer.set_completion_items((CompletionItem(value="/model", label="/model"),))
     router = build_screen_input_router(app, should_exit=lambda text: False)
 
-    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    router.handle(InputEvent(kind="key", key="ctrl+t"))
     result = router.handle(InputEvent(kind="key", key="tab"))
 
     assert isinstance(result, ConversationInputHandled)
@@ -1118,7 +1118,7 @@ def test_screen_input_router_reader_ctrl_c_closes_then_text_routes_to_composer()
     app.state.records.append(AssistantMessageRecord("answer"))
     router = build_screen_input_router(app, should_exit=lambda text: False)
 
-    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    router.handle(InputEvent(kind="key", key="ctrl+t"))
     close_result = router.handle(InputEvent(kind="key", key="ctrl+c"))
     text_result = router.handle(InputEvent(kind="text", text="x"))
 
@@ -1157,7 +1157,7 @@ def test_screen_input_router_reader_page_up_scrolls_without_moving_composer() ->
         app, should_exit=lambda text: False, width=20, height=5
     )
 
-    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    router.handle(InputEvent(kind="key", key="ctrl+t"))
     assert app.surface_host.entries
     reader = app.surface_host.entries[0].surface.renderable
     assert isinstance(reader, TranscriptReaderSurface)
