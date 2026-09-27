@@ -4,7 +4,7 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, ExitStack
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import TracebackType
 from typing import Literal, TextIO
 
@@ -30,7 +30,9 @@ from loushang.tui.terminal_platform import (
     adapt_terminal_platform_adapter,
 )
 
-TerminalModeFactory = Callable[[TextIO, TextIO, TerminalRuntimeCapabilities], AbstractContextManager[object]]
+TerminalModeFactory = Callable[
+    [TextIO, TextIO, TerminalRuntimeCapabilities], AbstractContextManager[object]
+]
 DrainInputFunc = Callable[..., str]
 MOUSE_ENABLE_SEQUENCES = ("\x1b[?1002h", "\x1b[?1006h")
 MOUSE_DISABLE_SEQUENCES = ("\x1b[?1006l", "\x1b[?1002l")
@@ -77,8 +79,12 @@ class TerminalSession:
     platform_adapter: TerminalPlatformAdapter | None = None
     cell_size: CellDimensions | None = None
     native_platform: NativeTerminalPlatform | None = None
-    _mode: AbstractContextManager[object] | None = field(default=None, init=False, repr=False)
-    _keyboard_controller: KeyboardProtocolController | None = field(default=None, init=False, repr=False)
+    _mode: AbstractContextManager[object] | None = field(
+        default=None, init=False, repr=False
+    )
+    _keyboard_controller: KeyboardProtocolController | None = field(
+        default=None, init=False, repr=False
+    )
     _mouse_mode_active: bool = field(default=False, init=False, repr=False)
     _windows_vt_input_active: bool = field(default=False, init=False, repr=False)
     _windows_vt_output_active: bool = field(default=False, init=False, repr=False)
@@ -125,20 +131,38 @@ class TerminalSession:
                 native_platform.console_mode.enable_vt_input(
                     self.stdin,
                     preserve_native_selection=(
-                        self.capabilities.effective_mouse_selection_owner
-                        == "terminal"
+                        self.capabilities.effective_mouse_selection_owner == "terminal"
                     ),
                 )
             )
             self._windows_console_mode_active = (
                 native_platform.console_mode.mode_configured()
             )
-        if self._control_writes_allowed() and self.capabilities.keyboard_protocol_strategy != "legacy":
-            self._keyboard_controller = KeyboardProtocolController(strategy=self.capabilities.keyboard_protocol_strategy)
-            self._write_sequences(self._keyboard_controller.startup_sequences(now_ms=self.now_ms()))
+            if (
+                not self._windows_vt_input_active
+                and self.capabilities.application_mouse_tracking_enabled
+            ):
+                self.capabilities = replace(
+                    self.capabilities,
+                    mouse_selection_owner="terminal",
+                    enable_mouse=False,
+                )
+        if (
+            self._control_writes_allowed()
+            and self.capabilities.keyboard_protocol_strategy != "legacy"
+        ):
+            self._keyboard_controller = KeyboardProtocolController(
+                strategy=self.capabilities.keyboard_protocol_strategy
+            )
+            self._write_sequences(
+                self._keyboard_controller.startup_sequences(now_ms=self.now_ms())
+            )
         if (
             self._control_writes_allowed()
             and self.capabilities.application_mouse_tracking_enabled
+            and (
+                not self.capabilities.windows_vt_input or self._windows_vt_input_active
+            )
         ):
             self._mouse_mode_active = True
             self._write_sequences(MOUSE_ENABLE_SEQUENCES)
@@ -162,7 +186,9 @@ class TerminalSession:
             cleanup.callback(self._restore_console_mode, output=True)
         if self._alternate_screen_active:
             self._alternate_screen_active = False
-            cleanup.callback(self._write_sequences, (ALTERNATE_SCREEN_DISABLE_SEQUENCE,))
+            cleanup.callback(
+                self._write_sequences, (ALTERNATE_SCREEN_DISABLE_SEQUENCE,)
+            )
         mode, self._mode = self._mode, None
         if mode is not None:
             cleanup.push(mode.__exit__)
@@ -170,8 +196,11 @@ class TerminalSession:
             cleanup.callback(self._restore_console_mode, output=False)
         if mode is not None and self.drain_on_exit and self._control_writes_allowed():
             cleanup.callback(
-                self.drain_input_func, self.stdin, max_bytes=self.drain_limit,
-                idle_timeout=self.drain_idle_timeout, max_duration=self.drain_max_duration,
+                self.drain_input_func,
+                self.stdin,
+                max_bytes=self.drain_limit,
+                idle_timeout=self.drain_idle_timeout,
+                max_duration=self.drain_max_duration,
             )
         if self._mouse_mode_active:
             self._mouse_mode_active = False
@@ -180,7 +209,9 @@ class TerminalSession:
         if controller is not None:
             # Compute inside the callback so even sequence-generation errors
             # cannot prevent native mode restoration.
-            cleanup.callback(lambda: self._write_sequences(controller.shutdown_sequences()))
+            cleanup.callback(
+                lambda: self._write_sequences(controller.shutdown_sequences())
+            )
         return cleanup.__exit__(exc_type, exc, traceback)
 
     def _restore_console_mode(self, *, output: bool) -> None:
@@ -196,7 +227,9 @@ class TerminalSession:
 
     def consume_control_events(self, events: tuple[InputEvent, ...]) -> None:
         if self._keyboard_controller is not None:
-            self._write_sequences(self._keyboard_controller.consume_control_events(events))
+            self._write_sequences(
+                self._keyboard_controller.consume_control_events(events)
+            )
         for event in events:
             if event.kind == "signal" and event.signal == "cell_size":
                 self._consume_cell_size(event.text)
@@ -204,7 +237,9 @@ class TerminalSession:
     def flush_keyboard_protocol_fallback_if_due(self) -> bool:
         if self._keyboard_controller is None:
             return False
-        return self._write_sequences(self._keyboard_controller.fallback_sequences_if_due(now_ms=self.now_ms()))
+        return self._write_sequences(
+            self._keyboard_controller.fallback_sequences_if_due(now_ms=self.now_ms())
+        )
 
     def next_wakeup_delay_ms(self) -> int | None:
         if self._keyboard_controller is None:
@@ -239,6 +274,16 @@ class TerminalSession:
             inside_ssh=capabilities.inside_ssh,
             mouse_selection_owner=capabilities.effective_mouse_selection_owner,
         )
+
+    def write_control_if_active(self, sequence: str) -> bool:
+        """Send bounded session-owned control output, rejecting late clipboard writes."""
+
+        if not self._entered or not self._control_writes_allowed():
+            return False
+        try:
+            return self._write_sequences((sequence,))
+        except OSError:
+            return False
 
     def _keyboard_protocol_state(self) -> KeyboardProtocolRuntimeState:
         controller = self._keyboard_controller

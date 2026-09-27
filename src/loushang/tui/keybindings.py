@@ -89,7 +89,9 @@ TUI_CORE_KEYBINDING_DEFINITIONS: dict[
     "tui.input.submit": ("enter",),
     "tui.input.tab": ("tab",),
     "tui.input.copy": ("ctrl+c",),
-    "tui.transcript.open": ("ctrl+o", "ctrl+t"),
+    "tui.transcript.open": ("ctrl+t",),
+    "tui.transcript.copyLastAnswer": ("ctrl+o",),
+    "tui.transcript.focusDetail": ("f4",),
     "tui.select.up": ("up", "shift+tab"),
     "tui.select.down": ("down", "alt+down"),
     "tui.select.pageUp": ("pageUp",),
@@ -169,6 +171,17 @@ class KeybindingManager:
 
     def matches(self, key: KeyId, action: KeybindingAction) -> bool:
         return normalize_key_id(key) in self._resolved.get(action, ())
+
+    def matches_prefer_explicit(self, key: KeyId, action: KeybindingAction) -> bool:
+        """Let an explicit user binding displace another action's default."""
+
+        normalized = normalize_key_id(key)
+        explicit = {
+            owner
+            for owner, keys in self._user_bindings.items()
+            if owner in self._definitions and normalized in _normalize_keys(keys)
+        }
+        return (not explicit or action in explicit) and self.matches(normalized, action)
 
     def keys_for(self, action: KeybindingAction) -> tuple[KeyId, ...]:
         return self._resolved.get(action, ())
