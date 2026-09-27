@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
@@ -253,6 +253,7 @@ class ConversationInputRouter:
         repr=False,
     )
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
+    _transcript_viewport_top: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.submission_presentation not in {"optimistic", "deferred"}:
@@ -273,6 +274,12 @@ class ConversationInputRouter:
             setter(self.keybindings)
         self._composer_target = ComposerInputTarget(app.composer)
         self._jump_mode = None
+        self._transcript_viewport_top = 0
+
+    def set_transcript_viewport_top(self, row: int) -> None:
+        """Map terminal mouse rows onto the committed logical conversation frame."""
+
+        self._transcript_viewport_top = max(0, row)
 
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
@@ -326,6 +333,11 @@ class ConversationInputRouter:
         if event.kind == "mouse":
             handler = getattr(self.app, "handle_transcript_mouse", None)
             if callable(handler):
+                if event.mouse_row is not None and self._transcript_viewport_top:
+                    event = replace(
+                        event,
+                        mouse_row=event.mouse_row + self._transcript_viewport_top,
+                    )
                 handled, copy_text = handler(event)
                 if copy_text:
                     return ConversationCopyTextResult(copy_text)

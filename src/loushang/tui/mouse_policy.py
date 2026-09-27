@@ -72,7 +72,7 @@ def resolve_mouse_policy(
         )
     if not environment.user_clipboard_available:
         return MousePolicyResolution(
-            requested, "terminal", "no_user_clipboard", tmux_mouse
+            requested, "application", "interactive_clicks_no_clipboard", tmux_mouse
         )
     return MousePolicyResolution(
         requested, "application", "interactive_copy_available", tmux_mouse

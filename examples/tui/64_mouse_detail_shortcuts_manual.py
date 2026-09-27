@@ -33,6 +33,11 @@ async def main(policy: MousePolicy) -> int:
     )
     app.state.records.append(
         AssistantMessageRecord(
+            "\n".join(f"Older transcript line {index}" for index in range(36))
+        )
+    )
+    app.state.records.append(
+        AssistantMessageRecord(
             "Try F4, ↑/↓, Enter, Esc; click Show Detail/Show Less; drag to copy; "
             "Ctrl+O copies this answer; Ctrl+T opens the transcript; /quit exits."
         )

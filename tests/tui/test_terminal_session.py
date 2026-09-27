@@ -391,8 +391,10 @@ def test_terminal_session_preserves_legacy_enable_mouse_compatibility() -> None:
         pass
 
     assert all(
-        sequence in stdout.getvalue() for sequence in ("\x1b[?1002h", "\x1b[?1006h")
+        sequence in stdout.getvalue()
+        for sequence in ("\x1b[?1000h", "\x1b[?1002h", "\x1b[?1006h")
     )
+    assert "\x1b[?1000l" in stdout.getvalue()
 
 
 def test_terminal_session_disables_mouse_mode_before_exit_drain() -> None:

@@ -34,8 +34,8 @@ TerminalModeFactory = Callable[
     [TextIO, TextIO, TerminalRuntimeCapabilities], AbstractContextManager[object]
 ]
 DrainInputFunc = Callable[..., str]
-MOUSE_ENABLE_SEQUENCES = ("\x1b[?1002h", "\x1b[?1006h")
-MOUSE_DISABLE_SEQUENCES = ("\x1b[?1006l", "\x1b[?1002l")
+MOUSE_ENABLE_SEQUENCES = ("\x1b[?1000h", "\x1b[?1002h", "\x1b[?1006h")
+MOUSE_DISABLE_SEQUENCES = ("\x1b[?1006l", "\x1b[?1002l", "\x1b[?1000l")
 ALTERNATE_SCREEN_ENABLE_SEQUENCE = "\x1b[?1049h"
 ALTERNATE_SCREEN_DISABLE_SEQUENCE = "\x1b[?1049l"
 KeyboardProtocolRuntimeState = Literal["none", "querying", "kitty", "modify_other_keys"]
