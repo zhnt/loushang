@@ -312,8 +312,8 @@ Mouse handling has three separate owners:
   session policy. The default is `terminal`, so ordinary host text selection is
   preserved.
 - `TerminalSession` maps `application` ownership to DECSET setup and teardown:
-  button-event tracking (`1002`) plus SGR coordinates (`1006`). It never enables
-  all-motion tracking (`1003`) by default.
+  button tracking (`1000`), button-event tracking (`1002`), and SGR coordinates
+  (`1006`). It never enables all-motion tracking (`1003`) by default.
 - `NativeConsoleMode` maps the neutral `preserve_native_selection` intent onto
   host APIs. On Win32 this means preserving the original Quick Edit flag for
   terminal ownership and clearing it only for application ownership.

@@ -18,7 +18,9 @@ Check these interactions in each environment:
    whole-view detail/raw modes.
 3. When mouse reporting is active, click and release on a control, then drag
    transcript text and copy it. A drag starting on a control must not toggle it.
-   A copied range spanning tools must omit Show Detail/Show Less labels.
+   A copied range spanning tools must omit Show Detail/Show Less labels. The
+   example includes older lines beyond the viewport: test the visible control
+   and visible text after the terminal scrolls.
 4. With a selection, Ctrl+C copies; Esc clears selection; Ctrl+C without a
    selection resumes the usual cancel behavior. A failed copy must report its
    failure and leave the selection available.
@@ -28,11 +30,11 @@ Check these interactions in each environment:
 | Environment | Setup | Expected mouse ownership |
 | --- | --- | --- |
 | Direct Linux desktop | X11/Wayland clipboard command available | Application in `auto`; click and drag work. |
-| Headless Linux | No display/clipboard command | Terminal in `auto`; keyboard detail works. |
-| macOS terminal | `pbcopy` available | Application in `auto`. |
-| tmux mouse on | `tmux set -g mouse on` and user clipboard route | Application in `auto`. |
+| Headless Linux | No display/clipboard command | Application in `auto`; click works, copy reports unavailable. |
+| macOS Terminal.app | `pbcopy` available; View → Allow Mouse Reporting enabled | Application in `auto`; click events reach the app. |
+| tmux mouse on | `tmux set -g mouse on` | Application in `auto`; copy requires a user clipboard route. |
 | tmux mouse off | `tmux set -g mouse off` | Terminal in `auto`; select/copy via tmux or host, F4 still works. |
-| SSH | Default settings | Terminal in `auto`; native terminal selection remains. |
+| Direct SSH | Default settings, no tmux | Application in `auto`; click works, copy reports unavailable without OSC 52. |
 | SSH with OSC 52 | `LOUSHANG_TUI_OSC52=1` and terminal permits OSC 52 | Application in `auto` if tmux permits; copy reports unconfirmed send. |
 | Windows Terminal/ConPTY | Native VT input and `clip.exe` available | Application in `auto`; Unicode copy works. |
 | Windows VT input denied | VT input unavailable | Terminal selection remains active. |

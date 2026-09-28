@@ -447,6 +447,9 @@ async def run_conversation_screen(
                 for event in input_events:
                     if event.kind == "mouse":
                         mouse_observed = True
+                        set_viewport = getattr(router, "set_transcript_viewport_top", None)
+                        if callable(set_viewport):
+                            set_viewport(runtime.render_loop.previous_viewport_top)
                     result = router.handle(event)
                     if isinstance(result, ConversationExitResult):
                         runtime.render_now()
