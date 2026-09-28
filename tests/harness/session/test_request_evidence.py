@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,12 +27,293 @@ from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogSummary,
 )
 from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
     RESOURCE_EVIDENCE_METADATA_KEY,
     RESOURCE_EVIDENCE_SCHEMA_ID,
     PreparedResourceEvidence,
     RequestEvidenceIntegrityError,
     SessionRequestEvidenceRuntime,
 )
+from loushang.harness.transcript.model_input_types import (
+    ModelInputComponent,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
+    hash_model_input_json,
+)
+
+
+def _snapshot(
+    *,
+    snapshot_id: str,
+    additional_components: tuple[ModelInputComponentReference, ...] = (),
+) -> ModelInputSnapshot:
+    fingerprint = "a" * 64
+    logical = tuple(
+        ModelInputComponentReference(name, "component", fingerprint)
+        for name in ("system_prompt", "messages", "tools", "request_options")
+    )
+    return ModelInputSnapshot(
+        snapshot_id=snapshot_id,
+        invocation_id="invocation",
+        attempt=1,
+        purpose="continuation",
+        product_id="coding",
+        runtime_id="session",
+        mount_generation=0,
+        profile_fingerprint=fingerprint,
+        registration_revision=fingerprint,
+        conversation_id="conversation",
+        source_leaf_id="message",
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider",
+        model_id="model",
+        api_id="api",
+        endpoint_id="endpoint",
+        logical_components=logical + additional_components,
+        prepared_payload_components=(),
+        model_visible_headers_component=ModelInputComponentReference(
+            "model_visible_headers", "component", fingerprint
+        ),
+        logical_input_hash=fingerprint,
+        prepared_payload_hash=fingerprint,
+    )
+
+
+def test_evidence_free_resume_does_not_rebuild_historical_requests() -> None:
+    snapshot = _snapshot(snapshot_id="snapshot-0")
+    records = [
+        ConversationRecord(
+            record_id=f"snapshot-record-{index}",
+            parent_id=(f"snapshot-record-{index - 1}" if index else None),
+            kind="model.input.prepared",
+            payload_version=1,
+            created_at="2026-09-28T00:00:00Z",
+            payload=replace(snapshot, snapshot_id=f"snapshot-{index}"),
+            metadata={},
+        )
+        for index in range(700)
+    ]
+
+    def unexpected_rebuild(snapshot_id: str) -> None:
+        pytest.fail(f"unrelated historical request was rebuilt: {snapshot_id}")
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: (),
+        get_active_records=lambda: records,
+        rebuild_model_input=unexpected_rebuild,
+    )
+    assert runtime.project_model_input(_preparation([])) is None
+    assert runtime.project_model_input(_preparation([])) is None
+
+
+def test_snapshot_only_evidence_follows_its_source_branch() -> None:
+    message = _user_message("branch message")
+    message_record = _message_record("message", message)
+    evidence = _runtime([], []).prepare(
+        PromptPreflightResult(
+            text="branch message", loaded_skills=(_loaded_skill(),)
+        )
+    )
+    assert evidence is not None
+    payload = {
+        "contextComplete": True,
+        "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+        "schemaVersion": 1,
+        "messages": [
+            evidence.to_message_payload(message_record_id="message", message_index=0)
+        ],
+    }
+    component_hash = hash_model_input_json(payload, name="branch Resource evidence")
+    component_record = ConversationRecord(
+        record_id="component",
+        parent_id="message",
+        kind="model.input.component",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=ModelInputComponent(content_hash=component_hash, content=payload),
+        metadata={},
+    )
+    snapshot_record = ConversationRecord(
+        record_id="snapshot-record",
+        parent_id="component",
+        kind="model.input.prepared",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=_snapshot(
+            snapshot_id="snapshot",
+            additional_components=(
+                ModelInputComponentReference(
+                    RESOURCE_EVIDENCE_COMPONENT, "component", component_hash
+                ),
+            ),
+        ),
+        metadata={},
+    )
+    other_branch = ConversationRecord(
+        record_id="other-branch",
+        parent_id="message",
+        kind="test.branch",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=None,
+        metadata={},
+    )
+    active = [message_record, component_record, snapshot_record]
+    rebuilds: list[str] = []
+
+    def rebuild(snapshot_id: str) -> SimpleNamespace:
+        rebuilds.append(snapshot_id)
+        return SimpleNamespace(
+            logical_input={
+                RESOURCE_EVIDENCE_COMPONENT: payload,
+                "messages": [message],
+            }
+        )
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (active if records is None else records)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=rebuild,
+    )
+    preparation = _preparation([message])
+    assert runtime.project_model_input(preparation) == payload
+    active[:] = [message_record]
+    assert runtime.project_model_input(preparation) is None
+    active[:] = [message_record, other_branch]
+    assert runtime.project_model_input(preparation) is None
+    active[:] = [message_record, component_record, snapshot_record]
+    assert runtime.project_model_input(preparation) == payload
+    assert rebuilds == ["snapshot", "snapshot"]
+
+
+def test_anchor_hydration_is_atomic_after_invalid_metadata() -> None:
+    first = _user_message("first")
+    second = _user_message("second")
+    evidence = _runtime([], []).prepare(
+        PromptPreflightResult(text="first", loaded_skills=(_loaded_skill(),))
+    )
+    assert evidence is not None
+    records = [
+        _message_record(
+            "first",
+            first,
+            metadata={RESOURCE_EVIDENCE_METADATA_KEY: evidence.to_message_metadata()},
+        ),
+        _message_record(
+            "second",
+            second,
+            parent_id="first",
+            metadata={RESOURCE_EVIDENCE_METADATA_KEY: {"schemaId": "invalid"}},
+        ),
+    ]
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (records if records is not None else active)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=lambda _snapshot_id: pytest.fail("no snapshot exists"),
+    )
+    active = records
+    with pytest.raises((RequestEvidenceIntegrityError, ValueError, TypeError)):
+        runtime.project_model_input(_preparation([first, second]))
+    assert runtime._recovered == {}
+    assert runtime._hydrated_record_ids is None
+    active = [records[0], replace(records[1], metadata={})]
+    projected = runtime.project_model_input(_preparation([first, second]))
+    assert projected is not None
+    assert projected["messages"] == [
+        evidence.to_message_payload(message_record_id="first", message_index=0)
+    ]
+
+
+def test_mixed_anchor_and_legacy_conflict_does_not_poison_retry() -> None:
+    first = _user_message("first")
+    second = _user_message("second")
+    anchor = _runtime([], []).prepare(
+        PromptPreflightResult(text="first", loaded_skills=(_loaded_skill(),))
+    )
+    legacy = _runtime([], []).prepare(
+        PromptPreflightResult(text="second", loaded_skills=(_loaded_skill(),))
+    )
+    assert anchor is not None and legacy is not None
+    conflicting_skill = dict(anchor.skills[0])
+    conflicting_skill["catalogGeneration"] = 8
+    conflicting = PreparedResourceEvidence(
+        model_visible_text="first", skills=(conflicting_skill,)
+    )
+    payload = {
+        "contextComplete": True,
+        "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+        "schemaVersion": 1,
+        "messages": [
+            conflicting.to_message_payload(message_record_id="first", message_index=0),
+            legacy.to_message_payload(message_record_id="second", message_index=1),
+        ],
+    }
+    component_hash = hash_model_input_json(payload, name="mixed Resource evidence")
+    first_record = _message_record(
+        "first",
+        first,
+        metadata={RESOURCE_EVIDENCE_METADATA_KEY: anchor.to_message_metadata()},
+    )
+    second_record = _message_record("second", second, parent_id="first")
+    component_record = ConversationRecord(
+        record_id="component",
+        parent_id="second",
+        kind="model.input.component",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=ModelInputComponent(content_hash=component_hash, content=payload),
+        metadata={},
+    )
+    snapshot_record = ConversationRecord(
+        record_id="snapshot-record",
+        parent_id="component",
+        kind="model.input.prepared",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=_snapshot(
+            snapshot_id="snapshot",
+            additional_components=(
+                ModelInputComponentReference(
+                    RESOURCE_EVIDENCE_COMPONENT, "component", component_hash
+                ),
+            ),
+        ),
+        metadata={},
+    )
+    active = [first_record, second_record, component_record, snapshot_record]
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (active if records is None else records)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=lambda _snapshot_id: SimpleNamespace(
+            logical_input={
+                RESOURCE_EVIDENCE_COMPONENT: payload,
+                "messages": [first, second],
+            }
+        ),
+    )
+    with pytest.raises(RequestEvidenceIntegrityError, match="disagrees"):
+        runtime.project_model_input(_preparation([first, second]))
+    assert runtime._recovered == {}
+    assert runtime._hydrated_record_ids is None
+    active[:] = [first_record, second_record]
+    projected = runtime.project_model_input(_preparation([first, second]))
+    assert projected is not None
+    assert projected["messages"] == [
+        anchor.to_message_payload(message_record_id="first", message_index=0)
+    ]
 
 
 def test_loaded_skill_projects_only_json_safe_exact_receipt_evidence() -> None:
