@@ -88,6 +88,9 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
             "deepseek-v4-pro",
         },
         ("minimax", "anthropic-messages"): {"MiniMax-M3", "MiniMax-M2.7"},
+        ("minimax", "openai-completions"): {"MiniMax-M3", "MiniMax-M2.7"},
+        ("minimax", "anthropic-messages-cn"): {"MiniMax-M3", "MiniMax-M2.7"},
+        ("minimax", "openai-completions-cn"): {"MiniMax-M3", "MiniMax-M2.7"},
         ("moonshot", "openai-completions"): {
             "kimi-k2.6",
             "kimi-k2.7-code",
@@ -146,6 +149,41 @@ def test_minimax_anthropic_catalog_uses_sdk_base_url_and_short_cache() -> None:
     assert endpoint.base_url == "https://api.minimax.io/anthropic"
     assert isinstance(endpoint.adapter, AnthropicMessagesConfig)
     assert endpoint.adapter.long_cache_retention is False
+
+
+def test_minimax_catalog_exposes_global_and_cn_routes_with_pricing() -> None:
+    registry = _load_curated_registry()
+
+    routes = {
+        (endpoint.id, endpoint.region): endpoint.base_url
+        for endpoint in registry.list_endpoints()
+        if endpoint.provider_id == "minimax"
+    }
+
+    assert routes == {
+        ("anthropic-messages", "global"): "https://api.minimax.io/anthropic",
+        ("openai-completions", "global"): "https://api.minimax.io/v1",
+        ("anthropic-messages-cn", "cn"): "https://api.minimaxi.com/anthropic",
+        ("openai-completions-cn", "cn"): "https://api.minimaxi.com/v1",
+    }
+
+    openai_global = registry.get_endpoint("minimax", "openai-completions")
+    assert isinstance(openai_global.adapter, OpenAICompletionsConfig)
+
+    m3 = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
+    assert m3.pricing is not None
+    assert m3.pricing.currency == "USD"
+    assert m3.pricing.input == 0.6
+    assert m3.pricing.output == 2.4
+    assert m3.pricing.cache_read == 0.12
+    assert m3.pricing.cache_write is None
+
+    m27 = registry.get_model("minimax", "openai-completions-cn", "MiniMax-M2.7")
+    assert m27.pricing is not None
+    assert m27.pricing.input == 0.3
+    assert m27.pricing.output == 1.2
+    assert m27.pricing.cache_read == 0.06
+    assert m27.pricing.cache_write == 0.375
 
 
 def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> None:
@@ -208,7 +246,10 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     assert kimi.supports_temperature is False
     assert kimi_code.defaults["maxOutputTokens"] == 32000
     assert kimi_code.defaults["reasoningEffort"] == "medium"
-    assert minimax.pricing is None
+    assert minimax.pricing is not None
+    assert minimax.pricing.input == 0.6
+    assert minimax.pricing.output == 2.4
+    assert minimax.pricing.cache_read == 0.12
     assert gpt.capabilities.context_window == 1050000
     assert sol.capabilities.context_window == 1050000
     assert coding.capabilities.context_window == 400000
