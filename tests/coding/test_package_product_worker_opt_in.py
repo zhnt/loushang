@@ -197,6 +197,53 @@ def test_worker_opt_in_rotates_without_resetting_generation_or_operation_id(
     assert reopened.current(opt_in.plugin_id) == allowed_again
 
 
+def test_worker_opt_in_refuses_lost_active_revocation(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "product-state"
+    root.mkdir(mode=0o700)
+    gate = PluginPackageGcReservationJournal(root / "gc-reservations.jsonl")
+    journal = CodingWorkerOptInJournal(
+        root / "worker-opt-in.jsonl",
+        scope_id="workspace:" + "a" * 64,
+        gc_gate=gate,
+    )
+    monkeypatch.setattr(opt_in_module, "_MAX_EVENTS", 1)
+    opt_in = CodingWorkerOptInV1(
+        plugin_id="example.worker",
+        contribution_id="query-provider",
+        owner_id="coding.lsp",
+        artifact_digest=sha256(b"wheel").hexdigest(),
+        native_platform="linux-x86_64",
+        owner_selection_generation=1,
+        kill_switch_generation=0,
+        require_worker=True,
+    )
+    allowed = journal.change(
+        plugin_id=opt_in.plugin_id,
+        operation_id="allow-1",
+        expected_generation=0,
+        action="allow",
+        opt_in=opt_in,
+    )
+    revoked = journal.change(
+        plugin_id=opt_in.plugin_id,
+        operation_id="revoke-2",
+        expected_generation=1,
+        action="revoke",
+        opt_in=None,
+    )
+    assert allowed.action == "allow"
+    assert journal.current(opt_in.plugin_id) == revoked
+    (root / "worker-opt-in.g00000001.jsonl").unlink()
+    reopened = CodingWorkerOptInJournal(
+        journal.path, scope_id=journal.scope_id, gc_gate=gate
+    )
+    with pytest.raises(CodingWorkerOptInJournalError) as missing:
+        reopened.current(opt_in.plugin_id)
+    assert missing.value.code == "coding_worker_segment_active_missing"
+
+
 def test_worker_opt_in_refuses_history_reset_behind_retained_lock(tmp_path) -> None:
     root = tmp_path / "product-state"
     root.mkdir(mode=0o700)

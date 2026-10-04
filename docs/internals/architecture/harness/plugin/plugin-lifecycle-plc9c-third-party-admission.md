@@ -1432,14 +1432,19 @@ The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. Each journal keeps
 its initial file as generation zero. Under the Product GC gate and that
 journal's exclusive lock, rotation verifies the complete current generation,
-then durably publishes a manifest naming its exact digest and global final
-revision plus the next active generation. The old bytes remain at their
-original path; the new active file may be absent until its first append.
+then durably creates the empty successor file before publishing a manifest
+naming the sealed generation's exact digest and global final revision plus the
+next active generation. The old bytes remain at their original path. Readers
+refuse a missing active file, including a successor whose manifest was already
+published.
 Readers select one complete manifest generation, verify every named segment
 and the contiguous global revision chain, and refuse an unreferenced segment,
 missing seal, duplicate attempt or receipt, or stale writer generation. An
 interrupted manifest publication therefore leaves either the old complete
 generation or a refused orphan; it cannot silently shorten history.
+The current bounded pilot does not authenticate the active file's last
+committed length or digest. History pruning, restore, and broader routing
+require that additional proof so a truncated active file cannot appear valid.
 
 Opt-in operation IDs, start-gate attempt IDs, and receipt issue sequences must
 remain globally unique
@@ -1574,7 +1579,8 @@ policy binding and at Worker graph preparation. The minimal Coding Session
 canary then queried the live Worker under that same base policy binding. This
 journey passed in the verified report at
 `/home/dev/lsspace/.artifacts/plugin-plc9/worker-base-policy-query-20261003.xml`.
-The full graph has not yet been published by ordinary Coding `AgentSession`.
+At this stage the full graph had not yet been published by an ordinary Coding
+`AgentSession`; the explicit Linux route described below now does so.
 
 Graph preparation, publication, abort, Session disposal, disable, update, and
 recovery must each release or fence that attempt through its owner; a failed

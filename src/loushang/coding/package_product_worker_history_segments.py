@@ -231,10 +231,13 @@ def read_coding_worker_segmented_history(
         try:
             raw = rooted.sibling(name).read_bytes(max_bytes=max_segment_bytes)
         except FileNotFoundError:
-            if generation != active:
-                raise CodingWorkerHistorySegmentError(
+            if generation != active or manifest is not None:
+                code = (
                     "coding_worker_sealed_segment_missing"
-                ) from None
+                    if generation != active
+                    else "coding_worker_segment_active_missing"
+                )
+                raise CodingWorkerHistorySegmentError(code) from None
             raw = b""
         except OSError as exc:
             code = (
@@ -317,6 +320,15 @@ def seal_coding_worker_active_segment(
         ) from exc
     if current_active != history.active_raw:
         raise CodingWorkerHistorySegmentError("coding_worker_segment_active_changed")
+    # Publish the empty successor durably before the manifest can name it.
+    # Otherwise a later loss of a written active segment is indistinguishable
+    # from an interrupted seal that never created the successor.
+    try:
+        rooted.sibling(_segment_name(stem, manifest.active_generation)).create_new(b"")
+    except OSError as exc:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_active_changed"
+        ) from exc
     manifest_file.atomic_write(manifest.to_bytes())
     return manifest
 

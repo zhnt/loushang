@@ -136,7 +136,7 @@ def test_activation_state_reopens_after_manifest_publication_interruption(
     monkeypatch.setattr(activation_module, "append_jsonl_record", append)
 
     assert (journal.path.parent / "worker-activation-state.segments.json").is_file()
-    assert not (journal.path.parent / "worker-activation-state.g00000001.jsonl").exists()
+    assert (journal.path.parent / "worker-activation-state.g00000001.jsonl").read_bytes() == b""
     reopened = CodingProductWorkerActivationStateJournal(journal.path)
     assert reopened.load_read_only() == initial
     assert reopened.compare_and_swap(expected_revision=1, document=second)

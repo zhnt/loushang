@@ -60,11 +60,12 @@ def test_sealed_history_reopens_across_generations_and_refuses_changed_bytes(
         rooted.append_bytes(b'{"journalRevision":1}\n')
         _seal(rooted, _read(rooted), 1)
 
-    # A crash after manifest publication leaves an empty active generation.
+    # A crash after manifest publication leaves a durable empty successor.
     with _bound(root) as rooted:
         history = _read(rooted)
         assert history.active_generation == 1
         assert history.segments == (b'{"journalRevision":1}\n', b"")
+        assert (root / "worker-start-gates.g00000001.jsonl").is_file()
         rooted.sibling("worker-start-gates.g00000001.jsonl").append_bytes(
             b'{"journalRevision":2}\n'
         )
