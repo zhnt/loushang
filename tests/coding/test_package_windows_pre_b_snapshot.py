@@ -4168,10 +4168,20 @@ preopen_worker_files = sorted(
     item.name for item in Path(sys.argv[4]).iterdir()
     if item.name.startswith("worker-")
 )
-assert "worker-payload-" + "7" * 32 in preopen_worker_files, {
-    "beforeImports": preimport_worker_files,
-    "afterImports": preopen_worker_files,
-}
+retained_stage_name = "worker-payload-" + "7" * 32
+if retained_stage_name not in preopen_worker_files:
+    raise AssertionError(json.dumps({
+        "stageBeforeImports": retained_stage_name in preimport_worker_files,
+        "stageAfterImports": retained_stage_name in preopen_worker_files,
+        "beforePayloads": [
+            name for name in preimport_worker_files
+            if name.startswith("worker-payload-")
+        ],
+        "afterPayloads": [
+            name for name in preopen_worker_files
+            if name.startswith("worker-payload-")
+        ],
+    }))
 owner = open_coding_fenced_product_application_owner(
     lifecycle, workspace=workspace, runtime_version="2.0.0",
     runtime_protocol_epoch=2, worker_candidates=True, windows_candidate=True,
@@ -4281,10 +4291,18 @@ finally:
                 timeout=60,
                 check=False,
             )
-            assert inventoried.returncode == 0, (
-                inventoried.stderr,
-                tuple(sorted(item.name for item in worker_state_root.iterdir())),
-            )
+            if inventoried.returncode != 0:
+                pytest.fail(
+                    json.dumps({
+                        "childError": inventoried.stderr[-2000:],
+                        "parentStageRetained": retained_stage.is_dir(),
+                        "parentPayloads": sorted(
+                            item.name for item in worker_state_root.iterdir()
+                            if item.name.startswith("worker-payload-")
+                        ),
+                    }),
+                    pytrace=False,
+                )
             assert json.loads(inventoried.stdout) == {
                 "attempts": [
                     ["5" * 32, "reserved", True],
