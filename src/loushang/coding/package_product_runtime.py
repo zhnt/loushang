@@ -42,6 +42,9 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationKeyV1,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseRegistryError,
 )
@@ -356,12 +359,20 @@ class CodingFencedProductApplicationSelection:
             if owner is None:
                 lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
                 epoch = resolve_coding_package_epoch_layout(lifecycle)
+                unadmitted_platform = (
+                    os.name == "posix" and not sys.platform.startswith("linux")
+                ) or (os.name == "nt" and not self._windows_candidate)
                 try:
                     (epoch.control_root / "epoch.jsonl").lstat()
                 except FileNotFoundError:
-                    # Other POSIX platforms keep their existing Session route
-                    # until a native Product cutover is admitted there.
-                    if os.name == "posix" and not sys.platform.startswith("linux"):
+                    # Platforms without an admitted default Product route keep
+                    # their existing Session route for a fresh workspace.
+                    if unadmitted_platform:
+                        require_fresh_coding_product_inputs_without_writes(
+                            lifecycle,
+                            workspace=workspace,
+                            settings_manager=settings_manager,
+                        )
                         return None
                     # A Linux fresh workspace enters B before any ordinary
                     # Session can prepare a legacy Plugin writer. Native
@@ -378,6 +389,13 @@ class CodingFencedProductApplicationSelection:
                         windows_candidate=self._windows_candidate,
                     )
                 else:
+                    if unadmitted_platform:
+                        PackageEpochFenceJournal(
+                            epoch.control_root / "epoch.jsonl", read_only=True
+                        ).current(epoch.store_id)
+                        raise RuntimeError(
+                            "Coding native B Session route is not yet admitted"
+                        )
                     _retry_fresh_coding_product_bootstrap_for_session(
                         lifecycle,
                         workspace=workspace,
