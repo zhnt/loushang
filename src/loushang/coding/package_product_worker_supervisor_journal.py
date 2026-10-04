@@ -41,7 +41,11 @@ from .package_product_worker_history_segments import (
 _STEM = "worker-supervisor"
 _MAX_RECORDS = 4096
 _MAX_BYTES = 16 * 1024 * 1024
-_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+_DIR_FLAGS = (
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    if os.name == "posix"
+    else -1
+)
 
 
 class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
@@ -53,6 +57,8 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
     """
 
     def __init__(self, product: PosixLocalWheelProductSessionOwner) -> None:
+        if os.name != "posix":
+            raise RuntimeError("Coding Worker POSIX Supervisor journal is unavailable")
         if (
             not isinstance(product, PosixLocalWheelProductSessionOwner)
             or product.policy.product_id != "coding"

@@ -46,7 +46,11 @@ from .package_private_data_deletion_preview import (
 )
 
 _OWNER_ID = "coding.arch.private-data:posix-v1"
-_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+_DIRECTORY_FLAGS = (
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    if os.name == "posix"
+    else -1
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +61,8 @@ class CodingArchPrivateDataDeletionOwner:
     journal: CodingArchPrivateDataDeletionJournal
 
     def __post_init__(self) -> None:
+        if os.name != "posix":
+            raise RuntimeError("Coding Arch POSIX deletion owner is unavailable")
         CodingArchPrivateDataDeletionPreview(self.layout, self.product)
         if (
             not isinstance(self.confirmations, PluginPrivateDataConfirmationJournal)

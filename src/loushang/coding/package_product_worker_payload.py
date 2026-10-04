@@ -52,8 +52,16 @@ from .package_product_worker_supervisor_journal import (
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-_FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+_DIR_FLAGS = (
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    if os.name == "posix"
+    else -1
+)
+_FILE_FLAGS = (
+    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    if os.name == "posix"
+    else -1
+)
 _MARKER = "product-payload.json"
 _MAX_MARKER_BYTES = 1024
 _EMPTY_REPAIR_PREFIX = "worker-empty-repair-"
