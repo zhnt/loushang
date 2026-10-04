@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  windows-shell:
+  windows-worker:
     if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
     runs-on: windows-2022
     timeout-minutes: 90
@@ -64,6 +64,34 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-shell-worker-candidate-native.xml
+
+      - name: Upload Worker pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-pytest-report
+          path: .artifacts/windows-shell-worker-candidate-native.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  windows-shell:
+    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
 
       - name: Run PLC9B native Windows quarantine tests
         env:
@@ -232,7 +260,7 @@ jobs:
   selected-checks:
     name: Selected checks
     if: always()
-    needs: [windows-shell]
+    needs: [windows-shell, windows-worker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -242,4 +270,4 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python scripts/ci/verify_gate.py
-          --jobs '{"windows-shell":"windows_shell"}'
+          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell"}'

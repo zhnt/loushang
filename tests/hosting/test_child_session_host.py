@@ -2515,3 +2515,17 @@ def test_child_session_factory_rejects_invalid_bounds(
 ) -> None:
     with pytest.raises(ValueError):
         create_child_session_host(**overrides)  # type: ignore[arg-type]
+
+
+def test_child_session_factory_requires_explicit_platform_capture() -> None:
+    with pytest.raises(TypeError, match="Windows LPAC capture selection"):
+        create_child_session_host(enable_windows_lpac_capture=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="Select one native launch capture profile"):
+        create_child_session_host(
+            enable_posix_static_capture=True,
+            enable_windows_lpac_capture=True,
+        )
+    if os.name != "nt":
+        with pytest.raises(HostingError) as error:
+            create_child_session_host(enable_windows_lpac_capture=True)
+        assert error.value.category is HostingFailureCategory.PLATFORM_UNSUPPORTED

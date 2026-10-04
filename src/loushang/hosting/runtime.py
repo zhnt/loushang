@@ -8,6 +8,7 @@ import os
 from ._child_session_host import _ChildSessionHost
 from ._endpoint_host import _InheritedEndpointHost
 from ._endpoint_platform import _select_child_session_backends
+from ._launch_preparation import _LaunchCaptureBackend
 from ._platform import _select_process_backend
 from ._process_host import _ProcessHost, _ProcessHostLimits
 from .contracts import (
@@ -55,6 +56,7 @@ def create_child_session_host(
     stderr_drain_seconds: float = 1.0,
     endpoint_io_settlement_seconds: float = 1.0,
     enable_posix_static_capture: bool = False,
+    enable_windows_lpac_capture: bool = False,
     observation_sink: HostingObservationSink | None = None,
 ) -> ChildSessionHostingPort:
     """Create an exact atomic child-session owner or fail closed."""
@@ -76,10 +78,19 @@ def create_child_session_host(
         raise ValueError("endpoint_io_settlement_seconds must be positive and finite")
     if type(enable_posix_static_capture) is not bool:
         raise TypeError("POSIX static capture selection must be boolean")
+    if type(enable_windows_lpac_capture) is not bool:
+        raise TypeError("Windows LPAC capture selection must be boolean")
+    if enable_posix_static_capture and enable_windows_lpac_capture:
+        raise ValueError("Select one native launch capture profile")
     if enable_posix_static_capture and os.name != "posix":
         raise HostingError(
             HostingFailureCategory.PLATFORM_UNSUPPORTED,
             "POSIX static capture is unavailable on this platform",
+        )
+    if enable_windows_lpac_capture and os.name != "nt":
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "Windows LPAC capture is unavailable on this platform",
         )
     backends = _select_child_session_backends(
         max_sessions=max_sessions,
@@ -97,11 +108,15 @@ def create_child_session_host(
         max_write_bytes=max_write_bytes,
         observation_sink=observation_sink,
     )
-    capture_backend = None
+    capture_backend: _LaunchCaptureBackend | None = None
     if enable_posix_static_capture:
         from ._posix_launch_preparation import _PosixStaticLaunchCaptureBackend
 
         capture_backend = _PosixStaticLaunchCaptureBackend()
+    elif enable_windows_lpac_capture:
+        from ._windows_launch_preparation import _WindowsLpacLaunchCaptureBackend
+
+        capture_backend = _WindowsLpacLaunchCaptureBackend()
     return _ChildSessionHost(
         process_host,
         endpoint_host,

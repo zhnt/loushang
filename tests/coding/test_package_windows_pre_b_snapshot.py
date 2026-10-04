@@ -3698,7 +3698,9 @@ finally:
                             protocol_version=request.runtime.protocol_version,
                         )
                         try:
-                            host = create_child_session_host(max_sessions=1)
+                            host = create_child_session_host(
+                                max_sessions=1, enable_windows_lpac_capture=True
+                            )
                             adapter = HostingManagedWorkerSessionAdapter(
                                 hosting=host,
                                 preparation=native_profile,
@@ -4623,7 +4625,9 @@ try:
             protocol_version=request.runtime.protocol_version,
         )
         try:
-            host = create_child_session_host(max_sessions=1)
+            host = create_child_session_host(
+                max_sessions=1, enable_windows_lpac_capture=True
+            )
             adapter = HostingManagedWorkerSessionAdapter(
                 hosting=host, preparation=profile,
             )
