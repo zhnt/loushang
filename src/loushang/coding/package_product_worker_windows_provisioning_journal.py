@@ -428,7 +428,7 @@ class WindowsWorkerProvisioningStateJournal:
         self._require_windows_descriptor(directory_fd)
         lock_name = self._path.name + ".lock"
         try:
-            windows_stat_at(directory_fd, lock_name)
+            lock_stat = windows_stat_at(directory_fd, lock_name)
         except FileNotFoundError:
             try:
                 windows_stat_at(directory_fd, self._path.name)
@@ -437,6 +437,10 @@ class WindowsWorkerProvisioningStateJournal:
             raise WindowsWorkerProvisioningStateJournalError(
                 "worker_native_provisioning_lock_missing"
             ) from None
+        if lock_stat.st_size != 1:
+            raise WindowsWorkerProvisioningStateJournalError(
+                "worker_native_provisioning_lock_corrupt"
+            )
         with WindowsPrivateDirectoryAcl() as acl:
             windows_stat_at(directory_fd, lock_name)
             with journal_file_lock_at(

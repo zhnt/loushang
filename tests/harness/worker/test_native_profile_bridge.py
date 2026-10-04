@@ -1274,7 +1274,9 @@ def _race_windows_lpac_state_cas(
 
 def test_windows_lpac_durable_attempt_cross_process_cas_has_one_winner(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3]))
     _, receipt, request, plan, _, _, bindings, probe = _windows_profile_context(
         tmp_path
     )

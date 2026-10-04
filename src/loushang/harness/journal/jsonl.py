@@ -207,7 +207,8 @@ def journal_file_lock_at(
             create=create,
             write=True,
         ) as handle:
-            _prepare_lock_byte(handle)
+            if create:
+                _prepare_lock_byte(handle)
             operation = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
             try:
                 msvcrt.locking(handle.fileno(), operation, 1)
