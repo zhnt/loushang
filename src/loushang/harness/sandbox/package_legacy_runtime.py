@@ -307,6 +307,26 @@ class PackageLinuxLegacyRuntimeSettlementReceiptV1:
 class PackageLinuxLegacyRuntimeActivationOwner:
     """Activate exactly one restored old runtime under required Linux isolation."""
 
+    _restore_root: Path
+    _activation_root: Path
+    _current_b_root: Path
+    _store_id: str
+    _legacy_runtime_version: str
+    _command: tuple[str, ...]
+    _environment: tuple[tuple[str, str], ...]
+    _startup_timeout: float
+    _termination_grace: float
+    _maximum_entries: int
+    _maximum_bytes: int
+    _maximum_depth: int
+    _thread_lock: threading.RLock
+    _sandbox_backend: LinuxBubblewrapBackend
+    _boot_id_digest: str
+    _profile_digest: str
+    _restore_identities: tuple[tuple[int, int], ...]
+    _activation_identities: tuple[tuple[int, int], ...]
+    _current_b_identities: tuple[tuple[int, int], ...]
+
     def __init__(
         self,
         restore_authority_root: str | Path,
@@ -775,7 +795,7 @@ class PackageLinuxLegacyRuntimeActivationOwner:
             ),
             self._command,
         )
-        read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+        read_fd, write_fd = os.pipe2(os.O_CLOEXEC)  # type: ignore[attr-defined]
         token = secrets.token_hex(32)
         environment = dict(self._environment)
         environment[_READY_FD_ENV] = str(write_fd)
@@ -1000,6 +1020,8 @@ class PackageLinuxLegacyRuntimeActivationOwner:
     def _exclusive_activation_root(
         self, *, create_lock: bool = True
     ) -> Iterator[_PinnedRoot]:
+        if _fcntl is None:
+            raise _activation_error("Linux legacy runtime isolation is unavailable")
         with self._thread_lock:
             root: _PinnedRoot | None = None
             lock_fd: int | None = None

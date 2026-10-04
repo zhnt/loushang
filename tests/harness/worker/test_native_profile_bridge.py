@@ -4,6 +4,8 @@ import asyncio
 import hashlib
 import json
 import os
+import platform
+import sys
 from dataclasses import dataclass, replace
 from multiprocessing import get_context
 from pathlib import Path
@@ -293,6 +295,16 @@ def test_plc9c5_c52_linux_native_case(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if case_id in {
+        "C52-EXACT-CLOSURE",
+        "C52-FD-SUBSTITUTION",
+        "C52-CANCEL-POST-EFFECT",
+        "C52-DESCENDANT-CLEANUP",
+    } and (
+        not sys.platform.startswith("linux")
+        or platform.machine().lower() not in {"amd64", "x86_64"}
+    ):
+        pytest.skip("Linux x86_64 sealed-memfd launch preparation")
     if case_id == "C52-EXACT-CLOSURE":
         profile, receipt, worker_request, process_request = _bound_profile(
             tmp_path,

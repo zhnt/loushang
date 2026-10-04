@@ -87,6 +87,13 @@ class PackagePosixPreFenceRegistrationHandle:
 class PackagePosixPreFenceRegistrationOwner:
     """Block cooperative launches and project their complete live set."""
 
+    authority_root: Path
+    store_id: str
+    _fences: PackageEpochFenceJournal
+    _registrations_name: str
+    _registration_identity: tuple[int, int]
+    _root_identities: tuple[tuple[int, int], ...]
+
     def __init__(
         self,
         authority_root: str | Path,

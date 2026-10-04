@@ -28,6 +28,7 @@ from loushang.ai import (
     complete,
     stream,
 )
+from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.trace import emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.foundation.json import JSONValue, require_json_value
@@ -1012,11 +1013,17 @@ def _call_options(
     signal: object | None,
     request_limits: PreparedRequestLimits | None,
 ) -> CallOptions:
+    adapter = getattr(model, "adapter", None)
+    supports_output_limit = not (
+        isinstance(adapter, OpenAIResponsesConfig) and not adapter.max_output_tokens
+    )
     return CallOptions(
         auth=ApiKeyAuth(api_key) if api_key else None,
         headers=dict(headers or {}),
         cancellation=signal,
-        max_output_tokens=_summary_max_output_tokens(model),
+        max_output_tokens=(
+            _summary_max_output_tokens(model) if supports_output_limit else None
+        ),
         request_limits=_summary_request_limits(request_limits),
     )
 

@@ -10833,6 +10833,7 @@ def test_product_transaction_refuses_changed_execution_before_source(
     assert fixture.committed_sets.records() == ()
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
 @pytest.mark.parametrize(
     ("fixture_options", "reason"),
     (
@@ -10880,6 +10881,7 @@ def test_native_adoption_rejects_wrong_physical_authority_before_source(
     )
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
 def test_native_adoption_committed_replay_requires_durable_root_target(
     tmp_path: Path,
 ) -> None:
