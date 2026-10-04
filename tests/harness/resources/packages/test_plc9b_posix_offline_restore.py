@@ -768,7 +768,13 @@ def test_posix_offline_restore_cross_process_lock_publishes_only_once(
             receipt = child_owner.restore(request, evidence, quiescence)
             results.put(("ok", receipt.to_dict()))
         except BaseException as exc:  # pragma: no cover - parent reports detail
-            results.put(("error", repr(exc)))
+            results.put(
+                (
+                    "error",
+                    f"{exc!r}: {exc.__cause__!r}: "
+                    f"{getattr(exc.__cause__, 'filename', None)!r}",
+                )
+            )
 
     processes = [context.Process(target=run_restore) for _index in range(2)]
     try:
@@ -787,7 +793,7 @@ def test_posix_offline_restore_cross_process_lock_publishes_only_once(
         results.close()
         results.join_thread()
 
-    assert {status for status, _payload in observed} == {"ok"}
+    assert {status for status, _payload in observed} == {"ok"}, observed
     assert observed[0][1] == observed[1][1]
     assert copy_probe.read_bytes() == b"copy\n"
     assert _restored_payload(restore_root, request).is_dir()

@@ -7,6 +7,7 @@ the root. Path values are lexical labels, never native path authorities.
 
 from __future__ import annotations
 
+import _thread
 import os
 import secrets
 import stat
@@ -196,6 +197,10 @@ class RootedFileIO:
     """
 
     root: Path
+    _root_fd: int
+    _identity: tuple[int, int]
+    _pid: int
+    _mutex: _thread.RLock
 
     def __init__(self, root: Path, directory_fd: int, *, directory_bindings: tuple[DirectoryBinding, ...] = ()) -> None:
         root = Path(root)

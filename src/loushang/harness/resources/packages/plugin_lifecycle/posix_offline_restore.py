@@ -521,15 +521,20 @@ class PackagePosixOfflineRestoreMaterializer:
                     self._restore_root,
                     expected_identities=self._restore_identities,
                 )
-                lock_fd = os.open(
-                    _LOCK_NAME,
-                    os.O_RDWR
-                    | os.O_CREAT
-                    | os.O_NOFOLLOW
-                    | getattr(os, "O_CLOEXEC", 0),
-                    0o600,
-                    dir_fd=root.descriptor,
-                )
+                lock_flags = os.O_RDWR | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+                try:
+                    lock_fd = os.open(
+                        _LOCK_NAME,
+                        lock_flags | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                        dir_fd=root.descriptor,
+                    )
+                except FileExistsError:
+                    lock_fd = os.open(
+                        _LOCK_NAME,
+                        lock_flags,
+                        dir_fd=root.descriptor,
+                    )
                 metadata = os.fstat(lock_fd)
                 if (
                     not stat.S_ISREG(metadata.st_mode)
