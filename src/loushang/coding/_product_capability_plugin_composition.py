@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
@@ -27,6 +29,10 @@ from loushang.harness.package_product.product_runtime import (
 )
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    windows_flush_directory,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 from loushang.harness.resources.plugins.contribution_types import (
@@ -83,6 +89,77 @@ from .package_product_revisions import (
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
+
+
+def _prepare_product_approval_state_root(state_root: Path) -> Path:
+    if os.name == "nt":
+        return _prepare_windows_product_approval_state_root(state_root)
+    if os.name != "posix":
+        raise RuntimeError("Coding Product approval state needs a native owner")
+    root = prepare_private_directory_chain(state_root)
+    metadata = root.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        raise ValueError("Coding Product approval state is not private")
+    return root
+
+
+def _prepare_windows_product_approval_state_root(state_root: Path) -> Path:
+    if not isinstance(state_root, Path) or not state_root.is_absolute():
+        raise ValueError("Coding Product approval state root is invalid")
+    target = state_root / "product-private"
+    missing: list[str] = []
+    existing = target
+    while not existing.exists():
+        if existing.parent == existing or len(missing) >= 8:
+            raise ValueError("Coding Product approval state parent is unavailable")
+        missing.append(existing.name)
+        existing = existing.parent
+    with (
+        ExitStack() as stack,
+        WindowsPrivateDirectoryAcl() as private_acl,
+        WindowsPrivateDirectoryAcl(inherit_children=True) as leaf_acl,
+    ):
+        parent_fd = open_windows_directory(existing, read_control=True)
+        stack.callback(os.close, parent_fd)
+        identity = os.fstat(parent_fd)
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError("Coding Product approval state parent changed")
+        if not missing:
+            leaf_acl.validate(parent_fd)
+        for index, name in enumerate(reversed(missing)):
+            acl = leaf_acl if index == len(missing) - 1 else private_acl
+            created = False
+            try:
+                child_fd = open_windows_directory(
+                    name,
+                    dir_fd=parent_fd,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                created = True
+            except FileExistsError:
+                child_fd = open_windows_directory(
+                    name, dir_fd=parent_fd, read_control=True
+                )
+            stack.callback(os.close, child_fd)
+            acl.validate(child_fd)
+            if created:
+                windows_flush_directory(parent_fd)
+            parent_fd = child_fd
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError("Coding Product approval state parent changed")
+    return target
 
 
 @dataclass(slots=True)
@@ -144,8 +221,6 @@ def prepare_coding_builtin_product_composition(
 
     if not isinstance(base_compilation, CodingBaseProductCompilation):
         raise TypeError("Coding Product base compilation is invalid")
-    if os.name != "posix":
-        raise RuntimeError("Coding Product composition requires POSIX")
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
@@ -157,14 +232,7 @@ def prepare_coding_builtin_product_composition(
     ):
         raise TypeError("Coding Product Capability configuration type is invalid")
     _read_clock(clock)
-    root = prepare_private_directory_chain(state_root)
-    metadata = root.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != os.getuid()
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-    ):
-        raise ValueError("Coding Product approval state is not private")
+    root = _prepare_product_approval_state_root(state_root)
 
     runtime = open_coding_product_builtin_resolution(
         product_runtime,
@@ -297,8 +365,6 @@ def prepare_coding_product_capability_plugin_composition(
     requires the normal host-Provider binding and Session graph publication.
     """
 
-    if os.name != "posix":
-        raise RuntimeError("Coding Product Capability composition requires POSIX")
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Capability Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
@@ -312,14 +378,7 @@ def prepare_coding_product_capability_plugin_composition(
     if not isinstance(product_policy_revision, str) or not product_policy_revision:
         raise ValueError("Coding Product Capability policy revision is invalid")
     _read_clock(clock)
-    root = prepare_private_directory_chain(state_root)
-    metadata = root.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != os.getuid()
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-    ):
-        raise ValueError("Coding Product Capability approval state is not private")
+    root = _prepare_product_approval_state_root(state_root)
 
     runtime = open_coding_product_capability_resolution(
         product_runtime, plugin_ids=tuple(spec.plugin_id for spec in specs)

@@ -193,8 +193,13 @@ class CodingWindowsArchPrivateDataDeletionTransaction:
             for event in events
         ):
             raise ValueError("Windows Coding Arch confirmation was consumed")
-        if _capture_current_target(owner, plan.installation_key) != target:
-            raise ValueError("Windows Coding Arch deletion target changed")
+        if staged is None:
+            if _capture_current_target(owner, plan.installation_key) != target:
+                raise ValueError("Windows Coding Arch deletion target changed")
+        else:
+            _require_staged_start_target_unchanged(
+                owner, plan.installation_key, target
+            )
         event = CodingArchPrivateDataDeletionEventV1(
             revision=len(events) + 1,
             phase="started",
@@ -474,6 +479,31 @@ def _capture_current_target(
     if current_root != expected_root:
         raise ValueError("Windows Coding Arch deletion root changed")
     return target
+
+
+def _require_staged_start_target_unchanged(
+    owner: CodingWindowsArchPrivateDataConfirmationOwner,
+    key: PluginInstallationKeyV1,
+    target: CodingArchPrivateDataTargetSnapshotV1,
+) -> None:
+    """Recapture a staged start without reading its own unpublished journal."""
+
+    root = coding_arch_installation_private_data_root(owner.layout, key)
+    if target.root_path_digest != sha256(os.fsencode(str(root))).hexdigest():
+        raise ValueError("Windows Coding Arch deletion target changed")
+    if target.root_identity is None:
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            return
+        raise ValueError("Windows Coding Arch deletion target changed")
+    if (
+        _capture_windows_target_snapshot(
+            root, expected_root=target.root_identity[:2]
+        )
+        != target
+    ):
+        raise ValueError("Windows Coding Arch deletion target changed")
 
 
 def _tombstone_name(started: CodingArchPrivateDataDeletionEventV1) -> str:

@@ -123,7 +123,7 @@ class WindowsPrivateDirectoryAcl:
                 or not present.value
                 or not dacl.value
                 or (not inherited_file and not control.value & 0x1000)
-                or defaulted.value
+                or (defaulted.value and not inherited_file)
             ):
                 raise OSError("Windows private directory ACL is not protected")
             info = _AclInfo()

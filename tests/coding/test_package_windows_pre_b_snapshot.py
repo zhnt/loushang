@@ -521,7 +521,7 @@ def test_windows_ordinary_session_refuses_pre_b_without_writing(
     assert snapshot() == before
 
 
-def test_windows_ordinary_fresh_session_waits_for_native_b_admission_without_writes(
+def test_windows_ordinary_fresh_session_keeps_unadmitted_product_closed(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -534,6 +534,7 @@ def test_windows_ordinary_fresh_session_waits_for_native_b_admission_without_wri
             session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
         )
     )
+    selection = CodingFencedProductApplicationSelection()
     with (
         patch(
             "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
@@ -543,11 +544,9 @@ def test_windows_ordinary_fresh_session_waits_for_native_b_admission_without_wri
             "loushang.coding.package_product_runtime.default_global_settings_path",
             return_value=tmp_path / "global-settings.json",
         ),
-        pytest.raises(
-            RuntimeError, match="native automatic B Session route is not yet admitted"
-        ),
     ):
-        create_agent_session(session_manager=manager)
+        assert selection.factory_for_session(manager) is None
+    selection.close()
     assert not lifecycle.root.exists()
     assert not lifecycle.package_root.exists()
 
@@ -2707,7 +2706,6 @@ def _assert_windows_product_worker_provisioning_state(
         reopened.load()
 
 
-@pytest.mark.parametrize("native_platform", ("windows-amd64", "linux-x86_64"))
 def _windows_worker_dependency_wheel(name: str) -> bytes:
     """One bounded pure-Python dependency artifact for native Product proof."""
 
@@ -2738,6 +2736,7 @@ def _windows_worker_dependency_wheel(name: str) -> bytes:
     return output.getvalue()
 
 
+@pytest.mark.parametrize("native_platform", ("windows-amd64", "linux-x86_64"))
 def test_windows_worker_wheel_transaction_requires_exact_native_platform(
     tmp_path: Path, native_platform: str
 ) -> None:
@@ -5471,16 +5470,16 @@ def test_windows_coding_first_b_installs_and_selects_builtin_product_wheel(
     try:
         product = owner.runtime_owner.product_owner
         state = open_coding_package_product_state(lifecycle, owner.epoch_runtime)
-        with pytest.raises(RuntimeError, match="Windows Worker candidate route"):
-            open_coding_builtin_product_runtime_owner(
-                lifecycle,
-                owner.epoch_runtime,
-                state,
-                workspace=workspace,
-                runtime_version="2.0.0",
-                runtime_protocol_epoch=2,
-                worker_candidates=True,
-            )
+        worker_owner = open_coding_builtin_product_runtime_owner(
+            lifecycle,
+            owner.epoch_runtime,
+            state,
+            workspace=workspace,
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+            worker_candidates=True,
+        )
+        assert worker_owner.product_owner.policy.product_id == "coding"
         factory = product.factory_for_session(
             session_id="session:windows-selected-base",
             cwd=workspace,
