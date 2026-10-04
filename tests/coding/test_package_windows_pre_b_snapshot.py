@@ -319,7 +319,9 @@ from loushang.harness.worker._native_profile_bridge import (
 from loushang.harness.worker.hosting_adapter import (
     HostingManagedWorkerSessionAdapter,
 )
-from loushang.hosting.runtime import create_child_session_host
+from loushang.hosting._windows_lpac_runtime import (
+    _create_windows_lpac_child_session_host,
+)
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 from loushang.plugin._coding_local_worker_wheel import (
     build_coding_local_worker_candidate_wheel,
@@ -3698,9 +3700,7 @@ finally:
                             protocol_version=request.runtime.protocol_version,
                         )
                         try:
-                            host = create_child_session_host(
-                                max_sessions=1, enable_windows_lpac_capture=True
-                            )
+                            host = _create_windows_lpac_child_session_host(max_sessions=1)
                             adapter = HostingManagedWorkerSessionAdapter(
                                 hosting=host,
                                 preparation=native_profile,
@@ -4555,7 +4555,7 @@ from loushang.harness.package_product.product_runtime import PackageProductRunti
 from loushang.harness.worker import WorkerSupervisor
 from loushang.harness.worker._native_profile_bridge import _bind_windows_lpac_contained_product_worker_profile
 from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
-from loushang.hosting.runtime import create_child_session_host
+from loushang.hosting._windows_lpac_runtime import _create_windows_lpac_child_session_host
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
 workspace = Path(sys.argv[1])
@@ -4625,9 +4625,7 @@ try:
             protocol_version=request.runtime.protocol_version,
         )
         try:
-            host = create_child_session_host(
-                max_sessions=1, enable_windows_lpac_capture=True
-            )
+            host = _create_windows_lpac_child_session_host(max_sessions=1)
             adapter = HostingManagedWorkerSessionAdapter(
                 hosting=host, preparation=profile,
             )

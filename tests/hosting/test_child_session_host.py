@@ -52,6 +52,9 @@ from loushang.hosting._process_backend import (
     _ProcessTransport,
 )
 from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
+from loushang.hosting._windows_lpac_runtime import (
+    _create_windows_lpac_child_session_host,
+)
 
 _P = ParamSpec("_P")
 
@@ -2517,15 +2520,8 @@ def test_child_session_factory_rejects_invalid_bounds(
         create_child_session_host(**overrides)  # type: ignore[arg-type]
 
 
-def test_child_session_factory_requires_explicit_platform_capture() -> None:
-    with pytest.raises(TypeError, match="Windows LPAC capture selection"):
-        create_child_session_host(enable_windows_lpac_capture=1)  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="Select one native launch capture profile"):
-        create_child_session_host(
-            enable_posix_static_capture=True,
-            enable_windows_lpac_capture=True,
-        )
+def test_windows_lpac_child_session_factory_is_private_and_platform_checked() -> None:
     if os.name != "nt":
         with pytest.raises(HostingError) as error:
-            create_child_session_host(enable_windows_lpac_capture=True)
+            _create_windows_lpac_child_session_host()
         assert error.value.category is HostingFailureCategory.PLATFORM_UNSUPPORTED

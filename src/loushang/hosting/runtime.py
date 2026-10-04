@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import math
 import os
 
-from ._child_session_host import _ChildSessionHost
-from ._endpoint_host import _InheritedEndpointHost
-from ._endpoint_platform import _select_child_session_backends
-from ._launch_preparation import _LaunchCaptureBackend
+from ._child_session_factory import _create_child_session_host
 from ._platform import _select_process_backend
 from ._process_host import _ProcessHost, _ProcessHostLimits
 from .contracts import (
@@ -56,71 +52,30 @@ def create_child_session_host(
     stderr_drain_seconds: float = 1.0,
     endpoint_io_settlement_seconds: float = 1.0,
     enable_posix_static_capture: bool = False,
-    enable_windows_lpac_capture: bool = False,
     observation_sink: HostingObservationSink | None = None,
 ) -> ChildSessionHostingPort:
     """Create an exact atomic child-session owner or fail closed."""
 
-    limits = _ProcessHostLimits(
-        max_processes=max_sessions,
-        max_read_bytes=max_read_bytes,
-        max_write_bytes=max_write_bytes,
-        stderr_tail_bytes=stderr_tail_bytes,
-        termination_grace_seconds=termination_grace_seconds,
-        stderr_drain_seconds=stderr_drain_seconds,
-    )
-    if (
-        not isinstance(endpoint_io_settlement_seconds, (int, float))
-        or isinstance(endpoint_io_settlement_seconds, bool)
-        or not math.isfinite(endpoint_io_settlement_seconds)
-        or endpoint_io_settlement_seconds <= 0
-    ):
-        raise ValueError("endpoint_io_settlement_seconds must be positive and finite")
     if type(enable_posix_static_capture) is not bool:
         raise TypeError("POSIX static capture selection must be boolean")
-    if type(enable_windows_lpac_capture) is not bool:
-        raise TypeError("Windows LPAC capture selection must be boolean")
-    if enable_posix_static_capture and enable_windows_lpac_capture:
-        raise ValueError("Select one native launch capture profile")
     if enable_posix_static_capture and os.name != "posix":
         raise HostingError(
             HostingFailureCategory.PLATFORM_UNSUPPORTED,
             "POSIX static capture is unavailable on this platform",
         )
-    if enable_windows_lpac_capture and os.name != "nt":
-        raise HostingError(
-            HostingFailureCategory.PLATFORM_UNSUPPORTED,
-            "Windows LPAC capture is unavailable on this platform",
-        )
-    backends = _select_child_session_backends(
-        max_sessions=max_sessions,
-        endpoint_io_settlement_seconds=float(endpoint_io_settlement_seconds),
-    )
-    process_host = _ProcessHost(
-        backends.process,
-        limits=limits,
-        observation_sink=observation_sink,
-    )
-    endpoint_host = _InheritedEndpointHost(
-        backends.endpoint,
-        max_endpoints=max_sessions,
-        max_read_bytes=max_read_bytes,
-        max_write_bytes=max_write_bytes,
-        observation_sink=observation_sink,
-    )
-    capture_backend: _LaunchCaptureBackend | None = None
+    capture_backend = None
     if enable_posix_static_capture:
         from ._posix_launch_preparation import _PosixStaticLaunchCaptureBackend
 
         capture_backend = _PosixStaticLaunchCaptureBackend()
-    elif enable_windows_lpac_capture:
-        from ._windows_launch_preparation import _WindowsLpacLaunchCaptureBackend
-
-        capture_backend = _WindowsLpacLaunchCaptureBackend()
-    return _ChildSessionHost(
-        process_host,
-        endpoint_host,
+    return _create_child_session_host(
         max_sessions=max_sessions,
+        max_read_bytes=max_read_bytes,
+        max_write_bytes=max_write_bytes,
+        stderr_tail_bytes=stderr_tail_bytes,
+        termination_grace_seconds=termination_grace_seconds,
+        stderr_drain_seconds=stderr_drain_seconds,
+        endpoint_io_settlement_seconds=endpoint_io_settlement_seconds,
         observation_sink=observation_sink,
         launch_capture_backend=capture_backend,
     )
