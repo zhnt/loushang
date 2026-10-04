@@ -38,6 +38,9 @@ from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistryError,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
     PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
     PackageOfflineRestoreOwner,
@@ -412,7 +415,9 @@ def test_windows_product_local_wheel_composition_activates_on_current_fence(
             second.dispose_unbound_runtime()
             workspace.rmdir()
             moved.rename(workspace)
-        assert product.registry.snapshot(store_id=STORE_ID).active_leases == ()
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as absent:
+            product.registry.snapshot(store_id=STORE_ID)
+        assert absent.value.code == "package_epoch_lease_absent"
     finally:
         product.close()
 
@@ -522,7 +527,7 @@ def test_windows_product_dependency_gc_requires_root_retirement_and_quiescence(
             )
             assert installed.handled
             assert installed.record is not None
-            assert installed.record.lifecycle == "installed"
+            assert installed.record.lifecycle == "installed", installed.record
         finally:
             if binding is None:
                 factory.dispose_unbound_runtime()
