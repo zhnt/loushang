@@ -100,7 +100,7 @@ jobs:
 
       # The shared set contains Linux-only Worker owners even on other runners.
       # Check their declared platform instead of the runner's typeshed.
-      - name: Typecheck Hosting shared and Linux Worker owners
+      - name: Typecheck Hosting H0-H6
         run: >-
           uv run --extra dev mypy --platform linux --follow-imports=silent
           src/loushang/hosting

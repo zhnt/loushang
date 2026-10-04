@@ -67,7 +67,6 @@ from .package_external_data_wheel import (
     CodingExternalDataWheelCatalog,
     CodingExternalDataWheelError,
 )
-from .package_private_data_backup import CodingArchPrivateDataBackupReadSource
 from .package_product_runtime import open_coding_package_product_state
 
 CODING_CLI_MANAGEMENT_ACTOR_ID = "coding:cli"
@@ -144,6 +143,8 @@ class _ProductCliOwner:
         PackageProductPosixFencedRuntimeOwner,
         PluginManagementApplicationPorts,
     ]:
+        from .package_private_data_backup import CodingArchPrivateDataBackupReadSource
+
         self.assert_workspace_current()
         epoch = resolve_coding_package_epoch_layout(self.layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(

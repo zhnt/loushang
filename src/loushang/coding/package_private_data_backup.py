@@ -56,8 +56,12 @@ from .package_private_data_deletion_preview import (
     _identity,
 )
 
-_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-_FILE_READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+if os.name == "posix":
+    _FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    _FILE_READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+else:
+    _FLAGS = os.O_RDONLY
+    _FILE_READ_FLAGS = os.O_RDONLY
 _PLUGIN_ID = "coding.arch.default"
 
 
@@ -67,6 +71,8 @@ class CodingArchPrivateDataBackupOwner:
     product: PosixLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
+        if os.name != "posix":
+            raise RuntimeError("Coding Arch POSIX backup owner is unavailable")
         CodingArchPrivateDataDeletionPreview(self.layout, self.product)
 
     def retain(
@@ -182,6 +188,8 @@ class CodingArchPrivateDataBackupReadSource:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
 
     def __post_init__(self) -> None:
+        if os.name != "posix":
+            raise RuntimeError("Coding Arch POSIX backup source is unavailable")
         epoch = resolve_coding_package_epoch_layout(self.layout)
         if (
             not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)

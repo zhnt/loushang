@@ -617,10 +617,11 @@ def _read_member(root: Path, relative: str) -> bytes:
             raise ValueError("Installed Coding base Product directory is unsafe")
         current = current.parent
     before = path.lstat()
+    # Wheel installers may hardlink package members to their download cache.
+    # Read bytes are copied into the generated Wheel after the identity recheck.
     if (
         not stat.S_ISREG(before.st_mode)
         or _is_windows_reparse(before)
-        or before.st_nlink != 1
         or before.st_size > _MAX_MEMBER_BYTES
     ):
         raise ValueError("Installed Coding base Product member is unsafe")
@@ -629,8 +630,20 @@ def _read_member(root: Path, relative: str) -> bytes:
     if (
         len(body) > _MAX_MEMBER_BYTES
         or _is_windows_reparse(after)
-        or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        or (
+            before.st_dev,
+            before.st_ino,
+            before.st_nlink,
+            before.st_size,
+            before.st_mtime_ns,
+        )
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_nlink,
+            after.st_size,
+            after.st_mtime_ns,
+        )
     ):
         raise ValueError("Installed Coding base Product member changed during read")
     return body
