@@ -77,7 +77,9 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                     self._active_acl = acl
                     self._active_lock = lock
                     try:
-                        initialized = self._validate_lock(root, acl)
+                        initialized = self._validate_lock(
+                            root, acl, locked_handle=lock
+                        )
                         raw = self._read_raw(root, acl)
                         self._require_lock_history(initialized, raw)
                         self._active_raw = raw
@@ -91,8 +93,8 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         self._active_raw = None
 
     def _load_unlocked(self) -> tuple[WorkerAttemptRecordV1, ...]:
-        root, acl, _ = self._active()
-        initialized = self._validate_lock(root, acl)
+        root, acl, lock = self._active()
+        initialized = self._validate_lock(root, acl, locked_handle=lock)
         raw = self._read_raw(root, acl)
         self._require_lock_history(initialized, raw)
         self._active_raw = raw
@@ -103,7 +105,9 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             raise TypeError("Windows Worker Supervisor requires an exact record")
         root, acl, lock = self._active()
         expected = self._active_raw
-        if expected is None and self._validate_lock(root, acl):
+        if expected is None and self._validate_lock(
+            root, acl, locked_handle=lock
+        ):
             raise self._error(
                 "Windows Worker Supervisor lock is orphaned",
                 code="worker_supervisor_journal_corrupt",
@@ -133,7 +137,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             ):
                 self._require_root(root, acl)
                 try:
-                    initialized = self._validate_lock(root, acl)
+                    windows_stat_at(root, _LOCK)
                 except FileNotFoundError:
                     try:
                         windows_stat_at(root, _NAME)
@@ -144,8 +148,10 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         "Windows Worker Supervisor lock is missing",
                         code="worker_supervisor_journal_corrupt",
                     ) from None
-                with journal_file_lock_at(root, _LOCK, "shared"):
-                    initialized = self._validate_lock(root, acl)
+                with journal_file_lock_at(root, _LOCK, "shared") as lock:
+                    initialized = self._validate_lock(
+                        root, acl, locked_handle=lock
+                    )
                     raw = self._read_raw(root, acl)
                     self._require_lock_history(initialized, raw)
                     records = self._decode(raw)
@@ -199,19 +205,39 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         if created:
             windows_flush_directory(root)
 
-    def _validate_lock(self, root: int, acl: WindowsPrivateDirectoryAcl) -> bool:
-        descriptor = open_windows_regular_file_at(
-            root, _LOCK, create_new=False, write=False, read_control=True
+    def _validate_lock(
+        self,
+        root: int,
+        acl: WindowsPrivateDirectoryAcl,
+        *,
+        locked_handle: BinaryIO | None = None,
+    ) -> bool:
+        descriptor = (
+            locked_handle.fileno()
+            if locked_handle is not None
+            else open_windows_regular_file_at(
+                root, _LOCK, create_new=False, write=False, read_control=True
+            )
         )
         try:
             acl.validate(descriptor)
             self._require_plain_stream(descriptor)
-            if os.fstat(descriptor).st_size != 1:
+            metadata = os.fstat(descriptor)
+            visible = windows_stat_at(root, _LOCK)
+            if (
+                metadata.st_size != 1
+                or (metadata.st_dev, metadata.st_ino)
+                != (visible.st_dev, visible.st_ino)
+            ):
                 raise self._error(
                     "Windows Worker Supervisor lock is invalid",
                     code="worker_supervisor_journal_corrupt",
                 )
-            state = os.read(descriptor, 1)
+            if locked_handle is None:
+                state = os.read(descriptor, 1)
+            else:
+                locked_handle.seek(0)
+                state = locked_handle.read(1)
             if state not in {b"\0", b"\1"}:
                 raise self._error(
                     "Windows Worker Supervisor lock is invalid",
@@ -219,7 +245,8 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                 )
             return state == b"\1"
         finally:
-            os.close(descriptor)
+            if locked_handle is None:
+                os.close(descriptor)
 
     def _read_raw(self, root: int, acl: WindowsPrivateDirectoryAcl) -> bytes | None:
         try:

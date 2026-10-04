@@ -434,7 +434,7 @@ def test_windows_worker_candidate_requires_explicit_windows_product_flag(
         "package_lock",
     ),
 )
-def test_windows_ordinary_session_refuses_pre_b_without_writing(
+def test_windows_ordinary_selection_preserves_unadmitted_pre_b_without_writing(
     tmp_path: Path, legacy_kind: str
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -515,9 +515,16 @@ def test_windows_ordinary_session_refuses_pre_b_without_writing(
             "loushang.coding.package_product_runtime.default_global_settings_path",
             return_value=tmp_path / "global-settings.json",
         ),
-        pytest.raises(RuntimeError, match="pre-B workspace is unsupported"),
     ):
-        create_agent_session(session_manager=manager, services=services)
+        if legacy_kind in {"desired_state", "package_lock"}:
+            selection = CodingFencedProductApplicationSelection()
+            try:
+                assert selection.factory_for_session(manager) is None
+            finally:
+                selection.close()
+        else:
+            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
+                create_agent_session(session_manager=manager, services=services)
     assert snapshot() == before
 
 

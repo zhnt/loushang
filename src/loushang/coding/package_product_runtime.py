@@ -359,21 +359,19 @@ class CodingFencedProductApplicationSelection:
             if owner is None:
                 lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
                 epoch = resolve_coding_package_epoch_layout(lifecycle)
-                other_posix = os.name == "posix" and not sys.platform.startswith("linux")
-                unadmitted_platform = other_posix or (
-                    os.name == "nt" and not self._windows_candidate
-                )
+                unadmitted_platform = (
+                    os.name == "posix" and not sys.platform.startswith("linux")
+                ) or (os.name == "nt" and not self._windows_candidate)
                 try:
                     (epoch.control_root / "epoch.jsonl").lstat()
                 except FileNotFoundError:
                     # Platforms without an admitted default Product route keep
                     # their existing Session route.
                     if unadmitted_platform:
-                        if other_posix:
-                            require_fresh_coding_product_settings_without_writes(
-                                workspace=workspace,
-                                settings_manager=settings_manager,
-                            )
+                        require_fresh_coding_product_settings_without_writes(
+                            workspace=workspace,
+                            settings_manager=settings_manager,
+                        )
                         return None
                     # A Linux fresh workspace enters B before any ordinary
                     # Session can prepare a legacy Plugin writer. Native

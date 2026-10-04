@@ -68,7 +68,7 @@ class CodingWindowsWorkerOptInJournal:
             self._assert_visible_root(directory_fd)
             lock_name = _NAME + ".lock"
             try:
-                self._validate_lock(directory_fd, acl)
+                windows_stat_at(directory_fd, lock_name)
             except FileNotFoundError:
                 try:
                     windows_stat_at(directory_fd, _NAME)
@@ -78,8 +78,12 @@ class CodingWindowsWorkerOptInJournal:
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_lock_missing"
                 ) from None
-            with journal_file_lock_at(directory_fd, lock_name, "shared"):
-                initialized = self._validate_lock(directory_fd, acl)
+            with journal_file_lock_at(
+                directory_fd, lock_name, "shared"
+            ) as lock_handle:
+                initialized = self._validate_lock(
+                    directory_fd, acl, locked_handle=lock_handle
+                )
                 raw = self._read_raw(directory_fd, acl)
                 if raw is None:
                     if initialized:
@@ -129,7 +133,9 @@ class CodingWindowsWorkerOptInJournal:
             with journal_file_lock_at(
                 directory_fd, _NAME + ".lock", "exclusive"
             ) as lock_handle:
-                initialized = self._validate_lock(directory_fd, acl)
+                initialized = self._validate_lock(
+                    directory_fd, acl, locked_handle=lock_handle
+                )
                 raw = self._read_raw(directory_fd, acl)
                 if (raw is None and initialized) or (
                     raw is not None and not initialized
@@ -248,26 +254,45 @@ class CodingWindowsWorkerOptInJournal:
             windows_flush_directory(directory_fd)
 
     def _validate_lock(
-        self, directory_fd: int, acl: WindowsPrivateDirectoryAcl
+        self,
+        directory_fd: int,
+        acl: WindowsPrivateDirectoryAcl,
+        *,
+        locked_handle: BinaryIO | None = None,
     ) -> bool:
-        descriptor = open_windows_regular_file_at(
-            directory_fd,
-            _NAME + ".lock",
-            create_new=False,
-            write=False,
-            read_control=True,
+        descriptor = (
+            locked_handle.fileno()
+            if locked_handle is not None
+            else open_windows_regular_file_at(
+                directory_fd,
+                _NAME + ".lock",
+                create_new=False,
+                write=False,
+                read_control=True,
+            )
         )
         try:
             acl.validate(descriptor)
             self._require_plain_stream(descriptor)
-            if os.fstat(descriptor).st_size != 1:
+            metadata = os.fstat(descriptor)
+            visible = windows_stat_at(directory_fd, _NAME + ".lock")
+            if (
+                metadata.st_size != 1
+                or (metadata.st_dev, metadata.st_ino)
+                != (visible.st_dev, visible.st_ino)
+            ):
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_lock_corrupt")
-            state = os.read(descriptor, 1)
+            if locked_handle is None:
+                state = os.read(descriptor, 1)
+            else:
+                locked_handle.seek(0)
+                state = locked_handle.read(1)
             if state not in {b"\0", b"\1"}:
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_lock_corrupt")
             return state == b"\1"
         finally:
-            os.close(descriptor)
+            if locked_handle is None:
+                os.close(descriptor)
 
     @staticmethod
     def _mark_lock_initialized(handle: BinaryIO) -> None:

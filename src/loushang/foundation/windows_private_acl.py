@@ -118,14 +118,20 @@ class WindowsPrivateDirectoryAcl:
                     C.byref(defaulted),
                 )
             )
-            if (
-                self._sid_string(owner) != self._user_sid
-                or not present.value
-                or not dacl.value
-                or (not inherited_file and not control.value & 0x1000)
-                or (defaulted.value and not inherited_file)
-            ):
-                raise OSError("Windows private directory ACL is not protected")
+            if self._sid_string(owner) != self._user_sid:
+                reason = "owner"
+            elif not present.value:
+                reason = "dacl_absent"
+            elif not dacl.value:
+                reason = "dacl_null"
+            elif not inherited_file and not control.value & 0x1000:
+                reason = "dacl_inherited"
+            elif defaulted.value and not inherited_file:
+                reason = "dacl_defaulted"
+            else:
+                reason = None
+            if reason is not None:
+                raise OSError(f"Windows private directory ACL is not protected: {reason}")
             info = _AclInfo()
             self._check(
                 self._security.GetAclInformation(dacl, C.byref(info), C.sizeof(info), 2)
