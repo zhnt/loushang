@@ -68,6 +68,8 @@ _PAYLOAD_NAME = "payload"
 _STATE_MANIFEST_NAME = "state-manifest.json"
 _EVIDENCE_SUFFIX = ".evidence.json"
 _LOCK_NAME = ".epoch-snapshot.lock"
+# Held by pre-fence quiescence; Windows denies reads while its byte is locked.
+_FENCE_TRANSIENT_NAMES = frozenset({"coordination.lock"})
 _LEGACY_ROOT_POINTER_NAME = "legacy-root-pointer.json"
 _MAX_EVIDENCE_BYTES = 64 * 1024
 
@@ -472,6 +474,11 @@ class PackageWindowsEpochSnapshotOwner(PackageWindowsEpochSnapshotEvidenceStore)
                     maximum_bytes=self._maximum_bytes,
                     maximum_depth=self._maximum_depth - 1,
                     top_level_names=self._selected_names(domain),
+                    skip_top_level_names=(
+                        _FENCE_TRANSIENT_NAMES
+                        if domain == "fence_record"
+                        else frozenset()
+                    ),
                 )
                 for domain, source in sources.items()
             }
@@ -573,6 +580,11 @@ class PackageWindowsEpochSnapshotOwner(PackageWindowsEpochSnapshotEvidenceStore)
                             maximum_bytes=self._maximum_bytes,
                             maximum_depth=self._maximum_depth - 1,
                             top_level_names=self._selected_names(domain),
+                            skip_top_level_names=(
+                                _FENCE_TRANSIENT_NAMES
+                                if domain == "fence_record"
+                                else frozenset()
+                            ),
                         )
                         if after.entries != inspections[domain].entries:
                             raise OSError("Package snapshot source changed during copy")

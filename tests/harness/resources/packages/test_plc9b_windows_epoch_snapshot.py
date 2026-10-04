@@ -140,6 +140,22 @@ def test_windows_snapshot_refuses_missing_member_before_publication(
     assert not list(snapshot_root.glob("*.evidence.json"))
 
 
+def test_windows_snapshot_excludes_live_fence_coordination_lock(tmp_path: Path) -> None:
+    owner, snapshot_root, roots = _owner(tmp_path)
+    coordination = roots["fence_record"] / "coordination.lock"
+    coordination.write_bytes(b"live lock")
+
+    receipt = owner.capture(
+        store_id=STORE_ID,
+        legacy_root_identity=_identity(roots["store_bytes"]),
+        quiescence_receipt_id=sha256(b"quiescent").hexdigest(),
+    )
+
+    reader = PackageWindowsEpochSnapshotEvidenceStore(snapshot_root, store_id=STORE_ID)
+    assert reader.list_domain_members(receipt.receipt_id, domain="fence_record") == ()
+    assert coordination.read_bytes() == b"live lock"
+
+
 def test_windows_snapshot_reader_refuses_payload_tamper(tmp_path: Path) -> None:
     owner, snapshot_root, roots = _owner(tmp_path)
     receipt = owner.capture(
