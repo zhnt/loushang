@@ -1288,7 +1288,15 @@ def _bootstrap_coding_builtin_plugin(
                 or outcome.record.lifecycle != "installed"
                 or outcome.evidence.operation_id != operation_id
             ):
-                raise RuntimeError("Coding builtin Product bootstrap install refused")
+                failure_code = (
+                    outcome.record.failure_code
+                    if outcome.record is not None
+                    else None
+                ) or "no_failure_record"
+                raise RuntimeError(
+                    "Coding builtin Product bootstrap install refused: "
+                    f"{failure_code}"
+                )
         expected_command_id = product.settled_install_command_id(
             operation_id=operation_id,
             plugin_id=plugin_id,
