@@ -797,6 +797,7 @@ def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() ->
     assert consumers == {
         Path("src/loushang/coding/_product_worker_canary.py"),
         Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        Path("src/loushang/coding/package_product_worker_pending_host.py"),
     }
     explicit_query = _read(
         Path("src/loushang/coding/package_product_worker_operator_query.py")

@@ -23,6 +23,7 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 from ._base_product_composition import CodingBaseProductSessionAssembly
+from .package_product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
 from .package_product_worker_payload import plan_coding_product_worker_pending_launch
 from .package_product_worker_pending_host import (
     prepare_coding_product_worker_pending_session_inputs,
@@ -45,12 +46,6 @@ from .package_product_worker_session_composition import (
     compose_coding_product_worker_with_ordinary_session,
 )
 from .session_manager import SessionManager
-
-
-class CodingWorkerOrdinaryBootstrapError(RuntimeError):
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
 
 
 def prepare_coding_product_worker_ordinary_binding(

@@ -98,9 +98,11 @@ jobs:
           tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
 
-      - name: Typecheck Hosting H0-H6
+      # The shared set contains Linux-only Worker owners even on other runners.
+      # Check their declared platform instead of the runner's typeshed.
+      - name: Typecheck Hosting shared and Linux Worker owners
         run: >-
-          uv run --extra dev mypy --follow-imports=silent
+          uv run --extra dev mypy --platform linux --follow-imports=silent
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
           src/loushang/harness/worker/__init__.py
@@ -128,6 +130,23 @@ jobs:
           src/loushang/plugin/__init__.py
           src/loushang/plugin/__main__.py
           src/loushang/plugin/_coding_local_worker_wheel.py
+
+      - name: Typecheck Windows native owners
+        if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: |
+          $files = @(
+            Get-ChildItem src/loushang/hosting -File | Where-Object {
+              $_.Name -like '_windows_*.py' -or
+              $_.Name -eq '_win32_process.py' -or
+              $_.Name -eq 'windows_backend_material.py'
+            }
+            Get-ChildItem src/loushang/coding -File | Where-Object {
+              $_.Name -like 'package_product_worker_windows_*.py' -or
+              $_.Name -like 'package_private_data_windows_*.py'
+            }
+          ) | Select-Object -ExpandProperty FullName
+          uv run --extra dev mypy --platform win32 --follow-imports=skip @files
 
       - name: Create H6.2 native report directory
         if: matrix.os == 'ubuntu-24.04'

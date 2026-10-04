@@ -109,9 +109,8 @@ from loushang.coding.package_product_runtime import (
     CodingSessionOwnedProductRuntimeFactory,
     bind_coding_product_workspace_witness,
 )
-from loushang.coding.package_product_worker_ordinary_bootstrap import (
+from loushang.coding.package_product_worker_ordinary_error import (
     CodingWorkerOrdinaryBootstrapError,
-    prepare_coding_product_worker_ordinary_binding,
 )
 from loushang.coding.plugin_enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
@@ -641,7 +640,8 @@ def _create_agent_session(
         and "coding.base" in requested_plugin_ids
     )
     if worker_candidate_plugin_id is not None and (
-        not isinstance(worker_candidate_plugin_id, str)
+        sys.platform != "linux"
+        or not isinstance(worker_candidate_plugin_id, str)
         or not worker_candidate_plugin_id
         or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
         or not product_base_requested
@@ -2059,6 +2059,10 @@ def _create_agent_session(
         )
         worker_ordinary_binding = None
         if worker_candidate_plugin_id is not None:
+            from loushang.coding.package_product_worker_ordinary_bootstrap import (
+                prepare_coding_product_worker_ordinary_binding,
+            )
+
             if product_base_session_assembly is None or product_base_runtime is None:
                 raise CodingWorkerOrdinaryBootstrapError(
                     "coding_worker_ordinary_base_product_unavailable"
