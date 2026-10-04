@@ -6033,7 +6033,7 @@ def test_windows_coding_default_cutover_refuses_old_plugin_state_before_fence(
         project_settings_path=workspace / ".loushang" / "settings.json",
     )
 
-    with pytest.raises(RuntimeError, match="explicit adoption"):
+    with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
         prepare_and_cutover_coding_package_store_from_legacy(
             lifecycle,
             settings,
@@ -6061,7 +6061,7 @@ def test_windows_coding_write_cli_refuses_before_first_fence(
     ):
         assert cutover_cli_main(("--workspace", str(workspace))) == 1
 
-    assert "requires native Session composition" in capsys.readouterr().err
+    assert "requires an admitted candidate" in capsys.readouterr().err
     settings = SettingsManager(
         global_settings_path=tmp_path / "global" / "settings.json",
         project_settings_path=workspace / ".loushang" / "settings.json",
