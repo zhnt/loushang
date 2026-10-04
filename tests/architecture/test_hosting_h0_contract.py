@@ -30,11 +30,13 @@ H3_PRIVATE_MODULES = {
 }
 H4_PRIVATE_MODULES = {
     HOSTING_ROOT / "_child_session_host.py",
+    HOSTING_ROOT / "_child_session_factory.py",
 }
 H6_PRIVATE_MODULES = {
     HOSTING_ROOT / "_launch_preparation.py",
     HOSTING_ROOT / "_posix_launch_preparation.py",
     HOSTING_ROOT / "_windows_launch_preparation.py",
+    HOSTING_ROOT / "_windows_lpac_runtime.py",
     # Narrow, Product-neutral Windows material read port; not in __init__.
     HOSTING_ROOT / "windows_backend_material.py",
     # Narrow friend read over one gated native child; not exported by Hosting.
