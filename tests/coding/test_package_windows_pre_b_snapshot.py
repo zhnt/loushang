@@ -976,7 +976,10 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
                         inspect_coding_windows_arch_installation_root(
                             lifecycle, arch_key, state_root=product_state_root
                         )
-                    with pytest.raises(ValueError, match="Installation root changed"):
+                    with pytest.raises(
+                        ValueError,
+                        match="Installation root changed|private-data root receipt changed",
+                    ):
                         prepare_coding_product_arch_private_data_root(
                             lifecycle,
                             runtime,
@@ -1741,7 +1744,25 @@ finally:
             stage_files, "sessions", first_root.name, inherit_leaf=True
         )
         partial_file = staged_session / first_cache.name
-        partial_file.write_bytes(b"wrong prefix")
+        with WindowsPrivateDirectoryAcl(inherit_children=True) as stage_acl:
+            stage_fd = open_windows_directory(staged_session, read_control=True)
+            try:
+                stage_acl.validate(stage_fd)
+                partial_fd = open_windows_regular_file_at(
+                    stage_fd,
+                    partial_file.name,
+                    create_new=True,
+                    write=True,
+                    security_descriptor=stage_acl.security_descriptor,
+                    read_control=True,
+                )
+                try:
+                    stage_acl.validate(partial_fd)
+                    assert os.write(partial_fd, b"wrong prefix") == len(b"wrong prefix")
+                finally:
+                    os.close(partial_fd)
+            finally:
+                os.close(stage_fd)
         with pytest.raises(ValueError, match="stage file changed"):
             backup.retain(arch_key)
         partial_file.write_bytes(first_cache.read_bytes()[:16])
@@ -3105,6 +3126,7 @@ finally:
         worker_owner = None
         receipt_fingerprint: str | None = None
         rotation_pending = False
+        stage_retention_expected = False
         if native_platform == "windows-amd64":
             worker_owner = open_coding_fenced_product_application_owner(
                 lifecycle,
@@ -3825,6 +3847,7 @@ finally:
                         )
                     }
                     assert set(recovery) == {"5" * 32, "7" * 32, "8" * 32}
+                    stage_retention_expected = True
                     orphan_review = review_coding_windows_product_worker_orphan_runtime(
                         worker_product, attempt_id="7" * 32
                     )
@@ -3965,8 +3988,13 @@ finally:
                 factory.dispose_unbound_runtime()
             else:
                 runtime.dispose_runtime()
+            retained_stage = worker_product.state_root / ("worker-payload-" + "7" * 32)
+            after_runtime = retained_stage.is_dir() if stage_retention_expected else None
             if worker_owner is not None:
                 worker_owner.close()
+            if stage_retention_expected:
+                assert after_runtime, "Worker stage disappeared during runtime disposal"
+                assert retained_stage.is_dir(), "Worker stage disappeared during Product close"
             if rotation_pending:
                 _assert_windows_worker_clean_rotation(
                     workspace=workspace,
@@ -4099,6 +4127,9 @@ owner = open_coding_fenced_product_application_owner(
     runtime_protocol_epoch=2, worker_candidates=True, windows_candidate=True,
 )
 try:
+    assert str(owner.runtime_owner.product_owner.state_root) == sys.argv[4], (
+        "Worker Product state root changed across processes"
+    )
     attempts = inspect_coding_windows_product_worker_provisioning_attempts(
         owner.runtime_owner.product_owner
     )
@@ -4191,6 +4222,7 @@ finally:
                     str(workspace),
                     str(tmp_path / "session-state"),
                     receipt_fingerprint or "",
+                    str(worker_product.state_root),
                 ),
                 cwd=Path(__file__).resolve().parents[2],
                 capture_output=True,

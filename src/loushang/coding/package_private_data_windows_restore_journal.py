@@ -223,13 +223,18 @@ class CodingWindowsArchPrivateDataRestoreTransaction:
             publication = CodingWindowsArchRestorePublicationV1.from_dict(document)
         except (TypeError, UnicodeError, ValueError) as exc:
             raise ValueError("Windows Coding Arch restore publication is invalid") from exc
-        if (
-            raw != canonical_json_bytes(publication.to_dict()) + b"\n"
-            or publication.restore_id != started.restore_id
-            or publication.started_digest != started.record_digest
-            or publication.plan_fingerprint != plan.fingerprint
-        ):
-            raise ValueError("Windows Coding Arch restore publication changed")
+        if raw != canonical_json_bytes(publication.to_dict()) + b"\n":
+            reason = "bytes"
+        elif publication.restore_id != started.restore_id:
+            reason = "restore_id"
+        elif publication.started_digest != started.record_digest:
+            reason = "started_digest"
+        elif publication.plan_fingerprint != plan.fingerprint:
+            reason = "plan_fingerprint"
+        else:
+            reason = None
+        if reason is not None:
+            raise ValueError(f"Windows Coding Arch restore publication changed: {reason}")
         return publication
 
     def prepare_publication(
