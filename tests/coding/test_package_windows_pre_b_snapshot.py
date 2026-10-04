@@ -322,7 +322,10 @@ from loushang.harness.worker.hosting_adapter import (
 from loushang.hosting._windows_lpac_runtime import (
     _create_windows_lpac_child_session_host,
 )
-from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
+from loushang.hosting.windows_backend_material import (
+    WINDOWS_LPAC_PLATFORM_IMPORTS,
+    verify_windows_backend_material_expectation,
+)
 from loushang.plugin._coding_local_worker_wheel import (
     build_coding_local_worker_candidate_wheel,
 )
@@ -3510,6 +3513,16 @@ finally:
                     assert receipt_owner.current_worker_owner_id(receipt) == (
                         allowed.opt_in.owner_id
                     )
+                    with patch.object(
+                        receipt_owner,
+                        "current_witness",
+                        side_effect=(
+                            receipt.authority_witness,
+                            ("0" * 64, "0" * 64, "stale", 0, 0),
+                        ),
+                    ):
+                        with pytest.raises(CodingWorkerReceiptError, match="stale"):
+                            receipt_owner.current_payload_and_worker_owner_id(receipt)
                     lease = materialize_coding_windows_product_worker_payload(
                         receipt_owner=receipt_owner,
                         receipt=receipt,
@@ -3717,7 +3730,12 @@ finally:
                             )
                             assert live_job.native_job_absent is False
                             assert "native_job_present" in live_job.missing_proofs
-                            request.validate_current()
+                            with patch(
+                                "loushang.coding.package_product_worker_windows_backend_release.verify_windows_backend_material_expectation",
+                                wraps=verify_windows_backend_material_expectation,
+                            ) as full_backend_checks:
+                                request.validate_current()
+                            assert full_backend_checks.call_count == 2
                             described = await supervisor.query(
                                 {"operation": "describe", "queryVersion": 1}
                             )

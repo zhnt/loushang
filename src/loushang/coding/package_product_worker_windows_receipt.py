@@ -235,23 +235,61 @@ class CodingWindowsWorkerProductReceiptOwner:
                 or self.current_witness(receipt) != receipt.authority_witness
             ):
                 raise CodingWorkerReceiptError("coding_worker_receipt_stale")
-            try:
-                selected = self._runtime.capture_selected_plugin_manifest_for(
-                    receipt.policy.plugin_id,
-                    max_files=64,
-                    max_total_bytes=16 * 1024 * 1024,
-                )
-            except (
-                PackagePhysicalStagingError,
-                PackageProductRuntimeActivationError,
-                PackageProductRuntimeReadError,
-            ) as exc:
-                raise CodingWorkerReceiptError(
-                    "coding_worker_selected_payload_stale"
-                ) from exc
-            if selected != self._selected:
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return selected
+            return self._capture_selected_manifest_under_gc_guard(receipt)
+
+    def _capture_selected_manifest_under_gc_guard(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> PackageProductSelectedPluginManifestV1:
+        """Capture the selected root after the caller has checked the receipt."""
+
+        try:
+            selected = self._runtime.capture_selected_plugin_manifest_for(
+                receipt.policy.plugin_id,
+                max_files=64,
+                max_total_bytes=16 * 1024 * 1024,
+            )
+        except (
+            PackagePhysicalStagingError,
+            PackageProductRuntimeActivationError,
+            PackageProductRuntimeReadError,
+        ) as exc:
+            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale") from exc
+        if selected != self._selected:
+            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
+        return selected
+
+    @staticmethod
+    def _payload_from_selected(
+        receipt: ProductWorkerActivationReceiptV1,
+        selected: PackageProductSelectedPluginManifestV1,
+    ) -> CodingWorkerSelectedPayloadV1:
+        candidate = verify_product_selected_worker_candidate(
+            selected,
+            contribution_id=receipt.policy.contribution_id,
+            native_platform="windows-amd64",
+        )
+        manifest = selected.verified_manifest()
+        configuration = manifest.contribution_index.items[0].worker_configuration
+        assert configuration is not None
+        root = manifest.root_relative_path.as_posix()
+        prefix = "" if root == "." else f"{root}/"
+        body = dict(selected.snapshot.files).get(
+            f"{prefix}{configuration.entrypoint}"
+        )
+        if (
+            body is None
+            or candidate.executable_digest != sha256(body).hexdigest()
+            or candidate.worker_configuration_fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+            or selected.snapshot.root_ref.artifact_digest
+            != receipt.policy.plugin_revision_digest
+        ):
+            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
+        return CodingWorkerSelectedPayloadV1(
+            configuration=configuration,
+            body=body,
+            digest=candidate.executable_digest,
+        )
 
     def current_selected_payload(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -261,34 +299,38 @@ class CodingWindowsWorkerProductReceiptOwner:
         with self._product.gc_gate.guard():
             self.current_backend_capture_expectation(receipt)
             selected = self.current_selected_manifest(receipt)
-            candidate = verify_product_selected_worker_candidate(
-                selected,
-                contribution_id=receipt.policy.contribution_id,
-                native_platform="windows-amd64",
-            )
-            manifest = selected.verified_manifest()
-            configuration = manifest.contribution_index.items[0].worker_configuration
-            assert configuration is not None
-            root = manifest.root_relative_path.as_posix()
-            prefix = "" if root == "." else f"{root}/"
-            body = dict(selected.snapshot.files).get(
-                f"{prefix}{configuration.entrypoint}"
-            )
+            payload = self._payload_from_selected(receipt, selected)
+            if self.current_witness(receipt) != receipt.authority_witness:
+                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
+            return payload
+
+    def current_payload_and_worker_owner_id(
+        self, receipt: ProductWorkerActivationReceiptV1
+    ) -> tuple[CodingWorkerSelectedPayloadV1, str]:
+        """Capture payload and owner in one Product read with two full rechecks.
+
+        Each witness verifies the complete installed backend. The selected
+        root is captured between them; the final witness rechecks receipt and
+        opt-in authority before either value is returned.
+        """
+
+        with self._product.gc_gate.guard():
             if (
-                body is None
-                or candidate.executable_digest != sha256(body).hexdigest()
-                or candidate.worker_configuration_fingerprint
-                != receipt.policy.worker_configuration_fingerprint
-                or selected.snapshot.root_ref.artifact_digest
-                != receipt.policy.plugin_revision_digest
+                not isinstance(receipt, ProductWorkerActivationReceiptV1)
                 or self.current_witness(receipt) != receipt.authority_witness
             ):
-                raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
-            return CodingWorkerSelectedPayloadV1(
-                configuration=configuration,
-                body=body,
-                digest=candidate.executable_digest,
-            )
+                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
+            selected = self._capture_selected_manifest_under_gc_guard(receipt)
+            payload = self._payload_from_selected(receipt, selected)
+            decision = self._opt_in.current(receipt.policy.plugin_id)
+            if (
+                decision is None
+                or decision.action != "allow"
+                or not isinstance(decision.opt_in, CodingWorkerOptInV1)
+                or self.current_witness(receipt) != receipt.authority_witness
+            ):
+                raise CodingWorkerReceiptError("coding_worker_receipt_stale")
+            return payload, decision.opt_in.owner_id
 
     def current_worker_owner_id(self, receipt: ProductWorkerActivationReceiptV1) -> str:
         """Resolve the operator-approved domain owner from current Product state."""

@@ -118,8 +118,7 @@ def materialize_coding_windows_product_worker_payload(
     stage_name = "worker-payload-" + attempt_id
     with product.gc_gate.guard():
         product.assert_root_gc_authority_current()
-        payload = receipt_owner.current_selected_payload(receipt)
-        owner_id = receipt_owner.current_worker_owner_id(receipt)
+        payload, owner_id = receipt_owner.current_payload_and_worker_owner_id(receipt)
         if (
             not 0 < len(payload.body) <= _MAX_PAYLOAD_BYTES
             or sha256(payload.body).hexdigest() != payload.digest
@@ -337,8 +336,9 @@ def bind_coding_windows_product_worker_launch_request(
                 )
             except CodingWindowsWorkerRecoveryAdmissionError as exc:
                 raise CodingWindowsWorkerPayloadMaterializationError(exc.code) from exc
-            selected = receipt_owner.current_selected_payload(receipt)
-            owner_id = receipt_owner.current_worker_owner_id(receipt)
+            selected, owner_id = receipt_owner.current_payload_and_worker_owner_id(
+                receipt
+            )
             if (
                 selected.digest != payload_lease.payload_digest
                 or selected.configuration.fingerprint
