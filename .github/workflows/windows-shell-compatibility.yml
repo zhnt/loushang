@@ -11,6 +11,55 @@ permissions:
   contents: read
 
 jobs:
+  windows-worker-diagnostic:
+    if: ${{ fromJSON(inputs.plan).checks.windows_shell && github.event_name == 'pull_request' && github.head_ref == 'harness/plugin-experience-plc9-design' }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+
+      - name: Diagnose first native Windows Worker Product transaction
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
+          PYTEST_ADDOPTS: >-
+            --tb=short
+            --junitxml=.artifacts/windows-worker-diagnostic.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform[windows-amd64]
+          --maxfail=1
+          --durations=10
+          -vv
+
+      - name: Upload diagnostic pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-diagnostic-pytest-report
+          path: .artifacts/windows-worker-diagnostic.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+
   windows-worker:
     if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
     runs-on: windows-2022

@@ -2874,6 +2874,19 @@ content and identity check, but verifies at most eight independent members
 concurrently within each fresh read. The Worker CI job now retains a 120-minute
 bound and enables nonfatal stack diagnostics. Neither the performance change
 nor Windows Worker admission is accepted until the new native report passes.
+At `72b5cf6b`, the full offline Coding package gate passed 4,108 cases with
+63 skips and 31 deselections under its existing selectors. Windows Shell and
+Hosting native gates also passed, but the separate Windows Worker job failed
+after about 85 minutes when the hosted runner lost communication with GitHub.
+The terminal check-run annotation identifies lost runner communication; no
+Worker JUnit artifact or job log was retained, and the test step has no
+terminal result. This neither proves an asserted Product failure nor supplies
+Worker admission evidence. A branch-scoped diagnostic job is authored to run
+the first native Windows Product transaction with a 40-minute bound and
+periodic Python stack dumps. It is diagnostic evidence only; the complete
+Worker job and its strict report remain the acceptance gate. The same CI run
+also failed the Rust Analyzer live references readiness check; a bounded
+query retry is committed locally and awaits a new exact-head run.
 
 ## Independent Review Record
 
