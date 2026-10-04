@@ -14,6 +14,7 @@ import os
 import shlex
 import shutil
 import sys
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -77,8 +78,17 @@ def run_pytest(
 
     result = int(pytest.ExitCode.INTERNAL_ERROR)
     trace_cleanup = values.get("LOUSHANG_PYTEST_TRACE_CLEANUP") == "1"
+    watchdog_stop = threading.Event() if trace_cleanup else None
     if trace_cleanup:
-        faulthandler.dump_traceback_later(600, repeat=True)
+        def dump_if_stalled() -> None:
+            assert watchdog_stop is not None
+            delay = 600
+            while not watchdog_stop.wait(delay):
+                print("pytest watchdog: still running", file=sys.stderr, flush=True)
+                faulthandler.dump_traceback(file=sys.stderr)
+                delay = 120
+
+        threading.Thread(target=dump_if_stalled, daemon=True).start()
     try:
         _preflight_capacity(scope.run_dir, minimum_free_bytes)
         result = int(
@@ -94,8 +104,8 @@ def run_pytest(
         return result
     finally:
         lease.close()
-        if trace_cleanup:
-            faulthandler.cancel_dump_traceback_later()
+        if watchdog_stop is not None:
+            watchdog_stop.set()
             print("pytest scratch cleanup finished", file=sys.stderr, flush=True)
         if scope.run_dir.exists():
             print(
