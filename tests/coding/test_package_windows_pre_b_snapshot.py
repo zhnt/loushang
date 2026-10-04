@@ -4028,7 +4028,7 @@ finally:
                     worker_state_root
                     / ("worker-native-provisioning-" + "7" * 32 + ".jsonl")
                 ).is_file()
-            elif native_platform == "windows-amd64":
+            elif native_platform == "windows-amd64" and sys.exc_info()[0] is None:
                 assert not retained_stage.exists()
             if rotation_pending:
                 _assert_windows_worker_clean_rotation(

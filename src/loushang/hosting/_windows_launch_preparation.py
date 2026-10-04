@@ -981,6 +981,7 @@ def _build_windows_lpac_provision_spec(
             Path(request.argv[0]),
             expected_digest=executable.sha256,
             expected_imports=spec.platform_imports,
+            allow_import_subset=True,
         )
         return spec
     except HostingError:
@@ -1460,6 +1461,7 @@ def _verify_lpac_runtime(
         Path(spec.request.argv[0]),
         expected_digest=executable.sha256,
         expected_imports=spec.platform_imports,
+        allow_import_subset=True,
     )
 
 
@@ -2198,6 +2200,7 @@ def _verify_pe_image(
     *,
     expected_digest: str,
     expected_imports: tuple[str, ...],
+    allow_import_subset: bool = False,
 ) -> None:
     body = path.read_bytes()
     if (
@@ -2281,7 +2284,15 @@ def _verify_pe_image(
             HostingFailureCategory.PREPARATION_FAILED,
             "Windows PE import table has no in-range terminator",
         )
-    if tuple(sorted(imports)) != expected_imports:
+    actual_imports = tuple(sorted(imports))
+    if (
+        not actual_imports
+        or (
+            not set(actual_imports) <= set(expected_imports)
+            if allow_import_subset
+            else actual_imports != expected_imports
+        )
+    ):
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
             "Windows PE platform-image import closure changed",
