@@ -80,13 +80,15 @@ def run_pytest(
     trace_cleanup = values.get("LOUSHANG_PYTEST_TRACE_CLEANUP") == "1"
     watchdog_stop = threading.Event() if trace_cleanup else None
     if trace_cleanup:
+        print("pytest watchdog armed", file=sys.stderr, flush=True)
+
         def dump_if_stalled() -> None:
             assert watchdog_stop is not None
-            delay = 600
+            delay = 180
             while not watchdog_stop.wait(delay):
                 print("pytest watchdog: still running", file=sys.stderr, flush=True)
                 faulthandler.dump_traceback(file=sys.stderr)
-                delay = 120
+                delay = 180
 
         threading.Thread(target=dump_if_stalled, daemon=True).start()
     try:
