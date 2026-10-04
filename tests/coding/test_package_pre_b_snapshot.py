@@ -62,6 +62,8 @@ def test_unadmitted_posix_platform_keeps_existing_session_route(tmp_path: Path) 
     lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
         tmp_path / "session-state", cwd=workspace
     )
+    lifecycle.package_root.mkdir(parents=True)
+    (lifecycle.package_root / "package-lock.json").write_text("{}")
     manager = asyncio.run(
         SessionManager.new(
             session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
@@ -76,7 +78,7 @@ def test_unadmitted_posix_platform_keeps_existing_session_route(tmp_path: Path) 
         patch("loushang.coding.package_product_runtime.sys.platform", "darwin"),
     ):
         assert selection.factory_for_session(manager) is None
-    assert not lifecycle.package_root.exists()
+    assert (lifecycle.package_root / "package-lock.json").read_text() == "{}"
     selection.close()
 
 

@@ -359,20 +359,21 @@ class CodingFencedProductApplicationSelection:
             if owner is None:
                 lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
                 epoch = resolve_coding_package_epoch_layout(lifecycle)
-                unadmitted_platform = (
-                    os.name == "posix" and not sys.platform.startswith("linux")
-                ) or (os.name == "nt" and not self._windows_candidate)
+                other_posix = os.name == "posix" and not sys.platform.startswith("linux")
+                unadmitted_platform = other_posix or (
+                    os.name == "nt" and not self._windows_candidate
+                )
                 try:
                     (epoch.control_root / "epoch.jsonl").lstat()
                 except FileNotFoundError:
                     # Platforms without an admitted default Product route keep
-                    # their existing Session route for a fresh workspace.
+                    # their existing Session route.
                     if unadmitted_platform:
-                        require_fresh_coding_product_inputs_without_writes(
-                            lifecycle,
-                            workspace=workspace,
-                            settings_manager=settings_manager,
-                        )
+                        if other_posix:
+                            require_fresh_coding_product_settings_without_writes(
+                                workspace=workspace,
+                                settings_manager=settings_manager,
+                            )
                         return None
                     # A Linux fresh workspace enters B before any ordinary
                     # Session can prepare a legacy Plugin writer. Native
@@ -950,6 +951,30 @@ def require_fresh_coding_product_inputs_without_writes(
         raise TypeError("Coding Plugin lifecycle layout is required")
     if not isinstance(workspace, Path) or not workspace.is_absolute():
         raise ValueError("Coding workspace must be absolute")
+    require_fresh_coding_product_settings_without_writes(
+        workspace=workspace, settings_manager=settings_manager
+    )
+    for root, resolver in (
+        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
+        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
+    ):
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            continue
+        if any(resolver(lifecycle).domain_members().values()):
+            raise RuntimeError(
+                "Coding pre-B workspace is unsupported; use a fresh workspace"
+            )
+
+
+def require_fresh_coding_product_settings_without_writes(
+    *, workspace: Path, settings_manager: SettingsManager | None = None
+) -> None:
+    """Reject legacy settings before a fresh default route is selected."""
+
+    if not isinstance(workspace, Path) or not workspace.is_absolute():
+        raise ValueError("Coding workspace must be absolute")
     settings_paths = [
         default_global_settings_path(),
         default_project_settings_path(workspace),
@@ -966,18 +991,6 @@ def require_fresh_coding_product_inputs_without_writes(
             if path is not None
         )
     require_coding_fresh_settings_without_writes(*dict.fromkeys(settings_paths))
-    for root, resolver in (
-        (lifecycle.root, resolve_coding_lifecycle_pre_b_members),
-        (lifecycle.package_root, resolve_coding_package_pre_b_store_members),
-    ):
-        try:
-            root.lstat()
-        except FileNotFoundError:
-            continue
-        if any(resolver(lifecycle).domain_members().values()):
-            raise RuntimeError(
-                "Coding pre-B workspace is unsupported; use a fresh workspace"
-            )
 
 
 def _initialize_fresh_coding_product_for_session(
