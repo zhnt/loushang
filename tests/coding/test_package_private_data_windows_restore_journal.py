@@ -199,7 +199,7 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
 ) -> None:
     import loushang.coding.package_private_data_windows_restore_journal as module
 
-    started, _ = _events()
+    started, completed = _events()
     source = CodingArchPrivateDataTargetSnapshotV1(
         root_path_digest=sha256(b"original-root").hexdigest(),
         root_identity=(1, 2, stat.S_IFDIR | 0o700, 0, 1),
@@ -243,6 +243,7 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
         restore_id=started.restore_id,
         started_digest=started.record_digest,
         plan_fingerprint=plan.fingerprint,
+        desired_inventory_revision=plan.desired_inventory_revision,
         generation_number=2,
         stage_identity=(9, 10, stat.S_IFDIR | 0o700, 0, 1),
         parent_identity=(7, 8),
@@ -268,6 +269,17 @@ def test_windows_restore_replays_original_publication_after_unrelated_desired_ch
 
     assert transaction._require_plan_current(plan) == source
     assert transaction.publication_for(started, plan) == publication
+    monkeypatch.setattr(
+        CodingWindowsArchPrivateDataRestoreTransaction,
+        "events",
+        lambda _self: (started, completed),
+    )
+    assert (
+        transaction.completed_plan_revision_for(
+            replace(plan, desired_inventory_revision=2)
+        )
+        == 1
+    )
     with pytest.raises(ValueError, match="publication changed"):
         transaction.publication_for(
             started, replace(plan, desired_inventory_revision=2)

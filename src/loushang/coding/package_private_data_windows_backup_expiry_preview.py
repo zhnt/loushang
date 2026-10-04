@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -140,6 +140,12 @@ class CodingWindowsArchPrivateDataBackupExpiryPreview:
             source_target_id=source.target_id,
             desired_inventory_revision=desired.inventory_revision,
             target_state="absent",
+        )
+        restore_plan = replace(
+            restore_plan,
+            desired_inventory_revision=(
+                transaction.completed_plan_revision_for(restore_plan)
+            ),
         )
         confirmation = transaction.verify_confirmation(
             restore_plan, confirmation_id

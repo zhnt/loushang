@@ -11,7 +11,7 @@ import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
@@ -82,6 +82,7 @@ class CodingWindowsArchRestorePublicationV1:
     restore_id: str
     started_digest: str
     plan_fingerprint: str
+    desired_inventory_revision: int
     generation_number: int
     stage_identity: tuple[int, int, int, int, int]
     parent_identity: tuple[int, int]
@@ -94,6 +95,8 @@ class CodingWindowsArchRestorePublicationV1:
             or not re.fullmatch(r"[0-9a-f]{64}", self.started_digest)
             or not isinstance(self.plan_fingerprint, str)
             or not re.fullmatch(r"[0-9a-f]{64}", self.plan_fingerprint)
+            or type(self.desired_inventory_revision) is not int
+            or self.desired_inventory_revision < 0
             or type(self.generation_number) is not int
             or not 2 <= self.generation_number <= 4097
             or type(self.stage_identity) is not tuple
@@ -111,6 +114,7 @@ class CodingWindowsArchRestorePublicationV1:
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "desiredInventoryRevision": self.desired_inventory_revision,
             "generationNumber": self.generation_number,
             "parentIdentity": list(self.parent_identity),
             "planFingerprint": self.plan_fingerprint,
@@ -122,8 +126,8 @@ class CodingWindowsArchRestorePublicationV1:
     @classmethod
     def from_dict(cls, value: object) -> CodingWindowsArchRestorePublicationV1:
         if type(value) is not dict or set(value) != {
-            "generationNumber", "parentIdentity", "planFingerprint", "restoreId",
-            "stageIdentity", "startedDigest"
+            "desiredInventoryRevision", "generationNumber", "parentIdentity",
+            "planFingerprint", "restoreId", "stageIdentity", "startedDigest"
         }:
             raise ValueError("Windows Coding Arch restore publication fields changed")
         parent = value["parentIdentity"]
@@ -134,6 +138,7 @@ class CodingWindowsArchRestorePublicationV1:
             restore_id=value["restoreId"],
             started_digest=value["startedDigest"],
             plan_fingerprint=value["planFingerprint"],
+            desired_inventory_revision=value["desiredInventoryRevision"],
             generation_number=value["generationNumber"],
             stage_identity=tuple(stage),
             parent_identity=tuple(parent),
@@ -201,6 +206,37 @@ class CodingWindowsArchPrivateDataRestoreTransaction:
         events = self.events()
         return events[-1] if events and events[-1].phase == "started" else None
 
+    def completed_plan_revision_for(
+        self, plan: CodingArchPrivateDataRestorePlanV1
+    ) -> int:
+        """Recover the original Product revision bound to one completed restore."""
+
+        events = self.events()
+        starts = tuple(
+            (index, event)
+            for index, event in enumerate(events)
+            if event.phase == "started" and _same_plan(event, plan)
+        )
+        if len(starts) != 1:
+            raise ValueError("Windows Coding Arch completed restore is unavailable")
+        index, started = starts[0]
+        if (
+            index + 1 >= len(events)
+            or events[index + 1].phase != "completed"
+            or events[index + 1].restore_id != started.restore_id
+        ):
+            raise ValueError("Windows Coding Arch restore is unfinished")
+        publication = self._read_publication(started, recover_stage=False)
+        if publication is None:
+            raise ValueError("Windows Coding Arch restore publication is missing")
+        original = replace(
+            plan,
+            desired_inventory_revision=publication.desired_inventory_revision,
+        )
+        if publication.plan_fingerprint != original.fingerprint:
+            raise ValueError("Windows Coding Arch restore publication changed: plan_fingerprint")
+        return publication.desired_inventory_revision
+
     def publication_for(
         self,
         started: CodingArchPrivateDataRestoreEventV1,
@@ -211,6 +247,23 @@ class CodingWindowsArchPrivateDataRestoreTransaction:
         self._require_active()
         if started.phase != "started" or not _same_plan(started, plan):
             raise ValueError("Windows Coding Arch restore publication is foreign")
+        publication = self._read_publication(started, recover_stage=recover_stage)
+        if publication is None:
+            return None
+        if (
+            publication.plan_fingerprint != plan.fingerprint
+            or publication.desired_inventory_revision
+            != plan.desired_inventory_revision
+        ):
+            raise ValueError("Windows Coding Arch restore publication changed: plan_fingerprint")
+        return publication
+
+    def _read_publication(
+        self,
+        started: CodingArchPrivateDataRestoreEventV1,
+        *,
+        recover_stage: bool,
+    ) -> CodingWindowsArchRestorePublicationV1 | None:
         raw = read_windows_private_receipt(
             self._publication_path(started),
             maximum_bytes=_PUBLICATION_MAX_BYTES,
@@ -229,8 +282,6 @@ class CodingWindowsArchPrivateDataRestoreTransaction:
             reason = "restore_id"
         elif publication.started_digest != started.record_digest:
             reason = "started_digest"
-        elif publication.plan_fingerprint != plan.fingerprint:
-            reason = "plan_fingerprint"
         else:
             reason = None
         if reason is not None:
@@ -262,6 +313,7 @@ class CodingWindowsArchPrivateDataRestoreTransaction:
             restore_id=started.restore_id,
             started_digest=started.record_digest,
             plan_fingerprint=plan.fingerprint,
+            desired_inventory_revision=plan.desired_inventory_revision,
             generation_number=generation_number,
             stage_identity=stage_identity,
             parent_identity=inspect_windows_product_private_directory_identity(root.parent),
