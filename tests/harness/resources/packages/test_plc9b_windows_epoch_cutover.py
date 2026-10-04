@@ -534,6 +534,7 @@ def test_windows_fenced_coding_product_opens_real_state_owners(
         epoch_journal=fences,
         coordination=_CoordinationOwner(),
         snapshots=_SnapshotOwner(),
+        legacy_root_name=epoch.legacy_root_name,
         epochs_root_name=epoch.epochs_root_name,
     )
     request = PackageWindowsEpochCutoverRequestV1.create(

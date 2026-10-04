@@ -33,6 +33,22 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_windows_rooted_regular_file_handle_reads_data(tmp_path: Path) -> None:
+    member = tmp_path / "member.json"
+    member.write_bytes(b"{\"source\":\"product\"}")
+    parent = open_windows_directory(tmp_path)
+    try:
+        descriptor = open_windows_regular_file_at(
+            parent, member.name, create_new=False, write=False
+        )
+        try:
+            assert os.read(descriptor, 1024) == b"{\"source\":\"product\"}"
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
 def test_windows_delete_inspected_entry_uses_same_handle_identity(
     tmp_path: Path,
 ) -> None:

@@ -359,10 +359,13 @@ class CodingFencedProductApplicationSelection:
                 try:
                     (epoch.control_root / "epoch.jsonl").lstat()
                 except FileNotFoundError:
-                    # A fresh workspace enters B before any ordinary Session
-                    # can prepare a legacy Plugin writer. Native cutover owns
-                    # the cross-process fence; an incomplete attempt refuses
-                    # this Session rather than falling back to legacy state.
+                    # Other POSIX platforms keep their existing Session route
+                    # until a native Product cutover is admitted there.
+                    if os.name == "posix" and not sys.platform.startswith("linux"):
+                        return None
+                    # A Linux fresh workspace enters B before any ordinary
+                    # Session can prepare a legacy Plugin writer. Native
+                    # cutover owns the cross-process fence.
                     require_fresh_coding_product_inputs_without_writes(
                         lifecycle,
                         workspace=workspace,

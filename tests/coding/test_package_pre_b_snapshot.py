@@ -55,6 +55,31 @@ from loushang.harness.resources.packages.product_contract import (
 )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX platform selection")
+def test_unadmitted_posix_platform_keeps_existing_session_route(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    selection = CodingFencedProductApplicationSelection()
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch("loushang.coding.package_product_runtime.sys.platform", "darwin"),
+    ):
+        assert selection.factory_for_session(manager) is None
+    assert not lifecycle.package_root.exists()
+    selection.close()
+
+
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
 def test_empty_coding_workspace_prepares_private_roots_and_cuts_over(
     tmp_path: Path,
