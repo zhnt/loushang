@@ -20,6 +20,9 @@ from loushang.coding.package_private_data_windows_archive_snapshot import (
     CodingWindowsArchBackupArchiveSnapshotV1,
 )
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+)
 
 
 def test_expiry_manifest_must_keep_original_identity_and_bytes(
@@ -53,7 +56,11 @@ def test_expiry_manifest_must_keep_original_identity_and_bytes(
     monkeypatch.setattr(owner, "windows_stat_at", lambda fd, name: path.stat())
     acl = cast(WindowsPrivateDirectoryAcl, FakeAcl())
     original = path.stat()
-    parent_fd = os.open(tmp_path, os.O_RDONLY)
+    parent_fd = (
+        open_windows_directory(tmp_path)
+        if os.name == "nt"
+        else os.open(tmp_path, os.O_RDONLY)
+    )
     try:
         descriptor = os.open(path, os.O_RDONLY)
         try:

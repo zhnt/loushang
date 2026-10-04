@@ -1522,11 +1522,17 @@ class PackageWindowsLegacyRuntimeActivationOwner:
         activation_root: _PinnedWindowsRoot,
     ) -> None:
         runtime_name = f"{_RUNTIME_PREFIX}{marker.receipt.request_id}"
+        runtime_path = self._activation_root / runtime_name
+        runtime_present = runtime_name in windows_listdir_at(activation_root.descriptor)
         grants = _authority_paths(
             restored_path=self._restored_path_from_marker(marker),
-            runtime_path=self._activation_root / runtime_name,
+            runtime_path=runtime_path,
         )
         for path, recursive in reversed(grants):
+            # A prior settlement attempt may have removed this private runtime
+            # directory before its terminal receipt was published.
+            if path == runtime_path and not runtime_present:
+                continue
             _revoke_path(path, marker.profile_sid, recursive=recursive)
         _remove_runtime_dir(activation_root.descriptor, runtime_name)
         _delete_profile(marker.profile_name)

@@ -126,10 +126,15 @@ def test_windows_expiry_recovery_checks_restored_bytes_without_archive(
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
+    native_open_directory = recovery.open_windows_directory
     monkeypatch.setattr(
         recovery,
         "open_windows_directory",
-        lambda path, **kwargs: os.open(path, os.O_RDONLY),
+        lambda path, **kwargs: (
+            native_open_directory(path, **kwargs)
+            if os.name == "nt"
+            else os.open(path, os.O_RDONLY)
+        ),
     )
     monkeypatch.setattr(recovery, "_directory_identity", lambda descriptor: (1, 4))
     monkeypatch.setattr(

@@ -79,10 +79,15 @@ def test_windows_backup_status_requires_terminal_receipt_for_expired(
         "inspect_windows_product_private_directory_identity",
         lambda path: (1, 4),
     )
+    native_open_directory = backup_module.open_windows_directory
     monkeypatch.setattr(
         backup_module,
         "open_windows_directory",
-        lambda path, **kwargs: os.open(path, os.O_RDONLY),
+        lambda path, **kwargs: (
+            native_open_directory(path, **kwargs)
+            if os.name == "nt"
+            else os.open(path, os.O_RDONLY)
+        ),
     )
     monkeypatch.setattr(backup_module, "_directory_identity", lambda fd: (1, 4))
     monkeypatch.setattr(backup_module, "_retained_receipts", lambda *args, **kwargs: ())
