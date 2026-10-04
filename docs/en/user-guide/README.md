@@ -251,46 +251,7 @@ loushang-package-cutover --workspace /absolute/path/to/workspace
 
 Stop its Loushang processes first; the command also refuses a live pre-fence writer. The existing Loushang private home must be owned by you and inaccessible to other users; the command does not change its permissions. It installs the checked-in base, LSP, and architecture Plugins through Product transactions and can be retried after interruption. It refuses workspaces that need legacy-state adoption or settings migration. Once fenced, use a fence-aware Loushang version; an older runtime cannot safely write the workspace.
 
-If the old workspace has 1–16 installed local data Skill Plugins, use the explicit migration commands. Keep each original Plugin directory unchanged and stop its Loushang processes first:
-
-```bash
-loushang-package-cutover --workspace /absolute/path/to/workspace --prepare-legacy-local-skill-review <plugin-id>
-loushang-package-cutover --workspace /absolute/path/to/workspace --adopt-legacy-local-skill-review <plugin-id> <reviewId-from-previous-command>
-```
-
-The first command validates **every** old local Skill before committing a one-way first-B fence, then prints a review containing `reviewId` for the requested Plugin. Run both commands for each Plugin ID; the second accepts only its review ID, installs that Plugin through Product, and preserves its old enabled or disabled selection. For a set of 1–16 old local Skills, global and project `plugin_sources` may list any subset of their exact canonical directories, without duplicates. Each review shows its settings scope when configured. Acceptance records and removes only that Plugin's old entry, preserving the order of the remaining Sources and other settings. An unconfigured Plugin still checks the remaining list before adoption. Repeat an interrupted adoption command. Each original directory must remain unchanged until its Wheel is bound; afterward, an accepted operation can replay even if that directory disappears. The ordinary cutover command reopens only after **all** old Skills settle.
-
-For installed local data Prompts, use their separate explicit commands:
-
-```bash
-loushang-package-cutover --workspace /absolute/path/to/workspace --prepare-legacy-local-prompt-review <plugin-id>
-loushang-package-cutover --workspace /absolute/path/to/workspace --adopt-legacy-local-prompt-review <plugin-id> <reviewId-from-previous-command>
-```
-
-The first command verifies the Prompt type before the first-B fence. The second accepts that type, installs and enables it according to the old selection, and can replay after the original directory disappears once its Wheel is bound. A Product Session consumes the migrated Prompt into persisted Model Input. Distinct Prompt names can be adopted separately; duplicate Prompt names are refused before the first fence.
-
-For installed local data Themes, use the Theme-specific commands:
-
-```bash
-loushang-package-cutover --workspace /absolute/path/to/workspace --prepare-legacy-local-theme-review <plugin-id>
-loushang-package-cutover --workspace /absolute/path/to/workspace --adopt-legacy-local-theme-review <plugin-id> <reviewId-from-previous-command>
-```
-
-The Theme review checks the exact JSON style document before the first fence. Adoption retains the old enabled or disabled selection. To display an enabled Theme, select `plugin:<theme-name>` in Coding settings; a new Product Session renders its style and falls back to the built-in Theme after a later Product disable. A mixed set may contain Skills, Prompts, and Themes, with at most 16 local data Plugins total. Run the matching command pair for each Plugin. Duplicate names within one Resource type are refused before the first fence. The ordinary cutover command reopens only after every member settles and does not adopt any member automatically. Executable Plugins and unrelated configured Sources remain outside these routes.
-
-If the old lock lists only local Plugins already removed from old Desired State, and no configured Source remains, use the removed-only review. The review verifies each lock head's install-then-remove history before fencing. Check its `removedLocal` list, then accept the exact `reviewId`:
-
-```bash
-loushang-package-cutover --workspace /absolute/path/to/workspace --prepare-legacy-removed-review
-loushang-package-cutover --workspace /absolute/path/to/workspace --adopt-legacy-removed-review <reviewId-from-previous-command>
-loushang-package-cutover --workspace /absolute/path/to/workspace
-```
-
-`--review-legacy-removed-only` reopens the frozen review. Repeat an interrupted adoption with the same ID. This route records Product absent selections; it does not reinstall removed Plugins. It is currently limited to Linux and the verified old snapshot shape.
-
-For a mixed old set with active local data Plugins and removed local Plugins, start with the active Plugin's typed `--prepare-legacy-local-skill-review`, `--prepare-legacy-local-prompt-review`, or `--prepare-legacy-local-theme-review` command. Then run `--review-legacy-removed-only` and `--adopt-legacy-removed-review <reviewId>` **before** adopting any active Plugin. Finally run the matching adoption command for each active Plugin and the ordinary cutover command. The first fence checks every active Resource and every removed Plugin's history; an unproven removal is refused before the fence.
-
-To check the cutover backup without changing Plugin state, run `loushang-package-cutover --workspace /absolute/path/to/workspace --backup-status`. `retained` means the pre-B **workspace** snapshot passed owner verification; `unknown` means it could not be verified. The command does not report per-Plugin backup retention or expiry.
+Pre-B workspaces containing old Plugin state, settings, Sources, or Package Store members are unsupported by this Product path. The ordinary cutover command refuses them before creating a B fence or changing the old workspace. Create a fresh workspace for the Product Plugin path; already fenced B workspaces can be reopened by a fence-aware version. The historical legacy review and adoption commands remain in the CLI but are not a supported migration route for this candidate.
 
 For a POSIX Package operation interrupted during staging, use the exact operation ID to inspect its checkpoint and request the narrow Product recovery:
 

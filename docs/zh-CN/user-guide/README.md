@@ -223,46 +223,7 @@ loushang-package-cutover --workspace /工作区/绝对路径
 
 先停止该工作区的 Loushang 进程；命令也会拒绝仍在运行的旧 writer。已有的 Loushang 私有主目录必须归当前用户所有、不可供其他用户访问；命令不会改写它的权限。它通过 Product 事务安装内置的 base、LSP、架构三个插件，中断后可以重试。需要旧状态采纳或设置迁移的工作区会被拒绝。写入 fence 后只能使用理解该 fence 的 Loushang 版本。
 
-若旧工作区有 1–16 个已安装的本地数据 Skill 插件，可使用显式迁移命令。先保留每个原始插件目录并停止该工作区的 Loushang 进程，再运行：
-
-```bash
-loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-skill-review <插件ID>
-loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-skill-review <插件ID> <上一步的reviewId>
-```
-
-第一步会在创建不可回退的 first-B fence 前验证**所有**旧本地 Skill，再输出所请求插件的 `reviewId`。对每个插件 ID 分别运行这两步；第二步仅接受对应 ID，通过 Product 安装该插件并按旧状态保留启用或禁用选择。对于 1–16 个旧本地 Skill，全局与项目设置中的 `plugin_sources` 可列出其中任意子集的规范化目录，但不能重复。已配置的插件审查记录会列出 scope；接受后只记录并清除该插件的旧路径，保留其余 Source 的顺序和其他设置。未配置的插件在接受前也会核对剩余列表。中断后可重复运行第二步。每个插件的 Wheel 绑定完成前，其原始目录必须保持不变；绑定后即使原始目录消失，已接受操作仍可重放。**全部**旧 Skill 结算后，普通切换命令才会只读重开。
-
-若旧工作区有已安装的本地数据 Prompt 插件，可使用独立的显式命令：
-
-```bash
-loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-prompt-review <插件ID>
-loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-prompt-review <插件ID> <上一步的reviewId>
-```
-
-第一步在 first-B fence 前核对 Prompt 类型；第二步接受该类型，通过 Product 安装并按旧状态启用或禁用。Wheel 完成绑定后，即使原始目录消失也可重放。Product Session 会将迁移后的 Prompt 写入持久化 Model Input。不同名称的 Prompt 可以分别采纳，同名 Prompt 会在首次围栏前拒绝。
-
-已安装的本地数据 Theme 使用对应的显式命令：
-
-```bash
-loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-theme-review <插件ID>
-loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-theme-review <插件ID> <上一步的reviewId>
-```
-
-Theme 审查会在首次围栏前验证准确的 JSON 样式文档；采纳时保留旧启用或禁用选择。在 Coding 设置中选用 `plugin:<主题名>` 后，新 Product Session 会显示其样式；随后若通过 Product 禁用该插件，新 Session 会回退至内置主题。旧工作区可以混合 Skill、Prompt 和 Theme，本地数据插件总数最多 16 个；每个插件分别运行对应类型的两条命令。同类型重名会在首次围栏前拒绝。全部结算后，普通切换命令才会只读重开，不会自动采纳。可执行插件及无关配置 Source 仍不在这些迁移路线内。
-
-若旧 lock 中的本地插件均已在旧 Desired State 中移除，且没有剩余的已配置 Source，可使用移除记录专用审核。首次围栏前会逐一验证 lock head 对应的安装、移除历史。核对输出的 `removedLocal` 列表后，接受准确的 `reviewId`：
-
-```bash
-loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-removed-review
-loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-removed-review <上一步的reviewId>
-loushang-package-cutover --workspace /工作区/绝对路径
-```
-
-`--review-legacy-removed-only` 可重开冻结的审核记录；采纳中断后用相同 ID 重试。这条路线在 Product 中记录 absent 选择，不会重新安装已移除的插件。目前仅支持 Linux 和已验证的旧快照形状。
-
-若旧集合同时包含仍安装的本地数据插件与已移除的本地插件，先对一个仍安装的插件运行对应类型的 `--prepare-legacy-local-skill-review`、`--prepare-legacy-local-prompt-review` 或 `--prepare-legacy-local-theme-review`。然后运行 `--review-legacy-removed-only`，并用其 `reviewId` 执行 `--adopt-legacy-removed-review`；完成已移除集合的采纳后，再逐一采纳仍安装的插件，最后运行普通切换命令。首次围栏前会同时核对每个仍安装的 Resource 和每条移除历史；无法证明的移除会在围栏前拒绝。
-
-可运行 `loushang-package-cutover --workspace /工作区/绝对路径 --backup-status` 只读检查切换备份。`retained` 表示切换前的**整个工作区**快照通过所有者验证；`unknown` 表示无法验证。该命令不报告单个插件的备份保留或到期状态。
+包含旧 Plugin 状态、设置、Source 或 Package Store 成员的 pre-B 工作区不在当前 Product 路径的支持范围内。普通切换命令会在创建 B fence 或改写旧工作区前拒绝它们。请为 Product 插件路径创建新工作区；已有 B fence 的工作区可用理解该 fence 的版本重开。历史遗留的旧版审核与采纳命令仍保留在 CLI 中，但不构成当前候选版本支持的迁移路线。
 
 在 POSIX 工作区中，如果 Package 操作在 staging 阶段中断，可用准确的操作 ID 查看检查点并请求限定范围的 Product 恢复：
 
