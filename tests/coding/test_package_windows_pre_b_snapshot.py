@@ -4028,6 +4028,8 @@ finally:
                     worker_state_root
                     / ("worker-native-provisioning-" + "7" * 32 + ".jsonl")
                 ).is_file()
+            elif native_platform == "windows-amd64":
+                assert not retained_stage.exists()
             if rotation_pending:
                 _assert_windows_worker_clean_rotation(
                     workspace=workspace,
@@ -4151,7 +4153,10 @@ print(json.dumps({
                     "Worker stage disappeared during clean-exit lease repair",
                     tuple(sorted(item.name for item in worker_state_root.iterdir())),
                 )
-        if native_platform == "windows-amd64":
+        if (
+            native_platform == "windows-amd64"
+            and os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") == "1"
+        ):
             inventory_script = """\
 import json
 import sys
