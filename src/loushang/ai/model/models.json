@@ -676,6 +676,134 @@
                 "cacheRead": 0.5
               }
             },
+            "gpt-6-sol": {
+              "displayName": "GPT-6 Sol",
+              "family": "gpt-6",
+              "knowledge": "2026-04-20",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 2,
+                "output": 10,
+                "cacheRead": 0.2
+              }
+            },
+            "gpt-6-astra": {
+              "displayName": "GPT-6 Astra",
+              "family": "gpt-6",
+              "knowledge": "2026-04-30",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 10,
+                "output": 50,
+                "cacheRead": 1
+              }
+            },
+            "gpt-6.1-sol": {
+              "displayName": "GPT-6.1 Sol",
+              "family": "gpt-6.1",
+              "knowledge": "2026-04-30",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 2,
+                "output": 10,
+                "cacheRead": 0.1
+              }
+            },
+            "gpt-6-luna": {
+              "displayName": "GPT-6 Luna",
+              "family": "gpt-6",
+              "knowledge": "2026-05-18",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.1,
+                "output": 0.5,
+                "cacheRead": 0.01
+              }
+            },
             "gpt-5.4-mini": {
               "displayName": "GPT-5.4 mini",
               "family": "gpt-5",
@@ -776,6 +904,106 @@
                 "structuredOutput": true,
                 "attachment": false,
                 "temperature": true
+              }
+            },
+            "gpt-6-sol": {
+              "displayName": "GPT-6 Sol oauth",
+              "family": "gpt-6",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "gpt-6-astra": {
+              "displayName": "GPT-6 Astra oauth",
+              "family": "gpt-6",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "gpt-6.1-sol": {
+              "displayName": "GPT-6.1 Sol oauth",
+              "family": "gpt-6.1",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "gpt-6-luna": {
+              "displayName": "GPT-6 Luna oauth",
+              "family": "gpt-6",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
               }
             }
           },

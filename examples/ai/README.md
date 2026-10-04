@@ -38,6 +38,11 @@
 `DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY` 和
 `STEPFUN_API_KEY`。具体 endpoint 声明以 `models.json` 为准。
 
+OpenAI 的 `openai-responses` 与 `coding-responses` catalog 路由均列出
+`gpt-6-sol`、`gpt-6-astra`、`gpt-6.1-sol` 和 `gpt-6-luna`。例如可用
+`get_model("openai", "openai-responses", "gpt-6.1-sol")` 获取标准 API 模型。
+`coding-responses` 使用 ChatGPT OAuth，实际可用模型仍由账号权限决定。
+
 运行全部离线示例：
 
 ```bash
