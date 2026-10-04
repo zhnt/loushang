@@ -3177,6 +3177,7 @@ finally:
         receipt_fingerprint: str | None = None
         rotation_pending = False
         stage_retention_expected = False
+        worker_state_root = product.state_root
         if native_platform == "windows-amd64":
             worker_owner = open_coding_fenced_product_application_owner(
                 lifecycle,
@@ -3188,7 +3189,6 @@ finally:
             )
             worker_product = worker_owner.runtime_owner.product_owner
             assert isinstance(worker_product, WindowsLocalWheelProductSessionOwner)
-            worker_state_root = worker_product.state_root
             assert any(
                 item.plugin_id == "workerprobe"
                 for item in worker_product.policy.bindings
