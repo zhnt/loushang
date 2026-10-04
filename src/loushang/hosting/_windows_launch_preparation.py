@@ -2295,7 +2295,7 @@ def _verify_pe_image(
     ):
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
-            "Windows PE platform-image import closure changed",
+            f"Windows PE platform-image import closure changed: {actual_imports}",
         )
 
 

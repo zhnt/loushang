@@ -101,6 +101,7 @@ jobs:
           tests/coding/test_package_product_worker_windows_crash_lease_repair.py
           tests/coding/test_package_product_worker_windows_crash_stage_review.py
           tests/coding/test_package_product_worker_windows_crash_stage_retirement.py
+          --maxfail=1
           -q
 
       - name: Reject empty, skipped, or failing Windows Worker candidate report
