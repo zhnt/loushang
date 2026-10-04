@@ -336,6 +336,7 @@ class _WindowsLpacProductWorkerProfilePlan:
     lifecycle_fingerprint: str
     backend_material_expectation: object | None = None
     release_profile_sha256: str | None = None
+    owner_private_ancestors: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.worker_request_fingerprint, name="request")
@@ -353,6 +354,8 @@ class _WindowsLpacProductWorkerProfilePlan:
             _require_sha256(value, name=name)
         if self.release_profile_sha256 is not None:
             _require_sha256(self.release_profile_sha256, name="release profile")
+        if type(self.owner_private_ancestors) is not bool:
+            raise ValueError("Worker private ancestor policy is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1119,6 +1122,7 @@ def _plan_windows_lpac_product_worker_profile(
     platform_imports: tuple[str, ...],
     backend_material_expectation: object | None = None,
     release_profile_sha256: str | None = None,
+    owner_private_ancestors: bool = False,
     _platform_probe: _PlatformProbe | None = None,
     _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
 ) -> _WindowsLpacProductWorkerProfilePlan:
@@ -1129,6 +1133,7 @@ def _plan_windows_lpac_product_worker_profile(
         platform_imports=platform_imports,
         backend_material_expectation=backend_material_expectation,
         release_profile_sha256=release_profile_sha256,
+        owner_private_ancestors=owner_private_ancestors,
         _platform_probe=_platform_probe,
         _runtime_bindings=_runtime_bindings,
     )
@@ -1143,6 +1148,7 @@ def _build_windows_lpac_product_worker_profile_plan(
     platform_imports: tuple[str, ...],
     backend_material_expectation: object | None = None,
     release_profile_sha256: str | None = None,
+    owner_private_ancestors: bool = False,
     _platform_probe: _PlatformProbe | None = None,
     _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
 ) -> tuple[_WindowsLpacProductWorkerProfilePlan, object]:
@@ -1182,6 +1188,7 @@ def _build_windows_lpac_product_worker_profile_plan(
         attempt_id=worker_request.identity.attempt_id,
         operation_nonce=operation_nonce,
         lifecycle_fingerprint=lifecycle_fingerprint,
+        owner_private_ancestors=owner_private_ancestors,
     )
     containment_profile_sha256 = bindings.spec_fingerprint(spec)
     _require_sha256(containment_profile_sha256, name="containment profile")
@@ -1207,6 +1214,7 @@ def _build_windows_lpac_product_worker_profile_plan(
             lifecycle_fingerprint=lifecycle_fingerprint,
             backend_material_expectation=backend_material_expectation,
             release_profile_sha256=release_profile_sha256,
+            owner_private_ancestors=owner_private_ancestors,
         ),
         spec,
     )
@@ -1241,6 +1249,7 @@ def _bind_windows_lpac_contained_product_worker_profile(
         platform_imports=platform_imports,
         backend_material_expectation=plan.backend_material_expectation,
         release_profile_sha256=plan.release_profile_sha256,
+        owner_private_ancestors=plan.owner_private_ancestors,
         _platform_probe=_platform_probe,
         _runtime_bindings=bindings,
     )
@@ -1336,6 +1345,7 @@ def _rebuild_windows_lpac_cleanup_spec(
     identity: Mapping[str, object],
     runtime_root: Path,
     platform_imports: tuple[str, ...],
+    owner_private_ancestors: bool = False,
     _platform_probe: _PlatformProbe | None = None,
     _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
 ) -> object:
@@ -1414,6 +1424,7 @@ def _rebuild_windows_lpac_cleanup_spec(
         attempt_id=values["attemptId"],
         operation_nonce=values["operationNonce"],
         lifecycle_fingerprint=values["lifecycleFingerprint"],
+        owner_private_ancestors=owner_private_ancestors,
     )
     if bindings.spec_fingerprint(spec) != values["specFingerprint"]:
         raise WorkerBindingError(

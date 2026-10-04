@@ -444,6 +444,19 @@ def test_windows_lpac_spec_is_exact_and_rejects_open_inputs() -> None:
         )
 
 
+def test_windows_lpac_product_payload_keeps_private_ancestors_out_of_grants() -> None:
+    ordinary = _provision_spec()
+    protected = replace(ordinary, owner_private_ancestors=True)
+    ancestors = {path for path, _, _ in _lpac_grant_targets(ordinary)} - {
+        ordinary.runtime_root
+    }
+
+    assert ancestors
+    assert not ancestors & {path for path, _, _ in _lpac_grant_targets(protected)}
+    assert _lpac_grant_targets(ordinary)[-1] == _lpac_grant_targets(protected)[-1]
+    assert _lpac_spec_fingerprint(ordinary) != _lpac_spec_fingerprint(protected)
+
+
 def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

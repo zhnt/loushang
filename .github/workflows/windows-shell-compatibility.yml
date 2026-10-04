@@ -41,7 +41,6 @@ jobs:
         env:
           LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
           PYTEST_ADDOPTS: >-
-            -o faulthandler_timeout=60
             --tb=short
             --junitxml=.artifacts/windows-shell-worker-candidate-native.xml
         run: >-
@@ -58,7 +57,8 @@ jobs:
           tests/coding/test_package_product_worker_windows_crash_stage_review.py
           tests/coding/test_package_product_worker_windows_crash_stage_retirement.py
           --maxfail=1
-          -q
+          --durations=20
+          -vv
 
       - name: Reject empty, skipped, or failing Windows Worker candidate report
         run: >-

@@ -824,6 +824,7 @@ class _WindowsLpacProvisionSpec:
     attempt_id: str
     operation_nonce: str
     lifecycle_fingerprint: str
+    owner_private_ancestors: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, ProcessLaunchRequest):
@@ -896,6 +897,8 @@ class _WindowsLpacProvisionSpec:
             raise ValueError("Windows LPAC attempt identity is invalid")
         _require_sha256(self.operation_nonce)
         _require_sha256(self.lifecycle_fingerprint)
+        if type(self.owner_private_ancestors) is not bool:
+            raise ValueError("Windows LPAC private ancestor policy is invalid")
         object.__setattr__(self, "runtime_entries", entries)
 
 
@@ -949,6 +952,7 @@ def _build_windows_lpac_provision_spec(
     attempt_id: str,
     operation_nonce: str,
     lifecycle_fingerprint: str,
+    owner_private_ancestors: bool = False,
     _api: _WindowsLpacApi | None = None,
 ) -> _WindowsLpacProvisionSpec:
     if request.effective_environment:
@@ -972,6 +976,7 @@ def _build_windows_lpac_provision_spec(
             attempt_id=attempt_id,
             operation_nonce=operation_nonce,
             lifecycle_fingerprint=lifecycle_fingerprint,
+            owner_private_ancestors=owner_private_ancestors,
         )
         executable = next(
             entry for entry in entries if entry.relative_path == executable_relative
@@ -1469,6 +1474,10 @@ def _lpac_grant_targets(
     spec: _WindowsLpacProvisionSpec,
 ) -> tuple[tuple[str, int, bool], ...]:
     ancestors = tuple(reversed(_ancestor_directory_paths(spec.runtime_root)))
+    if spec.owner_private_ancestors:
+        # Product's state and control roots keep exact owner-only ACLs. Granting
+        # this attempt SID on any ancestor would invalidate their custody.
+        ancestors = ()
     return tuple((path, _FILE_TRAVERSE_READ, False) for path in ancestors) + (
         (spec.runtime_root, _LPAC_RUNTIME_ACCESS, True),
     )
@@ -1587,6 +1596,7 @@ def _lpac_spec_fingerprint(spec: _WindowsLpacProvisionSpec) -> str:
             for entry in spec.runtime_entries
         ],
         "imports": spec.platform_imports,
+        "ownerPrivateAncestors": spec.owner_private_ancestors,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")

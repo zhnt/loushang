@@ -341,6 +341,8 @@ class CodingWindowsWorkerProductReceiptOwner:
             material = read_coding_windows_worker_installed_backend_release(
                 self._product
             )
+            if worker_request.runtime.package_root.parent != self._product.state_root:
+                raise CodingWorkerReceiptError("coding_worker_native_payload_root_changed")
             plan = _plan_windows_lpac_product_worker_profile(
                 worker_request=worker_request,
                 native_profile_catalog_revision=(
@@ -350,6 +352,7 @@ class CodingWindowsWorkerProductReceiptOwner:
                 platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
                 backend_material_expectation=expectation,
                 release_profile_sha256=material.review.approval.profile_sha256,
+                owner_private_ancestors=True,
             )
             if (
                 plan.expected_native_policy_closure_fingerprint

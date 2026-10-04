@@ -319,6 +319,11 @@
   that same approved release and selected Worker digest. The plan carries a
   bounded backend expectation through the Worker bridge to Hosting, which
   rechecks Python images and installed package members before material attach.
+  The Product LPAC attempt now leaves all ancestors of its payload stage
+  untouched by Package-SID ACL grants: both the Product state and control roots
+  require exact owner-only ACLs. The payload stage itself receives the bounded
+  runtime grant. A native launch must still prove that Windows path traversal
+  succeeds with those Product roots unchanged; failure remains closed.
   Portable bridge/refusal tests pass; the native Product-to-Hosting journey
   and Worker launch remain unverified.
   The separate Windows native-release approval history now has the same strict

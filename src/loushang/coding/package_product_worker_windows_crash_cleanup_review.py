@@ -258,6 +258,7 @@ def review_coding_windows_product_worker_crash_cleanup(
             identity=identity,
             runtime_root=stage,
             platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+            owner_private_ancestors=True,
         )
         product.assert_root_gc_authority_current()
         if (

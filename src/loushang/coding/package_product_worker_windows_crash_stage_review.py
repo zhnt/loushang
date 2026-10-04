@@ -287,6 +287,7 @@ def _review_crash_stage_under_gc_guard(
         identity=identity,
         runtime_root=product.state_root / f"worker-payload-{attempt_id}",
         platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+        owner_private_ancestors=True,
     )
     captured = _capture_stage_bytes(
         product,

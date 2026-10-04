@@ -163,6 +163,7 @@ def settle_coding_windows_product_worker_crash_native(
                         identity=identity,
                         runtime_root=product.state_root / stage_name,
                         platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
+                        owner_private_ancestors=True,
                     )
                     if observe_windows_worker_job_absent(
                         cast(str, identity["jobObjectName"])
