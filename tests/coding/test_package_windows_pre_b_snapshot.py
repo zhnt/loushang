@@ -4115,9 +4115,15 @@ try:
     )
     assert repaired == review.orphan_leases[0]
     assert registry.review_orphans(store_id=registry.store_id) == ()
-    print(json.dumps({"cleanExitLeaseRepaired": True}))
+    retained_stage = product.state_root / ("worker-payload-" + "7" * 32)
+    stage_before_close = retained_stage.is_dir()
 finally:
     owner.close()
+print(json.dumps({
+    "cleanExitLeaseRepaired": True,
+    "stageBeforeClose": stage_before_close,
+    "stageAfterClose": retained_stage.is_dir(),
+}))
 """
             repaired = subprocess.run(
                 (
@@ -4135,7 +4141,11 @@ finally:
                 check=False,
             )
             assert repaired.returncode == 0, repaired.stderr
-            assert json.loads(repaired.stdout) == {"cleanExitLeaseRepaired": True}
+            assert json.loads(repaired.stdout) == {
+                "cleanExitLeaseRepaired": True,
+                "stageBeforeClose": True,
+                "stageAfterClose": True,
+            }
             if stage_retention_expected:
                 assert retained_stage.is_dir(), (
                     "Worker stage disappeared during clean-exit lease repair",
@@ -4275,6 +4285,7 @@ try:
 finally:
     owner.close()
 """
+            stage_before_inventory_spawn = retained_stage.is_dir()
             inventoried = subprocess.run(
                 (
                     sys.executable,
@@ -4295,6 +4306,7 @@ finally:
                 pytest.fail(
                     json.dumps({
                         "childError": inventoried.stderr[-2000:],
+                        "stageBeforeInventorySpawn": stage_before_inventory_spawn,
                         "parentStageRetained": retained_stage.is_dir(),
                         "parentPayloads": sorted(
                             item.name for item in worker_state_root.iterdir()

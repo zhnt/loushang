@@ -37,6 +37,7 @@ jobs:
             --junitxml=.artifacts/windows-shell-plc9b-native.xml
         run: >-
           uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_windows_pre_b_snapshot.py
           tests/harness/resources/packages/test_plc9b_windows_native.py
           tests/harness/resources/packages/test_plc9b_windows_stream_info.py
           tests/harness/resources/packages/test_plc9b_windows_local_source.py
@@ -49,7 +50,6 @@ jobs:
           tests/harness/resources/packages/test_plc9b_windows_product_pre_b_snapshot.py
           tests/coding/test_package_windows_source_snapshot.py
           tests/coding/test_package_windows_builtin_wheel.py
-          tests/coding/test_package_windows_pre_b_snapshot.py
           tests/coding/test_package_private_data_windows_confirmation.py
           tests/coding/test_package_private_data_windows_deletion_journal.py
           tests/coding/test_package_private_data_windows_deletion_owner.py
