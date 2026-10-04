@@ -715,7 +715,11 @@ class CodingWorkerProductReceiptOwner:
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
                 with file_io.bind(self._path, durable=True) as rooted:
-                    rooted.acquire_lock(exclusive=True, suffix=".lock")
+                    rooted.acquire_lock(
+                        exclusive=True,
+                        suffix=".lock",
+                        initialize_empty_target_if_new=True,
+                    )
                     yield rooted
             finally:
                 file_io.cleanup()

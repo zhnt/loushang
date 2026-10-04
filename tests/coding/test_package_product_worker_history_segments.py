@@ -82,6 +82,81 @@ def test_sealed_history_reopens_across_generations_and_refuses_changed_bytes(
         assert error.value.code == "coding_worker_sealed_segment_changed"
 
 
+@pytest.mark.parametrize(
+    "stem", ("worker-start-gates", "worker-activation-receipts")
+)
+def test_first_writer_creates_durable_empty_history_and_refuses_its_loss(
+    tmp_path: Path, stem: str
+) -> None:
+    root = tmp_path / "state"
+    root.mkdir(mode=0o700)
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    io = RootedFileIO(root, root_fd)
+    try:
+        with io.bind(root / f"{stem}.jsonl", durable=True) as rooted:
+            with pytest.raises(ValueError, match="separate new exclusive lock"):
+                rooted.acquire_lock(
+                    exclusive=True, initialize_empty_target_if_new=True
+                )
+            rooted.acquire_lock(
+                exclusive=True,
+                suffix=".lock",
+                initialize_empty_target_if_new=True,
+            )
+            assert rooted.read_bytes(max_bytes=1024) == b""
+            assert read_coding_worker_segmented_history(
+                rooted, stem=stem, stream_id=stem, max_segment_bytes=1024
+            ).segments == (b"",)
+        (root / f"{stem}.jsonl").unlink()
+        with io.bind(root / f"{stem}.jsonl", durable=True) as rooted:
+            rooted.acquire_lock(
+                exclusive=True,
+                suffix=".lock",
+                initialize_empty_target_if_new=True,
+            )
+            with pytest.raises(CodingWorkerHistorySegmentError) as lost:
+                read_coding_worker_segmented_history(
+                    rooted, stem=stem, stream_id=stem, max_segment_bytes=1024
+                )
+            assert lost.value.code == "coding_worker_segment_initial_missing"
+    finally:
+        io.cleanup()
+        os.close(root_fd)
+
+
+def test_interrupted_first_writer_leaves_refused_orphan_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "state"
+    root.mkdir(mode=0o700)
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    io = RootedFileIO(root, root_fd)
+    original_create = RootedFile.create_new
+
+    def interrupt_create(_target: RootedFile, _data: bytes) -> tuple[int, int]:
+        raise OSError("interrupted before first history publication")
+
+    try:
+        with io.bind(root / "worker-start-gates.jsonl", durable=True) as rooted:
+            monkeypatch.setattr(RootedFile, "create_new", interrupt_create)
+            with pytest.raises(OSError, match="interrupted before first history"):
+                rooted.acquire_lock(
+                    exclusive=True,
+                    suffix=".lock",
+                    initialize_empty_target_if_new=True,
+                )
+        monkeypatch.setattr(RootedFile, "create_new", original_create)
+        with io.bind(root / "worker-start-gates.jsonl", durable=True) as rooted:
+            rooted.acquire_lock(exclusive=True, suffix=".lock", create=False)
+            with pytest.raises(CodingWorkerHistorySegmentError) as orphan:
+                _read(rooted)
+            assert orphan.value.code == "coding_worker_segment_initial_missing"
+    finally:
+        monkeypatch.setattr(RootedFile, "create_new", original_create)
+        io.cleanup()
+        os.close(root_fd)
+
+
 def test_orphan_and_stale_seal_fail_closed(tmp_path: Path) -> None:
     root = tmp_path / "state"
     with _bound(root) as rooted:

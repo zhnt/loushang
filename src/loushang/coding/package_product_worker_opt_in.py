@@ -438,7 +438,11 @@ class CodingWorkerOptInJournal:
                                 raise CodingWorkerOptInJournalError(
                                     "coding_worker_opt_in_lock_missing"
                                 ) from exc
-                        rooted.acquire_lock(exclusive=True, suffix=".lock")
+                        rooted.acquire_lock(
+                            exclusive=True,
+                            suffix=".lock",
+                            initialize_empty_target_if_new=True,
+                        )
                     else:
                         try:
                             rooted.stat()

@@ -712,6 +712,7 @@ class RootedFile:
         suffix: str = "",
         create: bool = True,
         expected_identity: tuple[int, int] | None = None,
+        initialize_empty_target_if_new: bool = False,
     ) -> None:
         import fcntl
 
@@ -724,9 +725,29 @@ class RootedFile:
             or any(type(value) is not int or value < 0 for value in expected_identity)
         ):
             raise ValueError("rooted IO lock identity is invalid")
+        if initialize_empty_target_if_new and (not exclusive or not create or not suffix):
+            raise ValueError(
+                "rooted IO target initialization requires a separate new exclusive lock"
+            )
         lock_name = self._name + suffix
-        flags = os.O_RDWR | (os.O_CREAT if create else 0)
-        fd = RootedFileIO._open(self._operation, self._parent, lock_name, flags)
+        created = False
+        if initialize_empty_target_if_new:
+            try:
+                fd = RootedFileIO._open(
+                    self._operation,
+                    self._parent,
+                    lock_name,
+                    os.O_RDWR | os.O_CREAT | os.O_EXCL,
+                )
+            except FileExistsError:
+                fd = RootedFileIO._open(
+                    self._operation, self._parent, lock_name, os.O_RDWR
+                )
+            else:
+                created = True
+        else:
+            flags = os.O_RDWR | (os.O_CREAT if create else 0)
+            fd = RootedFileIO._open(self._operation, self._parent, lock_name, flags)
         self._operation.lock_fds.add(fd)
         if expected_identity is not None:
             opened = os.fstat(fd)
@@ -744,6 +765,12 @@ class RootedFile:
             named = os.stat(lock_name, dir_fd=self._parent, follow_symlinks=False)
             if (named.st_dev, named.st_ino) != expected_identity:
                 raise OSError("rooted IO lock identity changed")
+        if created:
+            # Persist the lock before creating the empty first generation. A
+            # crash between these writes then leaves an orphan that readers
+            # refuse rather than treating lost history as fresh state.
+            self.sync_directory()
+            self.create_new(b"")
         # Closing this independent OFD releases the lock, never LOCK_UN.
 
 

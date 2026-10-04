@@ -54,6 +54,13 @@ _IMMUTABLE_ATTEMPT_FIELDS = (
 class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
     """Keep every CAS revision across immutable Product-owned generations."""
 
+    def _acquire_journal_lock(self, rooted: RootedFile) -> None:
+        rooted.acquire_lock(
+            exclusive=True,
+            suffix=".lock",
+            initialize_empty_target_if_new=True,
+        )
+
     def load(self) -> Mapping[str, object] | None:
         with self._bound_journal() as rooted:
             records, _history = self._load_segments(rooted)

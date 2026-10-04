@@ -238,6 +238,10 @@ def read_coding_worker_segmented_history(
                     else "coding_worker_segment_active_missing"
                 )
                 raise CodingWorkerHistorySegmentError(code) from None
+            if stem + ".jsonl.lock" in names:
+                raise CodingWorkerHistorySegmentError(
+                    "coding_worker_segment_initial_missing"
+                ) from None
             raw = b""
         except OSError as exc:
             code = (

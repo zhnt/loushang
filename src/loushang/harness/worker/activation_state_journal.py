@@ -210,7 +210,7 @@ class WorkerActivationStateJournal:
                 try:
                     with file_io.bind(self._path, durable=True) as rooted:
                         try:
-                            rooted.acquire_lock(exclusive=True, suffix=".lock")
+                            self._acquire_journal_lock(rooted)
                         except BlockingIOError as exc:
                             busy_error = exc
                         else:
@@ -233,6 +233,9 @@ class WorkerActivationStateJournal:
                 ) from busy_error
             # Rooted operations and descriptors are gone before retrying.
             time.sleep(_LOCK_RETRY_SECONDS)
+
+    def _acquire_journal_lock(self, rooted: RootedFile) -> None:
+        rooted.acquire_lock(exclusive=True, suffix=".lock")
 
     @contextmanager
     def _bound_journal_read_only(self) -> Iterator[RootedFile]:

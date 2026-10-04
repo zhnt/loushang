@@ -156,6 +156,33 @@ def test_activation_state_refuses_unpublished_generation(tmp_path: Path) -> None
     assert orphan.value.code == "worker_activation_state_corrupt"
 
 
+def test_activation_state_refuses_missing_initial_history_with_unsettled_attempt(
+    tmp_path: Path,
+) -> None:
+    journal = _journal(tmp_path)
+    initial = _initial_state(restart_budget=3)
+    assert journal.compare_and_swap(expected_revision=0, document=initial)
+    registered = _next_state(initial)
+    receipt = "a" * 64
+    attempt_id = "b" * 32
+    registered["attempts"] = {
+        _AttemptKey(receipt, attempt_id, 1).encoded: _registered_attempt(
+            receipt=receipt, attempt_id=attempt_id
+        )
+    }
+    assert journal.compare_and_swap(expected_revision=1, document=registered)
+    assert (journal.path.parent / "worker-activation-state.jsonl.lock").is_file()
+    journal.path.unlink()
+
+    reopened = CodingProductWorkerActivationStateJournal(journal.path)
+    with pytest.raises(WorkerActivationStateJournalError) as lost:
+        reopened.load()
+    assert lost.value.code == "worker_activation_state_corrupt"
+    with pytest.raises(WorkerActivationStateJournalError) as reset:
+        reopened.compare_and_swap(expected_revision=0, document=initial)
+    assert reset.value.code == "worker_activation_state_corrupt"
+
+
 def test_activation_state_cross_process_rollover_cas_has_one_winner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

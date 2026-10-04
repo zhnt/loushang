@@ -411,7 +411,11 @@ class CodingWorkerStartGateJournal:
             try:
                 with io.bind(self._path, durable=True) as rooted:
                     if create_lock:
-                        rooted.acquire_lock(exclusive=True, suffix=".lock")
+                        rooted.acquire_lock(
+                            exclusive=True,
+                            suffix=".lock",
+                            initialize_empty_target_if_new=True,
+                        )
                     else:
                         try:
                             rooted.stat()

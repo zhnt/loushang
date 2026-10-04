@@ -1429,9 +1429,11 @@ boundary remain open. Until those retention and platform reports exist, the
 explicit pilot remains bounded and general Worker routing stays closed.
 
 The first retention implementation uses Product-owned immutable journal
-segments rather than rewriting a live JSONL file in place. Each journal keeps
-its initial file as generation zero. Under the Product GC gate and that
-journal's exclusive lock, rotation verifies the complete current generation,
+segments rather than rewriting a live JSONL file in place. A first writer
+durably creates an empty generation-zero file with its new lock; a later
+missing generation-zero file with a retained lock is refused. Under the
+Product GC gate and that journal's exclusive lock, rotation verifies the
+complete current generation,
 then durably creates the empty successor file before publishing a manifest
 naming the sealed generation's exact digest and global final revision plus the
 next active generation. The old bytes remain at their original path. Readers
@@ -1445,6 +1447,10 @@ generation or a refused orphan; it cannot silently shorten history.
 The current bounded pilot does not authenticate the active file's last
 committed length or digest. History pruning, restore, and broader routing
 require that additional proof so a truncated active file cannot appear valid.
+Competing direct first openers outside the Product GC gate can observe the
+newly created lock before its empty file is published. Such an interruption
+leaves an explicit initialization debt for operator review, never an empty
+replacement for previously recorded history.
 
 Opt-in operation IDs, start-gate attempt IDs, and receipt issue sequences must
 remain globally unique

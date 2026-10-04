@@ -130,6 +130,7 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                                 exclusive=True,
                                 suffix=".lock",
                                 create=not lock_present,
+                                initialize_empty_target_if_new=not lock_present,
                             )
                         self._active_rooted = rooted
                         try:
