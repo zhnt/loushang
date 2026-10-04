@@ -30,6 +30,41 @@ jobs:
       - name: Create report directory
         run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
 
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+
+      - name: Run native Windows Worker candidate admission cases
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --tb=short
+            --junitxml=.artifacts/windows-shell-worker-candidate-native.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_candidate_requires_explicit_windows_product_flag
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_host_crash_reopens_and_retires_product_attempt
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
+          tests/coding/test_package_product_worker_windows_crash_cleanup_review.py
+          tests/coding/test_package_product_worker_windows_crash_native_settlement.py
+          tests/coding/test_package_product_worker_windows_crash_supervisor_settlement.py
+          tests/coding/test_package_product_worker_windows_crash_lease_repair.py
+          tests/coding/test_package_product_worker_windows_crash_stage_review.py
+          tests/coding/test_package_product_worker_windows_crash_stage_retirement.py
+          --maxfail=1
+          -q
+
+      - name: Reject empty, skipped, or failing Windows Worker candidate report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-shell-worker-candidate-native.xml
+
       - name: Run PLC9B native Windows quarantine tests
         env:
           LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
@@ -73,41 +108,6 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-shell-plc9b-native.xml
-
-      - name: Build current Loushang Wheel for Windows backend review
-        run: |
-          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
-          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
-          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
-          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
-
-      - name: Run native Windows Worker candidate admission cases
-        env:
-          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
-          PYTEST_ADDOPTS: >-
-            -o faulthandler_timeout=60
-            --tb=short
-            --junitxml=.artifacts/windows-shell-worker-candidate-native.xml
-        run: >-
-          uv run python scripts/dev/run_pytest.py
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_candidate_requires_explicit_windows_product_flag
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_host_crash_reopens_and_retires_product_attempt
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
-          tests/coding/test_package_product_worker_windows_crash_cleanup_review.py
-          tests/coding/test_package_product_worker_windows_crash_native_settlement.py
-          tests/coding/test_package_product_worker_windows_crash_supervisor_settlement.py
-          tests/coding/test_package_product_worker_windows_crash_lease_repair.py
-          tests/coding/test_package_product_worker_windows_crash_stage_review.py
-          tests/coding/test_package_product_worker_windows_crash_stage_retirement.py
-          --maxfail=1
-          -q
-
-      - name: Reject empty, skipped, or failing Windows Worker candidate report
-        run: >-
-          uv run python scripts/dev/verify_pytest_xml.py
-          .artifacts/windows-shell-worker-candidate-native.xml
 
       - name: Run native Windows Worker provisioning journal cases
         env:
