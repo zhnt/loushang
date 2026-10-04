@@ -969,7 +969,10 @@ def test_windows_arch_private_data_uses_product_selected_native_acl(
                         moved_root.stat().st_ino,
                     ) == pending_identity
                     before = tuple(root.iterdir())
-                    with pytest.raises(ValueError, match="Installation root changed"):
+                    with pytest.raises(
+                        ValueError,
+                        match="Installation root changed|private-data root receipt changed",
+                    ):
                         inspect_coding_windows_arch_installation_root(
                             lifecycle, arch_key, state_root=product_state_root
                         )
@@ -4105,6 +4108,14 @@ try:
     offline = inspect_coding_windows_product_worker_offline_recovery(
         owner.runtime_owner.product_owner
     )
+    assert any(item.attempt_id == "7" * 32 for item in recovery), {
+        "attempts": [item.attempt_id for item in attempts],
+        "recovery": [item.attempt_id for item in recovery],
+        "workerFiles": sorted(
+            item.name for item in owner.runtime_owner.product_owner.state_root.iterdir()
+            if item.name.startswith("worker-")
+        ),
+    }
     for incomplete in ("5" * 32, "7" * 32, "8" * 32):
         try:
             review_coding_windows_product_worker_crash_cleanup(

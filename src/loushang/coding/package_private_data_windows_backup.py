@@ -618,7 +618,7 @@ def _write_or_verify_archive_file(
             name,
             create_new=True,
             write=True,
-            security_descriptor=(None if inherited_file else acl.security_descriptor),
+            security_descriptor=acl.security_descriptor,
             read_control=True,
         )
     except FileExistsError:
