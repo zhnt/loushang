@@ -31,6 +31,9 @@ lmux = "loushang.coding.cli.lmux:main"
 loushang-plugin = "loushang.plugin.__main__:main"
 loushang-package-cutover = "loushang.coding.cli.package_cutover:main"
 loushang-package-gc = "loushang.coding.cli.package_gc:main"
+loushang-package-repair = "loushang.coding.cli.package_repair:main"
+loushang-plugin-private-data = "loushang.coding.cli.plugin_private_data:main"
+loushang-worker-native = "loushang.coding.cli.package_worker_native:main"
 
 [project.optional-dependencies]
 dev = [
@@ -98,6 +101,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "loushang" = ["py.typed"]
 "loushang.ai.model" = ["models.json"]
+"loushang.hosting" = ["native/*.c"]
 "loushang.coding._plugins.coding_lsp_default" = [
   "plugin.json",
   "declarations/*.json",

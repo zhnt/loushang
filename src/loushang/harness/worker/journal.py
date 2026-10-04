@@ -37,9 +37,11 @@ WorkerAttemptPhase = Literal[
     "stopped",
     "failed",
     "fenced",
+    "process_settled",
 ]
 
-_TERMINAL_PHASES = frozenset({"stopped", "failed", "fenced"})
+_TERMINAL_PHASES = frozenset({"stopped", "failed", "fenced", "process_settled"})
+_RETRY_READY_PHASES = frozenset({"stopped", "process_settled"})
 _TRANSITIONS: dict[str, frozenset[str]] = {
     "claimed": frozenset({"launching", "failed", "fenced"}),
     "launching": frozenset({"handshaking", "failed", "fenced"}),
@@ -47,8 +49,9 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     "healthy": frozenset({"draining", "failed", "fenced"}),
     "draining": frozenset({"stopped", "failed", "fenced"}),
     "stopped": frozenset(),
-    "failed": frozenset(),
-    "fenced": frozenset(),
+    "failed": frozenset({"process_settled"}),
+    "fenced": frozenset({"process_settled"}),
+    "process_settled": frozenset(),
 }
 
 
@@ -90,9 +93,15 @@ class WorkerAttemptRecordV1:
         _require_positive_integer(self.restart_ordinal, name="restart ordinal")
         if self.failure_code is not None:
             _require_identifier(self.failure_code, name="Worker failure code")
-        if self.phase in {"failed", "fenced"} and self.failure_code is None:
+        if (
+            self.phase in {"failed", "fenced", "process_settled"}
+            and self.failure_code is None
+        ):
             raise ValueError("Failed/fenced Worker attempts require a failure code")
-        if self.phase not in {"failed", "fenced"} and self.failure_code is not None:
+        if (
+            self.phase not in {"failed", "fenced", "process_settled"}
+            and self.failure_code is not None
+        ):
             raise ValueError("Healthy Worker phases cannot carry a failure code")
         if (
             type(self.record_version) is not int
@@ -103,6 +112,10 @@ class WorkerAttemptRecordV1:
     @property
     def terminal(self) -> bool:
         return self.phase in _TERMINAL_PHASES
+
+    @property
+    def process_settled(self) -> bool:
+        return self.phase in _RETRY_READY_PHASES
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -227,7 +240,7 @@ class WorkerSupervisorJournal:
                     code="worker_attempt_already_claimed",
                 )
             current = _latest_for_key(records, key)
-            if current is not None and not current.terminal:
+            if current is not None and not current.process_settled:
                 raise self._error(
                     "Prior Worker attempt is not durably settled",
                     code="worker_prior_attempt_unsettled",
@@ -238,10 +251,20 @@ class WorkerSupervisorJournal:
                     "Worker supervisor epoch is stale or non-contiguous",
                     code="worker_supervisor_epoch_stale",
                 )
+            last_clean_stop_revision = max(
+                (
+                    record.record_revision
+                    for record in records
+                    if record.supervisor_key == key and record.phase == "stopped"
+                ),
+                default=0,
+            )
             claimed = tuple(
                 record
                 for record in records
-                if record.supervisor_key == key and record.phase == "claimed"
+                if record.supervisor_key == key
+                and record.phase == "claimed"
+                and record.record_revision > last_clean_stop_revision
             )
             if len(claimed) >= max_attempts:
                 raise self._error(
@@ -293,6 +316,11 @@ class WorkerSupervisorJournal:
                     "Worker attempt compare-and-swap failed",
                     code="worker_attempt_cas_conflict",
                 )
+            if next_phase == "process_settled" and failure_code != current.failure_code:
+                raise self._error(
+                    "Worker process settlement changed the failure reason",
+                    code="worker_attempt_failure_changed",
+                )
             record = WorkerAttemptRecordV1(
                 supervisor_key=current.supervisor_key,
                 identity_fingerprint=current.identity_fingerprint,
@@ -311,6 +339,20 @@ class WorkerSupervisorJournal:
         with self._exclusive():
             return _latest_for_attempt(self._load_unlocked(), attempt_id)
 
+    def next_supervisor_epoch(self, identity: WorkerLaunchIdentityV1) -> int:
+        """Read the next contiguous epoch; claim still arbitrates concurrent callers."""
+
+        if not isinstance(identity, WorkerLaunchIdentityV1):
+            raise TypeError("Worker supervisor epoch requires a launch identity")
+        with self._exclusive():
+            current = _latest_for_key(self._load_unlocked(), _supervisor_key(identity))
+            if current is not None and not current.process_settled:
+                raise self._error(
+                    "Prior Worker attempt is not durably settled",
+                    code="worker_prior_attempt_unsettled",
+                )
+            return 1 if current is None else current.supervisor_epoch + 1
+
     def incomplete(self) -> tuple[WorkerAttemptRecordV1, ...]:
         with self._exclusive():
             current_by_key: dict[str, WorkerAttemptRecordV1] = {}
@@ -321,7 +363,7 @@ class WorkerSupervisorJournal:
                     (
                         record
                         for record in current_by_key.values()
-                        if not record.terminal
+                        if not record.process_settled
                     ),
                     key=lambda record: record.supervisor_key,
                 )
@@ -435,9 +477,14 @@ def _validate_history(records: tuple[WorkerAttemptRecordV1, ...]) -> None:
                         "Worker attempt history does not begin at epoch one"
                     )
             elif (
-                not prior_key_attempt.terminal
+                not prior_key_attempt.process_settled
                 or record.supervisor_epoch != prior_key_attempt.supervisor_epoch + 1
-                or record.restart_ordinal != prior_key_attempt.restart_ordinal + 1
+                or record.restart_ordinal
+                != (
+                    1
+                    if prior_key_attempt.phase == "stopped"
+                    else prior_key_attempt.restart_ordinal + 1
+                )
             ):
                 raise ValueError("Worker attempt history crosses an invalid epoch")
         elif (
@@ -447,6 +494,10 @@ def _validate_history(records: tuple[WorkerAttemptRecordV1, ...]) -> None:
             or record.restart_ordinal != previous.restart_ordinal
             or record.prior_attempt_revision != previous.record_revision
             or record.phase not in _TRANSITIONS[previous.phase]
+            or (
+                record.phase == "process_settled"
+                and record.failure_code != previous.failure_code
+            )
         ):
             raise ValueError("Worker attempt history transition is invalid")
         current[record.attempt_id] = record

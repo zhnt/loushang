@@ -20,17 +20,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingReceiptV1,
     PackageArtifactStagingRequestV1,
+    PackagePluginRootTargetV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
     PackageStoreGcResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreGcTombstoneV1,
     PackageStoreSettlementJournal,
     PackageStoreSettlementJournalError,
     PackageStoreSettlementRecordV1,
+    dependency_content_store_revision,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
@@ -101,6 +107,66 @@ class WindowsPackageDependencyMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
 
+    def read_validate_dependency_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.read_validate_receipt(receipt)
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return self._store.read_operation_settlements(operation_id)
+
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Apply a caller-authorized exact dependency Store deletion."""
+
+        return self._store.delete_settlement(settlement)
+
+
+class WindowsPackageDependencyReadOnlyStore:
+    """Store-verified dependency bytes for Product-owned execution proof."""
+
+    read_only = True
+
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
+    ) -> None:
+        self._store = _WindowsRoleStore(
+            root,
+            role="dependency",
+            store_identity=store_identity,
+            settlement_journal=settlement_journal,
+            transfer=None,
+            commit_probe=None,
+            receipt_probe=None,
+            read_only=True,
+        )
+
+    def read_dependency_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes
+        )
+
+    def read_dependency_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        return self._store.read_settlement_files(settlement, members)
+
 
 class WindowsPackagePluginRootMaterializationStore:
     """Designated-Plugin-root adapter over one configured Windows Store."""
@@ -110,6 +176,7 @@ class WindowsPackagePluginRootMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        package_store_id: str | None = None,
         settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
@@ -124,6 +191,9 @@ class WindowsPackagePluginRootMaterializationStore:
             commit_probe=commit_probe,
             receipt_probe=receipt_probe,
         )
+        if package_store_id is not None and not package_store_id:
+            raise ValueError("Package store identity is required")
+        self._package_store_id = package_store_id
 
     def open_root_sink(
         self,
@@ -145,12 +215,104 @@ class WindowsPackagePluginRootMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
 
+    def read_validate_root_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.read_validate_receipt(receipt)
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return self._store.read_operation_settlements(operation_id)
+
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read one verified root member through pinned Windows handles."""
+
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes
+        )
+
+    def read_root_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        """Read one verified member set under a single native owner lock."""
+
+        return self._store.read_settlement_files(settlement, members)
+
     def delete_settlement(
         self, settlement: PackageStoreSettlementRecordV1
     ) -> PackageStoreGcResultV1:
         """Delete only an exact root settlement through this Store owner."""
 
         return self._store.delete_settlement(settlement)
+
+    def authorize_adoption(
+        self,
+        *,
+        store_id: str,
+        current_root_identity: str,
+        target: PackagePluginRootTargetV1,
+    ) -> bool:
+        """Prove that adoption names this configured Windows root."""
+
+        if (
+            self._package_store_id is None
+            or store_id != self._package_store_id
+            or not isinstance(target, PackagePluginRootTargetV1)
+        ):
+            return False
+        return self._store.authorizes_root_identity(current_root_identity)
+
+
+class WindowsPackagePluginRootReadOnlyStore:
+    """Store-verified root reads for inert Windows Product projections."""
+
+    read_only = True
+
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
+    ) -> None:
+        self._store = _WindowsRoleStore(
+            root,
+            role="root",
+            store_identity=store_identity,
+            settlement_journal=settlement_journal,
+            transfer=None,
+            commit_probe=None,
+            receipt_probe=None,
+            read_only=True,
+        )
+
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes
+        )
+
+    def read_root_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        return self._store.read_settlement_files(settlement, members)
 
 
 class _WindowsRoleStore:
@@ -164,6 +326,7 @@ class _WindowsRoleStore:
         transfer: PackageVerifiedTreeTransferOwner | None,
         commit_probe: Callable[[], None] | None,
         receipt_probe: Callable[[], None] | None,
+        read_only: bool = False,
     ) -> None:
         if os.name != "nt" or not supports_windows_rooted_io():
             raise PackagePhysicalStagingError(
@@ -202,18 +365,27 @@ class _WindowsRoleStore:
         self._transfer = transfer or PackageVerifiedTreeTransferOwner()
         self._commit_probe = commit_probe
         self._receipt_probe = receipt_probe
+        self._read_only = read_only
         self._lock = threading.RLock()
-        provisioned = _PinnedWindowsRoot.open(self._root)
+        provisioned = _PinnedWindowsRoot.open(self._root, writable=not read_only)
         try:
             self._root_identities = provisioned.identities
         finally:
             provisioned.close()
         try:
-            self._settlement_journal.validate_store_root(
+            validate = (
+                self._settlement_journal.read_validate_store_root
+                if read_only
+                else self._settlement_journal.validate_store_root
+            )
+            validate(
                 store_role=self._role,
                 store_identity=self._store_identity,
                 root_identities=self._root_identities,
             )
+            if not read_only:
+                with self._settlement_journal.owner_lock():
+                    pass
         except PackageStoreSettlementJournalError:
             raise _root_untrusted() from None
 
@@ -222,6 +394,8 @@ class _WindowsRoleStore:
         request: PackageArtifactStagingRequestV1,
         candidate: VerifiedWheelCandidate,
     ) -> PackageArtifactStagingReceiptV1:
+        if self._read_only:
+            raise _root_untrusted()
         if not isinstance(candidate, VerifiedWheelCandidate):
             raise TypeError("Verified Wheel candidate is required")
         with self.open_sink(request, candidate.transfer_manifest) as sink:
@@ -231,10 +405,32 @@ class _WindowsRoleStore:
         self,
         receipt: PackageArtifactStagingReceiptV1,
     ) -> PackageArtifactStagingReceiptV1:
+        if self._read_only:
+            raise _root_untrusted()
+        return self._validate_receipt(receipt, read_only=False)
+
+    def read_validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        """Validate an exact settled tree without repairing owner journals."""
+
+        return self._validate_receipt(receipt, read_only=True)
+
+    def _validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+        *,
+        read_only: bool,
+    ) -> PackageArtifactStagingReceiptV1:
         if not isinstance(receipt, PackageArtifactStagingReceiptV1):
             raise TypeError("Package artifact staging receipt is required")
         self._lock.acquire()
-        durable_owner_lock = self._settlement_journal.owner_lock()
+        durable_owner_lock = (
+            self._settlement_journal.read_owner_lock()
+            if read_only
+            else self._settlement_journal.owner_lock()
+        )
         try:
             durable_owner_lock.__enter__()
         except Exception:
@@ -244,9 +440,12 @@ class _WindowsRoleStore:
             root = _PinnedWindowsRoot.open(
                 self._root,
                 expected_identities=self._root_identities,
+                writable=not self._read_only,
             )
             try:
-                return self._validate_receipt_at_root(root, receipt)
+                return self._validate_receipt_at_root(
+                    root, receipt, read_only=read_only
+                )
             finally:
                 root.close()
         except PackagePhysicalStagingError:
@@ -261,11 +460,195 @@ class _WindowsRoleStore:
             finally:
                 self._lock.release()
 
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        """Account for all Store settlements of one Package operation."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation identity is required")
+        self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.read_owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+        try:
+            root = _PinnedWindowsRoot.open(
+                self._root,
+                expected_identities=self._root_identities,
+                writable=not self._read_only,
+            )
+            try:
+                events = self._settlement_journal.read_events()
+                records = tuple(
+                    event
+                    for event in events
+                    if isinstance(event, PackageStoreSettlementRecordV1)
+                    and event.receipt.operation_id == operation_id
+                )
+                if any(
+                    record.store_role != self._role
+                    or record.store_identity != self._store_identity
+                    or tuple(item.to_native() for item in record.root_identities)
+                    != root.identities
+                    for record in records
+                ):
+                    raise _root_untrusted()
+                settled_refs = {
+                    record.receipt.stable_ref.ref_id for record in records
+                }
+                if any(
+                    isinstance(event, PackageStoreGcTombstoneV1)
+                    and event.stable_ref_id in settled_refs
+                    for event in events
+                ):
+                    raise _collision()
+                return records
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
+    def read_settlement_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        if not isinstance(logical_path, str):
+            raise TypeError("Package Store logical path is required")
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("Package Store read budget is invalid")
+        entry = next(
+            (
+                item
+                for item in settlement.manifest.entries
+                if item.logical_path == logical_path
+            ),
+            None,
+        )
+        if entry is None or entry.byte_count > max_bytes:
+            raise _collision()
+        try:
+            with self._lock, self._settlement_journal.read_owner_lock():
+                root = _PinnedWindowsRoot.open(
+                    self._root,
+                    expected_identities=self._root_identities,
+                    writable=not self._read_only,
+                )
+                try:
+                    events = self._settlement_journal.read_events()
+                    if (
+                        tuple(
+                            identity.to_native()
+                            for identity in settlement.root_identities
+                        )
+                        != root.identities
+                        or settlement not in events
+                        or any(
+                            isinstance(event, PackageStoreGcTombstoneV1)
+                            and event.stable_ref_id
+                            == settlement.receipt.stable_ref.ref_id
+                            for event in events
+                        )
+                    ):
+                        raise _collision()
+                    return _read_existing_tree_file(root, settlement, entry)
+                finally:
+                    root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+
+    def read_settlement_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        if (
+            not isinstance(members, tuple)
+            or not 1 <= len(members) <= 64
+            or any(
+                not isinstance(member, tuple)
+                or len(member) != 2
+                or not isinstance(member[0], str)
+                or type(member[1]) is not int
+                or member[1] < 0
+                for member in members
+            )
+        ):
+            raise ValueError("Package Store read set is invalid")
+        by_path = {entry.logical_path: entry for entry in settlement.manifest.entries}
+        if len({path for path, _ in members}) != len(members) or any(
+            path not in by_path or by_path[path].byte_count > budget
+            for path, budget in members
+        ):
+            raise _collision()
+        try:
+            with self._lock, self._settlement_journal.read_owner_lock():
+                root = _PinnedWindowsRoot.open(
+                    self._root,
+                    expected_identities=self._root_identities,
+                    writable=not self._read_only,
+                )
+                try:
+                    events = self._settlement_journal.read_events()
+                    if (
+                        tuple(
+                            identity.to_native()
+                            for identity in settlement.root_identities
+                        )
+                        != root.identities
+                        or settlement not in events
+                        or any(
+                            isinstance(event, PackageStoreGcTombstoneV1)
+                            and event.stable_ref_id
+                            == settlement.receipt.stable_ref.ref_id
+                            for event in events
+                        )
+                    ):
+                        raise _collision()
+                    return tuple(
+                        _read_existing_tree_file(root, settlement, by_path[path])
+                        for path, _ in members
+                    )
+                finally:
+                    root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+
     def delete_settlement(
         self, settlement: PackageStoreSettlementRecordV1
     ) -> PackageStoreGcResultV1:
         """Delete the exact native tree and permit an identity-checked retry."""
 
+        if self._read_only:
+            raise _root_untrusted()
         if (
             not isinstance(settlement, PackageStoreSettlementRecordV1)
             or settlement.store_role != self._role
@@ -386,10 +769,40 @@ class _WindowsRoleStore:
             finally:
                 self._lock.release()
 
+    def authorizes_root_identity(self, expected_identity: str) -> bool:
+        if self._role != "root" or not isinstance(expected_identity, str):
+            return False
+        self._lock.acquire()
+        try:
+            root = _PinnedWindowsRoot.open(
+                self._root, expected_identities=self._root_identities
+            )
+            try:
+                metadata = os.fstat(root.descriptor)
+                observed = sha256(
+                    canonical_json_bytes(
+                        {
+                            "device": metadata.st_dev,
+                            "fileType": "directory",
+                            "inode": metadata.st_ino,
+                            "identityVersion": 1,
+                        }
+                    )
+                ).hexdigest()
+                return observed == expected_identity
+            finally:
+                root.close()
+        except Exception:
+            return False
+        finally:
+            self._lock.release()
+
     def _validate_receipt_at_root(
         self,
         root: _PinnedWindowsRoot,
         receipt: PackageArtifactStagingReceiptV1,
+        *,
+        read_only: bool = False,
     ) -> PackageArtifactStagingReceiptV1:
         stable_ref = receipt.stable_ref
         if (
@@ -403,7 +816,12 @@ class _WindowsRoleStore:
             )
         ):
             raise _collision()
-        settlements = self._settlement_journal.settlements_for_receipt(
+        settlements_read = (
+            self._settlement_journal.read_settlements_for_receipt
+            if read_only
+            else self._settlement_journal.settlements_for_receipt
+        )
+        settlements = settlements_read(
             store_role=self._role,
             store_identity=self._store_identity,
             root_identities=root.identities,
@@ -417,7 +835,12 @@ class _WindowsRoleStore:
             authority.final_name,
             authority.manifest,
         )
-        if not self._settlement_journal.authorizes(
+        authorizes_read = (
+            self._settlement_journal.read_authorizes
+            if read_only
+            else self._settlement_journal.authorizes
+        )
+        if not authorizes_read(
             store_role=self._role,
             store_identity=self._store_identity,
             root_identities=root.identities,
@@ -437,6 +860,8 @@ class _WindowsRoleStore:
         request: PackageArtifactStagingRequestV1,
         manifest: PackageVerifiedTreeManifestV1,
     ) -> _WindowsVerifiedTreeSink:
+        if self._read_only:
+            raise _root_untrusted()
         _validate_role_request(self._role, request, manifest)
         self._lock.acquire()
         durable_owner_lock = self._settlement_journal.owner_lock()
@@ -486,12 +911,14 @@ class _PinnedWindowsRoot:
         components: tuple[str, ...],
         descriptors: list[int],
         identities: tuple[_Identity, ...],
+        writable: bool,
     ) -> None:
         self.path = path
         self.anchor = anchor
         self.components = components
         self._descriptors = descriptors
         self.identities = identities
+        self._writable = writable
         self._closed = False
 
     @classmethod
@@ -500,6 +927,7 @@ class _PinnedWindowsRoot:
         path: Path,
         *,
         expected_identities: tuple[_Identity, ...] | None = None,
+        writable: bool = True,
     ) -> _PinnedWindowsRoot:
         anchor = Path(path.anchor)
         components = tuple(path.parts[1:])
@@ -511,7 +939,7 @@ class _PinnedWindowsRoot:
                 current = _open_directory(
                     component,
                     dir_fd=current,
-                    writable=index == len(components) - 1,
+                    writable=writable and index == len(components) - 1,
                 )
                 descriptors.append(current)
             identities = tuple(_identity(os.fstat(fd)) for fd in descriptors)
@@ -524,6 +952,7 @@ class _PinnedWindowsRoot:
                 components=components,
                 descriptors=descriptors,
                 identities=identities,
+                writable=writable,
             )
             pinned.validate_visible()
             return pinned
@@ -559,7 +988,7 @@ class _PinnedWindowsRoot:
                 child = _open_directory(
                     component,
                     dir_fd=visible,
-                    writable=index == len(self.components) - 1,
+                    writable=self._writable and index == len(self.components) - 1,
                 )
                 os.close(visible)
                 visible = child
@@ -621,6 +1050,7 @@ class _WindowsVerifiedTreeSink:
         self._next_entry = 0
         self._active_file: _WindowsFileSink | _ReuseFileSink | None = None
         self._reuse = False
+        self._reuse_alias = False
         self._authorized = False
         self._renamed = False
         self._finished = False
@@ -651,7 +1081,7 @@ class _WindowsVerifiedTreeSink:
                         self._manifest,
                     )
                 )
-                if not self._settlement_journal.authorizes(
+                exact = self._settlement_journal.authorizes(
                     store_role=self._role,
                     store_identity=self._store_identity,
                     root_identities=self._root.identities,
@@ -662,12 +1092,29 @@ class _WindowsVerifiedTreeSink:
                     staging_name=self._staging_name,
                     manifest=self._manifest,
                     receipt=self._receipt,
-                ):
+                )
+                alias = (
+                    self._role == "dependency"
+                    and not exact
+                    and self._settlement_journal.authorizes_dependency_reuse(
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    )
+                )
+                if not exact and not alias:
                     raise PackagePhysicalStagingError(
                         "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
                     )
                 self._reuse = True
+                self._reuse_alias = alias
                 return
             self._staging_fd = _open_directory(
                 self._staging_name,
@@ -808,7 +1255,7 @@ class _WindowsVerifiedTreeSink:
                         self._manifest,
                     )
                 )
-                if not self._settlement_journal.authorizes(
+                exact = self._settlement_journal.authorizes(
                     store_role=self._role,
                     store_identity=self._store_identity,
                     root_identities=self._root.identities,
@@ -819,7 +1266,33 @@ class _WindowsVerifiedTreeSink:
                     staging_name=self._staging_name,
                     manifest=self._manifest,
                     receipt=self._receipt,
-                ):
+                )
+                if self._reuse_alias and not exact:
+                    if not self._settlement_journal.authorizes_dependency_reuse(
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    ):
+                        raise _collision()
+                    self._settlement_journal.authorize(
+                        store_role=self._role,
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    )
+                elif not exact:
                     raise PackagePhysicalStagingError(
                         "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
@@ -1167,7 +1640,11 @@ def _stable_ref(
 ) -> VerifiedArtifactRefV1 | PluginRevisionRefV1:
     values = {
         "store_identity": store_identity,
-        "store_revision": f"tree:{manifest.manifest_id}",
+        "store_revision": (
+            dependency_content_store_revision(manifest)
+            if role == "dependency"
+            else f"tree:{manifest.manifest_id}"
+        ),
         "distribution": manifest.distribution,
         "version": manifest.version,
         "artifact_digest": manifest.artifact_digest,
@@ -1232,6 +1709,94 @@ def _validate_existing_tree(
     except Exception:
         raise _root_untrusted() from None
     return tree_identity, observed_directories, observed_files
+
+
+def _read_existing_tree_file(
+    root: _PinnedWindowsRoot,
+    settlement: PackageStoreSettlementRecordV1,
+    entry: PackageVerifiedTreeEntryV1,
+) -> bytes:
+    directories = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.directory_identities
+    }
+    files = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.file_identities
+    }
+    tree_identity = settlement.tree_identity.to_native()
+    _validate_existing_tree(
+        root,
+        settlement.final_name,
+        settlement.manifest,
+        expected_tree_identity=tree_identity,
+        directory_identities=directories,
+        file_identities=files,
+    )
+    try:
+        tree_fd = _open_directory(
+            settlement.final_name, dir_fd=root.descriptor, writable=False
+        )
+        try:
+            if _identity(os.fstat(tree_fd)) != tree_identity:
+                raise OSError("Published Package tree identity changed")
+            parts = tuple(entry.logical_path.split("/"))
+            parent_fd = os.dup(tree_fd)
+            try:
+                for depth, part in enumerate(parts[:-1], start=1):
+                    child_fd = _open_directory(
+                        part, dir_fd=parent_fd, writable=False
+                    )
+                    os.close(parent_fd)
+                    parent_fd = child_fd
+                    if _identity(os.fstat(parent_fd)) != directories.get(parts[:depth]):
+                        raise OSError("Published Package directory identity changed")
+                expected_parent = (
+                    directories.get(parts[:-1]) if len(parts) > 1 else tree_identity
+                )
+                if _identity(os.fstat(parent_fd)) != expected_parent:
+                    raise OSError("Published Package directory identity changed")
+                file_fd = open_windows_regular_file_at(
+                    parent_fd, parts[-1], create_new=False, write=False
+                )
+                try:
+                    metadata = os.fstat(file_fd)
+                    if (
+                        not stat.S_ISREG(metadata.st_mode)
+                        or metadata.st_nlink != 1
+                        or _is_reparse(metadata)
+                        or _identity(metadata) != files.get(parts)
+                        or metadata.st_size != entry.byte_count
+                    ):
+                        raise OSError("Published Package file identity changed")
+                    data = bytearray()
+                    while chunk := os.read(
+                        file_fd, min(64 * 1024, entry.byte_count + 1 - len(data))
+                    ):
+                        data.extend(chunk)
+                        if len(data) > entry.byte_count:
+                            raise OSError("Published Package file exceeds verified size")
+                    if (
+                        _identity(os.fstat(file_fd)) != files[parts]
+                        or len(data) != entry.byte_count
+                        or sha256(data).hexdigest() != entry.content_digest
+                    ):
+                        raise OSError("Published Package file content changed")
+                finally:
+                    os.close(file_fd)
+            finally:
+                os.close(parent_fd)
+        finally:
+            os.close(tree_fd)
+        root.validate_visible()
+        if (
+            _identity(windows_stat_at(root.descriptor, settlement.final_name))
+            != tree_identity
+        ):
+            raise OSError("Published Package tree visibility changed")
+        return bytes(data)
+    except Exception:
+        raise _collision() from None
 
 
 def _validate_owned_tree(
@@ -1465,4 +2030,5 @@ __all__ = [
     "PackagePhysicalStagingError",
     "WindowsPackageDependencyMaterializationStore",
     "WindowsPackagePluginRootMaterializationStore",
+    "WindowsPackagePluginRootReadOnlyStore",
 ]

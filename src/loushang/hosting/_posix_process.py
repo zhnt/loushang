@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 from collections.abc import Callable
+from contextlib import suppress
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ._launch_preparation import _ManagedSpawnEffect
@@ -18,6 +19,8 @@ from .contracts import (
     ProcessStdoutMode,
 )
 from .errors import HostingError, HostingFailureCategory
+from .service import LinuxServiceIdentityV1, LinuxServiceObserverV1
+from .service_group import LinuxServiceGroupObservationV1
 
 if TYPE_CHECKING:
     from ._posix_launch_preparation import _PosixStaticLaunchMaterial
@@ -52,13 +55,58 @@ class _PosixChildProcess(Protocol):
     def stderr(self) -> asyncio.StreamReader | None: ...
 
 
+class _GatedPosixChild:
+    """Synchronous Popen child retained until its native identity is captured."""
+
+    stdin = stdout = None
+
+    def __init__(self, process: subprocess.Popen[bytes]) -> None:
+        self._process = process
+        self.stderr: asyncio.StreamReader | None = None
+        self._stderr_transport: asyncio.ReadTransport | None = None
+
+    @property
+    def pid(self) -> int:
+        return self._process.pid
+
+    @property
+    def returncode(self) -> int | None:
+        return self._process.poll()
+
+    async def attach_stderr(self) -> None:
+        pipe = self._process.stderr
+        if pipe is None:
+            return
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+            lambda: protocol, pipe
+        )
+        self.stderr = reader
+        self._stderr_transport = transport
+
+    def close_handles(self) -> None:
+        if self._stderr_transport is not None:
+            self._stderr_transport.close()
+        if self._process.stderr is not None:
+            self._process.stderr.close()
+
+
 class _PosixProcess:
-    def __init__(self, process: _PosixChildProcess) -> None:
+    def __init__(
+        self,
+        process: _PosixChildProcess,
+        *,
+        native_identity: LinuxServiceIdentityV1 | None = None,
+        start_gate_identity: tuple[int, int] | None = None,
+    ) -> None:
         process_group_id = process.pid
         if type(process_group_id) is not int or process_group_id <= 0:
             raise RuntimeError("POSIX process has no valid process-group identity")
         self._process = process
         self._process_group_id = process_group_id
+        self._native_identity = native_identity
+        self._start_gate_identity = start_gate_identity
         self._stdin_closed = False
         self._handles_closed = False
         self._group_settled = False
@@ -67,6 +115,19 @@ class _PosixProcess:
     @property
     def return_code(self) -> int | None:
         return self._process.returncode
+
+    @property
+    def native_identity(self) -> LinuxServiceIdentityV1 | None:
+        return self._native_identity
+
+    @property
+    def start_gate_identity(self) -> tuple[int, int] | None:
+        return self._start_gate_identity
+
+    def _attach_native_identity(self, identity: LinuxServiceIdentityV1) -> None:
+        if self._native_identity is not None or type(identity) is not LinuxServiceIdentityV1:
+            raise RuntimeError("POSIX native process identity is already attached")
+        self._native_identity = identity
 
     async def read_stdout(self, max_bytes: int) -> bytes:
         reader = self._process.stdout
@@ -169,6 +230,9 @@ class _PosixProcess:
             close = getattr(transport, "close", None)
             if callable(close):
                 close()
+            native_close = getattr(self._process, "close_handles", None)
+            if callable(native_close):
+                native_close()
 
 
 class _PosixProcessBackend:
@@ -341,6 +405,7 @@ class _PosixProcessBackend:
             executable_descriptor,
             cwd_descriptor,
             launcher_descriptor,
+            start_gate_descriptor,
         ) = material._claim_descriptors()
         preparation_descriptors = tuple(
             descriptor
@@ -348,6 +413,7 @@ class _PosixProcessBackend:
                 executable_descriptor,
                 cwd_descriptor,
                 launcher_descriptor,
+                start_gate_descriptor,
             )
             if descriptor is not None
         )
@@ -375,6 +441,7 @@ class _PosixProcessBackend:
                 executable_descriptor=executable_descriptor,
                 cwd_descriptor=cwd_descriptor,
                 launcher_descriptor=launcher_descriptor,
+                start_gate_descriptor=start_gate_descriptor,
             )
         )
         spawn_descriptor = (
@@ -384,18 +451,134 @@ class _PosixProcessBackend:
         )
         executable = f"/proc/self/fd/{spawn_descriptor}"
         effect.begin_effect()
-        process = await self._spawn_once(
-            request,
-            endpoint_descriptors,
-            argv=argv,
-            executable=executable,
-            cwd=f"/proc/self/fd/{cwd_descriptor}",
-            pass_fds=inherited_descriptors,
-        )
-        on_spawn(process)
+        if start_gate_descriptor is None:
+            process = await self._spawn_once(
+                request,
+                endpoint_descriptors,
+                argv=argv,
+                executable=executable,
+                cwd=f"/proc/self/fd/{cwd_descriptor}",
+                pass_fds=inherited_descriptors,
+            )
+            on_spawn(process)
+        else:
+            process, child = self._spawn_gated_once(
+                request,
+                endpoint_descriptors,
+                argv=argv,
+                executable=executable,
+                cwd=f"/proc/self/fd/{cwd_descriptor}",
+                pass_fds=inherited_descriptors,
+                start_gate_identity=material.start_gate_identity,
+            )
+            observer: LinuxServiceObserverV1 | None = None
+            try:
+                observer = LinuxServiceObserverV1.capture(child.pid)
+                LinuxServiceGroupObservationV1(observer).admit()
+            except BaseException as primary:
+                if observer is not None:
+                    try:
+                        observer.close()
+                    except BaseException as cleanup:
+                        on_spawn(process)
+                        primary.add_note(
+                            f"POSIX gated observer cleanup also failed: {cleanup}"
+                        )
+                        raise primary from cleanup
+                try:
+                    self._settle_gated_unattached(child._process)
+                except BaseException as cleanup:
+                    on_spawn(process)
+                    primary.add_note(
+                        f"POSIX gated capture cleanup also failed: {cleanup}"
+                    )
+                    raise primary from cleanup
+                raise effect.settled_without_process(primary)
+            try:
+                identity = observer.identity
+                observer.close()
+            except BaseException:
+                on_spawn(process)
+                raise
+            process._attach_native_identity(identity)
+            try:
+                on_spawn(process)
+            except BaseException as primary:
+                try:
+                    await self._reclaim_failed_attachment(process)
+                except BaseException as cleanup:
+                    primary.add_note(
+                        f"POSIX gated attachment cleanup also failed: {cleanup}"
+                    )
+                    raise primary from cleanup
+                raise
+            await child.attach_stderr()
         inheritance.mark_transferred()
         material._mark_transferred()
         return process
+
+    def _spawn_gated_once(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_descriptors: tuple[int, int],
+        *,
+        argv: tuple[str, ...],
+        executable: str,
+        cwd: str,
+        pass_fds: tuple[int, ...],
+        start_gate_identity: tuple[int, int] | None,
+    ) -> tuple[_PosixProcess, _GatedPosixChild]:
+        # Popen has no asynchronous child watcher. Capture the direct child
+        # before this owner calls poll(), so a reaped PID cannot be reused.
+        raw = subprocess.Popen(
+            argv,
+            executable=executable,
+            cwd=cwd,
+            env=dict(request.effective_environment),
+            start_new_session=True,
+            close_fds=True,
+            pass_fds=pass_fds,
+            stdin=endpoint_descriptors[0],
+            stdout=endpoint_descriptors[1],
+            stderr=(
+                subprocess.PIPE
+                if request.streams.stderr
+                in {ProcessStderrMode.PIPE, ProcessStderrMode.CAPTURE_TAIL}
+                else subprocess.DEVNULL
+            ),
+            bufsize=0,
+        )
+        try:
+            child = _GatedPosixChild(raw)
+            if start_gate_identity is None:
+                raise RuntimeError("POSIX gated launch has no captured pipe identity")
+            return _PosixProcess(
+                child, start_gate_identity=start_gate_identity
+            ), child
+        except BaseException:
+            raw.kill()
+            raw.wait()
+            if raw.stderr is not None:
+                raw.stderr.close()
+            raise
+
+    def _settle_gated_unattached(self, raw: subprocess.Popen[bytes]) -> None:
+        # No asyncio child watcher owns this Popen. The v2 launch remains
+        # blocked by the caller-held gate while this bounded cleanup runs.
+        with suppress(ProcessLookupError):
+            _kill_process_group(raw.pid, _SIGKILL)
+        raw.wait(timeout=_FAILED_ATTACHMENT_SETTLEMENT_SECONDS)
+        try:
+            _kill_process_group(raw.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            raise HostingError(
+                HostingFailureCategory.CLEANUP_FAILED,
+                "POSIX gated process group did not settle",
+            )
+        if raw.stderr is not None:
+            raw.stderr.close()
 
     def tree_exited(self, process: _ProcessTransport) -> bool:
         return not _require_posix_process(process).group_exists()

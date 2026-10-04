@@ -183,3 +183,36 @@ def test_evidence_journal_rejects_duplicate_keys_without_secret_echo(
         journal.records()
     assert corrupt.value.code == "package_artifact_evidence_journal_corrupt"
     assert "recordVersion" not in str(corrupt.value)
+
+
+def test_attempt_evidence_read_is_strict_and_does_not_create_state(
+    tmp_path: Path,
+) -> None:
+    journal = PackageArtifactEvidenceJournal(tmp_path / "artifact-evidence.jsonl")
+    lock_path = journal.path.with_name(f"{journal.path.name}.lock")
+    assert (
+        journal.read_attempt_evidence(
+            operation_id="operation-evidence", attempt_epoch=1
+        )
+        == ()
+    )
+    assert not journal.path.exists()
+    assert not lock_path.exists()
+
+    source = journal.append(request_fingerprint="9" * 64, evidence=_source())
+    assert journal.read_attempt_evidence(
+        operation_id="operation-evidence", attempt_epoch=1
+    ) == (source,)
+    assert (
+        journal.read_attempt_evidence(operation_id="other-operation", attempt_epoch=1)
+        == ()
+    )
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    before = journal.path.read_bytes()
+    with pytest.raises(PackageArtifactEvidenceJournalError) as corrupt:
+        journal.read_attempt_evidence(
+            operation_id="operation-evidence", attempt_epoch=1
+        )
+    assert corrupt.value.code == "package_artifact_evidence_journal_corrupt"
+    assert journal.path.read_bytes() == before

@@ -7,9 +7,10 @@ explicitly bind the same journal to desired, Instance, and Package writers.
 from __future__ import annotations
 
 import json
+import stat
 import threading
 import weakref
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -36,6 +37,7 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 
 PLUGIN_PACKAGE_GC_RESERVATION_EVENT_VERSION = 1
 GcReservationEventKind = Literal["reserved", "cancelled"]
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 class PluginPackageGcReservationError(RuntimeError):
@@ -53,6 +55,7 @@ class _ReservationCodecError(JournalCodecError):
 class _GateLockState:
     thread_lock: threading.RLock
     depth: int = 0
+    read_only: bool = False
 
 
 _GATE_STATES_LOCK = threading.Lock()
@@ -275,9 +278,20 @@ class PluginPackageGcReservationJournal:
     """One explicit gate shared by every writer in an opted-in owner graph."""
 
     def __init__(
-        self, path: str | Path, *, load_policy: JournalLoadPolicy | None = None
+        self,
+        path: str | Path,
+        *,
+        load_policy: JournalLoadPolicy | None = None,
+        parent_identity: tuple[int, int] | None = None,
     ) -> None:
+        if parent_identity is not None and (
+            type(parent_identity) is not tuple
+            or len(parent_identity) != 2
+            or any(type(item) is not int or item < 0 for item in parent_identity)
+        ):
+            raise ValueError("Plugin Package GC parent identity is invalid")
         self._path = Path(path).resolve()
+        self._parent_identity = parent_identity
         self._lock_state = _gate_lock_state(self._path)
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
@@ -287,13 +301,26 @@ class PluginPackageGcReservationJournal:
         return self._path
 
     @contextmanager
-    def guard(self) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+    def guard(
+        self, *, before_load: Callable[[], None] | None = None
+    ) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+        self._assert_parent_current()
         state = self._lock_state
         with state.thread_lock:
+            self._assert_parent_current()
             if state.depth:
+                if state.read_only and before_load is not None:
+                    raise self._error(
+                        "GC read guard cannot run a writer preflight",
+                        "plugin_package_gc_read_guard_nested",
+                    )
                 state.depth += 1
                 try:
+                    if before_load is not None:
+                        before_load()
+                    self._assert_parent_current()
                     yield self._active_packages_unlocked()
+                    self._assert_parent_current()
                 finally:
                     state.depth -= 1
                 return
@@ -301,12 +328,62 @@ class PluginPackageGcReservationJournal:
                 self._path,
                 "exclusive",
                 lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                create=before_load is None,
             ):
                 state.depth = 1
                 try:
+                    if before_load is not None:
+                        before_load()
+                    self._assert_parent_current()
                     yield self._active_packages_unlocked()
+                    self._assert_parent_current()
                 finally:
                     state.depth = 0
+
+    @contextmanager
+    def read_guard(self) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+        """Hold an existing GC gate without creating or repairing owner state."""
+
+        self._assert_parent_current()
+        state = self._lock_state
+        with state.thread_lock:
+            self._assert_parent_current()
+            if state.depth:
+                raise self._error(
+                    "GC read guard cannot nest in an active writer",
+                    "plugin_package_gc_read_guard_nested",
+                )
+            with journal_file_lock(
+                self._path,
+                "shared",
+                lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                create=False,
+            ):
+                state.depth = 1
+                state.read_only = True
+                try:
+                    self._assert_parent_current()
+                    yield self._active_packages_unlocked(
+                        load_policy=_READ_ONLY_LOAD_POLICY
+                    )
+                    self._assert_parent_current()
+                finally:
+                    state.read_only = False
+                    state.depth = 0
+
+    def _assert_parent_current(self) -> None:
+        expected = self._parent_identity
+        if expected is None:
+            return
+        try:
+            metadata = self._path.parent.lstat()
+        except OSError as error:
+            raise ValueError("Plugin Package GC parent directory changed") from error
+        if not stat.S_ISDIR(metadata.st_mode) or (
+            metadata.st_dev,
+            metadata.st_ino,
+        ) != expected:
+            raise ValueError("Plugin Package GC parent directory changed")
 
     def snapshot(self) -> PluginPackageGcReservationSnapshotV1:
         with self.guard():
@@ -476,8 +553,10 @@ class PluginPackageGcReservationJournal:
             _, _, started = self._replay_unlocked()
             return started.get(reservation_id)
 
-    def _active_packages_unlocked(self) -> frozenset[PluginPackageRevisionRefV1]:
-        _, active, _ = self._replay_unlocked()
+    def _active_packages_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> frozenset[PluginPackageRevisionRefV1]:
+        _, active, _ = self._replay_unlocked(load_policy=load_policy)
         return frozenset(
             item.candidate.package_revision
             for item in active.values()
@@ -486,6 +565,8 @@ class PluginPackageGcReservationJournal:
 
     def _replay_unlocked(
         self,
+        *,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> tuple[
         tuple[GcJournalEvent, ...],
         dict[str, PluginPackageGcReservationEventV1],
@@ -499,7 +580,14 @@ class PluginPackageGcReservationJournal:
                 record_codec=_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=(
+                    load_policy
+                    or (
+                        _READ_ONLY_LOAD_POLICY
+                        if self._lock_state.read_only
+                        else self._load_policy
+                    )
+                ),
             )
             events = loaded.records
         except JournalFileError as exc:
@@ -556,6 +644,11 @@ class PluginPackageGcReservationJournal:
         return events, active, started
 
     def _append_unlocked(self, event: GcJournalEvent) -> None:
+        if self._lock_state.read_only:
+            raise self._error(
+                "GC read guard cannot append",
+                "plugin_package_gc_read_guard_nested",
+            )
         try:
             append_jsonl_record(
                 self._path,

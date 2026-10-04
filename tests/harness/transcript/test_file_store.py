@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -77,6 +81,31 @@ def test_file_layout_allows_product_filename_selection(tmp_path: Path) -> None:
     key = layout.key("conversation-2")
 
     assert layout.create_path(key) == tmp_path / "conversation-2.transcript.jsonl"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory modes")
+def test_file_layout_creates_private_nested_root_with_permissive_umask(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "sessions" / "project-a"
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os, sys; from pathlib import Path; "
+                "from loushang.harness.transcript.jsonl_file import "
+                "AgentTranscriptFileLayout; "
+                "os.umask(0o002); "
+                "layout = AgentTranscriptFileLayout(Path(sys.argv[1])); "
+                "layout.create_path(layout.key('conversation-1'))"
+            ),
+            str(root),
+        ],
+        check=True,
+    )
+    assert stat.S_IMODE(root.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
 
 
 def test_file_layout_retains_deleted_identity_across_store_instances(

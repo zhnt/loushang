@@ -1391,8 +1391,10 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 
     registry = ToolRegistry()
     registry.register_tool(direct_tool(show_session_cwd))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(workspace), persist=False)
     )
     model = Model(
         id="faux-model",
@@ -1417,7 +1419,7 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 
     assert session.get_active_tool_names() == ["show_session_cwd"]
     assert [tool.name for tool in session.agent.tools] == ["show_session_cwd"]
-    assert result.content[0].text == "/tmp/project"
+    assert result.content[0].text == str(workspace)
 
 
 def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:

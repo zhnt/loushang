@@ -95,6 +95,7 @@ _OWNER_SPECS: tuple[tuple[str, OwnerContributionKind, str], ...] = (
     ("commands.session", "command_pack", "harness.session.standard"),
     ("resources.prompt", "resource_item", "loushang.resource.prompt"),
     ("resources.skill", "resource_item", "loushang.resource.skill"),
+    ("resources.theme", "resource_item", "loushang.resource.theme"),
     ("tools.workspace", "tool_pack", "harness.workspace.core"),
 )
 
@@ -994,6 +995,7 @@ def _owner_bindings(
     include_prompt: bool,
     include_skill: bool,
     include_command: bool,
+    include_theme: bool = False,
 ) -> tuple[ProductContributionOwnerBinding, ...]:
     selected_specs = tuple(
         spec
@@ -1001,6 +1003,7 @@ def _owner_bindings(
         if (include_tools or spec[0] != "tools.workspace")
         and (include_prompt or spec[0] != "resources.prompt")
         and (include_skill or spec[0] != "resources.skill")
+        and (include_theme or spec[0] != "resources.theme")
         and (include_command or spec[0] != "commands.session")
     )
     return tuple(

@@ -36,7 +36,7 @@ from .contracts import (
     ProcessStdinMode,
     ProcessStdoutMode,
 )
-from .errors import HostingError, HostingFailureCategory
+from .errors import HostingError, HostingFailureCategory, HostingStartSettledError
 
 _T = TypeVar("_T")
 _MAX_MANAGED_LAUNCH_SLOTS = 64
@@ -142,9 +142,7 @@ class _SessionReservation:
             owned for owned in self.launch_captures if owned is not material
         ]
 
-    def attach_pending_preparation(
-        self, preparation: LaunchPreparationLease
-    ) -> None:
+    def attach_pending_preparation(self, preparation: LaunchPreparationLease) -> None:
         if (
             self.pending_preparation is not None
             and self.pending_preparation is not preparation
@@ -161,9 +159,7 @@ class _SessionReservation:
             raise RuntimeError("child-session preparation owner is inconsistent")
         self.pending_preparation = replacement
 
-    def release_pending_preparation(
-        self, preparation: LaunchPreparationLease
-    ) -> None:
+    def release_pending_preparation(self, preparation: LaunchPreparationLease) -> None:
         if self.pending_preparation is not preparation:
             raise RuntimeError("child-session preparation owner is inconsistent")
         self.pending_preparation = None
@@ -191,9 +187,7 @@ class _SessionPreparationPort(LaunchPreparationPort):
         self._capture_backend = capture_backend
         self._max_capture_slots = max_capture_slots
 
-    async def prepare(
-        self, request: ProcessLaunchRequest
-    ) -> LaunchPreparationLease:
+    async def prepare(self, request: ProcessLaunchRequest) -> LaunchPreparationLease:
         capture: _ReservationLaunchCapture | None = None
         managed_result: _ManagedLaunchPreparationResult | None = None
         if self._capture_backend is not None and isinstance(
@@ -371,9 +365,7 @@ class _ChildSessionHost(ChildSessionHostingPort):
         self._observation_sink = observation_sink
         self._launch_capture_backend = launch_capture_backend
         self._max_capture_slots = max_capture_slots
-        self._backend_id = (
-            f"{process_host._backend_id}+{endpoint_host._backend_id}"
-        )
+        self._backend_id = f"{process_host._backend_id}+{endpoint_host._backend_id}"
         self._lock = asyncio.Lock()
         self._state = "open"
         self._next_id = 1
@@ -490,6 +482,10 @@ class _ChildSessionHost(ChildSessionHostingPort):
                     raise primary from cleanup_error
                 primary.add_note(f"child-session rollback also failed: {cleanup_error}")
                 raise primary from cleanup_error
+            if isinstance(primary, HostingError):
+                raise HostingStartSettledError(
+                    primary.category, str(primary)
+                ) from primary
             if primary is caught:
                 raise
             raise primary from caught
@@ -508,8 +504,7 @@ class _ChildSessionHost(ChildSessionHostingPort):
             task = self._close_task
             if task is None:
                 if any(
-                    reservation.owner is caller
-                    and not reservation.settled.is_set()
+                    reservation.owner is caller and not reservation.settled.is_set()
                     for reservation in self._reservations.values()
                 ):
                     raise RuntimeError(
@@ -612,9 +607,7 @@ class _ChildSessionHost(ChildSessionHostingPort):
         )
         failures: list[BaseException] = list(retained_debts)
         failures.extend(
-            result
-            for result in local_debt_results
-            if isinstance(result, BaseException)
+            result for result in local_debt_results if isinstance(result, BaseException)
         )
         failures.extend(
             result for result in results if isinstance(result, BaseException)

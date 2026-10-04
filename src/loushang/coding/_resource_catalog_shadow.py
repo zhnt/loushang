@@ -115,6 +115,15 @@ CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY = CodingResourceCatalogSourcePoli
     include_package_resources=True,
     include_embedded_resources=True,
 )
+CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY = (
+    CodingResourceCatalogSourcePolicy(
+        policy_id="coding.product.base-disabled",
+        product_policy_revision=_CODING_RESOURCE_CATALOG_POLICY_REVISION,
+        include_native_resources=True,
+        include_package_resources=False,
+        include_embedded_resources=True,
+    )
+)
 CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY = (
     CodingResourceCatalogSourcePolicy(
         policy_id="coding.agent.read-only-v1",
@@ -128,6 +137,7 @@ _CODING_RESOURCE_CATALOG_SOURCE_POLICIES = {
     item.policy_id: item
     for item in (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY,
         CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     )
 }
@@ -1123,6 +1133,7 @@ prepare_coding_initial_resource_catalog_shadow_adapter = (
 __all__ = [
     "CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY",
     "CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY",
+    "CODING_PRODUCT_BASE_DISABLED_RESOURCE_CATALOG_SOURCE_POLICY",
     "CodingResourceCatalogSourcePolicy",
     "CodingResourceCatalogAdmissionError",
     "InitialResourceCatalogProductAdapter",

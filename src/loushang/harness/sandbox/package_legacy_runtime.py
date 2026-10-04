@@ -65,11 +65,13 @@ if sys.platform.startswith("linux"):
 else:  # pragma: no cover - collected on non-Linux hosts
     _fcntl = None  # type: ignore[assignment]
 
-PACKAGE_LINUX_LEGACY_RUNTIME_MARKER_VERSION = 1
+PACKAGE_LINUX_LEGACY_RUNTIME_MARKER_VERSION = 2
 DEFAULT_PACKAGE_LINUX_LEGACY_RUNTIME_STARTUP_TIMEOUT_SECONDS = 5.0
 DEFAULT_PACKAGE_LINUX_LEGACY_RUNTIME_TERMINATION_GRACE_SECONDS = 1.0
 
 _ACTIVE_MARKER_NAME = "active-runtime.json"
+_SETTLING_MARKER_NAME = "settling-runtime.json"
+_SETTLED_RECEIPT_NAME = "settled-runtime.json"
 _LOCK_NAME = ".legacy-runtime.lock"
 _MAX_MARKER_BYTES = 128 * 1024
 _MAX_COMMAND_ARGUMENTS = 256
@@ -79,6 +81,7 @@ _MAX_ENVIRONMENT_BYTES = 128 * 1024
 _READY_FD_ENV = "LOUSHANG_LEGACY_RUNTIME_READY_FD"
 _READY_TOKEN_ENV = "LOUSHANG_LEGACY_RUNTIME_READY_TOKEN"
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _REQUIRED_CAPABILITIES = frozenset(
     {
         "filesystem_roots",
@@ -128,6 +131,7 @@ class _ActivationMarker:
     supervisor: _ProcessIdentity
     sandbox: _ProcessIdentity
     boot_id_digest: str
+    pid_namespace_digest: str
     current_b_root_identity: str
     restore_namespace_id: str
     sandbox_profile_digest: str
@@ -136,6 +140,7 @@ class _ActivationMarker:
     def __post_init__(self) -> None:
         for value, name in (
             (self.boot_id_digest, "boot identity digest"),
+            (self.pid_namespace_digest, "PID namespace identity digest"),
             (self.current_b_root_identity, "current B root identity"),
             (self.restore_namespace_id, "restore namespace identity"),
             (self.sandbox_profile_digest, "sandbox profile digest"),
@@ -150,6 +155,7 @@ class _ActivationMarker:
             supervisor=self.supervisor,
             sandbox=self.sandbox,
             boot_id_digest=self.boot_id_digest,
+            pid_namespace_digest=self.pid_namespace_digest,
         )
         if self.receipt.runtime_instance_id != expected_instance or (
             self.receipt.runtime_lease_id
@@ -162,6 +168,7 @@ class _ActivationMarker:
             "bootIdDigest": self.boot_id_digest,
             "currentBRootIdentity": self.current_b_root_identity,
             "markerVersion": self.marker_version,
+            "pidNamespaceDigest": self.pid_namespace_digest,
             "receipt": self.receipt.to_dict(),
             "restoreNamespaceId": self.restore_namespace_id,
             "sandboxPid": self.sandbox.pid,
@@ -179,6 +186,7 @@ class _ActivationMarker:
                 "bootIdDigest",
                 "currentBRootIdentity",
                 "markerVersion",
+                "pidNamespaceDigest",
                 "receipt",
                 "restoreNamespaceId",
                 "sandboxPid",
@@ -202,10 +210,97 @@ class _ActivationMarker:
                 start_time=_strict_positive_int(document["sandboxStartTime"]),
             ),
             boot_id_digest=_strict_string(document["bootIdDigest"]),
+            pid_namespace_digest=_strict_string(document["pidNamespaceDigest"]),
             current_b_root_identity=_strict_string(document["currentBRootIdentity"]),
             restore_namespace_id=_strict_string(document["restoreNamespaceId"]),
             sandbox_profile_digest=_strict_string(document["sandboxProfileDigest"]),
             marker_version=_strict_positive_int(document["markerVersion"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLinuxLegacyRuntimeSettlementReceiptV1:
+    """Durable proof that one exact native activation was settled."""
+
+    activation_receipt_id: str
+    runtime_instance_id: str
+    store_id: str
+    intent_id: str
+    settlement_id: str
+    receipt_version: int = 1
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.activation_receipt_id,
+            self.runtime_instance_id,
+            self.intent_id,
+            self.settlement_id,
+        ):
+            if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+                raise ValueError("Legacy runtime settlement identity is invalid")
+        if not isinstance(self.store_id, str) or not _SAFE_ID.fullmatch(self.store_id):
+            raise ValueError("Legacy runtime settlement store is invalid")
+        if (
+            type(self.receipt_version) is not int
+            or self.receipt_version != 1
+            or self.settlement_id
+            != sha256(canonical_json_bytes(self._identity())).hexdigest()
+        ):
+            raise ValueError("Legacy runtime settlement receipt changed")
+
+    @classmethod
+    def create(
+        cls, marker: _ActivationMarker
+    ) -> PackageLinuxLegacyRuntimeSettlementReceiptV1:
+        intent_id = sha256(canonical_json_bytes(marker.to_dict())).hexdigest()
+        identity = {
+            "activationReceiptId": marker.receipt.activation_receipt_id,
+            "intentId": intent_id,
+            "receiptVersion": 1,
+            "runtimeInstanceId": marker.receipt.runtime_instance_id,
+            "storeId": marker.receipt.store_id,
+        }
+        return cls(
+            activation_receipt_id=marker.receipt.activation_receipt_id,
+            runtime_instance_id=marker.receipt.runtime_instance_id,
+            store_id=marker.receipt.store_id,
+            intent_id=intent_id,
+            settlement_id=sha256(canonical_json_bytes(identity)).hexdigest(),
+        )
+
+    def _identity(self) -> dict[str, object]:
+        return {
+            "activationReceiptId": self.activation_receipt_id,
+            "intentId": self.intent_id,
+            "receiptVersion": self.receipt_version,
+            "runtimeInstanceId": self.runtime_instance_id,
+            "storeId": self.store_id,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity(), "settlementId": self.settlement_id}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLinuxLegacyRuntimeSettlementReceiptV1:
+        document = _strict_object(
+            value,
+            expected={
+                "activationReceiptId",
+                "intentId",
+                "receiptVersion",
+                "runtimeInstanceId",
+                "settlementId",
+                "storeId",
+            },
+            name="legacy runtime settlement receipt",
+        )
+        return cls(
+            activation_receipt_id=_strict_string(document["activationReceiptId"]),
+            runtime_instance_id=_strict_string(document["runtimeInstanceId"]),
+            store_id=_strict_string(document["storeId"]),
+            intent_id=_strict_string(document["intentId"]),
+            settlement_id=_strict_string(document["settlementId"]),
+            receipt_version=_strict_positive_int(document["receiptVersion"]),
         )
 
 
@@ -321,6 +416,7 @@ class PackageLinuxLegacyRuntimeActivationOwner:
         self._sandbox_backend = backend
         _probe_pidfd_support()
         self._boot_id_digest = _boot_id_digest()
+        self._pid_namespace_digest = _pid_namespace_digest()
         self._profile_digest = sha256(
             canonical_json_bytes(
                 {
@@ -350,6 +446,13 @@ class PackageLinuxLegacyRuntimeActivationOwner:
             legacy_runtime_version=self._legacy_runtime_version,
         )
         with self._exclusive_activation_root() as activation_root:
+            if (
+                self._read_settlement_intent(activation_root) is not None
+                or self._read_settlement_receipt(activation_root) is not None
+            ):
+                raise _activation_error(
+                    "Legacy runtime settlement prevents another activation"
+                )
             marker = self._read_marker(activation_root)
             if marker is not None:
                 if (
@@ -443,6 +546,164 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 restore_root.close()
 
     def deactivate(self, receipt: PackageLegacyRuntimeActivationReceiptV1) -> None:
+        self._deactivate(receipt)
+
+    def deactivate_required(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> None:
+        """Require an active marker, then durably settle its exact runtime."""
+
+        self._validate_settlement_receipt_input(receipt)
+        try:
+            with self._exclusive_activation_root() as root:
+                marker = self._read_marker(root)
+                if marker is None or marker.receipt != receipt:
+                    raise OSError("Matching active legacy runtime is required")
+                self._assert_settlement_owner(marker)
+                intent = self._read_settlement_intent(root)
+                if intent is None:
+                    if self._read_settlement_receipt(root) is not None:
+                        raise OSError("Settlement receipt has no original intent")
+                    _write_new_file(
+                        root.descriptor,
+                        _SETTLING_MARKER_NAME,
+                        canonical_json_bytes(marker.to_dict()),
+                    )
+                    os.fsync(root.descriptor)
+                elif intent != marker:
+                    raise OSError("Active runtime differs from settlement intent")
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+        self.settle_required(receipt)
+
+    def settle_required(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> PackageLinuxLegacyRuntimeSettlementReceiptV1:
+        """Durably settle one activation; retry an interrupted exact intent."""
+
+        self._validate_settlement_receipt_input(receipt)
+        try:
+            with self._exclusive_activation_root() as root:
+                intent = self._read_settlement_intent(root)
+                settled = self._read_settlement_receipt(root)
+                if intent is None:
+                    if settled is not None:
+                        raise OSError("Settlement receipt has no original intent")
+                    marker = self._read_marker(root)
+                    if marker is None or marker.receipt != receipt:
+                        raise OSError("Matching active legacy runtime is required")
+                    self._assert_settlement_owner(marker)
+                    self._validate_live_marker_for_deactivation(marker)
+                    _write_new_file(
+                        root.descriptor,
+                        _SETTLING_MARKER_NAME,
+                        canonical_json_bytes(marker.to_dict()),
+                    )
+                    os.fsync(root.descriptor)
+                    intent = marker
+                if intent.receipt != receipt:
+                    raise OSError("Legacy runtime settlement intent changed")
+                self._assert_settlement_owner(intent)
+                expected = PackageLinuxLegacyRuntimeSettlementReceiptV1.create(intent)
+                marker = self._read_marker(root)
+                if settled is not None:
+                    if settled != expected or marker is not None:
+                        raise OSError("Legacy runtime settlement receipt changed")
+                    self._assert_settlement_absent(intent)
+                    root.assert_visible()
+                    return settled
+                if marker is not None:
+                    if marker != intent:
+                        raise OSError("Active runtime differs from settlement intent")
+                    self._validate_live_marker_for_deactivation(marker)
+                    self._terminate_marker(marker)
+                self._assert_settlement_absent(intent)
+                if marker is not None:
+                    marker_bytes, marker_identity = _read_regular_file(
+                        root.descriptor,
+                        _ACTIVE_MARKER_NAME,
+                        maximum_bytes=_MAX_MARKER_BYTES,
+                    )
+                    current = os.stat(
+                        _ACTIVE_MARKER_NAME,
+                        dir_fd=root.descriptor,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        marker_bytes != canonical_json_bytes(intent.to_dict())
+                        or (current.st_dev, current.st_ino) != marker_identity
+                    ):
+                        raise OSError("Legacy runtime marker changed during settlement")
+                    os.unlink(_ACTIVE_MARKER_NAME, dir_fd=root.descriptor)
+                    os.fsync(root.descriptor)
+                _write_new_file(
+                    root.descriptor,
+                    _SETTLED_RECEIPT_NAME,
+                    canonical_json_bytes(expected.to_dict()),
+                )
+                os.fsync(root.descriptor)
+                if self._read_settlement_receipt(root) != expected:
+                    raise OSError("Legacy runtime settlement receipt changed")
+                root.assert_visible()
+                return expected
+        except PackageOfflineRestoreError as exc:
+            if exc.code == "package_offline_restore_cleanup_failed":
+                raise
+            raise self._settlement_error(receipt) from exc
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+
+    def read_settlement(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> PackageLinuxLegacyRuntimeSettlementReceiptV1:
+        """Reopen a completed settlement without creating missing lock state."""
+
+        self._validate_settlement_receipt_input(receipt)
+        try:
+            with self._exclusive_activation_root(create_lock=False) as root:
+                intent = self._read_settlement_intent(root)
+                settled = self._read_settlement_receipt(root)
+                if (
+                    intent is None
+                    or intent.receipt != receipt
+                    or settled is None
+                    or settled
+                    != PackageLinuxLegacyRuntimeSettlementReceiptV1.create(intent)
+                    or self._read_marker(root) is not None
+                ):
+                    raise OSError("Legacy runtime settlement is incomplete")
+                self._assert_settlement_owner(intent)
+                self._assert_settlement_absent(intent)
+                root.assert_visible()
+                return settled
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+
+    def _validate_settlement_receipt_input(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> None:
+        if not isinstance(receipt, PackageLegacyRuntimeActivationReceiptV1):
+            raise TypeError("Legacy Package runtime activation receipt is required")
+        if (
+            receipt.store_id != self._store_id
+            or receipt.legacy_runtime_version != self._legacy_runtime_version
+        ):
+            raise self._settlement_error(receipt)
+
+    @staticmethod
+    def _settlement_error(
+        receipt: PackageLegacyRuntimeActivationReceiptV1,
+    ) -> PackageOfflineRestoreError:
+        return PackageOfflineRestoreError(
+            "Legacy runtime settlement could not be proven",
+            code="package_offline_restore_cleanup_failed",
+            evidence_ref=receipt.activation_receipt_id,
+        )
+
+    def _deactivate(
+        self,
+        receipt: PackageLegacyRuntimeActivationReceiptV1,
+    ) -> None:
         if not isinstance(receipt, PackageLegacyRuntimeActivationReceiptV1):
             raise TypeError("Legacy Package runtime activation receipt is required")
         if receipt.store_id != self._store_id:
@@ -548,6 +809,7 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 supervisor=supervisor,
                 sandbox=sandbox,
                 boot_id_digest=self._boot_id_digest,
+                pid_namespace_digest=self._pid_namespace_digest,
             )
             receipt = PackageLegacyRuntimeActivationReceiptV1.create(
                 request,
@@ -562,6 +824,7 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 supervisor=supervisor,
                 sandbox=sandbox,
                 boot_id_digest=self._boot_id_digest,
+                pid_namespace_digest=self._pid_namespace_digest,
                 current_b_root_identity=request.current_root_identity,
                 restore_namespace_id=request.restore_namespace_id,
                 sandbox_profile_digest=self._profile_digest,
@@ -593,6 +856,8 @@ class PackageLinuxLegacyRuntimeActivationOwner:
     ) -> None:
         if marker.boot_id_digest != self._boot_id_digest:
             raise OSError("Legacy runtime belongs to another host boot")
+        if marker.pid_namespace_digest != self._pid_namespace_digest:
+            raise OSError("Legacy runtime belongs to another PID namespace")
         if marker.sandbox_profile_digest != self._profile_digest:
             raise OSError("Legacy runtime sandbox profile changed")
         if marker.current_b_root_identity != _directory_identity(
@@ -732,7 +997,9 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 restore_root.close()
 
     @contextmanager
-    def _exclusive_activation_root(self) -> Iterator[_PinnedRoot]:
+    def _exclusive_activation_root(
+        self, *, create_lock: bool = True
+    ) -> Iterator[_PinnedRoot]:
         with self._thread_lock:
             root: _PinnedRoot | None = None
             lock_fd: int | None = None
@@ -743,7 +1010,10 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 )
                 lock_fd = os.open(
                     _LOCK_NAME,
-                    os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    os.O_RDWR
+                    | (os.O_CREAT if create_lock else 0)
+                    | os.O_NOFOLLOW
+                    | os.O_CLOEXEC,
                     0o600,
                     dir_fd=root.descriptor,
                 )
@@ -758,7 +1028,12 @@ class PackageLinuxLegacyRuntimeActivationOwner:
                 _fcntl.flock(lock_fd, _fcntl.LOCK_EX)
                 root.assert_visible()
                 entries = set(os.listdir(root.descriptor))
-                if not entries <= {_LOCK_NAME, _ACTIVE_MARKER_NAME}:
+                if not entries <= {
+                    _LOCK_NAME,
+                    _ACTIVE_MARKER_NAME,
+                    _SETTLING_MARKER_NAME,
+                    _SETTLED_RECEIPT_NAME,
+                }:
                     raise OSError(
                         "Legacy runtime activation authority has foreign state"
                     )
@@ -799,7 +1074,81 @@ class PackageLinuxLegacyRuntimeActivationOwner:
             raise OSError("Legacy runtime marker is not canonical")
         return marker
 
+    def _read_settlement_intent(self, root: _PinnedRoot) -> _ActivationMarker | None:
+        try:
+            payload, _identity = _read_regular_file(
+                root.descriptor,
+                _SETTLING_MARKER_NAME,
+                maximum_bytes=_MAX_MARKER_BYTES,
+            )
+        except FileNotFoundError:
+            return None
+        marker = _ActivationMarker.from_dict(
+            _strict_json_object(payload, name="legacy runtime settlement intent")
+        )
+        if payload != canonical_json_bytes(marker.to_dict()):
+            raise OSError("Legacy runtime settlement intent is not canonical")
+        return marker
+
+    def _read_settlement_receipt(
+        self, root: _PinnedRoot
+    ) -> PackageLinuxLegacyRuntimeSettlementReceiptV1 | None:
+        try:
+            payload, _identity = _read_regular_file(
+                root.descriptor,
+                _SETTLED_RECEIPT_NAME,
+                maximum_bytes=_MAX_MARKER_BYTES,
+            )
+        except FileNotFoundError:
+            return None
+        receipt = PackageLinuxLegacyRuntimeSettlementReceiptV1.from_dict(
+            _strict_json_object(payload, name="legacy runtime settlement receipt")
+        )
+        if payload != canonical_json_bytes(receipt.to_dict()):
+            raise OSError("Legacy runtime settlement receipt is not canonical")
+        return receipt
+
+    def _assert_settlement_absent(self, marker: _ActivationMarker) -> None:
+        self._assert_settlement_owner(marker)
+        if marker.boot_id_digest == self._boot_id_digest:
+            if marker.pid_namespace_digest != self._pid_namespace_digest:
+                raise OSError("Legacy runtime PID namespace changed")
+            if _process_matches(marker.supervisor) or _process_matches(marker.sandbox):
+                raise OSError("Legacy runtime process is still live")
+            try:
+                os.killpg(marker.supervisor.pid, 0)
+            except ProcessLookupError:
+                pass
+            else:
+                raise OSError("Legacy runtime process group is still live")
+        current_b_root = _PinnedRoot.open(
+            self._current_b_root,
+            expected_identities=self._current_b_identities,
+        )
+        try:
+            if (
+                _directory_identity(current_b_root.descriptor)
+                != marker.current_b_root_identity
+            ):
+                raise OSError("Legacy runtime B root changed during settlement")
+            current_b_root.assert_visible()
+        finally:
+            current_b_root.close()
+
+    def _assert_settlement_owner(self, marker: _ActivationMarker) -> None:
+        if (
+            marker.receipt.store_id != self._store_id
+            or marker.receipt.legacy_runtime_version != self._legacy_runtime_version
+            or marker.sandbox_profile_digest != self._profile_digest
+        ):
+            raise OSError("Legacy runtime settlement owner changed")
+
     def _terminate_marker(self, marker: _ActivationMarker) -> None:
+        self._assert_settlement_owner(marker)
+        if marker.boot_id_digest != self._boot_id_digest:
+            return
+        if marker.pid_namespace_digest != self._pid_namespace_digest:
+            raise OSError("Legacy runtime PID namespace changed before termination")
         identities = (marker.sandbox, marker.supervisor)
         pinned: list[tuple[_ProcessIdentity, int]] = []
         try:
@@ -837,6 +1186,11 @@ class PackageLinuxLegacyRuntimeActivationOwner:
         self,
         marker: _ActivationMarker,
     ) -> None:
+        self._assert_settlement_owner(marker)
+        if marker.boot_id_digest != self._boot_id_digest:
+            return
+        if marker.pid_namespace_digest != self._pid_namespace_digest:
+            raise OSError("Legacy runtime PID namespace changed before cleanup")
         supervisor_live = _process_matches(marker.supervisor)
         sandbox_live = _process_matches(marker.sandbox)
         if not supervisor_live and not sandbox_live:
@@ -951,11 +1305,13 @@ def _runtime_instance_identity(
     supervisor: _ProcessIdentity,
     sandbox: _ProcessIdentity,
     boot_id_digest: str,
+    pid_namespace_digest: str,
 ) -> str:
     return sha256(
         canonical_json_bytes(
             {
                 "bootIdDigest": boot_id_digest,
+                "pidNamespaceDigest": pid_namespace_digest,
                 "materializationReceiptId": materialization_receipt_id,
                 "requestId": request_id,
                 "sandboxPid": sandbox.pid,
@@ -1168,6 +1524,11 @@ def _process_children(pid: int) -> tuple[int, ...]:
 def _namespace_identity(pid: int, name: str) -> tuple[int, int]:
     metadata = os.stat(f"/proc/{pid}/ns/{name}")
     return metadata.st_dev, metadata.st_ino
+
+
+def _pid_namespace_digest() -> str:
+    device, inode = _namespace_identity(os.getpid(), "pid")
+    return sha256(canonical_json_bytes({"device": device, "inode": inode})).hexdigest()
 
 
 def _open_relative_path(root_fd: int, parts: tuple[str, ...]) -> int:

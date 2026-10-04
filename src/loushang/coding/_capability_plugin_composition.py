@@ -1410,7 +1410,7 @@ def _finalize_selection(
         )
     if not isinstance(outcome, PluginSelection):
         disposition = outcome.disposition
-        raise CodingCapabilityPluginCompositionError(
+        error = CodingCapabilityPluginCompositionError(
             "Coding Capability Plugin Definition was not approved.",
             code=(
                 "coding_capability_plugin_definition_denied"
@@ -1418,6 +1418,12 @@ def _finalize_selection(
                 else f"coding_capability_plugin_definition_{disposition}"
             ),
         )
+        for diagnostic in outcome.diagnostics:
+            error.add_note(
+                f"Plugin preflight {diagnostic.plugin_id or '<plan>'}: "
+                f"{diagnostic.code}"
+            )
+        raise error
     return outcome
 
 

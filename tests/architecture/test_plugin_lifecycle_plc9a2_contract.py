@@ -101,7 +101,7 @@ def test_plc9a2_contract_is_indexed_and_inventory_names_every_new_owner() -> Non
         "PackageProductRuntimeBindingV1",
     ):
         assert owner in inventory
-    assert "UI/management-SDK transport bindings" in inventory
+    assert "wider UI management conformance" in inventory
 
 
 def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
@@ -144,7 +144,6 @@ def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
         PRODUCT_CONTRACT, "PackageProductLifecycleRecordV1.to_dict"
     )
     assert "for recovery in self._recoveries" in source
-    assert source.count("self._admit()") == 4
 
 
 def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
@@ -156,7 +155,16 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
         ACTIVATION,
         "PackageProductLifecycleActivation.activate",
     )
+    exact = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation.recover_handoff_exact",
+    )
     route = _function_source(ACTIVATION, "PackageProductLifecycleActivation.route")
+    retry = _function_source(ACTIVATION, "PackageProductLifecycleActivation.retry")
+    admitted = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation._route_with_admission",
+    )
     query = _function_source(
         ACTIVATION,
         "PackageProductLifecycleActivation.execute_guarded_query",
@@ -173,9 +181,22 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
         < activate.index("self._receipt = receipt")
     )
     assert (
-        route.index("with guard:")
-        < route.index("self._admit()")
-        < route.index("self._route_guarded(")
+        exact.index("self._exact_recovery_used = True")
+        < exact.index("with self._transaction_guard.shared_runtime(")
+        < exact.index("preflight = self._admit()")
+        < exact.index("retained_ids = preliminary(operation_id)")
+        < exact.index("receipt = self._admit()")
+        < exact.index("committed_ids = committed(receipt, operation_id)")
+        < exact.index("state = terminal_state(operation_id)")
+        < exact.index("if self._admit() != preflight:")
+    )
+    assert "self._receipt =" not in exact
+    assert "self._route_with_admission(" in route
+    assert "self._route_with_admission(" in retry
+    assert (
+        admitted.index("with guard:")
+        < admitted.index("self._admit()")
+        < admitted.index("self._route_guarded(")
     )
     assert (
         query.index("with guard:")
@@ -185,6 +206,9 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     assert "receipt.request.admission_request_id" in guarded
     assert guarded.index("bind_runtime_admission(") < guarded.index(
         "self._router.route("
+    )
+    assert guarded.index("bind_runtime_admission(") < guarded.index(
+        "self._router.retry("
     )
     assert "runtime_admission_request_id=(" in guarded
     assert "resolution_environment_fingerprint=sha256" not in guarded

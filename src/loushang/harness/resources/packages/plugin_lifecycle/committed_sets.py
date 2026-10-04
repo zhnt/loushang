@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
@@ -34,6 +35,7 @@ PACKAGE_COMMITTED_SET_RECORD_VERSION = 1
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 class PackageCommittedSetJournalError(RuntimeError):
@@ -395,6 +397,17 @@ class PackageCommittedSetJournal:
         with self._exclusive():
             return self._load_unlocked()
 
+    def read_events(self) -> tuple[CommittedSetJournalEvent, ...]:
+        """Capture committed sets and tombstones without owner-state repair."""
+
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            return self._load_events_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+
     def _load_unlocked(self) -> tuple[PackageCommittedSetRecordV1, ...]:
         return tuple(
             item
@@ -402,7 +415,9 @@ class PackageCommittedSetJournal:
             if isinstance(item, PackageCommittedSetRecordV1)
         )
 
-    def _load_events_unlocked(self) -> tuple[CommittedSetJournalEvent, ...]:
+    def _load_events_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[CommittedSetJournalEvent, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -411,7 +426,7 @@ class PackageCommittedSetJournal:
                 record_codec=_EVENT_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=load_policy or self._load_policy,
             )
             events = snapshot.records
             _assert_no_duplicate_json_keys(self._path)

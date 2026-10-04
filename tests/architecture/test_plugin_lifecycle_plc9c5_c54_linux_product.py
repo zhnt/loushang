@@ -10,6 +10,126 @@ APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
 CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
+PRODUCT_WORKER_BOUNDED_IMPORTS = {
+    CODING_ROOT / "package_product_worker_policy.py": {
+        "loushang.harness.worker.product_activation"
+    },
+    CODING_ROOT / "package_product_worker_receipt.py": {
+        "loushang.harness.worker.product_activation"
+    },
+    CODING_ROOT / "package_product_worker_activation_state_journal.py": {
+        "loushang.harness.worker.activation_state_journal",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_history_retention.py": {
+        "loushang.harness.worker.journal"
+    },
+    CODING_ROOT / "package_product_worker_start_gate.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_start_gate_journal.py": {
+        "loushang.harness.worker.gated_start"
+    },
+    CODING_ROOT / "package_product_worker_supervisor_journal.py": {
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_start_gate_recovery.py": {
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_native_release.py": {
+        "loushang.harness.worker.native_executable_format"
+    },
+    CODING_ROOT / "package_product_worker_installed_native.py": {
+        "loushang.harness.worker.native_executable_format"
+    },
+    CODING_ROOT / "package_product_worker_payload.py": {
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.journal",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_capability.py": {
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.facet_owner",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_provider.py": {
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_provider_host.py": {
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.facet_proxy",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_query_consumer.py": {
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.facet_owner",
+        "loushang.harness.worker.facet_proxy",
+    },
+    CODING_ROOT / "package_product_worker_operator_query.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.supervisor",
+    },
+    CODING_ROOT / "package_product_worker_session_composition.py": {
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_provisioning.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_provisioning_journal.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+    },
+    CODING_ROOT / "package_product_worker_windows_launch_intent.py": {
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_payload.py": {
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.journal",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_receipt.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_receipt_journal.py": {
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_recovery_inventory.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_supervisor_journal.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_cleanup_review.py": {
+        "loushang.harness.worker._native_profile_bridge",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py": {
+        "loushang.harness.worker._native_profile_bridge",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_native_settlement.py": {
+        "loushang.harness.worker._native_profile_bridge",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_stage_review.py": {
+        "loushang.harness.worker._native_profile_bridge",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py": {
+        "loushang.harness.worker.journal",
+    },
+}
 BEHAVIOR = Path("tests/harness/worker/test_coding_product_worker_canary.py")
 DOCUMENT = Path(
     "docs/internals/architecture/harness/plugin/"
@@ -152,7 +272,18 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {CANARY, APPHOST_PRODUCT, APPHOST_CANARY}
+    assert worker_consumers == {
+        CANARY,
+        APPHOST_PRODUCT,
+        APPHOST_CANARY,
+        *PRODUCT_WORKER_BOUNDED_IMPORTS,
+    }
+    for path, allowed in PRODUCT_WORKER_BOUNDED_IMPORTS.items():
+        assert {
+            imported
+            for imported in _imports(path)
+            if imported.startswith("loushang.harness.worker")
+        } == allowed
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )

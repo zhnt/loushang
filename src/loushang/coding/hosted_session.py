@@ -143,7 +143,8 @@ class CodingRealHostedSessionV1:
                 delta = update.get("delta")
                 if isinstance(delta, str):
                     return CodingHostedEventProjectionV1(
-                        SessionEventKindV1.ASSISTANT_DELTA, _bounded(delta),
+                        SessionEventKindV1.ASSISTANT_DELTA,
+                        _bounded(delta),
                         truncated=len(delta) > _TEXT_LIMIT,
                     )
         if payload.get("hosted_presentation") is True and kind in {
@@ -260,9 +261,11 @@ class CodingRealHostedSessionFactoryV1:
         self._closed = False
 
     def _default_product_factory_for_session(
-        self, manager: SessionManager
+        self, manager: SessionManager, services: BootstrapServices
     ) -> PackageProductRuntimeFactoryPort | None:
-        return self._product_owner_selection.factory_for_session(manager)
+        return self._product_owner_selection.factory_for_session(
+            manager, settings_manager=services.settings_manager
+        )
 
     async def close(self) -> None:
         if self._closed:
@@ -293,11 +296,15 @@ class CodingRealHostedSessionFactoryV1:
             policy = workspace_tool_runtime_settings(services.settings_manager)
             runtime_factory = None
             if self._package_product_runtime_factory_for_session is not None:
-                runtime_factory = self._package_product_runtime_factory_for_session(manager)
+                runtime_factory = self._package_product_runtime_factory_for_session(
+                    manager
+                )
                 if runtime_factory is None:
                     raise TypeError("Package Product runtime factory is required")
             else:
-                runtime_factory = self._default_product_factory_for_session(manager)
+                runtime_factory = self._default_product_factory_for_session(
+                    manager, services
+                )
             session = create_agent_session(
                 session_manager=manager,
                 model=self._model,

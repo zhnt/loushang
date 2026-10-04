@@ -351,6 +351,23 @@ def test_epoch_journal_repairs_only_an_incomplete_final_record(tmp_path: Path) -
     assert journal.path.read_bytes().endswith(b"\n")
 
 
+def test_epoch_journal_read_only_refuses_partial_tail_without_repair(
+    tmp_path: Path,
+) -> None:
+    journal, _first, _second = _publish_two_epochs(tmp_path)
+    with journal.path.open("ab") as stream:
+        stream.write(b'{"recordVersion":')
+    before = journal.path.read_bytes()
+    reader = PackageEpochFenceJournal(journal.path, read_only=True)
+
+    with pytest.raises(PackageEpochFenceError):
+        reader.records()
+
+    assert journal.path.read_bytes() == before
+    with pytest.raises(ValueError, match="cannot publish"):
+        reader.publish(_first.request)
+
+
 def test_epoch_journal_rejects_duplicate_json_keys_with_stable_error(
     tmp_path: Path,
 ) -> None:

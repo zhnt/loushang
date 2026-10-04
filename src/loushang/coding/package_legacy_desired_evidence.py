@@ -6,17 +6,20 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.harness.plugin_management.journal_codecs import (
+    PluginDesiredStateJournalTransition,
+)
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateSnapshotV1,
     PluginLifecycleError,
-    decode_plugin_desired_state_snapshot,
-)
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
+    decode_plugin_desired_state_capture,
 )
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from .package_legacy_snapshot_member import read_coding_first_b_snapshot_member
+from .package_legacy_snapshot_member import (
+    CodingFencedEpochRuntime,
+    read_coding_first_b_snapshot_member,
+)
 
 _MAX_DESIRED_BYTES = 2 * 1024 * 1024
 
@@ -29,11 +32,12 @@ class CodingLegacyDesiredError(ValueError):
 class CodingLegacyDesiredEvidenceV1:
     snapshot: PluginDesiredStateSnapshotV1
     journal_digest: str
+    transitions: tuple[PluginDesiredStateJournalTransition, ...] = ()
 
 
 def read_coding_legacy_desired_evidence(
     lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    epoch_runtime: CodingFencedEpochRuntime,
 ) -> CodingLegacyDesiredEvidenceV1 | None:
     """Project committed old desired history without writing its journal."""
 
@@ -63,7 +67,7 @@ def parse_coding_legacy_desired_evidence(
         for line in text.splitlines():
             if line.strip():
                 json.loads(line, object_pairs_hook=_unique_object)
-        snapshot = decode_plugin_desired_state_snapshot(
+        snapshot, transitions = decode_plugin_desired_state_capture(
             text,
             path=lifecycle.desired_state,
         )
@@ -83,6 +87,7 @@ def parse_coding_legacy_desired_evidence(
     return CodingLegacyDesiredEvidenceV1(
         snapshot=snapshot,
         journal_digest=sha256(raw).hexdigest(),
+        transitions=transitions,
     )
 
 

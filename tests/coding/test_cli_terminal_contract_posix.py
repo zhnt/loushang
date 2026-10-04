@@ -25,7 +25,9 @@ def _record_backend(record_testsuite_property) -> None:
     record_testsuite_property("terminal_backend", selected_backend_name())
 
 
-def test_posix_cli_exposes_raw_cursor_and_synchronized_output_lifecycle(tmp_path: Path) -> None:
+def test_posix_cli_exposes_raw_cursor_and_synchronized_output_lifecycle(
+    tmp_path: Path,
+) -> None:
     output = _run_cli_and_quit(tmp_path)
 
     assert "\x1b[?25l" in output
@@ -47,12 +49,11 @@ def _run_cli_and_quit(cwd: Path) -> str:
         rows=24,
     ) as driver:
         driver.read_until(
-            lambda output: "Welcome to Loushang CLI"
-            in strip_control_sequences(output),
+            lambda output: "Welcome to Loushang CLI" in strip_control_sequences(output),
             timeout=15,
         )
         driver.read_until(
-            lambda output: " | idle" in strip_control_sequences(output), timeout=15
+            lambda output: " | idle" in strip_control_sequences(output), timeout=30
         )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0

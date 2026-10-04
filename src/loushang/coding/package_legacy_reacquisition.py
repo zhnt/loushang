@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -61,16 +62,20 @@ def reacquire_coding_legacy_installed_local_source(
     binding = installation.binding
     if not binding.source_identity.startswith("local:/"):
         raise CodingLegacyInventoryError("Coding legacy local Source changed")
-    wheel = reacquire_coding_legacy_local_plugin_wheel(
-        Path(binding.source_identity.removeprefix("local:")),
-        legacy_package_root=lifecycle.package_root,
-        staging_parent=epoch_runtime.prepare_product_source_root(),
-        plugin_id=binding.plugin_id,
-        expected_source_identity=binding.source_identity,
-        expected_content_digest=binding.content_digest,
-        expected_manifest_digest=binding.manifest_digest,
-        expected_dependency_lock=binding.dependency_lock,
-    )
+    # Review can run under a read-only Product epoch. The verified revision is
+    # built in a disposable private directory; it never becomes Product Source
+    # authorization until a separate admission owner accepts it.
+    with TemporaryDirectory(prefix="loushang-legacy-review-") as staging:
+        wheel = reacquire_coding_legacy_local_plugin_wheel(
+            Path(binding.source_identity.removeprefix("local:")),
+            legacy_package_root=lifecycle.package_root,
+            staging_parent=Path(staging),
+            plugin_id=binding.plugin_id,
+            expected_source_identity=binding.source_identity,
+            expected_content_digest=binding.content_digest,
+            expected_manifest_digest=binding.manifest_digest,
+            expected_dependency_lock=binding.dependency_lock,
+        )
     if read_coding_legacy_installation_inventory(lifecycle, epoch_runtime) != inventory:
         raise CodingLegacyInventoryError(
             "Coding legacy Installation snapshot changed during Source reacquisition"

@@ -250,6 +250,44 @@ class _ResourceAuthoring:
     __slots__ = ()
 
     @staticmethod
+    def theme(
+        *,
+        contribution_id: str,
+        locator: str,
+    ) -> ResourceItemSpec:
+        """Declare one v1 JSON Theme for a Product with a Theme consumer."""
+
+        return ResourceItemSpec(
+            contribution_id=contribution_id,
+            locator=locator,
+            locator_kind="file",
+            media_type="application/json",
+            owner_namespace="resources.theme",
+            resource_kind="theme",
+            schema_id="loushang.resource.theme",
+            schema_version=1,
+        )
+
+    @staticmethod
+    def prompt(
+        *,
+        contribution_id: str,
+        locator: str,
+    ) -> ResourceItemSpec:
+        """Declare one Markdown Prompt file for a Product that admits it."""
+
+        return ResourceItemSpec(
+            contribution_id=contribution_id,
+            locator=locator,
+            locator_kind="file",
+            media_type="text/markdown",
+            owner_namespace="resources.prompt",
+            resource_kind="prompt",
+            schema_id="loushang.resource.prompt",
+            schema_version=1,
+        )
+
+    @staticmethod
     def skill(
         *,
         contribution_id: str,

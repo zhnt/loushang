@@ -37,6 +37,7 @@ _WORKER_MESSAGE_KINDS = frozenset(
     {"ready", "result", "failure", "cancelled", "pong", "shutdown_ack"}
 )
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
+_OPAQUE_SCOPE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?")
 _MAX_IDENTIFIER_LENGTH = 128
 _START_IDENTITY_FIELDS = frozenset(
     {
@@ -475,7 +476,6 @@ def _validate_start_identity(identity: Mapping[str, object]) -> None:
         "ownerId",
         "pluginId",
         "productId",
-        "scopeId",
     ):
         value = identity[name]
         if (
@@ -484,6 +484,13 @@ def _validate_start_identity(identity: Mapping[str, object]) -> None:
             or not _IDENTIFIER.fullmatch(value)
         ):
             raise ValueError(f"Worker start identity {name} is invalid")
+    scope_id = identity["scopeId"]
+    if (
+        not isinstance(scope_id, str)
+        or len(scope_id) > _MAX_IDENTIFIER_LENGTH
+        or not _OPAQUE_SCOPE.fullmatch(scope_id)
+    ):
+        raise ValueError("Worker start identity scopeId is invalid")
     for name, length in (
         ("attemptId", 32),
         ("declarationFingerprint", 64),

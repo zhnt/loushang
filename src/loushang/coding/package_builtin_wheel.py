@@ -13,6 +13,16 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _PinnedWindowsAuthority,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
+    supports_windows_rooted_io,
+    windows_flush_directory,
+    windows_flush_file,
+)
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWheelPolicy,
@@ -215,6 +225,257 @@ def prepare_posix_coding_capability_product_wheels(
     return tuple(artifacts)
 
 
+def inspect_posix_coding_base_product_wheel(
+    source_root: Path,
+) -> CodingBaseProductWheelArtifactV1:
+    """Verify an already published built-in Wheel without publishing it."""
+
+    path, digest, byte_count = _inspect_posix_product_wheel(
+        source_root,
+        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        body=build_coding_base_product_wheel(),
+        label="base",
+    )
+    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+
+
+def inspect_posix_coding_capability_product_wheels(
+    source_root: Path,
+) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
+    """Verify all first-party Capability Sources without creating files."""
+
+    artifacts = []
+    for plugin_id, spec in _CAPABILITY_SPECS.items():
+        path, digest, byte_count = _inspect_posix_product_wheel(
+            source_root,
+            filename=spec.filename,
+            body=build_coding_capability_product_wheel(plugin_id),
+            label="Capability",
+        )
+        artifacts.append(
+            CodingCapabilityProductWheelArtifactV1(
+                plugin_id=plugin_id,
+                path=path,
+                artifact_digest=digest,
+                byte_count=byte_count,
+            )
+        )
+    return tuple(artifacts)
+
+
+def prepare_windows_coding_base_product_wheel(
+    source_root: Path,
+) -> CodingBaseProductWheelArtifactV1:
+    """Publish exact installed base bytes under the private Windows Source."""
+
+    path, digest, byte_count = _publish_windows_product_wheel(
+        source_root,
+        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        body=build_coding_base_product_wheel(),
+        label="base",
+    )
+    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+
+
+def prepare_windows_coding_capability_product_wheels(
+    source_root: Path,
+) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
+    """Publish exact first-party Capability bytes under the Windows Source."""
+
+    return tuple(
+        CodingCapabilityProductWheelArtifactV1(
+            plugin_id=plugin_id,
+            path=path,
+            artifact_digest=digest,
+            byte_count=byte_count,
+        )
+        for plugin_id, spec in _CAPABILITY_SPECS.items()
+        for path, digest, byte_count in (
+            _publish_windows_product_wheel(
+                source_root,
+                filename=spec.filename,
+                body=build_coding_capability_product_wheel(plugin_id),
+                label="Capability",
+            ),
+        )
+    )
+
+
+def inspect_windows_coding_base_product_wheel(
+    source_root: Path,
+) -> CodingBaseProductWheelArtifactV1:
+    path, digest, byte_count = _inspect_windows_product_wheel(
+        source_root,
+        filename=CODING_BASE_PRODUCT_WHEEL_FILENAME,
+        body=build_coding_base_product_wheel(),
+        label="base",
+    )
+    return CodingBaseProductWheelArtifactV1(path, digest, byte_count)
+
+
+def inspect_windows_coding_capability_product_wheels(
+    source_root: Path,
+) -> tuple[CodingCapabilityProductWheelArtifactV1, ...]:
+    return tuple(
+        CodingCapabilityProductWheelArtifactV1(
+            plugin_id=plugin_id,
+            path=path,
+            artifact_digest=digest,
+            byte_count=byte_count,
+        )
+        for plugin_id, spec in _CAPABILITY_SPECS.items()
+        for path, digest, byte_count in (
+            _inspect_windows_product_wheel(
+                source_root,
+                filename=spec.filename,
+                body=build_coding_capability_product_wheel(plugin_id),
+                label="Capability",
+            ),
+        )
+    )
+
+
+def _inspect_windows_product_wheel(
+    source_root: Path, *, filename: str, body: bytes, label: str
+) -> tuple[Path, str, int]:
+    if (
+        os.name != "nt"
+        or not supports_windows_rooted_io()
+        or not isinstance(source_root, Path)
+        or not source_root.is_absolute()
+        or ".." in source_root.parts
+        or len(body) > _MAX_WHEEL_BYTES
+    ):
+        raise ValueError(f"Windows Coding {label} Product Source is invalid")
+    source = _PinnedWindowsAuthority.open(source_root, read_control=True)
+    try:
+        with WindowsPrivateDirectoryAcl() as acl:
+            acl.validate(source.descriptor)
+            member = open_windows_regular_file_at(
+                source.descriptor,
+                filename,
+                create_new=False,
+                write=False,
+                read_control=True,
+            )
+            try:
+                acl.validate(member)
+                metadata = os.fstat(member)
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_nlink != 1
+                    or metadata.st_size != len(body)
+                    or os.read(member, len(body) + 1) != body
+                ):
+                    raise ValueError(f"Coding {label} Product Wheel changed on disk")
+            finally:
+                os.close(member)
+        source.assert_visible()
+    finally:
+        source.close()
+    return source_root / filename, sha256(body).hexdigest(), len(body)
+
+
+def _publish_windows_product_wheel(
+    source_root: Path, *, filename: str, body: bytes, label: str
+) -> tuple[Path, str, int]:
+    if (
+        os.name != "nt"
+        or not supports_windows_rooted_io()
+        or not isinstance(source_root, Path)
+        or not source_root.is_absolute()
+        or ".." in source_root.parts
+        or len(body) > _MAX_WHEEL_BYTES
+    ):
+        raise ValueError(f"Windows Coding {label} Product Source is invalid")
+    source = _PinnedWindowsAuthority.open(source_root, read_control=True)
+    try:
+        with WindowsPrivateDirectoryAcl() as acl:
+            acl.validate(source.descriptor)
+            try:
+                member = open_windows_regular_file_at(
+                    source.descriptor,
+                    filename,
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+            except FileExistsError:
+                pass
+            else:
+                try:
+                    acl.validate(member)
+                    remaining = memoryview(body)
+                    while remaining:
+                        written = os.write(member, remaining)
+                        if written <= 0:
+                            raise OSError(
+                                f"Coding {label} Product Wheel write made no progress"
+                            )
+                        remaining = remaining[written:]
+                    windows_flush_file(member)
+                finally:
+                    os.close(member)
+                windows_flush_directory(source.descriptor)
+            source.assert_visible()
+    finally:
+        source.close()
+    return _inspect_windows_product_wheel(
+        source_root, filename=filename, body=body, label=label
+    )
+
+
+def _inspect_posix_product_wheel(
+    source_root: Path, *, filename: str, body: bytes, label: str
+) -> tuple[Path, str, int]:
+    if (
+        os.name != "posix"
+        or not isinstance(source_root, Path)
+        or not source_root.is_absolute()
+        or ".." in source_root.parts
+        or not all(
+            hasattr(os, name)
+            for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC")
+        )
+    ):
+        raise ValueError(f"POSIX Coding {label} Product Source root is required")
+    if len(body) > _MAX_WHEEL_BYTES:
+        raise ValueError(f"Installed Coding {label} Product Wheel exceeds budget")
+    directory_fd = os.open(
+        source_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        directory = os.fstat(directory_fd)
+        if (
+            not stat.S_ISDIR(directory.st_mode)
+            or stat.S_IMODE(directory.st_mode) & 0o077
+            or directory.st_uid != os.getuid()
+        ):
+            raise ValueError(f"Coding {label} Product Source root is not private")
+        member_fd = os.open(
+            filename,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=directory_fd,
+        )
+        try:
+            member = os.fstat(member_fd)
+            if (
+                not stat.S_ISREG(member.st_mode)
+                or member.st_nlink != 1
+                or member.st_uid != os.getuid()
+                or stat.S_IMODE(member.st_mode) & 0o077
+                or member.st_size != len(body)
+                or os.read(member_fd, len(body) + 1) != body
+            ):
+                raise ValueError(f"Coding {label} Product Wheel changed on disk")
+        finally:
+            os.close(member_fd)
+    finally:
+        os.close(directory_fd)
+    return source_root / filename, sha256(body).hexdigest(), len(body)
+
+
 def _publish_posix_product_wheel(
     source_root: Path, *, filename: str, body: bytes, label: str
 ) -> tuple[Path, str, int]:
@@ -351,12 +612,14 @@ def _read_member(root: Path, relative: str) -> bytes:
     path = root / relative
     current = path.parent
     while current != root:
-        if not stat.S_ISDIR(current.lstat().st_mode):
+        directory = current.lstat()
+        if not stat.S_ISDIR(directory.st_mode) or _is_windows_reparse(directory):
             raise ValueError("Installed Coding base Product directory is unsafe")
         current = current.parent
     before = path.lstat()
     if (
         not stat.S_ISREG(before.st_mode)
+        or _is_windows_reparse(before)
         or before.st_nlink != 1
         or before.st_size > _MAX_MEMBER_BYTES
     ):
@@ -365,11 +628,20 @@ def _read_member(root: Path, relative: str) -> bytes:
     after = path.lstat()
     if (
         len(body) > _MAX_MEMBER_BYTES
+        or _is_windows_reparse(after)
         or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
         != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
     ):
         raise ValueError("Installed Coding base Product member changed during read")
     return body
+
+
+def _is_windows_reparse(metadata: os.stat_result) -> bool:
+    return os.name == "nt" and bool(
+        getattr(metadata, "st_reparse_tag", 0)
+        or getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
 
 
 __all__ = [
@@ -382,4 +654,10 @@ __all__ = [
     "coding_builtin_product_local_wheel_policy",
     "prepare_posix_coding_base_product_wheel",
     "prepare_posix_coding_capability_product_wheels",
+    "prepare_windows_coding_base_product_wheel",
+    "prepare_windows_coding_capability_product_wheels",
+    "inspect_posix_coding_base_product_wheel",
+    "inspect_posix_coding_capability_product_wheels",
+    "inspect_windows_coding_base_product_wheel",
+    "inspect_windows_coding_capability_product_wheels",
 ]

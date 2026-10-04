@@ -47,6 +47,11 @@ from loushang.coding.lsp.commands import (
 )
 from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
+from loushang.coding.package_product_runtime import CodingProductWorkspaceWitnessV1
+from loushang.coding.package_product_worker_session_composition import (
+    CodingProductWorkerOrdinarySessionBinding,
+    validate_coding_product_worker_ordinary_session_inputs,
+)
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -234,9 +239,15 @@ class AgentSession(AgentProductSession):
         coding_base_product_runtime_binding: (
             PackageProductRuntimeBindingV1 | None
         ) = None,
+        coding_product_workspace_witness: (
+            CodingProductWorkspaceWitnessV1 | None
+        ) = None,
         coding_plugin_clock: Callable[[], int] | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        coding_product_worker_ordinary_binding: (
+            CodingProductWorkerOrdinarySessionBinding | None
+        ) = None,
         initial_resource_catalog_bootstrap: Any | None = None,
         resource_catalog_refresh_bootstrap_factory: Any | None = None,
         resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None,
@@ -285,6 +296,26 @@ class AgentSession(AgentProductSession):
             )
         ):
             raise ValueError("Coding base Product cannot mix Plugin session routes")
+        if coding_product_worker_ordinary_binding is not None:
+            if (
+                not isinstance(
+                    coding_product_worker_ordinary_binding,
+                    CodingProductWorkerOrdinarySessionBinding,
+                )
+                or coding_base_product_session_assembly is None
+                or coding_product_worker_ordinary_binding.ordinary
+                is not coding_base_product_session_assembly.session_inputs
+                or workspace_capability_binding
+                is not coding_base_product_session_assembly.workspace_binding
+                or coding_product_worker_ordinary_binding.workspace_binding
+                is not workspace_capability_binding
+            ):
+                raise ValueError("Coding Product Worker ordinary Session changed")
+            validate_coding_product_worker_ordinary_session_inputs(
+                ordinary=coding_product_worker_ordinary_binding.ordinary,
+                combined=coding_product_worker_ordinary_binding.combined,
+                workspace_binding=workspace_capability_binding,
+            )
         if (
             coding_base_product_session_assembly is not None
             and capability_plugin_assembly is not None
@@ -344,6 +375,16 @@ class AgentSession(AgentProductSession):
             != coding_base_product_session_assembly.compilation.plan.context.product_id
         ):
             raise ValueError("Coding base Product runtime binding is invalid")
+        if coding_product_workspace_witness is not None and (
+            not isinstance(
+                coding_product_workspace_witness, CodingProductWorkspaceWitnessV1
+            )
+            or coding_product_workspace_witness.session_id
+            != session_manager.get_header().conversation_id
+        ):
+            raise ValueError("Coding Product workspace witness changed Session")
+        if coding_product_workspace_witness is not None:
+            coding_product_workspace_witness.assert_current()
         if coding_base_plugin_assembly is not None and (
             capability_plugin_assembly is None
             and coding_base_plugin_session_assembly is None
@@ -377,6 +418,7 @@ class AgentSession(AgentProductSession):
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
         self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
+        self.coding_product_workspace_witness = coding_product_workspace_witness
         product_base = (
             coding_base_product_session_assembly.compilation
             if coding_base_product_session_assembly is not None
@@ -623,15 +665,19 @@ class AgentSession(AgentProductSession):
                 tool_policy_evaluator=tool_policy_evaluator,
                 workspace_capability_binding=workspace_capability_binding,
                 capability_composition_inputs=(
-                    capability_plugin_assembly.session_inputs
-                    if capability_plugin_assembly is not None
+                    coding_product_worker_ordinary_binding.combined
+                    if coding_product_worker_ordinary_binding is not None
                     else (
-                        coding_base_plugin_session_assembly.session_inputs
-                        if coding_base_plugin_session_assembly is not None
+                        capability_plugin_assembly.session_inputs
+                        if capability_plugin_assembly is not None
                         else (
-                            coding_base_product_session_assembly.session_inputs
-                            if coding_base_product_session_assembly is not None
-                            else None
+                            coding_base_plugin_session_assembly.session_inputs
+                            if coding_base_plugin_session_assembly is not None
+                            else (
+                                coding_base_product_session_assembly.session_inputs
+                                if coding_base_product_session_assembly is not None
+                                else None
+                            )
                         )
                     )
                 ),
@@ -771,6 +817,16 @@ class AgentSession(AgentProductSession):
         ):
             commands.append(lsp_session_command_descriptor())
         return commands
+
+    async def query_worker_symbol(self, symbol: str) -> str:
+        """Use the explicitly selected, read-only Coding Worker query facet."""
+
+        from loushang.coding.package_product_worker_query_consumer import (
+            bind_coding_worker_query_consumer,
+        )
+
+        await self.prepare_model_call_runtime()
+        return await bind_coding_worker_query_consumer(self).query(symbol=symbol)
 
     async def execute_command_async(
         self,

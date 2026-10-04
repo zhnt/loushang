@@ -151,6 +151,7 @@ EXPECTED_SOURCE_BACKED_CAPABILITY_IDS = frozenset(
     {
         "coding.arch",
         "coding.lsp",
+        "coding.worker.query",
         "harness.model_input",
         "harness.resources",
         "harness.session",

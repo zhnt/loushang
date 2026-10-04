@@ -7,16 +7,15 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
-)
-
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
 from .package_legacy_classification import (
     CodingLegacySourceConfigurationV1,
     classify_coding_legacy_source_configuration,
 )
-from .package_legacy_snapshot_member import read_coding_first_b_snapshot_member
+from .package_legacy_snapshot_member import (
+    CodingFencedEpochRuntime,
+    read_coding_first_b_snapshot_member,
+)
 
 _MAX_PROJECTION_BYTES = 8 * 1024 * 1024
 
@@ -42,7 +41,7 @@ class CodingLegacySourceEvidenceV1:
 
 def read_coding_legacy_source_evidence(
     lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    epoch_runtime: CodingFencedEpochRuntime,
     *,
     global_settings_path: Path,
     project_settings_path: Path,

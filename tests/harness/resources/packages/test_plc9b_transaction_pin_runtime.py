@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
@@ -623,6 +623,67 @@ def test_pin_runtime_adopts_prior_attempt_pin_without_double_acquire(
     assert len(retention.receipts) == 1
     assert len(journal.records()) == 1
     assert node.suspended is False
+
+
+def test_pin_runtime_refuses_prior_pin_when_new_attempt_sink_changes(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel(tmp_path)
+    retention = _RetentionOwner()
+    journal = PackageTransactionPinJournal(tmp_path / "transaction-pins.jsonl")
+    acquired = retention.acquire(_request(kernel))
+    journal.append(acquired)
+    status = kernel.status(OPERATION_ID)
+    assert status is not None
+    interrupted = kernel.interrupt(
+        OPERATION_ID,
+        expected_phase="closure_verified",
+        expected_journal_revision=status.journal_revision,
+        expected_attempt_epoch=status.attempt_epoch,
+    )
+    retry = kernel.retry(
+        PackageLifecycleRetryRequestV1(
+            operation_id=OPERATION_ID,
+            request_fingerprint=interrupted.request_fingerprint,
+            expected_attempt_epoch=interrupted.attempt_epoch,
+        )
+    )
+    assert retry.attempt_epoch == 2
+    original_plan = _plan(attempt_epoch=2)
+    changed_node = replace(
+        original_plan.nodes[0], acquisition_receipt_fingerprint="f" * 64
+    )
+    changed_plan = VerifiedClosurePlanV2.create(
+        operation_id=OPERATION_ID,
+        attempt_epoch=2,
+        root_node_id="root",
+        resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
+        nodes=(changed_node,),
+        max_depth=0,
+    )
+    owner = PackageTransactionPinLifecycleOwner(
+        kernel=kernel,
+        closure_plans=_ClosurePlans(plans={1: _plan(), 2: changed_plan}),
+        retention=retention,
+        pin_journal=journal,
+    )
+    node = _CandidateNode()
+    candidate = VerifiedPackageClosureCandidate(
+        plan=changed_plan,
+        candidates=(node,),  # type: ignore[arg-type]
+    )
+
+    result = owner.pin(
+        candidate, recovery_identity="recovery-transaction-pin-runtime"
+    )
+
+    assert result.status.disposition == "rejected"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_operation_identity_conflict"
+    assert kernel.status(OPERATION_ID) == retry
+    assert journal.current_for_operation(OPERATION_ID) == acquired
+    assert len(retention.receipts) == 1
+    assert node.suspended is True
 
 
 def test_pin_runtime_suspends_candidate_when_retention_owner_fails(

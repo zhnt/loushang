@@ -220,6 +220,7 @@ def test_configured_lsp_is_available_to_ordinary_session_and_remains_lazy(
 ) -> None:
     from loushang.coding.sandbox import SandboxExecutionRuntime
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     user_config_dir = tmp_path / "user-config"
     _configure_python_server(user_config_dir)
     starts: list[object] = []

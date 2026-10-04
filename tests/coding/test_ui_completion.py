@@ -94,6 +94,38 @@ def test_coding_completion_host_lists_local_commands_missing_from_session() -> N
     )
 
 
+def test_coding_completion_host_offers_local_plugin_preview() -> None:
+    from loushang.coding.ui.completion import coding_completion_host
+    from loushang.tui import CompletionItem
+
+    assert asyncio.run(coding_completion_host(_Session()).complete("/plug")) == (
+        CompletionItem(
+            value="/plugins",
+            label="/plugins",
+            description="Preview and manage Plugins (local)",
+        ),
+    )
+
+
+def test_coding_completion_host_explains_plugin_command_conflict() -> None:
+    from loushang.coding.ui.completion import coding_completion_host
+    from loushang.tui import CompletionItem
+
+    class ConflictingSession(_Session):
+        def list_commands(self) -> list[object]:
+            return super().list_commands() + [
+                SimpleNamespace(name="plugins", description="Session command")
+            ]
+
+    assert asyncio.run(coding_completion_host(ConflictingSession()).complete("/plug")) == (
+        CompletionItem(
+            value="/plugins",
+            label="/plugins",
+            description="Unavailable: Session command conflicts; use CLI",
+        ),
+    )
+
+
 def test_coding_completion_host_matches_current_input_context() -> None:
     from loushang.coding.ui.completion import coding_completion_host
     from loushang.tui import CompletionItem, CompletionProvider

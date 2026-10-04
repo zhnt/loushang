@@ -126,8 +126,11 @@ graph TD
 | `loushang-mux` | `loushang.coding.cli.mux:main` |
 | `loushang-package-cutover` | `loushang.coding.cli.package_cutover:main` |
 | `loushang-package-gc` | `loushang.coding.cli.package_gc:main` |
+| `loushang-package-repair` | `loushang.coding.cli.package_repair:main` |
 | `loushang-plugin` | `loushang.plugin.__main__:main` |
+| `loushang-plugin-private-data` | `loushang.coding.cli.plugin_private_data:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
+| `loushang-worker-native` | `loushang.coding.cli.package_worker_native:main` |
 
 ## Interpretation Rules
 

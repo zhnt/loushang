@@ -8,12 +8,15 @@ journals and owner adapters but never publishes an epoch or switches a root.
 from __future__ import annotations
 
 import os
+import re
 import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
-from typing import cast
+from typing import Never, cast
 
 from packaging.markers import default_environment
 from packaging.tags import sys_tags
@@ -21,9 +24,31 @@ from packaging.tags import sys_tags
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
+from loushang.harness.package_product.product_pinned_adoption import (
+    PackageProductPinnedAdoptionOwner,
+)
+from loushang.harness.package_product.product_rebind_cleanup import (
+    PackageProductRebindCleanupReader,
+)
+from loushang.harness.package_product.product_rebind_decision import (
+    PackageProductRebindDecisionOwner,
+)
+from loushang.harness.package_product.product_rebind_lease import (
+    PackageProductRebindLeaseReader,
+)
+from loushang.harness.package_product.product_rebind_source import (
+    PackageProductRebindSourceReader,
+)
 from loushang.harness.package_product.product_runtime import (
+    PackageProductPluginDesiredSelectionV1,
     PackageProductRuntimeBindingV1,
     PackageProductRuntimeRequestV1,
+)
+from loushang.harness.package_product.product_staging_adoption import (
+    PackageProductStagingAdoptionOwner,
+)
+from loushang.harness.package_product.product_worker_wheel_admission import (
+    admit_explicit_local_worker_wheel_candidate,
 )
 from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
@@ -38,6 +63,9 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 from loushang.harness.plugin_management.package_product import (
     CommittedSetPackageRevisionProjection,
     PackageProductRuntimeReadError,
+    PackageProductSelectedDependencyClosureSnapshotV1,
+    PackageProductSelectedDependencyReader,
+    PackageProductSelectedDependencySnapshotV1,
     PackageProductSelectedRootReader,
     PackageProductSelectedRootSnapshotV1,
     PluginManagementCommandSubmitPort,
@@ -98,6 +126,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
+    PosixPackageDependencyReadOnlyStore,
     PosixPackagePluginRootMaterializationStore,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
@@ -135,6 +164,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    _PinnedWindowsAuthority,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import (
+    PackageWindowsEpochRuntimeLeaseRegistry,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_materialization import (
+    WindowsPackageDependencyMaterializationStore,
+    WindowsPackageDependencyReadOnlyStore,
+    WindowsPackagePluginRootMaterializationStore,
+)
+from loushang.harness.resources.packages.product_activation import (
+    PackageProductEpochTransactionGuardPort,
+)
+from loushang.harness.resources.packages.product_admission_binding import (
+    PackageProductAdmissionBindingJournal,
+)
 from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
@@ -150,17 +196,34 @@ from loushang.harness.resources.packages.product_handoff import (
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductRouteRequestV1,
+    PackageProductTransactionRoute,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
+from loushang.harness.resources.packages.product_pinned_adoption_binding import (
+    PackageProductPinnedAdoptionBindingJournal,
+)
+from loushang.harness.resources.packages.product_rebind_admission_binding import (
+    PackageProductRebindAdmissionBindingJournal,
+)
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
+)
+from loushang.harness.resources.packages.product_staging_adoption_binding import (
+    PackageProductStagingAdoptionBindingJournal,
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductCandidateRejected,
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    PackageProductWindowsEpochTransactionGuard,
+    PackageProductWindowsFencedRuntimeOwner,
+    PackageProductWindowsStoreRootAdmission,
+    PackageWindowsProductRuntimeLease,
+    inspect_windows_product_private_directory_identity,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
@@ -175,6 +238,7 @@ from loushang.harness.resources.plugins.manifest import (
     PluginManifestParser,
 )
 from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
+from loushang.harness.resources.theme_document import parse_theme_document_v1
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,41 +367,59 @@ def _declarations_match_reservations(
 
 def _admit_external_data_only_candidate(
     policy: PackageProductLocalWheelPolicy,
-    request: PackageProductRouteRequestV1,
+    request: PackageProductTransactionRoute,
     closure: VerifiedPackageClosureCandidate,
 ) -> None:
-    """Check the fixed Resource/Skill shape only after PLC9B wheel verification."""
+    """Check the gated data Resource shapes after PLC9B wheel verification."""
 
     source = request.ingress.source_locator
     bindings = tuple(item for item in policy.bindings if item.source_identity == source)
-    if len(bindings) != 1 or bindings[0].source_trust_class != "local-data-only":
+    legacy_kinds = {
+        "legacy-local-reacquired": "skill",
+        "legacy-local-reacquired-prompt": "prompt",
+        "legacy-local-reacquired-theme": "theme",
+    }
+    if len(bindings) != 1 or bindings[0].source_trust_class not in {
+        "local-data-only",
+        *legacy_kinds,
+    }:
         return
     binding = bindings[0]
 
-    def reject() -> None:
-        raise PackageProductCandidateRejected("External data Wheel shape is unsupported")
+    def reject() -> Never:
+        raise PackageProductCandidateRejected(
+            "Untrusted data Wheel shape is unsupported"
+        )
 
     if len(closure.candidates) != 1 or binding.plugin_manifest_path is None:
         reject()
     wheel = closure.candidates[0]
     tree = wheel.transfer_manifest
-    dist_info = f"{binding.plugin_id}-{tree.version}.dist-info"
+    legacy = binding.source_trust_class in legacy_kinds
+    root = (
+        binding.plugin_manifest_path.removesuffix("/plugin.json")
+        if legacy
+        else binding.plugin_id
+    )
+    distribution = root.replace("_", "-") if legacy else binding.plugin_id
+    if legacy and not re.fullmatch(r"loushang_legacy_[0-9a-f]{24}", root):
+        reject()
+    dist_info = f"{root}-{tree.version}.dist-info"
     metadata_paths = {
         f"{dist_info}/WHEEL",
         f"{dist_info}/METADATA",
         f"{dist_info}/RECORD",
     }
-    root = binding.plugin_id
     fixed_paths = {
         f"{root}/plugin.json",
         f"{root}/declarations/resources.json",
     }
     if (
         tree.node_id != "root"
-        or tree.distribution != binding.plugin_id
+        or tree.distribution != distribution
         or wheel.evidence.artifact_digest != binding.artifact_digest
         or binding.plugin_manifest_path != f"{root}/plugin.json"
-        or binding.requested_package != f"{root}=={tree.version}"
+        or binding.requested_package != f"{distribution}=={tree.version}"
         or wheel.requires_dist
         or wheel.provides_extra
         or len(tree.entries) > 16
@@ -347,18 +429,33 @@ def _admit_external_data_only_candidate(
     files: dict[str, bytes] = {}
     for entry in tree.entries:
         path = entry.logical_path
-        skill_path = (
-            path.startswith(f"{root}/skills/")
-            and len(path.split("/")) == 4
-            and path.endswith("/SKILL.md")
+        resource_path = (
+            (
+                path.startswith(f"{root}/skills/")
+                and len(path.split("/")) == 4
+                and path.endswith("/SKILL.md")
+            )
+            or (
+                path.startswith(f"{root}/prompts/")
+                and len(path.split("/")) == 3
+                and path.endswith(".md")
+            )
+            or (
+                path.startswith(f"{root}/themes/")
+                and len(path.split("/")) == 3
+                and path.endswith(".json")
+            )
         )
-        if path not in metadata_paths | fixed_paths and not skill_path:
+        if path not in metadata_paths | fixed_paths and not resource_path:
             reject()
         if entry.byte_count > 1024 * 1024:
             reject()
         with wheel.open_verified_tree_file(entry) as handle:
             body = handle.read(entry.byte_count + 1)
-        if len(body) != entry.byte_count or sha256(body).hexdigest() != entry.content_digest:
+        if (
+            len(body) != entry.byte_count
+            or sha256(body).hexdigest() != entry.content_digest
+        ):
             reject()
         files[path] = body
     if not fixed_paths | metadata_paths <= files.keys():
@@ -394,16 +491,54 @@ def _admit_external_data_only_candidate(
             reject()
         declaration = document.declarations[0]
         payload = ResourceItemDeclarationPayload.from_dict(dict(declaration.payload))
-        if (
-            payload.resource_kind != "skill"
-            or payload.locator_kind != "directory"
-            or payload.schema_id != "loushang.resource.skill"
-            or f"{root}/{payload.locator}/SKILL.md" not in files
-            or set(files) - fixed_paths - metadata_paths
-            != {f"{root}/{payload.locator}/SKILL.md"}
+        if legacy and payload.resource_kind != legacy_kinds.get(
+            binding.source_trust_class or ""
         ):
             reject()
-    except (KeyError, ValueError, TypeError, PluginManifestError, PluginDeclarationCodecError) as exc:
+        if payload.owner_namespace != f"resources.{payload.resource_kind}":
+            reject()
+        if payload.resource_kind == "skill":
+            expected_body = f"{root}/{payload.locator}/SKILL.md"
+            admissible = (
+                payload.locator_kind == "directory"
+                and payload.schema_id == "loushang.resource.skill"
+                and payload.media_type == "text/markdown"
+            )
+        elif payload.resource_kind == "prompt":
+            expected_body = f"{root}/{payload.locator}"
+            admissible = (
+                payload.locator_kind == "file"
+                and payload.schema_id == "loushang.resource.prompt"
+                and payload.media_type == "text/markdown"
+                and payload.locator.startswith("prompts/")
+                and len(payload.locator.split("/")) == 2
+                and payload.locator.endswith(".md")
+            )
+        elif payload.resource_kind == "theme":
+            expected_body = f"{root}/{payload.locator}"
+            admissible = (
+                payload.locator_kind == "file"
+                and payload.schema_id == "loushang.resource.theme"
+                and payload.media_type == "application/json"
+                and payload.locator.startswith("themes/")
+                and len(payload.locator.split("/")) == 2
+                and payload.locator.endswith(".json")
+            )
+        else:
+            reject()
+        if not admissible or set(files) - fixed_paths - metadata_paths != {
+            expected_body
+        }:
+            reject()
+        if payload.resource_kind == "theme":
+            parse_theme_document_v1(files[expected_body])
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        PluginManifestError,
+        PluginDeclarationCodecError,
+    ) as exc:
         raise PackageProductCandidateRejected(
             "External data Wheel declaration is unsupported"
         ) from exc
@@ -413,18 +548,54 @@ def _admit_external_data_only_candidate(
 class _LocalWheelSelectedManifestReader:
     policy: PackageProductLocalWheelPolicy
     root_reader: PackageProductSelectedRootReader
+    read_only: bool = False
+
+    def capture_plugin_desired_selection_for(
+        self, plugin_id: str
+    ) -> PackageProductPluginDesiredSelectionV1:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Product Plugin selection id is invalid")
+        key = PluginInstallationKeyV1(
+            product_id=self.policy.product_id,
+            installation_scope="workspace",
+            scope_id=self.policy.project_scope_id,
+            plugin_id=plugin_id,
+        )
+        snapshot, _ = self.root_reader.desired_state.capture_read_only()
+        return PackageProductPluginDesiredSelectionV1(
+            installation_key=key,
+            inventory_revision=snapshot.inventory_revision,
+            desired_state=snapshot.installation(key).selection.desired_state,
+            recorded=any(
+                item.installation_key == key for item in snapshot.installations
+            ),
+        )
 
     def selected_external_data_plugin_ids(self) -> tuple[str, ...]:
-        selected = self.root_reader.desired_state.snapshot().installations
+        selected = (
+            self.root_reader.desired_state.capture_read_only()[0].installations
+            if self.read_only
+            else self.root_reader.desired_state.snapshot().installations
+        )
         return tuple(
             sorted(
                 item.installation_key.plugin_id
                 for item in selected
-                if item.selection.desired_state == "installed_enabled"
+                if item.installation_key.product_id == self.policy.product_id
+                and item.installation_key.installation_scope
+                == self.root_reader.installation_scope
+                and item.installation_key.scope_id == self.policy.project_scope_id
+                and item.selection.desired_state == "installed_enabled"
                 and item.selection.package_revision is not None
                 and any(
                     binding.plugin_id == item.installation_key.plugin_id
-                    and binding.source_trust_class == "local-data-only"
+                    and binding.source_trust_class
+                    in {
+                        "local-data-only",
+                        "legacy-local-reacquired",
+                        "legacy-local-reacquired-prompt",
+                        "legacy-local-reacquired-theme",
+                    }
                     and binding.source_identity
                     == item.selection.package_revision.package_source_identity
                     and binding.artifact_digest
@@ -437,6 +608,10 @@ class _LocalWheelSelectedManifestReader:
     def assert_selected_manifest_current(
         self, selected: PackageProductSelectedPluginManifestV1
     ) -> None:
+        if self.read_only:
+            raise PermissionError(
+                "Read-only Product manifest reader has no live recheck"
+            )
         if not isinstance(selected, PackageProductSelectedPluginManifestV1):
             raise TypeError("Product selected Plugin manifest is required")
         self.root_reader.assert_selected_root_current(selected.snapshot)
@@ -477,10 +652,18 @@ class _LocalWheelSelectedManifestReader:
                 "Product Plugin manifest scope changed",
                 code="package_product_root_scope_changed",
             )
-        snapshot = self.root_reader.capture_selected_root(
-            installation_key,
-            max_files=max_files,
-            max_total_bytes=max_total_bytes,
+        snapshot = (
+            self.root_reader.capture_selected_root_read_only(
+                installation_key,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
+            if self.read_only
+            else self.root_reader.capture_selected_root(
+                installation_key,
+                max_files=max_files,
+                max_total_bytes=max_total_bytes,
+            )
         )
         matches = tuple(
             binding
@@ -559,6 +742,89 @@ class _LocalWheelSelectedManifestReader:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _LocalWheelSelectedDependencyReader:
+    policy: PackageProductLocalWheelPolicy
+    root_reader: PackageProductSelectedRootReader
+    store_root: Path
+    store_identity: str
+    settlements: PackageStoreSettlementJournal
+    windows: bool
+
+    def capture_selected_dependency_for_plugin(
+        self,
+        plugin_id: str,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedDependencySnapshotV1:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Product Plugin selection id is invalid")
+        return self._reader().capture_selected_dependency(
+            PluginInstallationKeyV1(
+                product_id=self.policy.product_id,
+                installation_scope="workspace",
+                scope_id=self.policy.project_scope_id,
+                plugin_id=plugin_id,
+            ),
+            max_files=max_files,
+            max_total_bytes=max_total_bytes,
+        )
+
+    def assert_selected_dependency_current(
+        self, snapshot: PackageProductSelectedDependencySnapshotV1
+    ) -> None:
+        self._reader().assert_selected_dependency_current(snapshot)
+
+    def capture_selected_dependency_closure_for_plugin(
+        self,
+        plugin_id: str,
+        *,
+        max_dependencies: int,
+        max_files_per_dependency: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedDependencyClosureSnapshotV1:
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Product Plugin selection id is invalid")
+        return self._reader().capture_selected_dependency_closure(
+            PluginInstallationKeyV1(
+                product_id=self.policy.product_id,
+                installation_scope="workspace",
+                scope_id=self.policy.project_scope_id,
+                plugin_id=plugin_id,
+            ),
+            max_dependencies=max_dependencies,
+            max_files_per_dependency=max_files_per_dependency,
+            max_total_bytes=max_total_bytes,
+        )
+
+    def assert_selected_dependency_closure_current(
+        self, snapshot: PackageProductSelectedDependencyClosureSnapshotV1
+    ) -> None:
+        self._reader().assert_selected_dependency_closure_current(snapshot)
+
+    def _reader(self) -> PackageProductSelectedDependencyReader:
+        store = (
+            WindowsPackageDependencyReadOnlyStore(
+                self.store_root,
+                store_identity=self.store_identity,
+                settlement_journal=self.settlements,
+            )
+            if self.windows
+            else PosixPackageDependencyReadOnlyStore(
+                self.store_root,
+                store_identity=self.store_identity,
+                settlement_journal=self.settlements,
+            )
+        )
+        return PackageProductSelectedDependencyReader(
+            root_reader=self.root_reader,
+            dependency_settlements=self.settlements,
+            dependency_store=store,
+            dependency_store_identity=self.store_identity,
+        )
+
+
 class _PosixStoreRootAdmission(PackageEpochRuntimeAdmissionOwner):
     """Reject a moved Product root before admission reaches Source or journals."""
 
@@ -612,19 +878,126 @@ def compose_posix_local_wheel_product(
     desired_policy_revision: str,
     recovery_identity: str,
 ) -> PackageProductRuntimeBindingV1:
+    """Compose the POSIX Product with its fenced Store and live lease owner."""
+
+    return _compose_local_wheel_product(
+        state_root=state_root,
+        plugin_store_root=plugin_store_root,
+        policy=policy,
+        environment=environment,
+        acquisition_budgets=acquisition_budgets,
+        inspection_budgets=inspection_budgets,
+        closure_budgets=closure_budgets,
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        registry=registry,
+        admission_request=admission_request,
+        management=management,
+        desired_state=desired_state,
+        gc_bindings=gc_bindings,
+        gc_gate=gc_gate,
+        actor_id=actor_id,
+        desired_policy_revision=desired_policy_revision,
+        recovery_identity=recovery_identity,
+        windows_epoch_runtime=None,
+    )
+
+
+def compose_windows_local_wheel_product(
+    *,
+    epoch_runtime: PackageProductWindowsFencedRuntimeOwner,
+    policy: PackageProductLocalWheelPolicy,
+    environment: PackageResolutionEnvironmentV1,
+    acquisition_budgets: PackageAcquisitionBudgetV1,
+    inspection_budgets: PackageInspectionBudgetV1,
+    closure_budgets: PackageClosureBudgetV1,
+    root_store_identity: str,
+    dependency_store_identity: str,
+    admission_request: PackageEpochRuntimeAdmissionRequestV1,
+    management: PluginManagementService,
+    desired_state: PluginDesiredStateLedger,
+    gc_bindings: PluginPackageGcBindingJournal,
+    gc_gate: PluginPackageGcReservationJournal,
+    actor_id: str,
+    desired_policy_revision: str,
+    recovery_identity: str,
+) -> PackageProductRuntimeBindingV1:
+    """Compose the Windows Product from exact epoch-owned private roots."""
+
+    if not isinstance(epoch_runtime, PackageProductWindowsFencedRuntimeOwner):
+        raise TypeError("Windows Package Product epoch owner is required")
+    return _compose_local_wheel_product(
+        state_root=epoch_runtime.prepare_product_state_root(),
+        plugin_store_root=epoch_runtime.selected_store_root(),
+        policy=policy,
+        environment=environment,
+        acquisition_budgets=acquisition_budgets,
+        inspection_budgets=inspection_budgets,
+        closure_budgets=closure_budgets,
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        registry=epoch_runtime.registry,
+        admission_request=admission_request,
+        management=management,
+        desired_state=desired_state,
+        gc_bindings=gc_bindings,
+        gc_gate=gc_gate,
+        actor_id=actor_id,
+        desired_policy_revision=desired_policy_revision,
+        recovery_identity=recovery_identity,
+        windows_epoch_runtime=epoch_runtime,
+    )
+
+
+def _compose_local_wheel_product(
+    *,
+    state_root: Path,
+    plugin_store_root: Path,
+    policy: PackageProductLocalWheelPolicy,
+    environment: PackageResolutionEnvironmentV1,
+    acquisition_budgets: PackageAcquisitionBudgetV1,
+    inspection_budgets: PackageInspectionBudgetV1,
+    closure_budgets: PackageClosureBudgetV1,
+    root_store_identity: str,
+    dependency_store_identity: str,
+    registry: PackageEpochRuntimeLeaseRegistry
+    | PackageWindowsEpochRuntimeLeaseRegistry,
+    admission_request: PackageEpochRuntimeAdmissionRequestV1,
+    management: PluginManagementService,
+    desired_state: PluginDesiredStateLedger,
+    gc_bindings: PluginPackageGcBindingJournal,
+    gc_gate: PluginPackageGcReservationJournal,
+    actor_id: str,
+    desired_policy_revision: str,
+    recovery_identity: str,
+    windows_epoch_runtime: PackageProductWindowsFencedRuntimeOwner | None,
+) -> PackageProductRuntimeBindingV1:
     """Bind the exact Product transaction and inventory before activation."""
 
-    if os.name != "posix" or not all(
-        hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_CLOEXEC")
+    if windows_epoch_runtime is None:
+        if os.name != "posix" or not all(
+            hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_CLOEXEC")
+        ):
+            raise RuntimeError("POSIX rooted Package Store is required")
+        if not isinstance(registry, PackageEpochRuntimeLeaseRegistry):
+            raise TypeError("POSIX runtime lease registry is required")
+    elif (
+        os.name != "nt"
+        or not isinstance(registry, PackageWindowsEpochRuntimeLeaseRegistry)
+        or windows_epoch_runtime.registry is not registry
     ):
-        raise RuntimeError("POSIX rooted Package Store is required")
+        raise RuntimeError("Windows rooted Package Store is required")
     for value, expected, name in (
         (policy, PackageProductLocalWheelPolicy, "Product Wheel policy"),
         (environment, PackageResolutionEnvironmentV1, "resolution environment"),
         (acquisition_budgets, PackageAcquisitionBudgetV1, "acquisition budgets"),
         (inspection_budgets, PackageInspectionBudgetV1, "inspection budgets"),
         (closure_budgets, PackageClosureBudgetV1, "closure budgets"),
-        (registry, PackageEpochRuntimeLeaseRegistry, "runtime lease registry"),
+        (
+            registry,
+            (PackageEpochRuntimeLeaseRegistry, PackageWindowsEpochRuntimeLeaseRegistry),
+            "runtime lease registry",
+        ),
         (admission_request, PackageEpochRuntimeAdmissionRequestV1, "runtime admission"),
         (management, PluginManagementService, "Product management owner"),
         (desired_state, PluginDesiredStateLedger, "Product desired-state owner"),
@@ -642,7 +1015,15 @@ def compose_posix_local_wheel_product(
     ):
         if not isinstance(identifier, str) or not identifier:
             raise ValueError(f"{name} is required")
-    _require_private_directory(state_root)
+    if windows_epoch_runtime is None:
+        _require_private_directory(state_root)
+    else:
+        windows_epoch_runtime.assert_current()
+        if (
+            state_root != windows_epoch_runtime.control_root / "product-state"
+            or plugin_store_root != windows_epoch_runtime.selected_store_root()
+        ):
+            raise ValueError("Windows Package Product roots changed")
     if (
         not isinstance(plugin_store_root, Path)
         or not plugin_store_root.is_absolute()
@@ -653,23 +1034,44 @@ def compose_posix_local_wheel_product(
     ):
         raise ValueError("Package state and fenced Store roots must be distinct")
     current_fence = registry.fences.current(registry.store_id)
+    observed_root_identity = (
+        _directory_identity(plugin_store_root)
+        if windows_epoch_runtime is None
+        else current_fence.fenced_root_identity
+        if current_fence is not None
+        else None
+    )
     if (
         environment.fingerprint != policy.resolution_environment_fingerprint
         or registry.store_id != admission_request.store_id
         or current_fence is None
         or current_fence.fence_id != admission_request.fence_id
-        or _directory_identity(plugin_store_root)
-        != admission_request.store_root_identity
+        or observed_root_identity != admission_request.store_root_identity
         or desired_state.gc_gate is not gc_gate
         or management.gc_gate is not gc_gate
         or getattr(management, "_desired_state", None) is not desired_state
     ):
         raise ValueError("Package Product owner, epoch, or Store identity changed")
 
-    dependency_root = state_root / "dependency-store"
-    dependency_root.mkdir(mode=0o700, exist_ok=True)
-    _require_private_directory(dependency_root)
+    if windows_epoch_runtime is None:
+        dependency_root = state_root / "dependency-store"
+        dependency_root.mkdir(mode=0o700, exist_ok=True)
+        _require_private_directory(dependency_root)
+    else:
+        dependency_root = windows_epoch_runtime.prepare_product_dependency_root()
     lifecycle_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
+    admission_bindings = PackageProductAdmissionBindingJournal(
+        state_root / "admission-bindings.jsonl"
+    )
+    proposed_rebind_bindings = PackageProductRebindAdmissionBindingJournal(
+        state_root / "rebind-admissions.jsonl"
+    )
+    proposed_pinned_bindings = PackageProductPinnedAdoptionBindingJournal(
+        state_root / "pinned-admissions.jsonl"
+    )
+    proposed_staging_bindings = PackageProductStagingAdoptionBindingJournal(
+        state_root / "staging-admissions.jsonl"
+    )
     kernel = PackageLifecycleOwner(
         journal=lifecycle_journal,
         classification_authority=policy,
@@ -730,12 +1132,38 @@ def compose_posix_local_wheel_product(
     root_settlements = PackageStoreSettlementJournal(
         state_root / "root-settlements.jsonl"
     )
-    root_store = PosixPackagePluginRootMaterializationStore(
-        plugin_store_root,
-        store_identity=root_store_identity,
-        package_store_id=registry.store_id,
-        settlement_journal=root_settlements,
+    root_store = (
+        PosixPackagePluginRootMaterializationStore(
+            plugin_store_root,
+            store_identity=root_store_identity,
+            package_store_id=registry.store_id,
+            settlement_journal=root_settlements,
+        )
+        if windows_epoch_runtime is None
+        else WindowsPackagePluginRootMaterializationStore(
+            plugin_store_root,
+            store_identity=root_store_identity,
+            package_store_id=registry.store_id,
+            settlement_journal=root_settlements,
+        )
     )
+    dependency_settlements = PackageStoreSettlementJournal(
+        state_root / "dependency-settlements.jsonl"
+    )
+    dependency_store = (
+        PosixPackageDependencyMaterializationStore(
+            dependency_root,
+            store_identity=dependency_store_identity,
+            settlement_journal=dependency_settlements,
+        )
+        if windows_epoch_runtime is None
+        else WindowsPackageDependencyMaterializationStore(
+            dependency_root,
+            store_identity=dependency_store_identity,
+            settlement_journal=dependency_settlements,
+        )
+    )
+    staging_journal = PackageArtifactStagingJournal(state_root / "staging.jsonl")
     staging = PackageStagingSetLifecycleOwner(
         kernel=kernel,
         classification_recheck=policy,
@@ -747,15 +1175,9 @@ def compose_posix_local_wheel_product(
             authority_id=policy.authority_id,
             authority_revision=policy.authority_revision,
         ),
-        dependency_staging=PosixPackageDependencyMaterializationStore(
-            dependency_root,
-            store_identity=dependency_store_identity,
-            settlement_journal=PackageStoreSettlementJournal(
-                state_root / "dependency-settlements.jsonl"
-            ),
-        ),
+        dependency_staging=dependency_store,
         root_staging=root_store,
-        staging_journal=PackageArtifactStagingJournal(state_root / "staging.jsonl"),
+        staging_journal=staging_journal,
         committed_sets=committed_sets,
     )
     commit = PackageCommitLifecycleOwner(
@@ -791,6 +1213,7 @@ def compose_posix_local_wheel_product(
             desired_state=desired_state,
         ),
     )
+
     def update_inventory_revision(operation_id: str) -> int:
         anchor = gc_bindings.update_anchor(operation_id)
         if anchor is None:
@@ -805,8 +1228,10 @@ def compose_posix_local_wheel_product(
                 for item in reversed(transitions)
                 if item.inventory_revision <= anchor.expected_inventory_revision
                 and item.committed_state.installation_key.plugin_id == anchor.plugin_id
-                and item.committed_state.installation_key.product_id == policy.product_id
-                and item.committed_state.installation_key.scope_id == policy.project_scope_id
+                and item.committed_state.installation_key.product_id
+                == policy.product_id
+                and item.committed_state.installation_key.scope_id
+                == policy.project_scope_id
             ),
             None,
         )
@@ -826,15 +1251,21 @@ def compose_posix_local_wheel_product(
         handoff=handoff,
         inventory_revision=projection.inventory_revision,
         update_inventory_revision=update_inventory_revision,
+        rebind_bindings=proposed_rebind_bindings,
+        pinned_bindings=proposed_pinned_bindings,
+        staging_bindings=proposed_staging_bindings,
     )
 
-    def update_allowed(request: PackageProductRouteRequestV1) -> bool:
+    def update_allowed(request: PackageProductTransactionRoute) -> bool:
         bindings = tuple(
             binding
             for binding in policy.bindings
             if binding.source_identity == request.ingress.source_locator
         )
-        return len(bindings) == 1 and bindings[0].source_trust_class == "local-data-only"
+        return len(bindings) == 1 and bindings[0].source_trust_class in {
+            "local-data-only",
+            "local-worker-candidate",
+        }
 
     def anchor_update(request: PackageProductRouteRequestV1) -> None:
         if not update_allowed(request):
@@ -872,7 +1303,7 @@ def compose_posix_local_wheel_product(
             expected_package_revision=prior,
         )
 
-    def existing_installation(request: PackageProductRouteRequestV1) -> bool:
+    def existing_installation(request: PackageProductTransactionRoute) -> bool:
         ingress = request.ingress
         plugin_id = ingress.requested_plugin_id
         if not isinstance(plugin_id, str) or not plugin_id:
@@ -883,7 +1314,67 @@ def compose_posix_local_wheel_product(
             scope_id=ingress.scope_id,
             plugin_id=plugin_id,
         )
-        return desired_state.snapshot().installation(key).selection.desired_state != "absent"
+        return (
+            desired_state.snapshot().installation(key).selection.desired_state
+            != "absent"
+        )
+
+    rebind_source = PackageProductRebindSourceReader(
+        policy=policy,
+        lifecycle=lifecycle_journal,
+        resolution=resolution_journal,
+    )
+    rebind_lease = PackageProductRebindLeaseReader(
+        lifecycle=lifecycle_journal,
+        original_bindings=admission_bindings,
+        proposed_bindings=proposed_rebind_bindings,
+        pinned_bindings=proposed_pinned_bindings,
+        staging_bindings=proposed_staging_bindings,
+        snapshots=registry,
+        current_admission_request=admission_request,
+    )
+    rebind_cleanup = PackageProductRebindCleanupReader(
+        lifecycle=lifecycle_journal,
+        resolution=resolution_journal,
+        artifacts=evidence_journal,
+        cleanup=cleanup,
+        quarantine=quarantine,
+        pins=pin_journal,
+        staging=staging_journal,
+        committed_sets=committed_sets,
+        handoff=handoff_journal,
+        pin_recovery_identity=recovery_identity,
+    )
+    rebind_decision = PackageProductRebindDecisionOwner(
+        lifecycle=lifecycle_journal,
+        source=rebind_source,
+        lease=rebind_lease,
+        cleanup=rebind_cleanup,
+        quarantine_cleanup=cleanup,
+        proposals=proposed_rebind_bindings,
+    )
+    pinned_adoption = PackageProductPinnedAdoptionOwner(
+        lifecycle=lifecycle_journal,
+        source=rebind_source,
+        lease=rebind_lease,
+        cleanup=rebind_cleanup,
+        resolution=resolution_journal,
+        proposals=proposed_pinned_bindings,
+    )
+    staging_adoption = PackageProductStagingAdoptionOwner(
+        lifecycle=lifecycle_journal,
+        source=rebind_source,
+        lease=rebind_lease,
+        checkpoint=staging,
+        proposals=proposed_staging_bindings,
+    )
+
+    def admit_candidate(
+        request: PackageProductTransactionRoute,
+        candidate: VerifiedPackageClosureCandidate,
+    ) -> None:
+        _admit_external_data_only_candidate(policy, request, candidate)
+        admit_explicit_local_worker_wheel_candidate(policy, request, candidate)
 
     transaction = PackageProductLifecycleTransaction(
         kernel=kernel,
@@ -899,27 +1390,42 @@ def compose_posix_local_wheel_product(
         handoff=finalizer,
         existing_installation=existing_installation,
         update_allowed=update_allowed,
-        candidate_admission=lambda request, candidate: _admit_external_data_only_candidate(
-            policy, request, candidate
-        ),
+        candidate_admission=admit_candidate,
         cleanup=cleanup,
+        rebound_execution_authority=rebind_decision.authorize,
+        pinned_execution_authority=pinned_adoption.authorize,
+        staging_execution_authority=staging_adoption.authorize,
     )
+    runtime_admission: PackageEpochRuntimeAdmissionOwner
+    transaction_guard: PackageProductEpochTransactionGuardPort
+    if windows_epoch_runtime is None:
+        if not isinstance(registry, PackageEpochRuntimeLeaseRegistry):
+            raise TypeError("POSIX runtime lease registry changed")
+        runtime_admission = _PosixStoreRootAdmission(
+            registry=registry, root=plugin_store_root
+        )
+        transaction_guard = PackageProductFileEpochTransactionGuard(
+            store_id=registry.store_id,
+            coordination_lock=registry.coordination_lock,
+            file_io=registry._io,
+        )
+    else:
+        runtime_admission = PackageProductWindowsStoreRootAdmission(
+            epoch_runtime=windows_epoch_runtime
+        )
+        transaction_guard = PackageProductWindowsEpochTransactionGuard(
+            windows_epoch_runtime
+        )
     lifecycle = compose_package_product_lifecycle(
         product_id=policy.product_id,
         owner=kernel,
         transaction=transaction,
         ingress_factory=policy,
-        runtime_admission=_PosixStoreRootAdmission(
-            registry=registry,
-            root=plugin_store_root,
-        ),
+        runtime_admission=runtime_admission,
         admission_request=admission_request,
-        transaction_guard=PackageProductFileEpochTransactionGuard(
-            store_id=registry.store_id,
-            coordination_lock=registry.coordination_lock,
-            file_io=registry._io,
-        ),
+        transaction_guard=transaction_guard,
         update_preflight=anchor_update,
+        admission_binding=admission_bindings,
         reference_guard=gc_gate.guard,
         recoveries=(PackageRetentionHandoffRecovery(handoff_journal, handoff),),
         admitted_recoveries=(
@@ -928,6 +1434,9 @@ def compose_posix_local_wheel_product(
                 kernel=kernel,
                 journal=handoff_journal,
                 finalizer=finalizer,
+                rebind_bindings=proposed_rebind_bindings,
+                pinned_bindings=proposed_pinned_bindings,
+                staging_bindings=proposed_staging_bindings,
             ),
         ),
     )
@@ -958,6 +1467,21 @@ def compose_posix_local_wheel_product(
         _selected_manifest_reader=_LocalWheelSelectedManifestReader(
             policy=policy, root_reader=selected_root_reader
         ),
+        _selected_dependency_reader=_LocalWheelSelectedDependencyReader(
+            policy=policy,
+            root_reader=selected_root_reader,
+            store_root=dependency_root,
+            store_identity=dependency_store_identity,
+            settlements=dependency_settlements,
+            windows=windows_epoch_runtime is not None,
+        ),
+        _rebind_source_reader=rebind_source,
+        _rebind_lease_reader=rebind_lease,
+        _rebind_cleanup_reader=rebind_cleanup,
+        _rebind_decision_owner=rebind_decision,
+        _pinned_adoption_owner=pinned_adoption,
+        _staging_adoption_owner=staging_adoption,
+        _staging_checkpoint_reader=staging,
     )
 
 
@@ -1015,6 +1539,7 @@ class PosixLocalWheelProductSessionOwner:
     runtime_version: str
     runtime_protocol_epoch: int
     _workspace_identity: tuple[int, int] = field(init=False, repr=False)
+    _state_root_identity: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -1037,6 +1562,11 @@ class PosixLocalWheelProductSessionOwner:
         object.__setattr__(
             self, "_workspace_identity", (metadata.st_dev, metadata.st_ino)
         )
+        state_identity = _directory_identity(self.state_root)
+        if state_identity is None:
+            raise ValueError("Package Product state root is unsafe")
+        object.__setattr__(self, "_state_root_identity", state_identity)
+        self.epoch_runtime.assert_current()
 
     def factory_for_session(
         self, *, session_id: str, cwd: Path, runtime_id: str
@@ -1049,6 +1579,7 @@ class PosixLocalWheelProductSessionOwner:
             raise ValueError("Package Product Session workspace changed")
         if self._current_workspace_identity() != self._workspace_identity:
             raise ValueError("Package Product workspace identity changed")
+        self.assert_root_gc_authority_current()
         lease = self.epoch_runtime.issue_runtime_lease(
             runtime_id=runtime_id,
             runtime_version=self.runtime_version,
@@ -1080,7 +1611,7 @@ class PosixLocalWheelProductSessionOwner:
             )
             if self._current_workspace_identity() != self._workspace_identity:
                 raise ValueError("Package Product workspace identity changed")
-            self.epoch_runtime.assert_current()
+            self.assert_root_gc_authority_current()
             return factory
         except BaseException:
             lease.release()
@@ -1096,9 +1627,9 @@ class PosixLocalWheelProductSessionOwner:
         if not isinstance(plugin_id, str) or not plugin_id:
             raise ValueError("Package Product Plugin id is required")
         self.epoch_runtime.assert_current()
-        state_identity = _directory_identity(self.state_root)
-        if state_identity is None:
-            raise ValueError("Package Product state root is unsafe")
+        state_identity = self._state_root_identity
+        if _directory_identity(self.state_root) != state_identity:
+            raise ValueError("Package Product state root changed")
         journal = PackageRetentionHandoffJournal(self.state_root / "handoff.jsonl")
         receipts = tuple(
             record.receipt
@@ -1135,8 +1666,8 @@ class PosixLocalWheelProductSessionOwner:
         self.epoch_runtime.assert_current()
         if self._current_workspace_identity() != self._workspace_identity:
             raise ValueError("Package Product workspace identity changed")
-        if _directory_identity(self.state_root) is None:
-            raise ValueError("Package Product state root is unsafe")
+        if _directory_identity(self.state_root) != self._state_root_identity:
+            raise ValueError("Package Product state root changed")
         fence = self.epoch_runtime.cutover_result.fence
         if (
             fence is None
@@ -1144,6 +1675,36 @@ class PosixLocalWheelProductSessionOwner:
         ):
             raise ValueError("Package Product fenced Store root changed")
         self.epoch_runtime.assert_current()
+
+    @contextmanager
+    def pinned_state_root_gc_read(self) -> Iterator[int]:
+        """Read GC debt from the original Product state directory, not a path swap."""
+
+        self.assert_root_gc_authority_current()
+        descriptor = os.open(
+            self.state_root,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+        try:
+            if (
+                _private_directory_identity(os.fstat(descriptor))
+                != self._state_root_identity
+            ):
+                raise ValueError("Package Product state root descriptor changed")
+            self.assert_root_gc_authority_current()
+            yield descriptor
+            if (
+                _private_directory_identity(os.fstat(descriptor))
+                != self._state_root_identity
+            ):
+                raise ValueError("Package Product state root descriptor changed")
+            self.assert_root_gc_authority_current()
+        finally:
+            os.close(descriptor)
+
+    @property
+    def dependency_store_root(self) -> Path:
+        return self.state_root / "dependency-store"
 
     def _current_workspace_identity(self) -> tuple[int, int] | None:
         try:
@@ -1204,7 +1765,9 @@ class PosixLocalWheelProductRuntimeFactory:
             raise ValueError("Package Product requires completed POSIX cutover")
         if self.epoch_runtime is not None:
             if (
-                not isinstance(self.epoch_runtime, PackageProductPosixFencedRuntimeOwner)
+                not isinstance(
+                    self.epoch_runtime, PackageProductPosixFencedRuntimeOwner
+                )
                 or self.epoch_runtime.registry is not self.runtime_lease.registry
                 or self.epoch_runtime.cutover_result != self.cutover_result
             ):
@@ -1287,7 +1850,12 @@ class PosixLocalWheelProductRuntimeFactory:
                 raise ValueError("Package Product workspace changed during composition")
             if self.epoch_runtime is not None:
                 self.epoch_runtime.assert_current()
-            bound = replace(binding, on_dispose=self.runtime_lease.release)
+            bound = replace(
+                binding,
+                session_id=request.session_id,
+                product_runtime_id=admission_request.runtime_id,
+                on_dispose=self.runtime_lease.release,
+            )
             object.__setattr__(self, "_binding_issued", True)
             return bound
 
@@ -1309,6 +1877,316 @@ class PosixLocalWheelProductRuntimeFactory:
             return None
         return metadata.st_dev, metadata.st_ino
 
+    def assert_workspace_current(self) -> None:
+        """Recheck the workspace identity captured for this Product Session."""
+
+        if self._current_cwd_identity() != self._cwd_identity:
+            raise ValueError("Package Product Session workspace identity changed")
+        if self.epoch_runtime is not None:
+            self.epoch_runtime.assert_current()
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WindowsLocalWheelProductSessionOwner:
+    """Issue a Session factory from the current Windows Product fence."""
+
+    workspace: Path
+    policy: PackageProductLocalWheelPolicy
+    host_inputs: PosixLocalWheelProductHostInputs
+    root_store_identity: str
+    dependency_store_identity: str
+    epoch_runtime: PackageProductWindowsFencedRuntimeOwner
+    management: PluginManagementService
+    desired_state: PluginDesiredStateLedger
+    gc_bindings: PluginPackageGcBindingJournal
+    gc_gate: PluginPackageGcReservationJournal
+    actor_id: str
+    desired_policy_revision: str
+    recovery_identity: str
+    runtime_version: str
+    runtime_protocol_epoch: int
+    _workspace_identities: tuple[tuple[int, int], ...] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if os.name != "nt":
+            raise OSError("Windows Package Product Session owner is unavailable")
+        if (
+            not isinstance(self.epoch_runtime, PackageProductWindowsFencedRuntimeOwner)
+            or getattr(self.management, "_desired_state", None)
+            is not self.desired_state
+            or self.management.gc_gate is not self.gc_gate
+            or self.desired_state.gc_gate is not self.gc_gate
+        ):
+            raise ValueError("Windows Package Product owners are not bound")
+        self.epoch_runtime.assert_current()
+        object.__setattr__(
+            self, "_workspace_identities", _windows_workspace_identities(self.workspace)
+        )
+        self.epoch_runtime.assert_current()
+
+    @property
+    def state_root(self) -> Path:
+        return self.epoch_runtime.prepare_product_state_root()
+
+    @property
+    def plugin_store_root(self) -> Path:
+        return self.epoch_runtime.selected_store_root()
+
+    @property
+    def dependency_store_root(self) -> Path:
+        return self.epoch_runtime.prepare_product_dependency_root()
+
+    def assert_root_gc_authority_current(self) -> None:
+        self.epoch_runtime.assert_current()
+        if _windows_workspace_identities(self.workspace) != self._workspace_identities:
+            raise ValueError("Windows Package Product workspace changed")
+        self.epoch_runtime.prepare_product_state_root()
+        self.epoch_runtime.prepare_product_dependency_root()
+        self.epoch_runtime.selected_store_root()
+        self.epoch_runtime.assert_current()
+
+    def assert_private_data_read_authority_current(self) -> None:
+        """Recheck the selected Windows Product without preparing absent roots."""
+
+        self.epoch_runtime.assert_current()
+        if _windows_workspace_identities(self.workspace) != self._workspace_identities:
+            raise ValueError("Windows Package Product workspace changed")
+        inspect_windows_product_private_directory_identity(
+            self.epoch_runtime.control_root / "product-state"
+        )
+        self.epoch_runtime.selected_store_root()
+        self.epoch_runtime.assert_current()
+
+    def assert_session_runtime_current(
+        self, runtime: PackageProductRuntimeBindingV1
+    ) -> None:
+        """Require a live Session binding from this exact Windows Product graph."""
+
+        if type(runtime) is not PackageProductRuntimeBindingV1:
+            raise ValueError("Windows Product Session runtime is invalid")
+        reader = runtime._selected_manifest_reader
+        root_reader = runtime._selected_root_reader
+        lease = getattr(runtime.on_dispose, "__self__", None)
+        if (
+            runtime.product_id != self.policy.product_id
+            or not runtime.lifecycle.active
+            or type(reader) is not _LocalWheelSelectedManifestReader
+            or reader.read_only
+            or reader.policy is not self.policy
+            or reader.root_reader is not root_reader
+            or root_reader is None
+            or root_reader.desired_state is not self.desired_state
+            or root_reader.bindings is not self.gc_bindings
+            or root_reader.gc_gate is not self.gc_gate
+            or getattr(lease, "registry", None) is not self.epoch_runtime.registry
+        ):
+            raise ValueError("Windows Product Session runtime changed owner")
+        self.assert_root_gc_authority_current()
+
+    def factory_for_session(
+        self, *, session_id: str, cwd: Path, runtime_id: str
+    ) -> WindowsLocalWheelProductRuntimeFactory:
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("Package Product Session identity is required")
+        if cwd != self.workspace or (
+            _windows_workspace_identities(cwd) != self._workspace_identities
+        ):
+            raise ValueError("Package Product Session workspace changed")
+        lease = self.epoch_runtime.issue_runtime_lease(
+            runtime_id=runtime_id,
+            runtime_version=self.runtime_version,
+            runtime_protocol_epoch=self.runtime_protocol_epoch,
+        )
+        try:
+            factory = WindowsLocalWheelProductRuntimeFactory(
+                expected_session_id=session_id,
+                expected_cwd=self.workspace,
+                expected_workspace_identities=self._workspace_identities,
+                policy=self.policy,
+                host_inputs=self.host_inputs,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                runtime_lease=lease,
+                epoch_runtime=self.epoch_runtime,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if _windows_workspace_identities(cwd) != self._workspace_identities:
+                raise ValueError("Package Product workspace changed")
+            self.epoch_runtime.assert_current()
+            return factory
+        except BaseException:
+            lease.release()
+            raise
+
+    def settled_install_command_id(
+        self, *, operation_id: str, plugin_id: str
+    ) -> str | None:
+        """Read one settled Windows Product install handoff."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package Product operation id is required")
+        if not isinstance(plugin_id, str) or not plugin_id:
+            raise ValueError("Package Product Plugin id is required")
+        self.epoch_runtime.assert_current()
+        state_root = self.epoch_runtime.prepare_product_state_root()
+        journal = PackageRetentionHandoffJournal(state_root / "handoff.jsonl")
+        receipts = tuple(
+            record.receipt
+            for record in journal.records()
+            if record.receipt is not None
+            and record.receipt.request.operation_id == operation_id
+        )
+        self.epoch_runtime.assert_current()
+        if not receipts:
+            return None
+        if len({receipt.request.handoff_id for receipt in receipts}) != 1:
+            raise ValueError("Package Product operation has multiple handoffs")
+        latest = receipts[-1]
+        desired = latest.request.desired_request
+        if (
+            latest.state != "settled"
+            or latest.desired_receipt is None
+            or desired.product_id != self.policy.product_id
+            or desired.scope_id != self.policy.project_scope_id
+            or desired.plugin_id != plugin_id
+            or journal.current(latest.request.handoff_id) != latest
+        ):
+            raise ValueError("Package Product install handoff is not settled")
+        self.epoch_runtime.assert_current()
+        return desired.command_id
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WindowsLocalWheelProductRuntimeFactory:
+    """Transfer one Windows runtime lease to one Product Session binding."""
+
+    expected_session_id: str
+    expected_cwd: Path
+    expected_workspace_identities: tuple[tuple[int, int], ...]
+    policy: PackageProductLocalWheelPolicy
+    host_inputs: PosixLocalWheelProductHostInputs
+    root_store_identity: str
+    dependency_store_identity: str
+    runtime_lease: PackageWindowsProductRuntimeLease
+    epoch_runtime: PackageProductWindowsFencedRuntimeOwner
+    management: PluginManagementService
+    desired_state: PluginDesiredStateLedger
+    gc_bindings: PluginPackageGcBindingJournal
+    gc_gate: PluginPackageGcReservationJournal
+    actor_id: str
+    desired_policy_revision: str
+    recovery_identity: str
+    _create_lock: Lock = field(default_factory=Lock, init=False, repr=False)
+    _create_started: bool = field(default=False, init=False, repr=False)
+    _binding_issued: bool = field(default=False, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            os.name != "nt"
+            or not isinstance(self.runtime_lease, PackageWindowsProductRuntimeLease)
+            or self.runtime_lease.registry is not self.epoch_runtime.registry
+            or not isinstance(self.expected_session_id, str)
+            or not self.expected_session_id
+            or _windows_workspace_identities(self.expected_cwd)
+            != self.expected_workspace_identities
+        ):
+            raise ValueError("Windows Package Product Session factory is invalid")
+        self.epoch_runtime.assert_current()
+
+    def assert_workspace_current(self) -> None:
+        """Recheck the Windows directory chain captured for this Session."""
+
+        if (
+            _windows_workspace_identities(self.expected_cwd)
+            != self.expected_workspace_identities
+        ):
+            raise ValueError(
+                "Windows Package Product Session workspace identity changed"
+            )
+        self.epoch_runtime.assert_current()
+
+    def create(
+        self, request: PackageProductRuntimeRequestV1
+    ) -> PackageProductRuntimeBindingV1:
+        if not isinstance(request, PackageProductRuntimeRequestV1):
+            raise TypeError("Package Product runtime request is required")
+        if (
+            request.product_id != self.policy.product_id
+            or request.session_id != self.expected_session_id
+            or request.cwd != str(self.expected_cwd)
+            or _windows_workspace_identities(self.expected_cwd)
+            != self.expected_workspace_identities
+        ):
+            raise ValueError("Package Product Session or workspace identity changed")
+        self.epoch_runtime.assert_current()
+        with self._create_lock:
+            if self._create_started:
+                raise ValueError("Package Product runtime factory already used")
+            object.__setattr__(self, "_create_started", True)
+            host = self.host_inputs
+            binding = compose_windows_local_wheel_product(
+                epoch_runtime=self.epoch_runtime,
+                policy=self.policy,
+                environment=host.environment,
+                acquisition_budgets=host.acquisition_budgets,
+                inspection_budgets=host.inspection_budgets,
+                closure_budgets=host.closure_budgets,
+                root_store_identity=self.root_store_identity,
+                dependency_store_identity=self.dependency_store_identity,
+                admission_request=self.runtime_lease.admission_request,
+                management=self.management,
+                desired_state=self.desired_state,
+                gc_bindings=self.gc_bindings,
+                gc_gate=self.gc_gate,
+                actor_id=self.actor_id,
+                desired_policy_revision=self.desired_policy_revision,
+                recovery_identity=self.recovery_identity,
+            )
+            if (
+                _windows_workspace_identities(self.expected_cwd)
+                != self.expected_workspace_identities
+            ):
+                raise ValueError("Package Product workspace changed during composition")
+            self.epoch_runtime.assert_current()
+            bound = replace(
+                binding,
+                session_id=request.session_id,
+                product_runtime_id=self.runtime_lease.admission_request.runtime_id,
+                on_dispose=self.runtime_lease.release,
+            )
+            object.__setattr__(self, "_binding_issued", True)
+            return bound
+
+    def dispose_unbound_runtime(self) -> None:
+        with self._create_lock:
+            if self._binding_issued:
+                return
+            object.__setattr__(self, "_create_started", True)
+            self.runtime_lease.release()
+
+
+def _windows_workspace_identities(path: Path) -> tuple[tuple[int, int], ...]:
+    if (
+        os.name != "nt"
+        or not isinstance(path, Path)
+        or not path.is_absolute()
+        or ".." in path.parts
+        or path != path.resolve(strict=True)
+    ):
+        raise ValueError("Windows Package Product workspace is not canonical")
+    pinned = _PinnedWindowsAuthority.open(path)
+    try:
+        pinned.assert_visible()
+        return pinned.identities
+    finally:
+        pinned.close()
+
 
 def _require_private_directory(path: Path) -> None:
     if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
@@ -1328,27 +2206,30 @@ def _directory_identity(path: Path) -> str | None:
             child = os.open(component, flags, dir_fd=fd)
             os.close(fd)
             fd = child
-        metadata = os.fstat(fd)
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or metadata.st_mode & 0o077
-            or metadata.st_uid != os.geteuid()
-        ):
-            return None
-        return sha256(
-            canonical_json_bytes(
-                {
-                    "device": metadata.st_dev,
-                    "fileType": "directory",
-                    "identityVersion": 1,
-                    "inode": metadata.st_ino,
-                }
-            )
-        ).hexdigest()
+        return _private_directory_identity(os.fstat(fd))
     except OSError:
         return None
     finally:
         os.close(fd)
+
+
+def _private_directory_identity(metadata: os.stat_result) -> str | None:
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_mode & 0o077
+        or metadata.st_uid != os.geteuid()
+    ):
+        return None
+    return sha256(
+        canonical_json_bytes(
+            {
+                "device": metadata.st_dev,
+                "fileType": "directory",
+                "identityVersion": 1,
+                "inode": metadata.st_ino,
+            }
+        )
+    ).hexdigest()
 
 
 __all__ = [

@@ -545,11 +545,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
             imported,
             allowed_prefixes
             + (("loushang.agent.types",) if path == agent_binding else ())
-            + (
-                ("loushang.appserver",)
-                if path.is_relative_to(hosted_mux_root)
-                else ()
-            ),
+            + (("loushang.appserver",) if path.is_relative_to(hosted_mux_root) else ()),
         )
     ]
 
@@ -1273,7 +1269,12 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "conversation.py",
         "diagnostics.py",
         "model_settings.py",
+        "package_repair.py",
         "packages.py",
+        "plugin_desired.py",
+        "plugin_explanation.py",
+        "plugin_management_snapshot.py",
+        "plugin_preview.py",
         "session_lifecycle.py",
         "transcript.py",
     }
@@ -1333,7 +1334,9 @@ def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     prompt_input_imports = _absolute_imports(prompt_input_path)
     image_payload_imports = _absolute_imports(image_payload_path)
     read_tool_imports = _absolute_imports(read_tool_path)
@@ -1511,7 +1514,9 @@ def test_harness_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     stdout_guard_source = Path("src/loushang/harness/host/stdout_guard.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     application_source = Path("src/loushang/harness/cli/application.py").read_text(
         encoding="utf-8"
     )
@@ -2603,7 +2608,9 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
         if _matches_any(imported, boundary.forbidden_prefixes)
     ] == []
 
-    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     coding_work_source = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
@@ -5156,7 +5163,9 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
         encoding="utf-8"
     )
     rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
-    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "fork_session_with_result" not in runtime_source
     assert "entry_id: str, options: object | None = None" not in runtime_source

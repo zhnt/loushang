@@ -13,7 +13,9 @@ from loushang.harness.capabilities.contracts import (
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderBindingSpec,
+    CapabilityProviderBindingSpecV1,
     CapabilityProviderOwnerSnapshot,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.providers import (
     CapabilityBundleProvider,
@@ -141,7 +143,7 @@ class ResolvedCapabilityProvider:
 
     definition: CapabilityDefinition
     provider: CapabilityBundleProvider
-    binding_spec: CapabilityProviderBindingSpec
+    binding_spec: CapabilityProviderBindingSpecV1
     admission: CapabilityProviderAdmissionRecord = field(repr=False)
     choice: ProductCapabilityProviderChoice
 
@@ -153,7 +155,10 @@ class ResolvedCapabilityProvider:
             raise TypeError("Resolved Provider requires a Capability Definition")
         if not isinstance(self.provider, CapabilityBundleProvider):
             raise TypeError("Resolved Provider requires Provider metadata")
-        if not isinstance(self.binding_spec, CapabilityProviderBindingSpec):
+        if not isinstance(
+            self.binding_spec,
+            CapabilityProviderBindingSpec | CapabilityWorkerProviderBindingSpec,
+        ):
             raise TypeError("Resolved Provider requires a binding spec")
         if not isinstance(self.admission, CapabilityProviderAdmissionRecord):
             raise TypeError("Resolved Provider requires owner admission")
@@ -262,7 +267,7 @@ class ResolvedCapabilityProviderSet:
         return tuple(item.provider for item in self.entries)
 
     @property
-    def binding_specs(self) -> tuple[CapabilityProviderBindingSpec, ...]:
+    def binding_specs(self) -> tuple[CapabilityProviderBindingSpecV1, ...]:
         return tuple(item.binding_spec for item in self.entries)
 
     @property

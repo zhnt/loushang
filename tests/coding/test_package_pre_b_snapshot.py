@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import stat
+import subprocess
 import sys
 from hashlib import sha256
 from io import StringIO
@@ -16,7 +18,11 @@ from loushang.ai.model import Capabilities, Model
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.bootstrap import create_agent_session, create_services
+from loushang.coding.bootstrap import (
+    create_agent_session,
+    create_agent_session_runtime,
+    create_services,
+)
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
@@ -128,7 +134,7 @@ def test_combined_cutover_refuses_implicit_legacy_plugin_adoption(
         project_settings_path=workspace / ".loushang" / "settings.json",
     )
 
-    with pytest.raises(RuntimeError, match="explicit (adoption|migration)"):
+    with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
         cutover_and_bootstrap_coding_package_product(
             lifecycle,
             settings,
@@ -142,6 +148,663 @@ def test_combined_cutover_refuses_implicit_legacy_plugin_adoption(
         assert lifecycle.desired_state.read_bytes() == legacy_state
     epoch = prepare_coding_package_cutover_roots(lifecycle)
     assert not (epoch.control_root / "epoch.jsonl").exists()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+@pytest.mark.parametrize(
+    "legacy_kind",
+    (
+        "global_settings",
+        "project_settings",
+        "custom_global_settings",
+        "custom_project_settings",
+        "desired_state",
+        "package_lock",
+    ),
+)
+def test_ordinary_session_refuses_pre_b_workspace_without_writing(
+    tmp_path: Path, legacy_kind: str
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    global_settings = tmp_path / "global-settings.json"
+    if legacy_kind == "global_settings":
+        global_settings.write_text(
+            json.dumps({"disabled_plugins": ["coding.base"]}), encoding="utf-8"
+        )
+    elif legacy_kind == "project_settings":
+        project_settings = workspace / ".loushang" / "settings.json"
+        project_settings.parent.mkdir(mode=0o700)
+        project_settings.write_text(
+            json.dumps({"plugin_sources": ["old-source"]}), encoding="utf-8"
+        )
+    elif legacy_kind == "custom_global_settings":
+        custom_global_settings = tmp_path / "custom-global" / "settings.json"
+        custom_global_settings.parent.mkdir(mode=0o700)
+        custom_global_settings.write_text(
+            json.dumps({"disabled_plugins": ["coding.base"]}), encoding="utf-8"
+        )
+    elif legacy_kind == "custom_project_settings":
+        custom_project_settings = workspace / "custom-project" / "settings.json"
+        custom_project_settings.parent.mkdir(mode=0o700)
+        custom_project_settings.write_text(
+            json.dumps({"plugin_sources": ["old-source"]}), encoding="utf-8"
+        )
+    elif legacy_kind == "desired_state":
+        lifecycle.root.mkdir(parents=True, mode=0o700)
+        lifecycle.desired_state.write_bytes(b"old Desired State must survive\n")
+    else:
+        lifecycle.package_root.mkdir(parents=True, mode=0o700)
+        (lifecycle.package_root / "package-lock.json").write_bytes(
+            b"old Package lock must survive\n"
+        )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    services = None
+    if legacy_kind in {"custom_global_settings", "custom_project_settings"}:
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=(
+                    custom_global_settings
+                    if legacy_kind == "custom_global_settings"
+                    else tmp_path / "custom-global" / "settings.json"
+                ),
+                project_settings_path=(
+                    custom_project_settings
+                    if legacy_kind == "custom_project_settings"
+                    else workspace / "custom-project" / "settings.json"
+                ),
+            )
+        )
+
+    def snapshot() -> tuple[tuple[str, bytes | None], ...]:
+        return tuple(
+            sorted(
+                (
+                    path.relative_to(tmp_path).as_posix(),
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in tmp_path.rglob("*")
+            )
+        )
+
+    before = snapshot()
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=global_settings,
+        ),
+        pytest.raises(RuntimeError, match="pre-B workspace is unsupported"),
+    ):
+        create_agent_session(session_manager=manager, services=services)
+    assert snapshot() == before
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_session_initializes_fresh_workspace_in_b_product(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    selection = CodingFencedProductApplicationSelection()
+    try:
+        with (
+            patch(
+                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                return_value=lifecycle,
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.default_global_settings_path",
+                return_value=tmp_path / "global-settings.json",
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.version",
+                return_value="2.0.0",
+            ),
+        ):
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            binding = factory.create(
+                PackageProductRuntimeRequestV1(
+                    product_id="coding",
+                    session_id=manager.get_header().conversation_id,
+                    cwd=str(workspace),
+                )
+            )
+            try:
+                runtime = binding.activate()
+                for plugin_id in (
+                    "coding.base",
+                    "coding.lsp.default",
+                    "coding.arch.default",
+                ):
+                    selected = runtime.capture_selected_plugin_manifest_for(
+                        plugin_id, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                    assert selected.verified_manifest().name == plugin_id
+            finally:
+                binding.dispose_runtime()
+            second = selection.factory_for_session(manager, settings_manager=settings)
+            assert second is not None
+            second.dispose_unbound_runtime()
+        assert reopen_coding_package_cutover(lifecycle).disposition == "fenced"
+        assert not lifecycle.desired_state.exists()
+        assert not (lifecycle.package_root / "package-lock.json").exists()
+    finally:
+        selection.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_live_product_owner_refuses_replaced_state_root_with_identical_journals(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    selection = CodingFencedProductApplicationSelection()
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
+    ):
+        try:
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            factory.dispose_unbound_runtime()
+            owner = selection._owners[workspace]
+            product = owner.runtime_owner.product_owner
+            inventory = product.desired_state.snapshot()
+            arch = next(
+                item
+                for item in inventory.installations
+                if item.installation_key.plugin_id == "coding.arch.default"
+            )
+            disable = PluginManagementCommandV1(
+                action="disable",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id="operator:state-root-substitution",
+                    idempotency_key="operator:state-root-substitution",
+                    expected_inventory_revision=inventory.inventory_revision,
+                    installation_key=arch.installation_key,
+                    desired_state="installed_disabled",
+                    package_revision=None,
+                    actor_id="operator",
+                    policy_revision=product.desired_policy_revision,
+                ),
+            )
+            state_root = product.state_root
+            replacement = state_root.with_name("product-state-copy")
+            original = state_root.with_name("product-state-original")
+            shutil.copytree(state_root, replacement)
+            state_root.rename(original)
+            replacement.rename(state_root)
+            try:
+                before = {
+                    path.relative_to(state_root): path.read_bytes()
+                    for path in state_root.rglob("*")
+                    if path.is_file()
+                }
+                with pytest.raises(ValueError, match="state root changed"):
+                    owner.epoch_runtime.assert_current()
+                with pytest.raises(ValueError, match="state root changed"):
+                    product.assert_root_gc_authority_current()
+                with pytest.raises(ValueError, match="GC parent directory changed"):
+                    product.management.submit(disable)
+                assert {
+                    path.relative_to(state_root): path.read_bytes()
+                    for path in state_root.rglob("*")
+                    if path.is_file()
+                } == before
+            finally:
+                state_root.rename(replacement)
+                original.rename(state_root)
+        finally:
+            selection.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_product_repairs_only_builtin_session_orphan(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    selection = CodingFencedProductApplicationSelection()
+    try:
+        with (
+            patch(
+                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                return_value=lifecycle,
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.default_global_settings_path",
+                return_value=tmp_path / "global-settings.json",
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.version",
+                return_value="2.0.0",
+            ),
+        ):
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            factory.dispose_unbound_runtime()
+    finally:
+        selection.close()
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    runtime_id = (
+        "coding-session:"
+        + sha256(manager.get_header().conversation_id.encode()).hexdigest()
+    )
+    child = """
+import os
+import sys
+from pathlib import Path
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
+)
+owner = PackageProductPosixFencedRuntimeOwner.open(
+    authority_root=Path(sys.argv[1]),
+    control_root=Path(sys.argv[2]),
+    store_id=sys.argv[3],
+    epochs_root_name=sys.argv[4],
+)
+owner.issue_runtime_lease(
+    runtime_id=sys.argv[5], runtime_version="2.0.0", runtime_protocol_epoch=2
+)
+os._exit(0)
+"""
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child,
+            str(epoch.authority_root),
+            str(epoch.control_root),
+            epoch.store_id,
+            epoch.epochs_root_name,
+            runtime_id,
+        ],
+        check=True,
+        timeout=20,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    try:
+        registry = owner.epoch_runtime.registry
+        (orphan,) = registry.review_orphans(store_id=registry.store_id)
+        assert orphan.runtime_id == runtime_id
+        worker_evidence = (
+            owner.runtime_owner.product_owner.state_root / "worker-start-gates.jsonl"
+        )
+        worker_evidence.write_bytes(b"")
+        try:
+            with pytest.raises(
+                RuntimeError, match="Worker recovery requires explicit review"
+            ):
+                owner.factory_for_session(manager)
+            assert registry.review_orphans(store_id=registry.store_id) == (orphan,)
+        finally:
+            worker_evidence.unlink()
+        factory = owner.factory_for_session(manager)
+        factory.dispose_unbound_runtime()
+        assert registry.review_orphans(store_id=registry.store_id) == ()
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_session_retries_interrupted_fresh_product_bootstrap(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    original_submit = PluginManagementService.submit
+    interrupted = False
+
+    def interrupt_once(
+        service: PluginManagementService, command: PluginManagementCommandV1
+    ):
+        nonlocal interrupted
+        if command.action == "enable" and not interrupted:
+            interrupted = True
+            raise RuntimeError("injected first enable interruption")
+        return original_submit(service, command)
+
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.version",
+            return_value="2.0.0",
+        ),
+    ):
+        first = CodingFencedProductApplicationSelection()
+        try:
+            with patch.object(PluginManagementService, "submit", interrupt_once):
+                with pytest.raises(
+                    RuntimeError, match="injected first enable interruption"
+                ):
+                    first.factory_for_session(manager, settings_manager=settings)
+        finally:
+            first.close()
+        assert interrupted
+        assert reopen_coding_package_cutover(lifecycle).disposition == "fenced"
+        retry = CodingFencedProductApplicationSelection()
+        try:
+            factory = retry.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            binding = factory.create(
+                PackageProductRuntimeRequestV1(
+                    product_id="coding",
+                    session_id=manager.get_header().conversation_id,
+                    cwd=str(workspace),
+                )
+            )
+            try:
+                runtime = binding.activate()
+                for plugin_id in (
+                    "coding.base",
+                    "coding.lsp.default",
+                    "coding.arch.default",
+                ):
+                    selected = runtime.capture_selected_plugin_manifest_for(
+                        plugin_id, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                    assert selected.verified_manifest().name == plugin_id
+            finally:
+                binding.dispose_runtime()
+        finally:
+            retry.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_session_preserves_operator_disable_after_fresh_b_bootstrap(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.version",
+            return_value="2.0.0",
+        ),
+    ):
+        first = CodingFencedProductApplicationSelection()
+        try:
+            factory = first.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            factory.dispose_unbound_runtime()
+        finally:
+            first.close()
+        owner = open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+        )
+        try:
+            product = owner.runtime_owner.product_owner
+            state = product.desired_state.snapshot()
+            installed = next(
+                item
+                for item in state.installations
+                if item.installation_key.plugin_id == "coding.base"
+            )
+            disabled = product.management.submit(
+                PluginManagementCommandV1(
+                    action="disable",
+                    mutation=PluginDesiredStateMutationV1(
+                        operation_id="operator:disable-auto-base",
+                        idempotency_key="operator:disable-auto-base",
+                        expected_inventory_revision=state.inventory_revision,
+                        installation_key=installed.installation_key,
+                        desired_state="installed_disabled",
+                        package_revision=None,
+                        actor_id="operator",
+                        policy_revision="operator:1",
+                    ),
+                )
+            )
+            assert disabled.result is not None
+            assert disabled.result.disposition == "succeeded"
+        finally:
+            owner.close()
+        reopened = CodingFencedProductApplicationSelection()
+        try:
+            factory = reopened.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            factory.dispose_unbound_runtime()
+            product = reopened._owners[workspace].runtime_owner.product_owner
+            state = product.desired_state.snapshot()
+            base = next(
+                item
+                for item in state.installations
+                if item.installation_key.plugin_id == "coding.base"
+            )
+            assert base.selection.desired_state == "installed_disabled"
+        finally:
+            reopened.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_session_does_not_bootstrap_old_snapshot_with_fresh_namespace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    global_settings = tmp_path / "global-settings.json"
+    global_settings.write_text(
+        json.dumps({"disabled_plugins": ["coding.base"]}), encoding="utf-8"
+    )
+    settings = SettingsManager(
+        global_settings_path=global_settings,
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    epoch = prepare_coding_package_cutover_roots(lifecycle)
+    namespace_id = sha256(
+        b"loushang.coding-fresh-product-epoch/v1\0" + epoch.store_id.encode()
+    ).hexdigest()
+    cutover = prepare_and_cutover_coding_package_store_from_legacy(
+        lifecycle,
+        settings,
+        namespace_id=namespace_id,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+    assert cutover.attempt.result.disposition == "fenced"
+    selection = CodingFencedProductApplicationSelection()
+    try:
+        with (
+            patch(
+                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                return_value=lifecycle,
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.version",
+                return_value="2.0.0",
+            ),
+        ):
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            factory.dispose_unbound_runtime()
+        assert not selection._owners[
+            workspace
+        ].runtime_owner.product_owner.desired_state.transitions()
+    finally:
+        selection.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_ordinary_session_requires_existing_workspace_before_first_b_writes(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "missing-workspace"
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    selection = CodingFencedProductApplicationSelection()
+    try:
+        with (
+            patch(
+                "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                return_value=lifecycle,
+            ),
+            patch(
+                "loushang.coding.package_product_runtime.default_global_settings_path",
+                return_value=tmp_path / "global-settings.json",
+            ),
+            pytest.raises(ValueError, match="existing directory"),
+        ):
+            selection.factory_for_session(manager)
+        assert not workspace.exists()
+        assert not lifecycle.root.exists()
+        assert not lifecycle.package_root.exists()
+    finally:
+        selection.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
+def test_runtime_session_refuses_effective_old_settings_without_product_writes(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    custom_settings = tmp_path / "custom-global" / "settings.json"
+    custom_settings.parent.mkdir(mode=0o700)
+    old_bytes = b'{"disabled_plugins":["coding.base"]}'
+    custom_settings.write_bytes(old_bytes)
+    services = create_services(
+        settings_manager=SettingsManager(global_settings_path=custom_settings)
+    )
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions", services=services, persist=False
+        )
+        try:
+            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
+                await runtime.create_session(cwd=str(workspace))
+        finally:
+            await runtime.dispose()
+
+    with patch(
+        "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+        return_value=lifecycle,
+    ):
+        asyncio.run(scenario())
+    assert custom_settings.read_bytes() == old_bytes
+    assert not lifecycle.root.exists()
+    assert not lifecycle.package_root.exists()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")

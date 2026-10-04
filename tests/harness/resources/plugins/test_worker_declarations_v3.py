@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,10 @@ from loushang.harness.resources.plugins.engine import (
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.worker import WorkerRuntimeBindingV1
+from loushang.harness.worker.package_candidate import (
+    WorkerPackageCandidateError,
+    verify_worker_package_candidate,
+)
 
 
 def _worker_configuration() -> PluginLocalWorkerConfiguration:
@@ -54,6 +59,107 @@ def _worker_reservation() -> PluginContributionReservation:
         worker_configuration=_worker_configuration(),
         index_version=PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
     )
+
+
+def _worker_file_set() -> dict[str, bytes]:
+    reservation = _worker_reservation()
+    index = PluginContributionIndex(
+        items=(reservation,),
+        version=PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    )
+    declaration = PluginDeclaration(
+        plugin_id="review-pack",
+        contribution_id=reservation.contribution_id,
+        kind=reservation.kind,
+        owner=reservation.owner,
+        reservation_fingerprint=reservation.fingerprint,
+        source_descriptor_fingerprint=reservation.source_descriptor_fingerprint,
+        source_kind="document",
+        payload={"querySchema": "loushang.capability-query/read-only/v1"},
+        ir_version=PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
+        contribution_execution_model="local_worker",
+        worker_configuration=reservation.worker_configuration,
+    )
+    document = PluginDeclarationDocument(
+        declarations=(declaration,),
+        document_version=PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+    )
+    manifest = {
+        "contributionIndex": index.to_dict(),
+        "engine": {
+            "apiVersion": 1,
+            "declarationIrVersion": 3,
+            "requiredFeatures": sorted(required_plugin_engine_features(index)),
+        },
+        "manifestVersion": 1,
+        "name": "review-pack",
+        "packageRoot": ".",
+        "version": "1",
+    }
+    return {
+        "plugin.json": json.dumps(
+            manifest, separators=(",", ":"), sort_keys=True
+        ).encode(),
+        "declarations/providers.json": PluginDeclarationDocumentCodec.encode_bytes(
+            document
+        ),
+        "worker/bin/query-worker": b"worker executable bytes",
+    }
+
+
+def test_worker_package_candidate_rejoins_verified_file_set_without_authority() -> None:
+    files = _worker_file_set()
+    candidate = verify_worker_package_candidate(
+        files,
+        manifest_logical_path="plugin.json",
+        contribution_id="review-provider",
+    )
+    assert candidate.plugin_id == "review-pack"
+    assert candidate.contribution_id == "review-provider"
+    assert candidate.owner_id == "coding.lsp"
+    assert candidate.declared_required
+    assert candidate.executable_digest == sha256(
+        files["worker/bin/query-worker"]
+    ).hexdigest()
+    assert candidate.executable_size == len(files["worker/bin/query-worker"])
+    assert not hasattr(candidate, "package_root")
+
+
+def test_worker_package_candidate_rejects_declaration_drift_and_missing_entrypoint() -> None:
+    files = _worker_file_set()
+    document = json.loads(files["declarations/providers.json"])
+    document["declarations"][0]["workerConfiguration"]["protocolVersion"] = 2
+    changed = dict(files)
+    changed["declarations/providers.json"] = json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode()
+    with pytest.raises(WorkerPackageCandidateError) as mismatch:
+        verify_worker_package_candidate(
+            changed,
+            manifest_logical_path="plugin.json",
+            contribution_id="review-provider",
+        )
+    assert mismatch.value.code == "worker_candidate_declaration_mismatch"
+
+    changed = dict(files)
+    del changed["worker/bin/query-worker"]
+    with pytest.raises(WorkerPackageCandidateError) as missing:
+        verify_worker_package_candidate(
+            changed,
+            manifest_logical_path="plugin.json",
+            contribution_id="review-provider",
+        )
+    assert missing.value.code == "worker_candidate_manifest_invalid"
+
+    changed = dict(files)
+    changed["../escaped"] = b"other"
+    with pytest.raises(WorkerPackageCandidateError) as escaped:
+        verify_worker_package_candidate(
+            changed,
+            manifest_logical_path="plugin.json",
+            contribution_id="review-provider",
+        )
+    assert escaped.value.code == "worker_candidate_invalid"
 
 
 def test_worker_index_v3_is_additive_and_v2_bytes_retain_exact_meaning() -> None:

@@ -10,6 +10,9 @@ PLUGIN_README_PATH = Path("docs/internals/architecture/harness/plugin/README.md"
 DECLARATIONS_PATH = Path(
     "src/loushang/harness/resources/plugins/declarations.py"
 )
+CONTRIBUTION_TYPES_PATH = Path(
+    "src/loushang/harness/resources/plugins/contribution_types.py"
+)
 PROFILE_PATH = Path("src/loushang/harness/runtime/_profile_standard.py")
 CONTINUITY_ROOT_PATH = Path("src/loushang/harness/continuity/__init__.py")
 CONTINUITY_RUNTIME_PATH = Path(
@@ -41,6 +44,7 @@ def test_phase5c_contract_is_indexed_and_marks_runtime_implemented() -> None:
     contract = _contract()
     readme = PLUGIN_README_PATH.read_text(encoding="utf-8")
     declarations = DECLARATIONS_PATH.read_text(encoding="utf-8")
+    contribution_types = CONTRIBUTION_TYPES_PATH.read_text(encoding="utf-8")
 
     assert (
         "[Phase 5C Continuity Provider Plugin Lifecycle]"
@@ -48,7 +52,8 @@ def test_phase5c_contract_is_indexed_and_marks_runtime_implemented() -> None:
     ) in readme
     assert "Current implementation status: implemented" in contract
     assert "runtime slices are not implemented yet" not in readme
-    assert '"continuity_provider"' in declarations
+    assert "PLUGIN_CONTRIBUTION_SCHEMAS" in declarations
+    assert '"continuity_provider"' in contribution_types
 
 
 def test_phase5c_contract_preserves_exact_owner_and_existing_runtime_slot() -> None:

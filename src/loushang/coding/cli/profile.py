@@ -133,6 +133,46 @@ CODING_CLI_PROFILE: CliProfile = _CODING_STANDARD_CLI_PROFILE.augment(
             choices=("text", "json"),
             default="text",
         ),
+        CliArgumentSpec(
+            "coding.preview_current_plugins",
+            ("--preview-current-plugins",),
+            "preview_current_plugins",
+            owner="product",
+            action="store_true",
+            help=(
+                "Show partial read-only installed Plugin composition evidence "
+                "as JSON (fenced Product only)."
+            ),
+        ),
+        CliArgumentSpec(
+            "coding.explain_plugin_operation",
+            ("--explain-plugin-operation",),
+            "explain_plugin_operation",
+            owner="product",
+            help=(
+                "Show partial read-only Package, handoff, and Management "
+                "evidence for one Plugin operation as JSON (fenced Product only)."
+            ),
+        ),
+        CliArgumentSpec(
+            "coding.repair_plugin_desired_operation",
+            ("--repair-plugin-desired-operation",),
+            "repair_plugin_desired_operation",
+            owner="product",
+            help=(
+                "Resume one pending CLI-owned Plugin Desired State command "
+                "by its exact operation ID (fenced Product only)."
+            ),
+        ),
+        CliArgumentSpec(
+            "coding.preview_composition_set",
+            ("--preview-composition-set",),
+            "preview_composition_set",
+            owner="product",
+            choices=("coding-minimal", "coding-standard", "coding-architecture"),
+            default="coding-standard",
+            help="Choose the Coding composition set for Plugin preview.",
+        ),
     ),
 )
 

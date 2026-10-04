@@ -194,10 +194,18 @@ def test_coding_facade_static_types_remain_explicit_not_any(tmp_path, negative):
         )
     result = subprocess.run(
         [
-            sys.executable, "-m", "mypy", "--config-file=",
-            "--python-version=3.11", "--follow-imports=silent",
-            "--ignore-missing-imports", "--no-error-summary", "--no-pretty",
-            "--show-error-codes", "-c", code,
+            sys.executable,
+            "-m",
+            "mypy",
+            "--config-file=",
+            "--python-version=3.11",
+            "--follow-imports=silent",
+            "--ignore-missing-imports",
+            "--no-error-summary",
+            "--no-pretty",
+            "--show-error-codes",
+            "-c",
+            code,
         ],
         cwd=source.parent,
         env={
@@ -511,27 +519,35 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
                 record for record in result.diagnostics if record.type == "error"
             ] == []
 
+            direct_manager = await coding.SessionManager.new(
+                session_dir=tmp_path / "direct" / "sessions",
+                cwd=str(project_root),
+                persist=True,
+            )
             direct_session = coding.create_agent_session(
-                session_manager=session_manager,
+                session_manager=direct_manager,
                 model=_model(),
                 services=services,
             )
             standalone_sessions.append(direct_session)
             assert isinstance(direct_session, AgentSession)
-            assert direct_session.session_manager is session_manager
+            assert direct_session.session_manager is direct_manager
             assert direct_session.get_lsp_status().scope == "session"
             assert direct_session.get_lsp_status().servers == ()
-            assert "lsp" in {
-                command.name for command in direct_session.list_commands()
-            }
+            assert "lsp" in {command.name for command in direct_session.list_commands()}
 
             agent_services = coding.create_agent_session_services(
                 cwd=project_root,
                 global_settings_path=tmp_path / "global-settings.json",
             )
+            services_manager = await coding.SessionManager.new(
+                session_dir=tmp_path / "direct" / "sessions",
+                cwd=str(project_root),
+                persist=True,
+            )
             from_services = coding.create_agent_session_from_services(
                 agent_services=agent_services,
-                session_manager=session_manager,
+                session_manager=services_manager,
                 model=_model(),
             )
             standalone_sessions.append(from_services.session)

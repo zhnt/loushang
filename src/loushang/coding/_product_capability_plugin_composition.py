@@ -54,6 +54,7 @@ from ._base_product_composition import (
     _resource_bodies,
 )
 from ._capability_plugin_composition import (
+    _PRODUCT_POLICY_REVISION,
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     _assembly_request,
@@ -70,6 +71,10 @@ from ._capability_plugin_specs import (
 )
 from ._resource_catalog_shadow import (
     complete_coding_package_plugin_selection_seed,
+)
+from .package_legacy_data_trust import (
+    EXTERNAL_DATA_TRUST_CLASSES,
+    permits_external_data_owner,
 )
 from .package_product_revisions import (
     open_coding_product_builtin_resolution,
@@ -283,7 +288,7 @@ def prepare_coding_product_capability_plugin_composition(
     configurations: Mapping[str, CodingCapabilityPluginConfig],
     state_root: Path,
     clock: Callable[[], int],
-    product_policy_revision: str,
+    product_policy_revision: str = _PRODUCT_POLICY_REVISION,
 ) -> CodingCapabilityPluginCompositionPreparation:
     """Approve exact B-selected Definitions and compile inert Provider inputs.
 
@@ -403,9 +408,15 @@ def _validate_product_lineage(
     for package, binding, item in zip(
         runtime.packages, runtime.bindings, selected, strict=True
     ):
-        item.verified_manifest()
+        verified = item.verified_manifest()
         if (
-            package.manifest.name != item.manifest.name
+            package.manifest.name != verified.name
+            or package.manifest.version != verified.version
+            or package.manifest.metadata != verified.metadata
+            or package.manifest_digest != verified.manifest_digest
+            or package.contribution_index != verified.contribution_index
+            or not package.manifest.enabled
+            or not package.source.enabled
             or package.content_digest != item.snapshot.root_ref.artifact_digest
             or binding.source_identity
             != item.snapshot.package_revision.package_source_identity
@@ -503,22 +514,35 @@ def _builtin_plan_seed(
         item.manifest.name
         for item in selected
         if item.source_trust_snapshot is not None
-        and item.source_trust_snapshot.source_trust_class == "local-data-only"
+        and item.source_trust_snapshot.source_trust_class in EXTERNAL_DATA_TRUST_CLASSES
+        and all(
+            permits_external_data_owner(
+                item.source_trust_snapshot.source_trust_class,
+                reservation.owner,
+            )
+            for reservation, _ in item.verified_data_only_declarations()
+        )
+    }
+    external_data_owners = {
+        reservation.owner
+        for item in selected
+        if item.manifest.name in selected_data_ids
+        for reservation, _ in item.verified_data_only_declarations()
+    }
+    missing_data_owners = external_data_owners - {
+        item.owner_key[0] for item in base_compilation.owner_bindings
     }
     initial_owner_bindings = (
         *base_compilation.owner_bindings,
         *(
             _owner_bindings(
                 include_tools=False,
-                include_prompt=False,
-                include_skill=True,
+                include_prompt="resources.prompt" in missing_data_owners,
+                include_skill="resources.skill" in missing_data_owners,
+                include_theme="resources.theme" in missing_data_owners,
                 include_command=False,
             )
-            if selected_data_ids
-            and not any(
-                item.owner_key[0] == "resources.skill"
-                for item in base_compilation.owner_bindings
-            )
+            if missing_data_owners
             else ()
         ),
     )
@@ -527,17 +551,34 @@ def _builtin_plan_seed(
             authority=OwnerContributionAuthority(
                 replace(
                     binding.authority.policy,
-                    allowed_source_trust_classes=(
-                        ("host-equivalent-local", "local-data-only")
-                        if PluginContributionRef("coding.base", "skill-standard")
-                        in base_plan.selected_contributions
-                        else ("local-data-only",)
+                    allowed_source_trust_classes=tuple(
+                        sorted(
+                            (
+                                {"host-equivalent-local"}
+                                if any(
+                                    item.plugin_id == "coding.base"
+                                    and item.owner_id == binding.owner_key[0]
+                                    for item in base_compilation.product_composition.resource_admissions
+                                )
+                                else set()
+                            )
+                            | {
+                                item.source_trust_snapshot.source_trust_class
+                                for item in selected
+                                if item.manifest.name in selected_data_ids
+                                and item.source_trust_snapshot is not None
+                                and any(
+                                    reservation.owner == binding.owner_key[0]
+                                    for reservation, _ in item.verified_data_only_declarations()
+                                )
+                            }
+                        )
                     ),
                 )
             ),
             admission_ttl_seconds=binding.admission_ttl_seconds,
         )
-        if selected_data_ids and binding.owner_key[0] == "resources.skill"
+        if binding.owner_key[0] in external_data_owners
         else binding
         for binding in initial_owner_bindings
     )

@@ -29,13 +29,21 @@ class _DirectoryEntries(Protocol):
 @dataclass(eq=False)
 class _Operation:
     pid: int = field(default_factory=os.getpid)
-    descriptors: dict[int, bool] = field(default_factory=dict)  # True: close outcome unknown.
-    temporaries: dict[tuple[int, str], tuple[int, int] | None] = field(default_factory=dict)
+    descriptors: dict[int, bool] = field(
+        default_factory=dict
+    )  # True: close outcome unknown.
+    temporaries: dict[tuple[int, str], tuple[int, int] | None] = field(
+        default_factory=dict
+    )
     sync_pending: set[int] = field(default_factory=set)
     iterators: list[tuple[_DirectoryEntries, bool]] = field(default_factory=list)
-    deletions: list[tuple[int, str, tuple[int, int], bool]] = field(default_factory=list)
+    deletions: list[tuple[int, str, tuple[int, int], bool]] = field(
+        default_factory=list
+    )
     deletion_registered: bool = False
-    recoveries: list[tuple[int, Callable[[RootedDirectory], None]]] = field(default_factory=list)
+    recoveries: list[tuple[int, Callable[[RootedDirectory], None]]] = field(
+        default_factory=list
+    )
     directory_fds: set[int] = field(default_factory=set)
     lock_fds: set[int] = field(default_factory=set)
     cleanup_thread: int | None = None
@@ -44,7 +52,9 @@ class _Operation:
     active: bool = True
     borrow_active: bool = True
     settlements: list[Event] = field(default_factory=list)
-    expected_directories: dict[tuple[int, int, str], tuple[int, int]] = field(default_factory=dict)
+    expected_directories: dict[tuple[int, int, str], tuple[int, int]] = field(
+        default_factory=dict
+    )
 
     def opened(self, fd: int) -> int:
         self.descriptors[fd] = False
@@ -137,13 +147,22 @@ class _Operation:
                 failures.append(exc)
             else:
                 self.sync_pending.remove(parent)
-        retained_parents = ({parent for parent, _ in self.temporaries} | self.sync_pending
-                            | {parent for parent, _, _, _ in self.deletions})
+        retained_parents = (
+            {parent for parent, _ in self.temporaries}
+            | self.sync_pending
+            | {parent for parent, _, _, _ in self.deletions}
+        )
         if self.recoveries:
             retained_parents |= self.directory_fds
         for fd, unknown in tuple(reversed(self.descriptors.items())):
-            if fd in self.lock_fds and (failures or self.recoveries or self.deletions
-                                       or self.temporaries or self.sync_pending or any(self.descriptors.values())):
+            if fd in self.lock_fds and (
+                failures
+                or self.recoveries
+                or self.deletions
+                or self.temporaries
+                or self.sync_pending
+                or any(self.descriptors.values())
+            ):
                 continue
             if unknown or fd in retained_parents:
                 continue
@@ -172,7 +191,9 @@ class _Operation:
 class _PublicationWitness:
     """One bounded data receipt; its descriptors belong to the original port."""
 
-    operation: _Operation = field(default_factory=lambda: _Operation(active=False, borrow_active=False))
+    operation: _Operation = field(
+        default_factory=lambda: _Operation(active=False, borrow_active=False)
+    )
     attempted: bool = False
     published: bool = False
     _identity: tuple[int, int] | None = None
@@ -181,8 +202,12 @@ class _PublicationWitness:
     def identity(self) -> tuple[int, int]:
         if os.getpid() != self.operation.pid:
             raise OSError("rooted publication cannot be used after fork")
-        if (not self.published or self._identity is None or len(self.operation.descriptors) != 1
-                or any(self.operation.descriptors.values())):
+        if (
+            not self.published
+            or self._identity is None
+            or len(self.operation.descriptors) != 1
+            or any(self.operation.descriptors.values())
+        ):
             raise OSError("rooted publication has no retained completion witness")
         return self._identity
 
@@ -197,7 +222,13 @@ class RootedFileIO:
 
     root: Path
 
-    def __init__(self, root: Path, directory_fd: int, *, directory_bindings: tuple[DirectoryBinding, ...] = ()) -> None:
+    def __init__(
+        self,
+        root: Path,
+        directory_fd: int,
+        *,
+        directory_bindings: tuple[DirectoryBinding, ...] = (),
+    ) -> None:
         root = Path(root)
         if sys.platform != "linux":
             raise OSError("rooted IO requires Linux")
@@ -211,11 +242,18 @@ class RootedFileIO:
             raise ValueError("rooted directory bindings must be a bounded tuple")
         self._expected_directories: dict[tuple[int, int, str], tuple[int, int]] = {}
         for parent, name, child in directory_bindings:
-            if (type(name) is not str or not name or name in {".", ".."}
-                    or any(char in name for char in ("/", "\\", "\0"))
-                    or any(type(identity) is not tuple or len(identity) != 2
-                           or any(type(value) is not int or value < 0 for value in identity)
-                           for identity in (parent, child))):
+            if (
+                type(name) is not str
+                or not name
+                or name in {".", ".."}
+                or any(char in name for char in ("/", "\\", "\0"))
+                or any(
+                    type(identity) is not tuple
+                    or len(identity) != 2
+                    or any(type(value) is not int or value < 0 for value in identity)
+                    for identity in (parent, child)
+                )
+            ):
                 raise ValueError("invalid rooted directory binding")
             key = (*parent, name)
             if key in self._expected_directories:
@@ -230,8 +268,13 @@ class RootedFileIO:
     def cleanup_pending(self) -> bool:
         self._same_process()
         with self._mutex:
-            return bool(self._operations or (self._publication is not None
-                        and self._publication[1].operation.descriptors))
+            return bool(
+                self._operations
+                or (
+                    self._publication is not None
+                    and self._publication[1].operation.descriptors
+                )
+            )
 
     @property
     def active_operations(self) -> bool:
@@ -286,20 +329,30 @@ class RootedFileIO:
             parts = path.relative_to(self.root).parts
         except ValueError:
             raise ValueError("rooted IO path is outside the borrowed root") from None
-        if not parts or any(part in {"", ".", ".."} or "\0" in part or "\\" in part for part in parts):
+        if not parts or any(
+            part in {"", ".", ".."} or "\0" in part or "\\" in part for part in parts
+        ):
             raise ValueError("rooted IO requires safe relative child components")
         return parts
 
     @contextmanager
     def _operation(
-        self, path: Path, *, create_parent: bool = False, durable: bool = True,
+        self,
+        path: Path,
+        *,
+        create_parent: bool = False,
+        durable: bool = True,
     ) -> Iterator[tuple[_Operation, int, str]]:
         parts = self._parts(path)
         self._same_process()
-        operation = _Operation(durable=durable, expected_directories=dict(self._expected_directories))
+        operation = _Operation(
+            durable=durable, expected_directories=dict(self._expected_directories)
+        )
         with self._mutex:
-            if (any(not item.active for item in self._operations)
-                    or (self._publication is not None and any(self._publication[1].operation.descriptors.values()))):
+            if any(not item.active for item in self._operations) or (
+                self._publication is not None
+                and any(self._publication[1].operation.descriptors.values())
+            ):
                 raise OSError("rooted IO has unsettled cleanup debt")
             self._operations.append(operation)
         primary: BaseException | None = None
@@ -313,7 +366,9 @@ class RootedFileIO:
             operation.directory_fds.add(parent)
             for part in parts[:-1]:
                 status = os.fstat(parent)
-                expected = operation.expected_directories.get((status.st_dev, status.st_ino, part))
+                expected = operation.expected_directories.get(
+                    (status.st_dev, status.st_ino, part)
+                )
                 if create_parent and expected is None:
                     try:
                         os.mkdir(part, mode=0o700, dir_fd=parent)
@@ -324,7 +379,10 @@ class RootedFileIO:
                 parent = operation.opened(os.open(part, flags, dir_fd=parent))
                 operation.directory_fds.add(parent)
                 _directory(os.fstat(parent))
-                if expected is not None and (os.fstat(parent).st_dev, os.fstat(parent).st_ino) != expected:
+                if (
+                    expected is not None
+                    and (os.fstat(parent).st_dev, os.fstat(parent).st_ino) != expected
+                ):
                     raise OSError("rooted enrolled directory identity changed")
             yield operation, parent, parts[-1]
         except BaseException as exc:
@@ -344,32 +402,52 @@ class RootedFileIO:
             finally:
                 with self._mutex:
                     operation.active = False
-                    if (not operation.descriptors and not operation.temporaries
-                            and not operation.sync_pending and not operation.iterators
-                            and not operation.deletions and not operation.recoveries
-                            and not operation.settlements):
+                    if (
+                        not operation.descriptors
+                        and not operation.temporaries
+                        and not operation.sync_pending
+                        and not operation.iterators
+                        and not operation.deletions
+                        and not operation.recoveries
+                        and not operation.settlements
+                    ):
                         self._operations.remove(operation)
 
     @staticmethod
     def _open(operation: _Operation, parent: int, name: str, flags: int) -> int:
-        fd = operation.opened(os.open(
-            name, flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=parent,
-        ))
+        fd = operation.opened(
+            os.open(
+                name,
+                flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                0o600,
+                dir_fd=parent,
+            )
+        )
         _regular(os.fstat(fd))
         return fd
 
     @contextmanager
     def bind(
-        self, path: Path, *, create_parent: bool = False, durable: bool = True,
+        self,
+        path: Path,
+        *,
+        create_parent: bool = False,
+        durable: bool = True,
     ) -> Iterator[RootedFile]:
         """Borrow one pinned parent for an entire synchronous transaction.
 
         The yielded reference is valid only within this context. In particular,
         Journal locks, JSONL and repair must all use this one reference.
         """
-        with self._operation(path, create_parent=create_parent, durable=durable) as values:
-            witness = (self._publication[1] if self._publication is not None
-                       and self._parts(path) == self._publication[0] else None)
+        with self._operation(
+            path, create_parent=create_parent, durable=durable
+        ) as values:
+            witness = (
+                self._publication[1]
+                if self._publication is not None
+                and self._parts(path) == self._publication[0]
+                else None
+            )
             yield RootedFile(*values, _publication=witness)
 
     def read_bytes(self, path: Path, *, max_bytes: int | None = None) -> bytes:
@@ -412,12 +490,16 @@ class RootedFileIO:
         with self.bind(path, create_parent=True, durable=fsync) as target:
             target.atomic_write(data, fsync=fsync)
 
-    def unlink(self, path: Path, *, missing_ok: bool = False, fsync: bool = True) -> None:
+    def unlink(
+        self, path: Path, *, missing_ok: bool = False, fsync: bool = True
+    ) -> None:
         with self.bind(path, durable=fsync) as target:
             target.unlink(missing_ok=missing_ok, fsync=fsync)
 
     @contextmanager
-    def lock(self, path: Path, *, exclusive: bool, blocking: bool = True) -> Iterator[None]:
+    def lock(
+        self, path: Path, *, exclusive: bool, blocking: bool = True
+    ) -> Iterator[None]:
         with self.bind(path, create_parent=True) as target:
             target.acquire_lock(exclusive=exclusive, blocking=blocking)
             yield
@@ -440,9 +522,27 @@ class RootedFile:
 
     def sibling(self, name: str) -> RootedFile:
         self._require_active()
-        if not name or name in {".", ".."} or any(char in name for char in ("/", "\\", "\0")):
+        if (
+            not name
+            or name in {".", ".."}
+            or any(char in name for char in ("/", "\\", "\0"))
+        ):
             raise ValueError("rooted IO requires one direct child name")
         return self._project(name)
+
+    def scan_sibling_names(self, *, limit: int) -> tuple[tuple[str, ...], bool]:
+        """List bounded direct-child names through this file's pinned parent."""
+        self._require_active()
+        if type(limit) is not int or limit < 1:
+            raise ValueError("rooted IO scan limit must be positive")
+        names: list[str] = []
+        entries = os.scandir(self._parent)
+        self._operation.iterators.append((entries, False))
+        for entry in entries:
+            if len(names) == limit:
+                return tuple(names), False
+            names.append(entry.name)
+        return tuple(names), True
 
     def _project(self, name: str) -> RootedFile:
         return RootedFile(self._operation, self._parent, name)
@@ -453,18 +553,26 @@ class RootedFile:
         _regular(value)
         return value
 
-    def read_bytes(self, *, max_bytes: int | None = None, prefix_bytes: int | None = None) -> bytes:
+    def read_bytes(
+        self, *, max_bytes: int | None = None, prefix_bytes: int | None = None
+    ) -> bytes:
         self._require_active()
         if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
             raise ValueError("rooted IO read limit must be positive")
-        if prefix_bytes is not None and (type(prefix_bytes) is not int or prefix_bytes < 1):
+        if prefix_bytes is not None and (
+            type(prefix_bytes) is not int or prefix_bytes < 1
+        ):
             raise ValueError("rooted IO prefix limit must be positive")
         fd = RootedFileIO._open(self._operation, self._parent, self._name, os.O_RDONLY)
         before = os.fstat(fd)
         if max_bytes is not None and before.st_size > max_bytes:
             raise OSError("rooted IO read limit exceeded")
         chunks = []
-        remaining = before.st_size if prefix_bytes is None else min(before.st_size, prefix_bytes)
+        remaining = (
+            before.st_size
+            if prefix_bytes is None
+            else min(before.st_size, prefix_bytes)
+        )
         while remaining:
             data = os.read(fd, min(remaining, 1024 * 1024))
             if not data:
@@ -479,7 +587,12 @@ class RootedFile:
 
     def append_bytes(self, data: bytes, *, fsync: bool = True) -> None:
         self._require_active()
-        fd = RootedFileIO._open(self._operation, self._parent, self._name, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
+        fd = RootedFileIO._open(
+            self._operation,
+            self._parent,
+            self._name,
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+        )
         os.fchmod(fd, 0o600)
         _write_all(fd, data)
         if fsync:
@@ -490,10 +603,14 @@ class RootedFile:
         """Create an unpublished object exclusively; failures retain cleanup."""
         self._require_active()
         operation, parent, name = self._operation, self._parent, self._name
-        fd = operation.opened(os.open(
-            name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-            0o600, dir_fd=parent,
-        ))
+        fd = operation.opened(
+            os.open(
+                name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=parent,
+            )
+        )
         operation.temporaries[parent, name] = None
         metadata = os.fstat(fd)
         identity = metadata.st_dev, metadata.st_ino
@@ -505,15 +622,21 @@ class RootedFile:
         del operation.temporaries[parent, name]
         return identity
 
-    def atomic_write(self, data: bytes, *, fsync: bool = True, exclusive: bool = False) -> None:
+    def atomic_write(
+        self, data: bytes, *, fsync: bool = True, exclusive: bool = False
+    ) -> None:
         self._require_active()
         operation, parent, name = self._operation, self._parent, self._name
         temporary = f".{name}.{secrets.token_hex(12)}.tmp"
         # Only a successful exclusive creation acquires cleanup authority.
-        fd = operation.opened(os.open(
-            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-            0o600, dir_fd=parent,
-        ))
+        fd = operation.opened(
+            os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=parent,
+            )
+        )
         operation.temporaries[parent, temporary] = None
         opened = os.fstat(fd)
         operation.temporaries[parent, temporary] = (opened.st_dev, opened.st_ino)
@@ -535,7 +658,13 @@ class RootedFile:
         if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
             raise OSError("rooted IO temporary identity changed")
         if exclusive:
-            os.link(temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+            os.link(
+                temporary,
+                name,
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+                follow_symlinks=False,
+            )
             os.unlink(temporary, dir_fd=parent)
         else:
             os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
@@ -570,21 +699,46 @@ class RootedFile:
         self._operation.deletions.append((self._parent, self._name, identity, False))
         self._operation.finish_deletions()
 
-    def acquire_lock(self, *, exclusive: bool, blocking: bool = True, suffix: str = "") -> None:
+    def acquire_lock(
+        self,
+        *,
+        exclusive: bool,
+        blocking: bool = True,
+        suffix: str = "",
+        create: bool = True,
+        expected_identity: tuple[int, int] | None = None,
+    ) -> None:
         import fcntl
 
         self._require_active()
         if any(char in suffix for char in ("/", "\\", "\0")):
             raise ValueError("rooted IO lock suffix must be one child component")
-        fd = RootedFileIO._open(self._operation, self._parent, self._name + suffix, os.O_RDWR | os.O_CREAT)
+        if expected_identity is not None and (
+            type(expected_identity) is not tuple
+            or len(expected_identity) != 2
+            or any(type(value) is not int or value < 0 for value in expected_identity)
+        ):
+            raise ValueError("rooted IO lock identity is invalid")
+        lock_name = self._name + suffix
+        flags = os.O_RDWR | (os.O_CREAT if create else 0)
+        fd = RootedFileIO._open(self._operation, self._parent, lock_name, flags)
         self._operation.lock_fds.add(fd)
-        os.fchmod(fd, 0o600)
+        if expected_identity is not None:
+            opened = os.fstat(fd)
+            if (opened.st_dev, opened.st_ino) != expected_identity:
+                raise OSError("rooted IO lock identity changed")
+        if create:
+            os.fchmod(fd, 0o600)
         mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
         # Retained recovery may keep this lock after the call exits. Waiting
         # here would keep another operation active and prevent owner cleanup
         # from releasing that lock. Rooted admission is always fail-fast;
         # blocking remains accepted for the generic Journal lock interface.
         fcntl.flock(fd, mode | fcntl.LOCK_NB)
+        if expected_identity is not None:
+            named = os.stat(lock_name, dir_fd=self._parent, follow_symlinks=False)
+            if (named.st_dev, named.st_ino) != expected_identity:
+                raise OSError("rooted IO lock identity changed")
         # Closing this independent OFD releases the lock, never LOCK_UN.
 
 
@@ -607,7 +761,9 @@ class RootedDirectory:
     def child(self, name: str, *, create: bool = False) -> RootedDirectory:
         target = self.file(name)
         status = self.stat()
-        expected = self._operation.expected_directories.get((status.st_dev, status.st_ino, name))
+        expected = self._operation.expected_directories.get(
+            (status.st_dev, status.st_ino, name)
+        )
         if create and expected is None:
             try:
                 os.mkdir(name, mode=0o700, dir_fd=self._fd)
@@ -641,7 +797,10 @@ class RootedDirectory:
 
     def reborrow(self, retained: RootedDirectory) -> RootedDirectory:
         self.stat()
-        if retained._operation is not self._operation or retained._fd not in self._operation.directory_fds:
+        if (
+            retained._operation is not self._operation
+            or retained._fd not in self._operation.directory_fds
+        ):
             raise ValueError("directory reborrow requires the same retained operation")
         return self._project(retained._fd)
 
@@ -683,7 +842,9 @@ class RootedDirectory:
             names.append(entry.name)
         return tuple(names)
 
-    def remove_tree(self, name: str, *, expected: RootedDirectory, limit: int, defer: bool = False) -> None:
+    def remove_tree(
+        self, name: str, *, expected: RootedDirectory, limit: int, defer: bool = False
+    ) -> None:
         """Preflight a bounded owned tree, then delete only its pinned members."""
         if expected._operation is not self._operation:
             raise ValueError("directory deletion requires the same transaction")
@@ -744,8 +905,11 @@ class _CleanupFile(RootedFile):
     _token: object
 
     def _require_active(self) -> None:
-        if (os.getpid() != self._operation.pid or self._operation.cleanup_thread != get_ident()
-                or self._operation.cleanup_token is not self._token):
+        if (
+            os.getpid() != self._operation.pid
+            or self._operation.cleanup_thread != get_ident()
+            or self._operation.cleanup_token is not self._token
+        ):
             raise OSError("rooted cleanup borrow has ended")
 
     def _project(self, name: str) -> RootedFile:
@@ -757,25 +921,41 @@ class _CleanupDirectory(RootedDirectory):
     _token: object
 
     def file(self, name: str) -> RootedFile:
-        return _CleanupFile(self._operation, self._fd, ".directory", self._token).sibling(name)
+        return _CleanupFile(
+            self._operation, self._fd, ".directory", self._token
+        ).sibling(name)
 
     def _project(self, fd: int) -> RootedDirectory:
         return _CleanupDirectory(self._operation, fd, self._token)
 
 
 def _directory(value: os.stat_result) -> None:
-    if (not stat.S_ISDIR(value.st_mode) or value.st_uid != os.geteuid() or value.st_mode & 0o022):
+    if (
+        not stat.S_ISDIR(value.st_mode)
+        or value.st_uid != os.geteuid()
+        or value.st_mode & 0o022
+    ):
         raise OSError("rooted IO requires an owned non-writable directory")
 
 
 def _regular(value: os.stat_result) -> None:
-    if (not stat.S_ISREG(value.st_mode) or value.st_uid != os.geteuid()
-            or value.st_mode & 0o022 or value.st_nlink != 1):
+    if (
+        not stat.S_ISREG(value.st_mode)
+        or value.st_uid != os.geteuid()
+        or value.st_mode & 0o022
+        or value.st_nlink != 1
+    ):
         raise OSError("rooted IO requires an owned single-link regular file")
 
 
 def _version(value: os.stat_result) -> tuple[int, int, int, int, int]:
-    return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
 
 
 def _write_all(fd: int, data: bytes) -> None:

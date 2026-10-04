@@ -146,8 +146,8 @@ async def _binding(
     return CodingRealHostedSessionV1(session, identity, approval), session
 
 
-def _run(scenario):
-    asyncio.run(asyncio.wait_for(scenario, 20))
+def _run(scenario, *, timeout: int = 20):
+    asyncio.run(asyncio.wait_for(scenario, timeout))
 
 
 def test_real_command_is_accepted_before_entry_and_succeeds_without_agent(tmp_path):
@@ -992,7 +992,8 @@ def test_canonical_product_factory_can_supply_optional_execution_port(tmp_path):
             await hosted.close()
         assert len(tuple((tmp_path / "sessions").glob("*.jsonl"))) == 1
 
-    _run(scenario())
+    # A fresh Product binding alone can take over half of the default watchdog.
+    _run(scenario(), timeout=45)
 
 
 def test_terminal_waits_for_events_scheduled_by_final_owner_cleanup(

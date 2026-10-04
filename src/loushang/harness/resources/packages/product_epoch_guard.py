@@ -22,6 +22,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
     PackageEpochRuntimeLeaseHandle,
     PackageEpochRuntimeLeaseRegistry,
+    PackageEpochRuntimeLeaseRegistryError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
     PackagePosixPreFenceRegistrationError,
@@ -86,6 +87,7 @@ class PackageProductPosixFencedRuntimeOwner:
         root_fd: int,
         authority_root: Path,
         epochs_root_name: str,
+        read_only: bool = False,
     ) -> None:
         self.cutover_result = cutover_result
         self.registry = registry
@@ -93,10 +95,12 @@ class PackageProductPosixFencedRuntimeOwner:
         self._root_fd = root_fd
         self._authority_root = authority_root
         self._epochs_root_name = epochs_root_name
+        self._read_only = read_only
         self._closed = False
         self._close_lock = Lock()
         self._local_lease_lock = Lock()
         self._local_lease_ids: set[str] = set()
+        self._child_identities: dict[str, tuple[int, int]] = {}
 
     @classmethod
     def open(
@@ -106,6 +110,7 @@ class PackageProductPosixFencedRuntimeOwner:
         control_root: Path,
         store_id: str,
         epochs_root_name: str,
+        read_only: bool = False,
     ) -> PackageProductPosixFencedRuntimeOwner:
         """Reopen only the current durable fence and its private control root."""
 
@@ -130,6 +135,7 @@ class PackageProductPosixFencedRuntimeOwner:
                 control_root=control_root,
                 store_id=store_id,
                 epochs_root_name=epochs_root_name,
+                read_only=read_only,
             )
             visible = control_root.lstat()
             if (visible.st_dev, visible.st_ino) != (
@@ -138,7 +144,9 @@ class PackageProductPosixFencedRuntimeOwner:
             ):
                 raise ValueError("Package Product control root changed")
             file_io = RootedFileIO(control_root, descriptor)
-            fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
+            fences = PackageEpochFenceJournal(
+                control_root / "epoch.jsonl", read_only=read_only
+            )
             registry = PackageEpochRuntimeLeaseRegistry(
                 path=control_root / "runtime-leases.jsonl",
                 coordination_lock=control_root / "coordination",
@@ -155,6 +163,7 @@ class PackageProductPosixFencedRuntimeOwner:
                 root_fd=descriptor,
                 authority_root=authority_root,
                 epochs_root_name=epochs_root_name,
+                read_only=read_only,
             )
         except BaseException:
             os.close(descriptor)
@@ -171,11 +180,15 @@ class PackageProductPosixFencedRuntimeOwner:
     def prepare_product_state_root(self) -> Path:
         """Create the B Product journal root only after the fence is selected."""
 
+        if self._read_only:
+            raise ValueError("Read-only Package Product cannot prepare state")
         return self._prepare_private_child("product-state", label="state")
 
     def prepare_product_source_root(self) -> Path:
         """Create the B Product Source root without touching pre-B Package paths."""
 
+        if self._read_only:
+            raise ValueError("Read-only Package Product cannot prepare Source")
         return self._prepare_private_child("product-sources", label="Source")
 
     def _prepare_private_child(self, name: str, *, label: str) -> Path:
@@ -203,6 +216,11 @@ class PackageProductPosixFencedRuntimeOwner:
                     != (visible.st_dev, visible.st_ino)
                 ):
                     raise ValueError(f"Package Product {label} root is unsafe")
+                identity = (metadata.st_dev, metadata.st_ino)
+                pinned = self._child_identities.get(name)
+                if pinned is not None and pinned != identity:
+                    raise ValueError(f"Package Product {label} root changed")
+                self._child_identities[name] = identity
             finally:
                 os.close(descriptor)
             self._assert_current_unlocked()
@@ -217,6 +235,8 @@ class PackageProductPosixFencedRuntimeOwner:
     ) -> PackageProductRuntimeLease:
         """Admit a Session only while this exact control root remains visible."""
 
+        if self._read_only:
+            raise ValueError("Read-only Package Product cannot issue runtime leases")
         with self._close_lock:
             self._assert_current_unlocked()
             fence = self.cutover_result.fence
@@ -254,17 +274,40 @@ class PackageProductPosixFencedRuntimeOwner:
         visible = self._file_io.root.lstat()
         if (metadata.st_dev, metadata.st_ino) != (visible.st_dev, visible.st_ino):
             raise ValueError("Package Product control root changed")
+        self._assert_pinned_children_unlocked()
         observed = reopen_posix_product_cutover(
             authority_root=self._authority_root,
             control_root=self._file_io.root,
             store_id=self.registry.store_id,
             epochs_root_name=self._epochs_root_name,
+            read_only=self._read_only,
         )
         if observed != self.cutover_result:
             raise ValueError("Package Product epoch changed")
         visible = self._file_io.root.lstat()
         if (metadata.st_dev, metadata.st_ino) != (visible.st_dev, visible.st_ino):
             raise ValueError("Package Product control root changed")
+        self._assert_pinned_children_unlocked()
+
+    def _assert_pinned_children_unlocked(self) -> None:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        for name, pinned in self._child_identities.items():
+            label = "state" if name == "product-state" else "Source"
+            try:
+                descriptor = os.open(name, flags, dir_fd=self._root_fd)
+                try:
+                    metadata = os.fstat(descriptor)
+                finally:
+                    os.close(descriptor)
+            except OSError as error:
+                raise ValueError(f"Package Product {label} root changed") from error
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_IMODE(metadata.st_mode) & 0o077
+                or metadata.st_uid != os.geteuid()
+                or (metadata.st_dev, metadata.st_ino) != pinned
+            ):
+                raise ValueError(f"Package Product {label} root changed")
 
     def close(self) -> None:
         with self._close_lock:
@@ -274,18 +317,34 @@ class PackageProductPosixFencedRuntimeOwner:
             # Check this owner's other active operations before entering it.
             if self._file_io.active_operations:
                 raise RuntimeError("Package Product runtime leases remain active")
-            with self.registry.exclusive_runtime_quiescence(
-                store_id=self.registry.store_id
-            ) as quiescence:
+            if self._read_only:
+                self._file_io.cleanup()
+                os.close(self._root_fd)
+                self._closed = True
+                return
+            try:
+                with self.registry.exclusive_runtime_quiescence(
+                    store_id=self.registry.store_id
+                ) as quiescence:
+                    with self._local_lease_lock:
+                        active_local = self._local_lease_ids.intersection(
+                            quiescence.active_runtime_lease_ids
+                        )
+                        self._local_lease_ids.intersection_update(
+                            quiescence.active_runtime_lease_ids
+                        )
+                    if active_local:
+                        raise RuntimeError("Package Product runtime leases remain active")
+            except PackageEpochRuntimeLeaseRegistryError as error:
+                if error.code != "package_epoch_lease_orphaned":
+                    raise
+                # A foreign crashed runtime cannot pin an observer's own root
+                # descriptor. It remains in the registry for explicit repair.
                 with self._local_lease_lock:
-                    active_local = self._local_lease_ids.intersection(
-                        quiescence.active_runtime_lease_ids
-                    )
-                    self._local_lease_ids.intersection_update(
-                        quiescence.active_runtime_lease_ids
-                    )
-                if active_local:
-                    raise RuntimeError("Package Product runtime leases remain active")
+                    if self._local_lease_ids:
+                        raise RuntimeError(
+                            "Package Product runtime leases remain active"
+                        ) from error
             self._file_io.cleanup()
             os.close(self._root_fd)
             self._closed = True

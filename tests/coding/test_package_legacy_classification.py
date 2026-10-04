@@ -206,6 +206,8 @@ def test_snapshot_preparation_carries_exact_legacy_classification(
     (
         lambda value: value.update(projectionVersion=True),
         lambda value: value["scopes"]["global"].update(rawSha256="a" * 64),
+        lambda value: value["scopes"]["global"].update(settingsPath="relative.json"),
+        lambda value: value["scopes"]["global"].update(settingsPath="/old/../settings.json"),
         lambda value: value["scopes"]["global"].update(sourcePatch={"unknown": []}),
         lambda value: value["scopes"]["global"].update(
             present=True,

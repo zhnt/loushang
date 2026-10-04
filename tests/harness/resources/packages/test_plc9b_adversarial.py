@@ -25,15 +25,31 @@ from unittest.mock import patch
 
 import pytest
 
+from loushang.harness.journal import journal_file_lock
 from loushang.harness.package_product.product_local_wheel_inventory import (
     PackageProductLocalWheelInventory,
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductRuntimeFactory,
+    PosixLocalWheelProductSessionOwner,
     compose_posix_local_wheel_product,
+)
+from loushang.harness.package_product.product_rebind_lease import (
+    PackageProductRebindLeaseReader,
+    PackageProductRebindLeaseReadError,
+)
+from loushang.harness.package_product.product_rebind_source import (
+    PackageProductRebindSourceReader,
+)
+from loushang.harness.package_product.product_root_gc_runtime import (
+    open_posix_local_wheel_product_root_gc,
+)
+from loushang.harness.package_product.product_staging_adoption import (
+    PackageProductStagingAdoptionOwner,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingError,
     PluginPackageGcBindingJournal,
 )
 from loushang.harness.plugin_management.package_gc_claim_audit import (
@@ -177,6 +193,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.product_retention impo
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleCancelRequestV1,
     PackageLifecyclePhase,
+    PackageLifecycleRebindRequestV1,
     PackageLifecycleRequestV1,
     PackageLifecycleRetryRequestV1,
     PackageLifecycleStatusV1,
@@ -208,6 +225,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime im
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PackageStoreSettlementJournal,
+    PackageStoreSettlementRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
     PackageTransactionPinLifecycleOwner,
@@ -219,6 +237,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_retention import (
     PackageJournaledTransactionRetentionOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackagePhysicalStagingError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
@@ -240,6 +261,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
 from loushang.harness.resources.packages.product_activation import (
     PackageProductActivationError,
 )
+from loushang.harness.resources.packages.product_admission_binding import (
+    PackageProductAdmissionBindingJournal,
+)
 from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
@@ -247,6 +271,9 @@ from loushang.harness.resources.packages.product_composition import (
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
     PackageProductUpdateCheckRequestV1,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductPosixFencedRuntimeOwner,
 )
 from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffFinalizer,
@@ -256,6 +283,7 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductPublishAttemptV1,
+    PackageProductReboundRouteRequestV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
 )
@@ -263,9 +291,16 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWheelDependencyV1,
     PackageProductLocalWheelPolicy,
+    PackageProductRebindSourceError,
+)
+from loushang.harness.resources.packages.product_rebind_admission_binding import (
+    PackageProductRebindAdmissionBindingJournal,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
+)
+from loushang.harness.resources.packages.product_staging_adoption_binding import (
+    PackageProductStagingAdoptionBindingJournal,
 )
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
@@ -1210,6 +1245,16 @@ class _ManifestNativeRootStagingOwner:
             self.state.same_receipt = True
         return receipt
 
+    def read_validate_root_receipt(
+        self, receipt: PackageArtifactStagingReceiptV1
+    ) -> PackageArtifactStagingReceiptV1:
+        return self.store.read_validate_root_receipt(receipt)
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return self.store.read_operation_settlements(operation_id)
+
 
 @dataclass
 class _SourceStream:
@@ -1587,7 +1632,9 @@ class _ManifestProductTransaction:
         return _advance_lifecycle(self.owner, current, "committed")
 
 
-def _manifest_product_admission() -> PackageEpochRuntimeAdmissionReceiptV1:
+def _manifest_product_admission(
+    *, runtime_id: str = "runtime:product"
+) -> PackageEpochRuntimeAdmissionReceiptV1:
     fence = PackageEpochFenceReceiptV1.create(
         PackageEpochFenceRequestV1.create(
             store_id="package-store:product",
@@ -1603,7 +1650,7 @@ def _manifest_product_admission() -> PackageEpochRuntimeAdmissionReceiptV1:
         )
     )
     lease = PackageEpochRuntimeLeaseV1.create(
-        runtime_id="runtime:product",
+        runtime_id=runtime_id,
         runtime_epoch=fence.epoch,
         store_root_identity=fence.fenced_root_identity,
         registration_receipt_id="7" * 64,
@@ -1647,8 +1694,7 @@ def _b2_owner(
         PackageLifecycleOwner(
             journal=lifecycle_journal,
             classification_authority=(
-                classification_authority
-                or _Authority(_facts("explicit_plugin_intent"))
+                classification_authority or _Authority(_facts("explicit_plugin_intent"))
             ),
             enabled=True,
         )
@@ -1736,7 +1782,10 @@ def _b3d_owner(
     root_payload: bytes | None = None,
     payloads: dict[str, bytes] | None = None,
     resolver: (
-        _NoDependencyResolver | _ManifestResolver | PackageProductLocalWheelPolicy | None
+        _NoDependencyResolver
+        | _ManifestResolver
+        | PackageProductLocalWheelPolicy
+        | None
     ) = None,
     closure_builder: _LegacyClosureBuilder | None = None,
     crash_after_phase: PackageLifecyclePhase | None = None,
@@ -1924,6 +1973,42 @@ def test_committed_set_gc_tombstone_blocks_exact_root_republication(
         )
     assert caught.value.code == "package_committed_set_gc_tombstoned"
     assert restarted.records() == (record,)
+    assert len(restarted.read_events()) == 2
+
+
+def test_committed_set_read_events_is_non_repairing(tmp_path: Path) -> None:
+    journal = PackageCommittedSetJournal(tmp_path / "committed-sets.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_events() == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    journal.path.write_bytes(b'{"partial":')
+    with journal_file_lock(journal.path, "exclusive"):
+        pass
+    original = journal.path.read_bytes()
+    with pytest.raises(PackageCommittedSetJournalError) as invalid:
+        journal.read_events()
+    assert invalid.value.code == "package_committed_set_journal_corrupt"
+    assert journal.path.read_bytes() == original
+    assert lock.exists()
+
+
+def test_gc_binding_read_records_is_non_repairing(tmp_path: Path) -> None:
+    journal = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_records() == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    journal.path.write_bytes(b'{"partial":')
+    with journal_file_lock(journal.path, "exclusive"):
+        pass
+    original = journal.path.read_bytes()
+    with pytest.raises(PluginPackageGcBindingError) as invalid:
+        journal.read_records()
+    assert invalid.value.code == "plugin_package_gc_binding_corrupt"
+    assert journal.path.read_bytes() == original
 
 
 def _manifest_commit_admission_fixture(
@@ -2437,9 +2522,7 @@ def test_plc9b_gc_claim_survives_crash_before_committed_crosswalk(
 ) -> None:
     fixture = _manifest_retention_handoff_fixture(tmp_path)
     gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
-    ledger = PluginDesiredStateLedger(
-        tmp_path / "product-desired.jsonl", gc_gate=gate
-    )
+    ledger = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl", gc_gate=gate)
     service = PluginManagementService(
         desired_state=ledger,
         operation_journal_path=tmp_path / "product-operations.jsonl",
@@ -2484,6 +2567,7 @@ def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
     tmp_path: Path,
 ) -> None:
     fixture = _manifest_retention_handoff_fixture(tmp_path)
+
     class ReservedGate:
         reserved = frozenset[PluginPackageRevisionRefV1]()
 
@@ -2492,9 +2576,7 @@ def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
             yield self.reserved
 
     gate = ReservedGate()
-    ledger = PluginDesiredStateLedger(
-        tmp_path / "product-desired.jsonl", gc_gate=gate
-    )
+    ledger = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl", gc_gate=gate)
     service = PluginManagementService(
         desired_state=ledger,
         operation_journal_path=tmp_path / "product-operations.jsonl",
@@ -2531,9 +2613,7 @@ def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
         command_fingerprint=sha256(b"manifest-desired-alias").hexdigest(),
         expected_inventory_revision=1,
     )
-    alias_adapter = replace(
-        first, revisions=AlternateProjection(ledger)
-    )
+    alias_adapter = replace(first, revisions=AlternateProjection(ledger))
     with pytest.raises(PackageProductGcAdmissionError) as blocked:
         alias_adapter.commit(alias_request)
     assert blocked.value.code == "package_product_gc_root_reserved"
@@ -2580,10 +2660,13 @@ def test_plc9a2_retention_owner_repairs_release_before_settlement_crash(
     )
     assert released is not None and released.state == "released"
 
-    recovered = PackageRetentionHandoffRecovery(
+    recovery = PackageRetentionHandoffRecovery(
         journal=journal,
         owner=owner,
-    ).recover()
+    )
+    assert recovery.recover_exact("other-operation") == ()
+    assert journal.current(fixture.request.handoff_id) == first.receipt
+    recovered = recovery.recover_exact(fixture.request.operation_id)
 
     assert recovered == (fixture.request.handoff_id,)
     current = journal.current(fixture.request.handoff_id)
@@ -3286,21 +3369,21 @@ class _FailOnceProductHandoff:
 
 
 def _native_product_handoff(
-    fixture: _ManifestNativeAdoptionFixture, tmp_path: Path
+    fixture: _ManifestNativeAdoptionFixture,
+    tmp_path: Path,
+    *,
+    rebind_bindings: PackageProductRebindAdmissionBindingJournal | None = None,
+    staging_bindings: PackageProductStagingAdoptionBindingJournal | None = None,
 ) -> _NativeProductHandoff:
     assert isinstance(fixture.commit, PackageCommitLifecycleOwner)
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
-    desired = PluginDesiredStateLedger(
-        tmp_path / "product-desired.jsonl", gc_gate=gate
-    )
+    desired = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl", gc_gate=gate)
     management = PluginManagementService(
         desired_state=desired,
         operation_journal_path=tmp_path / "product-management.jsonl",
     )
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-gc-bindings.jsonl")
-    projection = CommittedSetPackageRevisionProjection(
-        desired, fixture.committed_sets
-    )
+    projection = CommittedSetPackageRevisionProjection(desired, fixture.committed_sets)
     desired_adapter = PluginManagementPackageDesiredStateAdapter(
         management=management,
         revisions=projection,
@@ -3315,9 +3398,7 @@ def _native_product_handoff(
         committed_sets=fixture.committed_sets,
         pin_journal=fixture.pin_journal,
     )
-    journal = PackageRetentionHandoffJournal(
-        tmp_path / "product-handoff.jsonl"
-    )
+    journal = PackageRetentionHandoffJournal(tmp_path / "product-handoff.jsonl")
     handoff = PackageRetentionHandoffOwner(
         journal=journal,
         admission=admission,
@@ -3336,6 +3417,8 @@ def _native_product_handoff(
             journal=journal,
             handoff=handoff,
             inventory_revision=projection.inventory_revision,
+            rebind_bindings=rebind_bindings,
+            staging_bindings=staging_bindings,
         ),
         desired=desired,
         bindings=bindings,
@@ -3466,7 +3549,8 @@ def _manifest_native_adoption_fixture(
         resolver=configured_resolver,
     )
     classified = kernel.submit(
-        product_ingress or _request(
+        product_ingress
+        or _request(
             source=(
                 f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
                 f"?token={secret}#{secret}"
@@ -3840,9 +3924,7 @@ def _restart_manifest_native_adoption_fixture(
 
 
 def test_product_root_target_requires_exact_classification(tmp_path: Path) -> None:
-    owner, _journal = _owner(
-        tmp_path, facts=_facts("explicit_plugin_intent")
-    )
+    owner, _journal = _owner(tmp_path, facts=_facts("explicit_plugin_intent"))
     status = owner.submit(_request())
     request = owner.journal.request(status.operation_id)
     classification = status.classification
@@ -3872,10 +3954,15 @@ def test_product_root_target_requires_exact_classification(tmp_path: Path) -> No
         ).issue_target(request, classification)
 
 
-@pytest.mark.parametrize("entrypoint", ("cli", "rpc", "session", "startup", "operations"))
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.parametrize(
+    "entrypoint", ("cli", "rpc", "session", "startup", "operations")
+)
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_transaction_uses_real_store_and_durable_owner(
-    tmp_path: Path, entrypoint: PackageProductEntrypoint,
+    tmp_path: Path,
+    entrypoint: PackageProductEntrypoint,
 ) -> None:
     admission = _manifest_product_admission()
     secret = "manifest-product-transaction-secret"
@@ -3890,7 +3977,9 @@ def test_product_transaction_uses_real_store_and_durable_owner(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress,
+        tmp_path,
+        secret=secret,
+        product_ingress=ingress,
         product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
@@ -3933,7 +4022,9 @@ def test_product_transaction_uses_real_store_and_durable_owner(
         authority_id="manifest-product-root-target",
         authority_revision="manifest-product-root-target:1",
     ).issue_target(durable_request, committed.classification)
-    assert committed_set.committed_set.installation_id == expected_target.installation_id
+    assert (
+        committed_set.committed_set.installation_id == expected_target.installation_id
+    )
     desired = product.desired.snapshot()
     assert desired.inventory_revision == 1
     assert desired.installations[0].selection.desired_state == "installed_disabled"
@@ -3982,7 +4073,9 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     assert product.journal.records() == handoff_before
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_transaction_uses_pinned_local_source_and_real_store(
     tmp_path: Path,
 ) -> None:
@@ -4020,9 +4113,7 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         ),
         runtime_admission_request_id=admission.request.admission_request_id,
     )
-    local_source = _PinnedLocalSourceAuthority(
-        policy.source_authority()
-    )
+    local_source = _PinnedLocalSourceAuthority(policy.source_authority())
     fixture = _manifest_native_adoption_fixture(
         tmp_path,
         secret="unused-local-source-secret",
@@ -4080,17 +4171,22 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         kind="authenticated_source",
     )
     assert source_evidence is not None
-    assert isinstance(
-        source_evidence.evidence, PackageAuthenticatedSourceEvidenceV1
-    )
+    assert isinstance(source_evidence.evidence, PackageAuthenticatedSourceEvidenceV1)
     assert source_evidence.evidence.envelope.origin_kind == "local"
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
-@pytest.mark.parametrize("dependency_tampered", (False, True))
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
+@pytest.mark.parametrize(
+    ("dependency_tampered", "crash_after_dependency"),
+    ((False, False), (True, False), (False, True)),
+)
 def test_product_transaction_commits_configured_local_dependency(
     tmp_path: Path,
     dependency_tampered: bool,
+    crash_after_dependency: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_root = tmp_path / "sources"
     source_root.mkdir(mode=0o700)
@@ -4150,7 +4246,15 @@ def test_product_transaction_commits_configured_local_dependency(
         classification_authority=policy,
         configured_resolver=policy,
     )
-    product = _native_product_handoff(fixture, tmp_path)
+    staging_bindings = PackageProductStagingAdoptionBindingJournal(
+        tmp_path / "product-staging-admissions.jsonl"
+    )
+    original_bindings = PackageProductAdmissionBindingJournal(
+        tmp_path / "product-original-admissions.jsonl"
+    )
+    product = _native_product_handoff(
+        fixture, tmp_path, staging_bindings=staging_bindings
+    )
     transaction = PackageProductLifecycleTransaction(
         kernel=fixture.kernel,
         execution=PackageProductWheelExecutionFactory(
@@ -4166,10 +4270,177 @@ def test_product_transaction_commits_configured_local_dependency(
     router = PackageProductLifecycleRouter(
         execution=PackageProductLifecycleExecutionBinding(
             owner=fixture.kernel, transaction=transaction
-        )
+        ),
+        admission_binding=original_bindings,
     )
     if dependency_tampered:
         dependency_source.write_bytes(b"changed-after-Product-approval")
+
+    if crash_after_dependency:
+        original_append = PackageArtifactStagingJournal.append
+
+        def fail_after_dependency(
+            journal: PackageArtifactStagingJournal,
+            receipt: PackageArtifactStagingReceiptV1,
+        ) -> PackageArtifactStagingReceiptV1:
+            persisted = original_append(journal, receipt)
+            if receipt.staging_request.plan_node.role == "dependency":
+                raise RuntimeError("crash after dependency staging receipt")
+            return persisted
+
+        monkeypatch.setattr(
+            PackageArtifactStagingJournal, "append", fail_after_dependency
+        )
+        try:
+            with pytest.raises(
+                RuntimeError, match="crash after dependency staging receipt"
+            ):
+                router.route(
+                    PackageProductRouteRequestV1(
+                        entrypoint="cli", ingress=ingress, admission=admission
+                    )
+                )
+        finally:
+            monkeypatch.setattr(
+                PackageArtifactStagingJournal, "append", original_append
+            )
+        checkpoint = fixture.staging_owner.inspect_checkpoint(ingress.operation_id)
+        assert checkpoint.status.phase == "transaction_pinned"
+        assert checkpoint.missing_node_ids == ("root",)
+        assert len(checkpoint.receipts) == 1
+        assert checkpoint.receipts[0].staging_request.plan_node.role == "dependency"
+        dependency_settlements = PackageStoreSettlementJournal(
+            tmp_path / "manifest-adoption-dependency-settlements.jsonl"
+        )
+        (settled_dependency,) = dependency_settlements.records()
+        assert settled_dependency.receipt == checkpoint.receipts[0]
+        assert fixture.root_settlements.records() == ()
+        new_admission = _manifest_product_admission(runtime_id="runtime:recovered")
+        new_lease = PackageEpochRuntimeLeaseV1.create(
+            runtime_id=new_admission.request.runtime_id,
+            runtime_epoch=new_admission.request.runtime_epoch,
+            store_root_identity=new_admission.request.store_root_identity,
+            registration_receipt_id="7" * 64,
+        )
+        current_snapshot = PackageEpochLeaseSnapshotV1.create(
+            store_id=new_admission.request.store_id,
+            owner_revision=1,
+            active_leases=(new_lease,),
+        )
+
+        @dataclass
+        class _Snapshots:
+            value: PackageEpochLeaseSnapshotV1
+
+            def snapshot(self, *, store_id: str) -> PackageEpochLeaseSnapshotV1:
+                assert store_id == self.value.store_id
+                return self.value
+
+        snapshots = _Snapshots(current_snapshot)
+        source_reader = PackageProductRebindSourceReader(
+            policy=policy,
+            lifecycle=fixture.lifecycle_journal,
+            resolution=fixture.resolution_journal,
+        )
+        lease_reader = PackageProductRebindLeaseReader(
+            lifecycle=fixture.lifecycle_journal,
+            original_bindings=original_bindings,
+            staging_bindings=staging_bindings,
+            snapshots=snapshots,
+            current_admission_request=new_admission.request,
+        )
+        adoption = PackageProductStagingAdoptionOwner(
+            lifecycle=fixture.lifecycle_journal,
+            source=source_reader,
+            lease=lease_reader,
+            checkpoint=fixture.staging_owner,
+            proposals=staging_bindings,
+        )
+        old_lease = PackageEpochRuntimeLeaseV1.create(
+            runtime_id=admission.request.runtime_id,
+            runtime_epoch=admission.request.runtime_epoch,
+            store_root_identity=admission.request.store_root_identity,
+            registration_receipt_id="7" * 64,
+        )
+        snapshots.value = PackageEpochLeaseSnapshotV1.create(
+            store_id=new_admission.request.store_id,
+            owner_revision=2,
+            active_leases=(old_lease, new_lease),
+        )
+        with pytest.raises(PackageProductRebindLeaseReadError) as old_live:
+            adoption.prepare(
+                ingress.operation_id,
+                max_bytes=2 * 1024 * 1024,
+                admission=new_admission,
+            )
+        assert old_live.value.code == "package_rebind_old_lease_active"
+        assert not staging_bindings.path.exists()
+        snapshots.value = current_snapshot
+        dependency_source.write_bytes(b"changed-after-staging")
+        try:
+            with pytest.raises(PackageProductRebindSourceError) as drift:
+                adoption.prepare(
+                    ingress.operation_id,
+                    max_bytes=2 * 1024 * 1024,
+                    admission=new_admission,
+                )
+            assert drift.value.code == "package_source_digest_mismatch"
+            assert not staging_bindings.path.exists()
+        finally:
+            dependency_source.write_bytes(dependency_payload)
+        selected = adoption.prepare(
+            ingress.operation_id,
+            max_bytes=2 * 1024 * 1024,
+            admission=new_admission,
+        )
+        assert selected.decision.staging_checkpoint_id == checkpoint.checkpoint_id
+        assert (
+            adoption.prepare(
+                ingress.operation_id,
+                max_bytes=2 * 1024 * 1024,
+                admission=new_admission,
+            )
+            == selected
+        )
+        _record, current, route = adoption.claim(
+            ingress.operation_id,
+            max_bytes=2 * 1024 * 1024,
+            admission=new_admission,
+        )
+        assert route.missing_node_ids == ("root",)
+        source_calls_before_resume = local_source.authorize_calls
+        resumed_transaction = PackageProductLifecycleTransaction(
+            kernel=fixture.kernel,
+            execution=PackageProductWheelExecutionFactory(
+                environment=environment, budgets=PackageClosureBudgetV1()
+            ),
+            recovery_identity="manifest-local-dependency-recovery",
+            closure=fixture.closure_owner,
+            pins=fixture.pin_owner,
+            staging=fixture.staging_owner,
+            commit=fixture.commit,
+            handoff=product.finalizer,
+            staging_execution_authority=adoption.authorize,
+        )
+        resumed_router = PackageProductLifecycleRouter(
+            execution=PackageProductLifecycleExecutionBinding(
+                owner=fixture.kernel, transaction=resumed_transaction
+            )
+        )
+        try:
+            committed = resumed_router.route_staging_adopted(route, current=current)
+        finally:
+            adoption.revoke(route, current)
+        assert (committed.phase, committed.disposition) == (
+            "committed",
+            "committed",
+        )
+        assert local_source.authorize_calls == source_calls_before_resume
+        assert dependency_settlements.records() == (settled_dependency,)
+        assert len(fixture.root_settlements.records()) == 1
+        assert len(fixture.staging_journal.receipts(ingress.operation_id)) == 2
+        assert product.desired.snapshot().inventory_revision == 1
+        return
 
     committed = router.route(
         PackageProductRouteRequestV1(
@@ -4222,6 +4493,71 @@ def test_product_transaction_commits_configured_local_dependency(
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
+    with_dependency: bool,
+    entrypoint: str,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=with_dependency, entrypoint=entrypoint
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_staging_recovery_with_guarded_dependency_runtime(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="staging_recovery"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_dependency_gc_replays_after_store_delete(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="gc_dependency"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_dependency_gc_records_terminal_store_failure(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="gc_dependency_failure"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_dependency_gc_repair_requires_new_review_after_collision(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="gc_dependency_repair_collision"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_dependency_wheel_update_requires_explicit_admission(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="gc_dependency_versions"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+def test_posix_product_gc_keeps_shared_dependency_until_both_roots_delete(
+    tmp_path: Path,
+) -> None:
+    _exercise_posix_local_wheel_product_composition(
+        tmp_path, with_dependency=True, entrypoint="gc_dependency_shared"
+    )
+
+
+def _exercise_posix_local_wheel_product_composition(
+    tmp_path: Path,
+    *,
     with_dependency: bool,
     entrypoint: str,
 ) -> None:
@@ -4290,8 +4626,13 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
     from loushang.harness.host.rpc.output import RpcOutput
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+        PackageProductRuntimeRequestV1,
+    )
     from loushang.harness.resources.packages.product_epoch_guard import (
         PackageProductPosixFencedRuntimeOwner,
+        PackageProductRuntimeLease,
         register_package_product_runtime_lease,
     )
     from loushang.harness.resources.packages.product_pre_b_snapshot import (
@@ -4345,6 +4686,18 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     dependency_payload = _package_wheel_bytes("dependency", "2.0")
     if with_dependency:
         dependency_source.write_bytes(dependency_payload)
+    versioned_source = source_root / "acme_plugin-2.0-py3-none-any.whl"
+    versioned_payload = _package_wheel_bytes(
+        "acme-plugin", "2.0", requires_dist=("dependency==2.0",)
+    )
+    if entrypoint == "gc_dependency_versions":
+        versioned_source.write_bytes(versioned_payload)
+    shared_source = source_root / "other_plugin-1.0-py3-none-any.whl"
+    shared_payload = _package_wheel_bytes(
+        "other-plugin", "1.0", requires_dist=("dependency==2.0",)
+    )
+    if entrypoint == "gc_dependency_shared":
+        shared_source.write_bytes(shared_payload)
     environment = _closure_environment()
     if checked_in_base:
         policy = coding_base_product_local_wheel_policy(
@@ -4356,18 +4709,37 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             authority_id="coding-local-source:runtime",
         )
     else:
+        configured_bindings = (
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(source),
+                requested_package="acme-plugin==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(payload).hexdigest(),
+            ),
+        )
+        if entrypoint == "gc_dependency_versions":
+            configured_bindings += (
+                PackageProductLocalWheelBindingV1(
+                    source_identity=str(versioned_source),
+                    requested_package="acme-plugin==2.0",
+                    plugin_id="acme.plugin",
+                    artifact_digest=sha256(versioned_payload).hexdigest(),
+                ),
+            )
+        if entrypoint == "gc_dependency_shared":
+            configured_bindings += (
+                PackageProductLocalWheelBindingV1(
+                    source_identity=str(shared_source),
+                    requested_package="other-plugin==1.0",
+                    plugin_id="other.plugin",
+                    artifact_digest=sha256(shared_payload).hexdigest(),
+                ),
+            )
         policy = PackageProductLocalWheelPolicy(
             product_id="coding",
             project_scope_id="workspace:manifest",
             source_root=source_root,
-            bindings=(
-                PackageProductLocalWheelBindingV1(
-                    source_identity=str(source),
-                    requested_package="acme-plugin==1.0",
-                    plugin_id="acme.plugin",
-                    artifact_digest=sha256(payload).hexdigest(),
-                ),
-            ),
+            bindings=configured_bindings,
             dependencies=(
                 PackageProductLocalWheelDependencyV1(
                     source_identity=str(dependency_source),
@@ -4375,7 +4747,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     version="2.0",
                     artifact_digest=sha256(dependency_payload).hexdigest(),
                 ),
-            ) if with_dependency else (),
+            )
+            if with_dependency
+            else (),
             policy_revision="package-policy:1",
             quota_profile_revision="quota:1",
             resolution_environment_fingerprint=environment.fingerprint,
@@ -4521,9 +4895,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
 
         old_package = PluginManifestParser().parse(coding_base_plugin_root())
         with pytest.raises(PluginRevisionError) as direct_publish:
-            PluginRevisionStore(legacy_layout.plugin_revision_root).publish(
-                old_package
-            )
+            PluginRevisionStore(legacy_layout.plugin_revision_root).publish(old_package)
         assert direct_publish.value.code == "plugin_revision_epoch_fenced"
         legacy_materializer = PackageMaterializer(
             install_root=legacy_layout.package_install_root,
@@ -4666,7 +5038,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 path.relative_to(root).as_posix(),
                 None if path.is_dir() else path.read_bytes(),
             )
-            for label, root in (("package", legacy_root), ("lifecycle", legacy_layout.root))
+            for label, root in (
+                ("package", legacy_root),
+                ("lifecycle", legacy_layout.root),
+            )
             for path in sorted(root.rglob("*"))
         )
 
@@ -4701,9 +5076,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 assert epoch_runtime.prepare_product_state_root() == unsafe_state_root
             finally:
                 os.umask(prior_umask)
-        product_state = open_coding_package_product_state(
-            legacy_layout, epoch_runtime
-        )
+        product_state = open_coding_package_product_state(legacy_layout, epoch_runtime)
         state_root = product_state.state_root
         gate = product_state.gc_gate
         desired = product_state.desired_state
@@ -4876,9 +5249,7 @@ while True:
                 if restored is not None and restored.materialization is not None:
                     materializer.discard(restored.materialization)
                 b_marker.unlink()
-            assert not (
-                restore_root / restore_request.restore_namespace_id
-            ).exists()
+            assert not (restore_root / restore_request.restore_namespace_id).exists()
             assert not (activation_root / "active-runtime.json").exists()
             assert (control_root / "epoch.jsonl").read_bytes() == fence_bytes
             assert fences.current(store_id) == fence
@@ -4898,6 +5269,7 @@ while True:
             runtime_version="2.0.0",
             runtime_protocol_epoch=2,
         )
+        runtime_lease_released = False
         root_store_identity = (
             product_runtime_owner.product_owner.root_store_identity
             if checked_in_base
@@ -4914,6 +5286,7 @@ while True:
         session = None
         try:
             admission_request = runtime_lease.admission_request
+
             def compose(
                 selected_desired: PluginDesiredStateLedger = desired,
             ):
@@ -4943,6 +5316,219 @@ while True:
                     recovery_identity="product-runtime-recovery",
                 )
 
+            if entrypoint == "staging_recovery":
+                operation_id = "operation:guarded-dependency-staging"
+
+                def open_session_runtime(
+                    lease: PackageProductRuntimeLease, *, session_label: str
+                ):
+                    session_manager = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / f"sessions-{session_label}",
+                            cwd=str(workspace),
+                            persist=False,
+                        )
+                    )
+                    session_id = session_manager.get_header().conversation_id
+                    factory = PosixLocalWheelProductRuntimeFactory(
+                        expected_session_id=session_id,
+                        expected_cwd=workspace,
+                        state_root=state_root,
+                        plugin_store_root=plugin_root,
+                        policy=policy,
+                        environment=environment,
+                        acquisition_budgets=PackageAcquisitionBudgetV1(
+                            max_transport_bytes=256 * 1024,
+                            max_requests=1,
+                            max_redirects=0,
+                            max_wall_time_ms=1000,
+                        ),
+                        inspection_budgets=PackageInspectionBudgetV1(),
+                        closure_budgets=PackageClosureBudgetV1(),
+                        root_store_identity=root_store_identity,
+                        dependency_store_identity=dependency_store_identity,
+                        runtime_lease=lease,
+                        cutover_result=cutover_result,
+                        management=management,
+                        desired_state=desired,
+                        gc_bindings=bindings,
+                        gc_gate=gate,
+                        actor_id="product-runtime",
+                        desired_policy_revision="product-policy:1",
+                        recovery_identity="product-runtime-recovery",
+                        epoch_runtime=epoch_runtime,
+                    )
+                    created: list[PackageProductRuntimeBindingV1] = []
+
+                    class ProductFactory:
+                        def create(
+                            self, request: PackageProductRuntimeRequestV1
+                        ) -> PackageProductRuntimeBindingV1:
+                            binding = factory.create(request)
+                            created.append(binding)
+                            return binding
+
+                    product_session = create_agent_session(
+                        session_manager=session_manager,
+                        model=Model(
+                            id="plc9b-dependency-recovery",
+                            name="PLC9B Dependency Recovery",
+                            provider="test",
+                            endpoint="anthropic-messages",
+                            capabilities=Capabilities(
+                                reasoning=True,
+                                input=("text",),
+                                context_window=128000,
+                                max_tokens=4096,
+                            ),
+                        ),
+                        services=create_services(
+                            settings_manager=SettingsManager(ControlConfig())
+                        ),
+                        package_product_runtime_factory=ProductFactory(),
+                        composition_set="coding-minimal",
+                        resource_catalog_source_policy=(
+                            CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+                        ),
+                    )
+                    assert len(created) == 1
+                    assert (
+                        product_session._package_controller.get_package_materializer()
+                        is None
+                    )
+                    return product_session, created[0]
+
+                first_session, runtime = open_session_runtime(
+                    runtime_lease, session_label="dependency-first"
+                )
+                runtime.activate()
+                original_append = PackageArtifactStagingJournal.append
+
+                def crash_after_dependency(
+                    journal: PackageArtifactStagingJournal,
+                    receipt: PackageArtifactStagingReceiptV1,
+                ) -> PackageArtifactStagingReceiptV1:
+                    persisted = original_append(journal, receipt)
+                    if receipt.staging_request.plan_node.role == "dependency":
+                        raise RuntimeError("crash after guarded dependency receipt")
+                    return persisted
+
+                with patch.object(
+                    PackageArtifactStagingJournal, "append", crash_after_dependency
+                ):
+                    with pytest.raises(
+                        RuntimeError, match="crash after guarded dependency receipt"
+                    ):
+                        runtime.lifecycle.route(
+                            PackageProductLifecycleIntentV1(
+                                operation_id=operation_id,
+                                action="install",
+                                source=str(source),
+                                scope="project",
+                            ),
+                            entrypoint="cli",
+                        )
+                original_status = PackageLifecycleJournal(
+                    state_root / "lifecycle.jsonl"
+                ).status(operation_id)
+                assert original_status is not None
+                assert original_status.phase == "transaction_pinned"
+                dependency_settlements = PackageStoreSettlementJournal(
+                    state_root / "dependency-settlements.jsonl"
+                )
+                (settled_dependency,) = dependency_settlements.records()
+                assert (
+                    PackageStoreSettlementJournal(
+                        state_root / "root-settlements.jsonl"
+                    ).records()
+                    == ()
+                )
+                recovered_lease = register_package_product_runtime_lease(
+                    registry,
+                    fence=fence,
+                    runtime_id="runtime:dependency-recovery",
+                    runtime_version="2.0.0",
+                    runtime_protocol_epoch=2,
+                )
+                try:
+                    recovered_session, recovered = open_session_runtime(
+                        recovered_lease, session_label="dependency-recovered"
+                    )
+                    recovered.activate()
+                    checkpoint = asyncio.run(
+                        recovered.inspect_staging_checkpoint(operation_id)
+                    )
+                    assert checkpoint.missing_node_ids == ("root",)
+                    assert len(checkpoint.receipts) == 1
+                    assert checkpoint.receipts[0] == settled_dependency.receipt
+                    with pytest.raises(PackageProductRebindLeaseReadError) as old_live:
+                        recovered.prepare_staging_adoption(
+                            operation_id, max_bytes=256 * 1024
+                        )
+                    assert old_live.value.code == "package_rebind_old_lease_active"
+                    assert not (state_root / "staging-admissions.jsonl").exists()
+                    asyncio.run(first_session.dispose())
+                    recovered.lifecycle.activate()
+                    dependency_tree = (
+                        state_root
+                        / "dependency-store"
+                        / f"artifact-{settled_dependency.receipt.stable_ref.ref_id}"
+                    )
+                    dependency_file = next(
+                        path for path in dependency_tree.rglob("*") if path.is_file()
+                    )
+                    original_dependency_file = dependency_file.read_bytes()
+                    dependency_file.write_bytes(b"tampered staged dependency")
+                    try:
+                        with pytest.raises(PackagePhysicalStagingError) as tampered:
+                            asyncio.run(
+                                recovered.inspect_staging_checkpoint(operation_id)
+                            )
+                        assert tampered.value.code == "package_publication_collision"
+                        assert not (state_root / "staging-admissions.jsonl").exists()
+                    finally:
+                        dependency_file.write_bytes(original_dependency_file)
+                    recovered.lifecycle.activate()
+                    dependency_source.write_bytes(b"changed dependency Source")
+                    try:
+                        with pytest.raises(PackageProductRebindSourceError) as drift:
+                            recovered.prepare_staging_adoption(
+                                operation_id, max_bytes=256 * 1024
+                            )
+                        assert drift.value.code == "package_source_digest_mismatch"
+                        assert not (state_root / "staging-admissions.jsonl").exists()
+                    finally:
+                        dependency_source.write_bytes(dependency_payload)
+                    recovered.lifecycle.activate()
+                    selected = recovered.prepare_staging_adoption(
+                        operation_id, max_bytes=256 * 1024
+                    )
+                    assert selected.decision.staging_checkpoint_id == (
+                        checkpoint.checkpoint_id
+                    )
+                    committed = recovered.execute_staging_adoption(
+                        operation_id, max_bytes=256 * 1024
+                    )
+                    assert (committed.phase, committed.disposition) == (
+                        "committed",
+                        "committed",
+                    )
+                    assert dependency_settlements.records() == (settled_dependency,)
+                    assert (
+                        len(
+                            PackageStoreSettlementJournal(
+                                state_root / "root-settlements.jsonl"
+                            ).records()
+                        )
+                        == 1
+                    )
+                    assert desired.snapshot().inventory_revision == 1
+                    asyncio.run(recovered_session.dispose())
+                finally:
+                    recovered_lease.release()
+                assert pre_b_tree() == frozen_pre_b_tree
+                return
+
             committed_operation_id = "operation:product-runtime"
             if entrypoint in {
                 "session",
@@ -4957,6 +5543,9 @@ while True:
                 "gc_command",
                 "gc_command_stale",
                 "gc_command_unsealed",
+                "gc_dependency",
+                "gc_dependency_failure",
+                "gc_dependency_repair_collision",
             }:
                 from loushang.harness.package_product.product_runtime import (
                     PackageProductRuntimeRequestV1,
@@ -4970,9 +5559,7 @@ while True:
                     )
                 )
                 factory = PosixLocalWheelProductRuntimeFactory(
-                    expected_session_id=(
-                        session_manager.get_header().conversation_id
-                    ),
+                    expected_session_id=(session_manager.get_header().conversation_id),
                     expected_cwd=workspace,
                     state_root=state_root,
                     plugin_store_root=plugin_root,
@@ -5083,7 +5670,9 @@ while True:
                     assert registry.snapshot(store_id=store_id).active_leases
                 activation = runtime.lifecycle
                 assert session._package_controller.get_package_materializer() is None
-                transport_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
+                transport_journal = PackageLifecycleJournal(
+                    state_root / "lifecycle.jsonl"
+                )
                 refusal_codes = {
                     "materialize": "package_route_unavailable",
                     "update": "package_route_unavailable",
@@ -5167,7 +5756,9 @@ while True:
                         refusal = json.loads(rpc_output.getvalue().splitlines()[-1])
                         assert refusal["command"] == command
                         assert refusal["success"] is False
-                        assert_product_refusal(command.removesuffix("_package"), prior_count)
+                        assert_product_refusal(
+                            command.removesuffix("_package"), prior_count
+                        )
                 elif entrypoint == "session":
                     outcome = asyncio.run(
                         session.install_package(str(source), scope="project")
@@ -5275,9 +5866,86 @@ while True:
                 state_root / "committed-sets.jsonl"
             ).current(committed_operation_id)
             assert committed_set is not None
+            from loushang.harness.resources.packages.product_admission_binding import (
+                PackageProductAdmissionBindingJournal,
+            )
+
+            original_admission = PackageProductAdmissionBindingJournal(
+                state_root / "admission-bindings.jsonl"
+            ).read_binding(committed_operation_id)
+            assert original_admission is not None
+            assert original_admission.admission.request.admission_request_id == (
+                admission_request.admission_request_id
+            )
+            assert original_admission.admission.request.lease_id == (
+                admission_request.lease_id
+            )
             assert len(committed_set.committed_set.dependency_refs) == int(
                 with_dependency
             )
+            if entrypoint == "gc_dependency_versions":
+                updated = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:product-dependency-v2",
+                        action="update",
+                        source=str(versioned_source),
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+                assert updated.handled
+                assert updated.record is not None
+                assert updated.record.failure_code == "package_route_unavailable"
+                assert desired.snapshot().inventory_revision == 1
+                assert (
+                    len(
+                        PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ).records()
+                    )
+                    == 1
+                )
+                assert (
+                    len(
+                        PackageStoreSettlementJournal(
+                            state_root / "dependency-settlements.jsonl"
+                        ).records()
+                    )
+                    == 1
+                )
+                return
+            if entrypoint == "gc_dependency_shared":
+                second_install = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:product-shared-second",
+                        action="install",
+                        source=str(shared_source),
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+                assert second_install.record is not None
+                assert second_install.record.disposition == "committed", (
+                    second_install.record.failure_code
+                )
+                runtime.dispose_runtime()
+                runtime_lease.release()
+                runtime_lease_released = True
+                _assert_posix_product_shared_dependency_gc(
+                    workspace=workspace,
+                    state_root=state_root,
+                    plugin_root=plugin_root,
+                    policy=policy,
+                    environment=environment,
+                    root_store_identity=root_store_identity,
+                    dependency_store_identity=dependency_store_identity,
+                    epoch_runtime=epoch_runtime,
+                    management=management,
+                    desired=desired,
+                    bindings=bindings,
+                    gate=gate,
+                )
+                return
             inventory = runtime.inventory
             targets = inventory.list_update_targets(scope="project")
             assert tuple(target.source for target in targets) == (str(source),)
@@ -5287,11 +5955,14 @@ while True:
                 targets=targets,
             )
             assert update_manifest.target_refs == (targets[0].target_ref,)
-            assert inventory.bind_update_targets(
-                operation_id="operation:product-update-all",
-                scope="project",
-                targets=targets,
-            ) == update_manifest
+            assert (
+                inventory.bind_update_targets(
+                    operation_id="operation:product-update-all",
+                    scope="project",
+                    targets=targets,
+                )
+                == update_manifest
+            )
             checks = asyncio.run(
                 inventory.check_updates(
                     request=PackageProductUpdateCheckRequestV1(
@@ -5305,6 +5976,7 @@ while True:
             assert checks[0].target_ref == targets[0].target_ref
             assert not checks[0].update_available
             assert checks[0].failure_code is None
+
             def forbidden_legacy(*_args: object, **_kwargs: object) -> None:
                 raise AssertionError("Plugin operation reached a legacy Package effect")
 
@@ -5336,11 +6008,14 @@ while True:
                 ),
                 manifest_path=state_root / "update-manifests.jsonl",
             )
-            assert restarted_inventory.bind_update_targets(
-                operation_id="operation:product-update-all",
-                scope="project",
-                targets=targets,
-            ) == update_manifest
+            assert (
+                restarted_inventory.bind_update_targets(
+                    operation_id="operation:product-update-all",
+                    scope="project",
+                    targets=targets,
+                )
+                == update_manifest
+            )
             unknown_inventory = PackageProductLocalWheelInventory(
                 binding_id=activation.binding_id,
                 policy=replace(policy, bindings=()),
@@ -5389,9 +6064,7 @@ while True:
                     policy=replace(
                         policy,
                         dependencies=(
-                            replace(
-                                policy.dependencies[0], artifact_digest="f" * 64
-                            ),
+                            replace(policy.dependencies[0], artifact_digest="f" * 64),
                         ),
                     ),
                     desired_state=desired,
@@ -5410,9 +6083,7 @@ while True:
                     )
                 )
                 assert changed_dependency_checks[0].update_available
-            lifecycle_journal = PackageLifecycleJournal(
-                state_root / "lifecycle.jsonl"
-            )
+            lifecycle_journal = PackageLifecycleJournal(state_root / "lifecycle.jsonl")
             before_restart = lifecycle_journal.records()
             restarted = compose()
             restarted.activate()
@@ -5452,6 +6123,9 @@ while True:
                 "gc_command",
                 "gc_command_stale",
                 "gc_command_unsealed",
+                "gc_dependency",
+                "gc_dependency_failure",
+                "gc_dependency_repair_collision",
             }:
                 from loushang.harness.plugin_management.application import (
                     PluginManagementQueryV1,
@@ -5463,29 +6137,60 @@ while True:
                 private_marker = private_data / "user-state.txt"
                 private_marker.write_bytes(b"must survive Package removal and GC")
                 installation_key = desired.snapshot().installations[0].installation_key
-                _assert_product_root_gc_after_install(
-                    tmp_path=tmp_path,
-                    state_root=state_root,
-                    plugin_root=plugin_root,
-                    store_id=store_id,
-                    management=management,
-                    desired=desired,
-                    bindings=bindings,
-                    gate=gate,
-                    with_dependency=with_dependency,
-                    crash_after_delete=entrypoint == "gc_crash",
-                    drop_store_tombstone=entrypoint == "gc_tamper",
-                    collide_before_delete=entrypoint == "gc_collision",
-                    invalid_attempt_id=entrypoint == "gc_invalid_id",
-                    prior_result_conflict=entrypoint == "gc_prior_result",
-                    via_product_command=entrypoint in {
-                        "gc_command",
-                        "gc_command_stale",
-                        "gc_command_unsealed",
-                    },
-                    stale_product_command=entrypoint == "gc_command_stale",
-                    unsealed_product_command=entrypoint == "gc_command_unsealed",
-                )
+                if entrypoint in {
+                    "gc_dependency",
+                    "gc_dependency_failure",
+                    "gc_dependency_repair_collision",
+                }:
+                    assert session is not None
+                    asyncio.run(session.dispose())
+                    session = None
+                    runtime_lease.release()
+                    runtime_lease_released = True
+                    _assert_posix_product_dependency_gc_after_install(
+                        workspace=workspace,
+                        state_root=state_root,
+                        plugin_root=plugin_root,
+                        policy=policy,
+                        environment=environment,
+                        root_store_identity=root_store_identity,
+                        dependency_store_identity=dependency_store_identity,
+                        epoch_runtime=epoch_runtime,
+                        management=management,
+                        desired=desired,
+                        bindings=bindings,
+                        gate=gate,
+                        first_store_failure=entrypoint
+                        in {"gc_dependency_failure", "gc_dependency_repair_collision"},
+                        repair_store_failure=(
+                            entrypoint == "gc_dependency_repair_collision"
+                        ),
+                    )
+                else:
+                    _assert_product_root_gc_after_install(
+                        tmp_path=tmp_path,
+                        state_root=state_root,
+                        plugin_root=plugin_root,
+                        store_id=store_id,
+                        management=management,
+                        desired=desired,
+                        bindings=bindings,
+                        gate=gate,
+                        with_dependency=with_dependency,
+                        crash_after_delete=entrypoint == "gc_crash",
+                        drop_store_tombstone=entrypoint == "gc_tamper",
+                        collide_before_delete=entrypoint == "gc_collision",
+                        invalid_attempt_id=entrypoint == "gc_invalid_id",
+                        prior_result_conflict=entrypoint == "gc_prior_result",
+                        via_product_command=entrypoint
+                        in {
+                            "gc_command",
+                            "gc_command_stale",
+                            "gc_command_unsealed",
+                        },
+                        stale_product_command=entrypoint == "gc_command_stale",
+                        unsealed_product_command=entrypoint == "gc_command_unsealed",
+                    )
                 assert private_marker.read_bytes() == (
                     b"must survive Package removal and GC"
                 )
@@ -5546,12 +6251,16 @@ while True:
                     runtime.capture_selected_plugin_root(
                         key, max_files=64, max_total_bytes=1024 * 1024
                     )
-                assert disabled_capture.value.code == "package_product_root_not_selected"
+                assert (
+                    disabled_capture.value.code == "package_product_root_not_selected"
+                )
                 with pytest.raises(PackageProductRuntimeReadError) as disabled_manifest:
                     runtime.capture_selected_plugin_manifest(
                         key, max_files=64, max_total_bytes=1024 * 1024
                     )
-                assert disabled_manifest.value.code == "package_product_root_not_selected"
+                assert (
+                    disabled_manifest.value.code == "package_product_root_not_selected"
+                )
                 enabled = management.submit(
                     PluginManagementCommandV1(
                         action="enable",
@@ -5576,9 +6285,12 @@ while True:
                     "coding_base/prompts/standard.md",
                     "coding_base/skills/standard/SKILL.md",
                 ):
-                    assert runtime.read_selected_plugin_file(
-                        key, logical_path, max_bytes=64 * 1024
-                    ) == base_files[logical_path]
+                    assert (
+                        runtime.read_selected_plugin_file(
+                            key, logical_path, max_bytes=64 * 1024
+                        )
+                        == base_files[logical_path]
+                    )
                 selected_paths = (
                     "coding_base/plugin.json",
                     "coding_base/declarations/plugin.json",
@@ -5592,9 +6304,12 @@ while True:
                     key, max_files=64, max_total_bytes=1024 * 1024
                 )
                 assert captured.installation_key == key
-                assert captured.instance_revision_ref == desired.snapshot().installation(
-                    key
-                ).selection.instance_revision_ref
+                assert (
+                    captured.instance_revision_ref
+                    == desired.snapshot()
+                    .installation(key)
+                    .selection.instance_revision_ref
+                )
                 assert (
                     captured.root_ref.artifact_digest
                     == captured.package_revision.package_content_digest
@@ -5609,6 +6324,69 @@ while True:
                 assert all(
                     dict(captured.files)[path] == body
                     for path, body in base_files.items()
+                )
+                from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
+                    PosixPackagePluginRootReadOnlyStore,
+                )
+
+                owner_files_before = tuple(
+                    sorted(
+                        (str(path.relative_to(state_root)), path.read_bytes())
+                        for path in state_root.rglob("*")
+                        if path.is_file()
+                    )
+                )
+                read_only_reader = PackageProductSelectedRootReader(
+                    product_id=policy.product_id,
+                    scope_id=policy.project_scope_id,
+                    installation_scope="workspace",
+                    desired_state=desired,
+                    bindings=PluginPackageGcBindingJournal(bindings.path),
+                    committed_sets=PackageCommittedSetJournal(
+                        state_root / "committed-sets.jsonl"
+                    ),
+                    root_settlements=root_settlements,
+                    root_store=PosixPackagePluginRootReadOnlyStore(
+                        plugin_root,
+                        store_identity=root_store_identity,
+                        settlement_journal=root_settlements,
+                    ),
+                    gc_gate=gate,
+                )
+                assert (
+                    read_only_reader.capture_selected_root_read_only(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                    == captured
+                )
+                from loushang.harness.package_product.product_local_wheel_runtime import (
+                    _LocalWheelSelectedManifestReader,
+                )
+
+                preview_manifest = _LocalWheelSelectedManifestReader(
+                    policy=policy, root_reader=read_only_reader, read_only=True
+                ).capture_selected_manifest(
+                    key, max_files=64, max_total_bytes=1024 * 1024
+                )
+                assert preview_manifest.snapshot == captured
+                assert preview_manifest.verified_manifest().name == "coding.base"
+                with pytest.raises(TypeError, match="read-only owners"):
+                    runtime._selected_root_reader.capture_selected_root_read_only(
+                        key, max_files=64, max_total_bytes=1024 * 1024
+                    )
+                with pytest.raises(PackageProductRuntimeReadError) as wrong_scope:
+                    read_only_reader.capture_selected_root_read_only(
+                        replace(key, scope_id="workspace:foreign"),
+                        max_files=64,
+                        max_total_bytes=1024 * 1024,
+                    )
+                assert wrong_scope.value.code == "package_product_root_scope_changed"
+                assert owner_files_before == tuple(
+                    sorted(
+                        (str(path.relative_to(state_root)), path.read_bytes())
+                        for path in state_root.rglob("*")
+                        if path.is_file()
+                    )
                 )
                 selected_manifest = runtime.capture_selected_plugin_manifest(
                     key, max_files=64, max_total_bytes=1024 * 1024
@@ -5725,6 +6503,7 @@ while True:
                     from loushang.coding.hosted_session import (
                         CodingRealHostedSessionFactoryV1,
                     )
+
                     hosted_product_owner = product_runtime_owner
 
                     async def product_hosted_session() -> None:
@@ -5778,11 +6557,15 @@ while True:
                             with (
                                 patch(
                                     "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
-                                    side_effect=AssertionError("legacy coding.base assembly"),
+                                    side_effect=AssertionError(
+                                        "legacy coding.base assembly"
+                                    ),
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap._default_package_materializer",
-                                    side_effect=AssertionError("legacy package materializer"),
+                                    side_effect=AssertionError(
+                                        "legacy package materializer"
+                                    ),
                                 ),
                                 patch(
                                     "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
@@ -5801,15 +6584,23 @@ while True:
                                     ),
                                     opaque_session_binding=claimed.opaque_binding,
                                 )
-                            assert len(hosted_factory._product_owner_selection._owners) == 1
-                            assert hosted.control._package_controller.get_package_materializer() is None
+                            assert (
+                                len(hosted_factory._product_owner_selection._owners)
+                                == 1
+                            )
+                            assert (
+                                hosted.control._package_controller.get_package_materializer()
+                                is None
+                            )
                             assert any(
-                                command.name == "standard" and command.source == "prompt"
+                                command.name == "standard"
+                                and command.source == "prompt"
                                 for command in hosted.control.list_commands()
                             )
                             await hosted.control.prepare_model_call_runtime()
                             assert "skill:standard" in {
-                                command.name for command in hosted.control.list_commands()
+                                command.name
+                                for command in hosted.control.list_commands()
                             }
                         finally:
                             if hosted is not None:
@@ -5817,9 +6608,10 @@ while True:
                             await claimed.close()
                             await candidate.close()
                             await hosted_factory.close()
-                        assert len(
-                            registry.snapshot(store_id=store_id).active_leases
-                        ) == prior_leases
+                        assert (
+                            len(registry.snapshot(store_id=store_id).active_leases)
+                            == prior_leases
+                        )
 
                     asyncio.run(product_hosted_session())
                     foreign_workspace = tmp_path / "foreign-product-hosted-workspace"
@@ -5836,9 +6628,10 @@ while True:
                     )
                     with pytest.raises(ValueError, match="workspace changed"):
                         hosted_product_owner.factory_for_session(foreign_manager)
-                    assert len(
-                        registry.snapshot(store_id=store_id).active_leases
-                    ) == prior_leases
+                    assert (
+                        len(registry.snapshot(store_id=store_id).active_leases)
+                        == prior_leases
+                    )
                     moved_workspace = tmp_path / "moved-product-hosted-workspace"
                     workspace.rename(moved_workspace)
                     workspace.mkdir(mode=0o700)
@@ -5850,9 +6643,10 @@ while True:
                     finally:
                         workspace.rmdir()
                         moved_workspace.rename(workspace)
-                    assert len(
-                        registry.snapshot(store_id=store_id).active_leases
-                    ) == prior_leases
+                    assert (
+                        len(registry.snapshot(store_id=store_id).active_leases)
+                        == prior_leases
+                    )
                     failed_manager = asyncio.run(
                         SessionManager.new(
                             session_dir=tmp_path / "failed-product-hosted-sessions",
@@ -5864,11 +6658,14 @@ while True:
                         "loushang.harness.package_product.product_local_wheel_runtime.PosixLocalWheelProductRuntimeFactory",
                         side_effect=RuntimeError("factory construction failed"),
                     ):
-                        with pytest.raises(RuntimeError, match="factory construction failed"):
+                        with pytest.raises(
+                            RuntimeError, match="factory construction failed"
+                        ):
                             hosted_product_owner.factory_for_session(failed_manager)
-                    assert len(
-                        registry.snapshot(store_id=store_id).active_leases
-                    ) == prior_leases
+                    assert (
+                        len(registry.snapshot(store_id=store_id).active_leases)
+                        == prior_leases
+                    )
                     moved_control = tmp_path / "moved-product-hosted-control"
                     control_root.rename(moved_control)
                     control_root.mkdir(mode=0o700)
@@ -5878,9 +6675,10 @@ while True:
                     finally:
                         control_root.rmdir()
                         moved_control.rename(control_root)
-                    assert len(
-                        registry.snapshot(store_id=store_id).active_leases
-                    ) == prior_leases
+                    assert (
+                        len(registry.snapshot(store_id=store_id).active_leases)
+                        == prior_leases
+                    )
                     pending_factory = hosted_product_owner.factory_for_session(
                         failed_manager
                     )
@@ -5899,9 +6697,10 @@ while True:
                         control_root.rmdir()
                         moved_control.rename(control_root)
                         pending_factory.dispose_unbound_runtime()
-                    assert len(
-                        registry.snapshot(store_id=store_id).active_leases
-                    ) == prior_leases
+                    assert (
+                        len(registry.snapshot(store_id=store_id).active_leases)
+                        == prior_leases
+                    )
                     disabled_again = management.submit(
                         PluginManagementCommandV1(
                             action="disable",
@@ -5923,7 +6722,9 @@ while True:
                         runtime.assert_selected_plugin_manifest_current(
                             selected_manifest
                         )
-                    assert disabled_pin.value.code == "package_product_root_not_selected"
+                    assert (
+                        disabled_pin.value.code == "package_product_root_not_selected"
+                    )
                     with pytest.raises(CodingBasePluginAssemblyError) as disabled_call:
                         asyncio.run(product_coding_session.prepare_model_call_runtime())
                     assert (
@@ -5952,12 +6753,13 @@ while True:
                             selected_manifest
                         )
                     assert (
-                        stale_pin.value.code
-                        == "package_product_root_selection_changed"
+                        stale_pin.value.code == "package_product_root_selection_changed"
                     )
                     with pytest.raises(CodingBasePluginAssemblyError) as stale_call:
                         asyncio.run(product_coding_session.prepare_model_call_runtime())
-                    assert stale_call.value.code == "coding_base_product_restart_required"
+                    assert (
+                        stale_call.value.code == "coding_base_product_restart_required"
+                    )
                     with pytest.raises(
                         CodingResourceCatalogAdmissionError
                     ) as stale_refresh:
@@ -6042,7 +6844,9 @@ while True:
 
                 product_owners = compiled_base.build_owners(
                     clock=lambda: 1,
-                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                    tool_options=ToolsOptions(
+                        host_environment=compiled_base.host_environment
+                    ),
                 )
                 assert product_owners.tool is not None
                 assert product_owners.command is not None
@@ -6058,7 +6862,9 @@ while True:
                 )
                 tool_free_owners = without_tools.build_owners(
                     clock=lambda: 1,
-                    tool_options=ToolsOptions(host_environment=compiled_base.host_environment),
+                    tool_options=ToolsOptions(
+                        host_environment=compiled_base.host_environment
+                    ),
                 )
                 assert tool_free_owners.tool is None
                 assert tool_free_owners.command is not None
@@ -6071,7 +6877,9 @@ while True:
 
                 class _UnusedProcessLauncher:
                     async def start(self, request, *, correlation_id, signal=None):
-                        raise AssertionError("Product compilation must not launch a process")
+                        raise AssertionError(
+                            "Product compilation must not launch a process"
+                        )
 
                 workspace_binding = workspace_capability_provider_binding(
                     operations=LocalToolOperations(),
@@ -6275,7 +7083,9 @@ while True:
                         initial_resource_catalog_bootstrap=coding_bootstrap,
                     )
                     try:
-                        with pytest.raises(CodingBasePluginAssemblyError) as stale_direct:
+                        with pytest.raises(
+                            CodingBasePluginAssemblyError
+                        ) as stale_direct:
                             await product_agent_session.prepare_model_call_runtime()
                         assert (
                             stale_direct.value.code
@@ -6301,9 +7111,7 @@ while True:
                             coding_receipt,
                             package_diagnostic_codes=("legacy_package_probe",),
                         ),
-                        product_scope_id=(
-                            session_manager.get_header().conversation_id
-                        ),
+                        product_scope_id=(session_manager.get_header().conversation_id),
                         product_composition=compiled_base.product_composition,
                         product_snapshot_resources=product_inputs,
                         package_admission_now=1,
@@ -6378,14 +7186,19 @@ while True:
                         assert len(generation.catalog_snapshot.effective_entries) == 2
                         assert generation.ownership_state == "root_owned"
                         for entry in generation.catalog_snapshot.effective_entries:
-                            candidate = generation.catalog_snapshot.candidate_by_fingerprint(
-                                entry.primary_candidate_fingerprint
+                            candidate = (
+                                generation.catalog_snapshot.candidate_by_fingerprint(
+                                    entry.primary_candidate_fingerprint
+                                )
                             )
-                            assert candidate.expected_content_digest == sha256(
-                                resource_bodies[
-                                    candidate.content_origin.resource_contribution_id
-                                ]
-                            ).hexdigest()
+                            assert (
+                                candidate.expected_content_digest
+                                == sha256(
+                                    resource_bodies[
+                                        candidate.content_origin.resource_contribution_id
+                                    ]
+                                ).hexdigest()
+                            )
                     finally:
                         await bootstrap.abort()
 
@@ -6418,7 +7231,9 @@ while True:
                         ),
                         resources=product_inputs,
                     )
-                with pytest.raises(ProductSnapshotResourceSourceError) as foreign_source:
+                with pytest.raises(
+                    ProductSnapshotResourceSourceError
+                ) as foreign_source:
                     product_source.discover_initial(
                         build_package_resource_discovery_request(
                             product_id=source_ref.product_id,
@@ -6431,12 +7246,16 @@ while True:
                         )
                     )
                 assert foreign_source.value.reason == "foreign_source_generation"
-                with pytest.raises(ProductSnapshotResourceSourceError) as missing_admission:
+                with pytest.raises(
+                    ProductSnapshotResourceSourceError
+                ) as missing_admission:
                     product_source.discover_initial(
                         build_package_resource_discovery_request(
                             product_id=source_ref.product_id,
                             source_generation_ref=source_ref,
-                            admission_fingerprints=(product_inputs[0].admission.fingerprint,),
+                            admission_fingerprints=(
+                                product_inputs[0].admission.fingerprint,
+                            ),
                         )
                     )
                 assert missing_admission.value.reason == "admission_set_mismatch"
@@ -6521,13 +7340,17 @@ while True:
                             candidate.content_origin.resource_contribution_id
                         ]
                     )
-                    with pytest.raises(ProductSnapshotResourceSourceError) as wrong_body:
+                    with pytest.raises(
+                        ProductSnapshotResourceSourceError
+                    ) as wrong_body:
                         product_source.load(
                             replace(handle, expected_content_digest="0" * 64)
                         )
                     assert wrong_body.value.reason == "load_handle_identity_mismatch"
                 product_source.dispose()
-                with pytest.raises(ProductSnapshotResourceSourceError) as disposed_source:
+                with pytest.raises(
+                    ProductSnapshotResourceSourceError
+                ) as disposed_source:
                     product_source.discover_initial(
                         build_package_resource_discovery_request(
                             product_id=source_ref.product_id,
@@ -6593,16 +7416,25 @@ while True:
                 )
                 assert len(product_bundle.prompts) == 1
                 assert product_bundle.prompts[0].text == (
-                    base_files["coding_base/prompts/standard.md"].decode("utf-8").strip()
+                    base_files["coding_base/prompts/standard.md"]
+                    .decode("utf-8")
+                    .strip()
                 )
                 assert len(product_bundle.skills) == 1
                 assert product_bundle.skills[0].name == "standard"
                 with pytest.raises(CodingBasePluginAssemblyError) as foreign_body:
-                    compiled_base.read_resource_body("foreign-admission", max_bytes=64 * 1024)
-                assert foreign_body.value.code == "coding_base_product_resource_unavailable"
+                    compiled_base.read_resource_body(
+                        "foreign-admission", max_bytes=64 * 1024
+                    )
+                assert (
+                    foreign_body.value.code
+                    == "coding_base_product_resource_unavailable"
+                )
                 with pytest.raises(CodingBasePluginAssemblyError) as over_budget_body:
                     compiled_base.read_resource_body(
-                        compiled_base.product_composition.resource_admissions[0].fingerprint,
+                        compiled_base.product_composition.resource_admissions[
+                            0
+                        ].fingerprint,
                         max_bytes=0,
                     )
                 assert over_budget_body.value.code == (
@@ -6655,7 +7487,9 @@ while True:
                         session_id=session_manager.get_header().conversation_id,
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
-                assert missing_trust.value.code == "coding_base_product_source_untrusted"
+                assert (
+                    missing_trust.value.code == "coding_base_product_source_untrusted"
+                )
                 with pytest.raises(CodingBasePluginAssemblyError) as foreign_scope_plan:
                     prepare_coding_base_product_plan(
                         selected_manifest,
@@ -6664,7 +7498,10 @@ while True:
                         session_id=session_manager.get_header().conversation_id,
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
-                assert foreign_scope_plan.value.code == "coding_base_product_selection_mismatch"
+                assert (
+                    foreign_scope_plan.value.code
+                    == "coding_base_product_selection_mismatch"
+                )
                 from loushang.harness.package_product.product_local_wheel_runtime import (
                     _LocalWheelSelectedManifestReader,
                 )
@@ -6693,7 +7530,9 @@ while True:
                         session_id=session_manager.get_header().conversation_id,
                         host_environment=LocalHostEnvironmentProbe().detect(),
                     )
-                assert untrusted_plan.value.code == "coding_base_product_source_untrusted"
+                assert (
+                    untrusted_plan.value.code == "coding_base_product_source_untrusted"
+                )
                 wrong_path_reader = _LocalWheelSelectedManifestReader(
                     policy=replace(
                         policy,
@@ -6740,7 +7579,10 @@ while True:
                         missing_declaration,
                         manifest_logical_path=manifest_path,
                     )
-                assert missing_source.value.code == "invalid_plugin_contribution_entrypoint"
+                assert (
+                    missing_source.value.code
+                    == "invalid_plugin_contribution_entrypoint"
+                )
                 with pytest.raises(PluginManifestError) as wrong_manifest:
                     PluginManifestParser().parse_file_set(
                         dict(captured.files),
@@ -6769,9 +7611,7 @@ while True:
                     product_id=policy.product_id,
                     scope_id=policy.project_scope_id,
                     installation_scope="workspace",
-                    desired_state=PluginDesiredStateLedger(
-                        desired.path, gc_gate=gate
-                    ),
+                    desired_state=PluginDesiredStateLedger(desired.path, gc_gate=gate),
                     bindings=PluginPackageGcBindingJournal(bindings.path),
                     committed_sets=PackageCommittedSetJournal(
                         state_root / "committed-sets.jsonl"
@@ -6782,9 +7622,12 @@ while True:
                     root_store=root_store,
                     gc_gate=gate,
                 )
-                assert reopened.read_selected_file(
-                    key, "coding_base/plugin.json", max_bytes=4096
-                ) == base_files["coding_base/plugin.json"]
+                assert (
+                    reopened.read_selected_file(
+                        key, "coding_base/plugin.json", max_bytes=4096
+                    )
+                    == base_files["coding_base/plugin.json"]
+                )
                 foreign_key = PluginInstallationKeyV1(
                     product_id=key.product_id,
                     installation_scope=key.installation_scope,
@@ -6811,9 +7654,7 @@ while True:
                         root_settlements=root_settlements,
                         root_store=root_store,
                         gc_gate=gate,
-                    ).read_selected_file(
-                        key, "coding_base/plugin.json", max_bytes=4096
-                    )
+                    ).read_selected_file(key, "coding_base/plugin.json", max_bytes=4096)
                 assert no_crosswalk.value.code == "package_product_root_unbound"
             if checked_in_base:
                 from loushang.harness.plugin_management.operations import (
@@ -6824,10 +7665,8 @@ while True:
                     PluginInstallationKeyV1,
                 )
 
-                capability_artifacts = (
-                    prepare_posix_coding_capability_product_wheels(
-                        product_source_root
-                    )
+                capability_artifacts = prepare_posix_coding_capability_product_wheels(
+                    product_source_root
                 )
                 configured_artifact = next(
                     artifact
@@ -6954,7 +7793,9 @@ while True:
                         output=RpcOutput(rpc_install_output),
                     )
                     before_rpc_install = len(
-                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                        PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()
                     )
                     committed_before_rpc = len(
                         PackageCommittedSetJournal(
@@ -6989,14 +7830,19 @@ while True:
                     assert rpc_status is not None
                     assert rpc_status.failure is not None
                     assert rpc_status.failure.code == "package_route_unavailable"
-                    assert len(
-                        PackageCommittedSetJournal(
-                            state_root / "committed-sets.jsonl"
-                        ).records()
-                    ) == committed_before_rpc
+                    assert (
+                        len(
+                            PackageCommittedSetJournal(
+                                state_root / "committed-sets.jsonl"
+                            ).records()
+                        )
+                        == committed_before_rpc
+                    )
                     assert desired.snapshot() == desired_before_rpc
                     before_rpc_replay = len(
-                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                        PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()
                     )
                     with patch.object(
                         configured_session,
@@ -7009,15 +7855,22 @@ while True:
                                 {"source": str(cli_artifact.path), "scope": "project"},
                             )
                         )
-                    assert json.loads(rpc_install_output.getvalue().splitlines()[-1]) == (
-                        rpc_response
+                    assert json.loads(
+                        rpc_install_output.getvalue().splitlines()[-1]
+                    ) == (rpc_response)
+                    assert (
+                        len(
+                            PackageLifecycleJournal(
+                                state_root / "lifecycle.jsonl"
+                            ).records()
+                        )
+                        == before_rpc_replay
                     )
-                    assert len(
-                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
-                    ) == before_rpc_replay
                     refused_source = "https://packages.example.test/unknown.whl"
                     before_transport = len(
-                        PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                        PackageLifecycleJournal(
+                            state_root / "lifecycle.jsonl"
+                        ).records()
                     )
                     desired_before_transport = desired.snapshot()
                     with patch.object(
@@ -7056,9 +7909,15 @@ while True:
                         and record.status.failure is not None
                     ]
                     assert len(transport_failures) == 2
-                    assert len(
-                        {record.request.operation_id for record in transport_failures}
-                    ) == 2
+                    assert (
+                        len(
+                            {
+                                record.request.operation_id
+                                for record in transport_failures
+                            }
+                        )
+                        == 2
+                    )
                     assert desired.snapshot() == desired_before_transport
                 finally:
                     if configured_session is not None:
@@ -7076,7 +7935,9 @@ while True:
                         runtime_version="2.0.0",
                         runtime_protocol_epoch=2,
                     )
-                    assert {item.plugin_id for item in owner.product_owner.policy.bindings} == {
+                    assert {
+                        item.plugin_id for item in owner.product_owner.policy.bindings
+                    } == {
                         "coding.base",
                         "coding.arch.default",
                         "coding.lsp.default",
@@ -7106,7 +7967,10 @@ while True:
                 combined_runtime = compose_builtin_product(product_state)
                 try:
                     for capability_artifact in capability_artifacts:
-                        if capability_artifact not in (configured_artifact, cli_artifact):
+                        if capability_artifact not in (
+                            configured_artifact,
+                            cli_artifact,
+                        ):
                             capability_outcome = combined_runtime.lifecycle.route(
                                 PackageProductLifecycleIntentV1(
                                     operation_id=(
@@ -7233,13 +8097,16 @@ while True:
                             with base_revision.revision_handle.open_file(
                                 "declarations/plugin.json"
                             ) as stream:
-                                assert stream.read() == dict(
-                                    reopened_builtin.capture_selected_plugin_manifest_for(
-                                        "coding.base",
-                                        max_files=64,
-                                        max_total_bytes=1024 * 1024,
-                                    ).snapshot.files
-                                )["coding_base/declarations/plugin.json"]
+                                assert (
+                                    stream.read()
+                                    == dict(
+                                        reopened_builtin.capture_selected_plugin_manifest_for(
+                                            "coding.base",
+                                            max_files=64,
+                                            max_total_bytes=1024 * 1024,
+                                        ).snapshot.files
+                                    )["coding_base/declarations/plugin.json"]
+                                )
                         finally:
                             builtin_revisions.close()
                         selected_capabilities = []
@@ -7279,7 +8146,9 @@ while True:
                             )
                             with pytest.raises(PluginRevisionError) as wheel_path:
                                 package.revision_handle.open_file(definition_path)
-                            assert wheel_path.value.code == "invalid_plugin_revision_path"
+                            assert (
+                                wheel_path.value.code == "invalid_plugin_revision_path"
+                            )
                             with zipfile.ZipFile(capability_artifact.path) as wheel:
                                 with package.revision_handle.open_file(
                                     "definition.py"
@@ -7359,15 +8228,21 @@ while True:
                                     )
                                 )
                             )
-                            decisions = PluginExecutionDecisionJournal(
-                                product_preparation.state_root
-                                / "definition-decisions.jsonl",
-                                scope_kind="workspace",
-                                scope_id=product_preparation.scope_id,
-                                clock=lambda: 1_700_000_000_000,
-                            ).snapshot().decisions
+                            decisions = (
+                                PluginExecutionDecisionJournal(
+                                    product_preparation.state_root
+                                    / "definition-decisions.jsonl",
+                                    scope_kind="workspace",
+                                    scope_id=product_preparation.scope_id,
+                                    clock=lambda: 1_700_000_000_000,
+                                )
+                                .snapshot()
+                                .decisions
+                            )
                             assert len(decisions) == 2
-                            assert all(item.disposition == "approved" for item in decisions)
+                            assert all(
+                                item.disposition == "approved" for item in decisions
+                            )
                             assert {
                                 (
                                     candidate.package.manifest.name,
@@ -7392,9 +8267,12 @@ while True:
                                 clock=lambda: 1_700_000_000_000,
                             )
                             try:
-                                assert len(
-                                    product_assembly.session_inputs.component_requests
-                                ) == 2
+                                assert (
+                                    len(
+                                        product_assembly.session_inputs.component_requests
+                                    )
+                                    == 2
+                                )
                                 assert set(product_assembly.tool_owners) == {
                                     "coding.lsp.default",
                                     "coding.arch.default",
@@ -7406,9 +8284,7 @@ while True:
                         builtin_session_id = (
                             session_manager.get_header().conversation_id
                         )
-                        with pytest.raises(
-                            ValueError, match="base selection changed"
-                        ):
+                        with pytest.raises(ValueError, match="base selection changed"):
                             prepare_coding_builtin_product_composition(
                                 reopened_builtin,
                                 base_compilation=compiled_base,
@@ -7469,9 +8345,12 @@ while True:
                                     builtin_session.base_session.session_inputs
                                     is builtin_session.capability_assembly.session_inputs
                                 )
-                                assert len(
-                                    builtin_session.base_session.compilation.product_resource_inputs()
-                                ) == 2
+                                assert (
+                                    len(
+                                        builtin_session.base_session.compilation.product_resource_inputs()
+                                    )
+                                    == 2
+                                )
                                 assert all(
                                     admission.candidate.dependency_lock_digest
                                     == current_base_compilation.selected_manifest.snapshot.package_revision.dependency_lock_digest
@@ -7486,9 +8365,12 @@ while True:
                                     ).tool
                                     is not None
                                 )
-                                assert len(
-                                    builtin_session.capability_assembly.session_inputs.component_requests
-                                ) == 2
+                                assert (
+                                    len(
+                                        builtin_session.capability_assembly.session_inputs.component_requests
+                                    )
+                                    == 2
+                                )
                             finally:
                                 builtin_session.abort_unpublished()
                         finally:
@@ -7503,10 +8385,8 @@ while True:
                                 persist=False,
                             )
                         )
-                        default_builtin_factory = (
-                            application_owner.factory_for_session(
-                                default_builtin_manager
-                            )
+                        default_builtin_factory = application_owner.factory_for_session(
+                            default_builtin_manager
                         )
                         default_builtin_session = None
                         try:
@@ -7517,7 +8397,9 @@ while True:
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
-                                    side_effect=AssertionError("legacy Capability route"),
+                                    side_effect=AssertionError(
+                                        "legacy Capability route"
+                                    ),
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap._default_package_materializer",
@@ -7580,20 +8462,22 @@ while True:
                                 persist=False,
                             )
                         )
-                        missing_capability_factory = (
-                            reopened_owner.factory_for_session(
-                                missing_capability_manager
-                            )
+                        missing_capability_factory = reopened_owner.factory_for_session(
+                            missing_capability_manager
                         )
                         try:
                             with (
                                 patch(
                                     "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
-                                    side_effect=AssertionError("legacy Capability fallback"),
+                                    side_effect=AssertionError(
+                                        "legacy Capability fallback"
+                                    ),
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap._default_package_materializer",
-                                    side_effect=AssertionError("legacy materializer fallback"),
+                                    side_effect=AssertionError(
+                                        "legacy materializer fallback"
+                                    ),
                                 ),
                                 pytest.raises(PackageProductRuntimeReadError),
                             ):
@@ -7646,7 +8530,9 @@ while True:
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
-                                    side_effect=AssertionError("legacy Capability route"),
+                                    side_effect=AssertionError(
+                                        "legacy Capability route"
+                                    ),
                                 ),
                                 patch(
                                     "loushang.coding.bootstrap._default_package_materializer",
@@ -7697,6 +8583,7 @@ while True:
                             len(registry.snapshot(store_id=store_id).active_leases)
                             == prior_builtin_session_leases
                         )
+
                         async def standalone_product_session() -> None:
                             with patch(
                                 "loushang.coding.bootstrap.resolve_platform_home",
@@ -7717,7 +8604,9 @@ while True:
                                         ),
                                     ),
                                     services=create_services(
-                                        settings_manager=SettingsManager(ControlConfig())
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
                                     ),
                                     persist=False,
                                 )
@@ -7733,15 +8622,21 @@ while True:
                                     ),
                                     patch(
                                         "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
-                                        side_effect=AssertionError("legacy standalone base"),
+                                        side_effect=AssertionError(
+                                            "legacy standalone base"
+                                        ),
                                     ),
                                     patch(
                                         "loushang.coding.bootstrap.prepare_coding_capability_plugin_composition",
-                                        side_effect=AssertionError("legacy standalone Capability"),
+                                        side_effect=AssertionError(
+                                            "legacy standalone Capability"
+                                        ),
                                     ),
                                     patch(
                                         "loushang.coding.bootstrap._default_package_materializer",
-                                        side_effect=AssertionError("legacy standalone materializer"),
+                                        side_effect=AssertionError(
+                                            "legacy standalone materializer"
+                                        ),
                                     ),
                                 ):
                                     selected = await standalone.create_session(
@@ -7791,7 +8686,9 @@ while True:
                             ),
                             patch(
                                 "loushang.coding.bootstrap._default_package_materializer",
-                                side_effect=AssertionError("legacy direct materializer"),
+                                side_effect=AssertionError(
+                                    "legacy direct materializer"
+                                ),
                             ),
                         ):
                             try:
@@ -7810,7 +8707,9 @@ while True:
                                         ),
                                     ),
                                     services=create_services(
-                                        settings_manager=SettingsManager(ControlConfig())
+                                        settings_manager=SettingsManager(
+                                            ControlConfig()
+                                        )
                                     ),
                                 )
                                 asyncio.run(direct_session.prepare_model_call_runtime())
@@ -7830,7 +8729,9 @@ while True:
                                 with patch.object(
                                     direct_session,
                                     "update_package",
-                                    side_effect=AssertionError("legacy transport update"),
+                                    side_effect=AssertionError(
+                                        "legacy transport update"
+                                    ),
                                 ):
                                     with pytest.raises(
                                         PackageLifecycleError,
@@ -7895,7 +8796,9 @@ while True:
                                 "loushang.coding.package_product_runtime.version",
                                 return_value="2.0.0",
                             ),
-                            pytest.raises(ValueError, match="Unsupported Coding composition set"),
+                            pytest.raises(
+                                ValueError, match="Unsupported Coding composition set"
+                            ),
                         ):
                             create_agent_session(
                                 session_manager=rejected_direct_manager,
@@ -7925,7 +8828,9 @@ while True:
                             )
                         )
                         before_configured = len(
-                            PackageLifecycleJournal(state_root / "lifecycle.jsonl").records()
+                            PackageLifecycleJournal(
+                                state_root / "lifecycle.jsonl"
+                            ).records()
                         )
                         configured_services = create_services(
                             settings_manager=SettingsManager(
@@ -7947,7 +8852,9 @@ while True:
                             ),
                             patch(
                                 "loushang.coding.bootstrap._default_package_materializer",
-                                side_effect=AssertionError("legacy startup materializer"),
+                                side_effect=AssertionError(
+                                    "legacy startup materializer"
+                                ),
                             ),
                             pytest.raises(PackageProductStartupSourceError),
                         ):
@@ -8031,7 +8938,9 @@ while True:
                                     },
                                     clock=lambda: 1_700_000_000_000,
                                 )
-                            assert stale_selection.value.code == "plugin_revision_changed"
+                            assert (
+                                stale_selection.value.code == "plugin_revision_changed"
+                            )
                         finally:
                             stale_preparation.close()
                     finally:
@@ -8054,10 +8963,6 @@ while True:
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
             if entrypoint == "session" and not with_dependency:
-                from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
-                    PackagePhysicalStagingError,
-                )
-
                 with pytest.raises(PackagePhysicalStagingError) as swapped:
                     runtime.read_selected_plugin_file(
                         key, "coding_base/plugin.json", max_bytes=4096
@@ -8098,7 +9003,9 @@ while True:
                             key, "coding_base/plugin.json", max_bytes=4096
                         )
                     assert closed.value.code == "package_product_runtime_inactive"
-                    with pytest.raises(PackageProductRuntimeActivationError) as closed_batch:
+                    with pytest.raises(
+                        PackageProductRuntimeActivationError
+                    ) as closed_batch:
                         runtime.read_selected_plugin_files(
                             key, ("coding_base/plugin.json",), max_total_bytes=4096
                         )
@@ -8109,23 +9016,1073 @@ while True:
                         runtime.capture_selected_plugin_root(
                             key, max_files=64, max_total_bytes=1024 * 1024
                         )
-                    assert closed_capture.value.code == "package_product_runtime_inactive"
+                    assert (
+                        closed_capture.value.code == "package_product_runtime_inactive"
+                    )
                     with pytest.raises(
                         PackageProductRuntimeActivationError
                     ) as closed_manifest:
                         runtime.capture_selected_plugin_manifest(
                             key, max_files=64, max_total_bytes=1024 * 1024
                         )
-                    assert closed_manifest.value.code == "package_product_runtime_inactive"
+                    assert (
+                        closed_manifest.value.code == "package_product_runtime_inactive"
+                    )
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"
-            runtime_lease.release()
+            if not runtime_lease_released:
+                runtime_lease.release()
         assert pre_b_tree() == frozen_pre_b_tree
     finally:
         if application_owner is not None:
             application_owner.close()
         epoch_runtime.close()
+
+
+def _configured_product_gc_owner(
+    *,
+    workspace: Path,
+    state_root: Path,
+    plugin_root: Path,
+    policy: PackageProductLocalWheelPolicy,
+    environment: PackageResolutionEnvironmentV1,
+    root_store_identity: str,
+    dependency_store_identity: str,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    management: PluginManagementService,
+    desired: PluginDesiredStateLedger,
+    bindings: PluginPackageGcBindingJournal,
+    gate: PluginPackageGcReservationJournal,
+) -> PosixLocalWheelProductSessionOwner:
+    return PosixLocalWheelProductSessionOwner(
+        workspace=workspace,
+        state_root=state_root,
+        plugin_store_root=plugin_root,
+        policy=policy,
+        environment=environment,
+        acquisition_budgets=PackageAcquisitionBudgetV1(
+            max_transport_bytes=256 * 1024,
+            max_requests=1,
+            max_redirects=0,
+            max_wall_time_ms=1000,
+        ),
+        inspection_budgets=PackageInspectionBudgetV1(),
+        closure_budgets=PackageClosureBudgetV1(),
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        epoch_runtime=epoch_runtime,
+        management=management,
+        desired_state=desired,
+        gc_bindings=bindings,
+        gc_gate=gate,
+        actor_id="product-runtime",
+        desired_policy_revision="product-policy:1",
+        recovery_identity="product-runtime-recovery",
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+
+
+def _assert_posix_product_dependency_gc_after_install(
+    *,
+    workspace: Path,
+    state_root: Path,
+    plugin_root: Path,
+    policy: PackageProductLocalWheelPolicy,
+    environment: PackageResolutionEnvironmentV1,
+    root_store_identity: str,
+    dependency_store_identity: str,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    management: PluginManagementService,
+    desired: PluginDesiredStateLedger,
+    bindings: PluginPackageGcBindingJournal,
+    gate: PluginPackageGcReservationJournal,
+    first_store_failure: bool,
+    repair_store_failure: bool,
+) -> None:
+    from argparse import Namespace
+
+    from loushang.coding.cli.package_gc import (
+        _CodingPackageGcRepairAuthority,
+        _operation_identity,
+    )
+    from loushang.coding.cli.package_gc import (
+        _run as run_gc_operator_command,
+    )
+    from loushang.harness.package_product.product_gc_executor import (
+        PackageProductGcExecutionError,
+        PackageProductRootGcCommandV1,
+    )
+    from loushang.harness.plugin_management.operations import PluginManagementCommandV1
+    from loushang.harness.plugin_management.package_gc_dependency_journal import (
+        PackageDependencyGcJournal,
+        PackageDependencyGcStartV1,
+    )
+    from loushang.harness.plugin_management.package_gc_dependency_repair import (
+        PackageDependencyGcRepairJournal,
+        PackageDependencyGcRepairJournalError,
+    )
+    from loushang.harness.plugin_management.package_gc_dependency_review import (
+        PackageDependencyGcRepairReviewJournal,
+        _review_id,
+    )
+    from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
+        PosixPackageDependencyMaterializationStore,
+    )
+
+    selected = desired.snapshot().installations[0]
+    removed = management.submit(
+        PluginManagementCommandV1(
+            action="remove",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id="operation:dependency-gc-remove",
+                idempotency_key="request:dependency-gc-remove",
+                expected_inventory_revision=1,
+                installation_key=selected.installation_key,
+                desired_state="absent",
+                package_revision=None,
+                actor_id="product-runtime",
+                policy_revision="product-policy:1",
+            ),
+        )
+    )
+    assert removed.status == "terminal"
+    product = _configured_product_gc_owner(
+        workspace=workspace,
+        state_root=state_root,
+        plugin_root=plugin_root,
+        policy=policy,
+        environment=environment,
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        epoch_runtime=epoch_runtime,
+        management=management,
+        desired=desired,
+        bindings=bindings,
+        gate=gate,
+    )
+    gc = open_posix_local_wheel_product_root_gc(product)
+    gc.prepare()
+    (candidate,) = gc.candidates()
+    assert candidate.package_revision == selected.selection.package_revision
+    (retained,) = gc.dependency_inspections()
+    assert retained.retention.disposition == "retained"
+    assert retained.target is None
+    (dependency_settlement,) = PackageStoreSettlementJournal(
+        state_root / "dependency-settlements.jsonl"
+    ).records()
+    with pytest.raises(PackageProductGcExecutionError) as live_holder:
+        gc.delete_dependency(
+            retained.retention.dependency_ref.ref_id,
+            expected_settlement_id=dependency_settlement.settlement_id,
+            operation_id="operation:dependency-live-holder",
+            idempotency_key="request:dependency-live-holder",
+        )
+    assert live_holder.value.code == "plugin_package_gc_dependency_target_unavailable"
+    assert not (state_root / "dependency-gc.jsonl").exists()
+    root_result = gc.execute(
+        PackageProductRootGcCommandV1(
+            candidate=candidate,
+            reservation_operation_id="operation:dependency-gc-reserve",
+            reservation_idempotency_key="request:dependency-gc-reserve",
+            attempt_operation_id="operation:dependency-gc-root-delete",
+            attempt_idempotency_key="request:dependency-gc-root-delete",
+        )
+    )
+    assert root_result.disposition == "succeeded"
+    (orphan,) = gc.operator_snapshot().dependency_inspections
+    assert orphan.retention.disposition == "orphan_candidate"
+    assert orphan.target is not None
+    settlement = orphan.target.settlement
+    dependency_tree = state_root / "dependency-store" / settlement.final_name
+    assert dependency_tree.is_dir()
+    journal_path = state_root / "dependency-gc.jsonl"
+    with pytest.raises(PackageProductGcExecutionError) as wrong_settlement:
+        gc.delete_dependency(
+            orphan.retention.dependency_ref.ref_id,
+            expected_settlement_id="0" * 64,
+            operation_id="operation:dependency-wrong-settlement",
+            idempotency_key="request:dependency-wrong-settlement",
+        )
+    assert (
+        wrong_settlement.value.code == "plugin_package_gc_dependency_target_unavailable"
+    )
+    live_runtime = product.factory_for_session(
+        session_id="dependency-gc-live-session",
+        cwd=workspace,
+        runtime_id="dependency-gc-live-session",
+    )
+    try:
+        with pytest.raises(PackageProductGcExecutionError) as active_runtime:
+            gc.delete_dependency(
+                orphan.retention.dependency_ref.ref_id,
+                expected_settlement_id=settlement.settlement_id,
+                operation_id="operation:dependency-live-runtime",
+                idempotency_key="request:dependency-live-runtime",
+            )
+        assert active_runtime.value.code == "plugin_package_gc_runtime_active"
+    finally:
+        live_runtime.dispose_unbound_runtime()
+    assert dependency_tree.is_dir()
+    assert not journal_path.exists()
+    failed_attempt = None
+    if first_store_failure:
+
+        def fail_store_delete(*args: object, **kwargs: object) -> object:
+            raise PackagePhysicalStagingError(
+                "Dependency Store tree is temporarily unavailable",
+                code="package_publication_root_untrusted",
+            )
+
+        with patch.object(
+            PosixPackageDependencyMaterializationStore,
+            "delete_settlement",
+            fail_store_delete,
+        ):
+            failed_attempt = gc.delete_dependency(
+                orphan.retention.dependency_ref.ref_id,
+                expected_settlement_id=settlement.settlement_id,
+                operation_id="operation:dependency-store-failure",
+                idempotency_key="request:dependency-store-failure",
+            )
+        assert failed_attempt.disposition == "terminal_failure"
+        assert failed_attempt.error_code == "package_publication_root_untrusted"
+        assert dependency_tree.is_dir()
+        (start, _) = PackageDependencyGcJournal(journal_path).events()
+        assert isinstance(start, PackageDependencyGcStartV1)
+        review_path = state_root / "dependency-gc-reviews.jsonl"
+        reviews = PackageDependencyGcRepairReviewJournal(review_path)
+        with pytest.raises(PackageProductGcExecutionError) as wrong_review:
+            gc.record_terminal_dependency_review(
+                start.start_id,
+                expected_terminal_attempt_id=failed_attempt.attempt_id,
+                expected_settlement_id="0" * 64,
+                expected_error_code=failed_attempt.error_code,
+                actor_id="coding:package-gc-cli",
+                policy_revision="coding:package-gc-repair-v1",
+                remediation_reference="incident:dependency-tree-reviewed",
+            )
+        assert wrong_review.value.code == (
+            "plugin_package_gc_dependency_repair_review_refused"
+        )
+        assert not review_path.exists()
+        reviewed = run_gc_operator_command(
+            gc,
+            Namespace(
+                action="review-dependency-debt",
+                start_id=start.start_id,
+                terminal_attempt_id=failed_attempt.attempt_id,
+                settlement_id=settlement.settlement_id,
+                error_code=failed_attempt.error_code,
+                remediation_reference="incident:dependency-tree-reviewed",
+            ),
+        )
+        (review,) = reviews.records()
+        assert reviewed["reviewId"] == review.review_id
+        assert review.start_id == failed_attempt.start_id
+        assert PackageDependencyGcRepairReviewJournal(review_path).records() == (
+            review,
+        )
+        before_review_replay = review_path.read_bytes()
+        assert (
+            reviews.record(
+                start,
+                failed_attempt,
+                actor_id="coding:package-gc-cli",
+                policy_revision="coding:package-gc-repair-v1",
+                remediation_reference="incident:dependency-tree-reviewed",
+            )
+            == review
+        )
+        with pytest.raises(ValueError, match="repair review changed"):
+            reviews.record(
+                start,
+                failed_attempt,
+                actor_id="coding:package-gc-cli",
+                policy_revision="coding:package-gc-repair-v1",
+                remediation_reference="incident:unreviewed-replacement",
+            )
+        assert review_path.read_bytes() == before_review_replay
+        forged_identity = review._identity()
+        forged_identity["settlementId"] = "0" * 64
+        forged_document = {
+            **review.to_dict(),
+            **forged_identity,
+            "reviewId": _review_id(forged_identity),
+        }
+        review_path.write_text(
+            json.dumps(forged_document, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        with pytest.raises(PackageProductGcExecutionError) as forged_review:
+            gc.inspect_dependency_repair(forged_document["reviewId"])
+        assert forged_review.value.code == (
+            "plugin_package_gc_dependency_repair_review_refused"
+        )
+        review_path.write_bytes(before_review_replay)
+        repair_path = state_root / "dependency-gc-repairs.jsonl"
+        repairs = PackageDependencyGcRepairJournal(repair_path)
+        repair_operation_id = _operation_identity(
+            "dependency-repair",
+            epoch_runtime.registry.store_id,
+            review.review_id,
+            "reviewed-repair",
+        )
+        repair_start = repairs.begin(
+            review,
+            operation_id=repair_operation_id,
+            idempotency_key=repair_operation_id,
+        )
+        assert repairs.result_for(repair_start) is None
+        assert (
+            PackageDependencyGcRepairJournal(repair_path).begin(
+                review,
+                operation_id=repair_operation_id,
+                idempotency_key=repair_operation_id,
+            )
+            == repair_start
+        )
+        before_repair_replay = repair_path.read_bytes()
+        with pytest.raises(PackageDependencyGcRepairJournalError) as changed_repair:
+            repairs.begin(
+                review,
+                operation_id="operation:changed-repair",
+                idempotency_key="request:changed-repair",
+            )
+        assert changed_repair.value.code == (
+            "plugin_package_gc_dependency_repair_start_conflict"
+        )
+        assert repair_path.read_bytes() == before_repair_replay
+        assert gc.inspect_dependency_repair(review.review_id).state == "started"
+        with pytest.raises(PackageProductGcExecutionError) as unknown_review:
+            gc.inspect_dependency_repair("0" * 64)
+        assert unknown_review.value.code == (
+            "plugin_package_gc_dependency_repair_review_unavailable"
+        )
+        before_inspection = journal_path.read_bytes()
+        inspection, debt = gc.inspect_terminal_dependency_debt(failed_attempt.start_id)
+        assert inspection.deletion_state == "terminal_failure"
+        assert inspection.latest_attempt_id == failed_attempt.attempt_id
+        assert debt == failed_attempt
+        assert run_gc_operator_command(
+            gc,
+            Namespace(
+                action="inspect-dependency-debt",
+                start_id=failed_attempt.start_id,
+            ),
+        ) == {
+            "attemptId": failed_attempt.attempt_id,
+            "disposition": "terminal_failure",
+            "errorCode": "package_publication_root_untrusted",
+            "settlementId": settlement.settlement_id,
+            "startId": failed_attempt.start_id,
+            "storeId": epoch_runtime.registry.store_id,
+        }
+        assert journal_path.read_bytes() == before_inspection
+        live_debt_runtime = product.factory_for_session(
+            session_id="dependency-gc-debt-live-session",
+            cwd=workspace,
+            runtime_id="dependency-gc-debt-live-session",
+        )
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as active_debt:
+                gc.inspect_terminal_dependency_debt(failed_attempt.start_id)
+            assert active_debt.value.code == "plugin_package_gc_runtime_active"
+            with pytest.raises(PackageProductGcExecutionError) as active_review:
+                gc.record_terminal_dependency_review(
+                    start.start_id,
+                    expected_terminal_attempt_id=failed_attempt.attempt_id,
+                    expected_settlement_id=settlement.settlement_id,
+                    expected_error_code=failed_attempt.error_code,
+                    actor_id="coding:package-gc-cli",
+                    policy_revision="coding:package-gc-repair-v1",
+                    remediation_reference="incident:dependency-tree-reviewed",
+                )
+            assert active_review.value.code == "plugin_package_gc_runtime_active"
+        finally:
+            live_debt_runtime.dispose_unbound_runtime()
+        assert journal_path.read_bytes() == before_inspection
+        with pytest.raises(PackageProductGcExecutionError) as unknown_debt:
+            gc.inspect_terminal_dependency_debt("0" * 64)
+        assert (
+            unknown_debt.value.code
+            == "plugin_package_gc_dependency_terminal_debt_unavailable"
+        )
+        assert journal_path.read_bytes() == before_inspection
+        assert (
+            gc.delete_dependency(
+                orphan.retention.dependency_ref.ref_id,
+                expected_settlement_id=settlement.settlement_id,
+                operation_id="operation:dependency-store-failure",
+                idempotency_key="request:dependency-store-failure",
+            )
+            == failed_attempt
+        )
+        (failed_status,) = gc.operator_snapshot().dependency_inspections
+        assert failed_status.to_dict()["targetStatus"] == "terminal_failure"
+        with patch.object(
+            PosixPackageDependencyMaterializationStore,
+            "delete_settlement",
+            side_effect=AssertionError("terminal debt reached Store again"),
+        ):
+            assert (
+                gc.retry_dependency(
+                    failed_attempt.start_id,
+                    operation_id="operation:dependency-terminal-retry",
+                    idempotency_key="request:dependency-terminal-retry",
+                )
+                == failed_attempt
+            )
+            assert (
+                run_gc_operator_command(
+                    gc,
+                    Namespace(
+                        action="retry-dependency",
+                        start_id=failed_attempt.start_id,
+                        attempt_key="terminal-retry",
+                    ),
+                )["disposition"]
+                == "terminal_failure"
+            )
+        with pytest.raises(PackageProductGcExecutionError) as closed_repair:
+            gc.repair_terminal_dependency_debt(
+                review.review_id,
+                operation_id=repair_start.operation_id,
+                idempotency_key=repair_start.idempotency_key,
+            )
+        assert closed_repair.value.code == (
+            "plugin_package_gc_dependency_repair_unavailable"
+        )
+
+        class RefusingRepairAuthority:
+            def authorizes(self, candidate: object, target: object) -> bool:
+                return False
+
+        before_policy_refusal = repair_path.read_bytes()
+        with patch.object(
+            PosixPackageDependencyMaterializationStore,
+            "delete_settlement",
+            side_effect=AssertionError("refused repair reached Store"),
+        ):
+            with pytest.raises(PackageProductGcExecutionError) as policy_refusal:
+                replace(
+                    gc, repair_authority=RefusingRepairAuthority()
+                ).repair_terminal_dependency_debt(
+                    review.review_id,
+                    operation_id=repair_start.operation_id,
+                    idempotency_key=repair_start.idempotency_key,
+                )
+        assert policy_refusal.value.code == (
+            "plugin_package_gc_dependency_repair_review_refused"
+        )
+        assert repair_path.read_bytes() == before_policy_refusal
+
+        repair_owner = replace(gc, repair_authority=_CodingPackageGcRepairAuthority())
+        root_gc_results = state_root / "gc-results.jsonl"
+        settled_root_results = root_gc_results.read_bytes()
+        root_gc_results.write_bytes(b"")
+        try:
+            with patch.object(
+                PosixPackageDependencyMaterializationStore,
+                "delete_settlement",
+                side_effect=AssertionError("lost holder proof reached Store"),
+            ):
+                with pytest.raises(PackageProductGcExecutionError) as lost_holder:
+                    repair_owner.repair_terminal_dependency_debt(
+                        review.review_id,
+                        operation_id=repair_start.operation_id,
+                        idempotency_key=repair_start.idempotency_key,
+                    )
+            assert lost_holder.value.code == (
+                "plugin_package_gc_dependency_terminal_debt_unavailable"
+            )
+        finally:
+            root_gc_results.write_bytes(settled_root_results)
+        assert repair_path.read_bytes() == before_policy_refusal
+        if repair_store_failure:
+            with patch.object(
+                PosixPackageDependencyMaterializationStore,
+                "delete_settlement",
+                side_effect=PackagePhysicalStagingError(
+                    "Dependency tree still conflicts",
+                    code="package_publication_collision",
+                ),
+            ):
+                repair_failure = repair_owner.repair_terminal_dependency_debt(
+                    review.review_id,
+                    operation_id=repair_start.operation_id,
+                    idempotency_key=repair_start.idempotency_key,
+                )
+            assert repair_failure.disposition == "terminal_failure"
+            assert repair_failure.error_code == "package_publication_collision"
+            assert dependency_tree.is_dir()
+            assert gc.inspect_dependency_repair(review.review_id).state == (
+                "terminal_failure"
+            )
+            assert (
+                run_gc_operator_command(gc, Namespace(action="list"))[
+                    "dependencyRepairs"
+                ][0]["state"]
+                == "terminal_failure"
+            )
+            with patch.object(
+                PosixPackageDependencyMaterializationStore,
+                "delete_settlement",
+                side_effect=AssertionError("terminal repair reached Store again"),
+            ):
+                assert (
+                    repair_owner.repair_terminal_dependency_debt(
+                        review.review_id,
+                        operation_id=repair_start.operation_id,
+                        idempotency_key=repair_start.idempotency_key,
+                    )
+                    == repair_failure
+                )
+            with pytest.raises(PackageProductGcExecutionError) as wrong_predecessor:
+                gc.record_terminal_dependency_review(
+                    start.start_id,
+                    expected_terminal_attempt_id=failed_attempt.attempt_id,
+                    expected_settlement_id=settlement.settlement_id,
+                    expected_error_code=failed_attempt.error_code,
+                    actor_id="coding:package-gc-cli",
+                    policy_revision="coding:package-gc-repair-v1",
+                    remediation_reference="incident:second-remediation",
+                    prior_repair_result_id="0" * 64,
+                )
+            assert wrong_predecessor.value.code == (
+                "plugin_package_gc_dependency_repair_review_refused"
+            )
+            second_review_output = run_gc_operator_command(
+                gc,
+                Namespace(
+                    action="review-dependency-debt",
+                    start_id=start.start_id,
+                    terminal_attempt_id=failed_attempt.attempt_id,
+                    settlement_id=settlement.settlement_id,
+                    error_code=failed_attempt.error_code,
+                    remediation_reference="incident:second-remediation",
+                    prior_repair_result_id=repair_failure.repair_result_id,
+                ),
+            )
+            second_review = reviews.records()[-1]
+            assert second_review_output["reviewId"] == second_review.review_id
+            assert second_review.record_version == 2
+            assert (
+                second_review.prior_repair_result_id == repair_failure.repair_result_id
+            )
+            assert gc.inspect_dependency_repair(second_review.review_id).state == (
+                "reviewed"
+            )
+            with pytest.raises(PackageDependencyGcRepairJournalError) as old_review:
+                repairs.begin(
+                    review,
+                    operation_id="operation:old-review-new-attempt",
+                    idempotency_key="request:old-review-new-attempt",
+                )
+            assert old_review.value.code == (
+                "plugin_package_gc_dependency_repair_start_conflict"
+            )
+            second_output = run_gc_operator_command(
+                repair_owner,
+                Namespace(
+                    action="repair-dependency-debt",
+                    review_id=second_review.review_id,
+                    attempt_key="second-remediation",
+                ),
+            )
+            assert second_output["disposition"] == "succeeded"
+            assert not dependency_tree.exists()
+            assert gc.inspect_dependency_repair(review.review_id).state == (
+                "terminal_failure"
+            )
+            assert gc.inspect_dependency_repair(second_review.review_id).state == (
+                "succeeded"
+            )
+            assert (
+                gc.record_terminal_dependency_review(
+                    start.start_id,
+                    expected_terminal_attempt_id=failed_attempt.attempt_id,
+                    expected_settlement_id=settlement.settlement_id,
+                    expected_error_code=failed_attempt.error_code,
+                    actor_id="coding:package-gc-cli",
+                    policy_revision="coding:package-gc-repair-v1",
+                    remediation_reference="incident:second-remediation",
+                    prior_repair_result_id=repair_failure.repair_result_id,
+                )
+                == second_review
+            )
+            with pytest.raises(PackageProductGcExecutionError) as stale_predecessor:
+                gc.record_terminal_dependency_review(
+                    start.start_id,
+                    expected_terminal_attempt_id=failed_attempt.attempt_id,
+                    expected_settlement_id=settlement.settlement_id,
+                    expected_error_code=failed_attempt.error_code,
+                    actor_id="coding:package-gc-cli",
+                    policy_revision="coding:package-gc-repair-v1",
+                    remediation_reference="incident:third-remediation",
+                    prior_repair_result_id=repair_failure.repair_result_id,
+                )
+            assert stale_predecessor.value.code == (
+                "plugin_package_gc_dependency_repair_review_refused"
+            )
+            settled_reviews = review_path.read_bytes()
+            forged_identity = second_review._identity()
+            forged_identity["priorRepairResultId"] = "0" * 64
+            forged_document = {
+                **second_review.to_dict(),
+                **forged_identity,
+                "reviewId": _review_id(forged_identity, version=2),
+            }
+            review_lines = review_path.read_text(encoding="utf-8").splitlines()
+            assert len(review_lines) == 2
+            review_lines[-1] = json.dumps(forged_document, sort_keys=True)
+            review_path.write_text("\n".join(review_lines) + "\n", encoding="utf-8")
+            try:
+                with pytest.raises(PackageProductGcExecutionError) as forged_prior:
+                    gc.inspect_dependency_repair(forged_document["reviewId"])
+                assert forged_prior.value.code == (
+                    "plugin_package_gc_dependency_repair_review_refused"
+                )
+            finally:
+                review_path.write_bytes(settled_reviews)
+            review_documents = [
+                json.loads(line)
+                for line in settled_reviews.decode("utf-8").splitlines()
+            ]
+            for index in (0, 1):
+                changed = [dict(item) for item in review_documents]
+                if index == 0:
+                    changed[index]["priorRepairResultId"] = None
+                else:
+                    changed[index].pop("priorRepairResultId")
+                review_path.write_text(
+                    "\n".join(json.dumps(item, sort_keys=True) for item in changed)
+                    + "\n",
+                    encoding="utf-8",
+                )
+                with pytest.raises(ValueError):
+                    PackageDependencyGcRepairReviewJournal(review_path).records()
+            review_path.write_bytes(settled_reviews)
+            settled_repairs = repair_path.read_bytes()
+            repair_documents = [
+                json.loads(line)
+                for line in settled_repairs.decode("utf-8").splitlines()
+            ]
+            for index in (0, 2):
+                changed = [dict(item) for item in repair_documents]
+                if index == 0:
+                    changed[index]["priorRepairResultId"] = None
+                else:
+                    changed[index].pop("priorRepairResultId")
+                repair_path.write_text(
+                    "\n".join(json.dumps(item, sort_keys=True) for item in changed)
+                    + "\n",
+                    encoding="utf-8",
+                )
+                with pytest.raises(ValueError):
+                    PackageDependencyGcRepairJournal(repair_path).events()
+            repair_path.write_bytes(settled_repairs)
+            assert [
+                item["state"]
+                for item in run_gc_operator_command(gc, Namespace(action="list"))[
+                    "dependencyRepairs"
+                ]
+            ] == ["terminal_failure", "succeeded"]
+            return
+        original_repair_record = PackageDependencyGcRepairJournal.record
+        with patch.object(
+            PackageDependencyGcRepairJournal,
+            "record",
+            side_effect=RuntimeError("crash after reviewed Store deletion"),
+        ):
+            with pytest.raises(RuntimeError, match="crash after reviewed"):
+                repair_owner.repair_terminal_dependency_debt(
+                    review.review_id,
+                    operation_id=repair_start.operation_id,
+                    idempotency_key=repair_start.idempotency_key,
+                )
+        assert not dependency_tree.exists()
+        assert (
+            PackageDependencyGcRepairJournal(repair_path).result_for(repair_start)
+            is None
+        )
+        assert gc.inspect_dependency_repair(review.review_id).state == "started"
+        assert PackageDependencyGcRepairJournal.record is original_repair_record
+        child_script = """
+import json
+import sys
+from argparse import Namespace
+from hashlib import sha256
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from test_plc9b_adversarial import _closure_environment, _configured_product_gc_owner
+from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
+from loushang.coding.cli.package_gc import _CodingPackageGcRepairAuthority, _run
+from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+from loushang.coding.package_product_runtime import open_coding_package_product_state
+from loushang.harness.package_product.product_root_gc_runtime import open_posix_local_wheel_product_root_gc
+from loushang.harness.resources.packages.product_epoch_guard import PackageProductPosixFencedRuntimeOwner
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWheelBindingV1,
+    PackageProductLocalWheelDependencyV1,
+    PackageProductLocalWheelPolicy,
+)
+
+base = Path(sys.argv[2])
+workspace = base / "workspace"
+source_root = base / "sources"
+source = source_root / "acme_plugin-1.0-py3-none-any.whl"
+dependency = source_root / "dependency-2.0-py3-none-any.whl"
+environment = _closure_environment()
+policy = PackageProductLocalWheelPolicy(
+    product_id="coding",
+    project_scope_id="workspace:manifest",
+    source_root=source_root,
+    bindings=(PackageProductLocalWheelBindingV1(
+        source_identity=str(source),
+        requested_package="acme-plugin==1.0",
+        plugin_id="acme.plugin",
+        artifact_digest=sha256(source.read_bytes()).hexdigest(),
+    ),),
+    dependencies=(PackageProductLocalWheelDependencyV1(
+        source_identity=str(dependency),
+        project_name="dependency",
+        version="2.0",
+        artifact_digest=sha256(dependency.read_bytes()).hexdigest(),
+    ),),
+    policy_revision="package-policy:1",
+    quota_profile_revision="quota:1",
+    resolution_environment_fingerprint=environment.fingerprint,
+    authority_id="coding-local-source:runtime",
+)
+layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+    base / "legacy-coding", cwd=workspace
+)
+epoch = resolve_coding_package_epoch_layout(layout)
+runtime = PackageProductPosixFencedRuntimeOwner.open(
+    authority_root=epoch.authority_root,
+    control_root=epoch.control_root,
+    store_id=epoch.store_id,
+    epochs_root_name=epoch.epochs_root_name,
+)
+try:
+    state = open_coding_package_product_state(layout, runtime)
+    product = _configured_product_gc_owner(
+        workspace=workspace,
+        state_root=state.state_root,
+        plugin_root=epoch.epoch_root(runtime.cutover_result.fence.request.namespace_id),
+        policy=policy,
+        environment=environment,
+        root_store_identity=sys.argv[3],
+        dependency_store_identity=sys.argv[4],
+        epoch_runtime=runtime,
+        management=state.management,
+        desired=state.desired_state,
+        bindings=state.gc_bindings,
+        gate=state.gc_gate,
+    )
+    gc = open_posix_local_wheel_product_root_gc(
+        product, repair_authority=_CodingPackageGcRepairAuthority()
+    )
+    print(json.dumps(_run(gc, Namespace(
+        action="repair-dependency-debt",
+        review_id=sys.argv[5],
+        attempt_key="reviewed-repair",
+    ))))
+finally:
+    runtime.close()
+"""
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                child_script,
+                str(Path(__file__).parent),
+                str(workspace.parent),
+                root_store_identity,
+                dependency_store_identity,
+                review.review_id,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        repaired_output = json.loads(child.stdout)
+        repaired = PackageDependencyGcRepairJournal(repair_path).result_for(
+            repair_start
+        )
+        assert repaired is not None
+        assert repaired_output["repairResultId"] == repaired.repair_result_id
+        assert repaired.disposition == "succeeded"
+        assert repaired.store_result is not None
+        assert repaired.store_result.disposition == "already_absent"
+        repair_status = gc.inspect_dependency_repair(review.review_id)
+        assert repair_status.state == "succeeded"
+        assert repair_status.repair_result_id == repaired.repair_result_id
+        assert gc.operator_snapshot().dependency_repairs == (repair_status,)
+        assert (
+            run_gc_operator_command(gc, Namespace(action="list"))["dependencyRepairs"][
+                0
+            ]["state"]
+            == "succeeded"
+        )
+        assert (
+            run_gc_operator_command(
+                gc,
+                Namespace(
+                    action="inspect-dependency-repair", review_id=review.review_id
+                ),
+            )["state"]
+            == "succeeded"
+        )
+        reopened_repair_owner = open_posix_local_wheel_product_root_gc(
+            product, repair_authority=_CodingPackageGcRepairAuthority()
+        )
+        assert reopened_repair_owner.inspect_dependency_repair(review.review_id) == (
+            repair_status
+        )
+        with patch.object(
+            PosixPackageDependencyMaterializationStore,
+            "delete_settlement",
+            side_effect=AssertionError("settled repair reached Store again"),
+        ):
+            assert (
+                reopened_repair_owner.repair_terminal_dependency_debt(
+                    review.review_id,
+                    operation_id=repair_start.operation_id,
+                    idempotency_key=repair_start.idempotency_key,
+                )
+                == repaired
+            )
+            assert (
+                gc.retry_dependency(
+                    failed_attempt.start_id,
+                    operation_id="operation:after-reviewed-repair",
+                    idempotency_key="request:after-reviewed-repair",
+                )
+                == failed_attempt
+            )
+        raw_repair = repair_path.read_text(encoding="utf-8")
+        repair_kind = '"recordKind": "dependency_gc_repair_start"'
+        assert repair_kind in raw_repair
+        repair_path.write_text(
+            raw_repair.replace(repair_kind, f"{repair_kind},{repair_kind}", 1),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="duplicate JSON key"):
+            PackageDependencyGcRepairJournal(repair_path).events()
+        raw_review = review_path.read_text(encoding="utf-8")
+        actor_field = '"actorId": "coding:package-gc-cli"'
+        assert actor_field in raw_review
+        review_path.write_text(
+            raw_review.replace(actor_field, f"{actor_field},{actor_field}", 1),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="duplicate JSON key"):
+            PackageDependencyGcRepairReviewJournal(review_path).records()
+        return
+    with pytest.raises(PackageProductGcExecutionError) as not_terminal_debt:
+        gc.inspect_terminal_dependency_debt(orphan.retention.dependency_ref.ref_id)
+    assert (
+        not_terminal_debt.value.code
+        == "plugin_package_gc_dependency_terminal_debt_unavailable"
+    )
+    original_record = PackageDependencyGcJournal.record
+
+    def crash_after_store_delete(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("crash after dependency Store deletion")
+
+    with patch.object(PackageDependencyGcJournal, "record", crash_after_store_delete):
+        with pytest.raises(RuntimeError, match="crash after dependency Store deletion"):
+            run_gc_operator_command(
+                gc,
+                Namespace(
+                    action="delete-dependency",
+                    dependency_ref_id=orphan.retention.dependency_ref.ref_id,
+                    settlement_id=settlement.settlement_id,
+                    attempt_key="first-delete",
+                ),
+            )
+    assert not dependency_tree.exists()
+    events = PackageDependencyGcJournal(journal_path).events()
+    start = events[0]
+    assert len(events) == (2 if first_store_failure else 1)
+    assert isinstance(start, PackageDependencyGcStartV1)
+    assert start.settlement_id == settlement.settlement_id
+    (pending,) = gc.operator_snapshot().dependency_inspections
+    assert pending.to_dict()["targetStatus"] == (
+        "retryable_failure" if first_store_failure else "started"
+    )
+    assert pending.deletion_start_id == start.start_id
+    reopened = open_posix_local_wheel_product_root_gc(product)
+    result = reopened.retry_dependency(
+        start.start_id,
+        operation_id="operation:dependency-gc-retry",
+        idempotency_key="request:dependency-gc-retry",
+    )
+    assert result.disposition == "succeeded"
+    assert result.store_result is not None
+    assert result.store_result.disposition == "already_absent"
+    assert (
+        reopened.retry_dependency(
+            start.start_id,
+            operation_id="operation:dependency-gc-retry",
+            idempotency_key="request:dependency-gc-retry",
+        )
+        == result
+    )
+    (finished,) = reopened.operator_snapshot().dependency_inspections
+    assert finished.to_dict()["targetStatus"] == "succeeded"
+    assert finished.latest_attempt_id == result.attempt_id
+    operator_result = run_gc_operator_command(
+        reopened,
+        Namespace(
+            action="retry-dependency",
+            start_id=start.start_id,
+            attempt_key="replay-after-crash",
+        ),
+    )
+    assert operator_result["disposition"] == "succeeded"
+    assert operator_result["startId"] == start.start_id
+    assert original_record is PackageDependencyGcJournal.record
+
+
+def _assert_posix_product_shared_dependency_gc(
+    *,
+    workspace: Path,
+    state_root: Path,
+    plugin_root: Path,
+    policy: PackageProductLocalWheelPolicy,
+    environment: PackageResolutionEnvironmentV1,
+    root_store_identity: str,
+    dependency_store_identity: str,
+    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    management: PluginManagementService,
+    desired: PluginDesiredStateLedger,
+    bindings: PluginPackageGcBindingJournal,
+    gate: PluginPackageGcReservationJournal,
+) -> None:
+    from loushang.harness.package_product.product_gc_executor import (
+        PackageProductGcExecutionError,
+        PackageProductRootGcCommandV1,
+    )
+    from loushang.harness.plugin_management.operations import PluginManagementCommandV1
+    from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+
+    selected = desired.snapshot().installations
+    assert len(selected) == 2
+    first_revision = selected[0].selection.package_revision
+    second_revision = selected[1].selection.package_revision
+    assert first_revision is not None and second_revision is not None
+    for index, installation in enumerate(selected):
+        removed = management.submit(
+            PluginManagementCommandV1(
+                action="remove",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id=f"operation:shared-gc-remove:{index}",
+                    idempotency_key=f"request:shared-gc-remove:{index}",
+                    expected_inventory_revision=2 + index,
+                    installation_key=installation.installation_key,
+                    desired_state="absent",
+                    package_revision=None,
+                    actor_id="product-runtime",
+                    policy_revision="product-policy:1",
+                ),
+            )
+        )
+        assert removed.status == "terminal"
+    settlements = PackageStoreSettlementJournal(
+        state_root / "dependency-settlements.jsonl"
+    ).records()
+    assert len(settlements) == 2
+    assert settlements[0].receipt.stable_ref == settlements[1].receipt.stable_ref
+    assert settlements[0].tree_identity == settlements[1].tree_identity
+    dependency_ref = settlements[0].receipt.stable_ref
+    dependency_tree = state_root / "dependency-store" / settlements[0].final_name
+    assert dependency_tree.is_dir()
+    assert len(tuple((state_root / "dependency-store").glob("artifact-*"))) == 1
+    product = _configured_product_gc_owner(
+        workspace=workspace,
+        state_root=state_root,
+        plugin_root=plugin_root,
+        policy=policy,
+        environment=environment,
+        root_store_identity=root_store_identity,
+        dependency_store_identity=dependency_store_identity,
+        epoch_runtime=epoch_runtime,
+        management=management,
+        desired=desired,
+        bindings=bindings,
+        gate=gate,
+    )
+    gc = open_posix_local_wheel_product_root_gc(product)
+    store_opens: list[bool] = []
+    concrete_store = gc.dependency_store_factory
+
+    def counted_dependency_store():
+        store_opens.append(True)
+        return concrete_store()
+
+    gc = replace(gc, dependency_store_factory=counted_dependency_store)
+    gc.prepare()
+    (retained,) = gc.dependency_inspections()
+    assert len(retained.retention.live_root_ref_ids) == 2
+    assert retained.target is None
+    candidates = gc.candidates()
+    assert len(candidates) == 2
+    for index, revision in enumerate((first_revision, second_revision)):
+        candidate = next(
+            item for item in candidates if item.package_revision == revision
+        )
+        root_result = gc.execute(
+            PackageProductRootGcCommandV1(
+                candidate=candidate,
+                reservation_operation_id=f"operation:shared-gc-reserve:{index}",
+                reservation_idempotency_key=f"request:shared-gc-reserve:{index}",
+                attempt_operation_id=f"operation:shared-gc-delete:{index}",
+                attempt_idempotency_key=f"request:shared-gc-delete:{index}",
+            )
+        )
+        assert root_result.disposition == "succeeded"
+        (inspection,) = gc.dependency_inspections()
+        assert dependency_tree.is_dir()
+        if index == 0:
+            assert len(inspection.retention.live_root_ref_ids) == 1
+            with pytest.raises(PackageProductGcExecutionError) as live_holder:
+                gc.delete_dependency(
+                    dependency_ref.ref_id,
+                    expected_settlement_id=settlements[0].settlement_id,
+                    operation_id="operation:shared-gc-early-delete",
+                    idempotency_key="request:shared-gc-early-delete",
+                )
+            assert (
+                live_holder.value.code
+                == "plugin_package_gc_dependency_target_unavailable"
+            )
+            assert store_opens == []
+            assert not (state_root / "dependency-gc.jsonl").exists()
+            gc = replace(
+                open_posix_local_wheel_product_root_gc(product),
+                dependency_store_factory=counted_dependency_store,
+            )
+            (reopened_retention,) = gc.dependency_inspections()
+            assert len(reopened_retention.retention.live_root_ref_ids) == 1
+        else:
+            assert inspection.retention.live_root_ref_ids == ()
+            assert inspection.target is not None
+            assert inspection.target.settlement_id == settlements[0].settlement_id
+    deleted = gc.delete_dependency(
+        dependency_ref.ref_id,
+        expected_settlement_id=settlements[0].settlement_id,
+        operation_id="operation:shared-gc-dependency-delete",
+        idempotency_key="request:shared-gc-dependency-delete",
+    )
+    assert deleted.disposition == "succeeded"
+    assert store_opens == [True]
+    assert not dependency_tree.exists()
 
 
 def _assert_product_root_gc_after_install(
@@ -8217,9 +10174,7 @@ def _assert_product_root_gc_after_install(
         retirement_intents=intents,
         retirement_sets=retirement_sets,
         security_acceptances=(
-            PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-                runtime_path
-            )
+            PluginContinuitySecurityRetirementJournal.for_instance_runtime(runtime_path)
         ),
         gc_gate=gate,
     )
@@ -8266,9 +10221,7 @@ def _assert_product_root_gc_after_install(
         gate=gate,
         lifecycle=packages,
         bindings=bindings,
-        committed_sets=PackageCommittedSetJournal(
-            state_root / "committed-sets.jsonl"
-        ),
+        committed_sets=PackageCommittedSetJournal(state_root / "committed-sets.jsonl"),
         root_settlements=root_settlements,
         root_store=root_store,
         results=results,
@@ -8357,9 +10310,7 @@ def _assert_product_root_gc_after_install(
         assert status.state == "evidence_conflict"
         assert status.reason_code == "plugin_package_gc_result_conflict"
         assert (plugin_root / settlement.final_name).is_dir()
-        assert not root_settlements.is_tombstoned(
-            settlement.receipt.stable_ref.ref_id
-        )
+        assert not root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
         assert not executor.committed_sets.is_tombstoned(
             settlement.receipt.stable_ref.ref_id
         )
@@ -8374,9 +10325,7 @@ def _assert_product_root_gc_after_install(
         assert gate.deletion_start(reservation.reservation_id) is None
         assert tuple(row.state for row in read_model.snapshot()) == ("reserved",)
         assert (plugin_root / settlement.final_name).is_dir()
-        assert not root_settlements.is_tombstoned(
-            settlement.receipt.stable_ref.ref_id
-        )
+        assert not root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
         assert not executor.committed_sets.is_tombstoned(
             settlement.receipt.stable_ref.ref_id
         )
@@ -8412,13 +10361,17 @@ def _assert_product_root_gc_after_install(
         start = gate.deletion_start(reservation.reservation_id)
         assert start is not None
         assert PluginPackageGcResultJournal(results.path).attempts(start) == (failed,)
-        assert executor.execute(
-            reservation.reservation_id,
-            operation_id="operation:gc-retry",
-            idempotency_key="request:gc-retry",
-        ) == failed
+        assert (
+            executor.execute(
+                reservation.reservation_id,
+                operation_id="operation:gc-retry",
+                idempotency_key="request:gc-retry",
+            )
+            == failed
+        )
         return
     if crash_after_delete:
+
         class InterruptingResults:
             def attempts(self, start):
                 return results.attempts(start)
@@ -8475,18 +10428,19 @@ def _assert_product_root_gc_after_install(
     assert status.to_dict()["statusVersion"] == 1
     assert not (plugin_root / settlement.final_name).exists()
     assert root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
-    assert executor.committed_sets.is_tombstoned(
-        settlement.receipt.stable_ref.ref_id
-    )
+    assert executor.committed_sets.is_tombstoned(settlement.receipt.stable_ref.ref_id)
     start = gate.deletion_start(reservation.reservation_id)
     assert start is not None
     assert start.target_settlement_ids == (settlement.settlement_id,)
     assert PluginPackageGcResultJournal(results.path).attempts(start) == (attempt,)
-    assert executor.execute(
-        reservation.reservation_id,
-        operation_id=attempt.operation_id,
-        idempotency_key=attempt.idempotency_key,
-    ) == attempt
+    assert (
+        executor.execute(
+            reservation.reservation_id,
+            operation_id=attempt.operation_id,
+            idempotency_key=attempt.idempotency_key,
+        )
+        == attempt
+    )
     dependency_settlements = PackageStoreSettlementJournal(
         state_root / "dependency-settlements.jsonl"
     ).records()
@@ -8509,7 +10463,9 @@ def _assert_product_root_gc_after_install(
         assert status.reason_code == "plugin_package_gc_fence_missing"
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -> None:
     admission = _manifest_product_admission()
     secret = "manifest-product-handoff-recovery"
@@ -8524,7 +10480,9 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress,
+        tmp_path,
+        secret=secret,
+        product_ingress=ingress,
         product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
@@ -8561,13 +10519,19 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
     assert product.desired.snapshot().inventory_revision == 0
     lifecycle_before = fixture.lifecycle_journal.records()
 
-    recovered = PackageCommittedProductHandoffRecovery(
+    recovery = PackageCommittedProductHandoffRecovery(
         product_id="coding",
         kernel=fixture.kernel,
         journal=product.journal,
         finalizer=product.finalizer,
-    ).recover(admission)
+    )
+    assert recovery.recover_exact(admission, "other-operation") == ()
+    assert product.journal.records() == ()
+    assert product.desired.snapshot().inventory_revision == 0
+    assert recovery.terminal_state(committed.operation_id) is None
+    recovered = recovery.recover_exact(admission, committed.operation_id)
     assert recovered == (committed.operation_id,)
+    assert recovery.terminal_state(committed.operation_id) == "settled"
     assert router.route(route) == committed
     assert fixture.lifecycle_journal.records() == lifecycle_before
     assert product.desired.snapshot().inventory_revision == 1
@@ -8576,7 +10540,127 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
     assert handoff.calls == 2
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
+def test_rebound_committed_handoff_recovers_under_third_admission(
+    tmp_path: Path,
+) -> None:
+    original = _manifest_product_admission()
+    rebound = _manifest_product_admission(runtime_id="runtime:rebound")
+    third = _manifest_product_admission(runtime_id="runtime:third")
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=f"https://packages.example.test/{WHEEL_FILENAME}",
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=original.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, product_ingress=ingress, product_root_target=True
+    )
+    proposed = PackageProductRebindAdmissionBindingJournal(
+        tmp_path / "rebind-admissions.jsonl"
+    )
+    product = _native_product_handoff(fixture, tmp_path, rebind_bindings=proposed)
+    handoff = _FailOnceProductHandoff(product.finalizer)
+
+    def test_rebound_authority(
+        request: PackageProductReboundRouteRequestV1,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert request.decision == decision
+        assert current == resumed
+        assert proposed.read_decision(decision.decision_id) is not None
+
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(), budgets=PackageClosureBudgetV1()
+        ),
+        recovery_identity="manifest-product-rebound-handoff-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=handoff,
+        rebound_execution_authority=test_rebound_authority,
+    )
+    classified = fixture.kernel.submit(ingress)
+    failed = fixture.kernel.interrupt(
+        classified.operation_id,
+        expected_phase=classified.phase,
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    decision = PackageLifecycleRebindRequestV1(
+        operation_id=failed.operation_id,
+        request_fingerprint=failed.request_fingerprint,
+        expected_attempt_epoch=failed.attempt_epoch,
+        expected_attempt_revision=failed.attempt_revision,
+        new_runtime_admission_request_id=rebound.request.admission_request_id,
+        source_proof_ref="a" * 64,
+        cleanup_evidence_ref="b" * 64,
+        lease_snapshot_id="c" * 64,
+    )
+    proposed.bind(decision, rebound)
+    record = fixture.lifecycle_journal.record_rebind(decision)
+    resumed = fixture.kernel.resume_rebind(
+        decision, expected_rebind_record_revision=record.record_revision
+    )
+    route = PackageProductReboundRouteRequestV1(
+        entrypoint="operations",
+        ingress=ingress,
+        admission=rebound,
+        decision=decision,
+    )
+    locked_transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=_closure_environment(), budgets=PackageClosureBudgetV1()
+        ),
+        recovery_identity="manifest-product-rebound-handoff-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=handoff,
+    )
+    with pytest.raises(PackageProductRouteContractError) as closed:
+        locked_transaction.execute(route, current=resumed)
+    assert closed.value.code == "package_rebind_execution_not_available"
+    assert fixture.kernel.status(resumed.operation_id) == resumed
+    committed = transaction.execute(route, current=resumed)
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    with pytest.raises(RuntimeError, match="crash before Product handoff"):
+        transaction.finalize_committed(route, current=committed)
+    assert product.journal.records() == ()
+
+    with pytest.raises(PackageProductActivationError) as unbound:
+        PackageCommittedProductHandoffRecovery(
+            product_id="coding",
+            kernel=fixture.kernel,
+            journal=product.journal,
+            finalizer=product.finalizer,
+        ).recover(third)
+    assert unbound.value.code == "package_product_recovery_incomplete"
+    assert product.journal.records() == ()
+
+    recovered = PackageCommittedProductHandoffRecovery(
+        product_id="coding",
+        kernel=fixture.kernel,
+        journal=product.journal,
+        finalizer=product.finalizer,
+        rebind_bindings=proposed,
+    ).recover(third)
+    assert recovered == (committed.operation_id,)
+    assert product.journal.records()[-1].receipt is not None
+    assert product.journal.records()[-1].receipt.state == "settled"
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_transaction_refuses_non_wheel_source_without_store_fallback(
     tmp_path: Path,
 ) -> None:
@@ -8627,7 +10711,9 @@ def test_product_transaction_refuses_non_wheel_source_without_store_fallback(
     assert fixture.lifecycle_journal.records() == before
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_direct_materializer_refusal_never_reaches_real_store(
     tmp_path: Path,
 ) -> None:
@@ -8644,7 +10730,9 @@ def test_product_direct_materializer_refusal_never_reaches_real_store(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress,
+        tmp_path,
+        secret=secret,
+        product_ingress=ingress,
         product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
@@ -8686,7 +10774,9 @@ def test_product_direct_materializer_refusal_never_reaches_real_store(
     assert fixture.committed_sets.records() == ()
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux-native Store fixture"
+)
 def test_product_transaction_refuses_changed_execution_before_source(
     tmp_path: Path,
 ) -> None:
@@ -8703,7 +10793,9 @@ def test_product_transaction_refuses_changed_execution_before_source(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress,
+        tmp_path,
+        secret=secret,
+        product_ingress=ingress,
         product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
@@ -9282,9 +11374,7 @@ def test_manifest_case(
             entrypoint=entrypoint,
             ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
                 _request(),
-                runtime_admission_request_id=(
-                    admission.request.admission_request_id
-                ),
+                runtime_admission_request_id=(admission.request.admission_request_id),
             ),
             admission=admission,
         )
@@ -9315,9 +11405,7 @@ def test_manifest_case(
             entrypoint="direct_materializer",
             ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
                 _request(),
-                runtime_admission_request_id=(
-                    admission.request.admission_request_id
-                ),
+                runtime_admission_request_id=(admission.request.admission_request_id),
             ),
             admission=admission,
         )

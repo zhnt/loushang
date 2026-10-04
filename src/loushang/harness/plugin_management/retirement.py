@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -15,7 +16,9 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.journal_codecs import (
@@ -286,7 +289,9 @@ class PluginRetirementIntentLedger:
             repeated = replayed.by_operation.get(expected.source_operation_id)
             if repeated is not None:
                 if repeated != expected:
-                    raise _conflict(self._path, "Retirement source operation was reused")
+                    raise _conflict(
+                        self._path, "Retirement source operation was reused"
+                    )
                 return repeated
             for candidate, message in (
                 (
@@ -314,10 +319,11 @@ class PluginRetirementIntentLedger:
             return expected
 
     def snapshot(self) -> PluginRetirementIntentSnapshotV1:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return PluginRetirementIntentSnapshotV1(
@@ -326,10 +332,11 @@ class PluginRetirementIntentLedger:
         )
 
     def records(self) -> tuple[PluginRetirementIntentRecordV1, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             return self._load_and_replay_unlocked().records
 
@@ -337,14 +344,12 @@ class PluginRetirementIntentLedger:
         if not self._path.exists():
             return _empty_replay()
         try:
-            snapshot: JsonlSnapshot[None, PluginRetirementIntentRecordV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_RETIREMENT_INTENT_RECORD_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[None, PluginRetirementIntentRecordV1] = load_jsonl(
+                self._path,
+                record_codec=PLUGIN_RETIREMENT_INTENT_RECORD_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
             )
         except JournalFileError as exc:
             code = (
@@ -362,6 +367,51 @@ class PluginRetirementIntentLedger:
                 path=self._path,
             ) from exc
         return _replay(snapshot.records, path=self._path)
+
+
+def decode_plugin_retirement_intent_capture(
+    raw: str, *, path: Path
+) -> PluginRetirementIntentSnapshotV1:
+    """Replay frozen retirement-intent bytes without opening the old journal."""
+
+    if not isinstance(raw, str) or not isinstance(path, Path):
+        raise TypeError("Retirement intent capture requires text and path")
+    if raw and not raw.endswith("\n"):
+        raise PluginRetirementError(
+            "Retirement intent capture is incomplete",
+            code="plugin_retirement_journal_corrupt",
+            path=path,
+        )
+    try:
+        for line in raw.splitlines():
+            if line.strip():
+                json.loads(line, object_pairs_hook=_unique_capture_object)
+        snapshot: JsonlSnapshot[None, PluginRetirementIntentRecordV1] = decode_jsonl(
+            raw,
+            target=path,
+            record_codec=PLUGIN_RETIREMENT_INTENT_RECORD_CODEC,
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+    except (JournalFileError, ValueError) as exc:
+        raise PluginRetirementError(
+            "Retirement intent capture cannot be decoded",
+            code="plugin_retirement_journal_corrupt",
+            path=path,
+        ) from exc
+    replayed = _replay(snapshot.records, path=path)
+    return PluginRetirementIntentSnapshotV1(
+        journal_revision=len(replayed.records),
+        intents=tuple(record.intent for record in replayed.records),
+    )
+
+
+def _unique_capture_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Retirement capture has duplicate JSON keys")
+        result[key] = value
+    return result
 
 
 def retirement_intent_for_transition(
@@ -388,11 +438,14 @@ def retirement_id_for(transition: PluginDesiredStateJournalTransition) -> str:
 
 def _retirement_subject(
     transition: PluginDesiredStateJournalTransition,
-) -> tuple[
-    PluginRetirementTrigger,
-    PluginInstanceRevisionRef,
-    PluginPackageRevisionRefV1,
-] | None:
+) -> (
+    tuple[
+        PluginRetirementTrigger,
+        PluginInstanceRevisionRef,
+        PluginPackageRevisionRefV1,
+    ]
+    | None
+):
     previous = transition.previous_state.selection
     if previous.desired_state != "installed_enabled":
         return None
@@ -455,9 +508,7 @@ def _wire_mapping(value: object, *, name: str) -> dict[str, object]:
         raise ValueError(str(exc)) from exc
 
 
-def _wire_exact_fields(
-    value: dict[str, object], *, keys: set[str], name: str
-) -> None:
+def _wire_exact_fields(value: dict[str, object], *, keys: set[str], name: str) -> None:
     actual = set(value)
     if actual != keys:
         missing = sorted(keys - actual)
@@ -492,8 +543,10 @@ def _wire_instance_ref(value: object) -> PluginInstanceRevisionRef:
 
 
 def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
@@ -538,6 +591,7 @@ __all__ = [
     "PluginRetirementMode",
     "PluginRetirementRecordCodecError",
     "PluginRetirementTrigger",
+    "decode_plugin_retirement_intent_capture",
     "retirement_id_for",
     "retirement_intent_for_transition",
 ]

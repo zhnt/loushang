@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
+from pathlib import Path
 from typing import Literal
 
 from loushang.harness.journal import JournalLoadPolicy
@@ -19,9 +23,22 @@ from loushang.harness.plugin_management import (
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
 )
+from loushang.harness.plugin_management.desired_command import (
+    PluginDesiredCommandAuthorityV1,
+    PluginDesiredRepairResultV1,
+    resume_plugin_desired_operation,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.operation_explanation import (
+    PluginOperationExplanationProjector,
+    PluginOperationExplanationV1,
+)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
+)
+from loushang.harness.plugin_management.package_operation_explanation import (
+    PackageOperationExplanationProjector,
+    PackageOperationExplanationV1,
 )
 from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentLedger,
@@ -30,8 +47,14 @@ from loushang.harness.plugin_management.retirement_sets import (
     PluginRetirementSetLedger,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageRetentionHandoffJournal,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -44,7 +67,11 @@ from .package_external_data_wheel import (
     CodingExternalDataWheelCatalog,
     CodingExternalDataWheelError,
 )
+from .package_private_data_backup import CodingArchPrivateDataBackupReadSource
 from .package_product_runtime import open_coding_package_product_state
+
+CODING_CLI_MANAGEMENT_ACTOR_ID = "coding:cli"
+CODING_CLI_MANAGEMENT_POLICY_REVISION = "coding-plugin-management-cli-v1"
 
 
 def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bool:
@@ -58,9 +85,58 @@ def coding_fenced_product_exists(layout: CodingPluginLifecycleStateLayout) -> bo
     return True
 
 
+def explain_coding_fenced_package_operation(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> PackageOperationExplanationV1:
+    """Read an existing A2 operation without activating or repairing Product."""
+
+    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
+    try:
+        result = PackageOperationExplanationProjector(
+            PackageLifecycleJournal(
+                runtime.control_root / "product-state" / "lifecycle.jsonl"
+            )
+        ).explain_operation(operation_id)
+        runtime.assert_current()
+        return result
+    finally:
+        runtime.close()
+
+
+def explain_coding_fenced_plugin_operation(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+    *,
+    correlation_id: str,
+    workspace_guard: Callable[[], None] | None = None,
+) -> PluginOperationExplanationV1:
+    """Observe A2, handoff, and A1 within one inert fenced Product lease."""
+
+    runtime, ports = _ProductCliOwner(layout, workspace_guard).open(read_only=True)
+    try:
+        state_root = runtime.control_root / "product-state"
+        result = PluginOperationExplanationProjector(
+            package_operations=PackageLifecycleJournal(state_root / "lifecycle.jsonl"),
+            management_commands=ports.commands,
+            handoffs=PackageRetentionHandoffJournal(state_root / "handoff.jsonl"),
+        ).explain_operation(operation_id, correlation_id=correlation_id)
+        runtime.assert_current()
+        if workspace_guard is not None:
+            workspace_guard()
+        return result
+    finally:
+        runtime.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _ProductCliOwner:
     layout: CodingPluginLifecycleStateLayout
+    workspace_guard: Callable[[], None] | None = None
+
+    def assert_workspace_current(self) -> None:
+        if self.workspace_guard is not None:
+            self.workspace_guard()
 
     def open(
         self, *, read_only: bool
@@ -68,25 +144,38 @@ class _ProductCliOwner:
         PackageProductPosixFencedRuntimeOwner,
         PluginManagementApplicationPorts,
     ]:
+        self.assert_workspace_current()
         epoch = resolve_coding_package_epoch_layout(self.layout)
         runtime = PackageProductPosixFencedRuntimeOwner.open(
             authority_root=epoch.authority_root,
             control_root=epoch.control_root,
             store_id=epoch.store_id,
             epochs_root_name=epoch.epochs_root_name,
+            read_only=read_only,
         )
         try:
+            self.assert_workspace_current()
             state_root = runtime.control_root / "product-state"
-            if read_only and not state_root.is_dir():
-                raise ValueError("Fenced Product management state is absent")
-            runtime.prepare_product_state_root()
             if read_only:
-                load_policy = JournalLoadPolicy(partial_tail="raise")
+                try:
+                    state_metadata = state_root.lstat()
+                except FileNotFoundError as exc:
+                    raise ValueError(
+                        "Fenced Product management state is absent"
+                    ) from exc
+                if (
+                    not stat.S_ISDIR(state_metadata.st_mode)
+                    or stat.S_IMODE(state_metadata.st_mode) & 0o077
+                    or state_metadata.st_uid != os.geteuid()
+                ):
+                    raise ValueError("Fenced Product management state is unsafe")
+                load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
                 gate = PluginPackageGcReservationJournal(
                     state_root / "gc-reservations.jsonl", load_policy=load_policy
                 )
                 desired = PluginDesiredStateLedger(
-                    state_root / "desired-state.jsonl", gc_gate=gate,
+                    state_root / "desired-state.jsonl",
+                    gc_gate=gate,
                     load_policy=load_policy,
                 )
                 management = PluginManagementService(
@@ -95,7 +184,10 @@ class _ProductCliOwner:
                     load_policy=load_policy,
                 )
             else:
-                state = open_coding_package_product_state(self.layout, runtime)
+                runtime.prepare_product_state_root()
+                state = open_coding_package_product_state(
+                    self.layout, runtime, before_recovery=self.assert_workspace_current
+                )
                 desired = state.desired_state
                 management = state.management
             retirement_intents = PluginRetirementIntentLedger(
@@ -113,10 +205,16 @@ class _ProductCliOwner:
                     desired_state=desired,
                     operations=management,
                     retirement=retirement,
-                    source=_product_sources(self.layout, runtime, desired),
+                    source=_product_sources(
+                        self.layout, runtime, desired, read_only=read_only
+                    ),
+                    backup_retention=CodingArchPrivateDataBackupReadSource(
+                        self.layout, runtime
+                    ),
                 ),
             )
             runtime.assert_current()
+            self.assert_workspace_current()
             return runtime, ports
         except BaseException:
             runtime.close()
@@ -194,21 +292,35 @@ def _product_sources(
     layout: CodingPluginLifecycleStateLayout,
     runtime: PackageProductPosixFencedRuntimeOwner,
     desired_state: PluginDesiredStateLedger,
+    *,
+    read_only: bool = False,
 ) -> _ProductSources:
     switch = runtime.cutover_result.switch_receipt
     if switch is None:
         raise ValueError("Fenced Product Source namespace is unavailable")
     source_root = runtime.control_root / "product-sources"
-    if not source_root.is_dir():
-        raise ValueError("Fenced Product Source root is absent")
-    runtime.prepare_product_source_root()
+    try:
+        source_metadata = source_root.lstat()
+    except FileNotFoundError as exc:
+        raise ValueError("Fenced Product Source root is absent") from exc
+    if (
+        not stat.S_ISDIR(source_metadata.st_mode)
+        or stat.S_IMODE(source_metadata.st_mode) & 0o077
+        or source_metadata.st_uid != os.geteuid()
+    ):
+        raise ValueError("Fenced Product Source root is unsafe")
+    if not read_only:
+        runtime.prepare_product_source_root()
     return _ProductSources(
         CodingExternalDataWheelCatalog(
-            runtime.control_root / "product-state" / "external-data-wheel-bindings.jsonl",
+            runtime.control_root
+            / "product-state"
+            / "external-data-wheel-bindings.jsonl",
             source_root=source_root,
             store_id=runtime.registry.store_id,
             namespace_id=switch.namespace_id,
             scope_id=layout.scope_id,
+            read_only=read_only,
         ),
         desired_state,
     )
@@ -221,8 +333,10 @@ class _ProductCliQueries:
     def snapshot(self, query: PluginManagementQueryV1) -> PluginManagementProjectionV1:
         runtime, ports = self.owner.open(read_only=True)
         try:
+            self.owner.assert_workspace_current()
             result = ports.queries.snapshot(query)
             runtime.assert_current()
+            self.owner.assert_workspace_current()
             return result
         finally:
             runtime.close()
@@ -237,8 +351,10 @@ class _ProductCliCommands:
     ) -> PluginManagementApplicationResultV1:
         runtime, ports = self.owner.open(read_only=False)
         try:
+            self.owner.assert_workspace_current()
             result = ports.commands.submit(request)
             runtime.assert_current()
+            self.owner.assert_workspace_current()
             return result
         finally:
             runtime.close()
@@ -248,10 +364,12 @@ class _ProductCliCommands:
     ) -> PluginManagementApplicationResultV1 | None:
         runtime, ports = self.owner.open(read_only=True)
         try:
+            self.owner.assert_workspace_current()
             result = ports.commands.operation(
                 operation_id, correlation_id=correlation_id
             )
             runtime.assert_current()
+            self.owner.assert_workspace_current()
             return result
         finally:
             runtime.close()
@@ -259,14 +377,73 @@ class _ProductCliCommands:
 
 def build_coding_fenced_product_management_cli_ports(
     layout: CodingPluginLifecycleStateLayout,
+    *,
+    workspace_guard: Callable[[], None] | None = None,
 ) -> PluginManagementApplicationPorts:
-    owner = _ProductCliOwner(layout)
+    owner = _ProductCliOwner(layout, workspace_guard)
     return PluginManagementApplicationPorts(
         commands=_ProductCliCommands(owner), queries=_ProductCliQueries(owner)
     )
 
 
+def repair_coding_fenced_cli_desired_operation(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+    *,
+    workspace: Path,
+    correlation_id: str,
+    workspace_guard: Callable[[], None] | None = None,
+) -> PluginDesiredRepairResultV1:
+    """Resume only a pending Desired State command issued by this CLI owner."""
+
+    if workspace_guard is not None:
+        workspace_guard()
+    if not coding_fenced_product_exists(layout):
+        raise ValueError("coding_product_not_fenced")
+    identity = workspace.lstat()
+    if (
+        not stat.S_ISDIR(identity.st_mode)
+        or workspace.resolve(strict=True) != workspace
+    ):
+        raise ValueError("coding_management_workspace_changed")
+
+    def assert_workspace_current() -> None:
+        if workspace_guard is not None:
+            workspace_guard()
+        try:
+            current = workspace.lstat()
+            if (current.st_dev, current.st_ino) != (
+                identity.st_dev,
+                identity.st_ino,
+            ) or workspace.resolve(strict=True) != workspace:
+                raise ValueError("coding_management_workspace_changed")
+        except OSError as error:
+            raise ValueError("coding_management_workspace_changed") from error
+        if workspace_guard is not None:
+            workspace_guard()
+
+    return resume_plugin_desired_operation(
+        build_coding_fenced_product_management_cli_ports(
+            layout, workspace_guard=assert_workspace_current
+        ),
+        PluginDesiredCommandAuthorityV1(
+            product_id="coding",
+            installation_scope="workspace",
+            scope_id=layout.scope_id,
+            actor_id=CODING_CLI_MANAGEMENT_ACTOR_ID,
+            policy_revision=CODING_CLI_MANAGEMENT_POLICY_REVISION,
+        ),
+        operation_id=operation_id,
+        correlation_id=correlation_id,
+    )
+
+
 __all__ = [
+    "CODING_CLI_MANAGEMENT_ACTOR_ID",
+    "CODING_CLI_MANAGEMENT_POLICY_REVISION",
     "build_coding_fenced_product_management_cli_ports",
     "coding_fenced_product_exists",
+    "explain_coding_fenced_package_operation",
+    "explain_coding_fenced_plugin_operation",
+    "repair_coding_fenced_cli_desired_operation",
 ]

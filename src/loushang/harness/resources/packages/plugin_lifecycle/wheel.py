@@ -448,6 +448,92 @@ class _PackageMetadataClaims:
     provides_extra: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class InspectedWheelSourceV1:
+    """Inert, complete archive proof before a Source is pinned to Product."""
+
+    distribution: str
+    version: str
+    artifact_digest: str
+    wheel_metadata_digest: str
+    package_metadata_digest: str
+    record_digest: str
+    requires_dist: tuple[str, ...]
+    requires_python: str | None
+    provides_extra: tuple[str, ...]
+
+
+def inspect_package_wheel_bytes(
+    body: bytes,
+    *,
+    wheel_filename: str,
+    budgets: PackageInspectionBudgetV1,
+    max_artifact_bytes: int,
+) -> InspectedWheelSourceV1:
+    """Verify a bounded immutable Wheel without acquisition or extraction.
+
+    Source custody does not decide whether the Wheel's tags are compatible
+    with a later Product runtime. Transaction admission makes that decision.
+    """
+
+    if not isinstance(budgets, PackageInspectionBudgetV1):
+        raise TypeError("Package inspection budgets are required")
+    if type(max_artifact_bytes) is not int or max_artifact_bytes < 1:
+        raise ValueError("Maximum Package artifact size is invalid")
+    if not isinstance(body, bytes) or not body or len(body) > max_artifact_bytes:
+        _reject_limit()
+    started_at = time.monotonic()
+    try:
+        identity = _parse_wheel_filename(wheel_filename, None)
+        with io.BytesIO(body) as artifact:
+            entries = _preflight_archive(
+                artifact,
+                artifact_size=len(body),
+                budgets=budgets,
+                started_at=started_at,
+                clock=time.monotonic,
+            )
+            required = _required_metadata_entries(entries, identity)
+            content = _verify_archive_content(
+                artifact,
+                entries=entries,
+                required_metadata=required,
+                budgets=budgets,
+                started_at=started_at,
+                clock=time.monotonic,
+            )
+            claims = _verify_wheel_metadata(
+                identity,
+                wheel_bytes=content.metadata[required[0]],
+                package_bytes=content.metadata[required[1]],
+            )
+            _verify_record(
+                record_path=required[2],
+                record_bytes=content.metadata[required[2]],
+                entries=entries,
+                content=content,
+            )
+        return InspectedWheelSourceV1(
+            distribution=identity.distribution,
+            version=identity.version,
+            artifact_digest=sha256(body).hexdigest(),
+            wheel_metadata_digest=sha256(content.metadata[required[0]]).hexdigest(),
+            package_metadata_digest=sha256(content.metadata[required[1]]).hexdigest(),
+            record_digest=sha256(content.metadata[required[2]]).hexdigest(),
+            requires_dist=claims.requires_dist,
+            requires_python=claims.requires_python,
+            provides_extra=claims.provides_extra,
+        )
+    except PackageWheelVerificationError:
+        raise
+    except Exception as exc:
+        raise PackageWheelVerificationError(
+            "Package archive structure is malformed",
+            code="package_archive_malformed",
+            stage="inspecting",
+        ) from exc
+
+
 class PackageWheelVerifier:
     """Verify inert wheel bytes completely, then extract through a rooted writer."""
 
@@ -568,7 +654,7 @@ class PackageWheelVerifier:
 
 def _parse_wheel_filename(
     filename: str,
-    supported_tags: frozenset[str],
+    supported_tags: frozenset[str] | None,
 ) -> _WheelIdentity:
     if (
         not isinstance(filename, str)
@@ -604,7 +690,7 @@ def _parse_wheel_filename(
         for abi in abi_tag.split(".")
         for platform in platform_tag.split(".")
     )
-    if not filename_tags & supported_tags:
+    if supported_tags is not None and not filename_tags & supported_tags:
         _reject_artifact_type()
     canonical_distribution = _canonical_distribution(distribution)
     canonical_version = version.replace("_", "-")

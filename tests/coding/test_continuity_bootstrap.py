@@ -32,6 +32,9 @@ from loushang.coding.continuity_bootstrap import (
     retry_coding_continuity_bootstrap,
 )
 from loushang.coding.control import SettingsManager
+from loushang.coding.package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+)
 from loushang.foundation.platform_paths import PlatformPaths
 from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.continuity import (
@@ -116,6 +119,95 @@ class _Runtime:
                 return None
 
         return _Prepared()
+
+
+@pytest.mark.parametrize(
+    ("plugin_sources", "disabled_plugins"),
+    [
+        (("./old-plugin",), ()),
+        ((), ("coding.base",)),
+    ],
+)
+def test_product_continuity_refuses_legacy_plugin_configuration_before_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    plugin_sources: tuple[str, ...],
+    disabled_plugins: tuple[str, ...],
+) -> None:
+    workspace = tmp_path / "workspace"
+    layout = _test_layout(tmp_path / "state", workspace)
+    runtime = _Runtime(tmp_path / "sessions")
+    runtime._product_owner_selection = CodingFencedProductApplicationSelection()  # type: ignore[attr-defined]
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            plugin_sources=plugin_sources,
+            disabled_plugins=disabled_plugins,
+        )
+    )
+
+    def reject_old_owner(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Product continuity entered the legacy Plugin writer")
+
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        reject_old_owner,
+    )
+    with pytest.raises(CodingContinuityBootstrapError) as caught:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                runtime,
+                settings_manager=settings,
+                session_dir=runtime.session_dir,
+                cwd=workspace,
+                state_layout=layout,
+            )
+        )
+
+    assert caught.value.code == "coding_product_legacy_plugin_configuration_unsupported"
+    assert caught.value.retryable is False
+    assert not layout.root.exists()
+    assert not layout.package_root.exists()
+
+
+def test_product_continuity_without_legacy_configuration_skips_old_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    layout = _test_layout(tmp_path / "state", workspace)
+    runtime = _Runtime(tmp_path / "sessions")
+    runtime._product_owner_selection = CodingFencedProductApplicationSelection()  # type: ignore[attr-defined]
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(plugin_sources=(), disabled_plugins=())
+    )
+
+    def reject_old_owner(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Product continuity entered a pre-B Plugin owner")
+
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        reject_old_owner,
+    )
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "_hold_process_startup_lease",
+        reject_old_owner,
+    )
+    composition = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+        )
+    )
+
+    assert composition.plugin_publication is None
+    assert not layout.package_root.exists()
+    asyncio.run(shutdown_coding_continuity(runtime))
 
 
 def test_continuity_state_layout_is_canonical_and_redacts_workspace(

@@ -85,6 +85,31 @@ def test_descriptor_relative_journal_apis_reject_non_child_names() -> None:
                 pass
 
 
+def test_descriptor_relative_lock_exposes_its_pinned_handle(tmp_path: Path) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock_at
+
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        pytest.skip("requires POSIX descriptor-relative opens")
+    root = tmp_path / "root"
+    root.mkdir()
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with journal_file_lock_at(
+            descriptor, "decision.lock", "exclusive", create=True
+        ) as locked:
+            assert locked.write(b"\1") == 1
+            locked.flush()
+            os.fsync(locked.fileno())
+        with journal_file_lock_at(descriptor, "decision.lock", "shared") as locked:
+            assert locked.read(1) == b"\1"
+    finally:
+        os.close(descriptor)
+
+
 def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         JournalLoadPolicy,
@@ -534,6 +559,23 @@ def test_existing_journal_lock_rejects_final_symlink(tmp_path: Path) -> None:
             pytest.fail("a symlinked lock must never be acquired")
 
     assert external.read_bytes() == b"sentinel"
+
+
+def test_read_lock_skips_only_a_completely_absent_journal(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_read_lock
+
+    path = tmp_path / "missing" / "state.jsonl"
+    with journal_file_read_lock(path, "exclusive", create_lock=False):
+        assert not path.parent.exists()
+
+    path.parent.mkdir()
+    path.write_bytes(b"state\n")
+    with pytest.raises(FileNotFoundError):
+        with journal_file_read_lock(path, "exclusive", create_lock=False):
+            pytest.fail("an existing journal needs its existing lock")
+    assert not path.with_name("state.jsonl.lock").exists()
 
 
 def test_existing_journal_lock_rejects_fifo_without_blocking(tmp_path: Path) -> None:

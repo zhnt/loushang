@@ -5,6 +5,7 @@ import json
 import multiprocessing
 import os
 import stat
+import subprocess
 import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +18,7 @@ from threading import Lock
 import pytest
 
 import loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore as posix_restore
+import loushang.harness.sandbox.package_legacy_runtime as legacy_runtime
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
     PackageEpochFenceReceiptV1,
@@ -1183,11 +1185,250 @@ def test_linux_legacy_runtime_activates_replays_and_deactivates_real_process(
     serialized = repr(receipt).lower()
     assert str(tmp_path).lower() not in serialized
 
-    replay_owner.deactivate(receipt)
+    replay_owner.deactivate_required(receipt)
+    assert replay_owner.read_settlement(receipt) == replay_owner.settle_required(
+        receipt
+    )
+    with pytest.raises(PackageOfflineRestoreError) as missing_marker:
+        replay_owner.deactivate_required(receipt)
+    assert missing_marker.value.code == "package_offline_restore_cleanup_failed"
     replay_owner.deactivate(receipt)
 
     assert not marker_path.exists()
-    assert {path.name for path in activation_root.iterdir()} == {".legacy-runtime.lock"}
+    assert {path.name for path in activation_root.iterdir()} == {
+        ".legacy-runtime.lock",
+        "settling-runtime.json",
+        "settled-runtime.json",
+    }
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_required_deactivation_preserves_intent_before_termination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owner = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    activation = owner.activate(request, materialization)
+    original_terminate = owner._terminate_marker
+
+    def interrupt_before_termination(_marker: object) -> None:
+        raise OSError("simulated required-deactivation interruption")
+
+    monkeypatch.setattr(owner, "_terminate_marker", interrupt_before_termination)
+    try:
+        with pytest.raises(PackageOfflineRestoreError):
+            owner.deactivate_required(activation)
+        assert (activation_root / "settling-runtime.json").is_file()
+        assert (activation_root / "active-runtime.json").is_file()
+    finally:
+        monkeypatch.setattr(owner, "_terminate_marker", original_terminate)
+        settled = owner.settle_required(activation)
+    assert owner.read_settlement(activation) == settled
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_settlement_reopens_after_receipt_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+
+    def owner() -> PackageLinuxLegacyRuntimeActivationOwner:
+        return PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+        )
+
+    first = owner()
+    activation = first.activate(request, materialization)
+    with pytest.raises(PackageOfflineRestoreError) as premature:
+        first.read_settlement(activation)
+    assert premature.value.code == "package_offline_restore_cleanup_failed"
+    assert not (activation_root / "settling-runtime.json").exists()
+    original_write = legacy_runtime._write_new_file
+
+    def interrupted_write(directory: int, name: str, payload: bytes) -> None:
+        if name == "settled-runtime.json":
+            raise OSError("injected settlement receipt interruption")
+        original_write(directory, name, payload)
+
+    monkeypatch.setattr(legacy_runtime, "_write_new_file", interrupted_write)
+    with pytest.raises(PackageOfflineRestoreError):
+        first.settle_required(activation)
+    assert not (activation_root / "active-runtime.json").exists()
+    assert (activation_root / "settling-runtime.json").exists()
+    monkeypatch.setattr(legacy_runtime, "_write_new_file", original_write)
+    changed_profile = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=(*_legacy_runtime_command(b_root), "different-profile"),
+    )
+    with pytest.raises(PackageOfflineRestoreError):
+        changed_profile.settle_required(activation)
+    assert not (activation_root / "settled-runtime.json").exists()
+
+    reopened = owner()
+    settled = reopened.settle_required(activation)
+    assert settled.activation_receipt_id == activation.activation_receipt_id
+    assert reopened.read_settlement(activation) == settled
+    assert owner().read_settlement(activation) == settled
+    assert reopened.settle_required(activation) == settled
+    reader_script = """\
+import json
+import sys
+from pathlib import Path
+from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import PackageLegacyRuntimeActivationReceiptV1
+from loushang.harness.sandbox.package_legacy_runtime import PackageLinuxLegacyRuntimeActivationOwner
+
+owner = PackageLinuxLegacyRuntimeActivationOwner(
+    Path(sys.argv[1]), Path(sys.argv[2]),
+    current_b_authority_root=Path(sys.argv[3]),
+    store_id=sys.argv[4], legacy_runtime_version=sys.argv[5],
+    command=tuple(json.loads(sys.argv[6])),
+)
+receipt = PackageLegacyRuntimeActivationReceiptV1.from_dict(json.loads(sys.argv[7]))
+print(json.dumps(owner.read_settlement(receipt).to_dict(), sort_keys=True))
+"""
+    reader_command = (
+        sys.executable,
+        "-c",
+        reader_script,
+        str(restore_root),
+        str(activation_root),
+        str(b_root),
+        STORE_ID,
+        request.legacy_runtime_version,
+        json.dumps(_legacy_runtime_command(b_root)),
+        json.dumps(activation.to_dict()),
+    )
+    child = subprocess.run(
+        reader_command,
+        cwd=Path(__file__).resolve().parents[4],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert child.returncode == 0, child.stderr
+    assert json.loads(child.stdout) == settled.to_dict()
+    different_namespace = owner()
+    different_namespace._pid_namespace_digest = "0" * 64
+    with pytest.raises(PackageOfflineRestoreError):
+        different_namespace.read_settlement(activation)
+    with pytest.raises(PackageOfflineRestoreError):
+        changed_profile.read_settlement(activation)
+    with pytest.raises(PackageOfflineRestoreError):
+        changed_profile.settle_required(activation)
+    with pytest.raises(PackageOfflineRestoreError):
+        reopened.activate(request, materialization)
+    settlement_path = activation_root / "settled-runtime.json"
+    settlement_path.write_bytes(settlement_path.read_bytes() + b" ")
+    with pytest.raises(PackageOfflineRestoreError):
+        owner().read_settlement(activation)
+    changed_child = subprocess.run(
+        reader_command,
+        cwd=Path(__file__).resolve().parents[4],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert changed_child.returncode != 0
+    assert "Legacy runtime settlement could not be proven" in changed_child.stderr
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_settlement_retries_after_pre_termination_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+
+    def owner() -> PackageLinuxLegacyRuntimeActivationOwner:
+        return PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+        )
+
+    first = owner()
+    activation = first.activate(request, materialization)
+    original_terminate = first._terminate_marker
+
+    def interrupted_termination(_marker: object) -> None:
+        raise OSError("injected pre-termination interruption")
+
+    monkeypatch.setattr(first, "_terminate_marker", interrupted_termination)
+    with pytest.raises(PackageOfflineRestoreError):
+        first.settle_required(activation)
+    assert (activation_root / "active-runtime.json").exists()
+    assert (activation_root / "settling-runtime.json").exists()
+    assert not (activation_root / "settled-runtime.json").exists()
+    with pytest.raises(PackageOfflineRestoreError):
+        owner().read_settlement(activation)
+    marker = legacy_runtime._ActivationMarker.from_dict(
+        json.loads((activation_root / "active-runtime.json").read_bytes())
+    )
+    different_boot = owner()
+    different_boot._boot_id_digest = "0" * 64
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            legacy_runtime,
+            "_open_matching_pidfd",
+            lambda _identity: pytest.fail("changed boot probed a reused PID"),
+        )
+        different_boot._terminate_marker(marker)
+    assert (activation_root / "active-runtime.json").exists()
+    original_terminate(marker)
+    different_namespace = owner()
+    different_namespace._pid_namespace_digest = "0" * 64
+    with pytest.raises(PackageOfflineRestoreError):
+        different_namespace.deactivate_required(activation)
+    assert (activation_root / "active-runtime.json").exists()
+    reopened = owner()
+    settled = reopened.settle_required(activation)
+    assert owner().read_settlement(activation) == settled
     materializer.discard(materialization)
 
 

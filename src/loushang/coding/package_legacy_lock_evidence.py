@@ -10,16 +10,16 @@ from loushang.harness.resources.packages.materializer import (
     _plugin_binding_from_json,
     _plugin_binding_history_key,
 )
-from loushang.harness.resources.packages.product_epoch_guard import (
-    PackageProductPosixFencedRuntimeOwner,
-)
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
 from loushang.harness.resources.plugins.types import PluginSourceBinding
 
 from ._plugin_lifecycle import CodingPluginLifecycleStateLayout
-from .package_legacy_snapshot_member import read_coding_first_b_snapshot_member
+from .package_legacy_snapshot_member import (
+    CodingFencedEpochRuntime,
+    read_coding_first_b_snapshot_member,
+)
 
 _MAX_LOCK_BYTES = 2 * 1024 * 1024
 _TOP_LEVEL_KEYS = frozenset(
@@ -56,7 +56,7 @@ class CodingLegacyLocalBindingEvidenceV1:
 
 def read_coding_legacy_local_binding_heads(
     lifecycle: CodingPluginLifecycleStateLayout,
-    epoch_runtime: PackageProductPosixFencedRuntimeOwner,
+    epoch_runtime: CodingFencedEpochRuntime,
 ) -> tuple[CodingLegacyLocalBindingEvidenceV1, ...]:
     """Project only exact first-fence snapshot binding heads for later review."""
 

@@ -15,7 +15,7 @@ jobs:
     if: ${{ fromJSON(inputs.plan).checks.hosting }}
     name: hosting-quality (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +52,30 @@ jobs:
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
           src/loushang/harness/worker/supervisor.py
+          src/loushang/coding/package_product_worker_native_release.py
+          src/loushang/coding/package_product_worker_native_approval.py
+          src/loushang/coding/package_product_worker_installed_native.py
+          src/loushang/coding/package_product_worker_native_install.py
+          src/loushang/coding/cli/package_worker_native.py
+          src/loushang/coding/package_product_worker_payload.py
+          src/loushang/coding/package_product_worker_start_gate.py
+          src/loushang/coding/package_product_worker_start_gate_journal.py
+          src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/harness/resources/packages/product_epoch_guard.py
+          src/loushang/coding/package_product_worker_capability.py
+          src/loushang/coding/package_product_worker_provider.py
+          src/loushang/coding/package_product_worker_provider_host.py
+          src/loushang/coding/package_product_worker_session_composition.py
+          src/loushang/coding/package_product_worker_policy.py
+          src/loushang/coding/package_product_worker_receipt.py
+          src/loushang/plugin/__init__.py
+          src/loushang/plugin/__main__.py
+          src/loushang/plugin/_coding_local_worker_wheel.py
+          scripts/dev/build_posix_containment_launcher.py
+          scripts/dev/build_posix_native_release_wheel.py
           tests/hosting
+          tests/coding/test_package_worker_candidate_wheel.py
+          tests/coding/test_package_worker_native_cli.py
           tests/harness/workspace/process/test_hosting_compat.py
           tests/harness/worker/test_hosting_adapter.py
           tests/harness/worker/test_native_profile_bridge.py
@@ -70,6 +93,7 @@ jobs:
           tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c54_linux_product.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py
           tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
@@ -85,6 +109,25 @@ jobs:
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
           src/loushang/harness/worker/supervisor.py
+          src/loushang/coding/package_product_worker_payload.py
+          src/loushang/coding/package_product_worker_start_gate.py
+          src/loushang/coding/package_product_worker_start_gate_journal.py
+          src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/harness/resources/packages/product_epoch_guard.py
+          src/loushang/coding/package_product_worker_native_approval.py
+          src/loushang/coding/package_product_worker_native_release.py
+          src/loushang/coding/package_product_worker_installed_native.py
+          src/loushang/coding/package_product_worker_native_install.py
+          src/loushang/coding/cli/package_worker_native.py
+          src/loushang/coding/package_product_worker_capability.py
+          src/loushang/coding/package_product_worker_provider.py
+          src/loushang/coding/package_product_worker_provider_host.py
+          src/loushang/coding/package_product_worker_session_composition.py
+          src/loushang/coding/package_product_worker_policy.py
+          src/loushang/coding/package_product_worker_receipt.py
+          src/loushang/plugin/__init__.py
+          src/loushang/plugin/__main__.py
+          src/loushang/plugin/_coding_local_worker_wheel.py
 
       - name: Create H6.2 native report directory
         if: matrix.os == 'ubuntu-24.04'
@@ -99,6 +142,27 @@ jobs:
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/hosting/test_posix_launch_preparation.py
+          tests/hosting/test_posix_release_launcher.py
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[built-release]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[installed-release]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[repaired-release]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[installed-protocol]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[installed-graph-failure]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[installed-revocation]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_pins_explicit_product_candidate[installed-expiry]"
+          tests/coding/test_package_worker_candidate_wheel.py::test_worker_candidate_author_recipe_is_reproducible_and_no_replace
+          tests/coding/test_package_worker_candidate_wheel.py::test_windows_worker_candidate_author_recipe_is_inert_offline
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[valid]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[dependency]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[dependency_two]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[dependency_two_nonpure]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[dependency_nonpure]"
+          "tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_wheel_reaches_real_product_transaction[dependency_extra_executable]"
+          tests/coding/test_package_worker_candidate_wheel.py::test_empty_worker_payload_debt_requires_absent_supervisor_claim
+          tests/coding/test_package_worker_candidate_wheel.py::test_complete_worker_payload_repair_resumes_partial_deletion
+          tests/coding/test_package_worker_candidate_wheel.py::test_unmarked_worker_payload_review_is_bounded_and_read_only
+          tests/coding/test_package_worker_candidate_wheel.py::test_unmarked_worker_payload_repair_resumes_exact_partial_deletion
+          tests/coding/test_package_worker_native_cli.py
           -q
 
       - name: Reject empty, skipped, or failing H6.2 native report
@@ -128,6 +192,7 @@ jobs:
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/hosting/test_windows_launch_preparation_native.py
+          tests/hosting/test_windows_backend_material_native.py
           -q
 
       - name: Reject empty, skipped, or failing H6.3 native report
@@ -250,10 +315,48 @@ jobs:
           tests/architecture/test_hosting_architecture_baseline.py
           -q
 
+  worker-sustained:
+    if: ${{ fromJSON(inputs.plan).checks.hosting }}
+    name: Worker sustained Product query (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run 2049 Product queries
+        env:
+          LOUSHANG_WORKER_SUSTAINED: "1"
+          PYTEST_ADDOPTS: --junitxml=.artifacts/worker-sustained.xml
+        run: |
+          mkdir -p .artifacts
+          uv run --extra dev python scripts/dev/run_pytest.py \
+            tests/coding/test_package_worker_candidate_wheel.py::test_worker_source_catalog_sustained_product_queries \
+            -q
+
+      - name: Reject empty, skipped, or failing sustained report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/worker-sustained.xml
+
+      - name: Upload sustained report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-sustained-pytest-report
+          path: .artifacts/worker-sustained.xml
+          if-no-files-found: error
+
   selected-checks:
     name: Selected checks
     if: always()
-    needs: [hosting-quality]
+    needs: [hosting-quality, worker-sustained]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -263,4 +366,4 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python scripts/ci/verify_gate.py
-          --jobs '{"hosting-quality":"hosting"}'
+          --jobs '{"hosting-quality":"hosting","worker-sustained":"hosting"}'

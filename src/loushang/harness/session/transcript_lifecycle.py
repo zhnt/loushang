@@ -110,6 +110,7 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     session_dir: Path
     persist: bool
     resolve_cwd_override: Callable[[str | Path], str]
+    materialize_new_transcript: bool = False
 
     def prepare_import(
         self, source: Path, destination: Path, cwd_override: str | None, fingerprint: str | None,
@@ -143,6 +144,14 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
         cwd: str,
         parent_session_ref: str | None,
     ) -> ProductTranscriptSessionT:
+        if self.materialize_new_transcript:
+            return await self.session_type.new(
+                session_dir=self.session_dir,
+                cwd=cwd,
+                persist=self.persist,
+                parent_session=parent_session_ref,
+                defer_materialization=False,
+            )
         return await self.session_type.new(
             session_dir=self.session_dir,
             cwd=cwd,

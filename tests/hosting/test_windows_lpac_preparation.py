@@ -6,10 +6,12 @@ import ntpath
 import os
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import loushang.hosting._windows_launch_preparation as windows_launch_module
 from loushang.hosting import (
     HostingError,
     HostingFailureCategory,
@@ -62,6 +64,9 @@ from loushang.hosting._windows_launch_preparation import (
     _WindowsLpacRuntimeEntry,
 )
 from loushang.hosting._windows_process import _WindowsProcessBackend
+from loushang.hosting.windows_backend_material import (
+    WindowsBackendMaterialExpectationV1,
+)
 
 _PRIVATE_ROOT = r"C:\Users\runner\AppData\Local\Packages\Loushang.Lpac.Test\AC"
 
@@ -139,6 +144,7 @@ class _FakeWindowsLpacApi:
         self.access: dict[str, tuple[tuple[int, int, int], ...]] = {}
         self.spawn_calls: list[dict[str, object]] = []
         self.job_empty = False
+        self.job_names: list[str | None] = []
 
     def platform_identity(self) -> str:
         return "windows-amd64-10.0.20348"
@@ -282,7 +288,9 @@ class _FakeWindowsLpacApi:
         self,
         *,
         on_acquired: Callable[[int], None],
+        name: str | None = None,
     ) -> int:
+        self.job_names.append(name)
         handle = self._allocate("job")
         self.handles[handle] = "job"
         on_acquired(handle)
@@ -402,6 +410,8 @@ def _capture_spec(
     api: _FakeWindowsLpacApi,
     provision: _WindowsLpacProvisionSpec,
     witness: _WindowsLpacProvisionWitness,
+    *,
+    job_name: str | None = None,
 ) -> _WindowsLpacLaunchCaptureSpec:
     if os.name != "nt":
         monkeypatch.setattr(Path, "is_absolute", lambda self: True)
@@ -409,6 +419,7 @@ def _capture_spec(
         provision.request,
         provision=provision,
         witness=witness,
+        job_name=job_name,
         _api=api,
     )
 
@@ -485,8 +496,13 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     assert effects == ["create", "grant", "revoke", "delete"]
 
 
-def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash() -> None:
+def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api = _FakeWindowsLpacApi()
+    monkeypatch.setattr(
+        windows_launch_module, "_verify_lpac_runtime", lambda _api, _spec: None
+    )
     owner = _WindowsLpacProvisioner(api=api)
     spec = _provision_spec()
 
@@ -504,9 +520,14 @@ def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash() -> None:
     assert owner.settle(spec, deleted).state == "SETTLED"
 
 
-def test_windows_lpac_cleanup_recovery_settles_an_already_absent_profile() -> None:
+def test_windows_lpac_cleanup_recovery_settles_an_already_absent_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     effects: list[str] = []
     api = _FakeWindowsLpacApi()
+    monkeypatch.setattr(
+        windows_launch_module, "_verify_lpac_runtime", lambda _api, _spec: None
+    )
     owner = _WindowsLpacProvisioner(api=api)
     spec = _provision_spec()
 
@@ -532,6 +553,28 @@ def test_windows_lpac_cleanup_recovery_settles_an_already_absent_profile() -> No
     assert owner.settle(spec, deleted).state == "SETTLED"
     assert not api.purged
     assert effects == ["revoke", "delete"]
+
+
+def test_windows_lpac_cleanup_refuses_changed_payload_before_revoke(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api, owner, spec, witness = _provisioned(monkeypatch)
+    effects: list[str] = []
+
+    def changed_payload(_api: object, _spec: object) -> None:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_STALE,
+            "Windows LPAC runtime closure changed",
+        )
+
+    monkeypatch.setattr(windows_launch_module, "_verify_lpac_runtime", changed_payload)
+    with pytest.raises(HostingError) as failure:
+        owner.revoke_grants(
+            spec, witness, begin_effect=lambda: effects.append("revoke")
+        )
+    assert failure.value.category is HostingFailureCategory.PREPARATION_STALE
+    assert effects == []
+    assert any(api.access.values())
 
 
 def test_windows_lpac_foreign_profile_is_never_adopted() -> None:
@@ -628,6 +671,29 @@ def test_windows_lpac_capture_uses_only_fixed_environment_and_exact_profile(
         )
 
 
+def test_windows_lpac_capture_binds_product_named_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        api, _, provision, witness = _provisioned(monkeypatch)
+        name = "Global\\LoushangWorker-" + provision.operation_nonce
+        spec = _capture_spec(
+            monkeypatch, api, provision, witness, job_name=name
+        )
+        assert spec.job_name == name
+        assert any(value.startswith("job-name:sha256:") for value in spec.execution_closure)
+        material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+            spec,
+            attempt_id=provision.attempt_id,
+            attempt_token=object(),
+            on_capture=lambda _material: None,
+        )
+        assert api.job_names == [name]
+        await material.close()
+
+    asyncio.run(run())
+
+
 def test_windows_lpac_capture_attaches_before_acquisition_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -645,6 +711,45 @@ def test_windows_lpac_capture_attaches_before_acquisition_failure(
             )
         assert len(attached) == 1
         await attached[0].close()  # type: ignore[attr-defined]
+
+    asyncio.run(run())
+
+
+def test_windows_lpac_capture_rechecks_backend_before_material_attach(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        api, _, provision, witness = _provisioned(monkeypatch)
+        expectation = WindowsBackendMaterialExpectationV1(
+            python_executable_sha256="a" * 64,
+            python_runtime_dll_sha256="b" * 64,
+            package_members=(("loushang/hosting/runtime.py", "c" * 64),),
+        )
+        spec = replace(
+            _capture_spec(monkeypatch, api, provision, witness),
+            backend_material_expectation=expectation,
+        )
+        checked: list[object] = []
+
+        def changed(material: WindowsBackendMaterialExpectationV1) -> None:
+            checked.append(material)
+            raise OSError("injected backend change")
+
+        monkeypatch.setattr(
+            windows_launch_module,
+            "verify_windows_backend_material_expectation",
+            changed,
+        )
+        attached: list[object] = []
+        with pytest.raises(HostingError, match="backend material changed"):
+            await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+                spec,
+                attempt_id="attempt-7",
+                attempt_token=object(),
+                on_capture=attached.append,
+            )
+        assert checked == [expectation]
+        assert attached == []
 
     asyncio.run(run())
 

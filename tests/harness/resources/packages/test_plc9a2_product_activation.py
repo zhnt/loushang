@@ -26,6 +26,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
     PackageLifecycleIngressRequestV1,
+    PackageLifecycleIngressRequestV2,
     PackageLifecycleJournal,
     PackageLifecycleOwner,
     PackageLifecycleStatusV1,
@@ -52,6 +53,7 @@ from loushang.harness.resources.packages.product_composition import (
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleEvidenceV1,
     PackageProductLifecycleMode,
+    PackageProductLifecycleRetryIntentV1,
     PackageProductUpdateCheckRequestV1,
     PackageProductUpdateCheckV1,
     PackageProductUpdateManifestReceiptV1,
@@ -66,6 +68,7 @@ from loushang.harness.resources.packages.product_inventory import (
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
+    PackageProductRouteContractError,
     PackageProductRouteRequestV1,
 )
 from loushang.harness.resources.packages.session import SessionPackageController
@@ -257,9 +260,7 @@ class _Inventory:
     binding_id: str
     sources: tuple[str, ...] = ()
     manifests: PackageProductUpdateManifestJournal | None = None
-    bound_targets: dict[str, tuple[str, tuple[str, ...]]] = field(
-        default_factory=dict
-    )
+    bound_targets: dict[str, tuple[str, tuple[str, ...]]] = field(default_factory=dict)
     check_requests: list[PackageProductUpdateCheckRequestV1] = field(
         default_factory=list
     )
@@ -398,6 +399,30 @@ def _activation(
     return activation, transaction
 
 
+def test_internal_product_mutation_holds_admitted_epoch_guard(tmp_path: Path) -> None:
+    guard = _EpochGuard()
+    activation, _transaction = _activation(tmp_path, transaction_guard=guard)
+    activation.activate()
+
+    def mutate(receipt: object) -> str:
+        assert guard.entered == 1
+        assert receipt == activation._receipt
+        return "prepared"
+
+    assert activation.execute_guarded_mutation(mutate) == "prepared"
+    assert guard.entered == 0
+    assert activation.active
+
+    def fail(_receipt: object) -> None:
+        assert guard.entered == 1
+        raise RuntimeError("mutation failed")
+
+    with pytest.raises(RuntimeError, match="mutation failed"):
+        activation.execute_guarded_mutation(fail)
+    assert guard.entered == 0
+    assert not activation.active
+
+
 def test_admitted_recovery_runs_under_epoch_guard_before_activation(
     tmp_path: Path,
 ) -> None:
@@ -438,6 +463,75 @@ def test_pre_admission_recovery_runs_under_epoch_guard(tmp_path: Path) -> None:
     activation.activate()
     assert events == ["recovered"]
     assert guard.entered == 0
+
+
+def test_exact_handoff_recovery_admits_one_operation_without_general_route(
+    tmp_path: Path,
+) -> None:
+    guard = _EpochGuard()
+    events: list[str] = []
+
+    class ExactPre(_Recovery):
+        def recover_exact(self, operation_id: str) -> tuple[str, ...]:
+            assert guard.entered == 1
+            events.append("pre:" + operation_id)
+            return ("handoff:target",)
+
+    class ExactPost(_AdmittedRecovery):
+        def recover_exact(self, receipt: object, operation_id: str) -> tuple[str, ...]:
+            assert guard.entered == 1
+            self.receipts.append(receipt)
+            events.append("post:" + operation_id)
+            return (operation_id,)
+
+        def terminal_state(self, operation_id: str) -> str:
+            assert guard.entered == 1
+            assert operation_id == "operation:target"
+            return "settled"
+
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "exact-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        recoveries=(ExactPre(events, guard),),
+        admitted_recoveries=(ExactPost(guard),),
+    )
+    result = activation.recover_handoff_exact("operation:target")
+    assert result.operation_id == "operation:target"
+    assert result.changed
+    assert result.retained_handoff_ids == ("handoff:target",)
+    assert result.committed_operation_ids == ("operation:target",)
+    assert result.terminal_state == "settled"
+    assert events == ["pre:operation:target", "post:operation:target"]
+    assert guard.entered == 0
+    assert not activation.active
+    with pytest.raises(PackageProductActivationError) as consumed:
+        activation.activate()
+    assert consumed.value.code == "package_product_exact_recovery_consumed"
+
+
+def test_exact_handoff_recovery_refuses_unbound_owners_before_epoch_effects(
+    tmp_path: Path,
+) -> None:
+    guard = _EpochGuard()
+    activation, _transaction = _activation(tmp_path, transaction_guard=guard)
+    with pytest.raises(PackageProductActivationError) as unavailable:
+        activation.recover_handoff_exact("operation:target")
+    assert unavailable.value.code == "package_product_exact_recovery_unavailable"
+    assert guard.entered == 0
+    assert not activation.active
+    activation.activate()
+    assert activation.active
 
 
 def test_startup_recovery_holds_file_epoch_guard(tmp_path: Path) -> None:
@@ -495,7 +589,9 @@ def test_epoch_guard_refusal_prevents_pre_admission_recovery(tmp_path: Path) -> 
     assert not activation.active
 
 
-def test_epoch_guard_release_failure_does_not_publish_activation(tmp_path: Path) -> None:
+def test_epoch_guard_release_failure_does_not_publish_activation(
+    tmp_path: Path,
+) -> None:
     class ReleaseFailureGuard(_EpochGuard):
         @contextmanager
         def shared_runtime(self, *, store_id: str):
@@ -680,6 +776,136 @@ def _intent(operation_id: str = "operation:test") -> PackageProductLifecycleInte
     )
 
 
+def test_activated_product_retry_routes_original_intent_under_epoch_guard(
+    tmp_path: Path,
+) -> None:
+    activation, transaction = _activation(tmp_path)
+    intent = _intent()
+    owner = transaction.owner
+    receipt = activation.activate()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _IngressFactory().create(intent),
+        runtime_admission_request_id=receipt.request.admission_request_id,
+    )
+    classified = owner.submit(ingress)
+    owner.interrupt(
+        classified.operation_id,
+        expected_phase=classified.phase,
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    outcome = activation.retry(
+        PackageProductLifecycleRetryIntentV1(
+            intent=intent,
+            request_fingerprint=classified.request_fingerprint,
+            expected_attempt_epoch=classified.attempt_epoch,
+        ),
+        entrypoint="cli",
+    )
+
+    assert outcome.handled
+    assert outcome.record is not None
+    assert outcome.record.lifecycle == "installed"
+    assert outcome.evidence.disposition == "committed"
+    assert transaction.calls == ["cli"]
+    assert (
+        owner.status(intent.operation_id).attempt_epoch == classified.attempt_epoch + 1
+    )
+
+
+def test_new_runtime_admission_cannot_retry_old_a2_attempt_without_rebind(
+    tmp_path: Path,
+) -> None:
+    activation, transaction = _activation(tmp_path)
+    intent = _intent()
+    owner = transaction.owner
+    original_receipt = activation.activate()
+    classified = owner.submit(
+        PackageLifecycleIngressRequestV2.bind_runtime_admission(
+            _IngressFactory().create(intent),
+            runtime_admission_request_id=(
+                original_receipt.request.admission_request_id
+            ),
+        )
+    )
+    interrupted = owner.interrupt(
+        classified.operation_id,
+        expected_phase=classified.phase,
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    fences = PackageEpochFenceJournal(tmp_path / "epoch.jsonl")
+    fence = fences.current("package-store:test")
+    assert fence is not None
+    new_lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:new",
+        runtime_epoch=fence.epoch,
+        store_root_identity=fence.fenced_root_identity,
+        registration_receipt_id="9" * 64,
+    )
+    leases = _LeaseAuthority(
+        PackageEpochLeaseSnapshotV1.create(
+            store_id=fence.store_id,
+            owner_revision=2,
+            active_leases=(new_lease,),
+        )
+    )
+    admission = PackageEpochRuntimeAdmissionOwner(fences=fences, leases=leases)
+    new_request = PackageEpochRuntimeAdmissionRequestV1.create(
+        fence=fence,
+        runtime_id=new_lease.runtime_id,
+        runtime_version="1.0.0",
+        runtime_protocol_epoch=1,
+        runtime_epoch=new_lease.runtime_epoch,
+        store_root_identity=new_lease.store_root_identity,
+        lease_id=new_lease.lease_id,
+    )
+    restarted = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=transaction,
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=new_request,
+        transaction_guard=_EpochGuard(),
+    )
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as refused:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=intent,
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch,
+            ),
+            entrypoint="cli",
+        )
+    assert refused.value.code == "package_retry_rebind_required"
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as changed_source:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=replace(intent, source="https://example.test/other.whl"),
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch,
+            ),
+            entrypoint="cli",
+        )
+    assert changed_source.value.code == "package_product_route_contract_invalid"
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as stale_attempt:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=intent,
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch + 1,
+            ),
+            entrypoint="cli",
+        )
+    assert stale_attempt.value.code == "package_product_route_contract_invalid"
+    assert owner.status(intent.operation_id) == interrupted
+    assert transaction.calls == []
+
+
 @pytest.mark.parametrize(
     ("phase", "disposition"),
     (("future_phase", "active"), ("classified", "future_disposition")),
@@ -741,9 +967,10 @@ def test_all_product_entrypoints_share_one_request_identity_and_exact_replay(
     )
     accepted = transaction.owner.journal.request("operation:test")
     assert accepted is not None
-    assert accepted.resolution_environment_fingerprint == sha256(
-        b"environment"
-    ).hexdigest()
+    assert (
+        accepted.resolution_environment_fingerprint
+        == sha256(b"environment").hexdigest()
+    )
     assert accepted.runtime_admission_request_id is not None
     record = outcomes[0].record
     assert record is not None
@@ -1724,10 +1951,7 @@ def test_product_update_manifest_rejects_permissive_or_symlink_storage(
     try:
         with pytest.raises(PackageProductUpdateManifestError) as permissive:
             journal.records()
-        assert (
-            permissive.value.code
-            == "package_product_update_manifest_storage_unsafe"
-        )
+        assert permissive.value.code == "package_product_update_manifest_storage_unsafe"
     finally:
         path.chmod(0o600)
 
@@ -1832,19 +2056,18 @@ def test_cli_and_rpc_preserve_real_product_check_correlation(
     cli_request, first_rpc, second_rpc = inventory.check_requests
     assert cli_request.entrypoint == "cli"
     assert len(cli_request.operation_id) == 32
-    assert first_rpc == second_rpc == PackageProductUpdateCheckRequestV1(
-        operation_id=sha256(
-            b"rpc:check_package_updates:request:check"
-        ).hexdigest(),
-        entrypoint="rpc",
-        scope="user",
+    assert (
+        first_rpc
+        == second_rpc
+        == PackageProductUpdateCheckRequestV1(
+            operation_id=sha256(b"rpc:check_package_updates:request:check").hexdigest(),
+            entrypoint="rpc",
+            scope="user",
+        )
     )
     assert cli_request.scope == "user"
     assert cli_result.outputs[0]["records"][0]["source"].startswith("sha256:")
-    assert all(
-        json.loads(line)["success"]
-        for line in stdout.getvalue().splitlines()
-    )
+    assert all(json.loads(line)["success"] for line in stdout.getvalue().splitlines())
 
 
 def test_product_update_check_redacts_inventory_failure_detail(tmp_path: Path) -> None:

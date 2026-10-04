@@ -23,8 +23,10 @@ def _require_text(value: str, *, name: str) -> None:
 
 
 def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        char not in "0123456789abcdef" for char in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(char not in "0123456789abcdef" for char in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
@@ -67,11 +69,16 @@ class PluginPrivateDataDeletionPlanV1:
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionPlanV1:
         if type(value) is not dict or set(value) != {
-            "installationKey", "ownerId", "planVersion", "targetId"
+            "installationKey",
+            "ownerId",
+            "planVersion",
+            "targetId",
         }:
             raise ValueError("Private-data deletion plan fields are invalid")
         return cls(
-            installation_key=PluginInstallationKeyV1.from_dict(value["installationKey"]),
+            installation_key=PluginInstallationKeyV1.from_dict(
+                value["installationKey"]
+            ),
             owner_id=value["ownerId"],
             target_id=value["targetId"],
             plan_version=value["planVersion"],
@@ -105,7 +112,9 @@ class PluginPrivateDataDeletionConfirmationV1:
     @classmethod
     def from_dict(cls, value: object) -> PluginPrivateDataDeletionConfirmationV1:
         if type(value) is not dict or set(value) != {
-            "confirmationId", "confirmationVersion", "planFingerprint"
+            "confirmationId",
+            "confirmationVersion",
+            "planFingerprint",
         }:
             raise ValueError("Private-data confirmation fields are invalid")
         return cls(
@@ -159,6 +168,32 @@ class PluginPrivateDataDeletionReceiptV1:
             "targetId": self.target_id,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> PluginPrivateDataDeletionReceiptV1:
+        if type(value) is not dict or set(value) != {
+            "confirmationId",
+            "disposition",
+            "installationKey",
+            "ownerId",
+            "planFingerprint",
+            "receiptId",
+            "receiptVersion",
+            "targetId",
+        }:
+            raise ValueError("Private-data deletion receipt fields are invalid")
+        return cls(
+            installation_key=PluginInstallationKeyV1.from_dict(
+                value["installationKey"]
+            ),
+            owner_id=value["ownerId"],
+            target_id=value["targetId"],
+            plan_fingerprint=value["planFingerprint"],
+            confirmation_id=value["confirmationId"],
+            receipt_id=value["receiptId"],
+            disposition=value["disposition"],
+            receipt_version=value["receiptVersion"],
+        )
+
 
 class PluginPrivateDataDeletionOwnerPort(Protocol):
     """Exact data-domain owner, responsible for mutation and durable replay."""
@@ -172,6 +207,16 @@ class PluginPrivateDataDeletionOwnerPort(Protocol):
         plan: PluginPrivateDataDeletionPlanV1,
         confirmation: PluginPrivateDataDeletionConfirmationV1,
     ) -> PluginPrivateDataDeletionReceiptV1: ...
+
+
+class PluginPrivateDataDeletionReceiptLookupPort(Protocol):
+    """Optional domain-owned read for replay after a target was deleted."""
+
+    def receipt_for(
+        self,
+        plan: PluginPrivateDataDeletionPlanV1,
+        confirmation: PluginPrivateDataDeletionConfirmationV1,
+    ) -> PluginPrivateDataDeletionReceiptV1 | None: ...
 
 
 class PluginPrivateDataConfirmationAuthorityPort(Protocol):
@@ -224,11 +269,20 @@ class PluginPrivateDataDeletionCoordinator:
             raise TypeError("Separate private-data deletion confirmation is required")
         if confirmation.plan_fingerprint != plan.fingerprint:
             raise ValueError("Private-data confirmation does not match the plan")
+        replay: PluginPrivateDataDeletionReceiptV1 | None = None
         if self.preview(plan.installation_key) != plan:
-            raise ValueError("Private-data deletion plan is stale")
+            lookup = getattr(self._owner, "receipt_for", None)
+            if callable(lookup):
+                replay = lookup(plan, confirmation)
+            if replay is None:
+                raise ValueError("Private-data deletion plan is stale")
         if self._confirmation_authority.is_confirmed(plan, confirmation) is not True:
             raise ValueError("Private-data confirmation is not authorized")
-        receipt = self._owner.delete_confirmed(plan, confirmation)
+        receipt = (
+            replay
+            if replay is not None
+            else self._owner.delete_confirmed(plan, confirmation)
+        )
         if not isinstance(receipt, PluginPrivateDataDeletionReceiptV1) or (
             receipt.installation_key != plan.installation_key
             or receipt.owner_id != plan.owner_id
@@ -247,5 +301,6 @@ __all__ = [
     "PluginPrivateDataDeletionCoordinator",
     "PluginPrivateDataDeletionOwnerPort",
     "PluginPrivateDataDeletionPlanV1",
+    "PluginPrivateDataDeletionReceiptLookupPort",
     "PluginPrivateDataDeletionReceiptV1",
 ]

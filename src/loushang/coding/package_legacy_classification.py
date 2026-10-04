@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from .package_epoch_layout import (
@@ -140,7 +141,8 @@ def classify_coding_legacy_source_configuration(
             )
             or (not present and digest is not None)
             or not isinstance(path, str)
-            or not path.startswith("/")
+            or not Path(path).is_absolute()
+            or ".." in Path(path).parts
             or not isinstance(patch, dict)
             or not set(patch) <= _PROJECTION_KEYS
             or (not present and patch)

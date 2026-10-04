@@ -41,6 +41,7 @@ from loushang.harness.conversation import (
     ProjectionQuery,
     load_conversation_deletion_receipt,
 )
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.transcript.discovery import (
     SessionDiscoveryMetadata,
     SessionSourceMode,
@@ -712,7 +713,7 @@ class AgentTranscriptSessionCatalog:
     def refresh_index(self) -> list[SessionSummary]:
         before = self._validated_unique_authority_snapshot()
         if self.session_dir is not None:
-            self.session_dir.mkdir(parents=True, exist_ok=True)
+            create_private_directory_chain(self.session_dir)
         # Keep projection semantics, but retain this publication's receipt for
         # post-scan validation instead of deleting an arbitrary pathname cache.
         result = _run_catalog(self._catalog(indexed=True).scan())
@@ -942,7 +943,7 @@ class AgentTranscriptSessionCatalog:
             raise ValueError("provider-backed catalogs cannot build a bounded index")
         if type(segment_bytes) is not int or segment_bytes < 1:
             raise ValueError("bounded catalog segment size must be positive")
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+        create_private_directory_chain(self.session_dir)
         before, before_complete = self._bounded_candidates_with_completeness()
         if not before_complete:
             raise RuntimeError("session authority scan was truncated")
@@ -1348,7 +1349,7 @@ def refresh_all_agent_transcript_session_indexes(
     sessions_root: str | Path,
 ) -> list[SessionSummary]:
     root = Path(sessions_root)
-    root.mkdir(parents=True, exist_ok=True)
+    create_private_directory_chain(root.absolute())
     summaries = AgentTranscriptSessionCatalog(root).refresh_index()
     for child in sorted(root.iterdir(), key=lambda path: path.name):
         if child.is_dir():

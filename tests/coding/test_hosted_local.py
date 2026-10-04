@@ -216,6 +216,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                 mux = await client.create_mux(MuxCreateV1(name))
                 selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
                 await client.attach_mux(MuxAttachV1(selector))
+                mark(f"open_member_{name}_start")
                 mux = await client.open_member(
                     MuxMemberOpenV1(
                         selector,
@@ -228,9 +229,11 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                         ),
                     )
                 )
+                mark(f"open_member_{name}_ready")
                 attachment = await client.attach_mux(MuxAttachV1(selector))
                 identities.append((mux, attachment))
                 if name == "review":
+                    mark("review_turn_start")
                     await client.start_turn(
                         TurnTextV1(
                             attachment.attachment_id,
@@ -239,6 +242,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                             "hello",
                         )
                     )
+                    mark("review_turn_done")
             mux, attachment = identities[0]
             turn = asyncio.create_task(
                 first.client.start_turn(
@@ -251,12 +255,13 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                 )
             )
             # This case tests disconnect during execution, not a cold-start SLO.
-            # Model entry remains bounded by this generation's 30-second watchdog.
+            # Model entry remains bounded by this generation's watchdog.
             entered = asyncio.create_task(hold_entered.wait())
             try:
                 done, _ = await asyncio.wait(
                     (entered, turn), return_when=asyncio.FIRST_COMPLETED
                 )
+                mark("hold_turn_entered")
                 if turn in done:
                     await turn  # Preserve a preflight failure instead of timing out.
                     pytest.fail("held turn completed before disconnect")
@@ -359,10 +364,13 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
 
     async def scenario():
         try:
-            facts = await asyncio.wait_for(first_generation(), 30)
+            # This generation opens two fresh Product B Sessions. CLI terminal
+            # tests separately bound cold-start readiness; keep the local
+            # disconnect and reattachment deadlines above at five seconds.
+            facts = await asyncio.wait_for(first_generation(), 45)
             # A new application's recovery does not inherit the previous
             # generation's elapsed test time. No operation retry renews a budget.
-            await asyncio.wait_for(recovery_generation(*facts), 30)
+            await asyncio.wait_for(recovery_generation(*facts), 45)
         except BaseException as error:
             mark("failed")
             error.add_note(f"G16 lifecycle phase timings (seconds): {timings}")

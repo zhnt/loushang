@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 
 from ._child_session_host import _ChildSessionHost
 from ._endpoint_host import _InheritedEndpointHost
@@ -14,6 +15,7 @@ from .contracts import (
     HostingObservationSink,
     ProcessHostingPort,
 )
+from .errors import HostingError, HostingFailureCategory
 
 
 def create_process_host(
@@ -52,6 +54,7 @@ def create_child_session_host(
     termination_grace_seconds: float = 1.0,
     stderr_drain_seconds: float = 1.0,
     endpoint_io_settlement_seconds: float = 1.0,
+    enable_posix_static_capture: bool = False,
     observation_sink: HostingObservationSink | None = None,
 ) -> ChildSessionHostingPort:
     """Create an exact atomic child-session owner or fail closed."""
@@ -70,8 +73,13 @@ def create_child_session_host(
         or not math.isfinite(endpoint_io_settlement_seconds)
         or endpoint_io_settlement_seconds <= 0
     ):
-        raise ValueError(
-            "endpoint_io_settlement_seconds must be positive and finite"
+        raise ValueError("endpoint_io_settlement_seconds must be positive and finite")
+    if type(enable_posix_static_capture) is not bool:
+        raise TypeError("POSIX static capture selection must be boolean")
+    if enable_posix_static_capture and os.name != "posix":
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "POSIX static capture is unavailable on this platform",
         )
     backends = _select_child_session_backends(
         max_sessions=max_sessions,
@@ -89,11 +97,17 @@ def create_child_session_host(
         max_write_bytes=max_write_bytes,
         observation_sink=observation_sink,
     )
+    capture_backend = None
+    if enable_posix_static_capture:
+        from ._posix_launch_preparation import _PosixStaticLaunchCaptureBackend
+
+        capture_backend = _PosixStaticLaunchCaptureBackend()
     return _ChildSessionHost(
         process_host,
         endpoint_host,
         max_sessions=max_sessions,
         observation_sink=observation_sink,
+        launch_capture_backend=capture_backend,
     )
 
 

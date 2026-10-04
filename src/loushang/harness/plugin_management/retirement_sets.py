@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -15,7 +16,9 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.retirement import (
@@ -51,9 +54,7 @@ PluginRetirementSetState = Literal[
 _OUTCOME_DISPOSITIONS = frozenset(
     {"succeeded", "retryable_failure", "terminal_failure"}
 )
-_RESULT_CODE_CHARACTERS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz0123456789._-:"
-)
+_RESULT_CODE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._-:")
 
 
 class PluginRetirementSetRecordCodecError(JournalCodecError):
@@ -374,17 +375,13 @@ class PluginOwnerRetirementOutcomeV1:
                     document["retirementId"], name="retirement id"
                 ),
                 target_id=_wire_string(document["targetId"], name="target id"),
-                operation_id=_wire_string(
-                    document["operationId"], name="operation id"
-                ),
+                operation_id=_wire_string(document["operationId"], name="operation id"),
                 idempotency_key=_wire_string(
                     document["idempotencyKey"], name="idempotency key"
                 ),
                 attempt=_wire_integer(document["attempt"], name="attempt"),
                 disposition=cast(PluginOwnerRetirementDisposition, disposition),
-                result_code=_wire_string(
-                    document["resultCode"], name="result code"
-                ),
+                result_code=_wire_string(document["resultCode"], name="result code"),
                 owner_outcome_reference=_wire_string(
                     document["ownerOutcomeReference"],
                     name="owner outcome reference",
@@ -526,9 +523,7 @@ class PluginRetirementSetEventV1:
                 outcome=(
                     None
                     if document["outcome"] is None
-                    else PluginOwnerRetirementOutcomeV1.from_dict(
-                        document["outcome"]
-                    )
+                    else PluginOwnerRetirementOutcomeV1.from_dict(document["outcome"])
                 ),
                 record_version=PLUGIN_RETIREMENT_SET_EVENT_VERSION,
             )
@@ -552,7 +547,10 @@ class PluginRetirementSetSnapshotV1:
     state: PluginRetirementSetState
 
     def __post_init__(self) -> None:
-        if self.plan is not None and self.plan.retirement_id != self.intent.retirement_id:
+        if (
+            self.plan is not None
+            and self.plan.retirement_id != self.intent.retirement_id
+        ):
             raise ValueError("Retirement set plan does not match intent")
         if self.plan is None and self.latest_outcomes:
             raise ValueError("Retirement set outcomes require a sealed plan")
@@ -619,12 +617,8 @@ class _MutableRetirementSet:
 class _ReplayedRetirementSets:
     events: tuple[PluginRetirementSetEventV1, ...]
     sets: dict[str, _MutableRetirementSet]
-    outcome_by_operation: dict[
-        tuple[str, str, str], PluginOwnerRetirementOutcomeV1
-    ]
-    outcome_by_idempotency: dict[
-        tuple[str, str, str], PluginOwnerRetirementOutcomeV1
-    ]
+    outcome_by_operation: dict[tuple[str, str, str], PluginOwnerRetirementOutcomeV1]
+    outcome_by_idempotency: dict[tuple[str, str, str], PluginOwnerRetirementOutcomeV1]
 
 
 class PluginRetirementSetLedger:
@@ -801,10 +795,11 @@ class PluginRetirementSetLedger:
             )
 
     def snapshot(self) -> PluginRetirementSetInventorySnapshotV1:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         self._validate_intent_sources(replayed)
@@ -819,10 +814,11 @@ class PluginRetirementSetLedger:
         )
 
     def events(self) -> tuple[PluginRetirementSetEventV1, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         self._validate_intent_sources(replayed)
@@ -838,9 +834,7 @@ class PluginRetirementSetLedger:
             outcome.target_id,
             outcome.idempotency_key,
         )
-        by_idempotency = replayed.outcome_by_idempotency.get(
-            idempotency_identity
-        )
+        by_idempotency = replayed.outcome_by_idempotency.get(idempotency_identity)
         if by_idempotency is not None:
             if by_idempotency != outcome:
                 raise _conflict(
@@ -855,9 +849,7 @@ class PluginRetirementSetLedger:
         by_operation = replayed.outcome_by_operation.get(operation_identity)
         if by_operation is not None:
             if by_operation != outcome:
-                raise _conflict(
-                    self._path, "Owner retirement operation id was reused"
-                )
+                raise _conflict(self._path, "Owner retirement operation id was reused")
             return by_operation
         return None
 
@@ -912,6 +904,69 @@ class PluginRetirementSetLedger:
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._unlocked_durability,
         )
+
+
+def decode_plugin_retirement_set_capture(
+    raw: str,
+    *,
+    path: Path,
+    intents: PluginRetirementIntentSnapshotV1,
+) -> PluginRetirementSetInventorySnapshotV1:
+    """Replay frozen retirement-set bytes against frozen intent evidence."""
+
+    if (
+        not isinstance(raw, str)
+        or not isinstance(path, Path)
+        or not isinstance(intents, PluginRetirementIntentSnapshotV1)
+    ):
+        raise TypeError("Retirement set capture requires text, path, and intents")
+    if raw and not raw.endswith("\n"):
+        raise PluginRetirementSetError(
+            "Retirement set capture is incomplete",
+            code="plugin_retirement_set_journal_corrupt",
+            path=path,
+        )
+    try:
+        for line in raw.splitlines():
+            if line.strip():
+                json.loads(line, object_pairs_hook=_unique_capture_object)
+        snapshot: JsonlSnapshot[None, PluginRetirementSetEventV1] = decode_jsonl(
+            raw,
+            target=path,
+            record_codec=PLUGIN_RETIREMENT_SET_EVENT_CODEC,
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+    except (JournalFileError, ValueError) as exc:
+        raise PluginRetirementSetError(
+            "Retirement set capture cannot be decoded",
+            code="plugin_retirement_set_journal_corrupt",
+            path=path,
+        ) from exc
+    replayed = _replay(snapshot.records, path=path)
+    by_id = {intent.retirement_id: intent for intent in intents.intents}
+    if any(
+        by_id.get(retirement_id) != current.intent
+        for retirement_id, current in replayed.sets.items()
+    ):
+        raise _corrupt(path, "Retirement set contradicts frozen intent evidence")
+    return PluginRetirementSetInventorySnapshotV1(
+        journal_revision=len(replayed.events),
+        sets=tuple(
+            sorted(
+                (_snapshot_set(item) for item in replayed.sets.values()),
+                key=lambda item: item.intent.retirement_id,
+            )
+        ),
+    )
+
+
+def _unique_capture_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Retirement set capture has duplicate JSON keys")
+        result[key] = value
+    return result
 
 
 def owner_retirement_target_id(
@@ -1042,13 +1097,9 @@ def _derive_state(
 ) -> PluginRetirementSetState:
     if plan is None:
         return "collecting"
-    if any(
-        outcome.disposition == "terminal_failure" for outcome in latest_outcomes
-    ):
+    if any(outcome.disposition == "terminal_failure" for outcome in latest_outcomes):
         return "terminal_failure"
-    if any(
-        outcome.disposition == "retryable_failure" for outcome in latest_outcomes
-    ):
+    if any(outcome.disposition == "retryable_failure" for outcome in latest_outcomes):
         return "retryable_failure"
     succeeded = {
         outcome.target_id
@@ -1067,9 +1118,7 @@ def _wire_object(value: object, *, name: str) -> dict[str, object]:
         raise _invalid_record(str(exc)) from exc
 
 
-def _wire_exact_fields(
-    value: dict[str, object], *, keys: set[str], name: str
-) -> None:
+def _wire_exact_fields(value: dict[str, object], *, keys: set[str], name: str) -> None:
     actual = set(value)
     if actual != keys:
         missing = sorted(keys - actual)
@@ -1111,8 +1160,10 @@ def _require_nonempty(value: str, *, name: str) -> None:
 
 
 def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
@@ -1196,6 +1247,7 @@ __all__ = [
     "PluginRetirementSetRecordCodecError",
     "PluginRetirementSetSnapshotV1",
     "PluginRetirementSetState",
+    "decode_plugin_retirement_set_capture",
     "owner_retirement_plan_id",
     "owner_retirement_target_id",
 ]

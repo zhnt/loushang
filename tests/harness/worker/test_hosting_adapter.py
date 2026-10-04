@@ -710,6 +710,62 @@ def test_hosting_adapter_preserves_managed_capture_and_worker_semantic_fence(
     asyncio.run(scenario())
 
 
+def test_hosting_adapter_gate_failure_reclaims_unpublished_session(
+    tmp_path: Path,
+) -> None:
+    class NativeProfile:
+        async def capture_native(self, request, *, capture):
+            return await capture(
+                _LaunchCaptureSpec(
+                    request=request,
+                    profile_id="harness-worker-gate-fake-v1",
+                    execution_closure=("worker:harness-gate-fake-v1",),
+                )
+            )
+
+        async def verify_current(self) -> None:
+            return None
+
+        def native_containment_settlement_witness(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    class RefusingGate:
+        def __init__(self) -> None:
+            self.closed = False
+            self.released = False
+
+        def release(self, lease: _ChildLease) -> None:
+            assert lease.session_id == "child-session-one"
+            self.released = True
+            raise RuntimeError("Product gate refused release")
+
+        def close(self) -> None:
+            self.closed = True
+
+    async def scenario() -> None:
+        request = _request(tmp_path, validate_current=lambda: None)
+        child = _ManagedChildPort()
+        gate = RefusingGate()
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=child,  # type: ignore[arg-type]
+            preparation=NativeProfile(),  # type: ignore[arg-type]
+            start_gate=gate,
+        )
+        with pytest.raises(RuntimeError, match="Product gate refused release"):
+            await adapter.start(request, correlation_id="gate-refusal")
+        assert gate.released and gate.closed
+        assert child.events == [
+            "process.close",
+            "endpoint.close",
+            "session.closed",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_hosting_adapter_managed_capture_cancellation_retains_delegate_cleanup(
     tmp_path: Path,
 ) -> None:

@@ -52,10 +52,14 @@ def test_journal_enforces_exclusive_attempt_epoch_and_contiguous_cas(
 ) -> None:
     journal = WorkerSupervisorJournal(tmp_path / "workers.jsonl")
     first = _identity(attempt="1", epoch=1)
+    assert journal.next_supervisor_epoch(first) == 1
     claimed = journal.claim(first, max_attempts=3)
 
     assert claimed.phase == "claimed"
     assert claimed.restart_ordinal == 1
+    with pytest.raises(WorkerSupervisorJournalError) as active_epoch:
+        journal.next_supervisor_epoch(_identity(attempt="2", epoch=1))
+    assert active_epoch.value.code == "worker_prior_attempt_unsettled"
     with pytest.raises(WorkerSupervisorJournalError) as caught:
         journal.claim(first, max_attempts=3)
     assert caught.value.code == "worker_attempt_already_claimed"
@@ -90,9 +94,36 @@ def test_journal_enforces_exclusive_attempt_epoch_and_contiguous_cas(
         failure_code="worker_host_recovered",
     )
     assert fenced.terminal is True
-    assert journal.incomplete() == ()
+    assert not fenced.process_settled
+    assert journal.incomplete() == (fenced,)
 
     second = _identity(attempt="2", epoch=2)
+    with pytest.raises(WorkerSupervisorJournalError) as unsettled:
+        WorkerSupervisorJournal(journal.path).claim(second, max_attempts=3)
+    assert unsettled.value.code == "worker_prior_attempt_unsettled"
+
+    with pytest.raises(WorkerSupervisorJournalError) as changed_failure:
+        journal.transition(
+            first.attempt_id,
+            expected_phase="fenced",
+            next_phase="process_settled",
+            expected_record_revision=fenced.record_revision,
+            expected_supervisor_epoch=1,
+            failure_code="different_failure",
+        )
+    assert changed_failure.value.code == "worker_attempt_failure_changed"
+
+    settled = journal.transition(
+        first.attempt_id,
+        expected_phase="fenced",
+        next_phase="process_settled",
+        expected_record_revision=fenced.record_revision,
+        expected_supervisor_epoch=1,
+        failure_code=fenced.failure_code,
+    )
+    assert settled.process_settled
+    assert journal.incomplete() == ()
+    assert journal.next_supervisor_epoch(second) == 2
     second_claim = journal.claim(second, max_attempts=3)
     assert second_claim.restart_ordinal == 2
 
@@ -102,8 +133,30 @@ def test_journal_rejects_epoch_gaps_and_restart_budget_exhaustion(
 ) -> None:
     journal = WorkerSupervisorJournal(tmp_path / "workers.jsonl")
     first = _identity(attempt="1", epoch=1)
-    journal.claim(first, max_attempts=1)
-    _settle(journal, attempt_id=first.attempt_id, epoch=1)
+    claimed = journal.claim(first, max_attempts=1)
+    launching = journal.transition(
+        first.attempt_id,
+        expected_phase="claimed",
+        next_phase="launching",
+        expected_record_revision=claimed.record_revision,
+        expected_supervisor_epoch=1,
+    )
+    failed = journal.transition(
+        first.attempt_id,
+        expected_phase="launching",
+        next_phase="failed",
+        expected_record_revision=launching.record_revision,
+        expected_supervisor_epoch=1,
+        failure_code="worker_launch_failed",
+    )
+    journal.transition(
+        first.attempt_id,
+        expected_phase="failed",
+        next_phase="process_settled",
+        expected_record_revision=failed.record_revision,
+        expected_supervisor_epoch=1,
+        failure_code=failed.failure_code,
+    )
 
     with pytest.raises(WorkerSupervisorJournalError) as caught:
         journal.claim(_identity(attempt="3", epoch=3), max_attempts=3)
@@ -112,6 +165,19 @@ def test_journal_rejects_epoch_gaps_and_restart_budget_exhaustion(
     with pytest.raises(WorkerSupervisorJournalError) as caught:
         journal.claim(_identity(attempt="2", epoch=2), max_attempts=1)
     assert caught.value.code == "worker_restart_budget_exhausted"
+
+
+def test_journal_clean_shutdown_starts_a_new_bounded_restart_window(
+    tmp_path: Path,
+) -> None:
+    journal = WorkerSupervisorJournal(tmp_path / "workers.jsonl")
+    for epoch, attempt in ((1, "1"), (2, "2"), (3, "3")):
+        identity = _identity(attempt=attempt, epoch=epoch)
+        assert journal.next_supervisor_epoch(identity) == epoch
+        claimed = journal.claim(identity, max_attempts=1)
+        assert claimed.restart_ordinal == 1
+        _settle(journal, attempt_id=identity.attempt_id, epoch=epoch)
+        journal = WorkerSupervisorJournal(journal.path)
 
 
 def test_journal_reopens_incomplete_attempt_without_synthesizing_success(

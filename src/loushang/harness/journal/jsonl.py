@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Generic, Literal, TypeVar, cast
 
 from loushang.foundation.json import (
     JsonValueError,
@@ -151,6 +151,39 @@ def journal_file_lock(
 
 
 @contextmanager
+def journal_file_read_lock(
+    path: Path,
+    mode: LockMode,
+    *,
+    lock_suffix: str = ".lock",
+    create_lock: bool = True,
+) -> Iterator[None]:
+    """Read an absent journal without materializing its lock file.
+
+    An existing journal with a missing lock fails closed. A concurrent first
+    writer may make an initially absent journal visible; strict load policy at
+    the caller must then handle a partial or changed observation.
+    """
+
+    if type(create_lock) is not bool:
+        raise TypeError("Journal read lock creation must be a built-in bool")
+    if not create_lock:
+        lock_path = path.with_name(f"{path.name}{lock_suffix}")
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            try:
+                lock_path.lstat()
+            except FileNotFoundError:
+                yield
+                return
+    with journal_file_lock(
+        path, mode, lock_suffix=lock_suffix, create=create_lock
+    ):
+        yield
+
+
+@contextmanager
 def journal_file_lock_at(
     directory_fd: int,
     name: str,
@@ -158,8 +191,8 @@ def journal_file_lock_at(
     *,
     blocking: bool = True,
     create: bool = False,
-) -> Iterator[None]:
-    """Lock one private regular file relative to a pinned directory."""
+) -> Iterator[BinaryIO]:
+    """Lock one private regular file and yield its pinned handle."""
 
     _validate_journal_child_name(name, kind="lock")
     if type(blocking) is not bool:
@@ -183,7 +216,7 @@ def journal_file_lock_at(
                     raise JournalLockUnavailable(path=Path(name)) from exc
                 raise
             try:
-                yield
+                yield handle
             finally:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
@@ -221,7 +254,7 @@ def journal_file_lock_at(
                 raise JournalLockUnavailable(path=Path(name)) from exc
             raise
         try:
-            yield
+            yield handle
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
@@ -1234,6 +1267,7 @@ __all__ = [
     "append_jsonl_records",
     "decode_jsonl",
     "journal_file_lock",
+    "journal_file_read_lock",
     "journal_file_lock_at",
     "load_jsonl",
     "parse_legacy_jsonl_line",

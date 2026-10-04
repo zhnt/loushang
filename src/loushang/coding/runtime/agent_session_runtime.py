@@ -48,6 +48,7 @@ class AgentSessionRuntime(
         session_dir: Path,
         session_factory: SessionFactory,
         persist: bool = True,
+        materialize_new_transcript: bool = False,
         current_session: AgentSession | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         auto_refresh_session_index: bool = False,
@@ -60,6 +61,10 @@ class AgentSessionRuntime(
     ) -> None:
         if type(owned_transcripts) is not bool or type(enroll_legacy_shared_store) is not bool:
             raise TypeError("invalid owned transcript activation")
+        if type(materialize_new_transcript) is not bool:
+            raise TypeError("Coding transcript materialization must be explicit")
+        if materialize_new_transcript and not persist:
+            raise ValueError("Coding Worker transcript materialization requires persistence")
         if owned_transcripts and current_session is not None:
             raise ValueError("owned runtime must construct its own initial Session")
         if store_state_root is not None and not owned_transcripts:
@@ -86,6 +91,7 @@ class AgentSessionRuntime(
             session_dir=session_dir,
             session_factory=session_factory,
             persist=persist,
+            materialize_new_transcript=materialize_new_transcript,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
             copy_file=_copy_session_import,

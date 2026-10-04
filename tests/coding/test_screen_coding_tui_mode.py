@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Callable
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,11 @@ from loushang.foundation.observability._router import (
 )
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.permissions import permission_profile_snapshot
+from loushang.harness.resources.types import (
+    ResourceBundle,
+    RevisionResourceRef,
+    ThemeDescriptor,
+)
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
@@ -292,6 +298,44 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
     assert session.prompts == ["hello"]
     assert captured["keybindings"] == session.keybindings
     assert assistant_records[-1].text == "hello back"
+
+
+def test_screen_tui_uses_selected_catalog_theme_and_disabled_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    session.settings_manager.get_theme = lambda: "plugin:dusk"
+    theme = ThemeDescriptor(
+        name="dusk", source_path=tmp_path / "themes" / "dusk.json",
+        content='{"schemaVersion":1,"tokens":{'
+            '"welcome.title":{"color":"red"}}}',
+        source="product_selected_snapshot", source_kind="external_package",
+        source_scope="package",
+        revision_ref=RevisionResourceRef(
+            content_digest="a" * 64, relative_path="themes/dusk.json"
+        ),
+    )
+    session.resource_bundle = ResourceBundle(cwd=tmp_path, themes=[theme])
+    observed: list[str] = []
+
+    async def fake_screen_loop(**kwargs: object) -> int:
+        app = kwargs["app"]
+        observed.append(app.welcome_theme.resolve("welcome.title")["color"])
+        return 0
+
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
+    for enabled in (True, False):
+        session.resource_bundle = ResourceBundle(
+            cwd=tmp_path,
+            themes=[theme if enabled else replace(theme, enabled=False)],
+        )
+        assert asyncio.run(mode.run_coding_tui(
+            runtime=_runtime_for(session), session=session,
+            stdin=_TTYStringIO(), stdout=_TTYStringIO(), stderr=StringIO(),
+        )) == 0
+    assert observed == ["red", "cyan"]
 
 
 def test_run_coding_tui_interactive_prints_resume_hint_on_clean_exit(

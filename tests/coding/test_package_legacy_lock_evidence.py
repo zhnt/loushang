@@ -11,9 +11,6 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.package_legacy_installation_inventory import (
-    CodingLegacyInventoryError,
-)
 from loushang.coding.package_legacy_local_wheel import (
     reacquire_coding_legacy_local_plugin_wheel,
 )
@@ -21,6 +18,9 @@ from loushang.coding.package_legacy_lock_evidence import (
     CodingLegacyLockError,
     parse_coding_legacy_local_binding_heads,
     read_coding_legacy_local_binding_heads,
+)
+from loushang.coding.package_legacy_operation_evidence import (
+    CodingLegacyOperationEvidenceError,
 )
 from loushang.coding.package_legacy_reacquisition import (
     reacquire_coding_legacy_installed_local_source,
@@ -117,7 +117,11 @@ def test_first_b_fence_reads_old_binding_only_from_verified_snapshot(
         [selected] = read_coding_legacy_local_binding_heads(lifecycle, owner)
         assert selected.source_identity == binding.source_identity
         assert selected.lockfile_digest == sha256(raw).hexdigest()
-        with pytest.raises(CodingLegacyInventoryError, match="not an installed local"):
+        # A lock head alone does not prove an installed old Product selection.
+        with pytest.raises(
+            CodingLegacyOperationEvidenceError,
+            match="management journal shape is unsupported",
+        ):
             reacquire_coding_legacy_installed_local_source(
                 lifecycle, owner, plugin_id=selected.plugin_id
             )

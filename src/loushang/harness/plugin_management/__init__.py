@@ -53,6 +53,7 @@ from loushang.harness.plugin_management.enablement_migration import (
     PLUGIN_ENABLEMENT_MIGRATION_REQUEST_VERSION,
     PluginEnablementCompatibilityProjectionV1,
     PluginEnablementCompatibilityProjector,
+    PluginEnablementFinalizationAuthorityPort,
     PluginEnablementFinalizationEvidenceV1,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationDisposition,
@@ -92,6 +93,7 @@ from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
     PluginDesiredStateSnapshotV1,
     PluginLifecycleError,
+    decode_plugin_desired_state_capture,
     decode_plugin_desired_state_snapshot,
 )
 from loushang.harness.plugin_management.operations import (
@@ -152,6 +154,7 @@ from loushang.harness.plugin_management.private_data_deletion import (
     PluginPrivateDataDeletionCoordinator,
     PluginPrivateDataDeletionOwnerPort,
     PluginPrivateDataDeletionPlanV1,
+    PluginPrivateDataDeletionReceiptLookupPort,
     PluginPrivateDataDeletionReceiptV1,
 )
 from loushang.harness.plugin_management.records import (
@@ -232,6 +235,7 @@ __all__ = [
     "PluginPrivateDataDeletionCoordinator",
     "PluginPrivateDataDeletionOwnerPort",
     "PluginPrivateDataDeletionPlanV1",
+    "PluginPrivateDataDeletionReceiptLookupPort",
     "PluginPrivateDataDeletionReceiptV1",
     "PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION",
     "PluginBackupRetentionProjectionSourcePort",
@@ -293,6 +297,7 @@ __all__ = [
     "PluginDesiredStateLedger",
     "PluginDesiredSelectionV1",
     "PluginDesiredStateSnapshotV1",
+    "decode_plugin_desired_state_capture",
     "decode_plugin_desired_state_snapshot",
     "PluginDesiredStateMutationV1",
     "PluginDesiredStateTransitionV1",
@@ -329,6 +334,7 @@ __all__ = [
     "PluginEnablementCompatibilityProjectionV1",
     "PluginEnablementCompatibilityProjector",
     "PluginEnablementFinalizationEvidenceV1",
+    "PluginEnablementFinalizationAuthorityPort",
     "PluginEnablementMigrationCoordinator",
     "PluginEnablementMigrationDisposition",
     "PluginEnablementMigrationError",

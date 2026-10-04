@@ -981,6 +981,9 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "coding.mux.command",
         "coding.package-cutover.command",
         "coding.package-gc.command",
+        "coding.package-repair.command",
+        "coding.plugin-private-data.command",
+        "coding.worker-native.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -1042,6 +1045,21 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
             "installed",
             "explicit-offline-posix-product-gc",
         ),
+        "coding.package-repair.command": (
+            "cli",
+            "installed",
+            "explicit-offline-posix-product-repair",
+        ),
+        "coding.plugin-private-data.command": (
+            "cli",
+            "installed",
+            "explicit-offline-linux-product-private-data",
+        ),
+        "coding.worker-native.command": (
+            "cli",
+            "installed",
+            "explicit-linux-worker-native-candidate",
+        ),
         "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
         "harnesstui.named-mux": (
             "mux",
@@ -1060,6 +1078,9 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "loushang-mux": "loushang.coding.cli.mux:main",
         "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
+        "loushang-package-repair": "loushang.coding.cli.package_repair:main",
+        "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
+        "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -1075,6 +1096,9 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "project.scripts.loushang-mux",
         "project.scripts.loushang-package-cutover",
         "project.scripts.loushang-package-gc",
+        "project.scripts.loushang-package-repair",
+        "project.scripts.loushang-plugin-private-data",
+        "project.scripts.loushang-worker-native",
         "project.scripts.loushang-plugin",
         "project.scripts.loushang-tui",
     }

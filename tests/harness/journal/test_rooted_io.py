@@ -57,6 +57,31 @@ def replace_root(root):
     return moved
 
 
+def test_existing_rooted_lock_refuses_missing_or_replaced_name(tmp_path):
+    with borrowed(tmp_path / "root") as io:
+        lock_path = io.root / "runtime.lease"
+        with io.bind(lock_path) as target:
+            with pytest.raises(FileNotFoundError):
+                target.acquire_lock(exclusive=True, create=False)
+        assert not lock_path.exists()
+        lock_path.write_bytes(b"original")
+        lock_path.chmod(0o600)
+        observed = lock_path.stat()
+        original = lock_path.with_name("original.lease")
+        with io.bind(lock_path) as target:
+            lock_path.rename(original)
+            lock_path.write_bytes(b"replacement")
+            lock_path.chmod(0o600)
+            with pytest.raises(OSError, match="lock identity changed"):
+                target.acquire_lock(
+                    exclusive=True,
+                    create=False,
+                    expected_identity=(observed.st_dev, observed.st_ino),
+                )
+        assert lock_path.read_bytes() == b"replacement"
+        assert original.read_bytes() == b"original"
+
+
 @pytest.mark.parametrize("action", ["load", "append", "batch", "rewrite", "repair", "unlink"])
 def test_rooted_journal_actions_never_follow_replacement_root(tmp_path, monkeypatch, action):
     with borrowed(tmp_path / "root") as io:

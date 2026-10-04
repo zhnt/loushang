@@ -42,8 +42,8 @@ from loushang.harness.capabilities import (
 )
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentHost,
-    PreparedCapabilityComponent,
 )
+from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
@@ -139,10 +139,13 @@ from loushang.harness.session.approval_interaction import (
     AgentSessionApprovalRuntime,
 )
 from loushang.harness.session.capability_composition_inputs import (
+    PreparedSessionCapabilityComponent,
+    SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
+    SessionCapabilityWorkerComponentRequest,
     StagedSessionCapabilityOwnerGeneration,
     commit_session_capability_owner_generations,
     dispose_session_capability_owner_generations,
@@ -289,14 +292,19 @@ class AgentProductSession(AgentSessionAdapterMixin):
         await super().continue_run()
 
     async def execute_prompt(
-        self, text: str, *, source: str = "execution",
+        self,
+        text: str,
+        *,
+        source: str = "execution",
         check_cancelled: Callable[[], None] | None = None,
     ) -> PromptExecutionResult:
         """Opt-in full invocation input result, retaining the legacy prompt API."""
         from loushang.harness.session.prompt_execution import execute_prompt
 
         if not self.execution_available:
-            raise RuntimeError("failed execution preparation requires Session retirement")
+            raise RuntimeError(
+                "failed execution preparation requires Session retirement"
+            )
         try:
             await self.prepare_model_call_runtime()
         except BaseException:
@@ -526,7 +534,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise ValueError("Session plugin composition belongs to another Product")
         if (
             capability_composition_inputs is not None
-            and capability_composition_inputs.component_requests
+            and any(
+                isinstance(request, SessionCapabilityComponentRequest)
+                for request in capability_composition_inputs.component_requests
+            )
             and capability_component_host is None
         ):
             raise ValueError("Session plugin composition requires a Component Host")
@@ -553,7 +564,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             StagedSessionCapabilityOwnerGeneration, ...
         ] = ()
         self._pending_capability_components: tuple[
-            PreparedCapabilityComponent, ...
+            PreparedSessionCapabilityComponent, ...
         ] = ()
         if capability_composition_inputs is not None:
             validate_session_capability_owner_generation_bindings(
@@ -840,7 +851,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             product_inventory=package_product_inventory,
             product_lifecycle_mode=package_product_lifecycle_mode,
         )
-        self._package_product_runtime_binding: PackageProductRuntimeBindingV1 | None = None
+        self._package_product_runtime_binding: PackageProductRuntimeBindingV1 | None = (
+            None
+        )
         self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,
             api_registry=self.api_registry,
@@ -940,6 +953,23 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if provider is None:
             raise RuntimeError("Session capability profile has been disposed.")
         return provider()
+
+    def capture_host_product_consumer(
+        self, requirement: CapabilityRequirement
+    ) -> CapabilityFacetSet:
+        """Capture a Product-owned Consumer declared in this Session input.
+
+        The selected external Provider and its exact facet requirement must
+        have been pinned before graph preparation. A caller cannot invent a
+        new root or gain additional facets after publication.
+        """
+
+        if not isinstance(requirement, CapabilityRequirement):
+            raise TypeError("Product Consumer requirement is invalid")
+        inputs = self._capability_composition_inputs
+        if inputs is None or requirement not in inputs.host_consumer_requirements:
+            raise ValueError("Product Consumer requirement was not selected")
+        return self._capability_graph_runtime.capture(requirement)
 
     def get_effective_runtime_view(
         self,
@@ -1308,8 +1338,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
         seen: set[int] = set()
         failures: list[Exception] = []
         owners: list[SessionOutputPersistingExecService] = []
-        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
-            if not isinstance(executor, SessionOutputPersistingExecService) or id(executor) in seen:
+        for executor in (
+            getattr(self, "_exec_service", None),
+            getattr(self, "_tool_exec_service", None),
+        ):
+            if (
+                not isinstance(executor, SessionOutputPersistingExecService)
+                or id(executor) in seen
+            ):
                 continue
             seen.add(id(executor))
             owners.append(executor)
@@ -1324,19 +1360,33 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise failures[0]
 
     def _fence_output_captures(self) -> None:
-        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
+        for executor in (
+            getattr(self, "_exec_service", None),
+            getattr(self, "_tool_exec_service", None),
+        ):
             if isinstance(executor, SessionOutputPersistingExecService):
                 executor.fence()
 
     def _check_output_capture_retirement(self) -> None:
-        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
-            if isinstance(executor, SessionOutputPersistingExecService) and executor.cleanup_pending:
+        for executor in (
+            getattr(self, "_exec_service", None),
+            getattr(self, "_tool_exec_service", None),
+        ):
+            if (
+                isinstance(executor, SessionOutputPersistingExecService)
+                and executor.cleanup_pending
+            ):
                 raise RuntimeError("Session output capture cleanup remains pending")
 
     def _defer_output_capture_rollback(self) -> bool:
-        owners = tuple(executor for executor in (
-            getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None),
-        ) if isinstance(executor, SessionOutputPersistingExecService))
+        owners = tuple(
+            executor
+            for executor in (
+                getattr(self, "_exec_service", None),
+                getattr(self, "_tool_exec_service", None),
+            )
+            if isinstance(executor, SessionOutputPersistingExecService)
+        )
         if not any(owner.cleanup_pending for owner in owners):
             return False
         for owner in owners:
@@ -1376,7 +1426,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             owner_generations = self._capability_owner_generations
             pending_components = self._pending_capability_components
             if pending_components:
-                remaining_components: list[PreparedCapabilityComponent] = []
+                remaining_components: list[PreparedSessionCapabilityComponent] = []
                 for prepared in reversed(pending_components):
                     try:
                         await prepared.abort_uncommitted()
@@ -1528,13 +1578,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self,
     ) -> SessionModelCallCapabilityConsumer:
         if not self.execution_available:
-            raise RuntimeError("failed execution preparation requires Session retirement")
+            raise RuntimeError(
+                "failed execution preparation requires Session retirement"
+            )
         consumer = self._model_call_consumer
         if consumer is not None:
             return consumer
         async with self._model_call_bind_lock:
             if not self.execution_available:
-                raise RuntimeError("failed execution preparation requires Session retirement")
+                raise RuntimeError(
+                    "failed execution preparation requires Session retirement"
+                )
             consumer = self._model_call_consumer
             if consumer is not None:
                 return consumer
@@ -1548,7 +1602,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     "the Session must retire before another prepare."
                 )
             binding = self._model_call_capability_binding
-            prepared_components: list[PreparedCapabilityComponent] = []
+            prepared_components: list[PreparedSessionCapabilityComponent] = []
             owner_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...] = ()
             resource_consumer_installed = False
             skill_catalog_consumer_installed = False
@@ -1556,19 +1610,24 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 composition_inputs = self._capability_composition_inputs
                 component_host = self._capability_component_host
                 if composition_inputs is not None:
-                    if composition_inputs.component_requests:
-                        assert component_host is not None
                     for request in composition_inputs.component_requests:
-                        assert component_host is not None
-                        prepared_components.append(
-                            component_host.prepare_component(
-                                request.resolved,
-                                package=request.package,
-                                owner_snapshot=request.owner_snapshot,
-                                trust_snapshot=request.trust_snapshot,
-                                decision_id=request.activation_decision_id,
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
+                            prepared_components.append(
+                                await request.prepare_component(
+                                    self._capability_graph_runtime.generation + 1
+                                )
                             )
-                        )
+                        else:
+                            assert component_host is not None
+                            prepared_components.append(
+                                component_host.prepare_component(
+                                    request.resolved,
+                                    package=request.package,
+                                    owner_snapshot=request.owner_snapshot,
+                                    trust_snapshot=request.trust_snapshot,
+                                    decision_id=request.activation_decision_id,
+                                )
+                            )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap
                 if catalog_bootstrap is not None:
                     extension_host = self._extension_runner
@@ -1702,9 +1761,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     # bind lock. The Graph retains its own failed retirement.
                     self._capability_owner_generations = owner_generations
                     self._pending_capability_components = (
-                        *self._pending_capability_components, *prepared_components,
+                        *self._pending_capability_components,
+                        *prepared_components,
                     )
-                    error.add_note("Session rollback retained for output capture cleanup")
+                    error.add_note(
+                        "Session rollback retained for output capture cleanup"
+                    )
                     raise
                 owner_cleanup_failed = False
                 if owner_generations:

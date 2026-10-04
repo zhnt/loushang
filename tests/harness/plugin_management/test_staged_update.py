@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -21,6 +22,7 @@ from loushang.harness.plugin_management.records import (
 from loushang.harness.plugin_management.service import (
     PluginManagementError,
     PluginManagementService,
+    decode_plugin_management_operation_capture,
 )
 from loushang.harness.plugin_management.updates import (
     PluginDesiredStateUpdateMutationV1,
@@ -84,6 +86,30 @@ def test_disabled_update_stages_fences_and_atomically_cuts_over(
     )
     assert reopened.operation(command.operation_id) == terminal
     assert len(reopened.operations()) == 2
+
+    raw = operation_path.read_text(encoding="utf-8")
+    assert (
+        decode_plugin_management_operation_capture(raw, path=operation_path)
+        == reopened.operations()
+    )
+    with pytest.raises(PluginManagementError, match="incomplete"):
+        decode_plugin_management_operation_capture(
+            raw.rstrip("\n"), path=operation_path
+        )
+    first, *rest = raw.splitlines()
+    duplicate = '{"journalRevision":1,' + json.dumps(json.loads(first))[1:]
+    with pytest.raises(PluginManagementError, match="cannot be decoded"):
+        decode_plugin_management_operation_capture(
+            "\n".join((duplicate, *rest)) + "\n", path=operation_path
+        )
+    broken = raw.splitlines()
+    final = json.loads(broken[-1])
+    final["journalRevision"] += 1
+    broken[-1] = json.dumps(final)
+    with pytest.raises(PluginManagementError, match="revision is not contiguous"):
+        decode_plugin_management_operation_capture(
+            "\n".join(broken) + "\n", path=operation_path
+        )
 
 
 def test_enabled_update_advances_instance_and_returns_exact_restart_reason(
@@ -266,9 +292,9 @@ def test_incomplete_update_keeps_old_selection_and_blocks_same_installation(
     assert isinstance(latest, PluginUpdateOperationEventV2)
     assert latest.operation_revision == 4
     assert latest.progress_code == "desired_state_committing"
-    assert desired.snapshot().installation(_key()).selection.package_revision == _package(
-        1
-    )
+    assert desired.snapshot().installation(
+        _key()
+    ).selection.package_revision == _package(1)
 
     fresh = PluginManagementService(
         desired_state=desired,
@@ -283,9 +309,9 @@ def test_incomplete_update_keeps_old_selection_and_blocks_same_installation(
     assert isinstance(recovered[0], PluginUpdateOperationEventV2)
     assert recovered[0].result is not None
     assert recovered[0].result.disposition == "succeeded"
-    assert desired.snapshot().installation(_key()).selection.package_revision == _package(
-        2
-    )
+    assert desired.snapshot().installation(
+        _key()
+    ).selection.package_revision == _package(2)
 
 
 def test_recovery_completes_crash_after_update_cutover(tmp_path: Path) -> None:

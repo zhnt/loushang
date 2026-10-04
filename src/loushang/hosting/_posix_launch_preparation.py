@@ -43,6 +43,7 @@ except ImportError:  # pragma: no cover - Windows
 _DIRECT_PROFILE_ID = "posix-static-elf-v1"
 _CONTAINED_PROFILE_ID = "posix-static-contained-elf-v1"
 _CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v1"
+_GATED_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v2"
 _PLATFORM_IDENTITY = "platform:linux-x86_64-syscall-abi"
 _SUPPORTED_MACHINES = frozenset({"amd64", "x86_64"})
 _MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
@@ -104,6 +105,7 @@ class _PosixStaticContainedLaunchCaptureSpec(_LaunchCaptureSpec):
     cwd_device: int
     cwd_inode: int
     containment_profile_sha256: str
+    start_gate_read_fd: int | None = None
 
     def __post_init__(self) -> None:
         super(_PosixStaticContainedLaunchCaptureSpec, self).__post_init__()
@@ -132,12 +134,16 @@ class _PosixStaticContainedLaunchCaptureSpec(_LaunchCaptureSpec):
             raise ValueError("POSIX contained launch paths must be absolute")
         if self.request.effective_environment:
             raise ValueError("POSIX contained closure requires an empty environment")
+        if self.start_gate_read_fd is not None and (
+            type(self.start_gate_read_fd) is not int or self.start_gate_read_fd < 3
+        ):
+            raise ValueError("POSIX contained start gate descriptor is invalid")
         expected_closure = (
             f"containment-launcher-static-elf:sha256:{self.launcher_sha256}",
             f"payload-static-elf:sha256:{self.executable_sha256}",
             f"cwd:posix:{self.cwd_device}:{self.cwd_inode}",
             f"containment-profile:sha256:{self.containment_profile_sha256}",
-            f"invocation:{_CONTAINMENT_ARGUMENT_PROTOCOL}",
+            f"invocation:{_GATED_CONTAINMENT_ARGUMENT_PROTOCOL if self.start_gate_read_fd is not None else _CONTAINMENT_ARGUMENT_PROTOCOL}",
             _PLATFORM_IDENTITY,
         )
         if self.execution_closure != expected_closure:
@@ -249,6 +255,7 @@ class _PosixStaticLaunchCaptureBackend:
         )
         executable = -1
         cwd = -1
+        gate = -1
         try:
             executable = _capture_static_elf(
                 spec.request.argv[0], expected_digest=spec.executable_sha256
@@ -257,6 +264,8 @@ class _PosixStaticLaunchCaptureBackend:
                 spec.request.cwd,
                 expected_identity=(spec.cwd_device, spec.cwd_inode),
             )
+            if spec.start_gate_read_fd is not None:
+                gate = _capture_start_gate(spec.start_gate_read_fd)
             material = _PosixStaticLaunchMaterial(
                 spec=spec,
                 attempt_id=attempt_id,
@@ -264,10 +273,12 @@ class _PosixStaticLaunchCaptureBackend:
                 executable_descriptor=executable,
                 cwd_descriptor=cwd,
                 launcher_descriptor=launcher,
+                start_gate_descriptor=gate,
             )
             launcher = -1
             executable = -1
             cwd = -1
+            gate = -1
             await _attach_captured(material, on_capture=on_capture)
             return material
         except BaseException as primary:
@@ -282,6 +293,7 @@ class _PosixStaticLaunchCaptureBackend:
                 primary=primary,
                 role="containment launcher",
             )
+            _close_local_descriptor(gate, primary=primary, role="start gate")
             raise
 
 
@@ -318,6 +330,7 @@ class _PosixStaticLaunchMaterial:
         executable_descriptor: int,
         cwd_descriptor: int,
         launcher_descriptor: int = -1,
+        start_gate_descriptor: int = -1,
     ) -> None:
         self._spec = spec
         self._attempt_id = attempt_id
@@ -325,13 +338,20 @@ class _PosixStaticLaunchMaterial:
         self._executable_descriptor = executable_descriptor
         self._cwd_descriptor = cwd_descriptor
         self._launcher_descriptor = launcher_descriptor
+        self._start_gate_descriptor = start_gate_descriptor
         executable_stat = os.fstat(executable_descriptor)
         self._executable_identity = (executable_stat.st_dev, executable_stat.st_ino)
         self._launcher_identity: tuple[int, int] | None = None
         if launcher_descriptor >= 0:
             launcher_stat = os.fstat(launcher_descriptor)
             self._launcher_identity = (launcher_stat.st_dev, launcher_stat.st_ino)
-        self._inherited_slot_count = 3 if launcher_descriptor >= 0 else 2
+        self._start_gate_identity: tuple[int, int] | None = None
+        if start_gate_descriptor >= 0:
+            gate_stat = os.fstat(start_gate_descriptor)
+            self._start_gate_identity = (gate_stat.st_dev, gate_stat.st_ino)
+        self._inherited_slot_count = (
+            4 if start_gate_descriptor >= 0 else 3 if launcher_descriptor >= 0 else 2
+        )
         self._state = "captured"
         self._lock = threading.Lock()
 
@@ -358,6 +378,10 @@ class _PosixStaticLaunchMaterial:
     @property
     def inherited_slot_count(self) -> int:
         return self._inherited_slot_count
+
+    @property
+    def start_gate_identity(self) -> tuple[int, int] | None:
+        return self._start_gate_identity
 
     async def verify_current(self, request: ProcessLaunchRequest) -> None:
         if request != self._spec.request:
@@ -391,6 +415,11 @@ class _PosixStaticLaunchMaterial:
                     expected_digest=self._spec.launcher_sha256,
                     expected_identity=self._launcher_identity,
                 )
+                if self._spec.start_gate_read_fd is not None:
+                    _verify_start_gate(
+                        self._start_gate_descriptor,
+                        expected_identity=self._start_gate_identity,
+                    )
             self._state = "verified"
 
     async def spawn(
@@ -419,7 +448,7 @@ class _PosixStaticLaunchMaterial:
             inheritance=inheritance,
         )
 
-    def _claim_descriptors(self) -> tuple[int, int, int | None]:
+    def _claim_descriptors(self) -> tuple[int, int, int | None, int | None]:
         with self._lock:
             if self._state != "verified":
                 raise HostingError(
@@ -431,6 +460,9 @@ class _PosixStaticLaunchMaterial:
                 self._executable_descriptor,
                 self._cwd_descriptor,
                 self._launcher_descriptor if self._launcher_descriptor >= 0 else None,
+                self._start_gate_descriptor
+                if self._start_gate_descriptor >= 0
+                else None,
             )
 
     def _contained_invocation(
@@ -439,22 +471,31 @@ class _PosixStaticLaunchMaterial:
         executable_descriptor: int,
         cwd_descriptor: int,
         launcher_descriptor: int,
+        start_gate_descriptor: int | None = None,
     ) -> tuple[str, ...]:
         if type(self._spec) is not _PosixStaticContainedLaunchCaptureSpec:
             raise RuntimeError("POSIX direct material has no containment invocation")
-        return (
+        prefix = (
             self._spec.launcher_path,
             "--loushang-protocol",
-            _CONTAINMENT_ARGUMENT_PROTOCOL,
+            (
+                _GATED_CONTAINMENT_ARGUMENT_PROTOCOL
+                if start_gate_descriptor is not None
+                else _CONTAINMENT_ARGUMENT_PROTOCOL
+            ),
             "--loushang-profile-sha256",
             self._spec.containment_profile_sha256,
             "--loushang-payload-fd",
             str(executable_descriptor),
             "--loushang-preparation-fds",
             f"{launcher_descriptor},{executable_descriptor},{cwd_descriptor}",
-            "--",
-            *self._spec.request.argv,
         )
+        gate = (
+            ("--loushang-start-gate-fd", str(start_gate_descriptor))
+            if start_gate_descriptor is not None
+            else ()
+        )
+        return (*prefix, *gate, "--", *self._spec.request.argv)
 
     def _mark_transferred(self) -> None:
         with self._lock:
@@ -470,6 +511,7 @@ class _PosixStaticLaunchMaterial:
                 ("_executable_descriptor", self._executable_descriptor),
                 ("_cwd_descriptor", self._cwd_descriptor),
                 ("_launcher_descriptor", self._launcher_descriptor),
+                ("_start_gate_descriptor", self._start_gate_descriptor),
             )
         failures: list[BaseException] = []
         for attribute, descriptor in descriptors:
@@ -492,6 +534,7 @@ class _PosixStaticLaunchMaterial:
                 if self._executable_descriptor < 0
                 and self._cwd_descriptor < 0
                 and self._launcher_descriptor < 0
+                and self._start_gate_descriptor < 0
                 else "close-failed"
             )
         if failures:
@@ -499,6 +542,57 @@ class _PosixStaticLaunchMaterial:
                 "POSIX static launch descriptor cleanup failed",
                 failures,
             )
+
+
+def _capture_start_gate(descriptor: int) -> int:
+    if type(descriptor) is not int or descriptor < 3 or fcntl is None:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_REJECTED,
+            "POSIX start gate descriptor is invalid",
+        )
+    observed = _verify_start_gate(descriptor)
+    duplicate = _fcntl_call(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)
+    try:
+        _verify_start_gate(
+            duplicate,
+            expected_identity=(observed.st_dev, observed.st_ino),
+        )
+        return duplicate
+    except BaseException as primary:
+        _close_local_descriptor(duplicate, primary=primary, role="start gate")
+        raise
+
+
+def _verify_start_gate(
+    descriptor: int, *, expected_identity: tuple[int, int] | None = None
+) -> os.stat_result:
+    if descriptor < 3 or fcntl is None:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_STALE,
+            "POSIX start gate descriptor is unavailable",
+        )
+    try:
+        observed = os.fstat(descriptor)
+        flags = _fcntl_call(descriptor, fcntl.F_GETFL)
+    except OSError:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_STALE,
+            "POSIX start gate descriptor changed",
+        ) from None
+    if (
+        not stat.S_ISFIFO(observed.st_mode)
+        or flags & os.O_ACCMODE != os.O_RDONLY
+        or flags & os.O_NONBLOCK
+        or (
+            expected_identity is not None
+            and (observed.st_dev, observed.st_ino) != expected_identity
+        )
+    ):
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_STALE,
+            "POSIX start gate descriptor changed",
+        )
+    return observed
 
 
 def _capture_static_elf(path: str, *, expected_digest: str) -> int:

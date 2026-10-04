@@ -1106,6 +1106,7 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     }.intersection(session.get_active_tool_names())
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_default_runtime_builder_projects_internal_delegate_resource_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1318,9 +1319,7 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
         await global_session.session_manager.append_message(
             UserMessage(role="user", content="global-session", timestamp=1.0)
         )
-        global_session_id = (
-            global_session.session_manager.get_header().conversation_id
-        )
+        global_session_id = global_session.session_manager.get_header().conversation_id
         cwd_file = await seed(
             source_roots["cwd"],
             "cwd-session",
@@ -1371,6 +1370,7 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
 
 
 @pytest.mark.parametrize("disable_mode", ("all", "builtin"))
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_model_input(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1768,6 +1768,7 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
     assert captured_args[0].offline is True
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -8818,6 +8819,7 @@ def test_run_cli_lists_pending_plugin_operation_without_recovery(
         resolve_coding_plugin_lifecycle_state_layout,
     )
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.journal import journal_file_lock
     from loushang.harness.plugin_management import (
         PluginDesiredStateMutationV1,
         PluginInstallationKeyV1,
@@ -8863,27 +8865,32 @@ def test_run_cli_lists_pending_plugin_operation_without_recovery(
     before = (
         json.dumps(accepted.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
     ).encode()
-    layout.management_operations.write_bytes(before)
+    with journal_file_lock(layout.management_operations, "exclusive"):
+        layout.management_operations.write_bytes(before)
+        layout.management_operations.chmod(0o600)
+    lock_path = layout.management_operations.with_name(
+        f"{layout.management_operations.name}.lock"
+    )
+    before_lock = lock_path.read_bytes()
     stdout = StringIO()
     stderr = StringIO()
 
     async def scenario() -> None:
-        assert (
-            await run_cli(
-                ["--list-plugins", "--list-plugins-format", "json"],
-                stdin=StringIO(""),
-                stdout=stdout,
-                stderr=stderr,
-                cwd=workspace,
-                services=_fake_services(),
-                runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
-            )
-            == 0
+        exit_code = await run_cli(
+            ["--list-plugins", "--list-plugins-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=workspace,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
         )
+        assert exit_code == 0, stderr.getvalue()
 
     asyncio.run(scenario())
 
     assert layout.management_operations.read_bytes() == before
+    assert lock_path.read_bytes() == before_lock
     assert not layout.desired_state.exists()
     assert stderr.getvalue() == ""
     [record] = json.loads(stdout.getvalue())
@@ -9303,9 +9310,7 @@ def test_run_cli_reports_compatibility_publish_failure_after_commit(
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     settings_path = tmp_path / ".loushang" / "settings.json"
-    settings = FailingCompatibilitySettingsManager(
-        project_settings_path=settings_path
-    )
+    settings = FailingCompatibilitySettingsManager(project_settings_path=settings_path)
     settings.set_disabled_plugins(("managed-pack",), scope="project")
     services = create_services(settings_manager=settings)
     layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)

@@ -1,23 +1,35 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
+from io import StringIO
 from pathlib import Path
 from threading import Barrier, Event, Thread, current_thread
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 import loushang.coding._plugin_lifecycle as lifecycle_module
+import loushang.coding.cli.application as application_module
 import loushang.coding.plugin_management_cli as cli_module
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.cli.application import run_cli
+from loushang.coding.cli.args import (
+    current_preview_option_requested,
+    plugin_explanation_option_requested,
+    plugin_repair_option_requested,
 )
 from loushang.coding.control import SettingsManager
 from loushang.coding.plugin_enablement_compatibility import (
@@ -25,8 +37,20 @@ from loushang.coding.plugin_enablement_compatibility import (
     bind_coding_plugin_enablement_compatibility,
 )
 from loushang.coding.plugin_management_cli import (
+    CodingPluginManagementCliError,
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
+)
+from loushang.coding.plugin_management_explanation import (
+    CodingPluginOperationExplanationError,
+)
+from loushang.coding.plugin_management_preview import (
+    CodingCurrentPreviewError,
+    _capture_disabled_skills,
+    bind_coding_current_preview_query,
+)
+from loushang.coding.plugin_management_read_sdk import (
+    open_coding_plugin_management_read_client,
 )
 from loushang.harness.cli.plugin_listing import list_plugin_records
 from loushang.harness.cli.resource_toggles import (
@@ -40,9 +64,17 @@ from loushang.harness.plugin_management import (
     PluginDesiredStateLedger,
     PluginEnablementMigrationError,
     PluginEnablementMigrationJournal,
+    PluginManagementApplicationCommandV1,
     PluginPackageRevisionRefV1,
     plugin_enablement_legacy_input_fingerprint,
 )
+from loushang.harness.plugin_management.current_preview import (
+    PluginCurrentPreviewRequestV1,
+)
+from loushang.harness.plugin_management.explanation import (
+    PluginManagementExplanationProjector,
+)
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 
 @dataclass(frozen=True)
@@ -104,7 +136,375 @@ class _FailingCompatibilitySettingsManager(_SettingsManager):
         return publish
 
 
+@pytest.mark.parametrize(
+    ("settings_manager", "error_code"),
+    (
+        (object(), "coding_plugin_sources_owner_invalid"),
+        (
+            SimpleNamespace(get_settings=lambda: SimpleNamespace()),
+            "coding_plugin_sources_invalid",
+        ),
+    ),
+)
+def test_configured_source_projection_refuses_unknown_settings_owner_or_snapshot(
+    tmp_path: Path, settings_manager: object, error_code: str
+) -> None:
+    client = open_coding_plugin_management_read_client(tmp_path)
+    with pytest.raises(CodingPluginManagementCliError) as caught:
+        client.management_snapshot(
+            correlation_id="invalid-configured-sources",
+            settings_manager=settings_manager,
+        )
+    assert caught.value.code == error_code
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("journal_name", "expected_error"),
+    (
+        ("desired_state", "Plugin lifecycle journal cannot be decoded"),
+        (
+            "management_operations",
+            "Plugin management operation journal cannot be decoded",
+        ),
+    ),
+)
 def test_legacy_management_read_binding_preserves_partial_journal_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    journal_name: str,
+    expected_error: str,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    layout.root.mkdir(parents=True)
+    journal_path = getattr(layout, journal_name)
+    with journal_file_lock(journal_path, "exclusive"):
+        journal_path.write_bytes(b'{"partial":')
+        journal_path.chmod(0o600)
+    lock_path = journal_path.with_name(f"{journal_path.name}.lock")
+    before_lock = lock_path.read_bytes()
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        list_plugin_records(
+            build_coding_plugin_management_cli_read_binding(
+                workspace, _SettingsManager(_Settings())
+            )
+        )
+
+    assert journal_path.read_bytes() == b'{"partial":'
+    assert lock_path.read_bytes() == before_lock
+
+
+def test_management_read_binding_does_not_create_absent_workspace_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+
+    binding = build_coding_plugin_management_cli_read_binding(
+        workspace, _SettingsManager(_Settings())
+    )
+    assert list_plugin_records(binding) == []
+    with pytest.raises(PermissionError, match="read binding"):
+        binding.ports.commands.submit(
+            cast(PluginManagementApplicationCommandV1, object())
+        )
+
+    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    assert after == before, (before, after)
+
+
+@pytest.mark.parametrize(
+    ("argv", "entrypoint"),
+    (
+        (("--preview-current-plugins",), "_run_coding_current_preview_cli"),
+        (
+            ("--explain-plugin-operation", "test:operation"),
+            "_run_coding_plugin_operation_explanation_cli",
+        ),
+        (
+            ("--repair-plugin-desired-operation", "test:operation"),
+            "_run_coding_plugin_desired_repair_cli",
+        ),
+    ),
+)
+def test_cli_product_operation_refuses_replaced_original_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    argv: tuple[str, ...],
+    entrypoint: str,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    original = getattr(application_module, entrypoint)
+
+    def replace_before_operation(*args: object, **kwargs: object) -> int:
+        workspace.rename(tmp_path / "retired")
+        workspace.mkdir()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(application_module, entrypoint, replace_before_operation)
+    stdout = StringIO()
+    stderr = StringIO()
+    assert (
+        asyncio.run(
+            run_cli(argv, cwd=workspace, stdin=StringIO(), stdout=stdout, stderr=stderr)
+        )
+        == 1
+    )
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Error: coding_management_workspace_changed\n"
+    assert not (tmp_path / "home").exists()
+
+
+def test_cli_preview_refuses_workspace_replaced_during_read_client_bind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    original = application_module.open_coding_plugin_management_read_client
+
+    def replace_before_bind(*args: object, **kwargs: object):
+        workspace.rename(tmp_path / "retired")
+        workspace.mkdir()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        application_module,
+        "open_coding_plugin_management_read_client",
+        replace_before_bind,
+    )
+    stdout = StringIO()
+    stderr = StringIO()
+    assert (
+        asyncio.run(
+            run_cli(
+                ["--preview-current-plugins"],
+                cwd=workspace,
+                stdin=StringIO(),
+                stdout=stdout,
+                stderr=stderr,
+            )
+        )
+        == 1
+    )
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Error: coding_management_workspace_changed\n"
+    assert not (tmp_path / "home").exists()
+
+
+def test_current_preview_cli_refuses_unfenced_workspace_without_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    assert asyncio.run(run_cli(
+        ["--preview-current-plugins"], cwd=workspace, stdin=StringIO(),
+        stdout=stdout, stderr=stderr,
+    )) == 1
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Error: plugin_preview_product_not_fenced\n"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+    stderr = StringIO()
+    assert asyncio.run(run_cli(
+        ["--repair-plugin-desired-operation", "test:absent"],
+        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
+    )) == 1
+    assert stderr.getvalue() == "Error: coding_product_not_fenced\n"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+    stderr = StringIO()
+    assert asyncio.run(run_cli(
+        ["--preview-current-plugins", "--prompt", "run this"],
+        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
+    )) == 2
+    assert stderr.getvalue() == "Error: plugin_preview_operation_conflict\n"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+    stderr = StringIO()
+    assert asyncio.run(run_cli(
+        ["--explain-plugin-operation", "test:absent"],
+        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
+    )) == 1
+    assert stderr.getvalue() == "Error: plugin_explanation_product_not_fenced\n"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+    stderr = StringIO()
+    assert asyncio.run(run_cli(
+        ["--explain-plugin-operation", "test:absent", "--list-plugins"],
+        cwd=workspace, stdin=StringIO(), stdout=StringIO(), stderr=stderr,
+    )) == 2
+    assert stderr.getvalue() == "Error: plugin_explanation_operation_conflict\n"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+    query = bind_coding_current_preview_query(workspace)
+    with pytest.raises(CodingCurrentPreviewError) as mismatch:
+        query.preview_current(PluginCurrentPreviewRequestV1(
+            correlation_id="test:foreign-scope", product_id="coding",
+            scope_id="workspace:foreign", composition_set_id="coding-standard",
+        ))
+    assert mismatch.value.code == "plugin_preview_scope_mismatch"
+    client = open_coding_plugin_management_read_client(workspace)
+    with pytest.raises(CodingCurrentPreviewError) as missing_preview:
+        client.preview_current(correlation_id="test:sdk-absent-preview")
+    assert missing_preview.value.code == "plugin_preview_product_not_fenced"
+    management = client.management_snapshot(
+        correlation_id="test:sdk-absent-management"
+    )
+    assert management["installations"] == []
+    assert management["correlationId"] == "test:sdk-absent-management"
+    with pytest.raises(CodingPluginOperationExplanationError) as missing_operation:
+        client.explain_operation(
+            "test:absent", correlation_id="test:sdk-absent-operation"
+        )
+    assert missing_operation.value.code == "plugin_explanation_product_not_fenced"
+    assert tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))) == before
+
+
+def test_current_preview_dispatch_preserves_explicit_prompt_words() -> None:
+    assert current_preview_option_requested(("--preview-current-plugins",))
+    assert not current_preview_option_requested(
+        ("--prompt=--preview-current-plugins",)
+    )
+    assert not current_preview_option_requested(("--", "--preview-current-plugins"))
+    assert plugin_explanation_option_requested(("--explain-plugin-operation", "op:1"))
+    assert not plugin_explanation_option_requested(
+        ("--prompt", "--explain-plugin-operation")
+    )
+    assert not plugin_explanation_option_requested(
+        ("--", "--explain-plugin-operation")
+    )
+    assert plugin_repair_option_requested(
+        ("--repair-plugin-desired-operation", "op:1")
+    )
+    assert not plugin_repair_option_requested(
+        ("--prompt=--repair-plugin-desired-operation",)
+    )
+    assert not plugin_repair_option_requested(
+        ("--", "--repair-plugin-desired-operation")
+    )
+
+
+@pytest.mark.parametrize(
+    ("query", "write_option", "error_code"),
+    [
+        ("--preview-current-plugins", ("--update-package", "example"), "plugin_preview_operation_conflict"),
+        ("--preview-current-plugins", ("--update-packages",), "plugin_preview_operation_conflict"),
+        ("--preview-current-plugins", ("--add-plugin-source", "example"), "plugin_preview_operation_conflict"),
+        ("--explain-plugin-operation", ("--update-package", "example"), "plugin_explanation_operation_conflict"),
+        ("--explain-plugin-operation", ("--update-packages",), "plugin_explanation_operation_conflict"),
+        ("--explain-plugin-operation", ("--add-plugin-source", "example"), "plugin_explanation_operation_conflict"),
+    ],
+)
+def test_plugin_read_only_cli_refuses_combined_writes(
+    tmp_path: Path,
+    query: str,
+    write_option: tuple[str, ...],
+    error_code: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    query_args = (query, "test:operation") if query == "--explain-plugin-operation" else (query,)
+    stdout = StringIO()
+    stderr = StringIO()
+    result = asyncio.run(run_cli(
+        [*query_args, *write_option], cwd=workspace, stdin=StringIO(),
+        stdout=stdout, stderr=stderr,
+    ))
+    assert result == 2
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == f"Error: {error_code}\n"
+    assert tuple(workspace.iterdir()) == ()
+
+
+def test_current_preview_revision_excludes_unrelated_settings_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    settings_path = workspace / ".loushang" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(json.dumps({
+        "disabled_skills": ["review"], "system_prompt": "private-one",
+    }))
+    skills, first_revision = _capture_disabled_skills(workspace)
+    settings_path.write_text(json.dumps({
+        "disabled_skills": ["review"], "system_prompt": "private-two",
+    }))
+    same_skills, second_revision = _capture_disabled_skills(workspace)
+    settings_path.write_text(json.dumps({
+        "disabled_skills": ["audit"], "system_prompt": "private-two",
+    }))
+    changed_skills, third_revision = _capture_disabled_skills(workspace)
+
+    assert skills == same_skills == ("review",)
+    assert changed_skills == ("audit",)
+    assert first_revision == second_revision
+    assert third_revision != second_revision
+    assert not (tmp_path / "home").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO open behavior")
+def test_current_preview_refuses_settings_fifo_without_blocking(tmp_path: Path) -> None:
+    settings_path = tmp_path / "settings.json"
+    os.mkfifo(settings_path)
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; "
+            "from loushang.coding.plugin_management_preview import _read_settings_bytes; "
+            f"_read_settings_bytes(Path({str(settings_path)!r}))",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert child.returncode != 0
+    assert "Plugin preview settings file is unsafe" in child.stderr
+
+
+def test_management_explanation_of_absent_workspace_is_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    binding = build_coding_plugin_management_cli_read_binding(
+        workspace, _SettingsManager(_Settings())
+    )
+    result = PluginManagementExplanationProjector(binding.ports.queries).explain_installation(
+        PluginInstallationKeyV1(
+            product_id=binding.product_id,
+            installation_scope=binding.installation_scope,
+            scope_id=binding.scope_id,
+            plugin_id="unavailable",
+        ),
+        correlation_id="test:absent-explanation",
+    )
+
+    assert result.management_status == "unknown"
+    assert result.snapshot_status == "partial_evidence"
+    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    assert after == before
+
+
+def test_management_read_binding_does_not_create_missing_owner_locks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
@@ -112,18 +512,32 @@ def test_legacy_management_read_binding_preserves_partial_journal_tail(
     workspace.mkdir()
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
     layout.root.mkdir(parents=True)
-    layout.desired_state.write_bytes(b'{"partial":')
-    layout.management_operations.write_bytes(b'{"partial":')
+    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
 
+    assert list_plugin_records(
+        build_coding_plugin_management_cli_read_binding(
+            workspace, _SettingsManager(_Settings())
+        )
+    ) == []
+
+    after = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    assert after == before
+
+    layout.desired_state.write_bytes(b'{"partial":')
+    before_existing = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     with pytest.raises(RuntimeError):
         list_plugin_records(
             build_coding_plugin_management_cli_read_binding(
                 workspace, _SettingsManager(_Settings())
             )
         )
-
+    after_existing = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
+    assert after_existing == before_existing
     assert layout.desired_state.read_bytes() == b'{"partial":'
-    assert layout.management_operations.read_bytes() == b'{"partial":'
 
 
 def test_management_cli_failure_releases_its_process_registration(

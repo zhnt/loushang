@@ -14,6 +14,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.gc_fence import (
@@ -788,7 +789,7 @@ class PluginPackageLifecycleLedger:
 
     def snapshot(self) -> PluginPackageLifecycleSnapshotV1:
         sources = self._load_sources()
-        with self._exclusive_lock():
+        with self._read_lock():
             replayed = self._load_and_replay_unlocked()
             self._validate_sources(replayed, sources)
             return _snapshot_lifecycle(
@@ -832,7 +833,7 @@ class PluginPackageLifecycleLedger:
 
     def events(self) -> tuple[PluginPackageLifecycleEventV1, ...]:
         sources = self._load_sources()
-        with self._exclusive_lock():
+        with self._read_lock():
             replayed = self._load_and_replay_unlocked()
             self._validate_sources(replayed, sources)
             return tuple(replayed.events)
@@ -1101,6 +1102,14 @@ class PluginPackageLifecycleLedger:
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        )
+
+    def _read_lock(self):
+        return journal_file_read_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         )
 
 

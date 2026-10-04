@@ -45,13 +45,18 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
 )
+from loushang.harness.capabilities.graph_binding import CapabilityGraphBindingError
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerPolicy,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
+    CapabilityBundleValue,
+    CapabilityBundleVisibilityGate,
+    CapabilityFacetBinding,
 )
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
@@ -147,6 +152,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    SessionCapabilityWorkerComponentRequest,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
@@ -880,8 +886,7 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
         user_skill_root = user_root / "skills" / "global"
         user_skill_root.mkdir(parents=True)
         (user_skill_root / "SKILL.md").write_text(
-            "---\nname: global\ndescription: User-global skill\n"
-            "---\nUse global.\n",
+            "---\nname: global\ndescription: User-global skill\n---\nUse global.\n",
             encoding="utf-8",
         )
         transcript = await _new_transcript(tmp_path, product_id=product_id)
@@ -1050,21 +1055,19 @@ def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
             message = component["messages"][0]
             assert "Review carefully." in message["modelVisibleText"]
             assert message["modelVisibleText"].endswith("focus")
-            assert rebuilt.logical_input["messages"][message["messageIndex"]][
-                "content"
-            ][0]["text"] == message["modelVisibleText"]
+            assert (
+                rebuilt.logical_input["messages"][message["messageIndex"]]["content"][
+                    0
+                ]["text"]
+                == message["modelVisibleText"]
+            )
             skill = message["skills"][0]
             assert skill["expectedContentDigest"] == skill["observedContentDigest"]
             assert skill["expectedContentLength"] == skill["observedContentLength"]
             assert skill["activationPolicyFingerprint"]
 
             skill_file = (
-                tmp_path
-                / product_id
-                / ".loushang"
-                / "skills"
-                / "review"
-                / "SKILL.md"
+                tmp_path / product_id / ".loushang" / "skills" / "review" / "SKILL.md"
             )
             skill_file.unlink()
             assert (
@@ -2276,13 +2279,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ),
                 stage=stage_tools,
                 dispose=dispose_tools,
-                retirement_receipt=lambda _value: (
-                    OwnerGenerationRetirementReceipt(
-                        owner_reference="owner:product.tools",
-                        owner_generation_reference="generation:1",
-                        retirement_handle="retirement:1",
-                        contribution_ids=(owner_admission.contribution_id,),
-                    )
+                retirement_receipt=lambda _value: OwnerGenerationRetirementReceipt(
+                    owner_reference="owner:product.tools",
+                    owner_generation_reference="generation:1",
+                    retirement_handle="retirement:1",
+                    contribution_ids=(owner_admission.contribution_id,),
                 ),
                 commit=lambda _value: None,
                 rollback_commit=lambda _value: None,
@@ -2362,6 +2363,241 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 "provider-dispose",
             ]
             assert disposed_transcripts == ["coding-session"]
+
+            worker_provider = replace(resolved_provider.provider, requirements=())
+            original_candidate = resolved_provider.admission.candidate
+            worker_candidate = replace(
+                original_candidate,
+                provider=worker_provider,
+                plugin_candidate_fingerprint="a" * 64,
+                binding_spec=CapabilityWorkerProviderBindingSpec(
+                    plugin_id=original_candidate.binding_spec.plugin_id,
+                    contribution_id=original_candidate.binding_spec.contribution_id,
+                    capability_id=definition.capability_id,
+                    owner_id=definition.owner_id,
+                    package_content_digest=fixture.package.content_digest,
+                    dependency_lock_digest=fixture.package.dependency_lock.digest,
+                    manifest_digest="4" * 64,
+                    reservation_fingerprint="5" * 64,
+                    declaration_fingerprint=(
+                        original_candidate.declaration_fingerprint
+                    ),
+                    worker_configuration_fingerprint="6" * 64,
+                    executable_digest="7" * 64,
+                    executable_size=128,
+                    declared_required=False,
+                    native_platform="linux-x86_64",
+                ),
+            )
+            worker_owner = CapabilityProviderOwnerAuthority(
+                replace(
+                    provider_authority.policy,
+                    policy_revision="coding-worker-owner-1",
+                    allowed_execution_models=("local_worker",),
+                )
+            )
+            worker_eligibility = worker_owner.grant_eligibility(
+                worker_candidate, issued_at=100, expires_at=220
+            )
+            worker_admission = worker_owner.admit(
+                worker_candidate,
+                eligibility=worker_eligibility,
+                issued_at=120,
+                expires_at=200,
+            )
+            worker_resolved = ProductCapabilityProviderResolver().resolve(
+                ProductCapabilityProviderSelectionPlanV1(
+                    product_id="coding",
+                    roots=(definition.capability_id,),
+                    choices=(
+                        ProductCapabilityProviderChoice(
+                            capability_id=definition.capability_id,
+                            provider_id=worker_provider.provider_id,
+                            candidate_fingerprint=(
+                                worker_admission.candidate_fingerprint
+                            ),
+                        ),
+                    ),
+                    policy_revision="coding-plugin-policy-1",
+                ),
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
+                admissions=(worker_admission,),
+                owner_snapshots=(worker_owner.snapshot(),),
+                evaluated_at=150,
+                prebound_providers=(workspace_binding.provider,),
+            )
+            worker_events: list[str] = []
+            worker_gates: list[CapabilityBundleVisibilityGate] = []
+
+            class _PreparedWorker:
+                def __init__(self, binding: CapabilityBundleProviderBinding) -> None:
+                    self.binding = binding
+                    self.receipt_fingerprint = "a" * 64
+                    self.worker_admission_fingerprint = "b" * 64
+
+                def commit_after_graph_publication(self) -> None:
+                    assert worker_gates[-1].state == "visible"
+                    worker_events.append("committed")
+
+                async def abort_uncommitted(self) -> bool:
+                    worker_gates[-1].retire()
+                    worker_events.append("aborted")
+                    return True
+
+            async def prepare_worker(graph_generation: int) -> _PreparedWorker:
+                worker_events.append(f"prepare:{graph_generation}")
+                gate = CapabilityBundleVisibilityGate(
+                    graph_generation=graph_generation,
+                    validate_current=lambda: None,
+                )
+                worker_gates.append(gate)
+
+                def create(_context: object) -> CapabilityBundleValue:
+                    worker_events.append("created")
+                    return CapabilityBundleValue(
+                        (
+                            CapabilityFacetBinding(
+                                "query",
+                                {
+                                    "label": "foundation",
+                                    "runtime_id": "session:coding-session",
+                                    "workspace_read": True,
+                                },
+                            ),
+                        )
+                    )
+
+                async def dispose(_value: CapabilityBundleValue) -> None:
+                    assert gate.state == "retired"
+                    worker_events.append("disposed")
+
+                return _PreparedWorker(
+                    CapabilityBundleProviderBinding(
+                        provider=worker_provider,
+                        scope_instance_id="worker:session:coding-session",
+                        binding_input_fingerprint=worker_admission.fingerprint,
+                        create=create,
+                        dispose=dispose,
+                        visibility_gates=(gate,),
+                    )
+                )
+
+            worker_requirement = CapabilityRequirement(
+                capability=definition.capability_id,
+                facets=("query",),
+                compatible_contract=CapabilityContractRange.exact(1),
+            )
+            worker_inputs = SessionCapabilityCompositionInputs(
+                product_composition=compilation,
+                resolved_providers=worker_resolved,
+                host_consumer_requirements=(worker_requirement,),
+                component_requests=(
+                    SessionCapabilityWorkerComponentRequest(
+                        resolved=worker_resolved.entries[0],
+                        owner_snapshot=worker_owner.snapshot(),
+                        trust_snapshot=trust_snapshot,
+                        receipt_fingerprint="a" * 64,
+                        worker_admission_fingerprint="b" * 64,
+                        prepare=prepare_worker,
+                    ),
+                ),
+            )
+            assert (
+                worker_inputs.compare(
+                    replace(worker_inputs, host_consumer_requirements=())
+                )
+                == "restart_required"
+            )
+            with pytest.raises(ValueError, match="outside selected Provider"):
+                replace(
+                    worker_inputs,
+                    host_consumer_requirements=(
+                        CapabilityRequirement(
+                            capability="coding.unselected",
+                            facets=("query",),
+                            compatible_contract=CapabilityContractRange.exact(1),
+                        ),
+                    ),
+                )
+            [worker_request] = worker_inputs.component_requests
+            with pytest.raises(ValueError, match="mismatched graph binding"):
+                await replace(
+                    worker_request,
+                    worker_admission_fingerprint="c" * 64,
+                ).prepare_component(1)
+            assert worker_events == ["prepare:1", "aborted"]
+            assert worker_gates[0].state == "retired"
+            worker_events.clear()
+            worker_gates.clear()
+            worker_transcript = await _new_transcript(tmp_path, product_id="coding")
+            worker_session = _ContractProductSession(
+                product_id="coding",
+                transcript=worker_transcript,
+                capability_runtime=_capability_runtime("coding"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+                capability_composition_inputs=worker_inputs,
+                capability_owner_generation_bindings=(owner_binding,),
+            )
+            await worker_session.prepare_model_call_runtime()
+            assert worker_events == ["prepare:1", "created", "committed"]
+            assert worker_gates[0].state == "visible"
+            assert worker_session.capture_host_product_consumer(
+                worker_requirement
+            ).require("query") == {
+                "label": "foundation",
+                "runtime_id": "session:coding-session",
+                "workspace_read": True,
+            }
+            with pytest.raises(ValueError, match="was not selected"):
+                worker_session.capture_host_product_consumer(
+                    CapabilityRequirement(
+                        capability="coding.unselected",
+                        facets=("query",),
+                        compatible_contract=CapabilityContractRange.exact(1),
+                    )
+                )
+            await worker_session.dispose()
+            assert worker_gates[0].state == "retired"
+            assert worker_events[-1] == "disposed"
+
+            worker_events.clear()
+            worker_gates.clear()
+
+            def fail_worker_create(_context: object) -> CapabilityBundleValue:
+                worker_events.append("create-failed")
+                raise RuntimeError("synthetic Worker graph failure")
+
+            async def prepare_failing_worker(graph_generation: int) -> _PreparedWorker:
+                prepared_worker = await prepare_worker(graph_generation)
+                prepared_worker.binding = replace(
+                    prepared_worker.binding, create=fail_worker_create
+                )
+                return prepared_worker
+
+            failing_inputs = replace(
+                worker_inputs,
+                component_requests=(
+                    replace(worker_request, prepare=prepare_failing_worker),
+                ),
+            )
+            failing_transcript = await _new_transcript(tmp_path, product_id="coding")
+            failing_session = _ContractProductSession(
+                product_id="coding",
+                transcript=failing_transcript,
+                capability_runtime=_capability_runtime("coding"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+                capability_composition_inputs=failing_inputs,
+                capability_owner_generation_bindings=(owner_binding,),
+            )
+            with pytest.raises(CapabilityGraphBindingError):
+                await failing_session.prepare_model_call_runtime()
+            assert worker_events == ["prepare:1", "create-failed", "aborted"]
+            assert worker_gates[0].state == "retired"
+            await failing_session.dispose()
         finally:
             fixture.runtime.close()
 

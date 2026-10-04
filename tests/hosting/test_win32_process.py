@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+import loushang.hosting._win32_process as win32_process
 from loushang.hosting import (
     ProcessLaunchRequest,
     ProcessStderrMode,
@@ -195,6 +198,105 @@ def test_win32_job_limit_failure_closes_new_job() -> None:
         api._create_job()
 
     assert closed == [41]
+
+
+def test_win32_named_job_collision_refuses_before_mutating_existing_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _CtypesWin32Api.__new__(_CtypesWin32Api)
+    closed: list[int] = []
+    name = "Global\\LoushangWorker-" + "a" * 64
+    api._CreateJobObjectW = lambda security, observed: 41 if observed == name else 0
+    api._SetInformationJobObject = lambda *arguments: pytest.fail(
+        "Existing Job limits must not be changed"
+    )
+    api.close_handle = closed.append  # type: ignore[method-assign]
+    monkeypatch.setattr(win32_process, "_last_error", lambda: 183)
+
+    with pytest.raises(OSError, match="already exists"):
+        api._create_job(name=name)
+
+    assert closed == [41]
+
+
+def test_win32_named_job_absence_is_read_only_and_denials_are_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _CtypesWin32Api.__new__(_CtypesWin32Api)
+    name = "Global\\LoushangWorker-" + "b" * 64
+    closed: list[int] = []
+    observed: list[tuple[int, bool, str]] = []
+
+    def open_job(access: int, inherited: bool, observed_name: str) -> int:
+        observed.append((access, inherited, observed_name))
+        return 0
+
+    api._OpenJobObjectW = open_job
+    api.close_handle = closed.append  # type: ignore[method-assign]
+    monkeypatch.setattr(win32_process, "_last_error", lambda: 2)
+    assert api.named_worker_job_absent(name)
+    assert observed == [(4, False, name)]
+    assert closed == []
+
+    monkeypatch.setattr(win32_process, "_last_error", lambda: 5)
+    with pytest.raises(OSError):
+        api.named_worker_job_absent(name)
+    assert closed == []
+
+    api._OpenJobObjectW = lambda access, inherited, observed_name: 42
+    assert not api.named_worker_job_absent(name)
+    assert closed == [42]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-native Job contract")
+def test_win32_native_named_worker_job_observation_and_collision() -> None:
+    api = _CtypesWin32Api()
+    name = "Global\\LoushangWorker-" + hashlib.sha256(os.urandom(32)).hexdigest()
+    assert api.named_worker_job_absent(name)
+    job = api._create_job(name=name)
+    try:
+        assert not api.named_worker_job_absent(name)
+        with pytest.raises(OSError, match="already exists"):
+            api._create_job(name=name)
+        assert not api.named_worker_job_absent(name)
+    finally:
+        api.close_handle(job)
+    assert api.named_worker_job_absent(name)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-native Job contract")
+def test_win32_native_named_worker_job_disappears_after_owner_crash() -> None:
+    api = _CtypesWin32Api()
+    name = "Global\\LoushangWorker-" + hashlib.sha256(os.urandom(32)).hexdigest()
+    script = (
+        "import os, sys\n"
+        "from loushang.hosting._win32_process import _CtypesWin32Api\n"
+        "_CtypesWin32Api()._create_job(name=sys.argv[1])\n"
+        "print('created', flush=True)\n"
+        "sys.stdin.buffer.read(1)\n"
+        "os._exit(7)\n"
+    )
+    process = subprocess.Popen(
+        (sys.executable, "-c", script, name),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdin is not None
+        assert process.stderr is not None
+        assert process.stdout.readline() == "created\n", process.stderr.read()
+        assert not api.named_worker_job_absent(name)
+        process.stdin.write("x")
+        process.stdin.flush()
+        assert process.wait(timeout=20) == 7, process.stderr.read()
+        assert api.named_worker_job_absent(name)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=20)
 
 
 def test_win32_pipe_allowlist_failure_closes_both_pipe_ends() -> None:

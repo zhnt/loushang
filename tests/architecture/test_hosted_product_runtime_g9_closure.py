@@ -328,6 +328,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.lmux.command",
         "coding.package-cutover.command",
         "coding.package-gc.command",
+        "coding.package-repair.command",
+        "coding.plugin-private-data.command",
+        "coding.worker-native.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -381,6 +384,17 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     )
     assert rows["coding.package-gc.command"]["importsComposition"] is False
     assert rows["coding.package-gc.command"]["omissionOwner"] is None
+    for entrypoint_id, disposition in (
+        ("coding.package-repair.command", "explicit-offline-posix-product-repair"),
+        (
+            "coding.plugin-private-data.command",
+            "explicit-offline-linux-product-private-data",
+        ),
+        ("coding.worker-native.command", "explicit-linux-worker-native-candidate"),
+    ):
+        assert rows[entrypoint_id]["disposition"] == disposition
+        assert rows[entrypoint_id]["importsComposition"] is False
+        assert rows[entrypoint_id]["omissionOwner"] is None
     for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
         assert rows[entrypoint_id]["disposition"] == "non-product-tool"
         assert rows[entrypoint_id]["omissionOwner"] is None
@@ -426,6 +440,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.lmux.command": ("mux", "installed-preview"),
         "coding.package-cutover.command": ("cli", "installed"),
         "coding.package-gc.command": ("cli", "installed"),
+        "coding.package-repair.command": ("cli", "installed"),
+        "coding.plugin-private-data.command": ("cli", "installed"),
+        "coding.worker-native.command": ("cli", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
         "harnesstui.named-mux": ("mux", "client-library"),
@@ -442,6 +459,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "lmux": "loushang.coding.cli.lmux:main",
         "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
+        "loushang-package-repair": "loushang.coding.cli.package_repair:main",
+        "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
+        "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -458,6 +478,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.lmux": "coding.lmux.command",
         "project.scripts.loushang-package-cutover": "coding.package-cutover.command",
         "project.scripts.loushang-package-gc": "coding.package-gc.command",
+        "project.scripts.loushang-package-repair": "coding.package-repair.command",
+        "project.scripts.loushang-plugin-private-data": "coding.plugin-private-data.command",
+        "project.scripts.loushang-worker-native": "coding.worker-native.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }

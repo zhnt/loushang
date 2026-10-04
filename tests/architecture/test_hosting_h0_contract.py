@@ -35,6 +35,10 @@ H6_PRIVATE_MODULES = {
     HOSTING_ROOT / "_launch_preparation.py",
     HOSTING_ROOT / "_posix_launch_preparation.py",
     HOSTING_ROOT / "_windows_launch_preparation.py",
+    # Narrow, Product-neutral Windows material read port; not in __init__.
+    HOSTING_ROOT / "windows_backend_material.py",
+    # Narrow friend read over one gated native child; not exported by Hosting.
+    HOSTING_ROOT / "gated_identity.py",
 }
 OPTIONAL_MANAGED_SERVICE_MODULES = {
     # Linux lookup/observation only; still subject to the standard-library and

@@ -213,7 +213,86 @@ loushang-package-cutover --workspace /工作区/绝对路径
 
 先停止该工作区的 Loushang 进程；命令也会拒绝仍在运行的旧 writer。已有的 Loushang 私有主目录必须归当前用户所有、不可供其他用户访问；命令不会改写它的权限。它通过 Product 事务安装内置的 base、LSP、架构三个插件，中断后可以重试。需要旧状态采纳或设置迁移的工作区会被拒绝。写入 fence 后只能使用理解该 fence 的 Loushang 版本。
 
+若旧工作区有 1–16 个已安装的本地数据 Skill 插件，可使用显式迁移命令。先保留每个原始插件目录并停止该工作区的 Loushang 进程，再运行：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-skill-review <插件ID>
+loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-skill-review <插件ID> <上一步的reviewId>
+```
+
+第一步会在创建不可回退的 first-B fence 前验证**所有**旧本地 Skill，再输出所请求插件的 `reviewId`。对每个插件 ID 分别运行这两步；第二步仅接受对应 ID，通过 Product 安装该插件并按旧状态保留启用或禁用选择。对于 1–16 个旧本地 Skill，全局与项目设置中的 `plugin_sources` 可列出其中任意子集的规范化目录，但不能重复。已配置的插件审查记录会列出 scope；接受后只记录并清除该插件的旧路径，保留其余 Source 的顺序和其他设置。未配置的插件在接受前也会核对剩余列表。中断后可重复运行第二步。每个插件的 Wheel 绑定完成前，其原始目录必须保持不变；绑定后即使原始目录消失，已接受操作仍可重放。**全部**旧 Skill 结算后，普通切换命令才会只读重开。
+
+若旧工作区有已安装的本地数据 Prompt 插件，可使用独立的显式命令：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-prompt-review <插件ID>
+loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-prompt-review <插件ID> <上一步的reviewId>
+```
+
+第一步在 first-B fence 前核对 Prompt 类型；第二步接受该类型，通过 Product 安装并按旧状态启用或禁用。Wheel 完成绑定后，即使原始目录消失也可重放。Product Session 会将迁移后的 Prompt 写入持久化 Model Input。不同名称的 Prompt 可以分别采纳，同名 Prompt 会在首次围栏前拒绝。
+
+已安装的本地数据 Theme 使用对应的显式命令：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-local-theme-review <插件ID>
+loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-local-theme-review <插件ID> <上一步的reviewId>
+```
+
+Theme 审查会在首次围栏前验证准确的 JSON 样式文档；采纳时保留旧启用或禁用选择。在 Coding 设置中选用 `plugin:<主题名>` 后，新 Product Session 会显示其样式；随后若通过 Product 禁用该插件，新 Session 会回退至内置主题。旧工作区可以混合 Skill、Prompt 和 Theme，本地数据插件总数最多 16 个；每个插件分别运行对应类型的两条命令。同类型重名会在首次围栏前拒绝。全部结算后，普通切换命令才会只读重开，不会自动采纳。可执行插件及无关配置 Source 仍不在这些迁移路线内。
+
+若旧 lock 中的本地插件均已在旧 Desired State 中移除，且没有剩余的已配置 Source，可使用移除记录专用审核。首次围栏前会逐一验证 lock head 对应的安装、移除历史。核对输出的 `removedLocal` 列表后，接受准确的 `reviewId`：
+
+```bash
+loushang-package-cutover --workspace /工作区/绝对路径 --prepare-legacy-removed-review
+loushang-package-cutover --workspace /工作区/绝对路径 --adopt-legacy-removed-review <上一步的reviewId>
+loushang-package-cutover --workspace /工作区/绝对路径
+```
+
+`--review-legacy-removed-only` 可重开冻结的审核记录；采纳中断后用相同 ID 重试。这条路线在 Product 中记录 absent 选择，不会重新安装已移除的插件。目前仅支持 Linux 和已验证的旧快照形状。
+
+若旧集合同时包含仍安装的本地数据插件与已移除的本地插件，先对一个仍安装的插件运行对应类型的 `--prepare-legacy-local-skill-review`、`--prepare-legacy-local-prompt-review` 或 `--prepare-legacy-local-theme-review`。然后运行 `--review-legacy-removed-only`，并用其 `reviewId` 执行 `--adopt-legacy-removed-review`；完成已移除集合的采纳后，再逐一采纳仍安装的插件，最后运行普通切换命令。首次围栏前会同时核对每个仍安装的 Resource 和每条移除历史；无法证明的移除会在围栏前拒绝。
+
 可运行 `loushang-package-cutover --workspace /工作区/绝对路径 --backup-status` 只读检查切换备份。`retained` 表示切换前的**整个工作区**快照通过所有者验证；`unknown` 表示无法验证。该命令不报告单个插件的备份保留或到期状态。
+
+在 POSIX 工作区中，如果 Package 操作在 staging 阶段中断，可用准确的操作 ID 查看检查点并请求限定范围的 Product 恢复：
+
+```sh
+loushang-package-repair --workspace /工作区/绝对路径 inspect-staging <操作ID>
+loushang-package-repair --workspace /工作区/绝对路径 repair-staging <操作ID>
+```
+
+两个动作都会激活 Product 恢复并打开 runtime lease。`inspect-staging` 不会为指定操作选择修复。`repair-staging` 在同一个 lease 内完成选择与执行，只有操作提交成功才返回零退出码；Source 已改变、旧 lease 仍在运行或 staging 证据不匹配时会拒绝。
+
+如果 `transaction_pinned` 操作尚无 staging 效果，应改用 `repair-pinned <操作ID>`。Product 在同一个新 lease 中先复核保留 pin 和 Source，再选择并执行。已经产生 staging receipt 的操作应使用 `repair-staging`。
+
+对于仍处于 `retryable_failure` 的 A2 操作，可使用独立的 `repair-retryable` 动作。Product 会先检查跨 runtime 的 Source、清理状态和 lease，再选择并执行一次重试；只有提交成功才返回零退出码：
+
+```sh
+loushang-package-repair --workspace /工作区/绝对路径 repair-retryable <操作ID>
+```
+
+对于中断后仍为 active 的尝试，按 Package 阶段选择对应动作。各动作由 Product 校验旧 lease 和 Source、结算精确的中断尝试，再在同一个新 runtime lease 中选择并执行一次重试：
+
+```sh
+loushang-package-repair --workspace /工作区/绝对路径 repair-unstarted <操作ID>  # classified 或 acquiring
+loushang-package-repair --workspace /工作区/绝对路径 repair-acquired <操作ID>   # acquired、inspecting 或 extracted
+loushang-package-repair --workspace /工作区/绝对路径 repair-resolving <操作ID>  # resolving_closure
+loushang-package-repair --workspace /工作区/绝对路径 repair-verified <操作ID>   # closure_verified
+```
+
+阶段不匹配、Source 已改变或旧 lease 仍在运行时会拒绝，只有 Product 提交成功才返回零退出码。如果运行在旧尝试变为 `retryable_failure` 后中断，可对同一操作执行 `repair-retryable`。已 pin 和已 staging 的状态使用上文独立动作；更晚的事务状态仍需要 Product 恢复路径。这不是通用 Package 修复命令。
+
+如果更新已提交，但 Package handoff 在终态收据写入前中断，可精确恢复该操作，不触发通用 Package 恢复：
+
+```sh
+loushang-package-repair --workspace /工作区/绝对路径 repair-handoff <操作ID>
+```
+
+Product 要求指定操作具有终态 handoff。未知操作 ID 不会顺带恢复其他待处理操作；此动作也不修复更早的 A2 事务阶段。
+
+本地 Python 操作者可从 `loushang.coding.package_product_repair` 调用 `open_coding_package_repair_client(workspace)`，再执行 `client.perform(action, operation_id)`。类型化结果提供 `committed` 和不含路径的 `to_dict()`；`inspect-staging` 返回 checkpoint 证据，不提供已提交的 disposition。这是 Coding 管理 API，与 Plugin 作者 SDK 分离。
+
+在 Coding Screen 或普通 TUI 中，`/plugins repair-package repair-retryable <操作ID>` 会显式调用同一个 Product 修复动作，不发送模型提示。仅在 Package 阶段匹配时，才将 `repair-retryable` 换成上文其他动作。当前 Session 保留已选择的资源；修复提交后需启动新 Session。此命令与修复待处理 Desired State 命令的 `/plugins repair <操作ID>` 相互独立。
 
 Linux 上，已切换工作区的不可变 Plugin 根可通过单独的离线 GC 命令清理。先停止所有 Loushang Session。`prepare` 会恢复 Product 事务并持久封存 GC 写入者，这是单向维护步骤；`list` 返回不含文件路径的精确候选和 reservation ID。复制候选 ID 后只删除该根：
 
@@ -230,6 +309,55 @@ loushang-package-gc --workspace /工作区/绝对路径 retry --reservation-id <
 ```
 
 该命令仅删除精确匹配的不可变 Plugin 根，不会删除 Plugin 私有数据，也不会推断备份已过期。
+
+Linux 上，独立的 `loushang-plugin-private-data` 命令管理 `coding.arch.default` 的 Installation 缓存。先停止所有 Coding Session。`backup` 将该缓存复制并校验到独立的 Installation 备份目录；只有备份内容仍可校验时，`backup-status` 才报告 `retained`：
+
+```bash
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup > arch-backup-receipt.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-status
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-verify --backup-id 从收据中取得的精确backupId
+```
+
+当该 Plugin 的 Desired State 已为 `absent` 后，保存删除预览，再把预览中的精确 `fingerprint` 值输入独立确认命令：
+
+```bash
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default preview > arch-plan.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default confirm --plan-file arch-plan.json --accept-fingerprint EXACT_FINGERPRINT_FROM_PLAN > arch-confirmation.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default delete --plan-file arch-plan.json --confirmation-file arch-confirmation.json
+```
+
+删除时会重新核对数据目标、独立确认、Desired State 已移除及没有活动 Product Session。重复相同命令会返回持久收据。备份保留状态独立投影；源数据删除后仍可报告 `retained`。`backup-verify` 按收据中的精确 `backupId` 重新校验归档，即使源数据已删除也可使用；备份被篡改时会拒绝。
+
+Installation 已移除且数据删除有完成收据后，可以先预览精确备份恢复，再接受预览指纹，将数据恢复到空目录。命令拒绝被修改的现有数据；恢复中断后可重放同一计划：
+
+```bash
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default restore-preview --backup-id 从收据中取得的精确backupId > arch-restore-plan.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default restore --plan-file arch-restore-plan.json --accept-fingerprint 从恢复计划中取得的精确fingerprint
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default restore-confirm --backup-id 从收据中取得的精确backupId > arch-restore-confirmation.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default restore-confirm-verify --backup-id 从收据中取得的精确backupId --confirmation-id 精确confirmationId
+```
+
+恢复完成后运行 `restore-confirm`。它重新校验归档、已完成的删除与恢复记录及恢复后的数据，再写入独立的持久确认。恢复树变动后，确认验证会拒绝。这份 Arch Installation 确认不能充当迁移恢复演练收据。
+
+完成确认后，先预览精确归档和恢复数据证据，保存计划并独立接受其指纹，再只对该备份执行到期：
+
+```bash
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-expiry-preview --backup-id 从收据中取得的精确backupId --confirmation-id 精确confirmationId > arch-backup-expiry-plan.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-expiry-confirm --plan-file arch-backup-expiry-plan.json --accept-fingerprint 从到期计划中取得的精确fingerprint > arch-backup-expiry-confirmation.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-expire --plan-file arch-backup-expiry-plan.json --confirmation-file arch-backup-expiry-confirmation.json
+loushang-plugin-private-data --workspace /工作区/绝对路径 --plugin-id coding.arch.default backup-status
+```
+
+`backup-expire` 会永久删除已验证的归档。执行时要求 Installation 仍为已移除、已确认的恢复数据未改变，且没有活动 Product Session。若中断，状态为 `expiry_pending`；重放同一命令可继续完成。完成后，`backup-status` 报告 `expired` 和独立收据 ID；恢复后的 Installation 数据仍保留。其他 Plugin 数据类型和 Windows 尚未准入。
+
+对已经准入带依赖 Wheel 的 Product，`list` 还会显示 `dependencyRetention`。只有所有持有该依赖的根均有已验证的删除结果，`exact_target` 条目才会给出依赖 ref 与 settlement ID。按这些精确 ID 删除孤儿依赖；如果删除已开始但结果未落盘，用持久化 start ID 重试：
+
+```bash
+loushang-package-gc --workspace /工作区/绝对路径 delete-dependency --dependency-ref-id <依赖-ref-ID> --settlement-id <settlement-ID> --attempt-key <本次尝试标识>
+loushang-package-gc --workspace /工作区/绝对路径 retry-dependency --start-id <start-ID> --attempt-key <新尝试标识>
+```
+
+Coding 当前的本地数据 Wheel 策略尚不准入带依赖的 Wheel；这些命令不会扩大该准入范围。
 
 ## 方法与技能
 

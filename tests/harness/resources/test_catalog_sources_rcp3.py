@@ -31,6 +31,7 @@ from loushang.harness.resource_catalog.shadow import (
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedResourceDiscoveryBudget,
     EmbeddedResourceSourceError,
+    _collection_items,
     mint_embedded_resource_collection_handle,
 )
 from loushang.harness.resources._catalog_native_source import (
@@ -63,6 +64,22 @@ from loushang.plugin import package, resource, skill_action
 
 def _skill_body(name: str, description: str, body: str) -> bytes:
     return (f"---\nname: {name}\ndescription: {description}\n---\n{body}\n").encode()
+
+
+def test_embedded_theme_collection_ignores_python_package_marker() -> None:
+    collection = mint_embedded_resource_collection_handle(
+        collection_id="coding.builtin",
+        embedded_revision="builtin-1",
+        files={
+            "themes/__init__.py": b'"""Built-in theme assets."""\n',
+            "themes/dark.json": b'{"schemaVersion":1,"tokens":{}}\n',
+        },
+    )
+
+    assert [
+        (item.resource_kind, item.logical_path.as_posix())
+        for item in _collection_items(collection)
+    ] == [("theme", "themes/dark.json")]
 
 
 def _admitted_package_skill(
@@ -247,11 +264,14 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
         public_name="review",
         description="Package review",
     )
+    embedded_theme = (
+        b'{"schemaVersion":1,"tokens":{"welcome.title":{"background":"black"}}}\n'
+    )
     embedded_files = {
         "skills/review/SKILL.md": _skill_body(
             "review", "Embedded review", "Embedded body"
         ),
-        "themes/dark.json": b'{"background": "black"}\n',
+        "themes/dark.json": embedded_theme,
     }
     embedded = mint_embedded_resource_collection_handle(
         collection_id="coding.builtin",
@@ -313,7 +333,7 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
     assert compatibility.skills[0].content is None
     assert "body" not in compatibility.skills[0].metadata
     assert [theme.content for theme in compatibility.themes] == [
-        '{"background": "black"}\n'
+        embedded_theme.decode("utf-8")
     ]
 
     assert await shadow.dispose() == ()
@@ -554,7 +574,7 @@ def test_legacy_package_cannot_publish_managed_skill_actions(tmp_path: Path) -> 
 
 
 async def _package_theme_projects_from_verified_body(tmp_path: Path) -> None:
-    body = b'{"background": "blue"}\n'
+    body = b'{"schemaVersion":1,"tokens":{"welcome.title":{"background":"blue"}}}\n'
     resource, _, revision = _admitted_package_file(
         tmp_path,
         plugin_id="package-theme",
@@ -579,9 +599,10 @@ async def _package_theme_projects_from_verified_body(tmp_path: Path) -> None:
     )
 
     assert shadow.catalog_projection is not None
-    assert [theme.content for theme in shadow.catalog_projection.to_compatibility_bundle().themes] == [
-        body.decode("utf-8")
-    ]
+    assert [
+        theme.content
+        for theme in shadow.catalog_projection.to_compatibility_bundle().themes
+    ] == [body.decode("utf-8")]
 
     assert await shadow.dispose() == ()
     assert resource.revision_handle.closed is True

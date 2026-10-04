@@ -16,6 +16,11 @@ from loushang.coding._base_plugin import (
     prepare_coding_base_product_plan,
 )
 from loushang.coding.composition_sets import CodingCompositionSetPlan
+from loushang.coding.package_legacy_data_trust import (
+    EXTERNAL_DATA_TRUST_CLASSES,
+    EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
+    permits_external_data_owner,
+)
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
@@ -341,6 +346,7 @@ def compile_coding_base_product_selection(
         include_tools="tools.workspace" in owners,
         include_prompt="resources.prompt" in owners,
         include_skill="resources.skill" in owners,
+        include_theme="resources.theme" in owners,
         include_command="commands.session" in owners,
     )
     product_composition = _assemble_product_contribution_candidates(
@@ -367,13 +373,13 @@ def compile_coding_base_product_selection(
     )
 
 
-def extend_coding_base_product_data_skills(
+def extend_coding_base_product_data_resources(
     base: CodingBaseProductCompilation,
     external: tuple[PackageProductSelectedPluginManifestV1, ...],
     *,
     evaluated_at: int,
 ) -> CodingBaseProductCompilation:
-    """Compile selected external Skills with the base under one exact owner set."""
+    """Compile gated external data Resources under one exact owner set."""
 
     if not external:
         return base
@@ -383,18 +389,24 @@ def extend_coding_base_product_data_skills(
         item.manifest.name for item in external
     ):
         raise ValueError("External data selections must be sorted and unique")
+    external_owners: set[str] = set()
     for selected in external:
         trust = selected.source_trust_snapshot
         pairs = selected.verified_data_only_declarations()
         if (
             trust is None
             or not trust.trusted
-            or trust.source_trust_class != "local-data-only"
+            or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES
             or len(pairs) != 1
+            or not permits_external_data_owner(
+                trust.source_trust_class, pairs[0][0].owner
+            )
             or pairs[0][0].kind != "resource_item"
-            or pairs[0][0].owner != "resources.skill"
+            or pairs[0][0].owner
+            not in {"resources.skill", "resources.prompt", "resources.theme"}
         ):
-            raise ValueError("External Product Skill selection changed")
+            raise ValueError("External Product data Resource selection changed")
+        external_owners.add(pairs[0][0].owner)
     original = base.plan
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
@@ -419,7 +431,9 @@ def extend_coding_base_product_data_skills(
                 (
                     *original.selected_contributions,
                     *(
-                        PluginContributionRef(item.manifest.name, reservation.contribution_id)
+                        PluginContributionRef(
+                            item.manifest.name, reservation.contribution_id
+                        )
                         for item in external
                         for reservation, _ in item.verified_data_only_declarations()
                     ),
@@ -468,41 +482,56 @@ def extend_coding_base_product_data_skills(
         in plan.selected_contributions
     )
     bindings = list(base.owner_bindings)
-    if not any(item.owner_key[0] == "resources.skill" for item in bindings):
+    missing_owners = external_owners - {item.owner_key[0] for item in bindings}
+    if missing_owners:
         bindings.extend(
             _owner_bindings(
-                include_tools=False, include_prompt=False,
-                include_skill=True, include_command=False,
+                include_tools=False,
+                include_prompt="resources.prompt" in missing_owners,
+                include_skill="resources.skill" in missing_owners,
+                include_theme="resources.theme" in missing_owners,
+                include_command=False,
             )
         )
-    trust_classes = (
-        ("host-equivalent-local", "local-data-only")
-        if any(
-            item.plugin_id == "coding.base" and item.owner_id == "resources.skill"
-            for item in candidates
-        )
-        else ("local-data-only",)
-    )
     owners = tuple(
-        ProductContributionOwnerBinding(
-            authority=OwnerContributionAuthority(
-                replace(
-                    binding.authority.policy,
-                    allowed_source_trust_classes=trust_classes,
+        sorted(
+            (
+                ProductContributionOwnerBinding(
+                    authority=OwnerContributionAuthority(
+                        replace(
+                            binding.authority.policy,
+                            allowed_source_trust_classes=(
+                                (
+                                    "host-equivalent-local",
+                                    *EXTERNAL_DATA_TRUST_CLASSES_ORDERED,
+                                )
+                                if any(
+                                    item.plugin_id == "coding.base"
+                                    and item.owner_id == binding.owner_key[0]
+                                    for item in candidates
+                                )
+                                else (*EXTERNAL_DATA_TRUST_CLASSES_ORDERED,)
+                            ),
+                        )
+                    ),
+                    admission_ttl_seconds=binding.admission_ttl_seconds,
                 )
+                if binding.owner_key[0] in external_owners
+                else binding
+                for binding in bindings
             ),
-            admission_ttl_seconds=binding.admission_ttl_seconds,
+            key=lambda binding: binding.owner_key,
         )
-        if binding.owner_key[0] == "resources.skill"
-        else binding
-        for binding in bindings
     )
     composition = _assemble_product_contribution_candidates(
         plan=plan,
         candidates=candidates,
         owner_bindings=owners,
         mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, WORKSPACE_CAPABILITY_DEFINITION),
+        definitions=(
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
+        ),
         select_optional_requirements=lambda _preview: (),
         evaluated_at=evaluated_at,
     )
@@ -519,13 +548,14 @@ def extend_coding_base_product_data_skills(
 
 
 def _resource_bodies(
-    selected: PackageProductSelectedPluginManifestV1,
+    selected: PackageProductSelectedPluginManifestV1 | None,
     compilation: ProductCompositionCompilation,
     *,
     external_selected: tuple[PackageProductSelectedPluginManifestV1, ...] = (),
 ) -> tuple[CodingBaseProductResourceBody, ...]:
     by_id = {
-        item.manifest.name: item for item in (selected, *external_selected)
+        item.manifest.name: item
+        for item in ((selected,) if selected is not None else ()) + external_selected
     }
     bodies: list[CodingBaseProductResourceBody] = []
     for admission in compilation.resource_admissions:
@@ -645,8 +675,7 @@ def _candidate(
         },
     )
     trust = next(
-        item for item in plan.source_trust_snapshots
-        if item.plugin_id == manifest.name
+        item for item in plan.source_trust_snapshots if item.plugin_id == manifest.name
     )
     candidate_fingerprint = _digest(
         "loushang.product-selected-plugin-candidate/v1",
@@ -714,5 +743,5 @@ __all__ = [
     "CodingBaseProductCompilation",
     "CodingBaseProductResourceBody",
     "compile_coding_base_product_selection",
-    "extend_coding_base_product_data_skills",
+    "extend_coding_base_product_data_resources",
 ]

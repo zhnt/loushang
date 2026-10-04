@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Literal
 
 from packaging.version import InvalidVersion, Version
 
@@ -20,6 +21,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
+    PackagePinnedLocalWheelSourceProofV1,
+    PackagePinnedSourceProofError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageClassificationBasisFactV1,
@@ -27,6 +30,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageClassificationFactsV1,
     PackageLifecycleIngressRequestV1,
     PackageLifecycleRequestV1,
+    PackageLifecycleRequestV2,
+    PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
     canonical_json_bytes,
     canonicalize_source_identity,
@@ -48,6 +53,33 @@ _FACT_KINDS: tuple[PackageClassificationBasisKind, ...] = (
 )
 
 
+class PackageProductRebindSourceError(RuntimeError):
+    """Original Product Source authority or bytes cannot be proved for rebind."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLocalWorkerAdmissionV1:
+    """Exact Product decision input for one inert local Worker Wheel candidate."""
+
+    contribution_id: str
+    owner_id: str
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.contribution_id, "Worker contribution"),
+            (self.owner_id, "Worker owner"),
+        ):
+            if not isinstance(value, str) or _SAFE_ID.fullmatch(value) is None:
+                raise ValueError(f"Product {name} identity is invalid")
+        if self.native_platform not in {"linux-x86_64", "windows-amd64"}:
+            raise ValueError("Product Worker native platform is unsupported")
+
+
 @dataclass(frozen=True, slots=True)
 class PackageProductLocalWheelBindingV1:
     """One Product-reviewed Source, requested Package, and Plugin identity."""
@@ -58,6 +90,7 @@ class PackageProductLocalWheelBindingV1:
     artifact_digest: str
     plugin_manifest_path: str | None = None
     source_trust_class: str | None = None
+    worker_admission: PackageProductLocalWorkerAdmissionV1 | None = None
 
     def __post_init__(self) -> None:
         _require_local_wheel_source(self.source_identity)
@@ -89,6 +122,14 @@ class PackageProductLocalWheelBindingV1:
             or _SAFE_ID.fullmatch(self.source_trust_class) is None
         ):
             raise ValueError("Product Plugin source trust class is invalid")
+        if self.source_trust_class == "local-worker-candidate":
+            if (
+                not isinstance(self.worker_admission, PackageProductLocalWorkerAdmissionV1)
+                or self.plugin_manifest_path is None
+            ):
+                raise ValueError("Product Worker candidate requires exact admission")
+        elif self.worker_admission is not None:
+            raise ValueError("Product Worker admission requires Worker candidate trust")
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,9 +214,13 @@ class PackageProductLocalWheelPolicy:
             )
         ):
             raise ValueError("Product local Wheel dependencies are invalid")
-        projects = tuple(item.project_name for item in self.dependencies)
-        if projects != tuple(sorted(set(projects))):
-            raise ValueError("Product dependency projects must be uniquely ordered")
+        project_versions = tuple(
+            (item.project_name, item.version) for item in self.dependencies
+        )
+        if project_versions != tuple(sorted(set(project_versions))) or len(
+            {(item.project_name, Version(item.version)) for item in self.dependencies}
+        ) != len(self.dependencies):
+            raise ValueError("Product dependency versions must be uniquely ordered")
         all_sources = identities + tuple(
             item.source_identity for item in self.dependencies
         )
@@ -209,6 +254,17 @@ class PackageProductLocalWheelPolicy:
                     **(
                         {"sourceTrustClass": item.source_trust_class}
                         if item.source_trust_class is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "workerAdmission": {
+                                "contributionId": item.worker_admission.contribution_id,
+                                "nativePlatform": item.worker_admission.native_platform,
+                                "ownerId": item.worker_admission.owner_id,
+                            }
+                        }
+                        if item.worker_admission is not None
                         else {}
                     ),
                 }
@@ -255,31 +311,262 @@ class PackageProductLocalWheelPolicy:
             capture_epoch=self.classifier_epoch,
         )
 
+    def prove_rebind_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        """Read-only root proof; no cleanup, admission, or retry is authorized."""
+
+        return self._prove_rebind_root_source(
+            request, status, max_bytes=max_bytes, active_acquired=False
+        )
+
+    def prove_acquired_claim_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        """Read-only Source proof for an acquired claim selected by Product."""
+
+        return self._prove_rebind_root_source(
+            request, status, max_bytes=max_bytes, active_acquired=True
+        )
+
+    def _prove_rebind_root_source(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        max_bytes: int,
+        active_acquired: bool,
+    ) -> PackagePinnedLocalWheelSourceProofV1:
+        eligible_status = isinstance(status, PackageLifecycleStatusV1) and (
+            (
+                status.disposition == "active"
+                and status.phase
+                in {
+                    "classified", "acquiring",
+                    "acquired", "inspecting", "extracted", "resolving_closure",
+                    "closure_verified",
+                    "transaction_pinned",
+                    "set_published",
+                }
+            )
+            if active_acquired
+            else (
+                status.disposition == "retryable_failure"
+                and status.failure is not None
+                and status.failure.operator_action == "retry"
+            )
+        )
+        if (
+            not isinstance(request, PackageLifecycleRequestV2)
+            or not eligible_status
+            or request.operation_id != status.operation_id
+            or request.request_fingerprint != status.request_fingerprint
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+        ):
+            raise PackageProductRebindSourceError(
+                "Package retry has no exact Product Source candidate",
+                code="package_rebind_source_not_retryable",
+            )
+        binding = self._binding(request.canonical_source_identity)
+        if (
+            binding is None
+            or request.product_id != self.product_id
+            or request.scope_id != self.project_scope_id
+            or request.requested_package != binding.requested_package
+            or request.requested_plugin_id != binding.plugin_id
+            or request.action not in {"install", "update"}
+            or self.recheck(request, status.classification)
+            != status.classification
+        ):
+            raise PackageProductRebindSourceError(
+                "Original Product Source policy changed",
+                code="package_rebind_source_policy_changed",
+            )
+        try:
+            return self.source_authority().verify_pinned_bytes(
+                request.canonical_source_identity, max_bytes=max_bytes
+            )
+        except PackagePinnedSourceProofError as exc:
+            raise PackageProductRebindSourceError(str(exc), code=exc.code) from exc
+
+    def prove_rebind_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck root and exact selected dependency bytes under one total cap.
+
+        The caller must obtain selections from the strict resolution-owner read.
+        This byte observation grants no rebind or retry authority.
+        """
+
+        return self._prove_rebind_selected_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+            active_acquired=False,
+        )
+
+    def prove_acquired_claim_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck selected Source bytes for an acquired Product claim."""
+
+        return self.prove_selected_active_claim_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+        )
+
+    def prove_selected_active_claim_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        """Recheck selected Source bytes for an active root or closure claim."""
+
+        return self._prove_rebind_selected_sources(
+            request,
+            status,
+            selections=selections,
+            max_bytes=max_bytes,
+            active_acquired=True,
+        )
+
+    def _prove_rebind_selected_sources(
+        self,
+        request: PackageLifecycleRequestV1,
+        status: PackageLifecycleStatusV1,
+        *,
+        selections: tuple[PackageDependencySelectionV1, ...],
+        max_bytes: int,
+        active_acquired: bool,
+    ) -> tuple[PackagePinnedLocalWheelSourceProofV1, ...]:
+        if (
+            not isinstance(selections, tuple)
+            or len(selections) > 512
+            or any(
+                not isinstance(item, PackageDependencySelectionV1)
+                for item in selections
+            )
+        ):
+            raise TypeError("Package rebind selections are invalid")
+        root = self._prove_rebind_root_source(
+            request,
+            status,
+            max_bytes=max_bytes,
+            active_acquired=active_acquired,
+        )
+        selected: dict[str, PackageDependencySelectionV1] = {}
+        for selection in selections:
+            configured = next(
+                (
+                    item
+                    for item in self.dependencies
+                    if item.project_name == selection.project_name
+                ),
+                None,
+            )
+            if (
+                selection.operation_id != status.operation_id
+                or selection.attempt_epoch != status.attempt_epoch
+                or selection.request_fingerprint != status.request_fingerprint
+                or selection.resolution_environment_fingerprint
+                != self.resolution_environment_fingerprint
+                or selection.resolver_id != self.authority_id
+                or selection.resolver_revision != self.authority_revision
+                or configured is None
+                or selection.canonical_source_identity != configured.source_identity
+                or selection.version != configured.version
+                or selection.expected_artifact_digest != configured.artifact_digest
+            ):
+                raise PackageProductRebindSourceError(
+                    "Original dependency selection changed",
+                    code="package_rebind_dependency_selection_changed",
+                )
+            prior = selected.get(selection.project_name)
+            if prior is not None and (
+                prior.canonical_source_identity
+                != selection.canonical_source_identity
+                or prior.version != selection.version
+                or prior.expected_artifact_digest
+                != selection.expected_artifact_digest
+            ):
+                raise PackageProductRebindSourceError(
+                    "Original dependency selections conflict",
+                    code="package_rebind_dependency_selection_changed",
+                )
+            selected[selection.project_name] = selection
+        source_authority = self.source_authority()
+        remaining = max_bytes - root.byte_count
+        proofs = [root]
+        for project_name in sorted(selected):
+            if remaining <= 0:
+                raise PackageProductRebindSourceError(
+                    "Selected Sources exceed the proof byte limit",
+                    code="package_source_size_limit",
+                )
+            selection = selected[project_name]
+            try:
+                proof = source_authority.verify_pinned_bytes(
+                    selection.canonical_source_identity, max_bytes=remaining
+                )
+            except PackagePinnedSourceProofError as exc:
+                raise PackageProductRebindSourceError(
+                    str(exc), code=exc.code
+                ) from exc
+            proofs.append(proof)
+            remaining -= proof.byte_count
+        return tuple(proofs)
+
     def resolve(
         self, request: PackageDependencySelectionRequestV1
     ) -> PackageDependencySelectionV1:
-        """Select only the configured version that satisfies this requirement."""
+        """Select the highest Product-pinned version satisfying this requirement."""
 
         if not isinstance(request, PackageDependencySelectionRequestV1):
             raise TypeError("Package dependency selection request is required")
-        selected = next(
-            (
-                item
-                for item in self.dependencies
-                if item.project_name == request.requirement.project_name
-            ),
-            None,
-        )
-        if (
-            selected is None
-            or request.resolution_environment_fingerprint
-            != self.resolution_environment_fingerprint
-            or not request.requirement.matches_version(selected.version)
+        if request.resolution_environment_fingerprint != (
+            self.resolution_environment_fingerprint
         ):
             raise PackageDependencyResolutionError(
                 "Product has no matching pinned local Wheel dependency",
                 code="package_closure_conflict",
             )
+        matching = tuple(
+            item
+            for item in self.dependencies
+            if item.project_name == request.requirement.project_name
+            and request.requirement.matches_version(item.version)
+        )
+        if not matching:
+            raise PackageDependencyResolutionError(
+                "Product has no matching pinned local Wheel dependency",
+                code="package_closure_conflict",
+            )
+        selected = max(matching, key=lambda item: Version(item.version))
         return PackageDependencySelectionV1(
             operation_id=request.operation_id,
             attempt_epoch=request.attempt_epoch,
@@ -420,7 +707,9 @@ def _require_local_wheel_source(source: str) -> None:
 
 
 __all__ = [
+    "PackageProductLocalWorkerAdmissionV1",
     "PackageProductLocalWheelBindingV1",
     "PackageProductLocalWheelDependencyV1",
     "PackageProductLocalWheelPolicy",
+    "PackageProductRebindSourceError",
 ]

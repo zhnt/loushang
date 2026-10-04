@@ -55,8 +55,13 @@ from loushang.harness.resources.packages.product_handoff import (
     PackageProductHandoffPort,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductPinnedAdoptedRouteRequestV1,
+    PackageProductReboundRouteRequestV1,
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+    PackageProductStagingAdoptedRouteRequestV1,
+    PackageProductTransactionRoute,
+    require_rebound_decision,
 )
 
 _CLOSURE_PHASES = frozenset(
@@ -85,7 +90,7 @@ class PackageProductCandidateRejected(ValueError):
 class PackageProductExecutionPort(Protocol):
     def __call__(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         current: PackageLifecycleStatusV1,
     ) -> PackageClosureExecutionRequestV2: ...
 
@@ -105,12 +110,16 @@ class PackageProductWheelExecutionFactory:
 
     def __call__(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         current: PackageLifecycleStatusV1,
     ) -> PackageClosureExecutionRequestV2:
-        if not isinstance(request, PackageProductRouteRequestV1) or not isinstance(
-            current, PackageLifecycleStatusV1
-        ):
+        if not isinstance(
+            request,
+            PackageProductRouteRequestV1
+            | PackageProductReboundRouteRequestV1
+            | PackageProductPinnedAdoptedRouteRequestV1
+            | PackageProductStagingAdoptedRouteRequestV1,
+        ) or not isinstance(current, PackageLifecycleStatusV1):
             raise TypeError("Package Product route and status are required")
         classification = current.classification
         if (
@@ -171,6 +180,14 @@ class PackageProductStagingPort(Protocol):
 
     def resume(self, operation_id: str) -> PackageStagingSetExecutionResult: ...
 
+    def stage_missing_and_publish(
+        self,
+        candidate: VerifiedPackageClosureCandidate,
+        *,
+        expected_checkpoint_id: str,
+        expected_missing_node_ids: tuple[str, ...],
+    ) -> PackageStagingSetExecutionResult: ...
+
 
 class PackageProductCommitPort(Protocol):
     def commit(self, operation_id: str) -> PackagePublicationReceiptV1: ...
@@ -201,14 +218,37 @@ class PackageProductLifecycleTransaction:
         commit: PackageProductCommitPort,
         handoff: PackageProductHandoffPort,
         existing_installation: (
-            Callable[[PackageProductRouteRequestV1], bool] | None
+            Callable[[PackageProductTransactionRoute], bool] | None
         ) = None,
-        update_allowed: Callable[[PackageProductRouteRequestV1], bool] | None = None,
+        update_allowed: Callable[[PackageProductTransactionRoute], bool] | None = None,
         candidate_admission: (
-            Callable[[PackageProductRouteRequestV1, VerifiedPackageClosureCandidate], None]
+            Callable[
+                [PackageProductTransactionRoute, VerifiedPackageClosureCandidate], None
+            ]
             | None
         ) = None,
         cleanup: PackageProductCleanupPort | None = None,
+        rebound_execution_authority: (
+            Callable[
+                [PackageProductReboundRouteRequestV1, PackageLifecycleStatusV1],
+                None,
+            ]
+            | None
+        ) = None,
+        pinned_execution_authority: (
+            Callable[
+                [PackageProductPinnedAdoptedRouteRequestV1, PackageLifecycleStatusV1],
+                None,
+            ]
+            | None
+        ) = None,
+        staging_execution_authority: (
+            Callable[
+                [PackageProductStagingAdoptedRouteRequestV1, PackageLifecycleStatusV1],
+                None,
+            ]
+            | None
+        ) = None,
     ) -> None:
         if not isinstance(kernel, PackageLifecycleOwner):
             raise TypeError("Package lifecycle owner is required")
@@ -226,6 +266,18 @@ class PackageProductLifecycleTransaction:
             or not callable(getattr(cleanup, "record_pending", None))
         ):
             raise TypeError("Package Product candidate admission requires cleanup")
+        if rebound_execution_authority is not None and not callable(
+            rebound_execution_authority
+        ):
+            raise TypeError("Package Product rebound execution authority is invalid")
+        if pinned_execution_authority is not None and not callable(
+            pinned_execution_authority
+        ):
+            raise TypeError("Package Product pinned execution authority is invalid")
+        if staging_execution_authority is not None and not callable(
+            staging_execution_authority
+        ):
+            raise TypeError("Package Product staging execution authority is invalid")
         for owner, methods, name in (
             (closure, ("execute", "reacquire"), "closure owner"),
             (pins, ("pin",), "pin owner"),
@@ -247,6 +299,9 @@ class PackageProductLifecycleTransaction:
         self._update_allowed = update_allowed
         self._candidate_admission = candidate_admission
         self._cleanup = cleanup
+        self._rebound_execution_authority = rebound_execution_authority
+        self._pinned_execution_authority = pinned_execution_authority
+        self._staging_execution_authority = staging_execution_authority
 
     @property
     def owner_binding_id(self) -> str:
@@ -254,25 +309,30 @@ class PackageProductLifecycleTransaction:
 
     def finalize_committed(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         *,
         current: PackageLifecycleStatusV1,
     ) -> None:
+        require_rebound_decision(request, current, self._kernel.journal)
         self._handoff.finalize(request, current=current)
 
     def execute(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         *,
         current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1:
-        if not isinstance(request, PackageProductRouteRequestV1):
+        if not isinstance(
+            request,
+            PackageProductRouteRequestV1
+            | PackageProductReboundRouteRequestV1
+            | PackageProductPinnedAdoptedRouteRequestV1
+            | PackageProductStagingAdoptedRouteRequestV1,
+        ):
             raise TypeError("Package Product route request is required")
         if not isinstance(current, PackageLifecycleStatusV1):
             raise TypeError("Package lifecycle status is required")
-        if request.entrypoint not in {
-            "cli", "rpc", "session", "startup", "operations"
-        }:
+        if request.entrypoint not in {"cli", "rpc", "session", "startup", "operations"}:
             raise PackageProductRouteContractError(
                 "Direct Package route cannot enter the Product transaction"
             )
@@ -290,6 +350,31 @@ class PackageProductLifecycleTransaction:
             raise PackageProductRouteContractError(
                 "Product transaction lacks the exact admitted Package request"
             )
+        require_rebound_decision(request, current, self._kernel.journal)
+        if isinstance(request, PackageProductReboundRouteRequestV1):
+            authority = self._rebound_execution_authority
+            if authority is None:
+                raise PackageProductRouteContractError(
+                    "Rebound Package Product execution is unavailable",
+                    code="package_rebind_execution_not_available",
+                )
+            authority(request, current)
+        if isinstance(request, PackageProductPinnedAdoptedRouteRequestV1):
+            pinned_authority = self._pinned_execution_authority
+            if pinned_authority is None:
+                raise PackageProductRouteContractError(
+                    "Pinned Package Product execution is unavailable",
+                    code="package_pinned_adoption_execution_not_available",
+                )
+            pinned_authority(request, current)
+        if isinstance(request, PackageProductStagingAdoptedRouteRequestV1):
+            staging_authority = self._staging_execution_authority
+            if staging_authority is None:
+                raise PackageProductRouteContractError(
+                    "Staging Package Product execution is unavailable",
+                    code="package_staging_adoption_execution_not_available",
+                )
+            staging_authority(request, current)
         if current.disposition != "active":
             return current
         if lifecycle_request.action not in {"install", "update"}:
@@ -312,6 +397,89 @@ class PackageProductLifecycleTransaction:
                 # Install requires absence; update requires an existing
                 # Product selection before any new Package publication.
                 return self._reject(current, code="package_route_unavailable")
+        if isinstance(request, PackageProductStagingAdoptedRouteRequestV1):
+            if current.phase == "set_published":
+                if request.missing_node_ids:
+                    raise PackageProductRouteContractError(
+                        "Published Package set cannot stage missing nodes",
+                        code="package_staging_adoption_execution_not_available",
+                    )
+                return self._after_staging(
+                    self._staging.resume(current.operation_id), current
+                )
+            if current.phase != "transaction_pinned":
+                raise PackageProductRouteContractError(
+                    "Staging Package execution changed checkpoint phase",
+                    code="package_staging_adoption_execution_not_available",
+                )
+            if request.missing_node_ids:
+                try:
+                    missing_execution = self._execution(request, current)
+                except _ProductWheelSourceUnavailable as error:
+                    raise PackageProductRouteContractError(
+                        "Staging Package Source changed wheel identity",
+                        code="package_staging_adoption_evidence_changed",
+                    ) from error
+                if not isinstance(missing_execution, PackageClosureExecutionRequestV2):
+                    raise PackageProductRouteContractError(
+                        "Staging Package execution factory changed request"
+                    )
+                missing_artifact = missing_execution.artifact
+                if (
+                    missing_artifact.operation_id != current.operation_id
+                    or missing_artifact.request_fingerprint
+                    != current.request_fingerprint
+                    or missing_artifact.expected_attempt_epoch
+                    != current.attempt_epoch
+                    or missing_execution.resolution_environment.fingerprint
+                    != lifecycle_request.resolution_environment_fingerprint
+                ):
+                    raise PackageProductRouteContractError(
+                        "Staging Package execution changed closure identity",
+                        code="package_staging_adoption_evidence_changed",
+                    )
+                closed = self._closure.reacquire(missing_execution)
+                if not isinstance(closed, PackageClosureExecutionResult):
+                    raise PackageProductRouteContractError(
+                        "Staging Package closure owner changed evidence"
+                    )
+                self._require_durable(closed.status, current)
+                candidate = closed.candidate
+                if candidate is None:
+                    return self._require_terminal(closed.status)
+                try:
+                    if self._candidate_admission is not None:
+                        try:
+                            self._candidate_admission(request, candidate)
+                        except PackageProductCandidateRejected:
+                            self._cleanup_rejected_candidate(
+                                candidate, stage=current.phase
+                            )
+                            return self._reject(
+                                current,
+                                code="package_plugin_contribution_rejected",
+                            )
+                    stage_missing = getattr(
+                        self._staging, "stage_missing_and_publish", None
+                    )
+                    if not callable(stage_missing):
+                        raise PackageProductRouteContractError(
+                            "Staging Package owner cannot recheck the selected prefix",
+                            code="package_staging_adoption_execution_not_available",
+                        )
+                    staged = stage_missing(
+                        candidate,
+                        expected_checkpoint_id=(
+                            request.decision.staging_checkpoint_id
+                        ),
+                        expected_missing_node_ids=request.missing_node_ids,
+                    )
+                finally:
+                    candidate.suspend_for_recovery()
+                return self._after_staging(staged, current)
+            return self._after_staging(
+                self._staging.resume(current.operation_id), current
+            )
         try:
             execution = self._execution(request, current)
         except _ProductWheelSourceUnavailable:
@@ -383,7 +551,10 @@ class PackageProductLifecycleTransaction:
         )
 
     def _cleanup_rejected_candidate(
-        self, candidate: VerifiedPackageClosureCandidate, *, stage: PackageLifecyclePhase
+        self,
+        candidate: VerifiedPackageClosureCandidate,
+        *,
+        stage: PackageLifecyclePhase,
     ) -> None:
         cleanup = self._cleanup
         assert cleanup is not None
