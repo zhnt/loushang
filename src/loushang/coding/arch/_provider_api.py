@@ -502,6 +502,7 @@ def create_coding_arch_provider(
         config.private_data_root
         / f"import-facts-v{config.private_state_schema_version}.json",
         max_bytes=config.private_state_quota_bytes,
+        windows_private_acl=True,
     )
     owner = _CodingArchProviderRuntimeOwner(
         config=config,

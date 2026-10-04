@@ -724,7 +724,9 @@ def test_windows_candidate_ordinary_session_uses_fresh_b_product(
 
 def _write_native_arch_cache(root: Path, workspace: Path) -> Path:
     cache_path = root / "import-facts-v1.json"
-    cache = ImportFactCache(cache_path, max_bytes=4096)
+    cache = ImportFactCache(
+        cache_path, max_bytes=4096, windows_private_acl=True
+    )
     cache.replace(
         ImportFactCacheSnapshot(
             namespace=ImportFactCacheNamespace(
@@ -2628,16 +2630,8 @@ def _assert_windows_product_worker_provisioning_state(
         receipt,
         policy=replace(policy, product_scope_id=product.policy.project_scope_id),
     )
-    disabled_receipt = replace(receipt, policy=replace(policy, enabled=False))
-    with pytest.raises(ValueError, match="provisioning binding is invalid"):
-        open_coding_windows_product_worker_provisioning_state_store(
-            product,
-            runtime=product_runtime,
-            selected=selected,
-            receipt=disabled_receipt,
-            worker_request=request,
-            plan=plan,
-        )
+    with pytest.raises(ValueError, match="requires enabled Hosting policy"):
+        replace(receipt, policy=replace(policy, enabled=False))
     with pytest.raises(ValueError, match="provisioning binding is invalid"):
         open_coding_windows_product_worker_provisioning_state_store(
             product,
