@@ -4146,6 +4146,10 @@ finally:
 import json
 import sys
 from pathlib import Path
+preimport_worker_files = sorted(
+    item.name for item in Path(sys.argv[4]).iterdir()
+    if item.name.startswith("worker-")
+)
 from loushang.coding._plugin_lifecycle import resolve_ephemeral_coding_plugin_lifecycle_state_layout
 from loushang.coding.package_product_runtime import open_coding_fenced_product_application_owner
 from loushang.coding.package_product_worker_windows_native_approval_owner import CodingWindowsWorkerNativeApprovalOwner
@@ -4164,7 +4168,10 @@ preopen_worker_files = sorted(
     item.name for item in Path(sys.argv[4]).iterdir()
     if item.name.startswith("worker-")
 )
-assert "worker-payload-" + "7" * 32 in preopen_worker_files, preopen_worker_files
+assert "worker-payload-" + "7" * 32 in preopen_worker_files, {
+    "beforeImports": preimport_worker_files,
+    "afterImports": preopen_worker_files,
+}
 owner = open_coding_fenced_product_application_owner(
     lifecycle, workspace=workspace, runtime_version="2.0.0",
     runtime_protocol_epoch=2, worker_candidates=True, windows_candidate=True,
@@ -4274,7 +4281,10 @@ finally:
                 timeout=60,
                 check=False,
             )
-            assert inventoried.returncode == 0, inventoried.stderr
+            assert inventoried.returncode == 0, (
+                inventoried.stderr,
+                tuple(sorted(item.name for item in worker_state_root.iterdir())),
+            )
             assert json.loads(inventoried.stdout) == {
                 "attempts": [
                     ["5" * 32, "reserved", True],
