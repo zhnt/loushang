@@ -144,6 +144,7 @@ jobs:
             --junitxml=.artifacts/windows-shell-worker-provisioning-native.xml
         run: >-
           uv run python scripts/dev/run_pytest.py
+          tests/harness/journal/test_jsonl.py::test_text_journal_writers_preserve_configured_newline_bytes
           tests/harness/worker/test_native_profile_bridge.py::test_windows_lpac_durable_attempt_reopens_without_creating_on_read
           tests/harness/worker/test_native_profile_bridge.py::test_windows_lpac_recovery_reopens_effect_history_without_new_reservation
           tests/harness/worker/test_native_profile_bridge.py::test_windows_lpac_recovery_retries_uncertain_profile_delete

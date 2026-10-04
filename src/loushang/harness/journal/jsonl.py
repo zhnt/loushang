@@ -332,7 +332,7 @@ def append_jsonl_record(
             return
         create_private_directory_chain(target.parent)
         existed = target.exists()
-        with target.open("a", encoding=format_profile.encoding) as handle:
+        with target.open("a", encoding=format_profile.encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(line)
             handle.write(format_profile.newline)
@@ -376,7 +376,7 @@ def append_jsonl_records(
             return
         create_private_directory_chain(target.parent)
         existed = target.exists()
-        with target.open("a", encoding=format_profile.encoding) as handle:
+        with target.open("a", encoding=format_profile.encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(payload)
             _sync_handle(handle, durability)
@@ -912,7 +912,7 @@ def _replace_text_unlocked(
     create_private_directory_chain(target.parent)
     temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
-        with temp_path.open("w", encoding=encoding) as handle:
+        with temp_path.open("w", encoding=encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(data)
             _sync_handle(handle, durability)

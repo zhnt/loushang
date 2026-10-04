@@ -240,6 +240,40 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
     assert not path.with_name("events.jsonl.lock").exists()
 
 
+def test_text_journal_writers_preserve_configured_newline_bytes(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalFormatProfile,
+        append_jsonl_record,
+        append_jsonl_records,
+        write_jsonl,
+    )
+
+    for newline in ("\n", "\r\n"):
+        path = tmp_path / f"records-{len(newline)}.jsonl"
+        format_profile = JournalFormatProfile(newline=newline)
+        options = {
+            "record_codec": _RecordCodec(),
+            "format_profile": format_profile,
+            "durability": PROCESS_LOCAL_JOURNAL,
+        }
+        append_jsonl_record(path, _Record("one", "alpha"), **options)
+        assert path.read_bytes() == ('{"recordId": "one", "text": "alpha"}' + newline).encode()
+
+        append_jsonl_records(path, [_Record("two", "beta")], **options)
+        assert path.read_bytes() == (
+            '{"recordId": "one", "text": "alpha"}'
+            + newline
+            + '{"recordId": "two", "text": "beta"}'
+            + newline
+        ).encode()
+
+        write_jsonl(path, [_Record("three", "gamma")], **options)
+        assert path.read_bytes() == ('{"recordId": "three", "text": "gamma"}' + newline).encode()
+
+
 def test_decoder_accepts_jsonl_cr_lf_framing() -> None:
     from loushang.harness.journal import decode_jsonl
 
