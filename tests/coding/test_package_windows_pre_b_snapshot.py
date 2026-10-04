@@ -3644,9 +3644,10 @@ finally:
                             worker_product
                         )
                     } == {"7" * 32}
+                    # The committed launch intent makes this ID permanently used.
                     with pytest.raises(
                         CodingWindowsWorkerPayloadMaterializationError,
-                        match="coding_worker_payload_attempt_debt",
+                        match="coding_worker_payload_attempt_reused",
                     ):
                         materialize_coding_windows_product_worker_payload(
                             receipt_owner=receipt_owner,
