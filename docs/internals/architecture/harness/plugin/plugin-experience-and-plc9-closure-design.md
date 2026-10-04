@@ -652,6 +652,21 @@ owner without the corresponding strategy. Coding treats a missing optional
 settings owner as an empty Source list; a supplied owner with an invalid
 settings interface or Source snapshot fails closed instead of appearing empty.
 
+The reusable Harness entrypoints are
+`PluginManagementCliProfile`, `PluginManagementCliReadOwnerStrategy`,
+`PluginManagementCliCommandOwnerStrategy`,
+`bind_plugin_management_cli_read()`, and
+`bind_plugin_management_cli_commands()` in
+[`loushang.harness.cli.plugin_management`](../../../../../src/loushang/harness/cli/plugin_management.py).
+A Product supplies its ID, installation scope, scope ID, CLI actor, and policy
+revision in the immutable profile. Its read strategy supplies existing fenced,
+legacy, or Source projections without creating Product state. Its command
+strategy owns fenced/legacy port opening, any startup lease, and compatibility
+publication. The strategy returns Product-owned application ports; it never
+moves settings, Package admission, or Desired State writes into Harness.
+[`Coding's adapter`](../../../../../src/loushang/coding/plugin_management_cli.py)
+is one implementation of these protocols, not a required Product layout.
+
 The local A2 operation explanation reads the Package lifecycle journal without
 creating locks or repairing an incomplete tail. It reports phase, disposition,
 failure code, owner revision, and safe operator action while excluding the

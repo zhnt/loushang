@@ -26,37 +26,90 @@ from loushang.plugin._validation import validate_package
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="loushang-plugin")
+    parser = argparse.ArgumentParser(
+        prog="loushang-plugin",
+        description=(
+            "Build or validate inert Plugin artifacts, or explicitly run execution "
+            "conformance. Product admission and Session use require separate checks."
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    validate_parser = commands.add_parser("validate")
+    validate_parser = commands.add_parser(
+        "validate", help="validate a Plugin package without Product admission"
+    )
     validate_parser.add_argument("path")
-    conformance_parser = commands.add_parser("conformance")
+    conformance_parser = commands.add_parser(
+        "conformance", help="run explicitly approved execution conformance"
+    )
     conformance_parser.add_argument("path")
     conformance_parser.add_argument("--approve-execution", action="store_true")
-    build_parser = commands.add_parser("build-coding-skill")
-    build_parser.add_argument("skill_file")
-    build_parser.add_argument("--plugin-id", required=True)
-    build_parser.add_argument("--version", required=True)
-    build_parser.add_argument("--skill-name")
-    build_parser.add_argument("--contribution-id")
-    build_parser.add_argument("--output-dir", default="dist")
-    prompt_parser = commands.add_parser("build-coding-prompt")
-    prompt_parser.add_argument("prompt_file")
-    prompt_parser.add_argument("--plugin-id", required=True)
-    prompt_parser.add_argument("--version", required=True)
-    prompt_parser.add_argument("--prompt-name")
-    prompt_parser.add_argument("--contribution-id")
-    prompt_parser.add_argument("--output-dir", default="dist")
-    theme_parser = commands.add_parser("build-coding-theme")
-    theme_parser.add_argument("theme_file")
-    theme_parser.add_argument("--plugin-id", required=True)
-    theme_parser.add_argument("--version", required=True)
-    theme_parser.add_argument("--theme-name")
-    theme_parser.add_argument("--contribution-id")
-    theme_parser.add_argument("--output-dir", default="dist")
+    build_parser = commands.add_parser(
+        "build-coding-skill",
+        help="build one Coding data Skill wheel",
+        description="Build one data Skill wheel; Product install and Session use are separate checks.",
+    )
+    build_parser.add_argument(
+        "skill_file", help="Markdown SKILL.md; name defaults to its parent directory"
+    )
+    build_parser.add_argument(
+        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+    )
+    build_parser.add_argument(
+        "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
+    )
+    build_parser.add_argument(
+        "--skill-name", help="kebab-case Resource name; defaults to parent directory"
+    )
+    build_parser.add_argument(
+        "--contribution-id", help="defaults to <skill-name>-skill"
+    )
+    build_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
+    prompt_parser = commands.add_parser(
+        "build-coding-prompt",
+        help="build one Coding data Prompt wheel",
+        description="Build one data Prompt wheel; Product install and Session use are separate checks.",
+    )
+    prompt_parser.add_argument(
+        "prompt_file", help="Markdown .md file; name defaults to filename stem"
+    )
+    prompt_parser.add_argument(
+        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+    )
+    prompt_parser.add_argument(
+        "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
+    )
+    prompt_parser.add_argument(
+        "--prompt-name", help="kebab-case Resource name; defaults to filename stem"
+    )
+    prompt_parser.add_argument(
+        "--contribution-id", help="defaults to <prompt-name>-prompt"
+    )
+    prompt_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
+    theme_parser = commands.add_parser(
+        "build-coding-theme",
+        help="build one Coding Screen Theme candidate wheel; Product rollout remains gated",
+        description="Build one Coding Screen Theme candidate wheel; Product rollout remains gated.",
+    )
+    theme_parser.add_argument(
+        "theme_file", help="bounded Theme JSON file; name defaults to filename stem"
+    )
+    theme_parser.add_argument(
+        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+    )
+    theme_parser.add_argument(
+        "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
+    )
+    theme_parser.add_argument(
+        "--theme-name", help="kebab-case Resource name; defaults to filename stem"
+    )
+    theme_parser.add_argument(
+        "--contribution-id", help="defaults to <theme-name>-theme"
+    )
+    theme_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
     worker_parser = commands.add_parser(
         "build-coding-worker-candidate",
         help="package a default-dark native Worker candidate without activating it",
+        description="Package a native Worker candidate; Product admission and activation remain gated.",
     )
     worker_parser.add_argument("executable_file")
     worker_parser.add_argument("--plugin-id", required=True)
