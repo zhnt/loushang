@@ -4023,6 +4023,11 @@ finally:
             if stage_retention_expected:
                 assert after_runtime, "Worker stage disappeared during runtime disposal"
                 assert retained_stage.is_dir(), "Worker stage disappeared during Product close"
+                assert (worker_state_root / ("worker-payload-" + "8" * 32)).is_dir()
+                assert (
+                    worker_state_root
+                    / ("worker-native-provisioning-" + "7" * 32 + ".jsonl")
+                ).is_file()
             if rotation_pending:
                 _assert_windows_worker_clean_rotation(
                     workspace=workspace,
@@ -4131,6 +4136,11 @@ finally:
             )
             assert repaired.returncode == 0, repaired.stderr
             assert json.loads(repaired.stdout) == {"cleanExitLeaseRepaired": True}
+            if stage_retention_expected:
+                assert retained_stage.is_dir(), (
+                    "Worker stage disappeared during clean-exit lease repair",
+                    tuple(sorted(item.name for item in worker_state_root.iterdir())),
+                )
         if native_platform == "windows-amd64":
             inventory_script = """\
 import json
@@ -4150,6 +4160,11 @@ from loushang.coding.package_product_worker_windows_stage_review import CodingWi
 
 workspace = Path(sys.argv[1])
 lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(Path(sys.argv[2]), cwd=workspace)
+preopen_worker_files = sorted(
+    item.name for item in Path(sys.argv[4]).iterdir()
+    if item.name.startswith("worker-")
+)
+assert "worker-payload-" + "7" * 32 in preopen_worker_files, preopen_worker_files
 owner = open_coding_fenced_product_application_owner(
     lifecycle, workspace=workspace, runtime_version="2.0.0",
     runtime_protocol_epoch=2, worker_candidates=True, windows_candidate=True,
@@ -4168,6 +4183,7 @@ try:
         owner.runtime_owner.product_owner
     )
     assert any(item.attempt_id == "7" * 32 for item in recovery), {
+        "beforeOpen": preopen_worker_files,
         "attempts": [item.attempt_id for item in attempts],
         "recovery": [item.attempt_id for item in recovery],
         "workerFiles": sorted(
