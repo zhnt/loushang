@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from importlib.util import find_spec
@@ -20,6 +22,7 @@ _MAX_IMAGE_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_BYTES = 128 * 1024 * 1024
 _MAX_PACKAGE_MEMBERS = 8192
 _CHUNK = 1024 * 1024
+_PACKAGE_VERIFY_WORKERS = 8
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 WINDOWS_LPAC_BACKEND_CODE_MEMBERS = (
     "loushang/hosting/_win32_process.py",
@@ -164,7 +167,7 @@ def verify_windows_loushang_installed_package_members(
     package_root = Path(__file__).parent.parent
     seen: set[str] = set()
     total = 0
-    api = _CtypesWin32Api()
+    members: list[tuple[Path, str]] = []
     for item in package_members:
         if type(item) is not tuple or len(item) != 2:
             raise ValueError("Windows release member is invalid")
@@ -185,10 +188,31 @@ def verify_windows_loushang_installed_package_members(
         seen.add(name)
         path = package_root.joinpath(*relative_parts)
         total += path.lstat().st_size
-        if total > _MAX_PACKAGE_BYTES or _image_sha256(path, _api=api) != expected:
+        if total > _MAX_PACKAGE_BYTES:
             raise OSError("Windows installed Loushang release changed")
+        members.append((path, expected))
     if not set(WINDOWS_LPAC_BACKEND_CODE_MEMBERS) <= seen:
         raise ValueError("Windows LPAC source closure is incomplete")
+
+    # Each member is still read from a locked handle and checked before/after
+    # hashing. Bound the number of simultaneous Windows file and ADS queries;
+    # do not retain a verification result across separate Product reads.
+    worker_state = threading.local()
+
+    def digest(path: Path) -> str:
+        api = getattr(worker_state, "api", None)
+        if api is None:
+            api = _CtypesWin32Api()
+            worker_state.api = api
+        return _image_sha256(path, _api=api)
+
+    with ThreadPoolExecutor(max_workers=_PACKAGE_VERIFY_WORKERS) as executor:
+        for offset in range(0, len(members), _PACKAGE_VERIFY_WORKERS):
+            batch = members[offset : offset + _PACKAGE_VERIFY_WORKERS]
+            futures = tuple(executor.submit(digest, path) for path, _ in batch)
+            for (_, expected), future in zip(batch, futures, strict=True):
+                if future.result() != expected:
+                    raise OSError("Windows installed Loushang release changed")
 
 
 def _loaded_python_runtime_dll_path() -> Path:

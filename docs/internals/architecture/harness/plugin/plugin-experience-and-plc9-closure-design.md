@@ -2861,6 +2861,19 @@ attempt's launch intent, persisted activation receipt, and matching orphan
 Package lease. It leaves Job absence explicitly unverified and has no repair
 operation. Portable fail-closed projection passed; the native Product journey
 collects on Linux and awaits a Windows result.
+On 2026-10-04, exact-head CI for `de08051e` passed the full Coding gate,
+the Linux Worker sustained query gate, Hosting on Linux/macOS/Windows, and the
+Windows Shell job. Its strict Windows reports recorded 156/156 PLC9B
+quarantine, 10/10 Worker provisioning, 15/15 manifest, 29/29 native shell,
+and 92/92 policy cases; runtime lifecycle had 149 passes and 12 POSIX-only
+skips. The Windows Worker job reached the 90-minute job limit during its
+second native Product transaction case, after the first case passed. It
+produced no Worker report and does not prove Product launch, recovery, or GC.
+The next candidate keeps every installed backend member's locked-handle
+content and identity check, but verifies at most eight independent members
+concurrently within each fresh read. The Worker CI job now retains a 120-minute
+bound and enables nonfatal stack diagnostics. Neither the performance change
+nor Windows Worker admission is accepted until the new native report passes.
 
 ## Independent Review Record
 

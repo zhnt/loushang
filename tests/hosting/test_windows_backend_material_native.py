@@ -81,3 +81,8 @@ def test_loaded_lpac_backend_sources_match_selected_release_members() -> None:
         verify_windows_lpac_loaded_backend_sources(changed)
     with pytest.raises(OSError, match="release changed"):
         verify_windows_loushang_installed_package_members(changed)
+    changed_last = (*members[:-1], (members[-1][0], "f" * 64))
+    if changed_last[-1][1] == members[-1][1]:
+        changed_last = (*members[:-1], (members[-1][0], "e" * 64))
+    with pytest.raises(OSError, match="release changed"):
+        verify_windows_loushang_installed_package_members(changed_last)
