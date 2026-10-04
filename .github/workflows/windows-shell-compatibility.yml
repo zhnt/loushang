@@ -32,6 +32,7 @@ jobs:
 
       - name: Run PLC9B native Windows quarantine tests
         env:
+          LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
             --tb=short
