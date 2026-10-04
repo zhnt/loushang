@@ -329,74 +329,50 @@ pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows-native contract
 
 
 def _grant_windows_world_read(path: Path) -> None:
-    """Tamper a native DACL through a handle, including paths beyond MAX_PATH."""
+    """Tamper a native DACL through an extended-length path."""
 
-    kernel = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
-    create_file = kernel.CreateFileW
-    create_file.argtypes = (
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    )
-    create_file.restype = wintypes.HANDLE
-    handle = create_file(
-        "\\\\?\\" + str(path),
-        0x00040000,  # WRITE_DAC
-        0x3,  # FILE_SHARE_READ | FILE_SHARE_WRITE
-        None,
-        3,  # OPEN_EXISTING
-        0x02200000,  # FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT
-        None,
-    )
-    if handle == ctypes.c_void_p(-1).value:
-        raise getattr(ctypes, "WinError")(getattr(ctypes, "get_last_error")())
-    try:
-        with WindowsPrivateDirectoryAcl() as acl:
-            descriptor = ctypes.c_void_p()
-            try:
-                sddl = (
-                    "D:P"
-                    + "".join(
-                        f"(A;;FA;;;{sid})"
-                        for sid in sorted({acl._user_sid, "S-1-5-18"})
-                    )
-                    + "(A;;FR;;;WD)"
+    with WindowsPrivateDirectoryAcl() as acl:
+        descriptor = ctypes.c_void_p()
+        try:
+            sddl = (
+                "D:P"
+                + "".join(
+                    f"(A;;FA;;;{sid})"
+                    for sid in sorted({acl._user_sid, "S-1-5-18"})
                 )
-                assert acl._security.ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                    sddl, 1, ctypes.byref(descriptor), None
-                )
-                present = wintypes.BOOL()
-                defaulted = wintypes.BOOL()
-                dacl = ctypes.c_void_p()
-                assert acl._security.GetSecurityDescriptorDacl(
-                    descriptor,
-                    ctypes.byref(present),
-                    ctypes.byref(dacl),
-                    ctypes.byref(defaulted),
-                )
-                assert present.value and dacl.value
-                change = acl._security.SetSecurityInfo
-                change.argtypes = (
-                    wintypes.HANDLE,
-                    ctypes.c_int,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                )
-                change.restype = wintypes.DWORD
-                result = change(handle, 1, 0x80000004, None, None, dacl, None)
-                assert result == 0, f"SetSecurityInfo failed: {result}"
-            finally:
-                if descriptor.value is not None:
-                    assert not acl._kernel.LocalFree(descriptor)
-    finally:
-        assert kernel.CloseHandle(handle)
+                + "(A;;FR;;;WD)"
+            )
+            assert acl._security.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl, 1, ctypes.byref(descriptor), None
+            )
+            present = wintypes.BOOL()
+            defaulted = wintypes.BOOL()
+            dacl = ctypes.c_void_p()
+            assert acl._security.GetSecurityDescriptorDacl(
+                descriptor,
+                ctypes.byref(present),
+                ctypes.byref(dacl),
+                ctypes.byref(defaulted),
+            )
+            assert present.value and dacl.value
+            change = acl._security.SetNamedSecurityInfoW
+            change.argtypes = (
+                wintypes.LPWSTR,
+                ctypes.c_int,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            )
+            change.restype = wintypes.DWORD
+            result = change(
+                "\\\\?\\" + str(path), 1, 0x80000004, None, None, dacl, None
+            )
+            assert result == 0, f"SetNamedSecurityInfoW failed: {result}"
+        finally:
+            if descriptor.value is not None:
+                assert not acl._kernel.LocalFree(descriptor)
 
 
 def _compile_windows_query_worker(build_root: Path, executable: Path) -> None:
@@ -3189,6 +3165,7 @@ finally:
             )
             worker_product = worker_owner.runtime_owner.product_owner
             assert isinstance(worker_product, WindowsLocalWheelProductSessionOwner)
+            worker_state_root = worker_product.state_root
             assert any(
                 item.plugin_id == "workerprobe"
                 for item in worker_product.policy.bindings
