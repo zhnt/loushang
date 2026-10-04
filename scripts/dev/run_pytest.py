@@ -9,6 +9,7 @@ normal exit.
 from __future__ import annotations
 
 import errno
+import faulthandler
 import os
 import shlex
 import shutil
@@ -75,6 +76,9 @@ def run_pytest(
         raise PytestScratchError("cannot acquire pytest scratch ownership") from error
 
     result = int(pytest.ExitCode.INTERNAL_ERROR)
+    trace_cleanup = values.get("LOUSHANG_PYTEST_TRACE_CLEANUP") == "1"
+    if trace_cleanup:
+        faulthandler.dump_traceback_later(600, repeat=True)
     try:
         _preflight_capacity(scope.run_dir, minimum_free_bytes)
         result = int(
@@ -85,9 +89,14 @@ def run_pytest(
                 ]
             )
         )
+        if trace_cleanup:
+            print("pytest returned; scratch cleanup starting", file=sys.stderr, flush=True)
         return result
     finally:
         lease.close()
+        if trace_cleanup:
+            faulthandler.cancel_dump_traceback_later()
+            print("pytest scratch cleanup finished", file=sys.stderr, flush=True)
         if scope.run_dir.exists():
             print(
                 "warning: pytest scratch cleanup was incomplete; "
