@@ -34,6 +34,7 @@ jobs:
         env:
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
+            --tb=short
             --junitxml=.artifacts/windows-shell-plc9b-native.xml
         run: >-
           uv run python scripts/dev/run_pytest.py
@@ -81,6 +82,7 @@ jobs:
           LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
+            --tb=short
             --junitxml=.artifacts/windows-shell-worker-candidate-native.xml
         run: >-
           uv run python scripts/dev/run_pytest.py
