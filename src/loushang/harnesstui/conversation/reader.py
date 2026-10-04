@@ -4,9 +4,16 @@ import re
 from dataclasses import dataclass, field, replace
 
 from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
-from loushang.tui.cell_width import truncate_to_width, wrap_cells
+from loushang.tui.cell_width import (
+    slice_by_column,
+    strip_control_sequences,
+    truncate_to_width,
+    visible_width,
+    wrap_cells,
+)
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.input import InputEvent, InputIntent
+from loushang.tui.keybindings import KeybindingManager
 from loushang.tui.theme import apply_theme_style
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -27,7 +34,7 @@ _FOOTER_STYLE = {"color": "bright_black", "dim": True}
 _SEARCH_HIGHLIGHT_STYLE = {"bold": True, "reverse": True}
 _FOOTER_LINES = (
     "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump",
-    "Ctrl+O/Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw",
+    "Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw",
 )
 _CONSUMED = InputIntent(kind="consumed", note="transcript_reader")
 
@@ -35,9 +42,11 @@ _CONSUMED = InputIntent(kind="consumed", note="transcript_reader")
 @dataclass(slots=True)
 class TranscriptReaderSurface:
     source: TranscriptSource
+    keybindings: KeybindingManager = field(default_factory=KeybindingManager)
     focused: bool = False
     raw_mode: bool = False
     detail_mode: bool = False
+    copy_status: str | None = None
     search_query: str = ""
     _snapshot: TranscriptSnapshot = field(init=False, repr=False)
     _expanded_records: tuple[DisplayRecord, ...] = field(init=False, repr=False)
@@ -59,6 +68,15 @@ class TranscriptReaderSurface:
     _search_editing: bool = field(default=False, init=False, repr=False)
     _search_matches: tuple[int, ...] = field(default=(), init=False, repr=False)
     _search_match_index: int = field(default=0, init=False, repr=False)
+    _visible_rows: tuple[str, ...] = field(default=(), init=False, repr=False)
+    _selectable_range: range = field(default=range(0), init=False, repr=False)
+    _selection_anchor: tuple[int, int] | None = field(
+        default=None, init=False, repr=False
+    )
+    _selection_tip: tuple[int, int] | None = field(default=None, init=False, repr=False)
+    _selection_rows_snapshot: tuple[str, ...] = field(
+        default=(), init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         self._snapshot = self.source.snapshot()
@@ -79,15 +97,37 @@ class TranscriptReaderSurface:
         self.focused = False
 
     def handle_input(self, event: InputEvent) -> InputIntent[str]:
+        if event.kind in {"key", "text", "paste"}:
+            self.copy_status = None
+        if event.kind == "key" and self.keybindings.matches_prefer_explicit(
+            event.key, "tui.transcript.copyLastAnswer"
+        ):
+            return InputIntent(kind="copy_text", text=self.latest_completed_answer())
+        if event.kind == "key" and self.keybindings.matches_prefer_explicit(
+            event.key, "tui.transcript.open"
+        ):
+            return InputIntent(kind="surface_close")
+        if event.kind == "focus" and event.focused is False:
+            self._selection_anchor = self._selection_tip = None
+            return _CONSUMED
+        if event.kind == "mouse":
+            return self._handle_mouse(event)
         if self._search_editing:
             return self._handle_search_input(event)
         if event.kind == "text":
             if len(event.text) == 1:
-                return self.handle_input(InputEvent(kind="key", key=event.text, raw=event.raw))
+                return self.handle_input(
+                    InputEvent(kind="key", key=event.text, raw=event.raw)
+                )
             return _CONSUMED
         if event.kind != "key":
             return _CONSUMED
         key = event.key
+        if key in {"esc", "escape"} and self._selection_anchor is not None:
+            self._selection_anchor = self._selection_tip = None
+            return _CONSUMED
+        if key in {"ctrl+c", "ctrl_c"} and (selected := self.selected_text()):
+            return InputIntent(kind="copy_text", text=selected)
         if key in {"esc", "escape"} and self.search_query:
             self._clear_search()
             return _CONSUMED
@@ -97,11 +137,7 @@ class TranscriptReaderSurface:
             "escape",
             "ctrl+c",
             "ctrl_c",
-            "ctrl+o",
-            "ctrl_o",
-            "ctrl+t",
-            "ctrl_t",
-        }:
+        } or self.keybindings.matches_prefer_explicit(key, "tui.transcript.open"):
             return InputIntent(kind="surface_close")
         if key == "up":
             self._scroll_by(-1)
@@ -138,30 +174,148 @@ class TranscriptReaderSurface:
             return _CONSUMED
         return _CONSUMED
 
+    def latest_completed_answer(self) -> str:
+        return next(
+            (
+                record.text
+                for record in reversed(self._snapshot.records)
+                if isinstance(record, AssistantMessageRecord)
+                and record.stable
+                and record.text.strip()
+            ),
+            "",
+        )
+
     def render(self, constraints: RenderConstraints) -> RenderResult:
         body = self._body_lines(width=constraints.width)
         self._sync_search_matches(body)
         top_chrome = self._top_chrome_lines(constraints.width, constraints.max_height)
-        footer = self._footer_lines(constraints.width, max_height=constraints.max_height - len(top_chrome))
+        footer = self._footer_lines(
+            constraints.width, max_height=constraints.max_height - len(top_chrome)
+        )
         body_height = max(0, constraints.max_height - len(top_chrome) - len(footer))
         self._last_body_height = max(1, body_height)
         self._max_scroll_offset = max(0, len(body) - body_height)
         if self.search_query and self._search_matches:
             self._follow_tail = False
-            self._scroll_offset = _clamp(self._search_matches[self._search_match_index], 0, self._max_scroll_offset)
+            self._scroll_offset = _clamp(
+                self._search_matches[self._search_match_index],
+                0,
+                self._max_scroll_offset,
+            )
         elif self._follow_tail:
             self._scroll_offset = self._max_scroll_offset
         else:
-            self._scroll_offset = _clamp(self._scroll_offset, 0, self._max_scroll_offset)
+            self._scroll_offset = _clamp(
+                self._scroll_offset, 0, self._max_scroll_offset
+            )
 
-        visible_body = list(body[self._scroll_offset : self._scroll_offset + body_height]) if body_height else []
+        visible_body = (
+            list(body[self._scroll_offset : self._scroll_offset + body_height])
+            if body_height
+            else []
+        )
         if self.search_query:
-            visible_body = [RenderLine(_highlight_search_matches(line.text, self.search_query)) for line in visible_body]
+            visible_body = [
+                RenderLine(_highlight_search_matches(line.text, self.search_query))
+                for line in visible_body
+            ]
         if body_height and not visible_body:
-            visible_body.append(RenderLine(truncate_to_width("No transcript records.", max_width=constraints.width)))
-        padding = [RenderLine("") for _ in range(max(0, body_height - len(visible_body)))]
+            visible_body.append(
+                RenderLine(
+                    truncate_to_width(
+                        "No transcript records.", max_width=constraints.width
+                    )
+                )
+            )
+        padding = [
+            RenderLine("") for _ in range(max(0, body_height - len(visible_body)))
+        ]
         lines = [*top_chrome, *visible_body, *padding, *footer]
-        return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints)
+        lines = lines[: constraints.max_height]
+        current_rows = tuple(line.text for line in lines)
+        selectable_range = range(len(top_chrome), len(top_chrome) + len(visible_body))
+        if (
+            self._selection_anchor is not None
+            and tuple(current_rows[selectable_range.start : selectable_range.stop])
+            != self._selection_rows_snapshot
+        ):
+            self._selection_anchor = self._selection_tip = None
+        self._visible_rows = current_rows
+        self._selectable_range = selectable_range
+        if self._selection_anchor is not None and self._selection_tip is not None:
+            lines = [
+                RenderLine(self._highlight_row(row, line.text))
+                for row, line in enumerate(lines)
+            ]
+        return RenderResult.from_lines(lines, constraints=constraints)
+
+    def _handle_mouse(self, event: InputEvent) -> InputIntent[str]:
+        if event.mouse_button != 0 or event.mouse_action not in {
+            "press",
+            "drag",
+            "release",
+        }:
+            return _CONSUMED
+        row = event.mouse_row or 0
+        column = event.mouse_column or 0
+        if event.mouse_action == "press":
+            if row not in self._selectable_range:
+                self._selection_anchor = self._selection_tip = None
+                return _CONSUMED
+            self._selection_anchor = self._selection_tip = (row, column)
+            self._selection_rows_snapshot = self._visible_rows[
+                self._selectable_range.start : self._selectable_range.stop
+            ]
+        elif self._selection_anchor is not None:
+            row = max(
+                self._selectable_range.start, min(row, self._selectable_range.stop - 1)
+            )
+            self._selection_tip = (row, column)
+            if event.mouse_action == "release" and (selected := self.selected_text()):
+                return InputIntent(kind="copy_text", text=selected)
+        return _CONSUMED
+
+    def selected_text(self) -> str:
+        bounds = self._selection_bounds()
+        if bounds is None:
+            return ""
+        start, end = bounds
+        parts: list[str] = []
+        for row in range(start[0], min(end[0] + 1, len(self._visible_rows))):
+            plain = strip_control_sequences(self._visible_rows[row])
+            left = start[1] if row == start[0] else 0
+            right = end[1] if row == end[0] else visible_width(plain)
+            parts.append(
+                slice_by_column(
+                    plain, start=left, length=max(0, right - left), strict=False
+                ).text
+            )
+        return "\n".join(parts)
+
+    def _selection_bounds(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        if self._selection_anchor is None or self._selection_tip is None:
+            return None
+        return tuple(sorted((self._selection_anchor, self._selection_tip)))  # type: ignore[return-value]
+
+    def _highlight_row(self, row: int, text: str) -> str:
+        bounds = self._selection_bounds()
+        if bounds is None or not bounds[0][0] <= row <= bounds[1][0]:
+            return text
+        plain = strip_control_sequences(text)
+        left = bounds[0][1] if row == bounds[0][0] else 0
+        right = bounds[1][1] if row == bounds[1][0] else visible_width(plain)
+        before = slice_by_column(plain, start=0, length=left, strict=False).text
+        selected = slice_by_column(
+            plain, start=left, length=max(0, right - left), strict=False
+        ).text
+        after = slice_by_column(
+            plain,
+            start=right,
+            length=max(0, visible_width(plain) - right),
+            strict=False,
+        ).text
+        return before + (f"\x1b[7m{selected}\x1b[27m" if selected else "") + after
 
     def _top_chrome_lines(self, width: int, max_height: int) -> tuple[RenderLine, ...]:
         lines = [
@@ -179,17 +333,34 @@ class TranscriptReaderSurface:
                 )
             )
         ]
-        if self._snapshot.evicted_prefix_record_count > 0 and len(lines) < max_height - 1:
-            lines.append(RenderLine(truncate_to_width("Earlier transcript records were trimmed.", max_width=width)))
+        if (
+            self._snapshot.evicted_prefix_record_count > 0
+            and len(lines) < max_height - 1
+        ):
+            lines.append(
+                RenderLine(
+                    truncate_to_width(
+                        "Earlier transcript records were trimmed.", max_width=width
+                    )
+                )
+            )
         return tuple(lines[:max_height])
 
     def _footer_lines(self, width: int, *, max_height: int) -> tuple[RenderLine, ...]:
         if max_height <= 0:
             return ()
         separator = "─" * max(0, width)
-        mode_lines = _FOOTER_LINES
+        close_keys = "/".join(
+            key.title() for key in self.keybindings.keys_for("tui.transcript.open")
+        )
+        mode_lines = (
+            _FOOTER_LINES[0],
+            f"{close_keys}/q/Esc close   / search   n/N next   d detail   r raw",
+        )
         if self._search_editing:
             mode_lines = (_FOOTER_LINES[0], f"Search: {self._search_draft}")
+        if self.copy_status is not None:
+            mode_lines = (_FOOTER_LINES[0], self.copy_status)
         raw_lines = (separator, *mode_lines)
         selected = raw_lines[-max_height:]
         return tuple(RenderLine(_footer_text(line, width=width)) for line in selected)
@@ -218,7 +389,9 @@ class TranscriptReaderSurface:
 
     def _scroll_by(self, delta: int) -> None:
         self._follow_tail = False
-        self._scroll_offset = _clamp(self._scroll_offset + delta, 0, self._max_scroll_offset)
+        self._scroll_offset = _clamp(
+            self._scroll_offset + delta, 0, self._max_scroll_offset
+        )
         if self._scroll_offset >= self._max_scroll_offset and delta > 0:
             self._follow_tail = True
 
@@ -267,10 +440,14 @@ class TranscriptReaderSurface:
             self._search_match_index = 0
             return
         needle = self.search_query.lower()
-        matches = tuple(index for index, line in enumerate(body) if needle in line.text.lower())
+        matches = tuple(
+            index for index, line in enumerate(body) if needle in line.text.lower()
+        )
         self._search_matches = matches
         if matches:
-            self._search_match_index = _clamp(self._search_match_index, 0, len(matches) - 1)
+            self._search_match_index = _clamp(
+                self._search_match_index, 0, len(matches) - 1
+            )
         else:
             self._search_match_index = 0
 
@@ -279,7 +456,9 @@ class TranscriptReaderSurface:
             return
         if not self._search_matches:
             return
-        self._search_match_index = (self._search_match_index + delta) % len(self._search_matches)
+        self._search_match_index = (self._search_match_index + delta) % len(
+            self._search_matches
+        )
         self._follow_tail = False
 
     def _clear_search(self) -> None:
@@ -363,7 +542,9 @@ def _title_text(
     elif detail:
         suffixes.append("detail")
     if search_query:
-        suffixes.append(f"search {search_query} {search_match_index + 1 if search_match_count else 0}/{search_match_count}")
+        suffixes.append(
+            f"search {search_query} {search_match_index + 1 if search_match_count else 0}/{search_match_count}"
+        )
     if not suffixes:
         return source_label
     return f"{source_label} · {' · '.join(suffixes)}"
@@ -409,13 +590,17 @@ def _raw_record_lines(record: DisplayRecord, *, width: int, detail: bool) -> lis
             text = f"{text}\n{record.tokens_before} tokens before compaction"
         return _raw_labeled_text("Context", text, width=width)
     if isinstance(record, WorkedDividerRecord):
-        return _raw_wrapped_lines(f"Worked for {record.elapsed_seconds:.2f}s", width=width)
+        return _raw_wrapped_lines(
+            f"Worked for {record.elapsed_seconds:.2f}s", width=width
+        )
     return []
 
 
 def _raw_tool_lines(record: ToolExecutionRecord, *, width: int) -> list[str]:
     elapsed = f"{record.elapsed_seconds:.2f}s"
-    lines = _raw_wrapped_lines(f"Tool: {record.name} {record.state} in {elapsed}", width=width)
+    lines = _raw_wrapped_lines(
+        f"Tool: {record.name} {record.state} in {elapsed}", width=width
+    )
     if record.command:
         lines.extend(_raw_wrapped_lines(f"command: {record.command}", width=width))
     if record.output:

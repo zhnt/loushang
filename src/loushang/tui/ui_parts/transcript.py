@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
@@ -19,6 +20,7 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
     StreamingTextBuffer,
+    ToolExecutionRecord,
     TranscriptView,
     _prefix_streaming_assistant_segment,
     _render_streaming_assistant_markdown_segments,
@@ -107,6 +109,17 @@ class TranscriptRegion:
     )
     window_generation: int = 0
     stable_cache_entry_limit: int = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
+    expanded_tool_indices: frozenset[int] = frozenset()
+    focused_tool_index: int | None = None
+    anchor_tool_index: int | None = None
+    visible_controls: dict[int, int] = field(default_factory=dict, init=False)
+    visible_height: int = field(default=0, init=False)
+    _committed_control_rows: dict[int, int] = field(default_factory=dict, init=False)
+    _committed_control_positions: tuple[int, ...] = field(default=(), init=False)
+    _committed_control_by_index: dict[int, int] = field(
+        default_factory=dict, init=False
+    )
+    _tail_start: int = field(default=0, init=False)
     _stable_line_cache: dict[
         tuple[DisplayRecord, int, tuple[object, ...]], tuple[str, ...]
     ] = field(
@@ -202,6 +215,14 @@ class TranscriptRegion:
             width=constraints.width,
             style_signature=style_signature,
         )
+        positions = self._committed_control_positions
+        first = bisect_left(positions, self._tail_start)
+        last = bisect_left(positions, self._tail_start + len(lines))
+        self.visible_controls = {
+            row - self._tail_start: self._committed_control_rows[row]
+            for row in positions[first:last]
+        }
+        self.visible_height = len(lines)
         return RenderResult(lines=lines)
 
     def _render_record_lines(
@@ -289,6 +310,16 @@ class TranscriptRegion:
         width: int,
         markdown_streaming_key: object | None = None,
     ) -> tuple[str, ...]:
+        if isinstance(record, ToolExecutionRecord) and record.detail_expanded:
+            record = replace(
+                record,
+                command=record.expanded_command
+                if record.expanded_command is not None
+                else record.command,
+                output=record.expanded_output
+                if record.expanded_output is not None
+                else record.output,
+            )
         display_record = _presentation_record(
             self.presentation.project_record(
                 _presentation_record(record),
@@ -363,6 +394,7 @@ class TranscriptRegion:
         style_signature: tuple[object, ...],
     ) -> SegmentedRenderLines:
         if max_height <= 0:
+            self._tail_start = 0
             return SegmentedRenderLines()
 
         committed = self._render_committed_segment(
@@ -379,9 +411,16 @@ class TranscriptRegion:
         )
         lines = SegmentedRenderLines.from_segments(segments)
         if len(lines) <= max_height:
+            self._tail_start = 0
             return lines
 
         start = len(lines) - max_height
+        if self.anchor_tool_index is not None:
+            anchor_row = self._committed_control_by_index.get(self.anchor_tool_index)
+            if anchor_row is not None and not start <= anchor_row < start + max_height:
+                start = max(
+                    0, min(anchor_row - max_height + 1, len(lines) - max_height)
+                )
         committed_rows = committed.line_count if committed is not None else 0
         starts_at_draft_separator = (
             committed is not None
@@ -391,7 +430,8 @@ class TranscriptRegion:
         )
         if start in self._committed_separator_rows or starts_at_draft_separator:
             start += 1
-        return lines[start:]
+        self._tail_start = start
+        return lines[start : start + max_height]
 
     def _render_committed_segment(
         self,
@@ -410,15 +450,28 @@ class TranscriptRegion:
             self.window_generation,
             width,
             style_signature,
+            self.expanded_tool_indices,
+            self.focused_tool_index,
         )
         if key == self._committed_segment_key:
             return self._committed_segment
 
         rows: list[str] = []
         separator_rows: set[int] = set()
-        for record in self.records:
+        controls: dict[int, int] = {}
+        for index, record in enumerate(self.records):
+            detail_available = isinstance(record, ToolExecutionRecord) and (
+                record.expanded_command is not None
+                or record.expanded_output is not None
+            )
+            expanded = detail_available and index in self.expanded_tool_indices
+            display_record = (
+                replace(record, detail_expanded=True)
+                if expanded and isinstance(record, ToolExecutionRecord)
+                else record
+            )
             block = self._render_record_lines(
-                record, width=width, style_signature=style_signature
+                display_record, width=width, style_signature=style_signature
             )
             if not block:
                 continue
@@ -426,6 +479,12 @@ class TranscriptRegion:
                 separator_rows.add(len(rows))
                 rows.append("")
             rows.extend(block)
+            if detail_available:
+                label = "Show Less" if expanded else "Show Detail"
+                if index == self.focused_tool_index:
+                    label = f"> {label} <"
+                controls[len(rows)] = index
+                rows.append(f"  [{label}]")
         segment = (
             RenderLineSegment(
                 lines=tuple(RenderLine(row) for row in rows),
@@ -437,6 +496,11 @@ class TranscriptRegion:
         self._committed_segment_key = key
         self._committed_segment = segment
         self._committed_separator_rows = frozenset(separator_rows)
+        self._committed_control_rows = controls
+        self._committed_control_positions = tuple(controls)
+        self._committed_control_by_index = {
+            index: row for row, index in controls.items()
+        }
         return segment
 
     def _render_draft_segments(

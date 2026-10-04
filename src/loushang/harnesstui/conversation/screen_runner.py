@@ -3,16 +3,19 @@ from __future__ import annotations
 import asyncio
 import inspect
 import math
+import os
 import shutil
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, ExitStack, nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, TextIO, TypeAlias, assert_never
 
+from loushang.harnesstui.conversation.copy_coordinator import CopyCoordinator
 from loushang.harnesstui.conversation.input import (
     ConversationAbortResult,
     ConversationClipboardResult,
+    ConversationCopyTextResult,
     ConversationExitResult,
     ConversationFollowupResult,
     ConversationInputHandled,
@@ -33,11 +36,22 @@ from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.input import InputIntent, InputReader
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.tui.mouse_policy import (
+    MouseEnvironment,
+    MousePolicy,
+    probe_tmux_mouse,
+    requested_mouse_policy,
+    resolve_mouse_policy,
+)
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runtime import TuiRuntime
 from loushang.tui.scheduler import RenderRequestKind
 from loushang.tui.terminal import ProcessTerminalPort, TerminalSize
-from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
+from loushang.tui.terminal_capabilities import (
+    TerminalRuntimeCapabilities,
+    detect_terminal_capabilities,
+    terminal_environment_from_env,
+)
 from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 from loushang.tui.terminal_input import (
     ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS,
@@ -45,6 +59,11 @@ from loushang.tui.terminal_input import (
     read_input_chunk_or_render_tick,
 )
 from loushang.tui.terminal_session import TerminalSession
+from loushang.tui.text_clipboard import (
+    TextClipboardWriter,
+    select_text_clipboard_writer,
+    user_clipboard_route_available,
+)
 
 HandlerResult = Awaitable[int | None] | int | None
 PromptHandler = Callable[..., HandlerResult]
@@ -165,6 +184,8 @@ async def run_conversation_screen(
     input_chunk_reader: InputChunkReader | None = None,
     lifecycle: ConversationScreenLifecycle | None = None,
     continuation: ConversationScreenContinuation | None = None,
+    mouse_policy: MousePolicy | None = None,
+    text_clipboard_writer: TextClipboardWriter | None = None,
 ) -> int:
     """Run one product-neutral interactive conversation screen.
 
@@ -190,6 +211,7 @@ async def run_conversation_screen(
     previous_terminal_capabilities = app.terminal_capabilities
 
     terminal_owner = ExitStack()
+    copy_coordinator: CopyCoordinator | None = None
     screen_exit_code = 0
 
     def finish(*, runtime: TuiRuntime, stdout: TextIO, exit_code: int) -> int:
@@ -227,10 +249,32 @@ async def run_conversation_screen(
         )
         app.surface_host = runtime.overlay_host()
         promote_pending_page_surface(app)
+        env_values = dict(os.environ)
+        effective_mouse_policy = mouse_policy or requested_mouse_policy(env_values)
+        environment = terminal_environment_from_env(env_values)
+        clipboard_writer = text_clipboard_writer or select_text_clipboard_writer(
+            env_values
+        )
+        resolution = resolve_mouse_policy(
+            effective_mouse_policy,
+            MouseEnvironment(
+                tmux_mouse=probe_tmux_mouse(env_values),
+                user_clipboard_available=user_clipboard_route_available(
+                    clipboard_writer, env_values
+                ),
+            ),
+        )
+        capabilities = replace(
+            detect_terminal_capabilities(environment),
+            mouse_selection_owner=resolution.owner,
+            enable_mouse=resolution.owner == "application",
+        )
         mode_factory = terminal_mode_factory or (
             lambda input_stream, output_stream: TerminalSession(
                 stdin=input_stream,
                 stdout=output_stream,
+                environment=environment,
+                capabilities=capabilities,
             )
         )
         render_wakeup = asyncio.Event()
@@ -254,8 +298,29 @@ async def run_conversation_screen(
             else mode
         )
         with terminal_mode as terminal_context:
+            mouse_observed = False
+            if text_clipboard_writer is None:
+                write_control = getattr(
+                    terminal_context, "write_control_if_active", None
+                )
+                clipboard_writer = select_text_clipboard_writer(
+                    env_values,
+                    write_control=write_control if callable(write_control) else None,
+                )
+            copy_coordinator = CopyCoordinator(
+                clipboard_writer,
+                present=lambda message: (
+                    app.present_copy_status(message)  # type: ignore[attr-defined]
+                    if callable(getattr(app, "present_copy_status", None))
+                    else app.set_status(message)  # type: ignore[attr-defined]
+                ),
+            )
             app.terminal_diagnostics_provider = lambda context=terminal_context: (
                 format_terminal_diagnostics(context)
+                + f"\nmouse_policy: {effective_mouse_policy}"
+                + f"\nmouse_policy_reason: {resolution.reason}"
+                + f"\ntmux_mouse: {resolution.tmux_mouse}"
+                + f"\nmouse_event_observed: {mouse_observed}"
             )
             if continuation is None:
                 configure_runtime_for_terminal_context(runtime, app, terminal_context)
@@ -380,6 +445,11 @@ async def run_conversation_screen(
                 )
 
                 for event in input_events:
+                    if event.kind == "mouse":
+                        mouse_observed = True
+                        set_viewport = getattr(router, "set_transcript_viewport_top", None)
+                        if callable(set_viewport):
+                            set_viewport(runtime.render_loop.previous_viewport_top)
                     result = router.handle(event)
                     if isinstance(result, ConversationExitResult):
                         runtime.render_now()
@@ -475,6 +545,8 @@ async def run_conversation_screen(
                                 )
                     elif isinstance(result, ConversationClipboardResult):
                         pass
+                    elif isinstance(result, ConversationCopyTextResult):
+                        copy_coordinator.submit(result.text)
                     elif isinstance(result, ConversationInputHandled):
                         pass
                     elif isinstance(result, ConversationInputIgnored):
@@ -489,6 +561,8 @@ async def run_conversation_screen(
         )
         raise
     finally:
+        if copy_coordinator is not None:
+            await copy_coordinator.close()
 
         def dispose_router() -> None:
             dispose = getattr(router, "dispose", None)

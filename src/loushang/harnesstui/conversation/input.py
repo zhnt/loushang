@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
@@ -48,6 +48,7 @@ from loushang.tui.input import (
     route_prompt_vertical_navigation_key,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.tui.transcript import AssistantMessageRecord
 
 PromptImageAttachmentStager = Callable[[], PromptImageAttachmentOutcome]
 ClipboardOutcomePresenter = Callable[[PromptImageAttachmentOutcome], None]
@@ -144,6 +145,15 @@ class ConversationClipboardResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ConversationCopyTextResult:
+    """Copy an immutable answer or selection snapshot without blocking input."""
+
+    text: str
+    kind: Literal["copy_text"] = field(default="copy_text", init=False)
+    render_requested: bool = field(default=False, init=False)
+
+
+@dataclass(frozen=True, slots=True)
 class ConversationAbortResult:
     """Request cancellation of the active conversation run."""
 
@@ -169,6 +179,7 @@ ConversationInputResult: TypeAlias = (
     | ConversationFollowupResult
     | ConversationSurfaceResult
     | ConversationClipboardResult
+    | ConversationCopyTextResult
     | ConversationAbortResult
     | ConversationExitResult
 )
@@ -242,20 +253,33 @@ class ConversationInputRouter:
         repr=False,
     )
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
+    _transcript_viewport_top: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.submission_presentation not in {"optimistic", "deferred"}:
             raise ValueError("invalid submission presentation")
         self._check_deferred_attachments()
         self.keybindings = conversation_keybinding_manager(self.keybindings)
+        setter = getattr(self.app, "set_keybindings", None)
+        if callable(setter):
+            setter(self.keybindings)
         self._composer_target = ComposerInputTarget(self.app.composer)
 
     def replace_app(self, app: ConversationScreenInputPort) -> None:
         """Rebind the router and its composer target to another screen port."""
 
         self.app = app
+        setter = getattr(app, "set_keybindings", None)
+        if callable(setter) and isinstance(self.keybindings, KeybindingManager):
+            setter(self.keybindings)
         self._composer_target = ComposerInputTarget(app.composer)
         self._jump_mode = None
+        self._transcript_viewport_top = 0
+
+    def set_transcript_viewport_top(self, row: int) -> None:
+        """Map terminal mouse rows onto the committed logical conversation frame."""
+
+        self._transcript_viewport_top = max(0, row)
 
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
@@ -274,6 +298,52 @@ class ConversationInputRouter:
             return self._route_runtime_surface(event)
         if self.app.active_surface is not None:
             return self._route_active_surface(event)
+        if (
+            event.kind == "text"
+            and getattr(self.app, "_focused_tool_index", None) is not None
+        ):
+            if event.text == " ":
+                toggle = getattr(self.app, "toggle_focused_detail", None)
+                return (
+                    ConversationInputHandled()
+                    if callable(toggle) and toggle()
+                    else ConversationInputIgnored()
+                )
+            clear_focus = getattr(self.app, "clear_detail_focus", None)
+            if callable(clear_focus):
+                clear_focus()
+        if (
+            event.kind == "paste"
+            and getattr(self.app, "_focused_tool_index", None) is not None
+        ):
+            clear_focus = getattr(self.app, "clear_detail_focus", None)
+            if callable(clear_focus):
+                clear_focus()
+        if event.kind in {"text", "paste", "resize"}:
+            clear = getattr(self.app, "clear_transcript_selection", None)
+            if callable(clear):
+                clear()
+        if event.kind == "focus" and event.focused is False:
+            clear = getattr(self.app, "clear_transcript_selection", None)
+            return (
+                ConversationInputHandled()
+                if callable(clear) and clear()
+                else ConversationInputIgnored()
+            )
+        if event.kind == "mouse":
+            handler = getattr(self.app, "handle_transcript_mouse", None)
+            if callable(handler):
+                if event.mouse_row is not None and self._transcript_viewport_top:
+                    event = replace(
+                        event,
+                        mouse_row=event.mouse_row + self._transcript_viewport_top,
+                    )
+                handled, copy_text = handler(event)
+                if copy_text:
+                    return ConversationCopyTextResult(copy_text)
+                if handled:
+                    return ConversationInputHandled()
+            return ConversationInputIgnored()
         if event.kind == "text":
             apply_prompt_text(
                 self._composer_target,
@@ -296,6 +366,38 @@ class ConversationInputRouter:
             return ConversationInputIgnored()
 
         keybindings = self._keybindings()
+        if keybindings.matches(event.key, "tui.transcript.focusDetail"):
+            focus = getattr(self.app, "focus_detail_controls", None)
+            return (
+                ConversationInputHandled()
+                if callable(focus) and focus()
+                else ConversationInputIgnored()
+            )
+        focused = getattr(self.app, "_focused_tool_index", None)
+        if focused is not None:
+            if event.key in {"up", "down"}:
+                move = getattr(self.app, "move_detail_focus", None)
+                if callable(move):
+                    move(-1 if event.key == "up" else 1)
+                return ConversationInputHandled()
+            if event.key in {"enter", "space", " "}:
+                toggle = getattr(self.app, "toggle_focused_detail", None)
+                if callable(toggle):
+                    toggle()
+                return ConversationInputHandled()
+            if event.key in {"esc", "escape"}:
+                clear = getattr(self.app, "clear_detail_focus", None)
+                if callable(clear):
+                    clear()
+                return ConversationInputHandled()
+        if event.key in {"esc", "escape"}:
+            clear = getattr(self.app, "clear_transcript_selection", None)
+            if callable(clear) and clear():
+                return ConversationInputHandled()
+        if event.key in {"ctrl+c", "ctrl_c"}:
+            selected = getattr(self.app, "selected_transcript_text", None)
+            if callable(selected) and (text := selected()):
+                return ConversationCopyTextResult(text)
         jump_direction = prompt_jump_direction_for_key(
             event.key,
             keybindings=keybindings,
@@ -310,11 +412,26 @@ class ConversationInputRouter:
                 return ConversationInputIgnored()
             self._restore_queued_messages()
             return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.transcript.open"):
+        if keybindings.matches_prefer_explicit(event.key, "tui.transcript.open"):
             return (
                 ConversationInputHandled()
                 if self.app.open_transcript_reader()
                 else ConversationInputIgnored()
+            )
+        if keybindings.matches_prefer_explicit(
+            event.key, "tui.transcript.copyLastAnswer"
+        ):
+            return ConversationCopyTextResult(
+                next(
+                    (
+                        record.text
+                        for record in reversed(self.app.state.records)
+                        if isinstance(record, AssistantMessageRecord)
+                        and record.stable
+                        and record.text.strip()
+                    ),
+                    "",
+                )
             )
         if route_editor_selection_key(
             self._composer_target,
@@ -442,8 +559,11 @@ class ConversationInputRouter:
         if not text.strip():
             return ConversationInputIgnored()
         if self.submission_presentation == "deferred":
-            return (ConversationFollowupResult(text=text) if mode == "follow_up"
-                    else ConversationSteerResult(text=text))
+            return (
+                ConversationFollowupResult(text=text)
+                if mode == "follow_up"
+                else ConversationSteerResult(text=text)
+            )
         attachments = self._take_prompt_attachments_for_text(text)
         self.app.composer.add_history(text)
         self.app.composer.clear()
@@ -470,6 +590,8 @@ class ConversationInputRouter:
             return ConversationInputIgnored()
         intent = handler(event)
         if isinstance(intent, InputIntent):
+            if intent.kind == "copy_text":
+                return ConversationCopyTextResult(intent.text)
             if intent.kind == "consumed":
                 return ConversationInputHandled()
             return ConversationSurfaceResult(intent=intent)
@@ -492,6 +614,8 @@ class ConversationInputRouter:
         )
         for intent in intents:
             if isinstance(intent, InputIntent):
+                if intent.kind == "copy_text":
+                    return ConversationCopyTextResult(intent.text)
                 if intent.kind == "consumed":
                     return ConversationInputHandled()
                 return ConversationSurfaceResult(intent=intent)
@@ -544,8 +668,12 @@ class ConversationInputRouter:
         self.draft_store.clear()
 
     def _check_deferred_attachments(self) -> None:
-        if self.submission_presentation == "deferred" and (self.prompt_image_stager is not None or self.draft_store):
-            raise ValueError("deferred input requires an empty attachment store and no image stager")
+        if self.submission_presentation == "deferred" and (
+            self.prompt_image_stager is not None or self.draft_store
+        ):
+            raise ValueError(
+                "deferred input requires an empty attachment store and no image stager"
+            )
 
 
 def bind_clipboard_image_input_router(
@@ -640,6 +768,7 @@ __all__ = [
     "ClipboardOutcomePresenter",
     "ConversationAbortResult",
     "ConversationClipboardResult",
+    "ConversationCopyTextResult",
     "ConversationExitResult",
     "ConversationFollowupResult",
     "ConversationInputHandled",

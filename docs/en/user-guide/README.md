@@ -36,6 +36,19 @@ loushang -p "Summarize the current project."
 
 For building terminal UI applications with `loushang.tui`, see [Building TUI Apps](tui.md).
 
+In the conversation screen, click **Show Detail** or **Show Less** to expand or
+collapse one tool result. Direct SSH sessions request mouse reports by default,
+even when the remote host cannot write to your local clipboard. In that case,
+copying selected text reports that the clipboard is unavailable. Set
+`LOUSHANG_TUI_OSC52=1` only if your terminal accepts OSC 52 clipboard writes,
+or set `LOUSHANG_TUI_MOUSE_POLICY=terminal` to keep the terminal's native mouse
+selection instead of clickable controls. Inside tmux, turn on its `mouse`
+option to forward clicks; with that option off, use F4 and Enter to operate
+detail controls from the keyboard. In Apple's Terminal app, enable **View →
+Allow Mouse Reporting**; the app cannot receive clicks when that terminal
+setting is off. `/terminal` shows `mouse_mode_active` and
+`mouse_event_observed` for diagnosis.
+
 For the Linux background named-Mux development preview, see the [lmux guide](lmux.md),
 including storage, reconnection, and upgrade limitations.
 

@@ -34,6 +34,16 @@ loushang -p "Summarize the current project."
 
 如果要用 `loushang.tui` 构建终端 UI 应用，见 [构建 TUI 应用](tui.md)。
 
+在对话界面点击 **Show Detail** 或 **Show Less** 可以展开或收起单条工具结果。
+直接通过 SSH 连接时，默认也会请求鼠标事件，即使远端无法写入本机剪贴板；此时
+复制选中文本会明确提示剪贴板不可用。确认终端支持 OSC 52 后，可以设置
+`LOUSHANG_TUI_OSC52=1`；如需保留终端原生的鼠标划选，则设置
+`LOUSHANG_TUI_MOUSE_POLICY=terminal`。在 tmux 中需开启 `mouse` 才能转发点击；
+关闭时可用 F4 和 Enter 操作详情控件。
+使用 macOS 自带 Terminal 时，还须在“显示”菜单中勾选“允许鼠标报告”；关闭该终端选项时，
+应用即使启用鼠标模式也收不到点击。可用 `/terminal` 查看 `mouse_mode_active` 和
+`mouse_event_observed` 排查。
+
 Linux 后台命名 Mux 开发预览见 [lmux 使用说明](lmux.md)，包含目录、重连及升级限制。
 
 ### 显式 Hosted Application

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -419,6 +420,31 @@ class SuiteSelectionTests(unittest.TestCase):
         self.assertNotIn("tests/harness", command)
         self.assertNotIn("--skip-host-runtime", command)
         self.assertIn("requires_host_runtime and not live", command)
+
+    def test_scoped_host_runtime_can_have_no_marked_cases(self):
+        plan = selector.select(["src/loushang/tui/terminal_session.py"])
+        self.assertTrue(plan["checks"]["host_runtime"])
+        with patch.object(
+            runner.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=5),
+        ) as run:
+            runner.run("host_runtime", plan=plan)
+        run.assert_called_once()
+        self.assertEqual(
+            run.call_args.kwargs["env"]["PYTHONPATH"].split(os.pathsep)[0],
+            str(ROOT / "src"),
+        )
+
+    def test_full_host_runtime_keeps_empty_collection_as_failure(self):
+        plan = selector.select([], full=True)
+        with patch.object(
+            runner.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=5),
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                runner.run("host_runtime", plan=plan)
 
     def test_harnesstui_split_preserves_the_original_test_inventory(self):
         variables = selector.make_paths()

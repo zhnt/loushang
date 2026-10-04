@@ -83,6 +83,8 @@ def _project_coding_tool_command(
         return record.command.replace("\t", " " * TAB_WIDTH)
     command = compact_absolute_display_paths(command, cwd=context)
     command = command.replace("\t", " " * TAB_WIDTH)
+    if record.detail_expanded:
+        return command
     if not _coding_command_needs_block(record, context=context, width=width):
         return record.command.replace("\t", " " * TAB_WIDTH)
     return _collapse_coding_tool_preview(
@@ -106,6 +108,8 @@ def _project_coding_tool_output(
     output = drop_tool_timing_tail_line(
         record.expanded_output if record.expanded_output is not None else record.output
     )
+    if record.detail_expanded:
+        return output
     if record.output_kind == "text":
         output = _collapse_coding_tool_preview(
             output,
@@ -178,9 +182,7 @@ def _collapse_coding_tool_preview(
         return "\n".join(wrap_cells(marker, width=width))
     head = rows[:head_budget]
     tail_rows = rows[-tail_budget:] if tail_budget else []
-    return "\n".join(
-        [*head, *wrap_cells(marker, width=width), *tail_rows]
-    )
+    return "\n".join([*head, *wrap_cells(marker, width=width), *tail_rows])
 
 
 def _coding_welcome_panel(
