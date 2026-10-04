@@ -6,6 +6,7 @@ coordinates the accepted Package owners; it has no legacy materializer path.
 
 from __future__ import annotations
 
+import ntpath
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -137,7 +138,11 @@ class PackageProductWheelExecutionFactory:
         source = classification.canonical_source_identity
         parsed = urlsplit(source)
         path = parsed.path if parsed.scheme and parsed.netloc else source
-        filename = path.rsplit("/", 1)[-1]
+        filename = (
+            path.rsplit("/", 1)[-1]
+            if parsed.scheme and parsed.netloc
+            else ntpath.basename(path)
+        )
         if _WHEEL_BASENAME.fullmatch(filename) is None:
             raise _ProductWheelSourceUnavailable(
                 "Package Product Source is not a wheel artifact"
