@@ -45,11 +45,20 @@ jobs:
             --tb=short
             --junitxml=.artifacts/windows-worker-diagnostic.xml
         run: >-
-          uv run python scripts/dev/run_pytest.py
+          uv run python scripts/dev/run_windows_worker_diagnostic.py
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform[windows-amd64]
           --maxfail=1
           --durations=10
           -vv
+
+      - name: Upload diagnostic stack and pytest output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-diagnostic-log
+          path: .artifacts/windows-worker-diagnostic.log
+          include-hidden-files: true
+          if-no-files-found: warn
 
       - name: Upload diagnostic pytest report
         if: always()

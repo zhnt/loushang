@@ -2886,7 +2886,23 @@ the first native Windows Product transaction with a 40-minute bound and
 periodic Python stack dumps. It is diagnostic evidence only; the complete
 Worker job and its strict report remain the acceptance gate. The same CI run
 also failed the Rust Analyzer live references readiness check; a bounded
-query retry is committed locally and awaits a new exact-head run.
+query retry later passed an exact-head run.
+
+Exact-head CI `37228691013` at `d585f8c8` passed the offline Coding package
+regression (4,108 passed, 63 skipped, 31 deselected under existing selectors),
+Architecture, Harness, HarnessTUI, all live LSP checks including Rust Analyzer,
+Linux's 2,049-query explicit Worker Product canary, cross-platform Hosting and
+AppService, Windows H6 native material verification, and the strict Windows
+Shell reports. The first-transaction diagnostic exceeded its 40-minute job
+limit and was cancelled without a JUnit artifact; the per-job log endpoint
+currently returns 404 while the full run remains active. This
+proves only that the diagnostic did not finish within that bound; it does not
+identify a Product assertion failure or grant Windows Worker admission. The
+full native Worker job is still running. The next diagnostic candidate stops
+its pytest child after 25 minutes, arms a native stack timer before pytest's
+scratch lease, captures output to a file, and attempts to upload that file
+within the 40-minute Actions job limit. Runner loss can still prevent upload;
+the mandatory full Worker gate is unchanged.
 
 ## Independent Review Record
 
