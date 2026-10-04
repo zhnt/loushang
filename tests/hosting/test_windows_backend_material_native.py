@@ -56,7 +56,11 @@ def test_loaded_lpac_backend_sources_match_selected_release_members() -> None:
                 package_root.joinpath(*name.removeprefix("loushang/").split("/"))
             ),
         )
-        for name in WINDOWS_LPAC_BACKEND_CODE_MEMBERS
+        for name in (
+            *WINDOWS_LPAC_BACKEND_CODE_MEMBERS,
+            "loushang/__init__.py",
+            "loushang/hosting/__init__.py",
+        )
     )
     verify_windows_lpac_loaded_backend_sources(members)
     verify_windows_loushang_installed_package_members(members)
