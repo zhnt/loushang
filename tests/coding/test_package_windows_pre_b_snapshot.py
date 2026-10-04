@@ -44,6 +44,9 @@ from loushang.coding.arch.cache import (
 from loushang.coding.bootstrap import create_agent_session, create_services
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.cli.package_gc import main as gc_cli_main
+from loushang.coding.package_arch_private_cache import (
+    write_coding_arch_private_windows_snapshot,
+)
 from loushang.coding.package_cutover_backup import (
     inspect_coding_package_cutover_backup,
 )
@@ -725,7 +728,9 @@ def test_windows_candidate_ordinary_session_uses_fresh_b_product(
 def _write_native_arch_cache(root: Path, workspace: Path) -> Path:
     cache_path = root / "import-facts-v1.json"
     cache = ImportFactCache(
-        cache_path, max_bytes=4096, windows_private_acl=True
+        cache_path,
+        max_bytes=4096,
+        private_writer=write_coding_arch_private_windows_snapshot,
     )
     cache.replace(
         ImportFactCacheSnapshot(

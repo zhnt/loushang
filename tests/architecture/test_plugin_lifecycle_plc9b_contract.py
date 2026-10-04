@@ -2236,6 +2236,8 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             assert path.name.startswith("package_") or path.name in {
                 "_plugin_lifecycle.py",
                 "_external_data_product_composition.py",
+                # First-party Product composition owns Windows root preparation.
+                "_product_capability_plugin_composition.py",
             }, path
         elif path.is_relative_to(Path("src/loushang/harness/package_product")):
             pass

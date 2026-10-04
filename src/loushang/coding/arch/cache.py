@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import tempfile
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -67,7 +68,7 @@ class ImportFactCache:
         path: str | Path | None = None,
         *,
         max_bytes: int | None = None,
-        windows_private_acl: bool = False,
+        private_writer: Callable[[Path, bytes], None] | None = None,
     ) -> None:
         if max_bytes is not None and (
             isinstance(max_bytes, bool)
@@ -77,9 +78,9 @@ class ImportFactCache:
             raise ValueError("import fact cache max_bytes must be a positive integer")
         self.path = Path(path).expanduser() if path is not None else None
         self.max_bytes = max_bytes
-        if type(windows_private_acl) is not bool:
-            raise TypeError("import fact cache Windows ACL policy is invalid")
-        self.windows_private_acl = windows_private_acl
+        if private_writer is not None and not callable(private_writer):
+            raise TypeError("import fact cache private writer is invalid")
+        self.private_writer = private_writer
         self._snapshots: dict[ImportFactCacheNamespace, ImportFactCacheSnapshot] = {}
         self._disk_loaded = False
         self._persisted_snapshot: ImportFactCacheSnapshot | None = None
@@ -109,7 +110,7 @@ class ImportFactCache:
                 self.path,
                 snapshot,
                 max_bytes=self.max_bytes,
-                windows_private_acl=self.windows_private_acl,
+                private_writer=self.private_writer,
             )
         except OSError as exc:
             self.last_error = str(exc)
@@ -172,9 +173,8 @@ def _write_snapshot(
     snapshot: ImportFactCacheSnapshot,
     *,
     max_bytes: int | None,
-    windows_private_acl: bool,
+    private_writer: Callable[[Path, bytes], None] | None,
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
         json.dumps(
             _snapshot_payload(snapshot),
@@ -185,9 +185,10 @@ def _write_snapshot(
     )
     if max_bytes is not None and len(encoded) > max_bytes:
         raise OSError("import fact cache exceeds the private-state byte quota")
-    if windows_private_acl and os.name == "nt":
-        _write_windows_private_snapshot(path, encoded)
+    if private_writer is not None and os.name == "nt":
+        private_writer(path, encoded)
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -207,50 +208,6 @@ def _write_snapshot(
         if temporary_path is not None:
             with suppress(FileNotFoundError):
                 temporary_path.unlink()
-
-
-def _write_windows_private_snapshot(path: Path, encoded: bytes) -> None:
-    """Create the atomic cache file with the Product owner's exact ACL."""
-
-    import secrets
-
-    from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
-    from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
-        open_windows_directory,
-        open_windows_regular_file_at,
-    )
-
-    temporary_path: Path | None = None
-    with WindowsPrivateDirectoryAcl(inherit_children=True) as acl:
-        parent_fd = open_windows_directory(path.parent, read_control=True)
-        try:
-            acl.validate(parent_fd)
-            temporary_path = path.parent / f".{path.name}.{secrets.token_hex(16)}.tmp"
-            temporary_fd = open_windows_regular_file_at(
-                parent_fd,
-                temporary_path.name,
-                create_new=True,
-                write=True,
-                security_descriptor=acl.security_descriptor,
-                read_control=True,
-            )
-            try:
-                acl.validate(temporary_fd)
-                with os.fdopen(temporary_fd, "wb") as stream:
-                    temporary_fd = -1
-                    stream.write(encoded)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-            finally:
-                if temporary_fd >= 0:
-                    os.close(temporary_fd)
-            os.replace(temporary_path, path)
-            temporary_path = None
-        finally:
-            os.close(parent_fd)
-            if temporary_path is not None:
-                with suppress(FileNotFoundError):
-                    temporary_path.unlink()
 
 
 def _read_snapshot(
