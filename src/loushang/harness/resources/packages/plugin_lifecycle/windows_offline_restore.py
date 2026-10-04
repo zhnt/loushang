@@ -893,12 +893,17 @@ def _inspect_tree(
                         raise OSError("Snapshot file identity changed")
                     digest = sha256()
                     file_bytes = 0
-                    while chunk := os.read(descriptor, 64 * 1024):
-                        file_bytes += len(chunk)
-                        total_bytes += len(chunk)
-                        if total_bytes > maximum_bytes:
-                            raise OSError("Snapshot byte count exceeds receipt")
-                        digest.update(chunk)
+                    try:
+                        while chunk := os.read(descriptor, 64 * 1024):
+                            file_bytes += len(chunk)
+                            total_bytes += len(chunk)
+                            if total_bytes > maximum_bytes:
+                                raise OSError("Snapshot byte count exceeds receipt")
+                            digest.update(chunk)
+                    except PermissionError as exc:
+                        raise PermissionError(
+                            f"Snapshot member cannot be read: {logical_path}"
+                        ) from exc
                     after = os.fstat(descriptor)
                     if _stable_file_metadata(before) != _stable_file_metadata(after):
                         raise OSError("Snapshot file changed while reading")

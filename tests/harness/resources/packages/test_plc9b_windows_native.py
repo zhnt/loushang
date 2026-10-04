@@ -49,6 +49,41 @@ def test_windows_rooted_regular_file_handle_reads_data(tmp_path: Path) -> None:
         os.close(parent)
 
 
+def test_windows_private_rooted_file_handle_reads_data(tmp_path: Path) -> None:
+    with WindowsPrivateDirectoryAcl() as acl:
+        parent = open_windows_directory(tmp_path)
+        try:
+            private = open_windows_directory(
+                "private",
+                dir_fd=parent,
+                create_new=True,
+                security_descriptor=acl.security_descriptor,
+            )
+            try:
+                writer = open_windows_regular_file_at(
+                    private,
+                    "member.json",
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                )
+                try:
+                    os.write(writer, b"private product")
+                finally:
+                    os.close(writer)
+                reader = open_windows_regular_file_at(
+                    private, "member.json", create_new=False, write=False
+                )
+                try:
+                    assert os.read(reader, 1024) == b"private product"
+                finally:
+                    os.close(reader)
+            finally:
+                os.close(private)
+        finally:
+            os.close(parent)
+
+
 def test_windows_delete_inspected_entry_uses_same_handle_identity(
     tmp_path: Path,
 ) -> None:

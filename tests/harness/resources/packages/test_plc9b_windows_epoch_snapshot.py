@@ -129,7 +129,7 @@ def test_windows_snapshot_refuses_missing_member_before_publication(
     owner, snapshot_root, roots = _owner(tmp_path)
     (roots["store_bytes"] / "plugin.whl").unlink()
 
-    with pytest.raises(OSError, match="selected source member is missing"):
+    with pytest.raises(ValueError, match="source member coverage is incomplete"):
         owner.capture(
             store_id=STORE_ID,
             legacy_root_identity=_identity(roots["store_bytes"]),
