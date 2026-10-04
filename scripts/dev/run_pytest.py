@@ -79,15 +79,21 @@ def run_pytest(
     result = int(pytest.ExitCode.INTERNAL_ERROR)
     trace_cleanup = values.get("LOUSHANG_PYTEST_TRACE_CLEANUP") == "1"
     watchdog_stop = threading.Event() if trace_cleanup else None
+    trace_stream = (
+        os.fdopen(os.dup(2), "w", buffering=1, encoding="utf-8", errors="replace")
+        if trace_cleanup
+        else None
+    )
     if trace_cleanup:
-        print("pytest watchdog armed", file=sys.stderr, flush=True)
+        assert trace_stream is not None
+        print("pytest watchdog armed", file=trace_stream, flush=True)
 
         def dump_if_stalled() -> None:
             assert watchdog_stop is not None
             delay = 180
             while not watchdog_stop.wait(delay):
-                print("pytest watchdog: still running", file=sys.stderr, flush=True)
-                faulthandler.dump_traceback(file=sys.stderr)
+                print("pytest watchdog: still running", file=trace_stream, flush=True)
+                faulthandler.dump_traceback(file=trace_stream)
                 delay = 180
 
         threading.Thread(target=dump_if_stalled, daemon=True).start()
@@ -102,13 +108,18 @@ def run_pytest(
             )
         )
         if trace_cleanup:
-            print("pytest returned; scratch cleanup starting", file=sys.stderr, flush=True)
+            print(
+                "pytest returned; scratch cleanup starting",
+                file=trace_stream,
+                flush=True,
+            )
         return result
     finally:
         lease.close()
         if watchdog_stop is not None:
             watchdog_stop.set()
-            print("pytest scratch cleanup finished", file=sys.stderr, flush=True)
+            print("pytest scratch cleanup finished", file=trace_stream, flush=True)
+            trace_stream.close()
         if scope.run_dir.exists():
             print(
                 "warning: pytest scratch cleanup was incomplete; "
