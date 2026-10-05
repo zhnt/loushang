@@ -2826,6 +2826,20 @@ def test_windows_worker_wheel_transaction_requires_exact_native_platform(
     _exercise_windows_worker_wheel_transaction(windows_worker_test_root, native_platform)
 
 
+@pytest.mark.requires_host_runtime
+def test_windows_worker_public_coding_session_reaches_selected_product(
+    windows_worker_test_root: Path,
+) -> None:
+    if os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        pytest.skip("native Windows backend review is required")
+    _exercise_windows_worker_wheel_transaction(
+        windows_worker_test_root,
+        "windows-amd64",
+        owner_id="coding",
+        ordinary_entry_only=True,
+    )
+
+
 @pytest.fixture
 def windows_worker_test_root(tmp_path: Path) -> Iterator[Path]:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
@@ -3194,6 +3208,8 @@ def _exercise_windows_worker_wheel_transaction(
     clean_rotation: bool = False,
     dependency_closure: bool = False,
     crash_after_healthy: bool = False,
+    owner_id: str = "coding.lsp",
+    ordinary_entry_only: bool = False,
 ) -> None:
     """Only the explicit Product opener reads the inert Worker candidate."""
 
@@ -3259,7 +3275,7 @@ def _exercise_windows_worker_wheel_transaction(
             plugin_id="workerprobe",
             version="1",
             contribution_id="query-provider",
-            owner_id="coding.lsp",
+            owner_id=owner_id,
             native_platform="windows-amd64",
             wheel_tag="py3-none-win_amd64",
             executable=bytes(executable),
@@ -3286,7 +3302,7 @@ def _exercise_windows_worker_wheel_transaction(
                 "--contribution-id",
                 "query-provider",
                 "--owner-id",
-                "coding.lsp",
+                owner_id,
                 "--native-platform",
                 "windows-amd64",
                 *(
@@ -3317,7 +3333,7 @@ def _exercise_windows_worker_wheel_transaction(
         assert author_result["sha256"] == sha256(payload).hexdigest()
         windows_admission = PackageProductLocalWorkerAdmissionV1(
             contribution_id="query-provider",
-            owner_id="coding.lsp",
+            owner_id=owner_id,
             native_platform="windows-amd64",
         )
         if native_platform == "windows-amd64":
@@ -3713,6 +3729,56 @@ finally:
                     assert allowed.opt_in is not None
                     assert allowed.opt_in.native_platform == "windows-amd64"
                     assert opt_in_owner.current("workerprobe") == allowed
+                    if ordinary_entry_only:
+                        assert owner_id == "coding"
+                        ordinary_manager = asyncio.run(
+                            SessionManager.new(
+                                session_dir=tmp_path / "ordinary-worker-transcripts",
+                                cwd=str(workspace),
+                                session_id="windows-worker-ordinary",
+                                defer_materialization=False,
+                            )
+                        )
+                        with patch(
+                            "loushang.coding.package_product_runtime.version",
+                            return_value="2.0.0",
+                        ):
+                            ordinary_session = create_agent_session(
+                                session_manager=ordinary_manager,
+                                model=Model(
+                                    id="windows-worker-query",
+                                    name="Windows Worker Query",
+                                    provider="test",
+                                    endpoint="test",
+                                    capabilities=Capabilities(
+                                        input=("text",),
+                                        context_window=128_000,
+                                        max_tokens=4_096,
+                                    ),
+                                ),
+                                services=create_services(settings_manager=settings),
+                                worker_candidate_plugin_id="workerprobe",
+                            )
+
+                        async def exercise_ordinary_worker() -> None:
+                            try:
+                                await ordinary_session.prepare_model_call_runtime()
+                                assert (
+                                    await ordinary_session.query_worker_symbol("review")
+                                    == "Review symbol"
+                                )
+                            finally:
+                                await ordinary_session.dispose()
+
+                        asyncio.run(exercise_ordinary_worker())
+                        history = (
+                            open_coding_windows_product_worker_supervisor_journal(
+                                worker_product
+                            ).inspect_records()
+                        )
+                        assert history
+                        assert history[-1].phase == "stopped"
+                        return
                     unmaterialized_session = asyncio.run(
                         SessionManager.new(
                             session_dir=tmp_path / "unmaterialized-worker-transcripts",
@@ -3823,7 +3889,12 @@ finally:
                         prepare_coding_selected_worker_provider_candidate(
                             receipt_owner=receipt_owner,
                             receipt=receipt,
-                            definition=CODING_WORKER_QUERY_DEFINITION,
+                            definition=replace(
+                                CODING_WORKER_QUERY_DEFINITION,
+                                owner_id=(
+                                    "coding.lsp" if owner_id == "coding" else "coding"
+                                ),
+                            ),
                             provider=query_provider,
                         )
                     provider_candidate = (
@@ -3832,7 +3903,7 @@ finally:
                             receipt=receipt,
                             definition=replace(
                                 CODING_WORKER_QUERY_DEFINITION,
-                                owner_id="coding.lsp",
+                                owner_id=owner_id,
                             ),
                             provider=query_provider,
                         )

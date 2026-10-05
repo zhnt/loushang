@@ -573,11 +573,14 @@ class CodingSessionOwnedProductRuntimeFactory:
     _binding_issued: bool = False
     _lock: Lock = field(default_factory=Lock, repr=False)
 
-    def product_owner_for_worker(self) -> PosixLocalWheelProductSessionOwner:
-        if not isinstance(self.factory, PosixLocalWheelProductRuntimeFactory):
-            raise TypeError("Coding Worker requires a POSIX Product Session factory")
+    def product_owner_for_worker(
+        self,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
         owner = self.selection.product_owner_for_factory(self.factory)
-        if not isinstance(owner, PosixLocalWheelProductSessionOwner):
+        if not isinstance(
+            owner,
+            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+        ):
             raise TypeError("Coding Worker Product Session owner changed platform")
         return owner
 
@@ -622,12 +625,19 @@ class CodingSessionOwnedProductRuntimeFactory:
 class CodingApplicationWorkerProductRuntimeFactory:
     """Expose one app-owned Product factory to an explicit Worker Session."""
 
-    factory: PosixLocalWheelProductRuntimeFactory
+    factory: (
+        PosixLocalWheelProductRuntimeFactory | WindowsLocalWheelProductRuntimeFactory
+    )
     selection: CodingFencedProductApplicationSelection
 
-    def product_owner_for_worker(self) -> PosixLocalWheelProductSessionOwner:
+    def product_owner_for_worker(
+        self,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner:
         owner = self.selection.product_owner_for_factory(self.factory)
-        if not isinstance(owner, PosixLocalWheelProductSessionOwner):
+        if not isinstance(
+            owner,
+            (PosixLocalWheelProductSessionOwner, WindowsLocalWheelProductSessionOwner),
+        ):
             raise TypeError("Coding Worker Product Session owner changed platform")
         return owner
 

@@ -62,6 +62,9 @@ from .package_product_worker_query_consumer import (
     coding_worker_query_owner_authority,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
 
 
 class CodingWorkerSessionCompositionError(RuntimeError):
@@ -74,7 +77,9 @@ def prepare_coding_product_worker_session_inputs(
     *,
     resolved_providers: ResolvedCapabilityProviderSet,
     provider_owner: CapabilityProviderOwnerAuthority,
-    receipt_owner: CodingWorkerProductReceiptOwner,
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ),
     receipt: ProductWorkerActivationReceiptV1,
     capability_authority: CodingProductWorkerCapabilityAuthority | None,
     adapter: CapabilityQueryWorkerAdapter | None,
@@ -97,7 +102,11 @@ def prepare_coding_product_worker_session_inputs(
     if (
         not isinstance(resolved_providers, ResolvedCapabilityProviderSet)
         or not isinstance(provider_owner, CapabilityProviderOwnerAuthority)
-        or not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+        or type(receipt_owner)
+        not in (
+            CodingWorkerProductReceiptOwner,
+            CodingWindowsWorkerProductReceiptOwner,
+        )
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or not isinstance(worker_admission, CapabilityWorkerAdmissionV1)
         or type(evaluated_at) is not int

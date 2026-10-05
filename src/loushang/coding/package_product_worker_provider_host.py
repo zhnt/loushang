@@ -28,9 +28,13 @@ from loushang.harness.worker.product_activation import ProductWorkerActivationRe
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .package_product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
+    _native_platform_for_receipt_owner,
     prepare_coding_selected_worker_provider_candidate,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
 
 
 class CodingWorkerProviderHostError(RuntimeError):
@@ -76,7 +80,9 @@ class CodingPreparedWorkerProvider:
 def prepare_coding_worker_provider_binding(
     *,
     resolved: ResolvedCapabilityProvider,
-    receipt_owner: CodingWorkerProductReceiptOwner,
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ),
     receipt: ProductWorkerActivationReceiptV1,
     capability_authority: CodingProductWorkerCapabilityAuthority,
     adapter: CapabilityQueryWorkerAdapter,
@@ -91,7 +97,11 @@ def prepare_coding_worker_provider_binding(
 
     if (
         not isinstance(resolved, ResolvedCapabilityProvider)
-        or not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+        or type(receipt_owner)
+        not in (
+            CodingWorkerProductReceiptOwner,
+            CodingWindowsWorkerProductReceiptOwner,
+        )
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or not isinstance(capability_authority, CodingProductWorkerCapabilityAuthority)
         or not isinstance(adapter, CapabilityQueryWorkerAdapter)
@@ -121,7 +131,8 @@ def prepare_coding_worker_provider_binding(
     if (
         candidate != resolved.admission.candidate
         or candidate.binding_spec != spec
-        or spec.native_platform != "linux-x86_64"
+        or spec.native_platform
+        != _native_platform_for_receipt_owner(receipt_owner)
         or authority.owner_policy_revision != resolved.admission.owner_policy_revision
         or authority.revocation_epoch != resolved.admission.revocation_epoch
         or authority.plugin_revision_digest != receipt.policy.plugin_revision_digest
