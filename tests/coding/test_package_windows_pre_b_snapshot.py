@@ -162,6 +162,9 @@ from loushang.coding.package_product_worker_windows_crash_stage_review import (
 from loushang.coding.package_product_worker_windows_crash_supervisor_settlement import (
     settle_coding_windows_product_worker_crash_supervisor,
 )
+from loushang.coding.package_product_worker_windows_gc_history import (
+    CodingWindowsWorkerGcHistoryAuthority,
+)
 from loushang.coding.package_product_worker_windows_installed_backend import (
     CodingWindowsWorkerInstalledBackendError,
     CodingWindowsWorkerInstalledBackendReader,
@@ -214,6 +217,9 @@ from loushang.coding.package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
     inspect_coding_windows_product_worker_offline_recovery,
     inspect_coding_windows_product_worker_recovery_inventory,
+)
+from loushang.coding.package_product_worker_windows_stage_retirement import (
+    retire_coding_windows_product_worker_complete_stage,
 )
 from loushang.coding.package_product_worker_windows_stage_review import (
     CodingWindowsWorkerStageReviewError,
@@ -342,8 +348,7 @@ def _grant_windows_world_read(path: Path) -> None:
             sddl = (
                 "D:P"
                 + "".join(
-                    f"(A;;FA;;;{sid})"
-                    for sid in sorted({acl._user_sid, "S-1-5-18"})
+                    f"(A;;FA;;;{sid})" for sid in sorted({acl._user_sid, "S-1-5-18"})
                 )
                 + "(A;;FR;;;WD)"
             )
@@ -2807,6 +2812,118 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
     _exercise_windows_worker_wheel_transaction(
         tmp_path, "windows-amd64", clean_rotation=True
     )
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+        windows_candidate=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        assert isinstance(product, WindowsLocalWheelProductSessionOwner)
+        gc = open_windows_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingWindowsWorkerGcHistoryAuthority(product),
+        )
+        with pytest.raises(PackageProductGcExecutionError) as live_stage:
+            gc.prepare()
+        assert live_stage.value.code == "plugin_package_gc_worker_payload_unsettled"
+
+        review = review_coding_windows_product_worker_complete_stage(
+            product, attempt_id="9" * 32
+        )
+        retire_coding_windows_product_worker_complete_stage(
+            product, expected_review=review
+        )
+        assert not (product.state_root / ("worker-payload-" + "9" * 32)).exists()
+        assert (
+            product.state_root / ("worker-stage-retired-" + "9" * 32 + ".json")
+        ).is_file()
+
+        without_worker_proof = open_windows_local_wheel_product_root_gc(product)
+        with pytest.raises(PackageProductGcExecutionError) as unproved:
+            without_worker_proof.prepare()
+        assert unproved.value.code == "plugin_package_gc_worker_history_unsettled"
+        unknown_history = product.state_root / (
+            "worker-crash-stage-retired-" + "a" * 32 + ".json"
+        )
+        unknown_history.write_bytes(b"unproved")
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as corrupt:
+                gc.prepare()
+            assert corrupt.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            unknown_history.unlink()
+
+        opt_in_owner = CodingWindowsWorkerProductOptInOwner(product)
+        opt_in = opt_in_owner.current("workerprobe")
+        assert opt_in is not None and opt_in.action == "allow"
+        revoked = opt_in_owner.revoke(
+            plugin_id="workerprobe",
+            operation_id="operator:windows-worker-gc-revoke",
+            expected_generation=opt_in.generation,
+        )
+        assert revoked.action == "revoke"
+        snapshot = product.desired_state.snapshot()
+        selected = next(
+            item
+            for item in snapshot.installations
+            if item.installation_key.plugin_id == "workerprobe"
+        )
+        revision = selected.selection.package_revision
+        assert revision is not None
+        removed = product.management.submit(
+            PluginManagementCommandV1(
+                action="remove",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id="operator:windows-worker-gc-remove",
+                    idempotency_key="operator:windows-worker-gc-remove",
+                    expected_inventory_revision=snapshot.inventory_revision,
+                    installation_key=selected.installation_key,
+                    desired_state="absent",
+                    package_revision=None,
+                    actor_id="operator",
+                    policy_revision="operator:1",
+                ),
+            )
+        )
+        assert removed.result is not None
+        assert removed.result.disposition == "succeeded"
+        gc.prepare()
+        candidate = next(
+            item for item in gc.candidates() if item.package_revision == revision
+        )
+        target = resolve_plugin_package_gc_root_target(
+            revision,
+            bindings=product.gc_bindings.records(),
+            claims=product.gc_bindings.claims(),
+            committed_sets=gc.application.executor.committed_sets.records(),
+            settlements=gc.application.executor.root_settlements.records(),
+        )
+        deleted_root = product.plugin_store_root / target.settlement.final_name
+        assert deleted_root.is_dir()
+        result = gc.execute(
+            PackageProductRootGcCommandV1(
+                candidate=candidate,
+                reservation_operation_id="operator:windows-worker-gc-reserve",
+                reservation_idempotency_key="operator:windows-worker-gc-reserve",
+                attempt_operation_id="operator:windows-worker-gc-delete",
+                attempt_idempotency_key="operator:windows-worker-gc-delete",
+            )
+        )
+        assert result.disposition == "succeeded"
+        assert not deleted_root.exists()
+        assert (
+            product.state_root / ("worker-stage-retired-" + "9" * 32 + ".json")
+        ).is_file()
+    finally:
+        owner.close()
 
 
 def test_windows_worker_host_crash_reopens_and_retires_product_attempt(
@@ -3296,7 +3413,9 @@ finally:
                     max_total_bytes=16 * 1024 * 1024,
                 )
                 if dependency_closure:
-                    assert selected.snapshot.committed_record.closure_lock.node_count == 3
+                    assert (
+                        selected.snapshot.committed_record.closure_lock.node_count == 3
+                    )
                     closure = runtime.capture_selected_dependency_closure_for_plugin(
                         "workerprobe",
                         max_dependencies=3,
@@ -3305,8 +3424,7 @@ finally:
                     )
                     assert len(closure.members) == 2
                     assert {
-                        member.dependency_ref.distribution
-                        for member in closure.members
+                        member.dependency_ref.distribution for member in closure.members
                     } == {"auxiliary", "dependency"}
                     runtime.assert_selected_dependency_closure_current(closure)
                     with pytest.raises(PackageProductRuntimeReadError) as too_many:
@@ -3713,7 +3831,9 @@ finally:
                             protocol_version=request.runtime.protocol_version,
                         )
                         try:
-                            host = _create_windows_lpac_child_session_host(max_sessions=1)
+                            host = _create_windows_lpac_child_session_host(
+                                max_sessions=1
+                            )
                             adapter = HostingManagedWorkerSessionAdapter(
                                 hosting=host,
                                 preparation=native_profile,
@@ -3725,8 +3845,10 @@ finally:
                             )
                             assert supervisor.status.state == "healthy"
                             await native_profile.verify_current()
-                            live_job = review_coding_windows_product_worker_orphan_runtime(
-                                worker_product, attempt_id="7" * 32
+                            live_job = (
+                                review_coding_windows_product_worker_orphan_runtime(
+                                    worker_product, attempt_id="7" * 32
+                                )
                             )
                             assert live_job.native_job_absent is False
                             assert "native_job_present" in live_job.missing_proofs
@@ -3907,9 +4029,7 @@ finally:
                     assert orphan_review.attempt is not None
                     assert orphan_review.attempt.clean_exit_settled
                     assert orphan_review.native_job_absent is True
-                    assert orphan_review.missing_proofs == (
-                        "orphan_lease_absent",
-                    )
+                    assert orphan_review.missing_proofs == ("orphan_lease_absent",)
                     assert not orphan_review.clean_exit_repair_candidate
                     with pytest.raises(ValueError, match="unproven"):
                         repair_coding_windows_product_worker_clean_exit_orphan_runtime(
@@ -4038,12 +4158,16 @@ finally:
             else:
                 runtime.dispose_runtime()
             retained_stage = worker_state_root / ("worker-payload-" + "7" * 32)
-            after_runtime = retained_stage.is_dir() if stage_retention_expected else None
+            after_runtime = (
+                retained_stage.is_dir() if stage_retention_expected else None
+            )
             if worker_owner is not None:
                 worker_owner.close()
             if stage_retention_expected:
                 assert after_runtime, "Worker stage disappeared during runtime disposal"
-                assert retained_stage.is_dir(), "Worker stage disappeared during Product close"
+                assert retained_stage.is_dir(), (
+                    "Worker stage disappeared during Product close"
+                )
                 assert (worker_state_root / ("worker-payload-" + "8" * 32)).is_dir()
                 assert (
                     worker_state_root
@@ -4330,15 +4454,18 @@ finally:
             )
             if inventoried.returncode != 0:
                 pytest.fail(
-                    json.dumps({
-                        "childError": inventoried.stderr[-2000:],
-                        "stageBeforeInventorySpawn": stage_before_inventory_spawn,
-                        "parentStageRetained": retained_stage.is_dir(),
-                        "parentPayloads": sorted(
-                            item.name for item in worker_state_root.iterdir()
-                            if item.name.startswith("worker-payload-")
-                        ),
-                    }),
+                    json.dumps(
+                        {
+                            "childError": inventoried.stderr[-2000:],
+                            "stageBeforeInventorySpawn": stage_before_inventory_spawn,
+                            "parentStageRetained": retained_stage.is_dir(),
+                            "parentPayloads": sorted(
+                                item.name
+                                for item in worker_state_root.iterdir()
+                                if item.name.startswith("worker-payload-")
+                            ),
+                        }
+                    ),
                     pytrace=False,
                 )
             assert json.loads(inventoried.stdout) == {
@@ -5738,17 +5865,23 @@ def test_windows_coding_product_gc_reclaims_only_removed_builtin_root(
             gc.prepare()
         assert unsettled_case.value.code == "plugin_package_gc_worker_payload_unsettled"
         differently_cased_payload.rmdir()
-        launch_history = product.state_root / ("worker-launch-intent-" + "a" * 32 + ".json")
+        launch_history = product.state_root / (
+            "worker-launch-intent-" + "a" * 32 + ".json"
+        )
         launch_history.write_bytes(b"unsettled")
         with pytest.raises(PackageProductGcExecutionError) as retained_history:
             gc.prepare()
-        assert retained_history.value.code == "plugin_package_gc_worker_history_unsettled"
+        assert (
+            retained_history.value.code == "plugin_package_gc_worker_history_unsettled"
+        )
         launch_history.unlink()
         orphan_supervisor_lock = product.state_root / "worker-supervisor.jsonl.lock"
         orphan_supervisor_lock.write_bytes(b"")
         with pytest.raises(PackageProductGcExecutionError) as orphaned_history:
             gc.prepare()
-        assert orphaned_history.value.code == "plugin_package_gc_worker_history_unsettled"
+        assert (
+            orphaned_history.value.code == "plugin_package_gc_worker_history_unsettled"
+        )
         orphan_supervisor_lock.unlink()
         gc.prepare()
         (candidate,) = gc.candidates()

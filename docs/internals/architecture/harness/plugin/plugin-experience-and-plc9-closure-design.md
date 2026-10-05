@@ -2856,6 +2856,23 @@ stop against deleting Package roots
 while cross-owner recovery remains unproved; it does not settle those records
 or authorize GC after a successful Worker retirement. The native GC journey
 includes this negative, but still needs a Windows runner.
+
+An October 5 closure review found that the conservative name-only history
+guard also rejects a fully settled Worker attempt forever: a successful stage
+retirement deliberately retains its audit receipt. The current candidate now
+lets Coding supply a read-only history-debt authority to Product root GC. GC
+still refuses payload stages, missing authority, malformed or unrecognized
+history, and attempts without complete retirement proof. Coding validates the
+retained activation receipts and all observed normal, crash, partial, and
+unlaunched attempt histories under Product quiescence and the GC guard before
+Package applies its existing exact-revision reference rules. A Windows Product
+journey now exercises normal launch, clean retirement, opt-in revocation,
+remove, and exact root deletion while keeping the audit receipt; it also
+expects active payload, absent authority, and unknown history to refuse.
+That journey and the additional crash/unlaunched positive GC paths still need
+native reports. This does not authorize pruning retained Worker history or
+opening the default Worker route.
+
 Windows now also has a read-only Product orphan-runtime review that joins one
 attempt's launch intent, persisted activation receipt, and matching orphan
 Package lease. It leaves Job absence explicitly unverified and has no repair

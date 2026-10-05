@@ -175,6 +175,15 @@ class PackageProductGcDependencyRepairAuthorityPort(Protocol):
     ) -> bool: ...
 
 
+class PackageProductGcWorkerHistoryAuthorityPort(Protocol):
+    """Product-specific proof that retained Worker history has no GC debt."""
+
+    @property
+    def product_owner(self) -> WindowsLocalWheelProductSessionOwner: ...
+
+    def require_settled(self, *, observed_names: tuple[str, ...]) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class LocalWheelProductRootGcOwner:
     """Keep Product references and runtime quiescence through exact deletion."""
@@ -188,6 +197,7 @@ class LocalWheelProductRootGcOwner:
     application: PackageProductRootGcApplication
     read_model: PackageProductRootGcReadModel
     repair_authority: PackageProductGcDependencyRepairAuthorityPort | None = None
+    worker_history_authority: PackageProductGcWorkerHistoryAuthorityPort | None = None
 
     def __post_init__(self) -> None:
         executor = self.application.executor
@@ -206,6 +216,16 @@ class LocalWheelProductRootGcOwner:
             or (
                 self.repair_authority is not None
                 and not callable(getattr(self.repair_authority, "authorizes", None))
+            )
+            or (
+                self.worker_history_authority is not None
+                and (
+                    not isinstance(self.product, WindowsLocalWheelProductSessionOwner)
+                    or self.worker_history_authority.product_owner is not self.product
+                    or not callable(
+                        getattr(self.worker_history_authority, "require_settled", None)
+                    )
+                )
             )
         ):
             raise ValueError("Package Product root GC owners are not bound")
@@ -252,7 +272,9 @@ class LocalWheelProductRootGcOwner:
                 "Worker payload attempt must settle before Package GC",
                 code="plugin_package_gc_worker_payload_unsettled",
             )
-        if isinstance(self.product, WindowsLocalWheelProductSessionOwner) and any(
+        has_windows_history = isinstance(
+            self.product, WindowsLocalWheelProductSessionOwner
+        ) and any(
             name.casefold().startswith(
                 (
                     "worker-launch-intent-",
@@ -262,14 +284,21 @@ class LocalWheelProductRootGcOwner:
                     "worker-stage-",
                     "worker-partial-stage-",
                     "worker-unlaunched-stage-",
+                    "worker-crash-stage-",
                 )
             )
             for name in names
-        ):
-            raise PackageProductGcExecutionError(
-                "Worker attempt history requires recovery before Package GC",
-                code="plugin_package_gc_worker_history_unsettled",
-            )
+        )
+        if has_windows_history:
+            try:
+                if self.worker_history_authority is None:
+                    raise ValueError("Worker history authority is absent")
+                self.worker_history_authority.require_settled(observed_names=names)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise PackageProductGcExecutionError(
+                    "Worker attempt history requires recovery before Package GC",
+                    code="plugin_package_gc_worker_history_unsettled",
+                ) from exc
 
     def prepare(self) -> None:
         """Explicitly recover and seal the complete B Product reference graph."""
@@ -1068,18 +1097,24 @@ def open_windows_local_wheel_product_root_gc(
     product: WindowsLocalWheelProductSessionOwner,
     *,
     repair_authority: PackageProductGcDependencyRepairAuthorityPort | None = None,
+    worker_history_authority: PackageProductGcWorkerHistoryAuthorityPort | None = None,
 ) -> LocalWheelProductRootGcOwner:
     """Open the exact Windows Product and Store owners for offline GC."""
 
     if not isinstance(product, WindowsLocalWheelProductSessionOwner):
         raise TypeError("Fenced Windows local-Wheel Product owner is required")
-    return _open_local_wheel_product_root_gc(product, repair_authority=repair_authority)
+    return _open_local_wheel_product_root_gc(
+        product,
+        repair_authority=repair_authority,
+        worker_history_authority=worker_history_authority,
+    )
 
 
 def _open_local_wheel_product_root_gc(
     product: PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner,
     *,
     repair_authority: PackageProductGcDependencyRepairAuthorityPort | None,
+    worker_history_authority: PackageProductGcWorkerHistoryAuthorityPort | None = None,
 ) -> LocalWheelProductRootGcOwner:
     product.assert_root_gc_authority_current()
     state_root: Path = product.state_root
@@ -1168,6 +1203,7 @@ def _open_local_wheel_product_root_gc(
         ),
         read_model=PackageProductRootGcReadModel(executor),
         repair_authority=repair_authority,
+        worker_history_authority=worker_history_authority,
     )
 
 

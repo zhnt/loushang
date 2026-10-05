@@ -275,9 +275,12 @@ def _current_after_verified_retirements_under_gc_guard(
     product: WindowsLocalWheelProductSessionOwner,
     inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
     *,
-    attempt_id: str,
+    attempt_id: str | None,
 ) -> tuple[CodingWindowsWorkerRecoveryAttemptV1, ...]:
-    """Exclude only completed, independently checked historical attempts."""
+    """Exclude only completed, independently checked historical attempts.
+
+    Passing no current attempt requires every observed attempt to be retired.
+    """
 
     product.assert_root_gc_authority_current()
     from .package_product_worker_windows_crash_cleanup_review import (

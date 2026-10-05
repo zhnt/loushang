@@ -19,6 +19,9 @@ from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_windows_gc_history import (
+    CodingWindowsWorkerGcHistoryAuthority,
+)
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductRootGcCommandV1,
 )
@@ -122,7 +125,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         os.name == "nt"
         and (not args.windows_candidate or not _WINDOWS_CANDIDATE_ROUTE_ADMITTED)
     ) or (
-        os.name != "nt" and (not sys.platform.startswith("linux") or args.windows_candidate)
+        os.name != "nt"
+        and (not sys.platform.startswith("linux") or args.windows_candidate)
     ):
         sys.stderr.write("Coding Package GC refused: package_gc_platform_unsupported\n")
         return 1
@@ -146,6 +150,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 open_windows_local_wheel_product_root_gc(
                     product,
                     repair_authority=_CodingPackageGcRepairAuthority(),
+                    worker_history_authority=CodingWindowsWorkerGcHistoryAuthority(
+                        product
+                    ),
                 )
                 if isinstance(product, WindowsLocalWheelProductSessionOwner)
                 else open_posix_local_wheel_product_root_gc(
