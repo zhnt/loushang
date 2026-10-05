@@ -3021,16 +3021,44 @@ module["_exercise_windows_worker_wheel_transaction"](
     Path(sys.argv[2]), "windows-amd64", crash_after_healthy=True
 )
 """
-    crashed = subprocess.run(
-        (sys.executable, "-c", script, str(Path(__file__).resolve()), str(tmp_path)),
-        cwd=Path(__file__).resolve().parents[2],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
+    child_stdout = tmp_path / "crash-child.stdout"
+    child_stderr = tmp_path / "crash-child.stderr"
+    try:
+        with child_stdout.open("wb") as stdout, child_stderr.open("wb") as stderr:
+            crashed = subprocess.run(
+                (
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(Path(__file__).resolve()),
+                    str(tmp_path),
+                ),
+                cwd=Path(__file__).resolve().parents[2],
+                stdout=stdout,
+                stderr=stderr,
+                # A native Worker may retain inherited file handles after its
+                # host exits; wait on the host process, not captured pipes.
+                timeout=3600,
+                check=False,
+            )
+    except subprocess.TimeoutExpired as exc:
+        def tail(path: Path) -> bytes:
+            with path.open("rb") as output:
+                output.seek(0, os.SEEK_END)
+                output.seek(max(0, output.tell() - 4096))
+                return output.read()
+
+        raise AssertionError(
+            "Windows Worker crash child did not reach its planned exit"
+            f"\nstdout tail: {tail(child_stdout)!r}"
+            f"\nstderr tail: {tail(child_stderr)!r}"
+        ) from exc
+    assert crashed.returncode == 7, child_stderr.read_text(
+        encoding="utf-8", errors="replace"
     )
-    assert crashed.returncode == 7, crashed.stderr
-    assert "windows-product-worker-healthy\n" in crashed.stdout
+    assert "windows-product-worker-healthy\n" in child_stdout.read_text(
+        encoding="utf-8"
+    )
 
     workspace = tmp_path / "workspace"
     lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
