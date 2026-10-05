@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
@@ -31,6 +32,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
 )
 
 PACKAGE_ARTIFACT_EVIDENCE_RECORD_VERSION = 1
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 PackageArtifactEvidenceKind = Literal[
     "authenticated_source", "bounded_acquisition", "verified_wheel"
@@ -153,9 +155,7 @@ class PackageArtifactEvidenceRecordV1:
             )
             expected_phase = "acquiring"
         elif kind == "bounded_acquisition":
-            evidence = BoundedAcquisitionReceiptV1.from_dict(
-                value["evidence"]
-            )
+            evidence = BoundedAcquisitionReceiptV1.from_dict(value["evidence"])
             expected_phase = "acquired"
         elif kind == "verified_wheel":
             evidence = VerifiedWheelArtifactV1.from_dict(value["evidence"])
@@ -359,6 +359,40 @@ class PackageArtifactEvidenceJournal:
         with self._exclusive():
             return self._load_unlocked()
 
+    def read_records(self) -> tuple[PackageArtifactEvidenceRecordV1, ...]:
+        """Read the full evidence journal without creating or repairing it."""
+
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            return self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+
+    def read_attempt_evidence(
+        self, *, operation_id: str, attempt_epoch: int
+    ) -> tuple[PackageArtifactEvidenceRecordV1, ...]:
+        """Read all node receipts for one attempt without creating or repair."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package evidence operation id is required")
+        if type(attempt_epoch) is not int or attempt_epoch < 1:
+            raise ValueError("Package evidence attempt epoch is invalid")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record
+            for record in records
+            if record.operation_id == operation_id
+            and record.attempt_epoch == attempt_epoch
+        )
+
     def _find_in(
         self,
         records: tuple[PackageArtifactEvidenceRecordV1, ...],
@@ -382,7 +416,9 @@ class PackageArtifactEvidenceJournal:
             None,
         )
 
-    def _load_unlocked(self) -> tuple[PackageArtifactEvidenceRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageArtifactEvidenceRecordV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -391,7 +427,7 @@ class PackageArtifactEvidenceJournal:
                 record_codec=PACKAGE_ARTIFACT_EVIDENCE_JOURNAL_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=load_policy or self._load_policy,
             )
             records = snapshot.records
             _assert_no_duplicate_json_keys(self._path)

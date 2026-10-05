@@ -643,7 +643,10 @@ def test_automatic_selection_does_not_replace_frozen_observation(managed_cli, mo
         return 0
 
     monkeypatch.setattr(terminal, "run_hosted_mux_shell", screen)
-    assert lmux.main(["new", "-s", "dev"]) == 0
+    created_status = lmux.main(["new", "-s", "dev"])
+    assert created_status == 0, (
+        _failure_diagnostic(commands[-1]) if commands else "command was not created"
+    )
     resolve = ManagedDiscoveryV1.resolve
 
     def changed_after_selection(discovery, *args, **kwargs):

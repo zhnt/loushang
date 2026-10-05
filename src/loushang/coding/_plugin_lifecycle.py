@@ -12,6 +12,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from pathlib import Path
 from typing import Literal
 
@@ -300,7 +301,11 @@ class CodingPluginLifecycle:
     ) -> PluginEnablementMigrationSnapshotV1:
         """Import an immutable legacy snapshot once through canonical commands."""
 
-        if key.product_id != CODING_PRODUCT_ID or key.scope_id != self.layout.scope_id:
+        if (
+            key.product_id != CODING_PRODUCT_ID
+            or key.installation_scope != "workspace"
+            or key.scope_id != self.layout.scope_id
+        ):
             raise CodingPluginLifecycleError(
                 "Enablement migration Installation is outside this Coding scope",
                 code="coding_plugin_enablement_migration_scope_mismatch",
@@ -326,6 +331,24 @@ class CodingPluginLifecycle:
         therefore never resurrected by Product composition.
         """
 
+        if (
+            not isinstance(key, PluginInstallationKeyV1)
+            or key.product_id != CODING_PRODUCT_ID
+            or key.installation_scope != "workspace"
+            or key.scope_id != self.layout.scope_id
+        ):
+            raise CodingPluginLifecycleError(
+                "First-party default Installation is outside this Coding scope",
+                code="coding_plugin_default_bootstrap_scope_mismatch",
+            )
+        if (
+            not isinstance(package_revision, PluginPackageRevisionRefV1)
+            or package_revision.plugin_id != key.plugin_id
+        ):
+            raise CodingPluginLifecycleError(
+                "First-party default Package Revision changed Plugin identity",
+                code="coding_plugin_default_bootstrap_revision_mismatch",
+            )
         # The two management commands are individually durable.  This loop is
         # the Product transaction coordinator: it resumes only its own exact
         # default install, stops at any operator-authored state, and retries a
@@ -1043,12 +1066,14 @@ def build_coding_plugin_lifecycle(
         )
         enablement_journal.assert_runtime_compatible(
             supported_migration_epoch=1,
+            runtime_version=version("loushang"),
         )
         management.recover()
         enablement_migrations = PluginEnablementMigrationCoordinator(
             journal=enablement_journal,
             desired_state=desired,
             commands=PluginManagementCommandApplication(management),
+            runtime_version=version("loushang"),
         )
         security = security_acceptances or (
             PluginInstanceSecurityRetirementJournal.for_instance_runtime(
@@ -1108,16 +1133,22 @@ def build_coding_plugin_management_application(
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    owns_process_startup_lease = not read_only and sys.platform.startswith(
-        "linux"
-    ) and _hold_process_startup_lease(
-        layout,
-        startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
+    owns_process_startup_lease = (
+        not read_only
+        and (sys.platform.startswith("linux") or os.name == "nt")
+        and _hold_process_startup_lease(
+            layout,
+            startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
+        )
     )
     try:
         if not read_only and not owns_process_startup_lease:
             _prepare_private_state_layout(layout)
-        load_policy = JournalLoadPolicy(partial_tail="raise") if read_only else None
+        load_policy = (
+            JournalLoadPolicy(partial_tail="raise", create_lock=False)
+            if read_only
+            else None
+        )
         gc_reservations = PluginPackageGcReservationJournal(
             layout.package_gc_reservations, load_policy=load_policy
         )
@@ -1142,7 +1173,10 @@ def build_coding_plugin_management_application(
         migrations = PluginEnablementMigrationJournal(
             layout.enablement_migration, load_policy=load_policy
         )
-        migrations.assert_runtime_compatible(supported_migration_epoch=1)
+        migrations.assert_runtime_compatible(
+            supported_migration_epoch=1,
+            runtime_version=version("loushang"),
+        )
         if not read_only:
             management.recover()
         security = PluginInstanceSecurityRetirementJournal.for_instance_runtime(
@@ -1634,6 +1668,42 @@ def _legacy_process_startup_scope(
             )
         except PackageProductLegacyPreFenceAdmissionError as exc:
             raise CodingPluginLifecycleError(str(exc), code=exc.code) from exc
+    elif os.name == "nt":
+        from loushang.coding.package_epoch_layout import (
+            resolve_coding_package_epoch_layout,
+        )
+        from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+            PackageEpochFenceJournal,
+        )
+        from loushang.harness.resources.packages.plugin_lifecycle.windows_pre_fence_registration import (
+            PackageWindowsPreFenceRegistrationError,
+            PackageWindowsPreFenceRegistrationOwner,
+        )
+        from loushang.harness.resources.packages.product_windows_epoch_guard import (
+            prepare_windows_product_control_root,
+        )
+
+        epoch = resolve_coding_package_epoch_layout(layout)
+        _prepare_private_tree(
+            epoch.control_root.parent,
+            private_base=layout.private_state_base,
+            label="state",
+        )
+        try:
+            prepare_windows_product_control_root(epoch.control_root)
+            registration = PackageWindowsPreFenceRegistrationOwner(
+                epoch.control_root,
+                store_id=epoch.store_id,
+                fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
+            ).register(
+                startup_id="coding:"
+                + hashlib.sha256(startup_id.encode("utf-8")).hexdigest(),
+            )
+        except (OSError, ValueError, PackageWindowsPreFenceRegistrationError) as exc:
+            raise CodingPluginLifecycleError(
+                "Coding Windows legacy Package admission failed",
+                code=getattr(exc, "code", "coding_plugin_state_permissions_failed"),
+            ) from exc
     try:
         _prepare_private_state_layout(layout)
         with journal_file_lock(

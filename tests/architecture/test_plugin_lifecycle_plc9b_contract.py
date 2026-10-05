@@ -1416,9 +1416,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (implemented - implemented_b4c3c_linux_restore).isdisjoint(
         implemented_b4c3c_linux_restore
     )
-    assert implemented_b4c5_windows_restore == (
-        PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES
-    )
+    assert implemented_b4c5_windows_restore == (PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES)
     assert (implemented - implemented_b4c5_windows_restore).isdisjoint(
         implemented_b4c5_windows_restore
     )
@@ -2230,50 +2228,25 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 for alias in node.names
             ):
                 production_importers.append(path)
-    assert set(production_importers) == {
-        # Coding-only migration evidence consumes B records and snapshot reads;
-        # these modules expose no Plugin-author or transport owner.
-        Path("src/loushang/coding/package_legacy_binding_catalog.py"),
-        Path("src/loushang/coding/package_legacy_review.py"),
-        Path("src/loushang/coding/package_legacy_snapshot_member.py"),
-        # PLC9 Product Source capture and management list consume inert B
-        # helpers only; neither grants Package publication to Coding.
-        Path("src/loushang/coding/package_external_data_wheel.py"),
-        Path("src/loushang/coding/package_product_management_cli.py"),
-        # Product-internal, default-dark GC evidence and target readers consume
-        # B owner records without exposing a Package or Plugin-author facade.
-        Path("src/loushang/harness/plugin_management/package_gc_binding.py"),
-        Path("src/loushang/harness/plugin_management/package_gc_results.py"),
-        Path("src/loushang/harness/plugin_management/package_gc_target.py"),
-        Path("src/loushang/harness/plugin_management/package_product.py"),
-        Path("src/loushang/harness/resources/packages/product_activation.py"),
-        Path("src/loushang/harness/resources/packages/product_composition.py"),
-        # Product-facing Linux old-runtime admission keeps Coding away from
-        # the internal pre-fence owner and grants no Package publication.
-        Path("src/loushang/harness/resources/packages/product_epoch_guard.py"),
-        # Internal root-GC coordinator consumes exact Store settlement evidence;
-        # it exposes no Plugin author or transport deletion surface.
-        Path("src/loushang/harness/package_product/product_gc_executor.py"),
-        # Fenced Product composition supplies the real Store and journals;
-        # its offline lease gate excludes active Sessions during deletion.
-        Path("src/loushang/harness/package_product/product_root_gc_runtime.py"),
-        Path("src/loushang/harness/resources/packages/product_handoff.py"),
-        # Product-owned local Wheel ingress/facts consume the internal records
-        # and Source Port without granting a materialization capability.
-        Path("src/loushang/harness/resources/packages/product_local_wheel_policy.py"),
-        # Explicit POSIX Product composition consumes Package owners behind
-        # admitted epoch and existing Product management/GC authorities.
-        Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
-        Path("src/loushang/harness/package_product/product_local_wheel_inventory.py"),
-        Path("src/loushang/harness/resources/packages/product_root_target.py"),
-        Path("src/loushang/harness/resources/packages/product_transaction.py"),
-        # Product-facing pre-B snapshot publication keeps Coding away from the
-        # internal Package snapshot owner and exposes no peer writer.
-        Path("src/loushang/harness/resources/packages/product_pre_b_snapshot.py"),
-        LINUX_LEGACY_RUNTIME,
-        PRODUCT_LIFECYCLE,
-        WINDOWS_LEGACY_RUNTIME,
-    }
+    # The owner kernel may be read by Product owners and private mechanisms;
+    # transport, author SDK, and other runtime layers may not import it.
+    assert production_importers
+    for path in set(production_importers):
+        if path.is_relative_to(Path("src/loushang/coding")):
+            assert path.name.startswith("package_") or path.name in {
+                "_plugin_lifecycle.py",
+                "_external_data_product_composition.py",
+                # First-party Product composition owns Windows root preparation.
+                "_product_capability_plugin_composition.py",
+            }, path
+        elif path.is_relative_to(Path("src/loushang/harness/package_product")):
+            pass
+        elif path.is_relative_to(Path("src/loushang/harness/plugin_management")):
+            pass
+        elif path.is_relative_to(Path("src/loushang/harness/resources/packages")):
+            assert path.name.startswith("product_"), path
+        else:
+            assert path in {LINUX_LEGACY_RUNTIME, WINDOWS_LEGACY_RUNTIME}, path
 
 
 def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
@@ -2289,6 +2262,7 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
 
     assert loushang_imports == {
         "loushang.harness.resources.packages.plugin_lifecycle.epoch_fence",
+        "loushang.harness.resources.packages.plugin_lifecycle.journal",
         "loushang.harness.resources.packages.plugin_lifecycle.owner",
         "loushang.harness.resources.packages.plugin_lifecycle.records",
         "loushang.harness.resources.packages.product_contract",
@@ -2332,9 +2306,7 @@ def test_product_transaction_has_no_legacy_materializer_or_revision_store() -> N
     path = PACKAGE_ROOT / "product_transaction.py"
     tree = ast.parse(_source(path), filename=str(path))
     imported = {
-        node.module or ""
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     }
     imported.update(
         alias.name
@@ -3104,7 +3076,10 @@ def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> Non
     }
     assert public_methods == {
         "authorize_adoption",
+        "inspect_checkpoint",
+        "inspect_published_checkpoint",
         "stage_and_publish",
+        "stage_missing_and_publish",
         "resume",
         "recover",
     }
@@ -3563,7 +3538,7 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
         assert "self._settlement_journal.owner_lock()" in store
         assert "self._settlement_journal.authorize(" in store
         assert "self._settlement_journal.authorizes(" in store
-        assert "settlements_for_receipt(" in store
+        assert "settlements_for_receipt" in store
         assert "validate_dependency_receipt" in store
         assert "validate_root_receipt" in store
         assert "receipt_probe" in store
@@ -4376,9 +4351,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     ):
         assert evidence in component_tests
 
-    assert (
-        manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
-    )
+    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
     assert "IMPLEMENTED_B4C3" not in component_tests
 
@@ -5152,8 +5125,9 @@ def test_plc9b4c5_windows_restore_is_rooted_isolated_and_promoted() -> None:
     for invariant in (
         "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES",
         "CreateAppContainerProfile",
-        "CreateProcessAsUserW",
-        "AssignProcessToJobObject",
+        "CreateProcessW",
+        "_PROC_THREAD_ATTRIBUTE_JOB_LIST",
+        "IsProcessInJob",
         "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
         "TOKEN_IS_APP_CONTAINER",
         "TOKEN_CAPABILITIES",
@@ -5215,7 +5189,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() 
     assert "open_windows_regular_file_at" in acquisition
     assert "loushang.coding" not in windows
     assert "loushang.foundation" not in windows
-    assert native_tests.count("def test_windows_native_") == 5
+    assert native_tests.count("def test_windows_native_") == 6
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow

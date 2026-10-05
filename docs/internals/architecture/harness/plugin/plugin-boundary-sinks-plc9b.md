@@ -35,3 +35,25 @@ The component contracts remain authoritative:
 [PLC9B contract](plugin-lifecycle-plc9b-contract.md), and the component inventory in
 `tests/architecture/test_plugin_lifecycle_plc9b_contract.py`. This reconciliation
 does not claim a fresh full security audit of every PLC9B implementation.
+
+## Current PLC9 closure inventory
+
+The same guard now has a separate literal `PLC9_CLOSURE_BOUNDARY_SINKS` table
+for 56 additional operation sites across 47 qualified functions. Its owner
+names and exact call counts are checked against the current scan. Two role-store
+receipt methods were renamed; their existing PLC9B entries now name the actual
+methods rather than duplicating them in the new table.
+
+| Boundary group | Qualified owner |
+| --- | --- |
+| Captured Instance, retirement, and management journals | The corresponding ledger or management service decodes complete old history for migration. |
+| Package GC, dependency repair, and private-data confirmation | Each named journal owns its strict record read and duplicate-key check. |
+| Local Wheel Source, epoch leases, snapshots, and pre-fence registration | The named Source, lease, snapshot, or registration owner holds the relevant platform handle and fence. |
+| POSIX and Windows role stores and cutover | The existing platform owners retain their receipt and root checks. |
+| Product admission, adoption, rebind, and epoch roots | Each Product journal or fenced runtime owner joins its evidence before effects. |
+| Legacy revision write guard | The verified revision boundary refuses a stale epoch. |
+
+These entries record where an existing Product or migration owner reads or
+decodes evidence. The inventory does not authorize a new Resource type, a
+third-party Worker, Windows migration writes, or a default route change. The
+native and Product-specific gates in the PLC9 contracts still apply.

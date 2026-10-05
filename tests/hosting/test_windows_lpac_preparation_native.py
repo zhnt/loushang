@@ -492,8 +492,23 @@ void WINAPI mainCRTStartup(void) {
     if (!value_after(command, L"--extra-handle=", number_text, 64)) ExitProcess(99);
     HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
     DWORD handle_flags = 0;
-    if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
-    if (GetLastError() != ERROR_INVALID_HANDLE) ExitProcess(114);
+    if (GetHandleInformation(extra, &handle_flags)) {
+        // Numeric handle values can be reused by unrelated child handles.
+        // The sentinel identifies the forbidden inherited parent pipe.
+        static const char sentinel[] = "LOUSHANG-LPAC-EXTRA-HANDLE";
+        char observed[sizeof(sentinel)] = {0};
+        DWORD peeked = 0;
+        if (PeekNamedPipe(extra, observed, sizeof(sentinel) - 1, &peeked, 0, 0)
+            && peeked == sizeof(sentinel) - 1) {
+            int same = 1;
+            for (DWORD i = 0; i < peeked; ++i) {
+                if (observed[i] != sentinel[i]) same = 0;
+            }
+            if (same) ExitProcess(100);
+        }
+    } else if (GetLastError() != ERROR_INVALID_HANDLE) {
+        ExitProcess(114);
+    }
     emit("E:HANDLES\n", 10);
 
     emit("LPAC-PASS\n", 10);
@@ -764,6 +779,7 @@ async def _collect_native_evidence(
         pytest.fail("H6.5 native gate did not establish its AAP-only sentinel")
     extra_child, extra_parent = api.create_pipe(child_reads=True)
     cleanup.extra_handles = (extra_child, extra_parent)
+    api.write_pipe(extra_parent, b"LOUSHANG-LPAC-EXTRA-HANDLE")
     request = ProcessLaunchRequest(
         argv=(
             str(executable.resolve()),

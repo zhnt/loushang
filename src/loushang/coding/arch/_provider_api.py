@@ -30,6 +30,9 @@ from loushang.coding.arch.tool import (
     validate_import_graph_inspection_request,
 )
 from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
+from loushang.coding.package_arch_private_cache import (
+    write_coding_arch_private_windows_snapshot,
+)
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
@@ -502,6 +505,7 @@ def create_coding_arch_provider(
         config.private_data_root
         / f"import-facts-v{config.private_state_schema_version}.json",
         max_bytes=config.private_state_quota_bytes,
+        private_writer=write_coding_arch_private_windows_snapshot,
     )
     owner = _CodingArchProviderRuntimeOwner(
         config=config,

@@ -219,6 +219,42 @@
     },
     {
       "paths": [
+        "src/loushang/coding/package_legacy_*",
+        "src/loushang/coding/package_pre_b_snapshot.py",
+        "src/loushang/coding/package_installation_private_data.py",
+        "src/loushang/coding/package_product_runtime.py",
+        "src/loushang/coding/bootstrap.py",
+        "src/loushang/coding/hosted_session.py",
+        "src/loushang/coding/package_external_worker_wheel.py",
+        "src/loushang/coding/package_epoch_layout.py",
+        "src/loushang/coding/cli/package_cutover.py",
+        "src/loushang/coding/cli/package_gc.py",
+        "tests/coding/test_package_windows_*",
+        "tests/coding/test_hosted_session.py",
+        "tests/coding/test_package_cutover_cli.py",
+        "tests/coding/test_package_gc_cli.py"
+      ],
+      "checks": [
+        "windows_shell"
+      ],
+      "reason": "Coding Package Product Windows and migration contracts"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/package_private_data_windows_*.py",
+        "src/loushang/coding/package_private_data_restore_records.py",
+        "tests/coding/test_package_private_data_windows_*.py",
+        "src/loushang/coding/package_private_data_backup_records.py",
+        "src/loushang/foundation/windows_private_acl.py",
+        "src/loushang/harness/package_product/product_local_wheel_runtime.py"
+      ],
+      "checks": [
+        "windows_shell"
+      ],
+      "reason": "Windows Product private-data and native ACL owners"
+    },
+    {
+      "paths": [
         "src/loushang/coding/ui/**",
         "src/loushang/coding/presentation/**",
         "src/loushang/coding/model_selection*",
@@ -342,6 +378,23 @@
         "tui_playback"
       ],
       "reason": "Harness session and presentation consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/package_product_worker_*.py",
+        "src/loushang/coding/cli/package_worker_native.py",
+        "src/loushang/plugin/__init__.py",
+        "src/loushang/plugin/__main__.py",
+        "src/loushang/plugin/_coding_local_worker_wheel.py",
+        "tests/coding/test_package_product_worker_*.py",
+        "tests/coding/test_package_worker_candidate_wheel.py",
+        "tests/coding/test_package_worker_native_cli.py"
+      ],
+      "checks": [
+        "hosting",
+        "windows_shell"
+      ],
+      "reason": "Coding Product Worker native admission and recovery"
     },
     {
       "paths": [

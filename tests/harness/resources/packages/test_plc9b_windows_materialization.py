@@ -9,6 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.resources.packages.plugin_lifecycle import (
+    windows_materialization,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     ResolvedPackageRequirementV1,
@@ -18,6 +21,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
@@ -43,7 +49,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_materialization import (
     PackagePhysicalStagingError,
     WindowsPackageDependencyMaterializationStore,
+    WindowsPackageDependencyReadOnlyStore,
     WindowsPackagePluginRootMaterializationStore,
+    WindowsPackagePluginRootReadOnlyStore,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
     open_windows_directory,
@@ -74,13 +82,371 @@ def test_windows_store_gc_deletes_exact_root_and_replays_absence(
     (settlement,) = settlements.records()
     assert settlement.receipt == receipt
 
-    result = store._store.delete_settlement(settlement)
+    result = store.delete_settlement(settlement)
     assert result.disposition == "deleted"
     assert not (root / settlement.final_name).exists()
-    assert store._store.delete_settlement(settlement).disposition == "already_absent"
+    assert store.delete_settlement(settlement).disposition == "already_absent"
     assert settlements.is_tombstoned(receipt.stable_ref.ref_id)
     with pytest.raises(PackagePhysicalStagingError):
+        store.read_root_file(settlement, "root_plugin/__init__.py", max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
         store.stage_root(request, candidate)
+
+
+def test_windows_root_store_reads_only_live_exact_settlement_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = WindowsPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    logical_path = "root_plugin/__init__.py"
+
+    assert (
+        store.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    reopened_journal = PackageStoreSettlementJournal(settlements.path)
+    reopened = WindowsPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=reopened_journal,
+    )
+    assert (
+        reopened.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    members = tuple((path, len(payload)) for path, payload in root_payloads.items())
+    original_events = reopened_journal.read_events
+    replay_count = 0
+
+    def counted_events():
+        nonlocal replay_count
+        replay_count += 1
+        return original_events()
+
+    monkeypatch.setattr(reopened_journal, "read_events", counted_events)
+    assert reopened.read_root_files(settlement, members) == tuple(
+        root_payloads[path] for path, _ in members
+    )
+    assert replay_count == 1
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_files(settlement, (members[0], members[0]))
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, "../outside", max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4)
+
+    published = root / settlement.final_name / logical_path
+    published.write_bytes(b"tampered")
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_file(settlement, logical_path, max_bytes=4096)
+    with pytest.raises(PackagePhysicalStagingError):
+        reopened.read_root_files(settlement, members)
+
+
+def test_windows_root_store_adoption_requires_configured_store_and_native_root(
+    tmp_path: Path,
+) -> None:
+    _, _, request, _, _, _ = _requests_and_candidates()
+    target = request.root_target
+    assert target is not None
+    root = tmp_path / "store"
+    root.mkdir()
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = WindowsPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        package_store_id="package-store",
+        settlement_journal=settlements,
+    )
+    metadata = root.stat()
+    root_identity = sha256(
+        canonical_json_bytes(
+            {
+                "device": metadata.st_dev,
+                "fileType": "directory",
+                "inode": metadata.st_ino,
+                "identityVersion": 1,
+            }
+        )
+    ).hexdigest()
+    assert store.authorize_adoption(
+        store_id="package-store", current_root_identity=root_identity, target=target
+    )
+    assert not store.authorize_adoption(
+        store_id="another-store", current_root_identity=root_identity, target=target
+    )
+    assert not store.authorize_adoption(
+        store_id="package-store", current_root_identity="0" * 64, target=target
+    )
+    unbound = WindowsPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    assert not unbound.authorize_adoption(
+        store_id="package-store", current_root_identity=root_identity, target=target
+    )
+    root.rename(tmp_path / "moved-store")
+    root.mkdir()
+    assert not store.authorize_adoption(
+        store_id="package-store", current_root_identity=root_identity, target=target
+    )
+
+
+def test_windows_read_only_root_store_preserves_journals_and_file_bytes(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = WindowsPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    writer.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    files_before = tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    reader = WindowsPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    logical_path = "root_plugin/__init__.py"
+    assert (
+        reader.read_root_file(settlement, logical_path, max_bytes=4096)
+        == root_payloads[logical_path]
+    )
+    members = tuple((path, len(payload)) for path, payload in root_payloads.items())
+    assert reader.read_root_files(settlement, members) == tuple(
+        root_payloads[path] for path, _ in members
+    )
+    assert files_before == tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    assert not hasattr(reader, "delete_settlement")
+
+
+def test_windows_read_only_dependency_store_binds_settlement_and_bytes(
+    tmp_path: Path,
+) -> None:
+    dependency_request, dependency_candidate, _, _, payloads, _ = (
+        _requests_and_candidates()
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = WindowsPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=journal
+    )
+    writer.stage_dependency(dependency_request, dependency_candidate)
+    (settlement,) = journal.records()
+    before = tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    reader = WindowsPackageDependencyReadOnlyStore(
+        root, store_identity="dependency-store", settlement_journal=journal
+    )
+    members = tuple((path, len(body)) for path, body in payloads.items())
+    assert reader.read_dependency_files(settlement, members) == tuple(
+        payloads[path] for path, _ in members
+    )
+    assert before == tuple(
+        sorted(
+            (str(path.relative_to(tmp_path)), path.read_bytes())
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        )
+    )
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_dependency_files(settlement, (members[0], members[0]))
+    published = root / settlement.final_name / members[0][0]
+    published.write_bytes(b"changed")
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_dependency_files(settlement, members)
+
+
+def test_windows_read_only_root_store_refuses_replaced_root_without_mutation(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = WindowsPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    writer.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    reader = WindowsPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    before = journal.path.read_bytes()
+    root.rename(tmp_path / "moved-store")
+    root.mkdir()
+
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        reader.read_root_file(
+            settlement, "root_plugin/__init__.py", max_bytes=4096
+        )
+    assert refused.value.code == "package_publication_root_untrusted"
+    assert journal.path.read_bytes() == before
+
+
+def test_windows_read_only_root_store_refuses_partial_journal_without_repair(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = WindowsPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    writer.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    reader = WindowsPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    with journal.path.open("ab") as handle:
+        handle.write(b'{"partial":')
+    before = journal.path.read_bytes()
+
+    with pytest.raises(PackagePhysicalStagingError):
+        reader.read_root_file(
+            settlement, "root_plugin/__init__.py", max_bytes=4096
+        )
+    assert journal.path.read_bytes() == before
+
+
+def test_windows_read_only_root_store_refuses_file_swap_after_tree_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, request, candidate, _, root_payloads = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    writer = WindowsPackagePluginRootMaterializationStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    writer.stage_root(request, candidate)
+    (settlement,) = journal.records()
+    reader = WindowsPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+    logical_path = "root_plugin/__init__.py"
+    published = root / settlement.final_name / logical_path
+    original = windows_materialization._validate_existing_tree
+
+    def swap_after_validation(*args: object, **kwargs: object):
+        result = original(*args, **kwargs)
+        published.rename(tmp_path / "moved-file")
+        published.write_bytes(root_payloads[logical_path])
+        return result
+
+    monkeypatch.setattr(
+        windows_materialization, "_validate_existing_tree", swap_after_validation
+    )
+    with pytest.raises(PackagePhysicalStagingError) as refused:
+        reader.read_root_file(settlement, logical_path, max_bytes=4096)
+    assert refused.value.code == "package_publication_collision"
+
+
+def test_windows_read_only_root_store_does_not_create_empty_owner_state(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+
+    WindowsPackagePluginRootReadOnlyStore(
+        root, store_identity="plugin-revision-store", settlement_journal=journal
+    )
+
+    assert not journal.path.exists()
+    assert not journal.path.with_name(f"{journal.path.name}.lock").exists()
+    assert not journal.path.with_name(f"{journal.path.name}.owner.lock").exists()
+
+
+def test_windows_dependency_store_reuses_content_tree_and_ref_wide_tombstone(
+    tmp_path: Path,
+) -> None:
+    first_request, first_candidate, *_ = _requests_and_candidates(
+        "operation:windows-shared-first"
+    )
+    second_request, second_candidate, *_ = _requests_and_candidates(
+        "operation:windows-shared-second"
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir()
+    settlements = PackageStoreSettlementJournal(
+        tmp_path / "dependency-settlements.jsonl"
+    )
+    store = WindowsPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=settlements
+    )
+    first = store.stage_dependency(first_request, first_candidate)
+    second = store.stage_dependency(second_request, second_candidate)
+    assert first.stable_ref == second.stable_ref
+    assert first != second
+    (first_settlement, second_settlement) = settlements.records()
+    assert first_settlement.tree_identity == second_settlement.tree_identity
+    assert first_settlement.final_name == second_settlement.final_name
+    assert len(tuple(root.glob("artifact-*"))) == 1
+    assert store.delete_settlement(first_settlement).disposition == "deleted"
+    assert store.delete_settlement(second_settlement).disposition == "already_absent"
+    assert len(settlements.read_events()) == 3
+    assert settlements.is_tombstoned(first.stable_ref.ref_id)
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_dependency(second_request, second_candidate)
+
+
+def test_windows_dependency_store_refuses_changed_tree_before_alias(
+    tmp_path: Path,
+) -> None:
+    first_request, first_candidate, *_ = _requests_and_candidates(
+        "operation:windows-shared-tamper-first"
+    )
+    second_request, second_candidate, *_ = _requests_and_candidates(
+        "operation:windows-shared-tamper-second"
+    )
+    root = tmp_path / "dependency-store"
+    root.mkdir()
+    settlements = PackageStoreSettlementJournal(
+        tmp_path / "dependency-settlements.jsonl"
+    )
+    store = WindowsPackageDependencyMaterializationStore(
+        root, store_identity="dependency-store", settlement_journal=settlements
+    )
+    store.stage_dependency(first_request, first_candidate)
+    (settlement,) = settlements.records()
+    (root / settlement.final_name / "dependency" / "__init__.py").write_bytes(
+        b"TAMPERED\n"
+    )
+    with pytest.raises(PackagePhysicalStagingError):
+        store.stage_dependency(second_request, second_candidate)
+    assert settlements.records() == (settlement,)
 
 
 @dataclass
@@ -117,10 +483,11 @@ def _evidence(
     version: str,
     payloads: dict[str, bytes],
     artifact_digest: str,
+    operation_id: str = OPERATION_ID,
 ) -> VerifiedWheelArtifactV1:
     entries = _entries(payloads)
     return VerifiedWheelArtifactV1(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         attempt_epoch=1,
         node_id=node_id,
         distribution=distribution,
@@ -156,7 +523,9 @@ def _candidate(
     )
 
 
-def _requests_and_candidates() -> tuple[
+def _requests_and_candidates(
+    operation_id: str = OPERATION_ID,
+) -> tuple[
     PackageArtifactStagingRequestV1,
     VerifiedWheelCandidate,
     PackageArtifactStagingRequestV1,
@@ -178,6 +547,7 @@ def _requests_and_candidates() -> tuple[
         version="2.0",
         payloads=dependency_payloads,
         artifact_digest="4" * 64,
+        operation_id=operation_id,
     )
     root_evidence = _evidence(
         node_id="root",
@@ -185,6 +555,7 @@ def _requests_and_candidates() -> tuple[
         version="1.0",
         payloads=root_payloads,
         artifact_digest="6" * 64,
+        operation_id=operation_id,
     )
     dependency_node = VerifiedClosurePlanNodeV2(
         node_id=dependency_evidence.node_id,
@@ -224,7 +595,7 @@ def _requests_and_candidates() -> tuple[
         selected_edges=(dependency_node.node_id,),
     )
     plan = VerifiedClosurePlanV2.create(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         attempt_epoch=1,
         root_node_id=root_node.node_id,
         resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
@@ -246,7 +617,7 @@ def _requests_and_candidates() -> tuple[
         lease_revision=1,
     )
     target = PackagePluginRootTargetV1.create(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         request_fingerprint=REQUEST_FINGERPRINT,
         product_id="coding",
         scope_id="workspace:test",
@@ -645,6 +1016,54 @@ def test_windows_store_reuses_exact_tree_after_owner_restart_without_journal_app
 
     assert reused == receipt
     assert len(journal.records()) == 1
+
+
+@pytest.mark.parametrize("role", ["dependency", "root"])
+def test_windows_read_validation_keeps_partial_settlement_tail_unchanged(
+    tmp_path: Path, role: str,
+) -> None:
+    dependency_request, dependency_candidate, root_request, root_candidate, *_ = (
+        _requests_and_candidates()
+    )
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    if role == "dependency":
+        owner = WindowsPackageDependencyMaterializationStore(
+            root, store_identity="dependency-store", settlement_journal=journal
+        )
+        receipt = owner.stage_dependency(dependency_request, dependency_candidate)
+        validate = owner.read_validate_dependency_receipt
+    else:
+        root_owner = WindowsPackagePluginRootMaterializationStore(
+            root, store_identity="plugin-revision-store", settlement_journal=journal
+        )
+        receipt = root_owner.stage_root(root_request, root_candidate)
+        validate = root_owner.read_validate_root_receipt
+    before = journal.path.read_bytes()
+    assert validate(receipt) == receipt
+    assert journal.path.read_bytes() == before
+
+    [settlement] = journal.records()
+    file_path = next(
+        path for path in (root / settlement.final_name).rglob("*") if path.is_file()
+    )
+    original_bytes = file_path.read_bytes()
+    file_path.write_bytes(b"changed physical Store bytes")
+    with pytest.raises(PackagePhysicalStagingError) as changed:
+        validate(receipt)
+    assert changed.value.code == "package_publication_collision"
+    assert journal.path.read_bytes() == before
+    file_path.write_bytes(original_bytes)
+    assert validate(receipt) == receipt
+
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    incomplete = journal.path.read_bytes()
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        validate(receipt)
+    assert raised.value.code == "package_publication_root_untrusted"
+    assert journal.path.read_bytes() == incomplete
 
 
 def test_windows_store_recovers_renamed_tree_when_receipt_delivery_is_lost(

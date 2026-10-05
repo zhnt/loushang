@@ -17,6 +17,7 @@ from loushang.apphost.managed.registry import ManagedMuxReservationV1
 from loushang.coding.cli import lmux
 from loushang.coding.cli import lmux_command as module
 
+from .test_lmux_command import _failure_diagnostic
 from .test_lmux_command import managed_cli as managed_cli
 
 
@@ -202,7 +203,9 @@ def test_only_live_mux_among_multiple_services_attaches_without_selector(managed
     live_process = commands[-1].creation._coordinator._starter._process
     other = tmp_path / "other"
     other.mkdir()
-    assert lmux.main(["new", "-s", "stopped", "--workspace", str(other)]) == 0
+    assert lmux.main(["new", "-s", "stopped", "--workspace", str(other)]) == 0, (
+        _failure_diagnostic(commands[-1])
+    )
     stopped_process = commands[-1].creation._coordinator._starter._process
     stopped_service = ManagedServiceKeyV1("coding", str(other)).service_id
     # This test remains the original Popen parent. Reap its own child while the

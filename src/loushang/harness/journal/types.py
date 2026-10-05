@@ -45,6 +45,11 @@ class JournalLoadPolicy:
     invalid_header: InvalidValueBehavior = "raise"
     invalid_record: InvalidValueBehavior = "raise"
     partial_tail: PartialTailBehavior = "raise"
+    create_lock: bool = True
+
+    def __post_init__(self) -> None:
+        if type(self.create_lock) is not bool:
+            raise TypeError("Journal lock creation policy must be a built-in bool")
 
 
 @dataclass(frozen=True)

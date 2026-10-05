@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Generic, Literal, TypeVar, cast
 
 from loushang.foundation.json import (
     JsonValueError,
@@ -151,6 +151,39 @@ def journal_file_lock(
 
 
 @contextmanager
+def journal_file_read_lock(
+    path: Path,
+    mode: LockMode,
+    *,
+    lock_suffix: str = ".lock",
+    create_lock: bool = True,
+) -> Iterator[None]:
+    """Read an absent journal without materializing its lock file.
+
+    An existing journal with a missing lock fails closed. A concurrent first
+    writer may make an initially absent journal visible; strict load policy at
+    the caller must then handle a partial or changed observation.
+    """
+
+    if type(create_lock) is not bool:
+        raise TypeError("Journal read lock creation must be a built-in bool")
+    if not create_lock:
+        lock_path = path.with_name(f"{path.name}{lock_suffix}")
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            try:
+                lock_path.lstat()
+            except FileNotFoundError:
+                yield
+                return
+    with journal_file_lock(
+        path, mode, lock_suffix=lock_suffix, create=create_lock
+    ):
+        yield
+
+
+@contextmanager
 def journal_file_lock_at(
     directory_fd: int,
     name: str,
@@ -158,8 +191,8 @@ def journal_file_lock_at(
     *,
     blocking: bool = True,
     create: bool = False,
-) -> Iterator[None]:
-    """Lock one private regular file relative to a pinned directory."""
+) -> Iterator[BinaryIO]:
+    """Lock one private regular file and yield its pinned handle."""
 
     _validate_journal_child_name(name, kind="lock")
     if type(blocking) is not bool:
@@ -174,7 +207,8 @@ def journal_file_lock_at(
             create=create,
             write=True,
         ) as handle:
-            _prepare_lock_byte(handle)
+            if create:
+                _prepare_lock_byte(handle)
             operation = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
             try:
                 msvcrt.locking(handle.fileno(), operation, 1)
@@ -183,7 +217,7 @@ def journal_file_lock_at(
                     raise JournalLockUnavailable(path=Path(name)) from exc
                 raise
             try:
-                yield
+                yield handle
             finally:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
@@ -221,7 +255,7 @@ def journal_file_lock_at(
                 raise JournalLockUnavailable(path=Path(name)) from exc
             raise
         try:
-            yield
+            yield handle
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
@@ -299,7 +333,7 @@ def append_jsonl_record(
             return
         create_private_directory_chain(target.parent)
         existed = target.exists()
-        with target.open("a", encoding=format_profile.encoding) as handle:
+        with target.open("a", encoding=format_profile.encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(line)
             handle.write(format_profile.newline)
@@ -343,7 +377,7 @@ def append_jsonl_records(
             return
         create_private_directory_chain(target.parent)
         existed = target.exists()
-        with target.open("a", encoding=format_profile.encoding) as handle:
+        with target.open("a", encoding=format_profile.encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(payload)
             _sync_handle(handle, durability)
@@ -879,7 +913,7 @@ def _replace_text_unlocked(
     create_private_directory_chain(target.parent)
     temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
-        with temp_path.open("w", encoding=encoding) as handle:
+        with temp_path.open("w", encoding=encoding, newline="") as handle:
             _fchmod_private(handle.fileno())
             handle.write(data)
             _sync_handle(handle, durability)
@@ -1234,6 +1268,7 @@ __all__ = [
     "append_jsonl_records",
     "decode_jsonl",
     "journal_file_lock",
+    "journal_file_read_lock",
     "journal_file_lock_at",
     "load_jsonl",
     "parse_legacy_jsonl_line",

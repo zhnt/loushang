@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Literal, NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, Literal, NoReturn, Protocol, cast
 
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
@@ -40,9 +40,16 @@ from loushang.harness.worker._native_profile_bridge import (
     _bind_windows_lpac_contained_product_worker_profile,
     _WindowsLpacProductWorkerProfilePlan,
 )
+from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
 )
+
+if TYPE_CHECKING:
+    from .package_product_worker_start_gate import (
+        CodingProductWorkerStartGate,
+        CodingWorkerStartGateError,
+    )
 
 CODING_PRODUCT_WORKER_CANARY_VERSION = 1
 CODING_PRODUCT_WORKER_CANARY_ENTRYPOINTS = ("cli", "product", "tui")
@@ -238,6 +245,7 @@ class CodingProductWorkerCanary:
         host_identity: str | None,
         boot_identity: str | None,
         status: CodingProductWorkerCanaryStatusV1,
+        start_gate: CodingProductWorkerStartGate | None = None,
     ) -> None:
         self._policy = policy
         self._receipt = receipt
@@ -254,6 +262,7 @@ class CodingProductWorkerCanary:
         self._host_identity = host_identity
         self._boot_identity = boot_identity
         self._status = status
+        self._start_gate = start_gate
         self._adapter: CapabilityQueryWorkerAdapter | None = None
         self._operation_lock = asyncio.Lock()
         self._closed = False
@@ -296,6 +305,14 @@ class CodingProductWorkerCanary:
                 return self._status
             if self._status.effective_owner != "hosting":
                 return self._status
+            if self._start_gate is not None:
+                try:
+                    self._start_gate.start_gate_read_fd
+                except RuntimeError as exc:
+                    raise CodingProductWorkerCanaryError(
+                        "Coding Worker gated attempt is no longer available",
+                        code="coding_worker_start_gate_consumed",
+                    ) from exc
             self._require_selected_components()
             policy = cast(ProductWorkerActivationPolicyV1, self._policy)
             receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
@@ -306,6 +323,8 @@ class CodingProductWorkerCanary:
             domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
             decision = coordinator.evaluate(policy, receipt)
             if decision.get("reason") != "admitted":
+                if self._start_gate is not None:
+                    self._start_gate.close()
                 return await self._settle_closed_decision(
                     code=_stable_reason(decision.get("reason")),
                 )
@@ -382,12 +401,16 @@ class CodingProductWorkerCanary:
                 )
                 return self._status
             except asyncio.CancelledError:
+                if self._start_gate is not None:
+                    self._start_gate.close()
                 if effect_started:
                     await self._reclaim_failed_attempt(
                         domain_publish_started=domain_publish_started,
                     )
                 raise
             except BaseException as exc:
+                if self._start_gate is not None:
+                    self._start_gate.close()
                 if effect_started:
                     await self._reclaim_failed_attempt(
                         domain_publish_started=domain_publish_started,
@@ -422,6 +445,8 @@ class CodingProductWorkerCanary:
                     "Coding Worker canary is closed",
                     code="coding_worker_closed",
                 )
+            if self._start_gate is not None:
+                self._start_gate.close()
             self._require_selected_components()
             policy = cast(ProductWorkerActivationPolicyV1, self._policy)
             receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
@@ -486,6 +511,8 @@ class CodingProductWorkerCanary:
                     "Coding Worker canary is closed",
                     code="coding_worker_closed",
                 )
+            if self._start_gate is not None:
+                self._start_gate.close()
             self._require_selected_components()
             recovery = cast(CodingProductWorkerRecoveryPort, self._recovery)
             steps = await recovery.recover(
@@ -505,6 +532,8 @@ class CodingProductWorkerCanary:
         async with self._operation_lock:
             if self._closed:
                 return
+            if self._start_gate is not None:
+                self._start_gate.close()
             if self._status.effective_owner != "hosting" or self._receipt is None:
                 self._closed = True
                 return
@@ -741,6 +770,7 @@ def bind_coding_product_worker_canary(
     containment_launcher_path: str | None = None,
     containment_launcher_sha256: str | None = None,
     containment_profile_sha256: str | None = None,
+    start_gate: CodingProductWorkerStartGate | None = None,
     windows_lpac_plan: _WindowsLpacProductWorkerProfilePlan | None = None,
     windows_platform_imports: tuple[str, ...] | None = None,
     native_provisioning_state_store: object | None = None,
@@ -756,7 +786,7 @@ def bind_coding_product_worker_canary(
     """Bind the sole explicit Coding Product canary; omission remains Current."""
 
     if policy is None:
-        if receipt is not None:
+        if receipt is not None or start_gate is not None:
             _raise("coding_worker_product_missing")
         return _current_canary(code="coding_worker_product_missing")
     if not isinstance(policy, ProductWorkerActivationPolicyV1):
@@ -764,13 +794,15 @@ def bind_coding_product_worker_canary(
     if policy.product_id != CODING_PRODUCT_ID:
         _raise("coding_worker_product_mismatch")
     if not policy.enabled or policy.requested_owner == "current":
-        if receipt is not None:
+        if receipt is not None or start_gate is not None:
             _raise("coding_worker_disabled_receipt_present")
         return _current_canary(
             code="coding_worker_disabled_by_policy",
             policy=policy,
         )
     if receipt is None:
+        if start_gate is not None:
+            _raise("coding_worker_start_gate_receipt_missing")
         code = (
             "coding_worker_required_unavailable"
             if policy.effective_required
@@ -846,6 +878,18 @@ def bind_coding_product_worker_canary(
     assert activation_state_store is not None
     assert containment_launcher_sha256 is not None
     assert containment_profile_sha256 is not None
+    from .package_product_worker_start_gate import CodingProductWorkerStartGate
+
+    if start_gate is not None and (
+        type(start_gate) is not CodingProductWorkerStartGate
+        or policy.native_profile_id != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID
+        or start_gate.receipt_owner is not authority
+        or start_gate.receipt_fingerprint != receipt.fingerprint
+        or start_gate.attempt_id != worker_request.identity.attempt_id
+        or start_gate.worker_identity_fingerprint
+        != worker_request.identity.fingerprint
+    ):
+        _raise("coding_worker_start_gate_binding_mismatch")
     try:
         if policy.native_profile_id == CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
             assert containment_launcher_path is not None
@@ -856,6 +900,9 @@ def bind_coding_product_worker_canary(
                 launcher_path=containment_launcher_path,
                 launcher_sha256=containment_launcher_sha256,
                 containment_profile_sha256=containment_profile_sha256,
+                start_gate_read_fd=(
+                    None if start_gate is None else start_gate.start_gate_read_fd
+                ),
             )
         else:
             assert windows_lpac_plan is not None
@@ -871,6 +918,11 @@ def bind_coding_product_worker_canary(
     except WorkerBindingError as exc:
         raise CodingProductWorkerCanaryError(
             "Coding Worker native profile was rejected",
+            code=exc.code,
+        ) from exc
+    except CodingWorkerStartGateError as exc:
+        raise CodingProductWorkerCanaryError(
+            "Coding Worker start gate is unavailable",
             code=exc.code,
         ) from exc
     except (TypeError, ValueError) as exc:
@@ -899,6 +951,11 @@ def bind_coding_product_worker_canary(
         hosting=HostingManagedWorkerSessionAdapter(
             hosting=hosting,  # type: ignore[arg-type]
             preparation=native_profile,
+            start_gate=(
+                None
+                if start_gate is None
+                else bind_worker_gated_start_release(start_gate)
+            ),
         ),
         activation=WorkerHostingActivationV1(owner="hosting"),
     )
@@ -927,6 +984,7 @@ def bind_coding_product_worker_canary(
             attempt_id=worker_request.identity.attempt_id,
             owner_generation=worker_request.identity.owner_generation,
         ),
+        start_gate=start_gate,
     )
 
 

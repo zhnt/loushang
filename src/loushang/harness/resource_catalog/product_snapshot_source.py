@@ -44,6 +44,7 @@ from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     RevisionResourceRef,
     SkillDescriptor,
+    ThemeDescriptor,
 )
 
 
@@ -73,7 +74,7 @@ class ProductSelectedResourceInput:
         if (
             self.admission.contribution_kind != "resource_item"
             or not isinstance(resource, ResourceContributionSpec)
-            or resource.resource_kind not in {"prompt", "skill"}
+            or resource.resource_kind not in {"prompt", "skill", "theme"}
             or resource.managed_skill_actions
         ):
             raise ValueError("Product Resource must be a supported data-only admission")
@@ -293,7 +294,9 @@ class ProductSelectedResourceSource:
                 expected_content_length=len(item.body),
             )
             descriptor = projection.descriptor
-            assert isinstance(descriptor, PromptFragmentDescriptor | SkillDescriptor)
+            assert isinstance(
+                descriptor, PromptFragmentDescriptor | SkillDescriptor | ThemeDescriptor
+            )
             # This is a logical package path for display and sorting; the source
             # never resolves it or reads it from the host filesystem.
             descriptor = replace(

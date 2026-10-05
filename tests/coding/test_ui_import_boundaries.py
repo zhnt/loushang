@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -186,11 +187,13 @@ RETIRED_CODING_UI_MODULES = {
 }
 
 RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
+    "_plugin_completion",
     "cli",
     "completion",
     "hotkeys",
     "mode",
     "plain_app",
+    "plugin_theme",
     "product_binding",
     "screen_app",
     "screen_input",
@@ -1524,7 +1527,12 @@ def test_active_coding_ui_surfaces_do_not_use_legacy_native_product_names() -> N
                 continue
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
-                if token in text:
+                found = (
+                    re.search(r"(?<!\w)native_app(?!\w)", text) is not None
+                    if token == "native_app"
+                    else token in text
+                )
+                if found:
                     offenders.append(f"{path}:{token}")
 
     assert offenders == []

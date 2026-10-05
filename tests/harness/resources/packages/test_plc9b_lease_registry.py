@@ -142,6 +142,7 @@ def test_registry_reports_all_live_leases_and_refuses_old_protocol(
     assert duplicate.value.code == "package_epoch_lease_identity_conflict"
     second = registry.register(runtime_id="runtime:second", runtime_protocol_epoch=2)
     try:
+        assert registry.review_orphans(store_id=registry.store_id) == ()
         snapshot = registry.snapshot(store_id="package-store:test")
         assert {item.lease_id for item in snapshot.active_leases} == {
             first.lease.lease_id,
@@ -464,7 +465,30 @@ os._exit(0)
         with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
             pytest.fail("orphaned runtime was treated as quiescent")
     assert quiescence.value.code == "package_epoch_lease_orphaned"
+    before_read_only = registry.path.read_bytes()
+    with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as read_only:
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id, read_only=True
+        ):
+            pytest.fail("read-only owner treated an orphan as quiescent")
+    assert read_only.value.code == "package_epoch_lease_orphaned"
+    assert registry.path.read_bytes() == before_read_only
+    before_review = registry.path.read_bytes()
+    (orphan,) = registry.review_orphans(store_id=registry.store_id)
+    assert orphan.lease_id == lease_id
+    assert registry.path.read_bytes() == before_review
+    lock_path = registry._lease_lock_path(lease_id)
+    moved_lock = lock_path.with_name(lock_path.name + ".held")
+    lock_path.rename(moved_lock)
+    try:
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as missing:
+            registry.review_orphans(store_id=registry.store_id)
+        assert missing.value.code == "package_epoch_lease_liveness_unknown"
+        assert not lock_path.exists()
+    finally:
+        moved_lock.rename(lock_path)
     registry.repair_orphan(lease_id)
+    assert registry.review_orphans(store_id=registry.store_id) == ()
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as absent:
         registry.snapshot(store_id="package-store:test")
     assert absent.value.code == "package_epoch_lease_absent"

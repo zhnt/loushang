@@ -14,6 +14,7 @@ from loushang.coding.presentation.tui.plain import (
 )
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
+from loushang.coding.ui.plugin_theme import apply_coding_plugin_theme_to_screen
 from loushang.coding.ui.product_binding import (
     ScreenCodingDebugBinding,
     build_coding_ui_controller,
@@ -164,6 +165,8 @@ async def _run_bound_screen_interactive_tui(
         session_label=snapshot.session_label,
         now=time.monotonic,
     )
+    current = current_agent_runtime_session(runtime, session)
+    apply_coding_plugin_theme_to_screen(app, current)
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
@@ -176,6 +179,7 @@ async def _run_bound_screen_interactive_tui(
         runtime=runtime,
         session=session,
         verbose=verbose,
+        plugin_workspace=snapshot.cwd,
     )
 
     def current_session():

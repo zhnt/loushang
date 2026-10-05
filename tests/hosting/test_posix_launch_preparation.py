@@ -1,23 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import hashlib
+import json
 import os
 import platform
+import select
 import shutil
 import signal
 import stat
 import subprocess
 import sys
 import textwrap
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from dataclasses import asdict
 from functools import wraps
 from pathlib import Path
 from typing import ParamSpec
 
 import pytest
 
+import loushang.hosting._posix_process as posix_process_module
 from loushang.hosting import (
     ChildSessionRequest,
     HostingError,
@@ -46,6 +52,15 @@ from loushang.hosting._posix_launch_preparation import (
 )
 from loushang.hosting._posix_process import _PosixProcessBackend
 from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
+from loushang.hosting.gated_identity import (
+    linux_gated_child_session_identity,
+    linux_gated_child_session_witness,
+)
+from loushang.hosting.service import LinuxServiceIdentityV1, LinuxServiceObserverV1
+from loushang.hosting.service_group import (
+    LinuxServiceGroupObservationV1,
+    linux_service_group_absent_after_restart,
+)
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix"
@@ -54,6 +69,10 @@ pytestmark = pytest.mark.skipif(
     reason="Linux x86_64 sealed-memfd launch preparation",
 )
 _P = ParamSpec("_P")
+_H6_RELEASE_BUILDER = (
+    Path(__file__).resolve().parents[2]
+    / "scripts/dev/build_posix_containment_launcher.py"
+)
 
 
 def _async_test(
@@ -119,6 +138,8 @@ class _StaticPreparationPort(_ManagedLaunchPreparationPort):
 def _native_host(
     process_backend: _PosixProcessBackend | None = None,
     capture_backend: _PosixStaticLaunchCaptureBackend | None = None,
+    *,
+    max_capture_slots: int = 3,
 ) -> _ChildSessionHost:
     process_backend = process_backend or _PosixProcessBackend()
     return _ChildSessionHost(
@@ -133,7 +154,7 @@ def _native_host(
         max_sessions=1,
         launch_capture_backend=capture_backend
         or _PosixStaticLaunchCaptureBackend(),
-        max_capture_slots=3,
+        max_capture_slots=max_capture_slots,
     )
 
 
@@ -422,6 +443,7 @@ def _contained_spec(
     cwd: Path,
     *arguments: str,
     profile_sha256: str,
+    start_gate_read_fd: int | None = None,
 ) -> _PosixStaticContainedLaunchCaptureSpec:
     launcher = launcher.absolute()
     executable = executable.absolute()
@@ -447,7 +469,11 @@ def _contained_spec(
             f"payload-static-elf:sha256:{executable_digest}",
             f"cwd:posix:{cwd_stat.st_dev}:{cwd_stat.st_ino}",
             f"containment-profile:sha256:{profile_sha256}",
-            "invocation:loushang-static-containment-launch/v1",
+            (
+                "invocation:loushang-static-containment-launch/v2"
+                if start_gate_read_fd is not None
+                else "invocation:loushang-static-containment-launch/v1"
+            ),
             "platform:linux-x86_64-syscall-abi",
         ),
         launcher_path=str(launcher),
@@ -456,7 +482,297 @@ def _contained_spec(
         cwd_device=cwd_stat.st_dev,
         cwd_inode=cwd_stat.st_ino,
         containment_profile_sha256=profile_sha256,
+        start_gate_read_fd=start_gate_read_fd,
     )
+
+
+@_async_test
+async def test_posix_contained_product_start_gate_reaches_hosted_child(
+    tmp_path: Path,
+) -> None:
+    release = tmp_path / "release"
+    built = subprocess.run(
+        (sys.executable, str(_H6_RELEASE_BUILDER), "--output-dir", str(release)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    catalog = json.loads(built.stdout)
+    payload = tmp_path / "payload"
+    _compile_containment_payload(payload, marker="hosting-gated")
+    gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+    host = _native_host(max_capture_slots=4)
+    lease = None
+    pending = None
+    try:
+        spec = _contained_spec(
+            release / "containment-launcher",
+            payload,
+            tmp_path,
+            profile_sha256=str(catalog["profileSourceSha256"]),
+            start_gate_read_fd=gate_read,
+        )
+        lease = await host.start(
+            ChildSessionRequest(spec.request), _StaticPreparationPort(spec)
+        )
+        identity = linux_gated_child_session_identity(lease)
+        assert identity.pid > 1
+        witness = linux_gated_child_session_witness(lease)
+        gate_stat = os.fstat(gate_read)
+        assert witness.native_identity == identity
+        assert (witness.gate_device, witness.gate_inode) == (
+            gate_stat.st_dev,
+            gate_stat.st_ino,
+        )
+        assert not linux_service_group_absent_after_restart(identity)
+        os.close(gate_read)
+        gate_read = -1
+        pending = asyncio.create_task(_read_line(lease.endpoint.read))
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(pending), timeout=0.2)
+        assert os.write(gate_write, b"S") == 1
+        os.close(gate_write)
+        gate_write = -1
+        assert await asyncio.wait_for(pending, timeout=5) == (
+            f"hosting-gated:contained:{tmp_path.stat().st_ino}\n".encode()
+        )
+        await lease.endpoint.write(b"x")
+        assert (await asyncio.wait_for(lease.process.wait(), timeout=5)).return_code == 0
+        await lease.close()
+        assert linux_service_group_absent_after_restart(identity)
+    finally:
+        if gate_read >= 0:
+            os.close(gate_read)
+        if gate_write >= 0:
+            os.close(gate_write)
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError):
+                await pending
+        if lease is not None:
+            await lease.close()
+        await host.close()
+
+
+def test_posix_gated_group_survives_host_crash_and_is_reaped(tmp_path: Path) -> None:
+    compiler = shutil.which("cc")
+    if compiler is None:
+        pytest.fail("H6 native crash drill requires a C compiler")
+    release = tmp_path / "release"
+    built = subprocess.run(
+        (sys.executable, str(_H6_RELEASE_BUILDER), "--output-dir", str(release)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    catalog = json.loads(built.stdout)
+    payload = tmp_path / "crash-payload"
+    source = payload.with_suffix(".c")
+    source.write_text(
+        r'''
+#include <fcntl.h>
+#include <signal.h>
+#include <unistd.h>
+int main(void) {
+    int fd = open("payload-entered", O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0 || write(fd, "Y", 1) != 1 || close(fd) != 0) return 70;
+    for (;;) pause();
+}
+''',
+        encoding="utf-8",
+    )
+    compiled = subprocess.run(
+        (compiler, "-static", "-O2", "-s", "-o", str(payload), str(source)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert compiled.returncode == 0, compiled.stderr
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    subreaper = ctypes.c_int()
+    assert libc.prctl(37, ctypes.byref(subreaper), 0, 0, 0) == 0
+    assert libc.prctl(36, 1, 0, 0, 0) == 0
+    report_read, report_write = os.pipe2(os.O_CLOEXEC)
+    host_pid = os.fork()
+    identity: LinuxServiceIdentityV1 | None = None
+    try:
+        if host_pid == 0:
+            os.close(report_read)
+
+            async def crash_host() -> None:
+                gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+                host = _native_host(max_capture_slots=4)
+                spec = _contained_spec(
+                    release / "containment-launcher",
+                    payload,
+                    tmp_path,
+                    profile_sha256=str(catalog["profileSourceSha256"]),
+                    start_gate_read_fd=gate_read,
+                )
+                lease = await host.start(
+                    ChildSessionRequest(spec.request), _StaticPreparationPort(spec)
+                )
+                native = linux_gated_child_session_identity(lease)
+                os.write(report_write, json.dumps(asdict(native)).encode() + b"\n")
+                os.write(gate_write, b"S")
+                os._exit(0)
+
+            try:
+                asyncio.run(crash_host())
+            except BaseException:
+                os._exit(2)
+            os._exit(3)
+        os.close(report_write)
+        assert select.select([report_read], [], [], 10)[0]
+        report = os.read(report_read, 1024)
+        assert report.endswith(b"\n")
+        identity = LinuxServiceIdentityV1(**json.loads(report))
+        assert os.waitpid(host_pid, 0)[1] == 0
+        host_pid = -1
+        deadline = time.monotonic() + 5
+        while not (tmp_path / "payload-entered").is_file() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert (tmp_path / "payload-entered").read_bytes() == b"Y"
+        assert not linux_service_group_absent_after_restart(identity)
+        observer = LinuxServiceObserverV1.reopen(identity)
+        try:
+            assert not observer.exited()
+            os.killpg(identity.pid, signal.SIGKILL)
+            assert observer.exited(timeout=5)
+        finally:
+            observer.close()
+        assert os.waitpid(identity.pid, 0)[0] == identity.pid
+        assert linux_service_group_absent_after_restart(identity)
+    finally:
+        os.close(report_read)
+        if host_pid > 0:
+            with suppress(ProcessLookupError):
+                os.kill(host_pid, signal.SIGKILL)
+            with suppress(ChildProcessError):
+                os.waitpid(host_pid, 0)
+        if identity is not None:
+            try:
+                observer = LinuxServiceObserverV1.reopen(identity)
+            except HostingError:
+                pass
+            else:
+                try:
+                    os.killpg(identity.pid, signal.SIGKILL)
+                finally:
+                    observer.close()
+            with suppress(ChildProcessError):
+                os.waitpid(identity.pid, 0)
+        assert libc.prctl(36, subreaper.value, 0, 0, 0) == 0
+
+
+@_async_test
+async def test_posix_contained_start_gate_rejects_regular_file_before_spawn(
+    tmp_path: Path,
+) -> None:
+    launcher = tmp_path / "launcher"
+    payload = tmp_path / "payload"
+    _compile_containment_launcher(launcher, profile_sha256="a" * 64)
+    _compile_containment_payload(payload, marker="gate-rejected")
+    gate_file = tmp_path / "not-a-gate"
+    gate_file.write_bytes(b"S")
+    gate_fd = os.open(gate_file, os.O_RDONLY)
+    host = _native_host(max_capture_slots=4)
+    try:
+        spec = _contained_spec(
+            launcher,
+            payload,
+            tmp_path,
+            profile_sha256="a" * 64,
+            start_gate_read_fd=gate_fd,
+        )
+        with pytest.raises(HostingError) as refused:
+            await host.start(ChildSessionRequest(spec.request), _StaticPreparationPort(spec))
+        assert refused.value.category is HostingFailureCategory.PREPARATION_STALE
+        assert gate_file.read_bytes() == b"S"
+        assert os.fstat(gate_fd).st_ino == gate_file.stat().st_ino
+    finally:
+        os.close(gate_fd)
+        await host.close()
+
+
+@pytest.mark.parametrize("failure_mode", ("capture", "group"))
+@_async_test
+async def test_posix_gated_identity_capture_failure_reclaims_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_mode: str
+) -> None:
+    release = tmp_path / "release"
+    built = subprocess.run(
+        (sys.executable, str(_H6_RELEASE_BUILDER), "--output-dir", str(release)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    catalog = json.loads(built.stdout)
+    payload = tmp_path / "payload"
+    _compile_containment_payload(payload, marker="capture-failed")
+    gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+    host = _native_host(max_capture_slots=4)
+    observed_pids: list[int] = []
+
+    def fail_capture(pid: int) -> None:
+        observed_pids.append(pid)
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "gated identity capture refused",
+        )
+
+    def fail_group(observation: LinuxServiceGroupObservationV1) -> None:
+        observed_pids.append(observation._observer.identity.pid)
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "gated group admission refused",
+        )
+
+    try:
+        spec = _contained_spec(
+            release / "containment-launcher",
+            payload,
+            tmp_path,
+            profile_sha256=str(catalog["profileSourceSha256"]),
+            start_gate_read_fd=gate_read,
+        )
+        with monkeypatch.context() as patch:
+            if failure_mode == "capture":
+                patch.setattr(
+                    posix_process_module.LinuxServiceObserverV1,
+                    "capture",
+                    staticmethod(fail_capture),
+                )
+            else:
+                patch.setattr(
+                    posix_process_module.LinuxServiceGroupObservationV1,
+                    "admit",
+                    fail_group,
+                )
+            with pytest.raises(HostingError) as refused:
+                await host.start(
+                    ChildSessionRequest(spec.request), _StaticPreparationPort(spec)
+                )
+        assert refused.value.category is HostingFailureCategory.PREPARATION_FAILED
+        assert len(observed_pids) == 1
+        with pytest.raises(ProcessLookupError):
+            os.killpg(observed_pids[0], 0)
+    finally:
+        os.close(gate_read)
+        os.close(gate_write)
+        await host.close()
 
 
 async def _read_line(read: Callable[[int], Awaitable[bytes]]) -> bytes:
@@ -507,6 +823,9 @@ async def test_posix_static_profile_pins_executable_and_cwd_across_replacement(
     preparation.release.set()
 
     lease = await start
+    with pytest.raises(HostingError) as ordinary_identity:
+        linux_gated_child_session_identity(lease)
+    assert ordinary_identity.value.category is HostingFailureCategory.INVALID_REQUEST
     output = await _read_line(lease.endpoint.read)
     await lease.endpoint.write(b"x")
     result = await lease.process.wait()
@@ -575,6 +894,9 @@ async def test_posix_contained_profile_pins_launcher_payload_and_applies_profile
     preparation.release.set()
 
     lease = await start
+    with pytest.raises(HostingError) as ordinary_identity:
+        linux_gated_child_session_identity(lease)
+    assert ordinary_identity.value.category is HostingFailureCategory.INVALID_REQUEST
     output = await _read_line(lease.endpoint.read)
     await lease.endpoint.write(b"x")
     result = await lease.process.wait()

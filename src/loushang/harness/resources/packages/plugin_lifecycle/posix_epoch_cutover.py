@@ -11,6 +11,7 @@ import errno
 import os
 import re
 import stat
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
@@ -1001,6 +1002,8 @@ class PackagePosixEpochCutoverOwner:
         snapshots: PackageEpochCutoverSnapshotPort,
         legacy_root_name: str = "legacy",
         epochs_root_name: str = "epochs",
+        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
+        | None = None,
         before_fence_probe=None,
     ) -> None:
         if os.name != "posix" or not _supports_posix_rooted_io():
@@ -1033,6 +1036,8 @@ class PackagePosixEpochCutoverOwner:
             raise TypeError("Package epoch snapshot owner is required")
         if before_fence_probe is not None and not callable(before_fence_probe):
             raise TypeError("Package epoch pre-fence probe must be callable")
+        if snapshot_admission is not None and not callable(snapshot_admission):
+            raise TypeError("Package snapshot admission must be callable")
         self._root = raw_root
         self._store_id = store_id
         self._journal = epoch_journal
@@ -1041,6 +1046,7 @@ class PackagePosixEpochCutoverOwner:
         self._legacy_name = legacy_root_name
         self._epochs_name = epochs_root_name
         self._before_fence_probe = before_fence_probe
+        self._snapshot_admission = snapshot_admission
         pinned = _PinnedPosixAuthority.open(self._root)
         try:
             legacy_fd = pinned.open_authority_child(self._legacy_name)
@@ -1185,6 +1191,8 @@ class PackagePosixEpochCutoverOwner:
                 quiescence_receipt_id=quiescence.receipt_id,
             )
             _validate_snapshot(snapshot, request, quiescence)
+            if self._snapshot_admission is not None:
+                self._snapshot_admission(snapshot)
             try:
                 os.mkdir(request.namespace_id, mode=0o700, dir_fd=epochs_fd)
                 created = True

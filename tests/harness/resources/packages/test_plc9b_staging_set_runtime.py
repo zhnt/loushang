@@ -48,6 +48,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackagePluginRootTargetV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
+    PackageStagingCheckpointError,
     PackageStagingSetLifecycleOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
@@ -124,6 +125,11 @@ class _Acquired:
 
     def cleanup(self) -> None:
         self.suspended = True
+
+
+@dataclass(frozen=True)
+class _StagingSettlement:
+    receipt: PackageArtifactStagingReceiptV1
 
 
 @dataclass
@@ -219,6 +225,18 @@ class _DependencyStaging:
         self.physical_stages += 1
         return receipt
 
+    def read_operation_settlements(self, operation_id: str) -> tuple[_StagingSettlement, ...]:
+        return tuple(
+            _StagingSettlement(receipt)
+            for receipt in self.receipts.values()
+            if receipt.operation_id == operation_id
+        )
+
+    def read_validate_dependency_receipt(
+        self, receipt: PackageArtifactStagingReceiptV1
+    ) -> PackageArtifactStagingReceiptV1 | None:
+        return self.receipts.get(receipt.staging_request.staging_request_id)
+
 
 @dataclass
 class _RootStaging:
@@ -256,6 +274,18 @@ class _RootStaging:
         self.receipts[request.staging_request_id] = receipt
         self.physical_stages += 1
         return receipt
+
+    def read_operation_settlements(self, operation_id: str) -> tuple[_StagingSettlement, ...]:
+        return tuple(
+            _StagingSettlement(receipt)
+            for receipt in self.receipts.values()
+            if receipt.operation_id == operation_id
+        )
+
+    def read_validate_root_receipt(
+        self, receipt: PackageArtifactStagingReceiptV1
+    ) -> PackageArtifactStagingReceiptV1 | None:
+        return self.receipts.get(receipt.staging_request.staging_request_id)
 
 
 @dataclass
@@ -581,6 +611,68 @@ def test_staging_set_runtime_stages_journals_rechecks_and_publishes_exact_set(
     assert fixture.dependency.events == ["dependency:dependency-node", "root:root"]
     assert fixture.recheck.calls == 1
     assert all(item.suspended for item in acquired + replay_acquired)
+
+
+def test_published_checkpoint_requires_retained_pin_and_settled_store(
+    tmp_path: Path,
+) -> None:
+    fixture, candidate, _acquired = _fixture(tmp_path)
+    published = fixture.owner.stage_and_publish(candidate)
+    assert published.committed_set is not None
+    before = (
+        fixture.kernel.journal.records(),
+        fixture.pin_journal.read_operation_records(OPERATION_ID),
+        fixture.staging_journal.records(),
+        fixture.committed_sets.read_events(),
+    )
+
+    checkpoint = fixture.owner.inspect_published_checkpoint(OPERATION_ID)
+    assert checkpoint.status == published.status
+    assert checkpoint.committed_set == published.committed_set
+    assert len(checkpoint.receipts) == 2
+    assert before == (
+        fixture.kernel.journal.records(),
+        fixture.pin_journal.read_operation_records(OPERATION_ID),
+        fixture.staging_journal.records(),
+        fixture.committed_sets.read_events(),
+    )
+
+    fixture.root.receipts.clear()
+    with pytest.raises(PackageStagingCheckpointError) as missing_store:
+        fixture.owner.inspect_published_checkpoint(OPERATION_ID)
+    assert missing_store.value.code == "package_staging_checkpoint_store_unmatched"
+
+    fixture.root.receipts.update(
+        {
+            receipt.staging_request.staging_request_id: receipt
+            for receipt in checkpoint.receipts
+            if receipt.staging_request.plan_node.role == "root"
+        }
+    )
+    (acquired_pin,) = fixture.pin_journal.read_operation_records(OPERATION_ID)
+    fixture.pin_journal.append(
+        PackageTransactionPinReceiptV1.transition(
+            acquired_pin.receipt,
+            state="released",
+            owner_revision=2,
+            lease_revision=2,
+            transition_evidence_ref="b" * 64,
+        )
+    )
+    with pytest.raises(PackageStagingCheckpointError) as released_pin:
+        fixture.owner.inspect_published_checkpoint(OPERATION_ID)
+    assert released_pin.value.code == "package_staging_checkpoint_pin_changed"
+
+
+def test_published_checkpoint_refuses_retired_set(tmp_path: Path) -> None:
+    fixture, candidate, _acquired = _fixture(tmp_path)
+    fixture.owner.stage_and_publish(candidate)
+    (record,) = fixture.committed_sets.records()
+    fixture.committed_sets.tombstone(record)
+
+    with pytest.raises(PackageStagingCheckpointError) as retired:
+        fixture.owner.inspect_published_checkpoint(OPERATION_ID)
+    assert retired.value.code == "package_staging_checkpoint_set_changed"
 
 
 def test_staging_set_runtime_rechecks_classification_after_staging_before_set(

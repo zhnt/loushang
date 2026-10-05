@@ -32,6 +32,36 @@
       "surface": "cli"
     },
     {
+      "disposition": "explicit-offline-posix-product-repair",
+      "entrypointId": "coding.package-repair.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-package-repair",
+      "source": "src/loushang/coding/cli/package_repair.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "explicit-offline-linux-product-private-data",
+      "entrypointId": "coding.plugin-private-data.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-plugin-private-data",
+      "source": "src/loushang/coding/cli/plugin_private_data.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "explicit-linux-worker-native-candidate",
+      "entrypointId": "coding.worker-native.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-worker-native",
+      "source": "src/loushang/coding/cli/package_worker_native.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-owned-foreground-tui",
       "entrypointId": "coding.hosted-tui.command",
       "importsComposition": false,

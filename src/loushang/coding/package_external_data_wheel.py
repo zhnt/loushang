@@ -14,9 +14,12 @@ from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
+    JournalCodecError,
+    JournalFileError,
     JournalLoadPolicy,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
@@ -184,6 +187,7 @@ class CodingExternalDataWheelCatalog:
         store_id: str,
         namespace_id: str,
         scope_id: str,
+        read_only: bool = False,
     ) -> None:
         if not path.is_absolute() or not source_root.is_absolute():
             raise ValueError("External data Wheel catalog paths must be absolute")
@@ -192,6 +196,7 @@ class CodingExternalDataWheelCatalog:
         self.store_id = store_id
         self.namespace_id = namespace_id
         self.scope_id = scope_id
+        self._read_only = read_only
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
 
     def capture(
@@ -200,6 +205,8 @@ class CodingExternalDataWheelCatalog:
         *,
         epoch_runtime: PackageProductPosixFencedRuntimeOwner,
     ) -> CodingExternalDataWheelBindingV1:
+        if self._read_only:
+            raise CodingExternalDataWheelError("Read-only Source catalog cannot capture")
         self._assert_epoch(epoch_runtime)
         if (
             not source.is_absolute()
@@ -265,8 +272,31 @@ class CodingExternalDataWheelCatalog:
             return record
 
     def records(self) -> tuple[CodingExternalDataWheelBindingV1, ...]:
+        if self._read_only:
+            return self.read_records()
         with journal_file_lock(self.path, "exclusive"):
             return self._load_unlocked()
+
+    def read_records(self) -> tuple[CodingExternalDataWheelBindingV1, ...]:
+        """Observe Source policy without creating or repairing owner state."""
+
+        try:
+            with journal_file_read_lock(self.path, "shared", create_lock=False):
+                return self._load_unlocked(
+                    load_policy=JournalLoadPolicy(
+                        partial_tail="raise", create_lock=False
+                    )
+                )
+        except (
+            JournalFileError,
+            JournalCodecError,
+            OSError,
+            UnicodeError,
+            ValueError,
+        ) as exc:
+            raise CodingExternalDataWheelError(
+                "External data Wheel binding catalog is corrupt"
+            ) from exc
 
     def verify_record(self, record: CodingExternalDataWheelBindingV1) -> None:
         """Recheck a catalog record's controlled Source bytes without mutation."""
@@ -315,7 +345,9 @@ class CodingExternalDataWheelCatalog:
             raise CodingExternalDataWheelError("External data Wheel epoch changed")
         epoch_runtime.assert_current()
 
-    def _load_unlocked(self) -> tuple[CodingExternalDataWheelBindingV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[CodingExternalDataWheelBindingV1, ...]:
         if not self.path.exists():
             return ()
         records = load_jsonl(
@@ -323,7 +355,7 @@ class CodingExternalDataWheelCatalog:
             record_codec=_CODEC,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
-            load_policy=JournalLoadPolicy(partial_tail="raise"),
+            load_policy=load_policy or JournalLoadPolicy(partial_tail="raise"),
         ).records
         if any(
             record.record_revision != index

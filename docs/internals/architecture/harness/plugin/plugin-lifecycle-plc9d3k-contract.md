@@ -20,6 +20,11 @@ deletes data itself. The data owner must revalidate at mutation time and
 durably settle and replay its receipt; the confirmation authority must issue
 and verify operator intent independently. Neither production binding exists
 yet, so the generic command is not enabled.
+Coding Arch's current persistent state root is derived from Session ID; it is
+not a per-Installation private-data owner. It cannot be relabeled as a
+production Installation deletion target. A production owner must establish
+the Installation-to-data mapping, lifecycle fence, and durable receipt before
+the separate confirmation contract can authorize a command.
 
 The isolated acceptance test uses a separate test data owner with a persistent
 receipt. Wrong-plan confirmation, stale plan, unapproved confirmation, and a
@@ -27,6 +32,12 @@ foreign receipt cannot produce a successful coordinator result. A successful
 test deletion removes only the owner's test marker; re-instantiating the owner
 replays the same receipt. Earlier Product GC tests independently prove their
 own marker survives Package removal and root GC.
+
+The confirmation authority's verification read takes an existing shared lock
+without creating a lock for an absent journal. It refuses an incomplete tail
+without repairing evidence during deletion authorization; only the separate
+confirmation writer may recover that tail under its exclusive lock. This
+hardens the generic seam but does not bind a production data-domain owner.
 
 ## Backup Retention
 

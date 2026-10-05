@@ -34,8 +34,10 @@ from loushang.harness.plugin_management.updates import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
+    VerifiedArtifactRefV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetGcTombstoneV1,
     PackageCommittedSetJournal,
     PackageCommittedSetRecordV1,
 )
@@ -50,6 +52,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
     PackageDesiredStateCommitResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreGcTombstoneV1,
     PackageStoreSettlementJournal,
     PackageStoreSettlementRecordV1,
 )
@@ -128,9 +131,33 @@ class CommittedSetPackageRevisionProjection:
         record = self.committed_sets.current(request.operation_id)
         if record is None:
             raise ValueError("Package desired revision lacks a committed set")
-        committed = record.committed_set
-        closure = record.closure_lock
-        if (
+        return _project_committed_record(
+            request,
+            record,
+            root_tombstoned=self.committed_sets.is_tombstoned(
+                record.committed_set.root_ref.ref_id
+            ),
+        )
+
+    def inventory_revision(self) -> int:
+        return self.desired_state.snapshot().inventory_revision
+
+
+def _project_committed_record(
+    request: PackageDesiredStateCommitRequestV1,
+    record: PackageCommittedSetRecordV1,
+    *,
+    root_tombstoned: bool,
+) -> PluginPackageRevisionRefV1:
+    """Pure projection shared by runtime admission and inert inspection."""
+
+    if not isinstance(request, PackageDesiredStateCommitRequestV1):
+        raise TypeError("Package desired-state commit request is required")
+    if not isinstance(record, PackageCommittedSetRecordV1):
+        raise TypeError("Package committed-set record is required")
+    committed = record.committed_set
+    closure = record.closure_lock
+    if (
             committed.operation_id != request.operation_id
             or committed.request_fingerprint != request.request_fingerprint
             or committed.attempt_epoch != request.attempt_epoch
@@ -141,28 +168,25 @@ class CommittedSetPackageRevisionProjection:
             or committed.set_id != request.committed_set_id
             or committed.root_ref != request.root_ref
             or committed.closure_lock_digest != closure.lock_digest
-            or self.committed_sets.is_tombstoned(committed.root_ref.ref_id)
-        ):
-            raise ValueError("Package desired revision changed committed set")
-        root = next(
-            node for node in closure.nodes if node.node_id == closure.root_node_id
-        )
-        if (
+            or root_tombstoned
+    ):
+        raise ValueError("Package desired revision changed committed set")
+    root = next(
+        node for node in closure.nodes if node.node_id == closure.root_node_id
+    )
+    if (
             root.plan_node.role != "root"
             or not isinstance(root.stable_ref, PluginRevisionRefV1)
             or root.stable_ref != request.root_ref
-        ):
-            raise ValueError("Package desired revision changed committed set root")
-        return PluginPackageRevisionRefV1(
-            plugin_id=committed.plugin_id,
-            plugin_version=committed.root_ref.version,
-            package_content_digest=committed.root_ref.artifact_digest,
-            dependency_lock_digest=closure.lock_digest,
-            package_source_identity=root.plan_node.canonical_source_identity,
-        )
-
-    def inventory_revision(self) -> int:
-        return self.desired_state.snapshot().inventory_revision
+    ):
+        raise ValueError("Package desired revision changed committed set root")
+    return PluginPackageRevisionRefV1(
+        plugin_id=committed.plugin_id,
+        plugin_version=committed.root_ref.version,
+        package_content_digest=committed.root_ref.artifact_digest,
+        dependency_lock_digest=closure.lock_digest,
+        package_source_identity=root.plan_node.canonical_source_identity,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,6 +519,16 @@ class PackageProductRootStoreReadPort(Protocol):
     ) -> bytes: ...
 
 
+class PackageProductDependencyStoreReadPort(Protocol):
+    read_only: bool
+
+    def read_dependency_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class PackageProductSelectedRootReader:
     """Join a live Product selection to one exact, Store-verified root member.
@@ -588,11 +622,9 @@ class PackageProductSelectedRootReader:
                     "Selected root file set is unavailable or exceeds budget",
                     "package_product_root_file_unavailable",
                 )
-            return tuple(
-                self.root_store.read_root_file(
-                    settlement, path, max_bytes=members[path].byte_count
-                )
-                for path in logical_paths
+            return self._read_settlement_members(
+                settlement,
+                tuple((path, members[path].byte_count) for path in logical_paths),
             )
 
     def capture_selected_root(
@@ -634,13 +666,81 @@ class PackageProductSelectedRootReader:
                     "package_product_root_capture_budget_exceeded",
                 )
             files = tuple(
-                (
-                    entry.logical_path,
-                    self.root_store.read_root_file(
-                        settlement, entry.logical_path, max_bytes=entry.byte_count
+                zip(
+                    (entry.logical_path for entry in entries),
+                    self._read_settlement_members(
+                        settlement,
+                        tuple(
+                            (entry.logical_path, entry.byte_count) for entry in entries
+                        ),
                     ),
+                    strict=True,
                 )
-                for entry in entries
+            )
+            return PackageProductSelectedRootSnapshotV1(
+                installation_key=installation_key,
+                package_revision=package_revision,
+                instance_revision_ref=instance_revision_ref,
+                committed_record=committed_record,
+                root_ref=root_ref,
+                manifest=settlement.manifest,
+                files=files,
+            )
+
+    def capture_selected_root_read_only(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedRootSnapshotV1:
+        """Capture an existing Product selection without owner-state mutation."""
+
+        if type(max_files) is not int or not 1 <= max_files <= 64:
+            raise ValueError("Product selected-root file budget is invalid")
+        if (
+            type(max_total_bytes) is not int
+            or not 0 <= max_total_bytes <= 16 * 1024 * 1024
+        ):
+            raise ValueError("Product selected-root byte budget is invalid")
+        read_guard = getattr(self.gc_gate, "read_guard", None)
+        if not callable(read_guard) or getattr(self.root_store, "read_only", False) is not True:
+            raise TypeError("Product read-only owners are required")
+        with read_guard() as reserved:
+            (
+                package_revision,
+                instance_revision_ref,
+                committed_record,
+                settlement,
+            ) = self._selected_settlement(
+                installation_key, reserved, read_only=True
+            )
+            root_ref = settlement.receipt.stable_ref
+            if not isinstance(root_ref, PluginRevisionRefV1):
+                raise self._error(
+                    "Selected Store root has the wrong role",
+                    "package_product_root_unavailable",
+                )
+            entries = settlement.manifest.entries
+            if (
+                len(entries) > max_files
+                or settlement.manifest.total_byte_count > max_total_bytes
+            ):
+                raise self._error(
+                    "Selected Store root exceeds capture budget",
+                    "package_product_root_capture_budget_exceeded",
+                )
+            files = tuple(
+                zip(
+                    (entry.logical_path for entry in entries),
+                    self._read_settlement_members(
+                        settlement,
+                        tuple(
+                            (entry.logical_path, entry.byte_count) for entry in entries
+                        ),
+                    ),
+                    strict=True,
+                )
             )
             return PackageProductSelectedRootSnapshotV1(
                 installation_key=installation_key,
@@ -675,10 +775,25 @@ class PackageProductSelectedRootReader:
                     "package_product_root_selection_changed",
                 )
 
+    def _read_settlement_members(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        read_many = getattr(self.root_store, "read_root_files", None)
+        if callable(read_many):
+            return read_many(settlement, members)
+        return tuple(
+            self.root_store.read_root_file(settlement, path, max_bytes=budget)
+            for path, budget in members
+        )
+
     def _selected_settlement(
         self,
         installation_key: PluginInstallationKeyV1,
         reserved: frozenset[PluginPackageRevisionRefV1],
+        *,
+        read_only: bool = False,
     ) -> tuple[
         PluginPackageRevisionRefV1,
         PluginInstanceRevisionRef,
@@ -695,7 +810,11 @@ class PackageProductSelectedRootReader:
             raise self._error(
                 "Product Plugin scope changed", "package_product_root_scope_changed"
             )
-        snapshot, transitions = self.desired_state.capture()
+        snapshot, transitions = (
+            self.desired_state.capture_read_only()
+            if read_only
+            else self.desired_state.capture()
+        )
         selection = snapshot.installation(installation_key).selection
         package_revision = selection.package_revision
         if (
@@ -731,7 +850,9 @@ class PackageProductSelectedRootReader:
         )
         matches = tuple(
             binding
-            for binding in self.bindings.records()
+            for binding in (
+                self.bindings.read_records() if read_only else self.bindings.records()
+            )
             if binding.desired_transition_revision == selected_commit.inventory_revision
             and binding.package_revision == package_revision
             and binding.request.command_id == selected_command.operation_id
@@ -748,15 +869,41 @@ class PackageProductSelectedRootReader:
             )
         binding = matches[0]
         request = binding.request
+        if read_only:
+            committed_events = self.committed_sets.read_events()
+            committed_record = next(
+                (
+                    event
+                    for event in committed_events
+                    if isinstance(event, PackageCommittedSetRecordV1)
+                    and event.operation_id == request.operation_id
+                ),
+                None,
+            )
+            root_tombstoned = any(
+                isinstance(event, PackageCommittedSetGcTombstoneV1)
+                and event.root_ref_id == request.root_ref.ref_id
+                for event in committed_events
+            )
+        else:
+            committed_record = self.committed_sets.current(request.operation_id)
+            root_tombstoned = (
+                self.committed_sets.is_tombstoned(request.root_ref.ref_id)
+                if committed_record is not None
+                else False
+            )
         try:
-            projected = CommittedSetPackageRevisionProjection(
-                self.desired_state, self.committed_sets
-            ).project(request)
+            projected = (
+                _project_committed_record(
+                    request, committed_record, root_tombstoned=root_tombstoned
+                )
+                if committed_record is not None
+                else None
+            )
         except ValueError:
             raise self._error(
                 "Selected committed set changed", "package_product_root_stale"
             ) from None
-        committed_record = self.committed_sets.current(request.operation_id)
         if (
             projected != package_revision
             or committed_record is None
@@ -768,13 +915,30 @@ class PackageProductSelectedRootReader:
             raise self._error(
                 "Selected committed set changed", "package_product_root_stale"
             )
+        settlement_events = (
+            self.root_settlements.read_events() if read_only else None
+        )
         settlements = tuple(
             settlement
-            for settlement in self.root_settlements.records()
+            for settlement in (
+                settlement_events
+                if settlement_events is not None
+                else self.root_settlements.records()
+            )
+            if isinstance(settlement, PackageStoreSettlementRecordV1)
             if settlement.receipt.stable_ref == request.root_ref
             and settlement.receipt.operation_id == request.operation_id
         )
-        if len(settlements) != 1:
+        root_store_tombstoned = (
+            any(
+                isinstance(event, PackageStoreGcTombstoneV1)
+                and event.stable_ref_id == request.root_ref.ref_id
+                for event in settlement_events
+            )
+            if settlement_events is not None
+            else False
+        )
+        if len(settlements) != 1 or root_store_tombstoned:
             raise self._error(
                 "Selected Store root is unavailable",
                 "package_product_root_unavailable",
@@ -789,6 +953,442 @@ class PackageProductSelectedRootReader:
     @staticmethod
     def _error(message: str, code: str) -> PackageProductRuntimeReadError:
         return PackageProductRuntimeReadError(message, code=code)
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedDependencySnapshotV1:
+    """Inert, Store-pathless bytes captured for one selected dependency node."""
+
+    installation_key: PluginInstallationKeyV1
+    package_revision: PluginPackageRevisionRefV1
+    instance_revision_ref: PluginInstanceRevisionRef
+    committed_record: PackageCommittedSetRecordV1
+    dependency_ref: VerifiedArtifactRefV1
+    settlement_id: str
+    manifest: PackageVerifiedTreeManifestV1
+    files: tuple[tuple[str, bytes], ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.installation_key, PluginInstallationKeyV1)
+            or not isinstance(self.package_revision, PluginPackageRevisionRefV1)
+            or not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef)
+            or not isinstance(self.committed_record, PackageCommittedSetRecordV1)
+            or not isinstance(self.dependency_ref, VerifiedArtifactRefV1)
+            or not isinstance(self.settlement_id, str)
+            or len(self.settlement_id) != 64
+            or any(char not in "0123456789abcdef" for char in self.settlement_id)
+            or not isinstance(self.manifest, PackageVerifiedTreeManifestV1)
+        ):
+            raise TypeError("Selected dependency evidence is invalid")
+        committed = self.committed_record.committed_set
+        nodes = tuple(
+            node
+            for node in self.committed_record.closure_lock.nodes
+            if node.plan_node.role == "dependency"
+        )
+        if (
+            not 1 <= len(nodes) <= 3
+            or len(
+                tuple(node for node in nodes if node.stable_ref == self.dependency_ref)
+            )
+            != 1
+            or tuple(sorted(node.stable_ref.ref_id for node in nodes))
+            != tuple(sorted(ref.ref_id for ref in committed.dependency_refs))
+            or self.package_revision.dependency_lock_digest
+            != self.committed_record.closure_lock.lock_digest
+            or committed.product_id != self.installation_key.product_id
+            or committed.scope_id != self.installation_key.scope_id
+            or committed.plugin_id != self.installation_key.plugin_id
+            or self.package_revision.plugin_id != self.installation_key.plugin_id
+            or self.package_revision.plugin_version != committed.root_ref.version
+            or self.package_revision.package_content_digest
+            != committed.root_ref.artifact_digest
+            or self.instance_revision_ref.plugin_id
+            != self.installation_key.plugin_id
+            or self.dependency_ref.distribution != self.manifest.distribution
+            or self.dependency_ref.version != self.manifest.version
+            or self.dependency_ref.artifact_digest != self.manifest.artifact_digest
+            or self.dependency_ref.extraction_tree_digest
+            != self.manifest.extraction_tree_digest
+            or not any(
+                node.node_id == self.manifest.node_id
+                and node.stable_ref == self.dependency_ref
+                for node in nodes
+            )
+            or committed.operation_id != self.manifest.operation_id
+            or committed.attempt_epoch != self.manifest.attempt_epoch
+            or len(self.files) != len(self.manifest.entries)
+        ):
+            raise ValueError("Selected dependency changed Product identity")
+        for (path, body), entry in zip(
+            self.files, self.manifest.entries, strict=True
+        ):
+            if (
+                path != entry.logical_path
+                or not isinstance(body, bytes)
+                or len(body) != entry.byte_count
+                or sha256(body).hexdigest() != entry.content_digest
+            ):
+                raise ValueError("Selected dependency changed Store bytes")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedDependencyClosureSnapshotV1:
+    """One GC-gate-bound closure read, without execution or retention authority."""
+
+    installation_key: PluginInstallationKeyV1
+    package_revision: PluginPackageRevisionRefV1
+    instance_revision_ref: PluginInstanceRevisionRef
+    committed_record: PackageCommittedSetRecordV1
+    members: tuple[PackageProductSelectedDependencySnapshotV1, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.installation_key, PluginInstallationKeyV1)
+            or not isinstance(self.package_revision, PluginPackageRevisionRefV1)
+            or not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef)
+            or not isinstance(self.committed_record, PackageCommittedSetRecordV1)
+            or type(self.members) is not tuple
+            or not 1 <= len(self.members) <= 3
+            or any(
+                not isinstance(member, PackageProductSelectedDependencySnapshotV1)
+                or member.installation_key != self.installation_key
+                or member.package_revision != self.package_revision
+                or member.instance_revision_ref != self.instance_revision_ref
+                or member.committed_record != self.committed_record
+                for member in self.members
+            )
+        ):
+            raise ValueError("Selected dependency closure identity is invalid")
+        expected_refs = tuple(
+            sorted(
+                ref.ref_id
+                for ref in self.committed_record.committed_set.dependency_refs
+            )
+        )
+        observed_refs = tuple(sorted(member.dependency_ref.ref_id for member in self.members))
+        if expected_refs != observed_refs or tuple(
+            member.manifest.node_id for member in self.members
+        ) != tuple(sorted(member.manifest.node_id for member in self.members)):
+            raise ValueError("Selected dependency closure members changed")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedDependencyReader:
+    """Join current Product selection to exact dependency Store bytes.
+
+    The GC read gate spans selection and physical reads. The returned snapshot
+    is data evidence only; a Worker execution attempt still needs its own
+    retained dependency refs and contained runtime profile.
+    """
+
+    root_reader: PackageProductSelectedRootReader
+    dependency_settlements: PackageStoreSettlementJournal
+    dependency_store: PackageProductDependencyStoreReadPort
+    dependency_store_identity: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.root_reader, PackageProductSelectedRootReader):
+            raise TypeError("Product selected-root owner is required")
+        if not isinstance(self.dependency_settlements, PackageStoreSettlementJournal):
+            raise TypeError("Product dependency settlement owner is required")
+        if (
+            getattr(self.dependency_store, "read_only", False) is not True
+            or not callable(getattr(self.dependency_store, "read_dependency_files", None))
+        ):
+            raise TypeError("Product read-only dependency Store is required")
+        if not isinstance(self.dependency_store_identity, str) or not self.dependency_store_identity:
+            raise ValueError("Product dependency Store identity is required")
+
+    def capture_selected_dependency(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_files: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedDependencySnapshotV1:
+        if type(max_files) is not int or not 1 <= max_files <= 16:
+            raise ValueError("Product dependency capture file budget is invalid")
+        if type(max_total_bytes) is not int or not 0 <= max_total_bytes <= 1024 * 1024:
+            raise ValueError("Product dependency capture byte budget is invalid")
+        read_guard = getattr(self.root_reader.gc_gate, "read_guard", None)
+        if not callable(read_guard):
+            raise TypeError("Product read-only GC gate is required")
+        with read_guard() as reserved:
+            package_revision, instance_revision_ref, committed_record, _ = (
+                self.root_reader._selected_settlement(
+                    installation_key, reserved, read_only=True
+                )
+            )
+            lock = committed_record.closure_lock
+            nodes = tuple(node for node in lock.nodes if node.plan_node.role == "dependency")
+            if lock.node_count != 2 or len(nodes) != 1:
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency profile requires one dependency",
+                    code="package_product_dependency_shape_unsupported",
+                )
+            node = nodes[0]
+            ref = node.stable_ref
+            if (
+                not isinstance(ref, VerifiedArtifactRefV1)
+                or ref.store_identity != self.dependency_store_identity
+                or committed_record.committed_set.dependency_refs != (ref,)
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency has no exact Store ref",
+                    code="package_product_dependency_unbound",
+                )
+            events = self.dependency_settlements.read_events()
+            matches = tuple(
+                event
+                for event in events
+                if isinstance(event, PackageStoreSettlementRecordV1)
+                and event.store_role == "dependency"
+                and event.store_identity == self.dependency_store_identity
+                and event.receipt.stable_ref == ref
+                and event.receipt.operation_id == committed_record.operation_id
+                and event.receipt.staging_request.attempt_epoch
+                == committed_record.committed_set.attempt_epoch
+                and event.receipt.staging_request.request_fingerprint
+                == committed_record.committed_set.request_fingerprint
+                and event.receipt.staging_request.classification_fingerprint
+                == committed_record.committed_set.classification_fingerprint
+                and event.receipt.staging_request.verified_plan_fingerprint
+                == lock.verified_plan_fingerprint
+                and event.receipt.staging_request.prepublication_graph_digest
+                == lock.prepublication_graph_digest
+                and event.receipt.staging_request.plan_node == node.plan_node
+            )
+            if len(matches) != 1 or any(
+                isinstance(event, PackageStoreGcTombstoneV1)
+                and event.stable_ref_id == ref.ref_id
+                for event in events
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency has no live exact settlement",
+                    code="package_product_dependency_unavailable",
+                )
+            settlement = matches[0]
+            if (
+                len(settlement.manifest.entries) > max_files
+                or settlement.manifest.total_byte_count > max_total_bytes
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency exceeds capture budget",
+                    code="package_product_dependency_capture_budget_exceeded",
+                )
+            members = tuple(
+                (entry.logical_path, entry.byte_count)
+                for entry in settlement.manifest.entries
+            )
+            files = tuple(
+                zip(
+                    (path for path, _ in members),
+                    self.dependency_store.read_dependency_files(settlement, members),
+                    strict=True,
+                )
+            )
+            return PackageProductSelectedDependencySnapshotV1(
+                installation_key=installation_key,
+                package_revision=package_revision,
+                instance_revision_ref=instance_revision_ref,
+                committed_record=committed_record,
+                dependency_ref=ref,
+                settlement_id=settlement.settlement_id,
+                manifest=settlement.manifest,
+                files=files,
+            )
+
+    def assert_selected_dependency_current(
+        self, snapshot: PackageProductSelectedDependencySnapshotV1
+    ) -> None:
+        """Reopen selection and physical bytes; this is a preflight, not a lease."""
+
+        if not isinstance(snapshot, PackageProductSelectedDependencySnapshotV1):
+            raise TypeError("Product selected dependency snapshot is required")
+        current = self.capture_selected_dependency(
+            snapshot.installation_key,
+            max_files=16,
+            max_total_bytes=1024 * 1024,
+        )
+        if current != snapshot:
+            raise PackageProductRuntimeReadError(
+                "Product selected dependency changed",
+                code="package_product_dependency_selection_changed",
+            )
+
+    def capture_selected_dependency_closure(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        *,
+        max_dependencies: int,
+        max_files_per_dependency: int,
+        max_total_bytes: int,
+    ) -> PackageProductSelectedDependencyClosureSnapshotV1:
+        """Read every selected dependency under one GC guard as inert bytes."""
+
+        if type(max_dependencies) is not int or not 1 <= max_dependencies <= 3:
+            raise ValueError("Product dependency closure count budget is invalid")
+        if (
+            type(max_files_per_dependency) is not int
+            or not 1 <= max_files_per_dependency <= 16
+        ):
+            raise ValueError("Product dependency closure file budget is invalid")
+        if (
+            type(max_total_bytes) is not int
+            or not 0 <= max_total_bytes <= 3 * 1024 * 1024
+        ):
+            raise ValueError("Product dependency closure byte budget is invalid")
+        read_guard = getattr(self.root_reader.gc_gate, "read_guard", None)
+        if not callable(read_guard):
+            raise TypeError("Product read-only GC gate is required")
+        with read_guard() as reserved:
+            package_revision, instance_revision_ref, committed_record, _ = (
+                self.root_reader._selected_settlement(
+                    installation_key, reserved, read_only=True
+                )
+            )
+            lock = committed_record.closure_lock
+            nodes = tuple(
+                sorted(
+                    (
+                        node
+                        for node in lock.nodes
+                        if node.plan_node.role == "dependency"
+                    ),
+                    key=lambda node: node.node_id,
+                )
+            )
+            if (
+                lock.node_count != len(nodes) + 1
+                or not 1 <= len(nodes) <= max_dependencies
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency closure exceeds Product shape",
+                    code="package_product_dependency_shape_unsupported",
+                )
+            refs = tuple(node.stable_ref for node in nodes)
+            if (
+                any(
+                    not isinstance(ref, VerifiedArtifactRefV1)
+                    or ref.store_identity != self.dependency_store_identity
+                    for ref in refs
+                )
+                or tuple(sorted(ref.ref_id for ref in refs))
+                != tuple(
+                    sorted(
+                        ref.ref_id
+                        for ref in committed_record.committed_set.dependency_refs
+                    )
+                )
+            ):
+                raise PackageProductRuntimeReadError(
+                    "Selected dependency closure has no exact Store refs",
+                    code="package_product_dependency_unbound",
+                )
+            events = self.dependency_settlements.read_events()
+            members: list[PackageProductSelectedDependencySnapshotV1] = []
+            total_bytes = 0
+            for node in nodes:
+                ref = node.stable_ref
+                if not isinstance(ref, VerifiedArtifactRefV1):
+                    raise PackageProductRuntimeReadError(
+                        "Selected dependency closure has no exact Store ref",
+                        code="package_product_dependency_unbound",
+                    )
+                matches = tuple(
+                    event
+                    for event in events
+                    if isinstance(event, PackageStoreSettlementRecordV1)
+                    and event.store_role == "dependency"
+                    and event.store_identity == self.dependency_store_identity
+                    and event.receipt.stable_ref == ref
+                    and event.receipt.operation_id == committed_record.operation_id
+                    and event.receipt.staging_request.attempt_epoch
+                    == committed_record.committed_set.attempt_epoch
+                    and event.receipt.staging_request.request_fingerprint
+                    == committed_record.committed_set.request_fingerprint
+                    and event.receipt.staging_request.classification_fingerprint
+                    == committed_record.committed_set.classification_fingerprint
+                    and event.receipt.staging_request.verified_plan_fingerprint
+                    == lock.verified_plan_fingerprint
+                    and event.receipt.staging_request.prepublication_graph_digest
+                    == lock.prepublication_graph_digest
+                    and event.receipt.staging_request.plan_node == node.plan_node
+                )
+                if len(matches) != 1 or any(
+                    isinstance(event, PackageStoreGcTombstoneV1)
+                    and event.stable_ref_id == ref.ref_id
+                    for event in events
+                ):
+                    raise PackageProductRuntimeReadError(
+                        "Selected dependency closure has no live settlement",
+                        code="package_product_dependency_unavailable",
+                    )
+                settlement = matches[0]
+                if (
+                    len(settlement.manifest.entries) > max_files_per_dependency
+                    or settlement.manifest.total_byte_count > 1024 * 1024
+                    or total_bytes + settlement.manifest.total_byte_count
+                    > max_total_bytes
+                ):
+                    raise PackageProductRuntimeReadError(
+                        "Selected dependency closure exceeds capture budget",
+                        code="package_product_dependency_capture_budget_exceeded",
+                    )
+                total_bytes += settlement.manifest.total_byte_count
+                requested_files = tuple(
+                    (entry.logical_path, entry.byte_count)
+                    for entry in settlement.manifest.entries
+                )
+                files = tuple(
+                    zip(
+                        (path for path, _ in requested_files),
+                        self.dependency_store.read_dependency_files(
+                            settlement, requested_files
+                        ),
+                        strict=True,
+                    )
+                )
+                members.append(
+                    PackageProductSelectedDependencySnapshotV1(
+                        installation_key=installation_key,
+                        package_revision=package_revision,
+                        instance_revision_ref=instance_revision_ref,
+                        committed_record=committed_record,
+                        dependency_ref=ref,
+                        settlement_id=settlement.settlement_id,
+                        manifest=settlement.manifest,
+                        files=files,
+                    )
+                )
+            return PackageProductSelectedDependencyClosureSnapshotV1(
+                installation_key=installation_key,
+                package_revision=package_revision,
+                instance_revision_ref=instance_revision_ref,
+                committed_record=committed_record,
+                members=tuple(members),
+            )
+
+    def assert_selected_dependency_closure_current(
+        self, snapshot: PackageProductSelectedDependencyClosureSnapshotV1
+    ) -> None:
+        """Reopen the entire selected closure; this is not an attempt lease."""
+
+        if not isinstance(snapshot, PackageProductSelectedDependencyClosureSnapshotV1):
+            raise TypeError("Product selected dependency closure is required")
+        current = self.capture_selected_dependency_closure(
+            snapshot.installation_key,
+            max_dependencies=3,
+            max_files_per_dependency=16,
+            max_total_bytes=3 * 1024 * 1024,
+        )
+        if current != snapshot:
+            raise PackageProductRuntimeReadError(
+                "Product selected dependency closure changed",
+                code="package_product_dependency_selection_changed",
+            )
 
 
 def _observed_inventory_revision(
@@ -810,6 +1410,9 @@ __all__ = [
     "PackageProductGcAdmissionError",
     "PackageProductDesiredRevisionProjectionPort",
     "PackageProductRuntimeReadError",
+    "PackageProductSelectedDependencyReader",
+    "PackageProductSelectedDependencyClosureSnapshotV1",
+    "PackageProductSelectedDependencySnapshotV1",
     "PackageProductSelectedRootSnapshotV1",
     "PackageProductRootStoreReadPort",
     "PackageProductSelectedRootReader",

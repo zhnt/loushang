@@ -44,6 +44,7 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.private_directory import create_private_directory_chain
 from loushang.harness.transcript.model_input_v2_index_file import (
     delete_agent_transcript_index,
     load_agent_transcript_snapshot_with_index,
@@ -419,7 +420,7 @@ class AgentTranscriptFileLayout:
     def create_path(self, key: ConversationKey) -> Path:
         self._require_namespace(key)
         if self.file_io is None:
-            self.root.mkdir(parents=True, exist_ok=True)
+            create_private_directory_chain(self.root)
         known = self._known_paths.get(key)
         if known is not None:
             return known

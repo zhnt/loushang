@@ -19,7 +19,10 @@ def _cli_sandbox(root: Path) -> tuple[Path, dict[str, str]]:
     workspace = root / "p"
     workspace.mkdir()
     repo_root = Path(__file__).resolve().parents[2]
-    return workspace, terminal_test_environment(repo_root, base=_private_environment(root))
+    return workspace, terminal_test_environment(
+        repo_root, base=_private_environment(root)
+    )
+
 
 pytestmark = [
     pytest.mark.tui_terminal_contract,
@@ -43,14 +46,14 @@ def test_real_cli_quit_restores_shared_terminal_modes(tmp_path: Path) -> None:
         rows=24,
     ) as driver:
         driver.read_until(
-            lambda output: "Welcome to Loushang CLI"
-            in strip_control_sequences(output),
+            lambda output: "Welcome to Loushang CLI" in strip_control_sequences(output),
             timeout=15,
         )
         # Welcome is now first-frame, not a promise that Session is executable.
         driver.read_until(
             lambda output: " | idle" in strip_control_sequences(output),
-            timeout=15,
+            # Product admission verifies the selected builtin Wheels before idle.
+            timeout=30,
         )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0

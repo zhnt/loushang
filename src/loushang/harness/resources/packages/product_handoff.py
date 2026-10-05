@@ -30,7 +30,21 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinJournal,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductPinnedAdoptedRouteRequestV1,
+    PackageProductReboundRouteRequestV1,
     PackageProductRouteRequestV1,
+    PackageProductStagingAdoptedRouteRequestV1,
+    PackageProductTransactionRoute,
+    require_rebound_decision,
+)
+from loushang.harness.resources.packages.product_pinned_adoption_binding import (
+    PackageProductPinnedAdoptionBindingJournal,
+)
+from loushang.harness.resources.packages.product_rebind_admission_binding import (
+    PackageProductRebindAdmissionBindingJournal,
+)
+from loushang.harness.resources.packages.product_staging_adoption_binding import (
+    PackageProductStagingAdoptionBindingJournal,
 )
 
 
@@ -43,7 +57,7 @@ class PackageProductHandoffError(RuntimeError):
 class PackageProductHandoffPort(Protocol):
     def finalize(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         *,
         current: PackageLifecycleStatusV1,
     ) -> None: ...
@@ -63,6 +77,9 @@ class PackageProductHandoffFinalizer:
         handoff: PackageRetentionHandoffOwner,
         inventory_revision: Callable[[], int],
         update_inventory_revision: Callable[[str], int] | None = None,
+        rebind_bindings: PackageProductRebindAdmissionBindingJournal | None = None,
+        pinned_bindings: PackageProductPinnedAdoptionBindingJournal | None = None,
+        staging_bindings: PackageProductStagingAdoptionBindingJournal | None = None,
     ) -> None:
         for value, expected, name in (
             (kernel, PackageLifecycleOwner, "lifecycle owner"),
@@ -76,6 +93,18 @@ class PackageProductHandoffFinalizer:
                 raise TypeError(f"Package Product {name} is required")
         if not callable(inventory_revision):
             raise TypeError("Product inventory revision owner is required")
+        if rebind_bindings is not None and not isinstance(
+            rebind_bindings, PackageProductRebindAdmissionBindingJournal
+        ):
+            raise TypeError("Product rebind admission bindings are invalid")
+        if pinned_bindings is not None and not isinstance(
+            pinned_bindings, PackageProductPinnedAdoptionBindingJournal
+        ):
+            raise TypeError("Product pinned admission bindings are invalid")
+        if staging_bindings is not None and not isinstance(
+            staging_bindings, PackageProductStagingAdoptionBindingJournal
+        ):
+            raise TypeError("Product staging admission bindings are invalid")
         self._kernel = kernel
         self._commit = commit
         self._admission = admission
@@ -84,14 +113,23 @@ class PackageProductHandoffFinalizer:
         self._handoff = handoff
         self._inventory_revision = inventory_revision
         self._update_inventory_revision = update_inventory_revision
+        self._rebind_bindings = rebind_bindings
+        self._pinned_bindings = pinned_bindings
+        self._staging_bindings = staging_bindings
 
     def finalize(
         self,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         *,
         current: PackageLifecycleStatusV1,
     ) -> None:
-        if not isinstance(request, PackageProductRouteRequestV1):
+        if not isinstance(
+            request,
+            PackageProductRouteRequestV1
+            | PackageProductReboundRouteRequestV1
+            | PackageProductPinnedAdoptedRouteRequestV1
+            | PackageProductStagingAdoptedRouteRequestV1,
+        ):
             raise TypeError("Package Product route request is required")
         if not isinstance(current, PackageLifecycleStatusV1):
             raise TypeError("Committed Package status is required")
@@ -108,8 +146,58 @@ class PackageProductHandoffFinalizer:
             != request.ingress.bind_classification_facts(classification.basis_facts)
             or durable_request.action not in {"install", "update"}
         ):
-            raise self._error("Committed Package route changed", "package_product_handoff_stale")
-        command_id, command_fingerprint = _command_identity(current)
+            raise self._error(
+                "Committed Package route changed", "package_product_handoff_stale"
+            )
+        require_rebound_decision(request, current, self._kernel.journal)
+        if isinstance(request, PackageProductReboundRouteRequestV1):
+            binding = (
+                None
+                if self._rebind_bindings is None
+                else self._rebind_bindings.read_decision(request.decision.decision_id)
+            )
+            if (
+                binding is None
+                or binding.decision != request.decision
+                or binding.admission.request != request.admission.request
+            ):
+                raise self._error(
+                    "Committed rebound Package lost Product admission",
+                    "package_product_handoff_stale",
+                )
+        if isinstance(request, PackageProductPinnedAdoptedRouteRequestV1):
+            pinned_binding = (
+                None
+                if self._pinned_bindings is None
+                else self._pinned_bindings.read_decision(request.decision.decision_id)
+            )
+            if (
+                pinned_binding is None
+                or pinned_binding.decision != request.decision
+                or pinned_binding.admission != request.admission
+            ):
+                raise self._error(
+                    "Committed pinned Package lost Product admission",
+                    "package_product_handoff_stale",
+                )
+        if isinstance(request, PackageProductStagingAdoptedRouteRequestV1):
+            staging_binding = (
+                None
+                if self._staging_bindings is None
+                else self._staging_bindings.read_decision(request.decision.decision_id)
+            )
+            if (
+                staging_binding is None
+                or staging_binding.decision != request.decision
+                or staging_binding.admission != request.admission
+            ):
+                raise self._error(
+                    "Committed staging Package lost Product admission",
+                    "package_product_handoff_stale",
+                )
+        command_id, command_fingerprint = package_product_command_identity(
+            current.operation_id, current.request_fingerprint
+        )
         prior = self._existing(
             current,
             request=request,
@@ -145,10 +233,12 @@ class PackageProductHandoffFinalizer:
         self,
         status: PackageLifecycleStatusV1,
         *,
-        request: PackageProductRouteRequestV1,
+        request: PackageProductTransactionRoute,
         command_id: str,
         command_fingerprint: str,
-    ) -> tuple[PackageRetentionHandoffRequestV1, PackageRetentionHandoffReceiptV1] | None:
+    ) -> (
+        tuple[PackageRetentionHandoffRequestV1, PackageRetentionHandoffReceiptV1] | None
+    ):
         receipts = tuple(
             item.receipt
             for item in self._journal.records()
@@ -159,7 +249,9 @@ class PackageProductHandoffFinalizer:
             return None
         handoff_ids = {item.request.handoff_id for item in receipts}
         if len(handoff_ids) != 1:
-            raise self._error("Package handoff has another owner", "package_product_handoff_stale")
+            raise self._error(
+                "Package handoff has another owner", "package_product_handoff_stale"
+            )
         latest = receipts[-1]
         handoff_request = latest.request
         publication = handoff_request.admission_request.publication_receipt
@@ -177,7 +269,9 @@ class PackageProductHandoffFinalizer:
             or desired.command_fingerprint != command_fingerprint
             or self._journal.current(handoff_request.handoff_id) != latest
         ):
-            raise self._error("Package handoff disagrees with route", "package_product_handoff_stale")
+            raise self._error(
+                "Package handoff disagrees with route", "package_product_handoff_stale"
+            )
         return handoff_request, latest
 
     def _prepare(
@@ -195,7 +289,9 @@ class PackageProductHandoffFinalizer:
             or publication.attempt_epoch != status.attempt_epoch
             or publication.commit_status_revision != status.journal_revision
         ):
-            raise self._error("Package publication changed", "package_product_handoff_stale")
+            raise self._error(
+                "Package publication changed", "package_product_handoff_stale"
+            )
         committed = publication.committed_set
         admission_request = PackageCommitAdmissionRequestV1.create(
             operation_id=publication.operation_id,
@@ -218,16 +314,23 @@ class PackageProductHandoffFinalizer:
             or pin.state != "acquired"
             or pin.receipt_id != publication.transaction_pin_receipt_id
         ):
-            raise self._error("Package handoff admission failed", "package_product_handoff_stale")
+            raise self._error(
+                "Package handoff admission failed", "package_product_handoff_stale"
+            )
         durable_request = self._kernel.journal.request(status.operation_id)
         if durable_request is not None and durable_request.action == "update":
             if self._update_inventory_revision is None:
-                raise self._error("Product update anchor is unavailable", "package_product_handoff_stale")
+                raise self._error(
+                    "Product update anchor is unavailable",
+                    "package_product_handoff_stale",
+                )
             revision = self._update_inventory_revision(status.operation_id)
         else:
             revision = self._inventory_revision()
         if type(revision) is not int or revision < 0:
-            raise self._error("Product inventory revision is invalid", "package_product_handoff_stale")
+            raise self._error(
+                "Product inventory revision is invalid", "package_product_handoff_stale"
+            )
         desired = PackageDesiredStateCommitRequestV1.create(
             admission_request,
             command_id=command_id,
@@ -246,14 +349,30 @@ class PackageProductHandoffFinalizer:
         return PackageProductHandoffError(message, code=code)
 
 
-def _command_identity(status: PackageLifecycleStatusV1) -> tuple[str, str]:
+def package_product_command_identity(
+    operation_id: str, request_fingerprint: str
+) -> tuple[str, str]:
+    """Derive the durable A1 command key from an exact A2 request identity."""
+
+    if not isinstance(operation_id, str) or not operation_id:
+        raise ValueError("Package operation identity is required")
+    if (
+        not isinstance(request_fingerprint, str)
+        or len(request_fingerprint) != 64
+        or any(character not in "0123456789abcdef" for character in request_fingerprint)
+    ):
+        raise ValueError("Package request fingerprint is invalid")
     digest = sha256(
         b"package-product-command-v1\0"
-        + status.operation_id.encode("utf-8")
+        + operation_id.encode("utf-8")
         + b"\0"
-        + status.request_fingerprint.encode("ascii")
+        + request_fingerprint.encode("ascii")
     ).hexdigest()
     return f"package:{digest}", digest
 
 
-__all__ = ["PackageProductHandoffFinalizer", "PackageProductHandoffPort"]
+__all__ = [
+    "PackageProductHandoffFinalizer",
+    "PackageProductHandoffPort",
+    "package_product_command_identity",
+]

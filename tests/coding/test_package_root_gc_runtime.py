@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
 from importlib.metadata import version
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +15,8 @@ import pytest
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding.cli.application import run_cli
+from loushang.coding.cli.package_gc import main as package_gc_main
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -28,11 +32,200 @@ from loushang.harness.package_product.product_gc_executor import (
 from loushang.harness.package_product.product_root_gc_runtime import (
     open_posix_local_wheel_product_root_gc,
 )
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeRequestV1,
+)
 from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_gc_target import (
     resolve_plugin_package_gc_root_target,
 )
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+from loushang.plugin import build_coding_data_skill_wheel
+
+
+def test_package_gc_cli_refuses_unsupported_platform_before_product_open(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(sys, "platform", "win32"),
+        patch(
+            "loushang.coding.cli.package_gc.open_coding_fenced_product_application_owner"
+        ) as opened,
+    ):
+        assert package_gc_main(["prepare"]) == 1
+    opened.assert_not_called()
+    assert capsys.readouterr().err == (
+        "Coding Package GC refused: package_gc_platform_unsupported\n"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted GC")
+def test_product_gc_reclaims_old_revision_after_update_without_touching_selected_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "private-home"))
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        lifecycle,
+        settings,
+        workspace=workspace,
+        namespace_id="d" * 64,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+
+    def package_command(action: str, wheel: Path) -> None:
+        stderr = StringIO()
+        assert (
+            asyncio.run(
+                run_cli(
+                    [action, str(wheel), "--package-scope", "project"],
+                    cwd=workspace,
+                    stdin=StringIO(),
+                    stdout=StringIO(),
+                    stderr=stderr,
+                )
+            )
+            == 0
+        ), stderr.getvalue()
+
+    for wheel_version, action in (
+        ("1", "--install-package"),
+        ("2", "--update-package"),
+    ):
+        wheel = tmp_path / f"reviewpack-{wheel_version}-py3-none-any.whl"
+        wheel.write_bytes(
+            build_coding_data_skill_wheel(
+                plugin_id="reviewpack",
+                version=wheel_version,
+                contribution_id="review-skill",
+                skill_name="review",
+                skill_document=b"---\nname: review\ndescription: Review files\n---\n# Review\n",
+            )
+        )
+        package_command(action, wheel)
+        if action == "--install-package":
+            stderr = StringIO()
+            assert (
+                asyncio.run(
+                    run_cli(
+                        ["--enable-plugin", "reviewpack"],
+                        cwd=workspace,
+                        stdin=StringIO(),
+                        stdout=StringIO(),
+                        stderr=stderr,
+                    )
+                )
+                == 0
+            ), stderr.getvalue()
+
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=2,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        installation = next(
+            item
+            for item in product.desired_state.snapshot().installations
+            if item.installation_key.plugin_id == "reviewpack"
+        )
+        current_revision = installation.selection.package_revision
+        assert current_revision is not None
+        assert current_revision.plugin_version == "2"
+        gc = open_posix_local_wheel_product_root_gc(product)
+        gc.prepare()
+        assert gc.dependency_retention() == ()
+        assert gc.dependency_inspections() == ()
+        operator_view = gc.operator_snapshot()
+        assert operator_view.dependency_inspections == ()
+        assert any(
+            item.package_revision.plugin_id == "reviewpack"
+            for item in operator_view.candidates
+        )
+        with pytest.raises(PackageProductGcExecutionError) as missing_dependency:
+            gc.delete_dependency(
+                "0" * 64,
+                expected_settlement_id="0" * 64,
+                operation_id="operator:missing-dependency",
+                idempotency_key="operator:missing-dependency",
+            )
+        assert (
+            missing_dependency.value.code
+            == "plugin_package_gc_dependency_target_unavailable"
+        )
+        assert not (product.state_root / "dependency-gc.jsonl").exists()
+        old_candidate = next(
+            item
+            for item in gc.candidates()
+            if item.package_revision.plugin_id == "reviewpack"
+            and item.package_revision.plugin_version == "1"
+        )
+        executor = gc.application.executor
+        old_target = resolve_plugin_package_gc_root_target(
+            old_candidate.package_revision,
+            bindings=product.gc_bindings.records(),
+            claims=product.gc_bindings.claims(),
+            committed_sets=executor.committed_sets.records(),
+            settlements=executor.root_settlements.records(),
+        )
+        current_target = resolve_plugin_package_gc_root_target(
+            current_revision,
+            bindings=product.gc_bindings.records(),
+            claims=product.gc_bindings.claims(),
+            committed_sets=executor.committed_sets.records(),
+            settlements=executor.root_settlements.records(),
+        )
+        old_root = product.plugin_store_root / old_target.settlement.final_name
+        current_root = product.plugin_store_root / current_target.settlement.final_name
+        assert old_root.is_dir() and current_root.is_dir() and old_root != current_root
+        result = gc.execute(
+            PackageProductRootGcCommandV1(
+                candidate=old_candidate,
+                reservation_operation_id="operator:reserve-old-review",
+                reservation_idempotency_key="operator:reserve-old-review",
+                attempt_operation_id="operator:delete-old-review",
+                attempt_idempotency_key="operator:delete-old-review",
+            )
+        )
+        assert result.disposition == "succeeded"
+        assert not old_root.exists()
+        assert current_root.is_dir()
+        assert (
+            product.desired_state.snapshot()
+            .installation(installation.installation_key)
+            .selection.package_revision
+            == current_revision
+        )
+        runtime = product.factory_for_session(
+            session_id="gc-selected-review",
+            cwd=workspace,
+            runtime_id="gc-selected-review",
+        ).create(
+            PackageProductRuntimeRequestV1(
+                product_id="coding",
+                session_id="gc-selected-review",
+                cwd=str(workspace),
+            )
+        )
+        try:
+            runtime.activate()
+            selected = runtime.capture_selected_plugin_manifest_for(
+                "reviewpack", max_files=16, max_total_bytes=2 * 1024 * 1024
+            )
+            assert selected.manifest.version == "2"
+        finally:
+            runtime.dispose_runtime()
+    finally:
+        owner.close()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted GC")
@@ -130,14 +323,25 @@ def test_fenced_coding_product_gc_excludes_live_session_and_deletes_exact_root(
         live = product.factory_for_session(
             session_id="live-session", cwd=workspace, runtime_id="live-session"
         )
+        second_live = product.factory_for_session(
+            session_id="second-live-session",
+            cwd=workspace,
+            runtime_id="second-live-session",
+        )
         try:
             with pytest.raises(PackageProductGcExecutionError) as refused:
                 gc.execute(command)
             assert refused.value.code == "plugin_package_gc_runtime_active"
             assert deleted_root.is_dir()
             assert gc.application.gate.snapshot().active == ()
+            live.dispose_unbound_runtime()
+            with pytest.raises(PackageProductGcExecutionError) as still_live:
+                gc.execute(command)
+            assert still_live.value.code == "plugin_package_gc_runtime_active"
+            assert deleted_root.is_dir()
         finally:
             live.dispose_unbound_runtime()
+            second_live.dispose_unbound_runtime()
 
         result = gc.execute(command)
         assert result.disposition == "succeeded"

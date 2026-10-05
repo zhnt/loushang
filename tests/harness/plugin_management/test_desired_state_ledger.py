@@ -12,6 +12,7 @@ import pytest
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
     PluginLifecycleError,
+    decode_plugin_desired_state_capture,
 )
 from loushang.harness.plugin_management.records import (
     PluginDesiredSelectionV1,
@@ -189,6 +190,29 @@ def test_ledger_issues_and_replays_installation_epoch_instance_lineage(
     assert snapshot.inventory_revision == 7
     assert snapshot.installation(_key()) == reenable_new_epoch.committed_state
     assert reopened.transitions() == ledger.transitions()
+
+
+def test_authorized_journal_capture_preserves_exact_removed_history(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "plugin-desired-state.jsonl"
+    ledger = PluginDesiredStateLedger(path)
+    package = _package()
+    installed = ledger.commit(
+        _mutation(revision=0, state="installed_disabled", package=package)
+    )
+    removed = ledger.commit(_mutation(revision=1, state="absent", operation=2))
+    before = path.read_bytes()
+
+    snapshot, transitions = decode_plugin_desired_state_capture(
+        before.decode("utf-8"), path=path
+    )
+
+    assert snapshot == ledger.snapshot()
+    assert transitions == (installed, removed)
+    assert transitions[0].committed_state.selection.package_revision == package
+    assert transitions[1].committed_state.selection.desired_state == "absent"
+    assert path.read_bytes() == before
 
 
 def test_ledger_exact_retry_is_stable_and_conflicts_fail_before_append(

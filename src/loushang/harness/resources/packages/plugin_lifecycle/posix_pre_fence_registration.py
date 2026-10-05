@@ -18,6 +18,7 @@ from contextlib import AbstractContextManager, contextmanager, suppress
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
+from typing import BinaryIO
 
 from loushang.harness.journal import (
     JournalLockUnavailable,
@@ -63,7 +64,7 @@ class PackagePosixPreFenceRegistrationHandle:
     def __init__(
         self,
         registration_id: str,
-        lock: AbstractContextManager[None],
+        lock: AbstractContextManager[BinaryIO],
     ) -> None:
         self.registration_id = registration_id
         self._lock = lock
@@ -153,7 +154,7 @@ class PackagePosixPreFenceRegistrationOwner:
             )
         ).hexdigest()
         root, registrations_fd = self._open()
-        lock: AbstractContextManager[None] | None = None
+        lock: AbstractContextManager[BinaryIO] | None = None
         acquired = False
         try:
             _flock(root.descriptor, exclusive=False, blocking=False)

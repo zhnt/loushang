@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +69,7 @@ def reopen_posix_product_cutover(
     control_root: Path,
     store_id: str,
     epochs_root_name: str,
+    read_only: bool = False,
 ) -> PackagePosixEpochCutoverResultV1:
     """Reopen the fenced Product root using durable evidence, without old Source."""
 
@@ -89,7 +90,7 @@ def reopen_posix_product_cutover(
     ):
         raise ValueError("Package Product control root is not private")
     journal_path = control_root / "epoch.jsonl"
-    journal = PackageEpochFenceJournal(journal_path)
+    journal = PackageEpochFenceJournal(journal_path, read_only=read_only)
     if journal.path != journal_path:
         raise ValueError("Package Product fence journal is not canonical")
     result = PackagePosixEpochCutoverOwner.reopen_fenced(
@@ -156,6 +157,32 @@ class PackageProductPreBSnapshotOwner:
     ) -> PackageOfflineRestoreSnapshotEvidenceV1 | None:
         return self._owner.snapshot(snapshot_receipt_id)
 
+    def read_regular_member(
+        self,
+        snapshot_receipt_id: str,
+        *,
+        domain: str,
+        member_name: str,
+        maximum_bytes: int = 2 * 1024 * 1024,
+    ) -> bytes | None:
+        """Read one verified member before the Product decides to fence."""
+
+        return self._owner.read_regular_member(
+            snapshot_receipt_id,
+            domain=domain,
+            member_name=member_name,
+            maximum_bytes=maximum_bytes,
+        )
+
+    def list_domain_members(
+        self, snapshot_receipt_id: str, *, domain: str
+    ) -> tuple[str, ...] | None:
+        """List one verified domain before the Product decides to fence."""
+
+        return self._owner.list_domain_members(
+            snapshot_receipt_id, domain=domain
+        )
+
     def cutover_from_legacy(
         self,
         *,
@@ -166,6 +193,8 @@ class PackageProductPreBSnapshotOwner:
         namespace_id: str,
         minimum_runtime_version: str,
         minimum_runtime_protocol_epoch: int,
+        snapshot_admission: Callable[[PackageEpochCutoverSnapshotReceiptV1], None]
+        | None = None,
     ) -> PackageProductPosixCutoverAttemptV1:
         """Fence a quiescent legacy Store against this exact snapshot owner."""
 
@@ -207,6 +236,7 @@ class PackageProductPreBSnapshotOwner:
                     pre_fence=pre_fence,
                 ),
                 snapshots=self,
+                snapshot_admission=snapshot_admission,
             )
             current = fences.current(self._store_id)
             request = PackagePosixEpochCutoverRequestV1.create(

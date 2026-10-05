@@ -89,7 +89,9 @@
   and durable evidence; [PLC9D3m](plugin-lifecycle-plc9d3m-contract.md)
   projects the pre-B workspace-snapshot status. Production private-data and
   backup owner bindings, default management/RPC selection, Windows GC, and
-  shared-dependency GC remain open.
+  public Coding dependency admission remain open. The POSIX configured
+  Product now proves shared-dependency Store reuse and GC after every holder
+  root has a verified deletion result.
 - Coding legacy-workspace migration foundation classifies pre-B inputs,
   verifies first-B snapshot members and old Installation intent, reacquires
   exact local Source bytes, and prepares an inert adoption review. It does not

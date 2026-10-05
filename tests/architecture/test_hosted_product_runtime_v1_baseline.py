@@ -782,7 +782,7 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     assert "never retry the other owner within one launch attempt" in normalized
 
 
-def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> None:
+def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() -> None:
     activation_names = {
         "HostingManagedWorkerSessionAdapter",
         "WorkerHostingActivationV1",
@@ -794,7 +794,16 @@ def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> Non
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
+    assert consumers == {
+        Path("src/loushang/coding/_product_worker_canary.py"),
+        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        Path("src/loushang/coding/package_product_worker_pending_host.py"),
+    }
+    explicit_query = _read(
+        Path("src/loushang/coding/package_product_worker_operator_query.py")
+    )
+    assert "async def query_coding_product_worker(" in explicit_query
+    assert "WorkerSessionOwnerRouter" not in explicit_query
 
     selection = _read(WORKER_SOURCE / "owner_selection.py")
     assert 'owner: WorkerSessionOwner = "current"' in selection

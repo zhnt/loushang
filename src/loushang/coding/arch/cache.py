@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import tempfile
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -67,6 +68,7 @@ class ImportFactCache:
         path: str | Path | None = None,
         *,
         max_bytes: int | None = None,
+        private_writer: Callable[[Path, bytes], None] | None = None,
     ) -> None:
         if max_bytes is not None and (
             isinstance(max_bytes, bool)
@@ -76,6 +78,9 @@ class ImportFactCache:
             raise ValueError("import fact cache max_bytes must be a positive integer")
         self.path = Path(path).expanduser() if path is not None else None
         self.max_bytes = max_bytes
+        if private_writer is not None and not callable(private_writer):
+            raise TypeError("import fact cache private writer is invalid")
+        self.private_writer = private_writer
         self._snapshots: dict[ImportFactCacheNamespace, ImportFactCacheSnapshot] = {}
         self._disk_loaded = False
         self._persisted_snapshot: ImportFactCacheSnapshot | None = None
@@ -105,6 +110,7 @@ class ImportFactCache:
                 self.path,
                 snapshot,
                 max_bytes=self.max_bytes,
+                private_writer=self.private_writer,
             )
         except OSError as exc:
             self.last_error = str(exc)
@@ -167,8 +173,8 @@ def _write_snapshot(
     snapshot: ImportFactCacheSnapshot,
     *,
     max_bytes: int | None,
+    private_writer: Callable[[Path, bytes], None] | None,
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
         json.dumps(
             _snapshot_payload(snapshot),
@@ -179,6 +185,10 @@ def _write_snapshot(
     )
     if max_bytes is not None and len(encoded) > max_bytes:
         raise OSError("import fact cache exceeds the private-state byte quota")
+    if private_writer is not None and os.name == "nt":
+        private_writer(path, encoded)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(

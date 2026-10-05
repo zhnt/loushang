@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 from hashlib import sha256
 from threading import Lock
-from typing import Protocol, TypeVar, cast
+from typing import Literal, Protocol, TypeVar, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionOwner,
@@ -38,11 +39,15 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleOutcomeV1,
     PackageProductLifecyclePhase,
     PackageProductLifecycleRecordV1,
+    PackageProductLifecycleRetryIntentV1,
     PackageProductRoutingDisposition,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductLifecycleRouter,
+    PackageProductPinnedAdoptedRouteRequestV1,
+    PackageProductReboundRouteRequestV1,
     PackageProductRouteRequestV1,
+    PackageProductStagingAdoptedRouteRequestV1,
 )
 
 PACKAGE_PRODUCT_ACTIVATION_VERSION = 1
@@ -77,9 +82,34 @@ class PackageProductRecoveryPort(Protocol):
 class PackageProductAdmittedRecoveryPort(Protocol):
     """Recovery that mutates Product state only under the admitted epoch."""
 
-    def recover(
-        self, admission: PackageEpochRuntimeAdmissionReceiptV1
-    ) -> object: ...
+    def recover(self, admission: PackageEpochRuntimeAdmissionReceiptV1) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductExactHandoffRecoveryV1:
+    operation_id: str
+    retained_handoff_ids: tuple[str, ...]
+    committed_operation_ids: tuple[str, ...]
+    terminal_state: Literal["settled", "aborted"]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.operation_id) is not str
+            or not self.operation_id
+            or type(self.retained_handoff_ids) is not tuple
+            or type(self.committed_operation_ids) is not tuple
+            or any(
+                type(value) is not str or not value
+                for value in self.retained_handoff_ids
+            )
+            or self.committed_operation_ids not in {(), (self.operation_id,)}
+            or self.terminal_state not in {"settled", "aborted"}
+        ):
+            raise ValueError("Exact Package handoff recovery result is invalid")
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.retained_handoff_ids or self.committed_operation_ids)
 
 
 class PackageProductEpochTransactionGuardPort(Protocol):
@@ -127,8 +157,7 @@ class PackageProductLifecycleActivation:
         if any(not callable(getattr(item, "recover", None)) for item in recoveries):
             raise TypeError("Package Product recovery owner is invalid")
         if any(
-            not callable(getattr(item, "recover", None))
-            for item in admitted_recoveries
+            not callable(getattr(item, "recover", None)) for item in admitted_recoveries
         ):
             raise TypeError("Package Product admitted recovery owner is invalid")
         self._product_id = product_id
@@ -141,6 +170,7 @@ class PackageProductLifecycleActivation:
         self._recoveries = tuple(recoveries)
         self._admitted_recoveries = tuple(admitted_recoveries)
         self._receipt: PackageEpochRuntimeAdmissionReceiptV1 | None = None
+        self._exact_recovery_used = False
         self._lock = Lock()
 
     @property
@@ -158,6 +188,11 @@ class PackageProductLifecycleActivation:
         with self._lock:
             if self._receipt is not None:
                 return self._receipt
+            if self._exact_recovery_used:
+                raise PackageProductActivationError(
+                    "Exact handoff recovery runtime cannot activate general routing",
+                    code="package_product_exact_recovery_consumed",
+                )
             with self._transaction_guard.shared_runtime(
                 store_id=self._admission_request.store_id
             ):
@@ -175,6 +210,69 @@ class PackageProductLifecycleActivation:
             self._receipt = receipt
             return receipt
 
+    def recover_handoff_exact(
+        self, operation_id: str
+    ) -> PackageProductExactHandoffRecoveryV1:
+        """Recover one operation without publishing a general Product route."""
+
+        if type(operation_id) is not str or not operation_id:
+            raise ValueError("Exact Package handoff operation ID is required")
+        with self._lock:
+            if self._receipt is not None or self._exact_recovery_used:
+                raise PackageProductActivationError(
+                    "Exact handoff recovery requires a fresh Product runtime",
+                    code="package_product_exact_recovery_consumed",
+                )
+            if len(self._recoveries) != 1 or len(self._admitted_recoveries) != 1:
+                raise PackageProductActivationError(
+                    "Exact handoff recovery owners are unavailable",
+                    code="package_product_exact_recovery_unavailable",
+                )
+            preliminary = getattr(self._recoveries[0], "recover_exact", None)
+            committed = getattr(self._admitted_recoveries[0], "recover_exact", None)
+            terminal_state = getattr(
+                self._admitted_recoveries[0], "terminal_state", None
+            )
+            if (
+                not callable(preliminary)
+                or not callable(committed)
+                or not callable(terminal_state)
+            ):
+                raise PackageProductActivationError(
+                    "Exact handoff recovery owners are unavailable",
+                    code="package_product_exact_recovery_unavailable",
+                )
+            self._exact_recovery_used = True
+            with self._transaction_guard.shared_runtime(
+                store_id=self._admission_request.store_id
+            ):
+                preflight = self._admit()
+                retained_ids = preliminary(operation_id)
+                receipt = self._admit()
+                if receipt != preflight:
+                    raise PackageProductActivationError(
+                        "Package runtime epoch changed during exact recovery",
+                        code="package_runtime_epoch_unsupported",
+                    )
+                committed_ids = committed(receipt, operation_id)
+                state = terminal_state(operation_id)
+                if state not in {"settled", "aborted"}:
+                    raise PackageProductActivationError(
+                        "Exact Package handoff is not terminal",
+                        code="package_product_exact_recovery_incomplete",
+                    )
+                if self._admit() != preflight:
+                    raise PackageProductActivationError(
+                        "Package runtime epoch changed during exact recovery",
+                        code="package_runtime_epoch_unsupported",
+                    )
+            return PackageProductExactHandoffRecoveryV1(
+                operation_id=operation_id,
+                retained_handoff_ids=retained_ids,
+                committed_operation_ids=committed_ids,
+                terminal_state=state,
+            )
+
     def route(
         self,
         intent: PackageProductLifecycleIntentV1,
@@ -183,6 +281,27 @@ class PackageProductLifecycleActivation:
     ) -> PackageProductLifecycleOutcomeV1:
         if not isinstance(intent, PackageProductLifecycleIntentV1):
             raise TypeError("Package Product lifecycle intent is required")
+        return self._route_with_admission(intent, entrypoint=entrypoint, retry=None)
+
+    def retry(
+        self,
+        request: PackageProductLifecycleRetryIntentV1,
+        *,
+        entrypoint: PackageProductEntrypoint,
+    ) -> PackageProductLifecycleOutcomeV1:
+        if not isinstance(request, PackageProductLifecycleRetryIntentV1):
+            raise TypeError("Package Product retry intent is required")
+        return self._route_with_admission(
+            request.intent, entrypoint=entrypoint, retry=request
+        )
+
+    def _route_with_admission(
+        self,
+        intent: PackageProductLifecycleIntentV1,
+        *,
+        entrypoint: PackageProductEntrypoint,
+        retry: PackageProductLifecycleRetryIntentV1 | None,
+    ) -> PackageProductLifecycleOutcomeV1:
         with self._lock:
             active = self._receipt is not None
         if not active:
@@ -205,6 +324,7 @@ class PackageProductLifecycleActivation:
                     intent,
                     entrypoint=entrypoint,
                     receipt=receipt,
+                    retry=retry,
                 )
         except BaseException:
             with self._lock:
@@ -240,12 +360,129 @@ class PackageProductLifecycleActivation:
                 self._receipt = None
             raise
 
+    def execute_guarded_mutation(
+        self,
+        mutation: Callable[[PackageEpochRuntimeAdmissionReceiptV1], T],
+    ) -> T:
+        """Run one internal Product mutation under fresh admitted epoch proof."""
+
+        if not callable(mutation):
+            raise TypeError("Package Product guarded mutation is required")
+        with self._lock:
+            active = self._receipt is not None
+        if not active:
+            raise PackageProductActivationError(
+                "Package Product lifecycle has not completed startup admission",
+                code="package_product_activation_required",
+            )
+        try:
+            guard = self._transaction_guard.shared_runtime(
+                store_id=self._admission_request.store_id
+            )
+            with guard:
+                receipt = self._admit()
+                with self._lock:
+                    self._receipt = receipt
+                return mutation(receipt)
+        except BaseException:
+            with self._lock:
+                self._receipt = None
+            raise
+
+    def execute_guarded_rebound(
+        self,
+        prepare: Callable[
+            [PackageEpochRuntimeAdmissionReceiptV1],
+            tuple[PackageProductReboundRouteRequestV1, PackageLifecycleStatusV1],
+        ],
+    ) -> PackageLifecycleStatusV1:
+        """Resume and execute an internal rebound route inside one epoch guard."""
+
+        if not callable(prepare):
+            raise TypeError("Package Product rebound preparation is required")
+
+        def execute(
+            receipt: PackageEpochRuntimeAdmissionReceiptV1,
+        ) -> PackageLifecycleStatusV1:
+            route, current = prepare(receipt)
+            if (
+                not isinstance(route, PackageProductReboundRouteRequestV1)
+                or route.admission.request != receipt.request
+                or not isinstance(current, PackageLifecycleStatusV1)
+            ):
+                raise PackageProductActivationError(
+                    "Rebound Package route changed the admitted runtime",
+                    code="package_product_rebound_route_invalid",
+                )
+            return self._router.route_rebound(route, current=current)
+
+        return self.execute_guarded_mutation(execute)
+
+    def execute_guarded_pinned_adoption(
+        self,
+        prepare: Callable[
+            [PackageEpochRuntimeAdmissionReceiptV1],
+            tuple[PackageProductPinnedAdoptedRouteRequestV1, PackageLifecycleStatusV1],
+        ],
+    ) -> PackageLifecycleStatusV1:
+        """Claim and execute the selected pinned admission in one epoch guard."""
+
+        if not callable(prepare):
+            raise TypeError("Pinned Package Product preparation is required")
+
+        def execute(
+            receipt: PackageEpochRuntimeAdmissionReceiptV1,
+        ) -> PackageLifecycleStatusV1:
+            route, current = prepare(receipt)
+            if (
+                not isinstance(route, PackageProductPinnedAdoptedRouteRequestV1)
+                or route.admission != receipt
+                or not isinstance(current, PackageLifecycleStatusV1)
+            ):
+                raise PackageProductActivationError(
+                    "Pinned Package route changed the admitted runtime",
+                    code="package_product_pinned_route_invalid",
+                )
+            return self._router.route_pinned_adopted(route, current=current)
+
+        return self.execute_guarded_mutation(execute)
+
+    def execute_guarded_staging_adoption(
+        self,
+        prepare: Callable[
+            [PackageEpochRuntimeAdmissionReceiptV1],
+            tuple[PackageProductStagingAdoptedRouteRequestV1, PackageLifecycleStatusV1],
+        ],
+    ) -> PackageLifecycleStatusV1:
+        """Claim and resume the selected staged set in one epoch guard."""
+
+        if not callable(prepare):
+            raise TypeError("Staging Package Product preparation is required")
+
+        def execute(
+            receipt: PackageEpochRuntimeAdmissionReceiptV1,
+        ) -> PackageLifecycleStatusV1:
+            route, current = prepare(receipt)
+            if (
+                not isinstance(route, PackageProductStagingAdoptedRouteRequestV1)
+                or route.admission != receipt
+                or not isinstance(current, PackageLifecycleStatusV1)
+            ):
+                raise PackageProductActivationError(
+                    "Staging Package route changed the admitted runtime",
+                    code="package_product_staging_route_invalid",
+                )
+            return self._router.route_staging_adopted(route, current=current)
+
+        return self.execute_guarded_mutation(execute)
+
     def _route_guarded(
         self,
         intent: PackageProductLifecycleIntentV1,
         *,
         entrypoint: PackageProductEntrypoint,
         receipt: PackageEpochRuntimeAdmissionReceiptV1,
+        retry: PackageProductLifecycleRetryIntentV1 | None,
     ) -> PackageProductLifecycleOutcomeV1:
         ingress = self._ingress_factory.create(intent)
         if not isinstance(ingress, PackageLifecycleIngressRequestV1):
@@ -273,9 +510,7 @@ class PackageProductLifecycleActivation:
         try:
             bound_ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
                 ingress,
-                runtime_admission_request_id=(
-                    receipt.request.admission_request_id
-                ),
+                runtime_admission_request_id=(receipt.request.admission_request_id),
             )
         except ValueError:
             raise PackageProductActivationError(
@@ -283,11 +518,18 @@ class PackageProductLifecycleActivation:
                 code="package_product_ingress_changed",
             ) from None
         ingress = bound_ingress
-        status = self._router.route(
-            PackageProductRouteRequestV1(
-                entrypoint=entrypoint,
-                ingress=ingress,
-                admission=receipt,
+        route_request = PackageProductRouteRequestV1(
+            entrypoint=entrypoint,
+            ingress=ingress,
+            admission=receipt,
+        )
+        status = (
+            self._router.route(route_request)
+            if retry is None
+            else self._router.retry(
+                route_request,
+                request_fingerprint=retry.request_fingerprint,
+                expected_attempt_epoch=retry.expected_attempt_epoch,
             )
         )
         classification = status.classification
@@ -408,6 +650,7 @@ __all__ = [
     "PackageProductActivationError",
     "PackageProductAdmittedRecoveryPort",
     "PackageProductEpochTransactionGuardPort",
+    "PackageProductExactHandoffRecoveryV1",
     "PackageProductIngressFactoryPort",
     "PackageProductLifecycleActivation",
     "PackageProductLifecycleIntentV1",

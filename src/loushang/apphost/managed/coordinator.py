@@ -186,7 +186,19 @@ class ManagedServiceCoordinatorV1:
             self._check(deadline)
             if (state.handoff.instance != self._instance or state.handoff.stop_requested
                     or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING or state.cleanly_stopped):
-                raise ManagedStorageError("conflict")
+                conflict = ManagedStorageError("conflict")
+                conflict.add_note(
+                    "managed_start_observation "
+                    f"instance_changed={state.handoff.instance != self._instance} "
+                    f"own_attempt={state.handoff.attempt_id == self.operation_id} "
+                    f"phase={state.handoff.phase.value} "
+                    f"stop_requested={state.handoff.stop_requested} "
+                    f"native_identity_present={state.native_identity is not None} "
+                    f"process_exited={state.evidence.process_exited} "
+                    f"process_scope_settled={state.evidence.process_scope_settled} "
+                    f"cleanly_stopped={state.cleanly_stopped}"
+                )
+                raise conflict
             process = self._starter._process
             if (state.handoff.attempt_id == self.operation_id and state.native_identity is None
                     and process is not None and process.identity is not None):

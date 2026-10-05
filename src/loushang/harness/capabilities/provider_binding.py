@@ -5,7 +5,8 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from threading import Lock
+from typing import Literal, TypeAlias
 
 from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
@@ -71,6 +72,60 @@ class CapabilityBundleValue:
             if facet.facet_id == facet_id:
                 return facet.value
         raise KeyError(f"Capability Bundle does not provide facet: {facet_id}")
+
+
+VisibilityState = Literal["staged", "visible", "retired"]
+
+
+class CapabilityBundleVisibilityError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+class CapabilityBundleVisibilityGate:
+    """Synchronous graph-owned visibility for an already constructed facet."""
+
+    def __init__(
+        self, *, graph_generation: int, validate_current: Callable[[], None]
+    ) -> None:
+        if type(graph_generation) is not int or graph_generation < 1:
+            raise ValueError("Capability visibility graph generation is invalid")
+        if not callable(validate_current):
+            raise TypeError("Capability visibility requires a current validator")
+        self._graph_generation = graph_generation
+        self._validate_current = validate_current
+        self._state: VisibilityState = "staged"
+        self._lock = Lock()
+
+    @property
+    def state(self) -> VisibilityState:
+        with self._lock:
+            return self._state
+
+    def publish(self, *, graph_generation: int) -> None:
+        if graph_generation != self._graph_generation:
+            raise CapabilityBundleVisibilityError(
+                "capability_visibility_generation_mismatch"
+            )
+        with self._lock:
+            if self._state != "staged":
+                raise CapabilityBundleVisibilityError(
+                    "capability_visibility_publish_stale"
+                )
+        self._validate_current()
+        with self._lock:
+            if self._state != "staged":
+                raise CapabilityBundleVisibilityError(
+                    "capability_visibility_publish_stale"
+                )
+            self._state = "visible"
+
+    def retire(self) -> None:
+        """Hide the facet without invoking external code or awaiting cleanup."""
+
+        with self._lock:
+            self._state = "retired"
 
 
 @dataclass(frozen=True)
@@ -183,6 +238,11 @@ class CapabilityBundleProviderBinding:
         repr=False,
         compare=False,
     )
+    visibility_gates: tuple[CapabilityBundleVisibilityGate, ...] = field(
+        default=(),
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider, CapabilityBundleProvider):
@@ -211,7 +271,13 @@ class CapabilityBundleProviderBinding:
             raise TypeError("Provider binding create must be callable")
         if self.dispose is not None and not callable(self.dispose):
             raise TypeError("Provider binding dispose must be callable")
+        gates = tuple(self.visibility_gates)
+        if any(not isinstance(gate, CapabilityBundleVisibilityGate) for gate in gates):
+            raise TypeError("Provider visibility gates must be typed")
+        if len({id(gate) for gate in gates}) != len(gates):
+            raise ValueError("Provider visibility gates must be unique")
         object.__setattr__(self, "binding_input_fingerprint", fingerprint)
+        object.__setattr__(self, "visibility_gates", gates)
 
     async def construct(
         self,
@@ -245,6 +311,8 @@ def _require_nonempty(value: object, *, name: str) -> str:
 __all__ = [
     "CapabilityBundleProviderBinding",
     "CapabilityBundleValue",
+    "CapabilityBundleVisibilityError",
+    "CapabilityBundleVisibilityGate",
     "CapabilityDependencyBinding",
     "CapabilityFacetBinding",
     "CapabilityProviderContext",

@@ -9,30 +9,24 @@
   contracts record implemented slices; plans remain delivery records; baselines
   are implementation evidence.
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
-  PLC9 is partially implemented through the explicit Linux and Windows AMD64
-  Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
-  dark reservation; D3a--D3e add writer and Store/committed-set fences, a
-  private deletion primitive, read-only root target resolution, and a durable
-  result/debt journal. D3f connects those owners in an internal POSIX-tested
-  root-GC executor. D3g adds an explicit Product command over an exact GC
-  candidate and an explicit root Store method. D3h joins reservation, result,
-  and root fences in a read-only operator view. D3i composes the real fenced
-  POSIX Product Store for explicit offline GC; D3j adds its declared operator
-  CLI. D3k adds a separate private-data confirmation seam and a backup-owner
-  projection port; D3l adds durable private-data confirmation evidence.
-  D3m reports the actual PLC9B cutover snapshot owner's workspace-level
-  retention evidence without claiming Plugin-level backup expiry. The D3k/D3l
-  seams remain without production owner bindings. Default
-  management/RPC selection, Windows execution evidence, shared dependency
-  GC, and production private-data/backup owner composition remain open.
-  Coding legacy-workspace migration now has a foundation for classifying
-  pre-B inputs, reading authenticated first-B snapshot evidence, reacquiring
-  an exact local Source, and producing an inert adoption review. It has no
-  operator approval or Product installation entrypoint. The offline cutover
-  command still refuses workspaces requiring legacy-state adoption or settings
-  migration.
-  The remaining gaps are summarized by `architecture.md` and tracked in the
-  lifecycle plan.
+  PLC9 remains in development. The current delivery branch has Product-backed
+  management projections and bounded repair routes across CLI, optional RPC,
+  TUI, and local management SDK; public reproducible data Skill, Prompt, and
+  Theme Wheels; explicit Linux Worker candidate admission, opt-in, native
+  release custody, Session use, and recovery; and POSIX root/shared-dependency
+  GC plus Arch private-data backup, delete, restore, and expiry owners. Each
+  route retains its own Product gate. Ordinary third-party Worker routing,
+  Windows production Worker/private-data execution, and final Coding regression
+  remain open. The [closure candidate](plugin-experience-and-plc9-closure-design.md)
+  records current evidence and limits.
+- Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
+  compatibility for this delivery. Fresh and verifiable B-fenced workspaces
+  remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
+  Migration finalization and old-release recovery are historical work, not
+  current acceptance gates. The Product owner accepted automatic first-B
+  cutover for a genuinely fresh Linux workspace on 2026-10-01. The ordinary
+  Session implementation and focused interruption/old-snapshot regressions are
+  in place; complete Coding regression and Windows admission remain open.
 - Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
   internal/offline POSIX root-GC execution, durable private-data confirmation
   evidence, and pre-B workspace-snapshot status projection implemented; PLC9
@@ -70,6 +64,12 @@ Neither may silently override a narrower implemented owner contract.
   artifact/identity/contribution/execution/trust/lifetime axes, exact ownership,
   Skill semantics, Worker and remote-service topology, security, and the public
   authoring ladder.
+- [Plugin Experience And PLC9 Closure Candidate](plugin-experience-and-plc9-closure-design.md)
+  was accepted by the Plugin scope owner on 2026-09-26 as a staged delivery
+  direction for read-only composition explanation, simpler data-Resource
+  authoring, kind-specific Product gates, and unfinished PLC9 work. It does not
+  replace Architecture V2 or the PLC9 plan, and individual Product gates remain
+  subject to their exact owner decisions and implementation evidence.
 - [Plugin Lifecycle And Coding Pluginization Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the only coordinating PLC0-PLC9 delivery plan. Its status section tracks
   the current implementation, including the production `coding.lsp` route.
@@ -668,6 +668,9 @@ Neither may silently override a narrower implemented owner contract.
   rollout. C5.5b implements the retained LPAC native containment path and C5.5c
   implements the exact Windows AMD64 Coding canary; every unlisted Windows or
   Product route remains closed and Current remains the default.
+- [PLC9C Third-Party Local Worker Admission Candidate](plugin-lifecycle-plc9c-third-party-admission.md)
+  records the remaining selected-Wheel, Product decision, native containment,
+  recovery, and authoring gates. It grants no new Worker route.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
@@ -700,6 +703,9 @@ implemented slices. The implemented public SDK, managed Skill actions, and
 explicit Worker canaries grant no unstated author/runtime authority; an
 unimplemented general Worker authoring path or `remote_service` shape cannot be
 inferred from them.
+The [default-route rollout decision](plugin-default-route-rollout-decision.md)
+currently holds the ordinary route while Product and platform evidence remains
+incomplete.
 
 ## Baselines
 

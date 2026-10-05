@@ -3,13 +3,35 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import platform
 import sys
 from dataclasses import dataclass, replace
+from multiprocessing import get_context
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from loushang.coding.package_product_worker_windows_payload_inventory import (
+    CodingWindowsWorkerPayloadInventoryError,
+    inspect_windows_worker_payload_stages,
+)
+from loushang.coding.package_product_worker_windows_provisioning_journal import (
+    WindowsWorkerProvisioningStateJournal,
+    WindowsWorkerProvisioningStateJournalError,
+    _inventory_identity,
+    inspect_windows_worker_provisioning_attempts,
+)
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
+    windows_unlink_at,
+)
+from loushang.harness.resources.packages.product_windows_epoch_guard import (
+    prepare_windows_product_control_root,
+)
 from loushang.harness.resources.plugins.declarations import (
     PluginLocalWorkerConfiguration,
 )
@@ -27,6 +49,10 @@ from loushang.harness.worker._native_profile_bridge import (
     _bind_windows_lpac_contained_product_worker_profile,
     _native_profile_prepared_request,
     _plan_windows_lpac_product_worker_profile,
+    _rebuild_windows_lpac_cleanup_spec,
+    _recover_windows_lpac_containment_cleanup,
+    _require_exact_binding,
+    _windows_lpac_provisioning_identity,
     _WindowsLpacRuntimeBindings,
     _WindowsNativeContainmentSettlementWitness,
 )
@@ -70,6 +96,23 @@ _CATALOG_REVISION = "native-catalog-1"
 _PROFILE_ID = "posix-static-contained-elf-v1"
 _DIGEST_A = "a" * 64
 _DIGEST_B = "b" * 64
+
+
+def test_native_profile_refuses_stale_worker_owner_generation(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    request = _request(runtime)
+    receipt = _receipt(
+        request,
+        launcher_sha256=_DIGEST_A,
+        containment_profile_sha256=_DIGEST_B,
+    )
+    stale_receipt = replace(
+        receipt,
+        policy=replace(receipt.policy, owner_selection_generation=2),
+    )
+    with pytest.raises(WorkerBindingError) as failure:
+        _require_exact_binding(receipt=stale_receipt, worker_request=request)
+    assert failure.value.code == "worker_native_receipt_mismatch"
 
 
 def _platform(
@@ -508,6 +551,7 @@ class _FakeWindowsWitness:
 class _FakeWindowsCaptureSpec:
     request: ProcessLaunchRequest
     execution_closure: tuple[str, ...]
+    job_name: str
 
 
 class _FakeWindowsCollision(RuntimeError):
@@ -604,6 +648,8 @@ class _NativeProvisioningStore:
 
 def _fake_windows_bindings(
     provisioner: _FakeWindowsProvisioner,
+    *,
+    capture_expectations: list[object | None] | None = None,
 ) -> _WindowsLpacRuntimeBindings:
     def build_provision_spec(request, **facts):
         return _FakeWindowsProvisionSpec(
@@ -613,8 +659,12 @@ def _fake_windows_bindings(
             lifecycle_fingerprint=facts["lifecycle_fingerprint"],
         )
 
-    def build_capture_spec(request, *, provision, witness):
+    def build_capture_spec(
+        request, *, provision, witness, backend_material_expectation=None, job_name
+    ):
         del provision, witness
+        if capture_expectations is not None:
+            capture_expectations.append(backend_material_expectation)
         trusted = replace(
             request,
             effective_environment=(
@@ -631,6 +681,7 @@ def _fake_windows_bindings(
                 "all-application-packages:opt-out",
                 f"provision:sha256:{_DIGEST_B}",
             ),
+            job_name=job_name,
         )
 
     return _WindowsLpacRuntimeBindings(
@@ -644,25 +695,37 @@ def _fake_windows_bindings(
     )
 
 
-def _windows_profile_context(tmp_path: Path):
+def _windows_profile_context(
+    tmp_path: Path,
+    *,
+    backend_material_expectation: object | None = None,
+    release_profile_sha256: str | None = None,
+    capture_expectations: list[object | None] | None = None,
+):
     runtime = _runtime(tmp_path)
     request = _request(runtime)
     events: list[str] = []
     provisioner = _FakeWindowsProvisioner(events)
-    bindings = _fake_windows_bindings(provisioner)
+    bindings = _fake_windows_bindings(
+        provisioner, capture_expectations=capture_expectations
+    )
     probe = _platform(system="Windows", machine="AMD64", release="10.0.20348")
     plan = _plan_windows_lpac_product_worker_profile(
         worker_request=request,
         native_profile_catalog_revision=_CATALOG_REVISION,
         containment_launcher_sha256=_DIGEST_A,
         platform_imports=("KERNEL32.DLL",),
+        backend_material_expectation=backend_material_expectation,
+        release_profile_sha256=release_profile_sha256,
         _platform_probe=probe,
         _runtime_bindings=bindings,
     )
     base = _receipt(
         request,
         launcher_sha256=_DIGEST_A,
-        containment_profile_sha256=plan.containment_profile_sha256,
+        containment_profile_sha256=(
+            release_profile_sha256 or plan.containment_profile_sha256
+        ),
     )
     policy = replace(
         base.policy,
@@ -697,7 +760,7 @@ def test_windows_lpac_profile_joins_plan_provision_capture_and_cleanup(
         profile,
         receipt,
         request,
-        _,
+        plan,
         store,
         provisioner,
         _,
@@ -729,6 +792,9 @@ def test_windows_lpac_profile_joins_plan_provision_capture_and_cleanup(
     )
     assert len(profile.execution_closure_fingerprint) == 64
     assert len(captured) == 1
+    assert captured[0].job_name == (
+        "Global\\LoushangWorker-" + plan.operation_nonce
+    )
     assert provisioner.events == [
         "profile-create",
         "grant-apply",
@@ -742,6 +808,35 @@ def test_windows_lpac_profile_joins_plan_provision_capture_and_cleanup(
     assert store.document["phase"] == "settled"
     assert str(tmp_path) not in serialized
     assert "S-1-" not in serialized
+
+
+def test_windows_lpac_profile_carries_release_expectation_to_host_capture(
+    tmp_path: Path,
+) -> None:
+    expectation = object()
+    observed: list[object | None] = []
+    profile, receipt, request, plan, _, _, _, _ = _windows_profile_context(
+        tmp_path,
+        backend_material_expectation=expectation,
+        release_profile_sha256="c" * 64,
+        capture_expectations=observed,
+    )
+    assert plan.backend_material_expectation is expectation
+    assert plan.containment_profile_sha256 == _DIGEST_B
+    assert plan.release_profile_sha256 == "c" * 64
+    assert plan.expected_native_policy_closure_fingerprint == (
+        receipt.policy.expected_native_policy_closure_fingerprint
+    )
+
+    async def capture(_spec: object) -> object:
+        return object()
+
+    async def exercise() -> None:
+        await profile.capture_native(_process_request(request.runtime), capture=capture)
+        await profile.close()
+
+    asyncio.run(exercise())
+    assert observed == [expectation]
 
 
 def test_windows_lpac_binding_is_noncommitting_until_capture_or_close(
@@ -937,3 +1032,515 @@ def test_windows_lpac_plan_rejects_unsupported_host_before_native_binding(
 
 async def _return(value: object) -> object:
     return value
+
+
+def test_windows_lpac_durable_attempt_reopens_without_creating_on_read(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, _, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    path = tmp_path / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    assert identity["journalVersion"] == 3
+    assert identity["jobObjectName"] == (
+        "Global\\LoushangWorker-" + plan.operation_nonce
+    )
+    assert identity["executableRelativePath"] == request.runtime.executable.relative_to(
+        request.runtime.package_root
+    ).as_posix()
+    store = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    assert store.load() is None
+    assert not path.exists()
+    assert not path.with_name(path.name + ".lock").exists()
+
+    profile = _bind_windows_lpac_contained_product_worker_profile(
+        receipt=receipt,
+        worker_request=request,
+        plan=plan,
+        platform_imports=("KERNEL32.DLL",),
+        provisioning_state_store=store,
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    asyncio.run(profile.close())
+    reopened = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    latest = reopened.load()
+    assert latest is not None and latest["phase"] == "settled"
+    first = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert not reopened.compare_and_swap(
+        expected_revision=0, document=first["document"]
+    )
+
+
+def test_windows_lpac_cleanup_spec_rebuilds_only_matching_durable_identity(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, provisioner, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    spec = _rebuild_windows_lpac_cleanup_spec(
+        identity=identity,
+        runtime_root=request.runtime.package_root,
+        platform_imports=("KERNEL32.DLL",),
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    assert spec.request.argv == (str(request.runtime.executable),)
+    assert spec.request.cwd == str(request.runtime.package_root)
+    assert spec.attempt_id == request.identity.attempt_id
+    assert provisioner.events == []
+
+    for changed in (
+        {**identity, "journalVersion": 2},
+        {**identity, "executableRelativePath": "../foreign.exe"},
+        {**identity, "specFingerprint": _DIGEST_A},
+    ):
+        with pytest.raises((WorkerBindingError, ValueError)):
+            _rebuild_windows_lpac_cleanup_spec(
+                identity=changed,
+                runtime_root=request.runtime.package_root,
+                platform_imports=("KERNEL32.DLL",),
+                _platform_probe=probe,
+                _runtime_bindings=bindings,
+            )
+    assert provisioner.events == []
+
+
+def test_windows_lpac_recovery_reopens_effect_history_without_new_reservation(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, provisioner, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    path = tmp_path / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    store = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    spec = _rebuild_windows_lpac_cleanup_spec(
+        identity=identity,
+        runtime_root=request.runtime.package_root,
+        platform_imports=("KERNEL32.DLL",),
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    with pytest.raises(WorkerBindingError) as missing:
+        _recover_windows_lpac_containment_cleanup(
+            identity=identity,
+            provision_spec=spec,
+            provisioning_state_store=store,
+            _platform_probe=probe,
+            _runtime_bindings=bindings,
+        )
+    assert missing.value.code == "worker_native_provisioning_state_missing"
+    assert not path.exists()
+    assert provisioner.events == []
+
+    reserved = {**identity, "phase": "reserved", "stateRevision": 1, "witness": None}
+    assert store.compare_and_swap(expected_revision=0, document=reserved)
+    effect = {**reserved, "phase": "profile_effect", "stateRevision": 2}
+    assert store.compare_and_swap(expected_revision=1, document=effect)
+    witness = _recover_windows_lpac_containment_cleanup(
+        identity=identity,
+        provision_spec=spec,
+        provisioning_state_store=store,
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    assert witness.state == "SETTLED"
+    assert provisioner.events == [
+        "recover-cleanup",
+        "grant-revoke",
+        "profile-delete",
+        "native-settle",
+    ]
+    latest = store.load()
+    assert latest is not None
+    assert latest["phase"] == "settled"
+    assert latest["stateRevision"] == 8
+    assert latest["witness"]["state"] == "SETTLED"
+
+
+def test_windows_lpac_recovery_retries_uncertain_profile_delete(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, provisioner, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    path = tmp_path / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    store = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    spec = _rebuild_windows_lpac_cleanup_spec(
+        identity=identity,
+        runtime_root=request.runtime.package_root,
+        platform_imports=("KERNEL32.DLL",),
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    reserved = {**identity, "phase": "reserved", "stateRevision": 1, "witness": None}
+    assert store.compare_and_swap(expected_revision=0, document=reserved)
+    assert store.compare_and_swap(
+        expected_revision=1,
+        document={**reserved, "phase": "profile_effect", "stateRevision": 2},
+    )
+    provisioner.fail_delete_once = True
+    with pytest.raises(RuntimeError, match="delete uncertainty"):
+        _recover_windows_lpac_containment_cleanup(
+            identity=identity,
+            provision_spec=spec,
+            provisioning_state_store=store,
+            _platform_probe=probe,
+            _runtime_bindings=bindings,
+        )
+    interrupted = store.load()
+    assert interrupted is not None and interrupted["phase"] == "delete_effect"
+    assert interrupted["witness"]["state"] == "GRANTS_REVOKED"
+
+    witness = _recover_windows_lpac_containment_cleanup(
+        identity=identity,
+        provision_spec=spec,
+        provisioning_state_store=store,
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    assert witness.state == "SETTLED"
+    assert provisioner.events.count("grant-revoke") == 1
+    assert provisioner.events.count("profile-delete") == 2
+    assert store.load()["phase"] == "settled"
+
+
+def test_windows_lpac_durable_attempt_refuses_partial_tail_and_changed_identity(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, _, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    path = tmp_path / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    store = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    profile = _bind_windows_lpac_contained_product_worker_profile(
+        receipt=receipt,
+        worker_request=request,
+        plan=plan,
+        platform_imports=("KERNEL32.DLL",),
+        provisioning_state_store=store,
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    asyncio.run(profile.close())
+
+    changed_identity = {**identity, "receiptFingerprint": _DIGEST_B}
+    changed = WindowsWorkerProvisioningStateJournal(path, identity=changed_identity)
+    with pytest.raises(WindowsWorkerProvisioningStateJournalError):
+        changed.load()
+
+    legacy_identity = {
+        key: value for key, value in identity.items() if key != "jobObjectName"
+    }
+    legacy_identity["journalVersion"] = 1
+    legacy = WindowsWorkerProvisioningStateJournal(path, identity=legacy_identity)
+    with pytest.raises(WindowsWorkerProvisioningStateJournalError):
+        legacy.load()
+
+    with path.open("ab") as output:
+        output.write(b'{"partial":')
+    with pytest.raises(WindowsWorkerProvisioningStateJournalError) as corrupt:
+        store.load()
+    assert corrupt.value.code == "worker_native_provisioning_state_corrupt"
+
+
+def _race_windows_lpac_state_cas(
+    path: Path, identity: dict[str, object], barrier: Any, results: Any
+) -> None:
+    journal = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    current = journal.load()
+    assert current is not None
+    revision = current["stateRevision"]
+    assert type(revision) is int
+    desired = {**current, "stateRevision": revision + 1}
+    barrier.wait(timeout=20)
+    results.put(journal.compare_and_swap(expected_revision=revision, document=desired))
+
+
+def test_windows_lpac_durable_attempt_cross_process_cas_has_one_winner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3]))
+    _, receipt, request, plan, _, _, bindings, probe = _windows_profile_context(
+        tmp_path
+    )
+    path = tmp_path / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    journal = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+    profile = _bind_windows_lpac_contained_product_worker_profile(
+        receipt=receipt,
+        worker_request=request,
+        plan=plan,
+        platform_imports=("KERNEL32.DLL",),
+        provisioning_state_store=journal,
+        _platform_probe=probe,
+        _runtime_bindings=bindings,
+    )
+    asyncio.run(profile.close())
+    before = journal.load()
+    assert before is not None and type(before["stateRevision"]) is int
+    context = get_context("spawn" if os.name == "nt" else "fork")
+    barrier = context.Barrier(2)
+    results = context.Queue()
+    processes = tuple(
+        context.Process(
+            target=_race_windows_lpac_state_cas,
+            args=(path, identity, barrier, results),
+        )
+        for _ in range(2)
+    )
+    try:
+        for process in processes:
+            process.start()
+        for process in processes:
+            process.join(timeout=30)
+        assert all(process.exitcode == 0 for process in processes)
+        assert sorted(results.get(timeout=3) for _ in processes) == [False, True]
+        current = journal.load()
+        assert current is not None
+        assert current["stateRevision"] == before["stateRevision"] + 1
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+        results.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native rooted journal")
+def test_windows_lpac_durable_attempt_native_rooted_io(tmp_path: Path) -> None:
+    root = prepare_windows_product_control_root(tmp_path / "product-state")
+    descriptor = open_windows_directory(root, share_delete=False, read_control=True)
+    try:
+        with WindowsPrivateDirectoryAcl() as acl:
+            acl.validate(descriptor)
+        _, receipt, request, plan, _, _, bindings, probe = _windows_profile_context(
+            tmp_path
+        )
+        path = root / f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+        identity = _windows_lpac_provisioning_identity(
+            receipt=receipt, worker_request=request, plan=plan
+        )
+        journal = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+        assert (
+            inspect_windows_worker_provisioning_attempts(root, directory_fd=descriptor)
+            == ()
+        )
+        assert journal.load(directory_fd=descriptor) is None
+        assert not path.exists()
+        assert not path.with_name(path.name + ".lock").exists()
+
+        class RootedStore:
+            def load(self):
+                return journal.load(directory_fd=descriptor)
+
+            def compare_and_swap(self, *, expected_revision, document):
+                return journal.compare_and_swap(
+                    expected_revision=expected_revision,
+                    document=document,
+                    directory_fd=descriptor,
+                )
+
+        profile = _bind_windows_lpac_contained_product_worker_profile(
+            receipt=receipt,
+            worker_request=request,
+            plan=plan,
+            platform_imports=("KERNEL32.DLL",),
+            provisioning_state_store=RootedStore(),
+            _platform_probe=probe,
+            _runtime_bindings=bindings,
+        )
+        asyncio.run(profile.close())
+        reopened = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+        current = reopened.load(directory_fd=descriptor)
+        assert current is not None and current["phase"] == "settled"
+        inventory = inspect_windows_worker_provisioning_attempts(
+            root, directory_fd=descriptor
+        )
+        assert len(inventory) == 1
+        assert inventory[0].attempt_id == request.identity.attempt_id
+        assert inventory[0].phase == "settled"
+        assert not inventory[0].unsettled
+        lock_path = path.with_name(path.name + ".lock")
+        assert lock_path.read_bytes() == b"\1"
+        lock_path.write_bytes(b"")
+        with pytest.raises(WindowsWorkerProvisioningStateJournalError) as unsafe:
+            reopened.load(directory_fd=descriptor)
+        assert unsafe.value.code == "worker_native_provisioning_lock_corrupt"
+        with pytest.raises(
+            WindowsWorkerProvisioningStateJournalError
+        ) as inventory_error:
+            inspect_windows_worker_provisioning_attempts(root, directory_fd=descriptor)
+        assert inventory_error.value.code == "worker_native_provisioning_lock_corrupt"
+        assert lock_path.stat().st_size == 0
+
+        # A journal without its original lock is not a fresh attempt. A CAS
+        # must not recreate the lock and adopt the existing history.
+        before = path.read_bytes()
+        windows_unlink_at(descriptor, lock_path.name)
+        revision = current["stateRevision"]
+        assert type(revision) is int
+        next_document = {**current, "stateRevision": revision + 1}
+        with pytest.raises(WindowsWorkerProvisioningStateJournalError) as missing:
+            reopened.compare_and_swap(
+                expected_revision=revision,
+                document=next_document,
+                directory_fd=descriptor,
+            )
+        assert missing.value.code == "worker_native_provisioning_lock_missing"
+        assert not lock_path.exists()
+        assert path.read_bytes() == before
+
+        # A committed lock without its history is a lost attempt, not a new
+        # empty journal that another CAS may claim.
+        with WindowsPrivateDirectoryAcl() as acl:
+            lock_fd = open_windows_regular_file_at(
+                descriptor,
+                lock_path.name,
+                create_new=True,
+                write=True,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            try:
+                assert os.write(lock_fd, b"\1") == 1
+            finally:
+                os.close(lock_fd)
+        windows_unlink_at(descriptor, path.name)
+        orphan_reader = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+        with pytest.raises(WindowsWorkerProvisioningStateJournalError) as orphan:
+            orphan_reader.load(directory_fd=descriptor)
+        assert orphan.value.code == "worker_native_provisioning_lock_corrupt"
+        orphan_writer = WindowsWorkerProvisioningStateJournal(path, identity=identity)
+        with pytest.raises(WindowsWorkerProvisioningStateJournalError) as orphan_cas:
+            orphan_writer.compare_and_swap(
+                expected_revision=0,
+                document={**current, "stateRevision": 1},
+                directory_fd=descriptor,
+            )
+        assert orphan_cas.value.code == "worker_native_provisioning_lock_corrupt"
+        assert not path.exists()
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native payload inventory")
+def test_windows_worker_payload_inventory_retains_every_attempt(tmp_path: Path) -> None:
+    root = prepare_windows_product_control_root(tmp_path / "product-state")
+    descriptor = open_windows_directory(root, share_delete=False, read_control=True)
+    try:
+        assert (
+            inspect_windows_worker_payload_stages(root, directory_fd=descriptor) == ()
+        )
+        with WindowsPrivateDirectoryAcl() as acl:
+            acl.validate(descriptor)
+            stage = open_windows_directory(
+                "worker-payload-" + "a" * 32,
+                dir_fd=descriptor,
+                create_new=True,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            try:
+                acl.validate(stage)
+                expected = (os.fstat(stage).st_dev, os.fstat(stage).st_ino)
+            finally:
+                os.close(stage)
+            attempts = inspect_windows_worker_payload_stages(
+                root, directory_fd=descriptor
+            )
+            assert len(attempts) == 1
+            assert attempts[0].attempt_id == "a" * 32
+            assert attempts[0].directory_identity == expected
+            foreign = open_windows_directory(
+                "worker-payload-foreign",
+                dir_fd=descriptor,
+                create_new=True,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            os.close(foreign)
+            with pytest.raises(CodingWindowsWorkerPayloadInventoryError) as unsafe:
+                inspect_windows_worker_payload_stages(root, directory_fd=descriptor)
+            assert unsafe.value.code == "coding_worker_payload_inventory_unsafe"
+    finally:
+        os.close(descriptor)
+
+
+def test_windows_provisioning_inventory_identity_refuses_foreign_attempt(
+    tmp_path: Path,
+) -> None:
+    _, receipt, request, plan, _, _, _, _ = _windows_profile_context(tmp_path)
+    identity = _windows_lpac_provisioning_identity(
+        receipt=receipt, worker_request=request, plan=plan
+    )
+    name = f"worker-native-provisioning-{request.identity.attempt_id}.jsonl"
+    raw = (
+        json.dumps(
+            {
+                "document": {
+                    **identity,
+                    "phase": "reserved",
+                    "stateRevision": 1,
+                    "witness": None,
+                }
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        + b"\n"
+    )
+    assert _inventory_identity(name, raw) == identity
+    unicode_identity = {**identity, "nativeProfileCatalogRevision": "版本:甲"}
+    unicode_raw = (
+        json.dumps(
+            {
+                "document": {
+                    **unicode_identity,
+                    "phase": "reserved",
+                    "stateRevision": 1,
+                    "witness": None,
+                }
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+        + b"\n"
+    )
+    assert _inventory_identity(name, unicode_raw) == unicode_identity
+    with pytest.raises(WindowsWorkerProvisioningStateJournalError) as changed:
+        _inventory_identity("worker-native-provisioning-" + "f" * 32 + ".jsonl", raw)
+    assert changed.value.code == "worker_native_provisioning_inventory_invalid"
+    for invalid in (
+        {key: value for key, value in identity.items() if key != "jobObjectName"},
+        {key: value for key, value in identity.items() if key != "executableRelativePath"},
+        {**identity, "journalVersion": 1},
+        {**identity, "journalVersion": 2},
+        {**identity, "jobObjectName": "Global\\LoushangWorker-" + "f" * 64},
+        {**identity, "executableRelativePath": "../foreign.exe"},
+    ):
+        invalid_raw = (
+            json.dumps({"document": invalid}, sort_keys=True).encode() + b"\n"
+        )
+        with pytest.raises(WindowsWorkerProvisioningStateJournalError) as changed:
+            _inventory_identity(name, invalid_raw)
+        assert changed.value.code == "worker_native_provisioning_inventory_invalid"

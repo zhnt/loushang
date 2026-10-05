@@ -7,7 +7,10 @@
   unified PLC9A2 gate is executable.
 - Scope: internal Product composition, recovery/epoch activation, and the
   existing operations, Session, CLI, RPC, and startup Package entrypoints.
-- Public author SDK effect: none. UI and a management SDK remain unimplemented.
+- Public author SDK effect: none. Later PLC9 slices added a local Coding
+  management SDK and UI for bounded Desired State commands and exact Package
+  repair actions. General Package artifact management through those surfaces
+  and the remaining A2 repair policy are separate rollout gates.
 - Deletion effect: none. PLC9D remains the only future authority for physical
   artifact GC and Plugin-private data deletion.
 

@@ -9,9 +9,12 @@ import pytest
 
 from loushang.coding.package_builtin_wheel import (
     CODING_BASE_PRODUCT_WHEEL_FILENAME,
+    _read_member,
     build_coding_base_product_wheel,
     build_coding_capability_product_wheel,
     coding_builtin_product_local_wheel_policy,
+    inspect_posix_coding_base_product_wheel,
+    inspect_posix_coding_capability_product_wheels,
     prepare_posix_coding_base_product_wheel,
     prepare_posix_coding_capability_product_wheels,
 )
@@ -26,6 +29,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageWheelVerifier,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX hardlink install")
+def test_installed_product_member_accepts_hardlinked_wheel_install(tmp_path):
+    package_root = tmp_path / "installed" / "coding_base"
+    package_root.mkdir(parents=True)
+    member = package_root / "plugin.json"
+    member.write_bytes(b"installed product member")
+    os.link(member, tmp_path / "package-cache-member")
+
+    assert member.stat().st_nlink == 2
+    assert _read_member(package_root, "plugin.json") == b"installed product member"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source owner")
@@ -163,3 +178,26 @@ def test_coding_capability_product_wheels_bind_exact_store_inputs(tmp_path):
     with pytest.raises(ValueError, match="changed on disk"):
         prepare_posix_coding_capability_product_wheels(source_root)
     assert capabilities[0].path.read_bytes() == b"changed"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source owner")
+def test_coding_builtin_wheel_inspection_is_read_only_and_exact(tmp_path):
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    with pytest.raises(FileNotFoundError):
+        inspect_posix_coding_base_product_wheel(source_root)
+    assert list(source_root.iterdir()) == []
+
+    base = prepare_posix_coding_base_product_wheel(source_root)
+    capabilities = prepare_posix_coding_capability_product_wheels(source_root)
+    before = tuple((path.name, path.read_bytes()) for path in sorted(source_root.iterdir()))
+    assert inspect_posix_coding_base_product_wheel(source_root) == base
+    assert inspect_posix_coding_capability_product_wheels(source_root) == capabilities
+    assert before == tuple(
+        (path.name, path.read_bytes()) for path in sorted(source_root.iterdir())
+    )
+
+    base.path.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="changed on disk"):
+        inspect_posix_coding_base_product_wheel(source_root)
+    assert base.path.read_bytes() == b"tampered"

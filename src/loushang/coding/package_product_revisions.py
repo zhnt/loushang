@@ -52,6 +52,10 @@ from .package_builtin_wheel import (
     build_coding_base_product_wheel,
     build_coding_capability_product_wheel,
 )
+from .package_legacy_data_trust import (
+    EXTERNAL_DATA_TRUST_CLASSES,
+    permits_external_data_owner,
+)
 from .plugin_dependency_grants import coding_plugin_distribution_evidence_resolver
 
 _MAX_FILES = 64
@@ -224,7 +228,15 @@ def open_coding_product_builtin_resolution(
         raise ValueError("Coding external data selection changed")
     return _open_selected_resolution(
         runtime,
-        tuple(sorted(("coding.base", *(spec.plugin_id for spec in specs), *external_data_plugin_ids))),
+        tuple(
+            sorted(
+                (
+                    "coding.base",
+                    *(spec.plugin_id for spec in specs),
+                    *external_data_plugin_ids,
+                )
+            )
+        ),
         external_data_plugin_ids=frozenset(external_data_plugin_ids),
     )
 
@@ -273,7 +285,10 @@ def _open_selected_resolution(
                         name=manifest.name,
                         root=root,
                         version=manifest.version,
-                        enabled=manifest.enabled,
+                        # This projection is backed by a live Product-selected
+                        # root. Desired State is its enablement authority; the
+                        # verified artifact still retains its original field.
+                        enabled=True,
                         package_root=root,
                         metadata=manifest.metadata,
                     ),
@@ -305,7 +320,7 @@ def _open_selected_resolution(
                     InstalledPlugin(
                         manifest=package.manifest,
                         source=source,
-                        enabled=manifest.enabled,
+                        enabled=True,
                         resolved_package=package,
                     )
                 )
@@ -387,10 +402,12 @@ def _validate_external_data_selection(
         or trust is None
         or not trust.trusted
         or trust.plugin_id != plugin_id
-        or trust.source_trust_class != "local-data-only"
+        or trust.source_trust_class not in EXTERNAL_DATA_TRUST_CLASSES
         or len(pairs) != 1
+        or not permits_external_data_owner(trust.source_trust_class, pairs[0][0].owner)
         or pairs[0][0].kind != "resource_item"
-        or pairs[0][0].owner != "resources.skill"
+        or pairs[0][0].owner
+        not in {"resources.skill", "resources.prompt", "resources.theme"}
     ):
         raise ValueError("Coding external data selection is not admissible")
 

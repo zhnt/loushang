@@ -307,7 +307,11 @@ def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {SANDBOX_RUNTIME}
+    assert worker_consumers == {
+        SANDBOX_RUNTIME,
+        HARNESS_ROOT / "package_product/product_worker_candidate.py",
+        HARNESS_ROOT / "package_product/product_worker_wheel_admission.py",
+    }
 
 
 def test_plc9c0_preserves_the_author_sdk_authority_firewall() -> None:
@@ -324,10 +328,19 @@ def test_plc9c0_preserves_the_author_sdk_authority_firewall() -> None:
         "LocalSandboxService",
         "HostedProcessContainmentPlanner",
         "ManagedWorkerLaunchPort",
-        "local_worker",
         "remote_service",
     ):
         assert forbidden not in author_sources
+    assert {
+        path
+        for path in AUTHOR_SDK_ROOT.rglob("*.py")
+        if "local_worker" in _source(path)
+    } == {
+        AUTHOR_SDK_ROOT / "_coding_local_worker_wheel.py",
+        # The public command and exports expose only the inert wheel builder.
+        AUTHOR_SDK_ROOT / "__init__.py",
+        AUTHOR_SDK_ROOT / "__main__.py",
+    }
     assert not any(
         imported.startswith(
             (

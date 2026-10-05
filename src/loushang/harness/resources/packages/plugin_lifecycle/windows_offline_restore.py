@@ -536,7 +536,9 @@ class PackageWindowsOfflineRestoreMaterializer:
                         )
                 if not created:
                     deadline = time.monotonic() + _LOCK_INITIALIZATION_TIMEOUT
-                    while os.fstat(lock_fd).st_size == 0 and time.monotonic() < deadline:
+                    while (
+                        os.fstat(lock_fd).st_size == 0 and time.monotonic() < deadline
+                    ):
                         time.sleep(0.001)
                 if os.fstat(lock_fd).st_size != 1:
                     raise OSError("Windows restore lock file changed")
@@ -589,6 +591,7 @@ class _PinnedWindowsRoot:
         path: Path,
         *,
         expected_identities: tuple[_NativeIdentity, ...] | None = None,
+        read_control: bool = False,
     ) -> _PinnedWindowsRoot:
         descriptors: list[int] = []
         try:
@@ -604,6 +607,7 @@ class _PinnedWindowsRoot:
                     dir_fd=current,
                     share_delete=False,
                     writable=index == len(path.parts[1:]) - 1,
+                    read_control=read_control and index == len(path.parts[1:]) - 1,
                 )
                 descriptors.append(current)
             identities = tuple(_native_identity(os.fstat(fd)) for fd in descriptors)
@@ -835,6 +839,8 @@ def _inspect_tree(
     maximum_entries: int,
     maximum_bytes: int,
     maximum_depth: int,
+    top_level_names: frozenset[str] | None = None,
+    skip_top_level_names: frozenset[str] = frozenset(),
 ) -> _TreeInspection:
     entries: list[_TreeEntry] = []
     identities: dict[tuple[str, ...], _NativeIdentity] = {}
@@ -842,7 +848,14 @@ def _inspect_tree(
 
     def visit(directory_fd: int, prefix: tuple[str, ...]) -> None:
         nonlocal total_bytes
-        for name in sorted(windows_listdir_at(directory_fd)):
+        names = sorted(windows_listdir_at(directory_fd))
+        if not prefix:
+            names = sorted(set(names) - skip_top_level_names)
+            if top_level_names is not None:
+                if not top_level_names.issubset(names):
+                    raise OSError("Snapshot selected source member is missing")
+                names = sorted(top_level_names)
+        for name in names:
             _validate_entry_name(name)
             metadata = windows_stat_at(directory_fd, name)
             parts = prefix + (name,)
@@ -883,12 +896,17 @@ def _inspect_tree(
                         raise OSError("Snapshot file identity changed")
                     digest = sha256()
                     file_bytes = 0
-                    while chunk := os.read(descriptor, 64 * 1024):
-                        file_bytes += len(chunk)
-                        total_bytes += len(chunk)
-                        if total_bytes > maximum_bytes:
-                            raise OSError("Snapshot byte count exceeds receipt")
-                        digest.update(chunk)
+                    try:
+                        while chunk := os.read(descriptor, 64 * 1024):
+                            file_bytes += len(chunk)
+                            total_bytes += len(chunk)
+                            if total_bytes > maximum_bytes:
+                                raise OSError("Snapshot byte count exceeds receipt")
+                            digest.update(chunk)
+                    except PermissionError as exc:
+                        raise PermissionError(
+                            f"Snapshot member cannot be read: {logical_path}"
+                        ) from exc
                     after = os.fstat(descriptor)
                     if _stable_file_metadata(before) != _stable_file_metadata(after):
                         raise OSError("Snapshot file changed while reading")
@@ -926,6 +944,8 @@ def _copy_tree(
     source_fd: int,
     target_fd: int,
     inspection: _TreeInspection,
+    *,
+    security_descriptor: int | None = None,
 ) -> None:
     for entry in inspection.entries:
         parts = tuple(entry.logical_path.split("/"))
@@ -936,6 +956,7 @@ def _copy_tree(
                     target_parent,
                     parts[-1],
                     create_new=True,
+                    security_descriptor=security_descriptor,
                 )
                 os.close(child)
                 continue
@@ -955,6 +976,7 @@ def _copy_tree(
                     parts[-1],
                     create_new=True,
                     write=True,
+                    security_descriptor=security_descriptor,
                 )
                 try:
                     before = os.fstat(source_file)
@@ -1162,12 +1184,19 @@ def _read_regular_file(
         os.close(descriptor)
 
 
-def _write_new_file(directory_fd: int, name: str, contents: bytes) -> None:
+def _write_new_file(
+    directory_fd: int,
+    name: str,
+    contents: bytes,
+    *,
+    security_descriptor: int | None = None,
+) -> None:
     descriptor = open_windows_regular_file_at(
         directory_fd,
         name,
         create_new=True,
         write=True,
+        security_descriptor=security_descriptor,
     )
     try:
         _write_all(descriptor, contents)
@@ -1258,6 +1287,7 @@ def _open_directory_at(
     *,
     create_new: bool = False,
     share_delete: bool = False,
+    security_descriptor: int | None = None,
 ) -> int:
     _validate_entry_name(name)
     descriptor = open_windows_directory(
@@ -1266,6 +1296,7 @@ def _open_directory_at(
         create_new=create_new,
         share_delete=share_delete,
         writable=True,
+        security_descriptor=security_descriptor,
     )
     metadata = os.fstat(descriptor)
     if not stat.S_ISDIR(metadata.st_mode) or _is_reparse(metadata):

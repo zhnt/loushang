@@ -263,7 +263,7 @@ class PackageEpochRuntimeLeaseRegistry:
 
     @contextmanager
     def exclusive_runtime_quiescence(
-        self, *, store_id: str
+        self, *, store_id: str, read_only: bool = False
     ) -> Iterator[PackageEpochRuntimeQuiescenceV1]:
         """Keep the complete live set stable through a caller's cutover attempt.
 
@@ -273,7 +273,7 @@ class PackageEpochRuntimeLeaseRegistry:
 
         if store_id != self.store_id:
             raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
-        with self._coordination("exclusive"):
+        with self._coordination("exclusive", create=not read_only):
             records, active = self._load_unlocked()
             self._require_live(active)
             yield PackageEpochRuntimeQuiescenceV1(
@@ -290,9 +290,13 @@ class PackageEpochRuntimeLeaseRegistry:
                 raise self._error("Package runtime lease is not active", "package_epoch_lease_absent")
             try:
                 with self._io.bind(self._lease_lock_path(lease_id)) as rooted:
-                    rooted.stat()
+                    observed = rooted.stat()
                     try:
-                        rooted.acquire_lock(exclusive=True)
+                        rooted.acquire_lock(
+                            exclusive=True,
+                            create=False,
+                            expected_identity=(observed.st_dev, observed.st_ino),
+                        )
                     except OSError as exc:
                         if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                             raise self._error(
@@ -309,6 +313,46 @@ class PackageEpochRuntimeLeaseRegistry:
                     )
             except OSError as exc:
                 raise self._error("Package runtime lease liveness is unknown", "package_epoch_lease_liveness_unknown") from exc
+
+    def review_orphans(
+        self, *, store_id: str
+    ) -> tuple[PackageEpochRuntimeLeaseV1, ...]:
+        """Report exact leases whose process-held locks have gone away.
+
+        The review has no cleanup effect. ``repair_orphan`` must repeat the
+        liveness check under exclusive coordination before changing history.
+        """
+
+        if store_id != self.store_id:
+            raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
+        with self._coordination("shared"):
+            _, active = self._load_unlocked()
+            orphans: list[PackageEpochRuntimeLeaseV1] = []
+            for lease_id, lease in sorted(active.items()):
+                try:
+                    with self._io.bind(self._lease_lock_path(lease_id)) as rooted:
+                        observed = rooted.stat()
+                        try:
+                            rooted.acquire_lock(
+                                exclusive=True,
+                                create=False,
+                                expected_identity=(observed.st_dev, observed.st_ino),
+                            )
+                        except OSError as exc:
+                            if exc.errno in {
+                                errno.EAGAIN,
+                                errno.EWOULDBLOCK,
+                                errno.EACCES,
+                            }:
+                                continue
+                            raise
+                        orphans.append(lease)
+                except OSError as exc:
+                    raise self._error(
+                        "Package runtime lease liveness is unknown",
+                        "package_epoch_lease_liveness_unknown",
+                    ) from exc
+            return tuple(orphans)
 
     def _release(self, handle: PackageEpochRuntimeLeaseHandle) -> None:
         with self._coordination("exclusive"):
@@ -371,9 +415,13 @@ class PackageEpochRuntimeLeaseRegistry:
         for lease_id in active:
             try:
                 with self._io.bind(self._lease_lock_path(lease_id)) as rooted:
-                    rooted.stat()
+                    observed = rooted.stat()
                     try:
-                        rooted.acquire_lock(exclusive=True)
+                        rooted.acquire_lock(
+                            exclusive=True,
+                            create=False,
+                            expected_identity=(observed.st_dev, observed.st_ino),
+                        )
                     except OSError as exc:
                         if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                             continue
@@ -401,10 +449,14 @@ class PackageEpochRuntimeLeaseRegistry:
         return self.path.with_name(f"{self.path.name}.{lease_id}.lease")
 
     @contextmanager
-    def _coordination(self, mode: Literal["shared", "exclusive"]) -> Iterator[None]:
+    def _coordination(
+        self, mode: Literal["shared", "exclusive"], *, create: bool = True
+    ) -> Iterator[None]:
         with self._io.bind(self.coordination_lock) as rooted:
             try:
-                rooted.acquire_lock(exclusive=mode == "exclusive", suffix=".lock")
+                rooted.acquire_lock(
+                    exclusive=mode == "exclusive", suffix=".lock", create=create
+                )
             except OSError as exc:
                 if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                     raise self._error(

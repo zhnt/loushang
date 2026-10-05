@@ -103,6 +103,30 @@ SOURCE_BACKED_SEAMS = (
     ),
     CapabilitySeam(
         definition=(
+            "loushang.coding.package_product_worker_query_consumer:"
+            "CODING_WORKER_QUERY_DEFINITION"
+        ),
+        providers=(
+            "loushang.coding.package_product_worker_provider:"
+            "coding_worker_query_capability_provider",
+        ),
+        consumers=(
+            (
+                "loushang.coding.package_product_worker_query_consumer:"
+                "CodingWorkerQueryCapabilityConsumer",
+                (
+                    "loushang.coding.package_product_worker_query_consumer:"
+                    "CODING_WORKER_QUERY_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.coding.package_product_worker_operator_query:"
+            "query_coding_product_worker",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.resources_contracts:"
             "RESOURCES_CAPABILITY_DEFINITION"
         ),
@@ -434,6 +458,11 @@ def render_catalog() -> str:
             "Profile slots and individual Tools,",
             "hooks, resources, and Extension contributions do not become top-level",
             "Capability nodes.",
+            "",
+            "`coding.worker.query` has a Product mount only through the explicit "
+            "`loushang-worker-native query` operator path against an existing "
+            "Session. Its source-backed catalog row does not open ordinary Coding "
+            "routing or general third-party Worker use.",
             "",
         )
     )

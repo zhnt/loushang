@@ -158,6 +158,7 @@ def build_agent_product_session_runtime_ports(
     session_dir: Path,
     session_factory: Callable[..., SessionT],
     persist: bool,
+    materialize_new_transcript: bool = False,
     diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
     record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
     copy_file: FileCopy,
@@ -177,6 +178,7 @@ def build_agent_product_session_runtime_ports(
         session_dir=session_dir,
         persist=persist,
         resolve_cwd_override=resolve_existing_cwd,
+        materialize_new_transcript=materialize_new_transcript,
     )
 
     def build_session(
@@ -289,6 +291,7 @@ class AgentProductSessionRuntime(
         session_dir: Path,
         session_factory: Callable[..., SessionT],
         persist: bool = True,
+        materialize_new_transcript: bool = False,
         current_session: SessionT | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         copy_file: FileCopy = copy_file_exclusive,
@@ -311,6 +314,7 @@ class AgentProductSessionRuntime(
                 session_dir=session_dir,
                 session_factory=session_factory,
                 persist=persist,
+                materialize_new_transcript=materialize_new_transcript,
                 copy_file=copy_file,
                 verified_copy_file=verified_copy_file,
                 diagnostics_runtime=self._agent_session_diagnostics_runtime,

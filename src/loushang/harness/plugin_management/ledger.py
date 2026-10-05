@@ -15,6 +15,7 @@ from loushang.harness.journal import (
     append_jsonl_record,
     decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.gc_fence import (
@@ -173,18 +174,20 @@ class PluginDesiredStateLedger:
                 )
 
     def gc_writer_epoch_sealed(self) -> bool:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             return self._load_epoch_records_unlocked().sealed
 
     def snapshot(self) -> PluginDesiredStateSnapshotV1:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed)
@@ -197,19 +200,40 @@ class PluginDesiredStateLedger:
     ]:
         """Capture the snapshot and its exact transition history under one lock."""
 
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed), replayed.transitions
 
+    def capture_read_only(
+        self,
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]:
+        """Capture selection and provenance without creating or repairing state."""
+
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            replayed = self._load_and_replay_unlocked(
+                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False)
+            )
+        return _snapshot(replayed), replayed.transitions
+
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             return self._load_and_replay_unlocked().transitions
 
@@ -377,11 +401,18 @@ class PluginDesiredStateLedger:
             )
             return transition
 
-    def _load_and_replay_unlocked(self) -> _ReplayedLedger:
-        return _replay(self._load_epoch_records_unlocked().records, path=self._path)
+    def _load_and_replay_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> _ReplayedLedger:
+        return _replay(
+            self._load_epoch_records_unlocked(load_policy=load_policy).records,
+            path=self._path,
+        )
 
     def _load_epoch_records_unlocked(
         self,
+        *,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> PluginGcWriterEpochRecords[PluginDesiredStateJournalTransition]:
         if not self._path.exists():
             return PluginGcWriterEpochRecords(records=(), sealed=False)
@@ -393,7 +424,7 @@ class PluginDesiredStateLedger:
                 record_codec=gc_writer_epoch_codec(PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=load_policy or self._load_policy,
             )
             return split_gc_writer_epoch_records(
                 snapshot.records,
@@ -763,6 +794,23 @@ def decode_plugin_desired_state_snapshot(
 ) -> PluginDesiredStateSnapshotV1:
     """Project an already-authorized desired-state journal snapshot."""
 
+    snapshot, _transitions = decode_plugin_desired_state_capture(
+        raw, path=path, gc_gate=gc_gate
+    )
+    return snapshot
+
+
+def decode_plugin_desired_state_capture(
+    raw: str,
+    *,
+    path: str | Path,
+    gc_gate: PluginPackageGcReferenceGatePort | None = None,
+) -> tuple[
+    PluginDesiredStateSnapshotV1,
+    tuple[PluginDesiredStateJournalTransition, ...],
+]:
+    """Project one already-authorized journal and its exact transition history."""
+
     target = Path(path)
     try:
         decoded: JsonlSnapshot[
@@ -801,7 +849,8 @@ def decode_plugin_desired_state_snapshot(
             code=code,
             path=target,
         ) from exc
-    return _snapshot(_replay(records.records, path=target))
+    replayed = _replay(records.records, path=target)
+    return _snapshot(replayed), replayed.transitions
 
 
 def _new_instance_id() -> str:
@@ -821,5 +870,6 @@ __all__ = [
     "PluginDesiredStateSnapshotV1",
     "PluginInstanceIdFactory",
     "PluginLifecycleError",
+    "decode_plugin_desired_state_capture",
     "decode_plugin_desired_state_snapshot",
 ]

@@ -15,6 +15,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
+    PackagePinnedSourceProofError,
 )
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX rooted local Source")
@@ -169,3 +170,45 @@ def test_local_source_refuses_policy_change_before_quarantine(tmp_path: Path) ->
         )
     assert raised.value.code == "package_source_unauthorized"
     assert store.attempt_names() == ()
+
+
+def test_local_source_proves_pinned_bytes_without_creating_owner_state(
+    tmp_path: Path,
+) -> None:
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    source = sources / "plugin.whl"
+    payload = b"verified-wheel-bytes"
+    source.write_bytes(payload)
+    authority = PackagePinnedLocalWheelSourceAuthority(
+        source_root=sources,
+        allowed_digests={str(source): sha256(payload).hexdigest()},
+        policy_revision="local-policy:1",
+        authority_id="coding-local-source:1",
+    )
+    before = tuple(sorted(tmp_path.rglob("*")))
+
+    proof = authority.verify_pinned_bytes(str(source), max_bytes=1024)
+
+    assert proof.source_ref == sha256(str(source).encode()).hexdigest()
+    assert proof.artifact_digest == sha256(payload).hexdigest()
+    assert proof.byte_count == len(payload)
+    assert tuple(sorted(tmp_path.rglob("*"))) == before
+
+    source.write_bytes(b"changed-wheel-bytes")
+    with pytest.raises(PackagePinnedSourceProofError) as changed:
+        authority.verify_pinned_bytes(str(source), max_bytes=1024)
+    assert changed.value.code == "package_source_digest_mismatch"
+
+    source.write_bytes(payload)
+    with pytest.raises(PackagePinnedSourceProofError) as oversized:
+        authority.verify_pinned_bytes(str(source), max_bytes=len(payload) - 1)
+    assert oversized.value.code == "package_source_size_limit"
+
+    source.unlink()
+    outside = tmp_path / "outside.whl"
+    outside.write_bytes(payload)
+    source.symlink_to(outside)
+    with pytest.raises(PackagePinnedSourceProofError) as redirected:
+        authority.verify_pinned_bytes(str(source), max_bytes=1024)
+    assert redirected.value.code == "package_source_provenance_changed"

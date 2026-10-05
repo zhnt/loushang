@@ -136,6 +136,30 @@ def test_journaled_retention_owner_replays_exact_pin_and_release(
     assert len(journal.records()) == 2
 
 
+def test_pin_operation_read_is_strict_and_does_not_create_or_repair(
+    tmp_path: Path,
+) -> None:
+    journal = PackageTransactionPinJournal(tmp_path / "transaction-pins.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_operation_records(OPERATION_ID) == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    owner = PackageJournaledTransactionRetentionOwner(journal=journal)
+    acquired = owner.acquire(_request())
+    assert tuple(
+        record.receipt for record in journal.read_operation_records(OPERATION_ID)
+    ) == (acquired,)
+    assert journal.read_operation_records("other-operation") == ()
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    before = journal.path.read_bytes()
+    with pytest.raises(PackageTransactionPinJournalError) as corrupt:
+        journal.read_operation_records(OPERATION_ID)
+    assert corrupt.value.code == "package_transaction_pin_journal_corrupt"
+    assert journal.path.read_bytes() == before
+
+
 def test_pin_request_derives_exact_canonical_targets_from_verified_plan() -> None:
     request = _request()
 

@@ -1,9 +1,10 @@
-"""Explicit offline Package root GC for a fenced Coding Product workspace."""
+"""Explicit offline Package Store GC for a fenced Coding Product workspace."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -18,21 +19,64 @@ from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_windows_gc_history import (
+    CodingWindowsWorkerGcHistoryAuthority,
+)
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductRootGcCommandV1,
 )
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    WindowsLocalWheelProductSessionOwner,
+)
 from loushang.harness.package_product.product_root_gc_runtime import (
-    PosixLocalWheelProductRootGcOwner,
+    LocalWheelProductRootGcOwner,
     open_posix_local_wheel_product_root_gc,
+    open_windows_local_wheel_product_root_gc,
+)
+from loushang.harness.plugin_management.package_gc_dependencies import (
+    PackageDependencyGcTargetV1,
+)
+from loushang.harness.plugin_management.package_gc_dependency_journal import (
+    PackageDependencyGcAttemptV1,
+)
+from loushang.harness.plugin_management.package_gc_dependency_review import (
+    PackageDependencyGcRepairReviewV1,
 )
 from loushang.harness.plugin_management.package_gc_results import (
     PluginPackageGcAttemptV1,
 )
 
+_GC_REPAIR_ACTOR = "coding:package-gc-cli"
+_GC_REPAIR_POLICY = "coding:package-gc-repair-v1"
+_WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
+
+
+class _CodingPackageGcRepairAuthority:
+    def authorizes(
+        self,
+        review: PackageDependencyGcRepairReviewV1,
+        target: PackageDependencyGcTargetV1,
+    ) -> bool:
+        return (
+            review.actor_id == _GC_REPAIR_ACTOR
+            and review.policy_revision == _GC_REPAIR_POLICY
+            and review.settlement_id == target.settlement_id
+        )
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-package-gc")
     parser.add_argument("--workspace", default=".", help="fenced Coding workspace")
+    parser.add_argument(
+        "--windows-candidate",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--worker-candidates",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     actions = parser.add_subparsers(dest="action", required=True)
     actions.add_parser("prepare", help="recover and seal GC writer owners")
     actions.add_parser("list", help="show exact candidates and durable statuses")
@@ -42,7 +86,50 @@ def main(argv: Sequence[str] | None = None) -> int:
     retry = actions.add_parser("retry", help="retry a durable deletion start")
     retry.add_argument("--reservation-id", required=True)
     retry.add_argument("--attempt-key", required=True)
+    dependency_delete = actions.add_parser(
+        "delete-dependency", help="delete one exact orphan dependency"
+    )
+    dependency_delete.add_argument("--dependency-ref-id", required=True)
+    dependency_delete.add_argument("--settlement-id", required=True)
+    dependency_delete.add_argument("--attempt-key", required=True)
+    dependency_retry = actions.add_parser(
+        "retry-dependency", help="retry a durable dependency deletion start"
+    )
+    dependency_retry.add_argument("--start-id", required=True)
+    dependency_retry.add_argument("--attempt-key", required=True)
+    dependency_debt = actions.add_parser(
+        "inspect-dependency-debt", help="inspect one terminal dependency debt"
+    )
+    dependency_debt.add_argument("--start-id", required=True)
+    dependency_repair_status = actions.add_parser(
+        "inspect-dependency-repair", help="inspect one reviewed repair lineage"
+    )
+    dependency_repair_status.add_argument("--review-id", required=True)
+    dependency_review = actions.add_parser(
+        "review-dependency-debt", help="record an exact terminal-debt review"
+    )
+    dependency_review.add_argument("--start-id", required=True)
+    dependency_review.add_argument("--terminal-attempt-id", required=True)
+    dependency_review.add_argument("--settlement-id", required=True)
+    dependency_review.add_argument("--error-code", required=True)
+    dependency_review.add_argument("--remediation-reference", required=True)
+    dependency_review.add_argument("--prior-repair-result-id")
+    dependency_repair = actions.add_parser(
+        "repair-dependency-debt", help="retry one reviewed terminal debt"
+    )
+    dependency_repair.add_argument("--review-id", required=True)
+    dependency_repair.add_argument("--attempt-key", required=True)
     args = parser.parse_args(argv)
+
+    if (
+        os.name == "nt"
+        and (not args.windows_candidate or not _WINDOWS_CANDIDATE_ROUTE_ADMITTED)
+    ) or (
+        os.name != "nt"
+        and (not sys.platform.startswith("linux") or args.windows_candidate)
+    ):
+        sys.stderr.write("Coding Package GC refused: package_gc_platform_unsupported\n")
+        return 1
 
     try:
         workspace = Path(args.workspace).expanduser().resolve(strict=True)
@@ -54,42 +141,161 @@ def main(argv: Sequence[str] | None = None) -> int:
             workspace=workspace,
             runtime_version=version("loushang"),
             runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            windows_candidate=args.windows_candidate,
+            worker_candidates=args.worker_candidates,
         )
         try:
-            gc = open_posix_local_wheel_product_root_gc(
-                owner.runtime_owner.product_owner
+            product = owner.runtime_owner.product_owner
+            gc = (
+                open_windows_local_wheel_product_root_gc(
+                    product,
+                    repair_authority=_CodingPackageGcRepairAuthority(),
+                    worker_history_authority=CodingWindowsWorkerGcHistoryAuthority(
+                        product
+                    ),
+                )
+                if isinstance(product, WindowsLocalWheelProductSessionOwner)
+                else open_posix_local_wheel_product_root_gc(
+                    product,
+                    repair_authority=_CodingPackageGcRepairAuthority(),
+                )
             )
             document = _run(gc, args)
         finally:
             owner.close()
     except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
         reason = getattr(error, "code", None) or str(error)
-        sys.stderr.write(f"Coding Package root GC refused: {reason}\n")
+        sys.stderr.write(f"Coding Package GC refused: {reason}\n")
         return 1
     sys.stdout.write(json.dumps(document, sort_keys=True) + "\n")
     return 0
 
 
 def _run(
-    gc: PosixLocalWheelProductRootGcOwner, args: argparse.Namespace
+    gc: LocalWheelProductRootGcOwner, args: argparse.Namespace
 ) -> dict[str, object]:
     store_id = gc.product.epoch_runtime.registry.store_id
     if args.action == "prepare":
         gc.prepare()
         return {"disposition": "prepared", "storeId": store_id}
     if args.action == "list":
+        snapshot = gc.operator_snapshot()
         return {
             "candidates": [
                 {
                     "candidateId": item.candidate_id,
                     "pluginId": item.package_revision.plugin_id,
                 }
-                for item in gc.candidates()
+                for item in snapshot.candidates
             ],
-            "statuses": [item.to_dict() for item in gc.statuses()],
+            "statuses": [item.to_dict() for item in snapshot.statuses],
+            "dependencyRetention": [
+                item.to_dict() for item in snapshot.dependency_inspections
+            ],
+            "dependencyRepairs": [
+                item.to_dict() for item in snapshot.dependency_repairs
+            ],
+            "storeId": store_id,
+        }
+    if args.action == "inspect-dependency-debt":
+        start_id = _sha256_id(args.start_id, name="dependency start id")
+        inspection, debt = gc.inspect_terminal_dependency_debt(start_id)
+        target = inspection.target
+        if target is None:
+            raise ValueError("Exact terminal dependency GC target is unavailable")
+        return {
+            "attemptId": debt.attempt_id,
+            "disposition": debt.disposition,
+            "errorCode": debt.error_code,
+            "settlementId": target.settlement_id,
+            "startId": debt.start_id,
+            "storeId": store_id,
+        }
+    if args.action == "inspect-dependency-repair":
+        review_id = _sha256_id(args.review_id, name="dependency repair review id")
+        return {
+            **gc.inspect_dependency_repair(review_id).to_dict(),
+            "storeId": store_id,
+        }
+    if args.action == "review-dependency-debt":
+        start_id = _sha256_id(args.start_id, name="dependency start id")
+        terminal_attempt_id = _sha256_id(
+            args.terminal_attempt_id, name="terminal dependency attempt id"
+        )
+        settlement_id = _sha256_id(args.settlement_id, name="settlement id")
+        review = gc.record_terminal_dependency_review(
+            start_id,
+            expected_terminal_attempt_id=terminal_attempt_id,
+            expected_settlement_id=settlement_id,
+            expected_error_code=_operator_key(args.error_code),
+            actor_id=_GC_REPAIR_ACTOR,
+            policy_revision=_GC_REPAIR_POLICY,
+            remediation_reference=_operator_key(args.remediation_reference),
+            prior_repair_result_id=(
+                None
+                if getattr(args, "prior_repair_result_id", None) is None
+                else _sha256_id(
+                    args.prior_repair_result_id, name="prior repair result id"
+                )
+            ),
+        )
+        return {
+            "reviewId": review.review_id,
+            "startId": review.start_id,
+            "terminalAttemptId": review.terminal_attempt_id,
+            "settlementId": review.settlement_id,
+            "storeId": store_id,
+        }
+    if args.action == "repair-dependency-debt":
+        review_id = _sha256_id(args.review_id, name="dependency repair review id")
+        attempt_key = _operator_key(args.attempt_key)
+        operation_id = _operation_identity(
+            "dependency-repair", store_id, review_id, attempt_key
+        )
+        result = gc.repair_terminal_dependency_debt(
+            review_id,
+            operation_id=operation_id,
+            idempotency_key=operation_id,
+        )
+        return {
+            "repairResultId": result.repair_result_id,
+            "repairStartId": result.repair_start_id,
+            "disposition": result.disposition,
+            "errorCode": result.error_code,
+            "settlementId": None
+            if result.store_result is None
+            else result.store_result.settlement_id,
             "storeId": store_id,
         }
     attempt_key = _operator_key(args.attempt_key)
+    if args.action == "delete-dependency":
+        dependency_ref_id = _sha256_id(args.dependency_ref_id, name="dependency ref id")
+        settlement_id = _sha256_id(args.settlement_id, name="settlement id")
+        operation_id = _operation_identity(
+            "dependency-delete", store_id, dependency_ref_id, attempt_key
+        )
+        return _dependency_attempt_output(
+            gc.delete_dependency(
+                dependency_ref_id,
+                expected_settlement_id=settlement_id,
+                operation_id=operation_id,
+                idempotency_key=operation_id,
+            ),
+            store_id=store_id,
+        )
+    if args.action == "retry-dependency":
+        start_id = _sha256_id(args.start_id, name="dependency start id")
+        operation_id = _operation_identity(
+            "dependency-retry", store_id, start_id, attempt_key
+        )
+        return _dependency_attempt_output(
+            gc.retry_dependency(
+                start_id,
+                operation_id=operation_id,
+                idempotency_key=operation_id,
+            ),
+            store_id=store_id,
+        )
     if args.action == "delete":
         candidate_id = _sha256_id(args.candidate_id, name="candidate id")
         candidates = tuple(
@@ -130,6 +336,21 @@ def _attempt_output(
         "errorCode": attempt.error_code,
         "reservationId": attempt.reservation_id,
         "settlementId": attempt.settlement_id,
+        "storeId": store_id,
+    }
+
+
+def _dependency_attempt_output(
+    attempt: PackageDependencyGcAttemptV1, *, store_id: str
+) -> dict[str, object]:
+    return {
+        "attemptId": attempt.attempt_id,
+        "disposition": attempt.disposition,
+        "errorCode": attempt.error_code,
+        "startId": attempt.start_id,
+        "settlementId": None
+        if attempt.store_result is None
+        else attempt.store_result.settlement_id,
         "storeId": store_id,
     }
 

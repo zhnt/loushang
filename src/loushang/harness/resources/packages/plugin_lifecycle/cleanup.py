@@ -19,6 +19,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
@@ -34,6 +35,7 @@ PACKAGE_QUARANTINE_CLEANUP_STATUS_VERSION = 1
 PACKAGE_QUARANTINE_CLEANUP_RECORD_VERSION = 1
 
 CleanupDisposition = Literal["cleanup_retryable", "cleanup_complete"]
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 class PackageQuarantineCleanupJournalError(RuntimeError):
@@ -300,6 +302,28 @@ class PackageQuarantineCleanupJournal:
         with self._exclusive():
             return _project(self._load_unlocked()).get(cleanup_id)
 
+    def read_operation_tombstones(
+        self, operation_id: str
+    ) -> tuple[PackageQuarantineCleanupStatusV1, ...]:
+        """Read exact cleanup-domain facts without creating or repairing state."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package cleanup operation id is required")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            statuses = _project(
+                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            )
+        return tuple(
+            statuses[cleanup_id]
+            for cleanup_id in sorted(statuses)
+            if statuses[cleanup_id].target.operation_id == operation_id
+        )
+
     def records(self) -> tuple[PackageQuarantineCleanupRecordV1, ...]:
         with self._exclusive():
             return self._load_unlocked()
@@ -313,7 +337,9 @@ class PackageQuarantineCleanupJournal:
             durability=self._durability,
         )
 
-    def _load_unlocked(self) -> tuple[PackageQuarantineCleanupRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageQuarantineCleanupRecordV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -323,7 +349,7 @@ class PackageQuarantineCleanupJournal:
                     record_codec=PACKAGE_QUARANTINE_CLEANUP_JOURNAL_CODEC,
                     format_profile=SORTED_UNICODE_JSONL_FORMAT,
                     durability=self._durability,
-                    load_policy=self._load_policy,
+                    load_policy=load_policy or self._load_policy,
                 )
             )
             _assert_no_duplicate_json_keys(self._path)
@@ -371,6 +397,11 @@ class PackageQuarantineCleanupOwner:
     @property
     def journal(self) -> PackageQuarantineCleanupJournal:
         return self._journal
+
+    def read_operation_tombstones(
+        self, operation_id: str
+    ) -> tuple[PackageQuarantineCleanupStatusV1, ...]:
+        return self._journal.read_operation_tombstones(operation_id)
 
     def record_pending(
         self,

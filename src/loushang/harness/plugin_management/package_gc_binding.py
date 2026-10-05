@@ -22,6 +22,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.records import (
@@ -497,6 +498,14 @@ class PluginPackageGcBindingJournal:
         with journal_file_lock(self._path, "exclusive"):
             return self._load_unlocked()
 
+    def read_records(self) -> tuple[PluginPackageGcBindingV1, ...]:
+        """Observe committed crosswalks without creating or repairing state."""
+
+        with journal_file_read_lock(self._path, "shared", create_lock=False):
+            return self._load_unlocked(
+                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False)
+            )
+
     def claims(self) -> tuple[PluginPackageGcClaimV1, ...]:
         with journal_file_lock(self._claim_path, "exclusive"):
             return self._load_claims_unlocked()
@@ -529,7 +538,9 @@ class PluginPackageGcBindingJournal:
                 "plugin_package_gc_claim_corrupt",
             ) from exc
 
-    def _load_unlocked(self) -> tuple[PluginPackageGcBindingV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PluginPackageGcBindingV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -538,7 +549,7 @@ class PluginPackageGcBindingJournal:
                 record_codec=_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=load_policy or self._load_policy,
             )
             records = loaded.records
             _assert_no_duplicate_json_keys(self._path)

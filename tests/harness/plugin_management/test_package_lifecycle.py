@@ -106,6 +106,44 @@ def test_gc_gate_reenters_through_another_product_binding(tmp_path: Path) -> Non
     assert completed.is_set()
 
 
+def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "gc-reservations.jsonl"
+    gate = PluginPackageGcReservationJournal(path)
+    lock = path.with_name(f"{path.name}.lock")
+    with pytest.raises(FileNotFoundError):
+        with gate.read_guard():
+            pass
+    assert not path.exists()
+    assert not lock.exists()
+
+    with gate.guard():
+        pass
+    before = tuple(sorted(item.name for item in tmp_path.iterdir()))
+    with gate.read_guard() as reserved:
+        assert reserved == frozenset()
+    assert tuple(sorted(item.name for item in tmp_path.iterdir())) == before
+
+    alias = PluginPackageGcReservationJournal(path)
+    with gate.read_guard():
+        with alias.guard() as reserved:
+            assert reserved == frozenset()
+        path.write_bytes(b'{"partial":')
+        with pytest.raises(PluginPackageGcReservationError) as nested_invalid:
+            with alias.guard():
+                pass
+        assert nested_invalid.value.code == "plugin_package_gc_journal_corrupt"
+        assert path.read_bytes() == b'{"partial":'
+
+    original = path.read_bytes()
+    with pytest.raises(PluginPackageGcReservationError) as invalid:
+        with gate.read_guard():
+            pass
+    assert invalid.value.code == "plugin_package_gc_journal_corrupt"
+    assert path.read_bytes() == original
+
+
 def test_gc_writer_epoch_excludes_unbound_and_previous_codecs(
     tmp_path: Path,
 ) -> None:

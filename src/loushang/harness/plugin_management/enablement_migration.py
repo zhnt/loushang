@@ -9,6 +9,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from packaging.version import InvalidVersion, Version
+
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -20,6 +22,7 @@ from loushang.harness.journal import (
     append_jsonl_record,
     decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.application import (
@@ -198,6 +201,10 @@ class PluginEnablementFinalizationEvidenceV1:
             (self.roll_forward_procedure, "roll-forward procedure"),
         ):
             _require_nonempty(value, name=name)
+        try:
+            Version(self.minimum_runtime_version)
+        except InvalidVersion as exc:
+            raise ValueError("Invalid minimum runtime version") from exc
         _require_positive(
             self.minimum_migration_epoch,
             name="minimum migration epoch",
@@ -462,6 +469,16 @@ class PluginEnablementMigrationSnapshotV1:
     finalization_evidence: PluginEnablementFinalizationEvidenceV1 | None
 
 
+class PluginEnablementFinalizationAuthorityPort(Protocol):
+    """Verify the exact migration and external recovery evidence before closure."""
+
+    def verify_finalization(
+        self,
+        migration: PluginEnablementMigrationSnapshotV1,
+        evidence: PluginEnablementFinalizationEvidenceV1,
+    ) -> None: ...
+
+
 class PluginEnablementMigrationJournal:
     """Append-only migration receipt owner, one immutable request per key."""
 
@@ -584,6 +601,8 @@ class PluginEnablementMigrationJournal:
         self,
         migration_id: str,
         evidence: PluginEnablementFinalizationEvidenceV1,
+        *,
+        authority: PluginEnablementFinalizationAuthorityPort | None = None,
     ) -> PluginEnablementMigrationSnapshotV1:
         if not isinstance(evidence, PluginEnablementFinalizationEvidenceV1):
             raise TypeError("Plugin enablement finalization evidence is required")
@@ -602,6 +621,12 @@ class PluginEnablementMigrationJournal:
                     "Plugin enablement compatibility window is not active",
                     code="plugin_enablement_migration_phase_conflict",
                 )
+            if authority is None:
+                raise self._error(
+                    "Plugin enablement finalization authority is unavailable",
+                    code="plugin_enablement_finalization_authority_unavailable",
+                )
+            authority.verify_finalization(current, evidence)
             event = _event_from_snapshot(
                 current,
                 journal_revision=len(events) + 1,
@@ -617,11 +642,11 @@ class PluginEnablementMigrationJournal:
         self,
         key: PluginInstallationKeyV1,
     ) -> PluginEnablementMigrationSnapshotV1 | None:
-        with self._exclusive():
+        with self._read_lock():
             return _project_events(self._load_unlocked()).get(key)
 
     def snapshots(self) -> tuple[PluginEnablementMigrationSnapshotV1, ...]:
-        with self._exclusive():
+        with self._read_lock():
             return tuple(
                 sorted(
                     _project_events(self._load_unlocked()).values(),
@@ -630,7 +655,7 @@ class PluginEnablementMigrationJournal:
             )
 
     def records(self) -> tuple[PluginEnablementMigrationEventV1, ...]:
-        with self._exclusive():
+        with self._read_lock():
             return self._load_unlocked()
 
     def management_snapshot(self) -> PluginManagementMigrationSnapshotV1:
@@ -652,7 +677,12 @@ class PluginEnablementMigrationJournal:
             ),
         )
 
-    def assert_runtime_compatible(self, *, supported_migration_epoch: int) -> None:
+    def assert_runtime_compatible(
+        self,
+        *,
+        supported_migration_epoch: int,
+        runtime_version: str | None = None,
+    ) -> None:
         _require_positive(supported_migration_epoch, name="supported migration epoch")
         for snapshot in self.snapshots():
             required = snapshot.request.migration_epoch
@@ -665,6 +695,26 @@ class PluginEnablementMigrationJournal:
                 raise self._error(
                     "Runtime cannot honor the recorded Plugin migration epoch",
                     code="plugin_enablement_migration_epoch_unsupported",
+                )
+            evidence = snapshot.finalization_evidence
+            if evidence is None:
+                continue
+            if runtime_version is None:
+                raise self._error(
+                    "Runtime version is required for finalized Plugin migration",
+                    code="plugin_enablement_migration_runtime_version_unavailable",
+                )
+            try:
+                current_version = Version(runtime_version)
+            except (InvalidVersion, TypeError) as exc:
+                raise self._error(
+                    "Runtime version is invalid for finalized Plugin migration",
+                    code="plugin_enablement_migration_runtime_version_invalid",
+                ) from exc
+            if current_version < Version(evidence.minimum_runtime_version):
+                raise self._error(
+                    "Runtime predates the finalized Plugin migration window",
+                    code="plugin_enablement_migration_runtime_version_unsupported",
                 )
 
     def assert_legacy_mutation_allowed(self, key: PluginInstallationKeyV1) -> None:
@@ -679,6 +729,14 @@ class PluginEnablementMigrationJournal:
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        )
+
+    def _read_lock(self) -> AbstractContextManager[None]:
+        return journal_file_read_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         )
 
     def _append_unlocked(self, event: PluginEnablementMigrationEventV1) -> None:
@@ -746,11 +804,15 @@ class PluginEnablementMigrationCoordinator:
         journal: PluginEnablementMigrationJournal,
         desired_state: PluginDesiredStateMigrationPort,
         commands: PluginManagementCommandPort,
+        finalization_authority: PluginEnablementFinalizationAuthorityPort | None = None,
+        runtime_version: str | None = None,
         phase_observer: MigrationPhaseObserver | None = None,
     ) -> None:
         self._journal = journal
         self._desired_state = desired_state
         self._commands = commands
+        self._finalization_authority = finalization_authority
+        self._runtime_version = runtime_version
         self._phase_observer = phase_observer
 
     @property
@@ -771,7 +833,8 @@ class PluginEnablementMigrationCoordinator:
         request: PluginEnablementMigrationRequestV1,
     ) -> PluginEnablementMigrationSnapshotV1:
         self._journal.assert_runtime_compatible(
-            supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH
+            supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH,
+            runtime_version=self._runtime_version,
         )
         if request.migration_epoch != PLUGIN_ENABLEMENT_MIGRATION_EPOCH:
             raise PluginEnablementMigrationError(
@@ -819,7 +882,11 @@ class PluginEnablementMigrationCoordinator:
         evidence: PluginEnablementFinalizationEvidenceV1,
     ) -> PluginEnablementMigrationSnapshotV1:
         with self._journal.coordinate():
-            current = self._journal.finalize(migration_id, evidence)
+            current = self._journal.finalize(
+                migration_id,
+                evidence,
+                authority=self._finalization_authority,
+            )
         self._observe("finalized")
         return current
 
@@ -1386,6 +1453,7 @@ __all__ = [
     "PluginEnablementCompatibilityProjectionV1",
     "PluginEnablementCompatibilityProjector",
     "PluginEnablementFinalizationEvidenceV1",
+    "PluginEnablementFinalizationAuthorityPort",
     "PluginEnablementMigrationCoordinator",
     "PluginEnablementMigrationDisposition",
     "PluginEnablementMigrationError",

@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
@@ -38,6 +39,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 
 PACKAGE_CLOSURE_RESOLUTION_RECORD_VERSION = 1
 PACKAGE_CLOSURE_RESOLUTION_BASIS_VERSION = 1
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -489,6 +491,47 @@ class PackageClosureResolutionJournal:
                 else None
             )
 
+    def read_plan(
+        self, *, operation_id: str, attempt_epoch: int
+    ) -> VerifiedClosurePlanV2 | None:
+        """Read a verified closure without creating or repairing owner state."""
+
+        records = self.read_attempt_evidence(
+            operation_id=operation_id, attempt_epoch=attempt_epoch
+        )
+        record = _find_plan(
+            records, operation_id=operation_id, attempt_epoch=attempt_epoch
+        )
+        return (
+            record.evidence
+            if record is not None
+            and isinstance(record.evidence, VerifiedClosurePlanV2)
+            else None
+        )
+
+    def read_attempt_evidence(
+        self, *, operation_id: str, attempt_epoch: int
+    ) -> tuple[PackageClosureResolutionRecordV1, ...]:
+        """Read basis, selections, and plan as one strict attempt snapshot."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package closure operation id is required")
+        if type(attempt_epoch) is not int or attempt_epoch < 1:
+            raise ValueError("Package closure attempt epoch is invalid")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record
+            for record in records
+            if record.operation_id == operation_id
+            and record.attempt_epoch == attempt_epoch
+        )
+
     def append_plan(
         self,
         *,
@@ -581,7 +624,9 @@ class PackageClosureResolutionJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_unlocked(self) -> tuple[PackageClosureResolutionRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageClosureResolutionRecordV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -591,7 +636,7 @@ class PackageClosureResolutionJournal:
                     record_codec=PACKAGE_CLOSURE_RESOLUTION_JOURNAL_CODEC,
                     format_profile=SORTED_UNICODE_JSONL_FORMAT,
                     durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
+                    load_policy=load_policy or self._load_policy,
                 )
             )
             records = snapshot.records

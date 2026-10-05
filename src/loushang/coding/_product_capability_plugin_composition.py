@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 import stat
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
@@ -27,6 +29,10 @@ from loushang.harness.package_product.product_runtime import (
 )
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    windows_flush_directory,
 )
 from loushang.harness.resources.plugins.authority import PluginRuntimeResolution
 from loushang.harness.resources.plugins.contribution_types import (
@@ -54,6 +60,7 @@ from ._base_product_composition import (
     _resource_bodies,
 )
 from ._capability_plugin_composition import (
+    _PRODUCT_POLICY_REVISION,
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionPreparation,
     _assembly_request,
@@ -71,6 +78,10 @@ from ._capability_plugin_specs import (
 from ._resource_catalog_shadow import (
     complete_coding_package_plugin_selection_seed,
 )
+from .package_legacy_data_trust import (
+    EXTERNAL_DATA_TRUST_CLASSES,
+    permits_external_data_owner,
+)
 from .package_product_revisions import (
     open_coding_product_builtin_resolution,
     open_coding_product_capability_resolution,
@@ -78,6 +89,77 @@ from .package_product_revisions import (
 
 _MAX_FILES = 64
 _MAX_BYTES = 1024 * 1024
+
+
+def _prepare_product_approval_state_root(state_root: Path) -> Path:
+    if os.name == "nt":
+        return _prepare_windows_product_approval_state_root(state_root)
+    if os.name != "posix":
+        raise RuntimeError("Coding Product approval state needs a native owner")
+    root = prepare_private_directory_chain(state_root)
+    metadata = root.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        raise ValueError("Coding Product approval state is not private")
+    return root
+
+
+def _prepare_windows_product_approval_state_root(state_root: Path) -> Path:
+    if not isinstance(state_root, Path) or not state_root.is_absolute():
+        raise ValueError("Coding Product approval state root is invalid")
+    target = state_root / "product-private"
+    missing: list[str] = []
+    existing = target
+    while not existing.exists():
+        if existing.parent == existing or len(missing) >= 8:
+            raise ValueError("Coding Product approval state parent is unavailable")
+        missing.append(existing.name)
+        existing = existing.parent
+    with (
+        ExitStack() as stack,
+        WindowsPrivateDirectoryAcl() as private_acl,
+        WindowsPrivateDirectoryAcl(inherit_children=True) as leaf_acl,
+    ):
+        parent_fd = open_windows_directory(existing, read_control=True)
+        stack.callback(os.close, parent_fd)
+        identity = os.fstat(parent_fd)
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError("Coding Product approval state parent changed")
+        if not missing:
+            leaf_acl.validate(parent_fd)
+        for index, name in enumerate(reversed(missing)):
+            acl = leaf_acl if index == len(missing) - 1 else private_acl
+            created = False
+            try:
+                child_fd = open_windows_directory(
+                    name,
+                    dir_fd=parent_fd,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                created = True
+            except FileExistsError:
+                child_fd = open_windows_directory(
+                    name, dir_fd=parent_fd, read_control=True
+                )
+            stack.callback(os.close, child_fd)
+            acl.validate(child_fd)
+            if created:
+                windows_flush_directory(parent_fd)
+            parent_fd = child_fd
+        if (identity.st_dev, identity.st_ino) != (
+            existing.stat().st_dev,
+            existing.stat().st_ino,
+        ):
+            raise OSError("Coding Product approval state parent changed")
+    return target
 
 
 @dataclass(slots=True)
@@ -139,8 +221,6 @@ def prepare_coding_builtin_product_composition(
 
     if not isinstance(base_compilation, CodingBaseProductCompilation):
         raise TypeError("Coding Product base compilation is invalid")
-    if os.name != "posix":
-        raise RuntimeError("Coding Product composition requires POSIX")
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
@@ -152,14 +232,7 @@ def prepare_coding_builtin_product_composition(
     ):
         raise TypeError("Coding Product Capability configuration type is invalid")
     _read_clock(clock)
-    root = prepare_private_directory_chain(state_root)
-    metadata = root.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != os.getuid()
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-    ):
-        raise ValueError("Coding Product approval state is not private")
+    root = _prepare_product_approval_state_root(state_root)
 
     runtime = open_coding_product_builtin_resolution(
         product_runtime,
@@ -283,7 +356,7 @@ def prepare_coding_product_capability_plugin_composition(
     configurations: Mapping[str, CodingCapabilityPluginConfig],
     state_root: Path,
     clock: Callable[[], int],
-    product_policy_revision: str,
+    product_policy_revision: str = _PRODUCT_POLICY_REVISION,
 ) -> CodingCapabilityPluginCompositionPreparation:
     """Approve exact B-selected Definitions and compile inert Provider inputs.
 
@@ -292,8 +365,6 @@ def prepare_coding_product_capability_plugin_composition(
     requires the normal host-Provider binding and Session graph publication.
     """
 
-    if os.name != "posix":
-        raise RuntimeError("Coding Product Capability composition requires POSIX")
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("Coding Product Capability Session id is invalid")
     if not isinstance(configurations, Mapping) or not configurations:
@@ -307,14 +378,7 @@ def prepare_coding_product_capability_plugin_composition(
     if not isinstance(product_policy_revision, str) or not product_policy_revision:
         raise ValueError("Coding Product Capability policy revision is invalid")
     _read_clock(clock)
-    root = prepare_private_directory_chain(state_root)
-    metadata = root.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != os.getuid()
-        or stat.S_IMODE(metadata.st_mode) & 0o077
-    ):
-        raise ValueError("Coding Product Capability approval state is not private")
+    root = _prepare_product_approval_state_root(state_root)
 
     runtime = open_coding_product_capability_resolution(
         product_runtime, plugin_ids=tuple(spec.plugin_id for spec in specs)
@@ -403,9 +467,15 @@ def _validate_product_lineage(
     for package, binding, item in zip(
         runtime.packages, runtime.bindings, selected, strict=True
     ):
-        item.verified_manifest()
+        verified = item.verified_manifest()
         if (
-            package.manifest.name != item.manifest.name
+            package.manifest.name != verified.name
+            or package.manifest.version != verified.version
+            or package.manifest.metadata != verified.metadata
+            or package.manifest_digest != verified.manifest_digest
+            or package.contribution_index != verified.contribution_index
+            or not package.manifest.enabled
+            or not package.source.enabled
             or package.content_digest != item.snapshot.root_ref.artifact_digest
             or binding.source_identity
             != item.snapshot.package_revision.package_source_identity
@@ -503,22 +573,35 @@ def _builtin_plan_seed(
         item.manifest.name
         for item in selected
         if item.source_trust_snapshot is not None
-        and item.source_trust_snapshot.source_trust_class == "local-data-only"
+        and item.source_trust_snapshot.source_trust_class in EXTERNAL_DATA_TRUST_CLASSES
+        and all(
+            permits_external_data_owner(
+                item.source_trust_snapshot.source_trust_class,
+                reservation.owner,
+            )
+            for reservation, _ in item.verified_data_only_declarations()
+        )
+    }
+    external_data_owners = {
+        reservation.owner
+        for item in selected
+        if item.manifest.name in selected_data_ids
+        for reservation, _ in item.verified_data_only_declarations()
+    }
+    missing_data_owners = external_data_owners - {
+        item.owner_key[0] for item in base_compilation.owner_bindings
     }
     initial_owner_bindings = (
         *base_compilation.owner_bindings,
         *(
             _owner_bindings(
                 include_tools=False,
-                include_prompt=False,
-                include_skill=True,
+                include_prompt="resources.prompt" in missing_data_owners,
+                include_skill="resources.skill" in missing_data_owners,
+                include_theme="resources.theme" in missing_data_owners,
                 include_command=False,
             )
-            if selected_data_ids
-            and not any(
-                item.owner_key[0] == "resources.skill"
-                for item in base_compilation.owner_bindings
-            )
+            if missing_data_owners
             else ()
         ),
     )
@@ -527,17 +610,34 @@ def _builtin_plan_seed(
             authority=OwnerContributionAuthority(
                 replace(
                     binding.authority.policy,
-                    allowed_source_trust_classes=(
-                        ("host-equivalent-local", "local-data-only")
-                        if PluginContributionRef("coding.base", "skill-standard")
-                        in base_plan.selected_contributions
-                        else ("local-data-only",)
+                    allowed_source_trust_classes=tuple(
+                        sorted(
+                            (
+                                {"host-equivalent-local"}
+                                if any(
+                                    item.plugin_id == "coding.base"
+                                    and item.owner_id == binding.owner_key[0]
+                                    for item in base_compilation.product_composition.resource_admissions
+                                )
+                                else set()
+                            )
+                            | {
+                                item.source_trust_snapshot.source_trust_class
+                                for item in selected
+                                if item.manifest.name in selected_data_ids
+                                and item.source_trust_snapshot is not None
+                                and any(
+                                    reservation.owner == binding.owner_key[0]
+                                    for reservation, _ in item.verified_data_only_declarations()
+                                )
+                            }
+                        )
                     ),
                 )
             ),
             admission_ttl_seconds=binding.admission_ttl_seconds,
         )
-        if selected_data_ids and binding.owner_key[0] == "resources.skill"
+        if binding.owner_key[0] in external_data_owners
         else binding
         for binding in initial_owner_bindings
     )

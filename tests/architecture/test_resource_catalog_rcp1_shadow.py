@@ -128,6 +128,8 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
 
     assert {path for path in production_paths if _imports_catalog_module(path)} == {
         Path("src/loushang/coding/_resource_catalog_shadow.py"),
+        # Product-selected Store bytes enter through this explicit Catalog source.
+        Path("src/loushang/harness/resource_catalog/product_snapshot_source.py"),
         RESOURCE_ROOT / "_loader_pipeline.py",
         RESOURCE_ROOT / "loader.py",
     }

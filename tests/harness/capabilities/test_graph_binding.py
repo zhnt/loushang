@@ -28,6 +28,7 @@ from loushang.harness.capabilities.graph_runtime import (
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
     CapabilityBundleValue,
+    CapabilityBundleVisibilityGate,
     CapabilityFacetBinding,
     CapabilityProviderContext,
 )
@@ -87,6 +88,7 @@ def _binding(
     create=None,  # type: ignore[no-untyped-def]
     dispose=None,  # type: ignore[no-untyped-def]
     fingerprint: str | None = None,
+    visibility_gates: tuple[CapabilityBundleVisibilityGate, ...] = (),
 ) -> CapabilityBundleProviderBinding:
     if create is None:
 
@@ -104,6 +106,7 @@ def _binding(
         binding_input_fingerprint=fingerprint or _fingerprint(provider.provider_id),
         create=create,
         dispose=dispose,
+        visibility_gates=visibility_gates,
     )
 
 
@@ -571,8 +574,15 @@ async def _cancellation_after_publication_joins_old_generation_retirement() -> N
     retirement_started = asyncio.Event()
     allow_retirement = asyncio.Event()
     retired: list[str] = []
+    old_gate = CapabilityBundleVisibilityGate(
+        graph_generation=1, validate_current=lambda: None
+    )
+    new_gate = CapabilityBundleVisibilityGate(
+        graph_generation=2, validate_current=lambda: None
+    )
 
     async def dispose_original(_value: CapabilityBundleValue) -> None:
+        assert old_gate.state == "retired"
         retirement_started.set()
         await allow_retirement.wait()
         retired.append("old")
@@ -591,7 +601,14 @@ async def _cancellation_after_publication_joins_old_generation_retirement() -> N
             definitions=(definition,),
             providers=(original_provider,),
         ),
-        (_binding(original_provider, value="old", dispose=dispose_original),),
+        (
+            _binding(
+                original_provider,
+                value="old",
+                dispose=dispose_original,
+                visibility_gates=(old_gate,),
+            ),
+        ),
     )
 
     replacement_task = asyncio.create_task(
@@ -603,11 +620,19 @@ async def _cancellation_after_publication_joins_old_generation_retirement() -> N
                 definitions=(definition,),
                 providers=(replacement_provider,),
             ),
-            (_binding(replacement_provider, value="new"),),
+            (
+                _binding(
+                    replacement_provider,
+                    value="new",
+                    visibility_gates=(new_gate,),
+                ),
+            ),
         )
     )
     await retirement_started.wait()
     assert runtime.generation == 2
+    assert old_gate.state == "retired"
+    assert new_gate.state == "visible"
     replacement_task.cancel()
     await asyncio.sleep(0)
     assert not replacement_task.done()
@@ -624,6 +649,8 @@ async def _cancellation_after_publication_joins_old_generation_retirement() -> N
     assert runtime.capture(requirement).require("value") == "new"
     assert runtime.last_attempt is not None
     assert runtime.last_attempt.state == "committed"
+    assert await binder.dispose(runtime) == ()
+    assert new_gate.state == "retired"
 
 
 def test_graph_dispose_retries_retryable_provider_cleanup() -> None:
@@ -737,6 +764,210 @@ async def _failed_construction_retains_retryable_registration_cleanup() -> None:
     assert len(disposal_attempts) == 2
     assert runtime.registration_inventory is not None
     assert runtime.registration_inventory.entries == ()
+
+
+def test_graph_publishes_facet_gate_after_construction_and_retires_before_release() -> (
+    None
+):
+    async def scenario() -> None:
+        provider = _provider("coding.hover")
+        plan = _plan(
+            product_id="coding",
+            roots=("coding.hover",),
+            definitions=(_definition("coding.hover"),),
+            providers=(provider,),
+        )
+        events: list[str] = []
+        gate = CapabilityBundleVisibilityGate(
+            graph_generation=1, validate_current=lambda: events.append("validated")
+        )
+
+        def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
+            assert gate.state == "staged"
+            events.append("constructed")
+            return CapabilityBundleValue((CapabilityFacetBinding("value", "ready"),))
+
+        async def dispose(_value: CapabilityBundleValue) -> None:
+            events.append(f"released:{gate.state}")
+
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:visibility",
+            profile_fingerprint=_fingerprint("visibility"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(
+            runtime,
+            plan,
+            (
+                _binding(
+                    provider, create=create, dispose=dispose, visibility_gates=(gate,)
+                ),
+            ),
+        )
+        assert gate.state == "visible"
+        assert events == ["constructed", "validated"]
+        assert await binder.dispose(runtime) == ()
+        assert gate.state == "retired"
+        assert events == ["constructed", "validated", "released:retired"]
+
+    asyncio.run(scenario())
+
+
+def test_graph_visibility_failure_retires_staged_gate_and_preserves_old_graph() -> None:
+    async def scenario() -> None:
+        provider = _provider("coding.hover")
+        plan = _plan(
+            product_id="coding",
+            roots=("coding.hover",),
+            definitions=(_definition("coding.hover"),),
+            providers=(provider,),
+        )
+        old_gate = CapabilityBundleVisibilityGate(
+            graph_generation=1, validate_current=lambda: None
+        )
+
+        def fail_publication() -> None:
+            raise RuntimeError("owner generation changed")
+
+        new_gate = CapabilityBundleVisibilityGate(
+            graph_generation=2, validate_current=fail_publication
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:rollback",
+            profile_fingerprint=_fingerprint("rollback"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(
+            runtime,
+            plan,
+            (
+                _binding(
+                    provider,
+                    value="old",
+                    fingerprint=_fingerprint("old-attempt"),
+                    visibility_gates=(old_gate,),
+                ),
+            ),
+        )
+        original_snapshot = runtime.snapshot
+        with pytest.raises(CapabilityGraphBindingError) as failure:
+            await binder.bind(
+                runtime,
+                plan,
+                (
+                    _binding(
+                        provider,
+                        value="new",
+                        fingerprint=_fingerprint("new-attempt"),
+                        visibility_gates=(new_gate,),
+                    ),
+                ),
+            )
+        assert failure.value.diagnostic_codes == (
+            "provider_visibility_publication_failed",
+        )
+        assert runtime.snapshot is original_snapshot
+        assert old_gate.state == "visible"
+        assert new_gate.state == "retired"
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_graph_visibility_gate_refuses_wrong_graph_generation() -> None:
+    async def scenario() -> None:
+        provider = _provider("coding.hover")
+        plan = _plan(
+            product_id="coding",
+            roots=("coding.hover",),
+            definitions=(_definition("coding.hover"),),
+            providers=(provider,),
+        )
+        validated: list[str] = []
+        gate = CapabilityBundleVisibilityGate(
+            graph_generation=2,
+            validate_current=lambda: validated.append("current"),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:wrong-generation",
+            profile_fingerprint=_fingerprint("wrong-generation"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        with pytest.raises(CapabilityGraphBindingError) as failure:
+            await binder.bind(
+                runtime,
+                plan,
+                (_binding(provider, value="hover", visibility_gates=(gate,)),),
+            )
+        assert failure.value.diagnostic_codes == (
+            "provider_visibility_publication_failed",
+        )
+        assert validated == []
+        assert gate.state == "retired"
+        assert runtime.snapshot is None
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_graph_visibility_gate_reuse_requires_the_same_attempt_object() -> None:
+    async def scenario() -> None:
+        provider = _provider("coding.hover")
+        plan = _plan(
+            product_id="coding",
+            roots=("coding.hover",),
+            definitions=(_definition("coding.hover"),),
+            providers=(provider,),
+        )
+        old_gate = CapabilityBundleVisibilityGate(
+            graph_generation=1, validate_current=lambda: None
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:reuse",
+            profile_fingerprint=_fingerprint("reuse"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(
+            runtime,
+            plan,
+            (_binding(provider, value="old", visibility_gates=(old_gate,)),),
+        )
+        fresh_gate = CapabilityBundleVisibilityGate(
+            graph_generation=1, validate_current=lambda: None
+        )
+        with pytest.raises(CapabilityGraphBindingError) as failure:
+            await binder.bind(
+                runtime,
+                plan,
+                (_binding(provider, value="new", visibility_gates=(fresh_gate,)),),
+            )
+        assert failure.value.diagnostic_codes == ("provider_visibility_reuse_mismatch",)
+        assert old_gate.state == "visible"
+        assert fresh_gate.state == "staged"
+        with pytest.raises(CapabilityGraphBindingError) as live_reuse:
+            await binder.bind(
+                runtime,
+                plan,
+                (
+                    _binding(
+                        provider,
+                        value="replacement",
+                        fingerprint=_fingerprint("different-attempt"),
+                        visibility_gates=(old_gate,),
+                    ),
+                ),
+            )
+        assert live_reuse.value.diagnostic_codes == (
+            "provider_visibility_gate_already_live",
+        )
+        assert old_gate.state == "visible"
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
 
 
 def test_graph_dispose_inventory_tracks_retryable_registration_cleanup() -> None:

@@ -20,6 +20,10 @@ PACKAGE_LIFECYCLE_STATUS_VERSION = 1
 PACKAGE_LIFECYCLE_RETRY_REQUEST_VERSION = 1
 PACKAGE_LIFECYCLE_CANCEL_REQUEST_VERSION = 1
 PACKAGE_LIFECYCLE_JOURNAL_RECORD_VERSION = 1
+PACKAGE_LIFECYCLE_REBIND_RECORD_VERSION = 1
+PACKAGE_LIFECYCLE_PINNED_ADOPTION_RECORD_VERSION = 1
+PACKAGE_LIFECYCLE_STAGING_ADOPTION_RECORD_VERSION = 1
+PACKAGE_LIFECYCLE_RESTART_RECORD_VERSION = 1
 
 PackageLifecycleAction = Literal[
     "materialize",
@@ -105,6 +109,14 @@ _DISPOSITIONS = {
     "cancelled",
     "retryable_failure",
     "committed",
+}
+_RESTARTABLE_PHASES = {
+    "acquiring",
+    "acquired",
+    "inspecting",
+    "extracted",
+    "resolving_closure",
+    "closure_verified",
 }
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _RECHECK_RULE = "before_acquisition_and_committed_set_publication"
@@ -1093,6 +1105,807 @@ class PackageLifecycleCancelRequestV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PackageLifecycleRestartRequestV1:
+    """Exact failed-attempt CAS and Product proofs for a fresh acquisition."""
+
+    operation_id: str
+    request_fingerprint: str
+    expected_phase: PackageLifecyclePhase
+    expected_journal_revision: int
+    expected_attempt_epoch: int
+    expected_attempt_revision: int
+    source_proof_ref: str
+    cleanup_evidence_ref: str
+    lease_snapshot_id: str
+    request_version: int = 1
+    restart_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.operation_id, name="restart operation id")
+        for value, name in (
+            (self.request_fingerprint, "restart request fingerprint"),
+            (self.source_proof_ref, "restart Source proof ref"),
+            (self.cleanup_evidence_ref, "restart cleanup evidence ref"),
+            (self.lease_snapshot_id, "restart lease snapshot id"),
+        ):
+            _require_sha256(value, name=name)
+        if self.expected_phase not in _RESTARTABLE_PHASES:
+            raise ValueError("Unsupported Package restart phase")
+        _require_positive(
+            self.expected_journal_revision, name="restart operation revision"
+        )
+        _require_positive(self.expected_attempt_epoch, name="restart attempt epoch")
+        _require_positive(
+            self.expected_attempt_revision, name="restart attempt revision"
+        )
+        if self.request_version != 1:
+            raise ValueError("Unsupported Package restart request")
+        object.__setattr__(self, "restart_id", _fingerprint(self._identity_dict()))
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            "operationId": self.operation_id,
+            "requestFingerprint": self.request_fingerprint,
+            "expectedPhase": self.expected_phase,
+            "expectedJournalRevision": self.expected_journal_revision,
+            "expectedAttemptEpoch": self.expected_attempt_epoch,
+            "expectedAttemptRevision": self.expected_attempt_revision,
+            "sourceProofRef": self.source_proof_ref,
+            "cleanupEvidenceRef": self.cleanup_evidence_ref,
+            "leaseSnapshotId": self.lease_snapshot_id,
+            "requestVersion": self.request_version,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"restartId": self.restart_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleRestartRequestV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "restartId", "operationId", "requestFingerprint", "expectedPhase",
+                "expectedJournalRevision", "expectedAttemptEpoch",
+                "expectedAttemptRevision", "sourceProofRef", "cleanupEvidenceRef",
+                "leaseSnapshotId", "requestVersion",
+            },
+            name="Package restart request",
+        )
+        result = cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            request_fingerprint=_wire_string(
+                document["requestFingerprint"], name="request fingerprint"
+            ),
+            expected_phase=cast(
+                PackageLifecyclePhase,
+                _wire_string(document["expectedPhase"], name="expected phase"),
+            ),
+            expected_journal_revision=_wire_positive(
+                document["expectedJournalRevision"], name="operation revision"
+            ),
+            expected_attempt_epoch=_wire_positive(
+                document["expectedAttemptEpoch"], name="attempt epoch"
+            ),
+            expected_attempt_revision=_wire_positive(
+                document["expectedAttemptRevision"], name="attempt revision"
+            ),
+            source_proof_ref=_wire_string(
+                document["sourceProofRef"], name="Source proof ref"
+            ),
+            cleanup_evidence_ref=_wire_string(
+                document["cleanupEvidenceRef"], name="cleanup evidence ref"
+            ),
+            lease_snapshot_id=_wire_string(
+                document["leaseSnapshotId"], name="lease snapshot id"
+            ),
+            request_version=_wire_int(document["requestVersion"], name="version"),
+        )
+        if result.restart_id != document["restartId"]:
+            raise ValueError("Package restart identity changed")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleRestartRecordV1:
+    """Append-only phase reset authorized outside the journal by Product."""
+
+    record_revision: int
+    prior_operation_revision: int
+    prior_attempt_revision: int
+    request: PackageLifecycleRequestV2
+    status: PackageLifecycleStatusV1
+    restart: PackageLifecycleRestartRequestV1
+    record_kind: Literal["restart"] = "restart"
+    record_version: int = PACKAGE_LIFECYCLE_RESTART_RECORD_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.record_revision, name="restart record revision")
+        _require_nonnegative(
+            self.prior_operation_revision, name="prior operation revision"
+        )
+        _require_nonnegative(self.prior_attempt_revision, name="prior attempt revision")
+        if (
+            not isinstance(self.request, PackageLifecycleRequestV2)
+            or not isinstance(self.status, PackageLifecycleStatusV1)
+            or not isinstance(self.restart, PackageLifecycleRestartRequestV1)
+            or self.record_kind != "restart"
+            or self.record_version != PACKAGE_LIFECYCLE_RESTART_RECORD_VERSION
+            or self.request.operation_id != self.status.operation_id
+            or self.request.request_fingerprint != self.status.request_fingerprint
+            or self.restart.operation_id != self.status.operation_id
+            or self.restart.request_fingerprint != self.status.request_fingerprint
+            or self.restart.expected_journal_revision != self.prior_operation_revision
+            or self.restart.expected_attempt_revision != self.prior_attempt_revision
+            or self.restart.expected_attempt_epoch != self.status.attempt_epoch
+            or self.status.attempt_revision != self.record_revision
+        ):
+            raise ValueError("Package restart record changed owner identity")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "priorAttemptRevision": self.prior_attempt_revision,
+            "priorOperationRevision": self.prior_operation_revision,
+            "recordKind": self.record_kind,
+            "recordRevision": self.record_revision,
+            "recordVersion": self.record_version,
+            "request": self.request.to_dict(),
+            "status": self.status.to_dict(),
+            "restart": self.restart.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleRestartRecordV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "priorAttemptRevision", "priorOperationRevision", "recordKind",
+                "recordRevision", "recordVersion", "request", "status", "restart",
+            },
+            name="Package restart record",
+        )
+        request = decode_package_lifecycle_request(document["request"])
+        if not isinstance(request, PackageLifecycleRequestV2):
+            raise ValueError("Package restart requires a v2 original request")
+        return cls(
+            record_revision=_wire_positive(
+                document["recordRevision"], name="record revision"
+            ),
+            prior_operation_revision=_wire_nonnegative(
+                document["priorOperationRevision"], name="prior operation revision"
+            ),
+            prior_attempt_revision=_wire_nonnegative(
+                document["priorAttemptRevision"], name="prior attempt revision"
+            ),
+            request=request,
+            status=PackageLifecycleStatusV1.from_dict(document["status"]),
+            restart=PackageLifecycleRestartRequestV1.from_dict(document["restart"]),
+            record_kind=cast(
+                Literal["restart"],
+                _wire_string(document["recordKind"], name="kind"),
+            ),
+            record_version=_wire_int(document["recordVersion"], name="version"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleRebindRequestV1:
+    """Exact failed attempt and independently reviewed recovery evidence refs."""
+
+    operation_id: str
+    request_fingerprint: str
+    expected_attempt_epoch: int
+    expected_attempt_revision: int
+    new_runtime_admission_request_id: str
+    source_proof_ref: str
+    cleanup_evidence_ref: str
+    lease_snapshot_id: str
+    request_version: int = 1
+    decision_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.operation_id, name="rebind operation id")
+        for value, name in (
+            (self.request_fingerprint, "rebind request fingerprint"),
+            (self.new_runtime_admission_request_id, "new runtime admission id"),
+            (self.source_proof_ref, "rebind Source proof ref"),
+            (self.cleanup_evidence_ref, "rebind cleanup evidence ref"),
+            (self.lease_snapshot_id, "rebind lease snapshot id"),
+        ):
+            _require_sha256(value, name=name)
+        _require_positive(self.expected_attempt_epoch, name="rebind attempt epoch")
+        _require_positive(
+            self.expected_attempt_revision, name="rebind attempt revision"
+        )
+        if self.request_version != 1:
+            raise ValueError("Unsupported Package rebind request")
+        object.__setattr__(self, "decision_id", _fingerprint(self._identity_dict()))
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            "operationId": self.operation_id,
+            "requestFingerprint": self.request_fingerprint,
+            "expectedAttemptEpoch": self.expected_attempt_epoch,
+            "expectedAttemptRevision": self.expected_attempt_revision,
+            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
+            "sourceProofRef": self.source_proof_ref,
+            "cleanupEvidenceRef": self.cleanup_evidence_ref,
+            "leaseSnapshotId": self.lease_snapshot_id,
+            "requestVersion": self.request_version,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"decisionId": self.decision_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleRebindRequestV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "decisionId", "operationId", "requestFingerprint",
+                "expectedAttemptEpoch", "expectedAttemptRevision",
+                "newRuntimeAdmissionRequestId", "sourceProofRef",
+                "cleanupEvidenceRef", "leaseSnapshotId", "requestVersion",
+            },
+            name="Package rebind request",
+        )
+        result = cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            request_fingerprint=_wire_string(
+                document["requestFingerprint"], name="request fingerprint"
+            ),
+            expected_attempt_epoch=_wire_positive(
+                document["expectedAttemptEpoch"], name="attempt epoch"
+            ),
+            expected_attempt_revision=_wire_positive(
+                document["expectedAttemptRevision"], name="attempt revision"
+            ),
+            new_runtime_admission_request_id=_wire_string(
+                document["newRuntimeAdmissionRequestId"], name="new admission id"
+            ),
+            source_proof_ref=_wire_string(
+                document["sourceProofRef"], name="Source proof ref"
+            ),
+            cleanup_evidence_ref=_wire_string(
+                document["cleanupEvidenceRef"], name="cleanup evidence ref"
+            ),
+            lease_snapshot_id=_wire_string(
+                document["leaseSnapshotId"], name="lease snapshot id"
+            ),
+            request_version=_wire_int(document["requestVersion"], name="version"),
+        )
+        if result.decision_id != document["decisionId"]:
+            raise ValueError("Package rebind decision identity changed")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecyclePinnedAdoptionRequestV1:
+    """Inert same-attempt lease adoption proposal for one acquired pin."""
+
+    operation_id: str
+    request_fingerprint: str
+    expected_journal_revision: int
+    expected_attempt_epoch: int
+    expected_attempt_revision: int
+    new_runtime_admission_request_id: str
+    source_proof_ref: str
+    closure_plan_fingerprint: str
+    pin_receipt_id: str
+    lease_snapshot_id: str
+    request_version: int = 1
+    decision_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.operation_id, name="pinned adoption operation id")
+        for value, name in (
+            (self.request_fingerprint, "pinned adoption request fingerprint"),
+            (self.new_runtime_admission_request_id, "new runtime admission id"),
+            (self.source_proof_ref, "pinned Source proof ref"),
+            (self.closure_plan_fingerprint, "verified closure plan fingerprint"),
+            (self.pin_receipt_id, "acquired pin receipt id"),
+            (self.lease_snapshot_id, "pinned adoption lease snapshot id"),
+        ):
+            _require_sha256(value, name=name)
+        _require_positive(self.expected_journal_revision, name="operation revision")
+        _require_positive(self.expected_attempt_epoch, name="attempt epoch")
+        _require_nonnegative(self.expected_attempt_revision, name="attempt revision")
+        if self.request_version != 1:
+            raise ValueError("Unsupported pinned adoption request")
+        object.__setattr__(self, "decision_id", _fingerprint(self._identity_dict()))
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            "operationId": self.operation_id,
+            "requestFingerprint": self.request_fingerprint,
+            "expectedJournalRevision": self.expected_journal_revision,
+            "expectedAttemptEpoch": self.expected_attempt_epoch,
+            "expectedAttemptRevision": self.expected_attempt_revision,
+            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
+            "sourceProofRef": self.source_proof_ref,
+            "closurePlanFingerprint": self.closure_plan_fingerprint,
+            "pinReceiptId": self.pin_receipt_id,
+            "leaseSnapshotId": self.lease_snapshot_id,
+            "requestVersion": self.request_version,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"decisionId": self.decision_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecyclePinnedAdoptionRequestV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "decisionId", "operationId", "requestFingerprint",
+                "expectedJournalRevision", "expectedAttemptEpoch",
+                "expectedAttemptRevision", "newRuntimeAdmissionRequestId",
+                "sourceProofRef", "closurePlanFingerprint", "pinReceiptId",
+                "leaseSnapshotId", "requestVersion",
+            },
+            name="Package pinned adoption request",
+        )
+        result = cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            request_fingerprint=_wire_string(
+                document["requestFingerprint"], name="request fingerprint"
+            ),
+            expected_journal_revision=_wire_positive(
+                document["expectedJournalRevision"], name="operation revision"
+            ),
+            expected_attempt_epoch=_wire_positive(
+                document["expectedAttemptEpoch"], name="attempt epoch"
+            ),
+            expected_attempt_revision=_wire_nonnegative(
+                document["expectedAttemptRevision"], name="attempt revision"
+            ),
+            new_runtime_admission_request_id=_wire_string(
+                document["newRuntimeAdmissionRequestId"], name="admission id"
+            ),
+            source_proof_ref=_wire_string(
+                document["sourceProofRef"], name="Source proof ref"
+            ),
+            closure_plan_fingerprint=_wire_string(
+                document["closurePlanFingerprint"], name="closure plan fingerprint"
+            ),
+            pin_receipt_id=_wire_string(document["pinReceiptId"], name="pin receipt"),
+            lease_snapshot_id=_wire_string(
+                document["leaseSnapshotId"], name="lease snapshot"
+            ),
+            request_version=_wire_int(document["requestVersion"], name="version"),
+        )
+        if result.decision_id != document["decisionId"]:
+            raise ValueError("Package pinned adoption decision identity changed")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecyclePinnedAdoptionRecordV1:
+    """Durable CAS selection; Product must independently prove every fact."""
+
+    record_revision: int
+    prior_operation_revision: int
+    prior_attempt_revision: int
+    request: PackageLifecycleRequestV2
+    status: PackageLifecycleStatusV1
+    decision: PackageLifecyclePinnedAdoptionRequestV1
+    record_kind: Literal[
+        "pinned_adoption", "pinned_adoption_supersession"
+    ] = "pinned_adoption"
+    supersedes_decision_id: str | None = None
+    record_version: int = PACKAGE_LIFECYCLE_PINNED_ADOPTION_RECORD_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.record_revision, name="pinned adoption revision")
+        _require_nonnegative(
+            self.prior_operation_revision, name="prior operation revision"
+        )
+        _require_nonnegative(self.prior_attempt_revision, name="prior attempt revision")
+        if (
+            not isinstance(self.request, PackageLifecycleRequestV2)
+            or not isinstance(self.status, PackageLifecycleStatusV1)
+            or not isinstance(self.decision, PackageLifecyclePinnedAdoptionRequestV1)
+            or self.record_kind not in {
+                "pinned_adoption", "pinned_adoption_supersession"
+            }
+            or self.record_version != PACKAGE_LIFECYCLE_PINNED_ADOPTION_RECORD_VERSION
+            or self.request.operation_id != self.status.operation_id
+            or self.request.request_fingerprint != self.status.request_fingerprint
+            or self.decision.operation_id != self.status.operation_id
+            or self.decision.request_fingerprint != self.status.request_fingerprint
+            or self.decision.expected_journal_revision
+            != self.prior_operation_revision
+            or self.decision.expected_attempt_epoch != self.status.attempt_epoch
+            or self.decision.expected_attempt_revision
+            != self.prior_attempt_revision
+            or self.request.runtime_admission_request_id
+            == self.decision.new_runtime_admission_request_id
+            or self.status.attempt_revision != self.record_revision
+        ):
+            raise ValueError("Package pinned adoption changed owner identity")
+        if self.record_kind == "pinned_adoption":
+            if self.supersedes_decision_id is not None:
+                raise ValueError("Initial pinned adoption cannot supersede")
+        elif (
+            self.supersedes_decision_id is None
+            or _SHA256.fullmatch(self.supersedes_decision_id) is None
+            or self.supersedes_decision_id == self.decision.decision_id
+        ):
+            raise ValueError("Pinned adoption supersession identity is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        document: dict[str, object] = {
+            "priorAttemptRevision": self.prior_attempt_revision,
+            "priorOperationRevision": self.prior_operation_revision,
+            "recordKind": self.record_kind,
+            "recordRevision": self.record_revision,
+            "recordVersion": self.record_version,
+            "request": self.request.to_dict(),
+            "status": self.status.to_dict(),
+            "decision": self.decision.to_dict(),
+        }
+        if self.record_kind == "pinned_adoption_supersession":
+            document["supersedesDecisionId"] = self.supersedes_decision_id
+        return document
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecyclePinnedAdoptionRecordV1:
+        if not isinstance(value, Mapping):
+            raise TypeError("Package pinned adoption record must be an object")
+        supersession = value.get("recordKind") == "pinned_adoption_supersession"
+        document = _exact_dict(
+            value,
+            fields={
+                "priorAttemptRevision", "priorOperationRevision", "recordKind",
+                "recordRevision", "recordVersion", "request", "status", "decision",
+            } | ({"supersedesDecisionId"} if supersession else set()),
+            name="Package pinned adoption record",
+        )
+        request = decode_package_lifecycle_request(document["request"])
+        if not isinstance(request, PackageLifecycleRequestV2):
+            raise ValueError("Pinned adoption requires a v2 original request")
+        return cls(
+            record_revision=_wire_positive(
+                document["recordRevision"], name="record revision"
+            ),
+            prior_operation_revision=_wire_nonnegative(
+                document["priorOperationRevision"], name="prior operation revision"
+            ),
+            prior_attempt_revision=_wire_nonnegative(
+                document["priorAttemptRevision"], name="prior attempt revision"
+            ),
+            request=request,
+            status=PackageLifecycleStatusV1.from_dict(document["status"]),
+            decision=PackageLifecyclePinnedAdoptionRequestV1.from_dict(
+                document["decision"]
+            ),
+            record_kind=cast(
+                Literal["pinned_adoption", "pinned_adoption_supersession"],
+                _wire_string(document["recordKind"], name="kind"),
+            ),
+            supersedes_decision_id=(
+                _wire_string(document["supersedesDecisionId"], name="prior decision")
+                if supersession
+                else None
+            ),
+            record_version=_wire_int(document["recordVersion"], name="version"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleStagingAdoptionRequestV1:
+    """Inert new-admission proposal bound to one physical staging checkpoint."""
+
+    operation_id: str
+    request_fingerprint: str
+    expected_journal_revision: int
+    expected_attempt_epoch: int
+    expected_attempt_revision: int
+    new_runtime_admission_request_id: str
+    source_proof_ref: str
+    closure_plan_fingerprint: str
+    pin_receipt_id: str
+    staging_checkpoint_id: str
+    lease_snapshot_id: str
+    previous_selected_decision_id: str | None = None
+    request_version: int = 1
+    decision_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.operation_id, name="staging adoption operation id")
+        for value, name in (
+            (self.request_fingerprint, "staging request fingerprint"),
+            (self.new_runtime_admission_request_id, "new runtime admission id"),
+            (self.source_proof_ref, "staging Source proof ref"),
+            (self.closure_plan_fingerprint, "verified closure plan fingerprint"),
+            (self.pin_receipt_id, "acquired pin receipt id"),
+            (self.staging_checkpoint_id, "staging checkpoint id"),
+            (self.lease_snapshot_id, "staging lease snapshot id"),
+        ):
+            _require_sha256(value, name=name)
+        if self.previous_selected_decision_id is not None:
+            _require_sha256(
+                self.previous_selected_decision_id,
+                name="previous selected decision id",
+            )
+        _require_positive(self.expected_journal_revision, name="operation revision")
+        _require_positive(self.expected_attempt_epoch, name="attempt epoch")
+        _require_nonnegative(self.expected_attempt_revision, name="attempt revision")
+        if self.request_version != 1:
+            raise ValueError("Unsupported staging adoption request")
+        object.__setattr__(self, "decision_id", _fingerprint(self._identity_dict()))
+        if self.previous_selected_decision_id == self.decision_id:
+            raise ValueError("Staging adoption cannot supersede itself")
+
+    def _identity_dict(self) -> dict[str, object]:
+        return {
+            "operationId": self.operation_id,
+            "requestFingerprint": self.request_fingerprint,
+            "expectedJournalRevision": self.expected_journal_revision,
+            "expectedAttemptEpoch": self.expected_attempt_epoch,
+            "expectedAttemptRevision": self.expected_attempt_revision,
+            "newRuntimeAdmissionRequestId": self.new_runtime_admission_request_id,
+            "sourceProofRef": self.source_proof_ref,
+            "closurePlanFingerprint": self.closure_plan_fingerprint,
+            "pinReceiptId": self.pin_receipt_id,
+            "stagingCheckpointId": self.staging_checkpoint_id,
+            "leaseSnapshotId": self.lease_snapshot_id,
+            "previousSelectedDecisionId": self.previous_selected_decision_id,
+            "requestVersion": self.request_version,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {"decisionId": self.decision_id, **self._identity_dict()}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleStagingAdoptionRequestV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "decisionId", "operationId", "requestFingerprint",
+                "expectedJournalRevision", "expectedAttemptEpoch",
+                "expectedAttemptRevision", "newRuntimeAdmissionRequestId",
+                "sourceProofRef", "closurePlanFingerprint", "pinReceiptId",
+                "stagingCheckpointId", "leaseSnapshotId",
+                "previousSelectedDecisionId", "requestVersion",
+            },
+            name="Package staging adoption request",
+        )
+        result = cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            request_fingerprint=_wire_string(
+                document["requestFingerprint"], name="request fingerprint"
+            ),
+            expected_journal_revision=_wire_positive(
+                document["expectedJournalRevision"], name="operation revision"
+            ),
+            expected_attempt_epoch=_wire_positive(
+                document["expectedAttemptEpoch"], name="attempt epoch"
+            ),
+            expected_attempt_revision=_wire_nonnegative(
+                document["expectedAttemptRevision"], name="attempt revision"
+            ),
+            new_runtime_admission_request_id=_wire_string(
+                document["newRuntimeAdmissionRequestId"], name="admission id"
+            ),
+            source_proof_ref=_wire_string(
+                document["sourceProofRef"], name="Source proof ref"
+            ),
+            closure_plan_fingerprint=_wire_string(
+                document["closurePlanFingerprint"], name="closure fingerprint"
+            ),
+            pin_receipt_id=_wire_string(document["pinReceiptId"], name="pin receipt"),
+            staging_checkpoint_id=_wire_string(
+                document["stagingCheckpointId"], name="checkpoint id"
+            ),
+            lease_snapshot_id=_wire_string(
+                document["leaseSnapshotId"], name="lease snapshot"
+            ),
+            previous_selected_decision_id=_wire_optional_string(
+                document["previousSelectedDecisionId"], name="previous decision"
+            ),
+            request_version=_wire_int(document["requestVersion"], name="version"),
+        )
+        if result.decision_id != document["decisionId"]:
+            raise ValueError("Package staging adoption decision identity changed")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleStagingAdoptionRecordV1:
+    """Durable same-attempt selection; Product alone proves the checkpoint."""
+
+    record_revision: int
+    prior_operation_revision: int
+    prior_attempt_revision: int
+    request: PackageLifecycleRequestV2
+    status: PackageLifecycleStatusV1
+    decision: PackageLifecycleStagingAdoptionRequestV1
+    record_kind: Literal["staging_adoption"] = "staging_adoption"
+    record_version: int = PACKAGE_LIFECYCLE_STAGING_ADOPTION_RECORD_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.record_revision, name="staging adoption revision")
+        _require_nonnegative(
+            self.prior_operation_revision, name="prior operation revision"
+        )
+        _require_nonnegative(self.prior_attempt_revision, name="prior attempt revision")
+        if (
+            not isinstance(self.request, PackageLifecycleRequestV2)
+            or not isinstance(self.status, PackageLifecycleStatusV1)
+            or not isinstance(self.decision, PackageLifecycleStagingAdoptionRequestV1)
+            or self.record_kind != "staging_adoption"
+            or self.record_version != PACKAGE_LIFECYCLE_STAGING_ADOPTION_RECORD_VERSION
+            or self.request.operation_id != self.status.operation_id
+            or self.request.request_fingerprint != self.status.request_fingerprint
+            or self.decision.operation_id != self.status.operation_id
+            or self.decision.request_fingerprint != self.status.request_fingerprint
+            or self.decision.expected_journal_revision
+            != self.prior_operation_revision
+            or self.decision.expected_attempt_epoch != self.status.attempt_epoch
+            or self.decision.expected_attempt_revision
+            != self.prior_attempt_revision
+            or self.request.runtime_admission_request_id
+            == self.decision.new_runtime_admission_request_id
+            or self.status.phase not in {"transaction_pinned", "set_published"}
+            or self.status.disposition != "active"
+            or self.status.attempt_revision != self.record_revision
+        ):
+            raise ValueError("Package staging adoption changed owner identity")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "priorAttemptRevision": self.prior_attempt_revision,
+            "priorOperationRevision": self.prior_operation_revision,
+            "recordKind": self.record_kind,
+            "recordRevision": self.record_revision,
+            "recordVersion": self.record_version,
+            "request": self.request.to_dict(),
+            "status": self.status.to_dict(),
+            "decision": self.decision.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleStagingAdoptionRecordV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "priorAttemptRevision", "priorOperationRevision", "recordKind",
+                "recordRevision", "recordVersion", "request", "status", "decision",
+            },
+            name="Package staging adoption record",
+        )
+        request = decode_package_lifecycle_request(document["request"])
+        if not isinstance(request, PackageLifecycleRequestV2):
+            raise ValueError("Staging adoption requires a v2 original request")
+        return cls(
+            record_revision=_wire_positive(
+                document["recordRevision"], name="record revision"
+            ),
+            prior_operation_revision=_wire_nonnegative(
+                document["priorOperationRevision"], name="prior operation revision"
+            ),
+            prior_attempt_revision=_wire_nonnegative(
+                document["priorAttemptRevision"], name="prior attempt revision"
+            ),
+            request=request,
+            status=PackageLifecycleStatusV1.from_dict(document["status"]),
+            decision=PackageLifecycleStagingAdoptionRequestV1.from_dict(
+                document["decision"]
+            ),
+            record_kind=cast(
+                Literal["staging_adoption"],
+                _wire_string(document["recordKind"], name="kind"),
+            ),
+            record_version=_wire_int(document["recordVersion"], name="version"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleRebindRecordV1:
+    """One durable rebind or exact supersession of a pending decision."""
+
+    record_revision: int
+    prior_operation_revision: int
+    prior_attempt_revision: int
+    request: PackageLifecycleRequestV2
+    status: PackageLifecycleStatusV1
+    decision: PackageLifecycleRebindRequestV1
+    record_kind: Literal["rebind", "rebind_supersession"] = "rebind"
+    supersedes_decision_id: str | None = None
+    record_version: int = PACKAGE_LIFECYCLE_REBIND_RECORD_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.record_revision, name="rebind record revision")
+        _require_nonnegative(
+            self.prior_operation_revision, name="prior operation revision"
+        )
+        _require_nonnegative(self.prior_attempt_revision, name="prior attempt revision")
+        if (
+            not isinstance(self.request, PackageLifecycleRequestV2)
+            or not isinstance(self.status, PackageLifecycleStatusV1)
+            or not isinstance(self.decision, PackageLifecycleRebindRequestV1)
+            or self.record_kind not in {"rebind", "rebind_supersession"}
+            or self.record_version != PACKAGE_LIFECYCLE_REBIND_RECORD_VERSION
+            or self.request.operation_id != self.status.operation_id
+            or self.request.request_fingerprint != self.status.request_fingerprint
+            or self.decision.operation_id != self.status.operation_id
+            or self.decision.request_fingerprint != self.status.request_fingerprint
+            or self.decision.expected_attempt_epoch != self.status.attempt_epoch
+            or self.decision.expected_attempt_revision
+            != self.prior_attempt_revision
+            or self.request.runtime_admission_request_id
+            == self.decision.new_runtime_admission_request_id
+            or self.status.attempt_revision != self.record_revision
+        ):
+            raise ValueError("Package rebind record changed owner identity")
+        if self.record_kind == "rebind":
+            if self.supersedes_decision_id is not None:
+                raise ValueError("Initial Package rebind cannot supersede a decision")
+        elif (
+            self.supersedes_decision_id is None
+            or _SHA256.fullmatch(self.supersedes_decision_id) is None
+            or self.supersedes_decision_id == self.decision.decision_id
+        ):
+            raise ValueError("Package rebind supersession identity is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        document: dict[str, object] = {
+            "priorAttemptRevision": self.prior_attempt_revision,
+            "priorOperationRevision": self.prior_operation_revision,
+            "recordKind": self.record_kind,
+            "recordRevision": self.record_revision,
+            "recordVersion": self.record_version,
+            "request": self.request.to_dict(),
+            "status": self.status.to_dict(),
+            "decision": self.decision.to_dict(),
+        }
+        if self.record_kind == "rebind_supersession":
+            document["supersedesDecisionId"] = self.supersedes_decision_id
+        return document
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleRebindRecordV1:
+        if not isinstance(value, Mapping):
+            raise TypeError("Package rebind record must be an object")
+        supersession = value.get("recordKind") == "rebind_supersession"
+        document = _exact_dict(
+            value,
+            fields={
+                "priorAttemptRevision", "priorOperationRevision", "recordKind",
+                "recordRevision", "recordVersion", "request", "status", "decision",
+            } | ({"supersedesDecisionId"} if supersession else set()),
+            name="Package rebind record",
+        )
+        request = decode_package_lifecycle_request(document["request"])
+        if not isinstance(request, PackageLifecycleRequestV2):
+            raise ValueError("Package rebind requires a v2 original request")
+        return cls(
+            record_revision=_wire_positive(
+                document["recordRevision"], name="record revision"
+            ),
+            prior_operation_revision=_wire_nonnegative(
+                document["priorOperationRevision"], name="prior operation revision"
+            ),
+            prior_attempt_revision=_wire_nonnegative(
+                document["priorAttemptRevision"], name="prior attempt revision"
+            ),
+            request=request,
+            status=PackageLifecycleStatusV1.from_dict(document["status"]),
+            decision=PackageLifecycleRebindRequestV1.from_dict(document["decision"]),
+            record_kind=cast(
+                Literal["rebind", "rebind_supersession"],
+                _wire_string(document["recordKind"], name="kind"),
+            ),
+            supersedes_decision_id=(
+                _wire_string(document["supersedesDecisionId"], name="prior decision")
+                if supersession
+                else None
+            ),
+            record_version=_wire_int(document["recordVersion"], name="version"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class PackageLifecycleJournalRecordV1:
     record_kind: PackageLifecycleJournalRecordKind
     record_revision: int
@@ -1347,8 +2160,14 @@ __all__ = [
     "PackageLifecycleIngressRequestV1",
     "PackageLifecycleIngressRequestV2",
     "PackageLifecycleJournalRecordV1",
+    "PackageLifecyclePinnedAdoptionRecordV1",
+    "PackageLifecyclePinnedAdoptionRequestV1",
     "PackageLifecycleRequestV1",
     "PackageLifecycleRequestV2",
+    "PackageLifecycleRebindRecordV1",
+    "PackageLifecycleRebindRequestV1",
+    "PackageLifecycleRestartRecordV1",
+    "PackageLifecycleRestartRequestV1",
     "PackageLifecycleRetryRequestV1",
     "PackageLifecycleStatusV1",
     "PluginBoundPackageClassificationV1",

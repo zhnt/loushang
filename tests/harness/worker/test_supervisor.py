@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,12 @@ from loushang.harness.worker import (
     WorkerLaunchIdentityV1,
     WorkerRuntimeBindingV1,
 )
-from loushang.harness.worker.journal import WorkerSupervisorJournal
+from loushang.harness.worker.contracts import WorkerBindingError
+from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
+from loushang.harness.worker.journal import (
+    WorkerSupervisorJournal,
+    WorkerSupervisorJournalError,
+)
 from loushang.harness.worker.protocol import (
     WorkerFrameCodec,
     WorkerFramedTransport,
@@ -27,6 +33,10 @@ from loushang.harness.worker.supervisor import (
     WorkerSupervisorLimitsV1,
 )
 from loushang.harness.workspace.process import ProcessExit, ProcessStderrTail
+from loushang.hosting import (
+    HostingFailureCategory,
+    HostingStartSettledError,
+)
 
 
 class _ScriptedByteTransport:
@@ -240,6 +250,67 @@ def test_supervisor_handshake_query_heartbeat_and_ordered_shutdown(
 
         assert supervisor.status.state == "stopped"
         assert supervisor.status.failure_code is None
+
+    asyncio.run(scenario())
+
+
+def test_shutdown_does_not_settle_attempt_when_hosting_tree_close_fails(
+    tmp_path: Path,
+) -> None:
+    class UnsettledTreeProcess(_Process):
+        allow_close = False
+
+        async def close(self) -> None:
+            if not self.allow_close:
+                raise RuntimeError("Job tree remains active")
+            await super().close()
+
+    async def scenario() -> None:
+        runtime = _runtime(tmp_path)
+        identity = _identity(runtime)
+        process = UnsettledTreeProcess()
+        transport = _ScriptedByteTransport()
+        transport.feed(_ready(identity))
+        journal = WorkerSupervisorJournal(tmp_path / "workers.jsonl")
+        supervisor = WorkerSupervisor(
+            identity=identity,
+            journal=journal,
+            protocol="capability.query",
+            protocol_version=1,
+        )
+        await supervisor.start(
+            launch_port=_LaunchPort(process),  # type: ignore[arg-type]
+            launch_request=ManagedWorkerLaunchRequestV1(
+                identity=identity,
+                runtime=runtime,
+                validate_current=lambda: None,
+            ),
+            transport=WorkerFramedTransport(transport),
+            correlation_id="launch-one",
+        )
+        shutdown = asyncio.create_task(supervisor.shutdown())
+        await transport.wait_for_writes(2)
+        transport.feed(WorkerProtocolMessage.create("shutdown_ack"))
+        process.finish(0)
+        with pytest.raises(WorkerSupervisorError) as failure:
+            await shutdown
+        assert failure.value.code == "worker_shutdown_failed"
+        record = journal.status(identity.attempt_id)
+        assert record is not None
+        assert record.phase == "fenced"
+        assert not record.process_settled
+        assert journal.incomplete() == (record,)
+        with pytest.raises(WorkerSupervisorError) as still_active:
+            await supervisor.settle_failed_process()
+        assert still_active.value.code == "worker_process_settlement_unavailable"
+        assert journal.status(identity.attempt_id) == record
+        process.allow_close = True
+        await supervisor.settle_failed_process()
+        settled = journal.status(identity.attempt_id)
+        assert settled is not None and settled.phase == "process_settled"
+        assert settled.process_settled
+        await supervisor.settle_failed_process()
+        assert journal.status(identity.attempt_id) == settled
 
     asyncio.run(scenario())
 
@@ -475,6 +546,146 @@ def test_launch_cancellation_is_not_collapsed_into_launch_failure(
         assert supervisor.status.state == "failed"
         assert supervisor.status.failure_code == "worker_launch_cancelled"
         assert byte_transport.closed is True
+
+    asyncio.run(scenario())
+
+
+def test_failed_termination_keeps_prior_attempt_unsettled(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        class UnsettledProcess(_Process):
+            async def terminate(self) -> ProcessExit:
+                raise RuntimeError("injected termination failure")
+
+            async def close(self) -> None:
+                raise RuntimeError("injected cleanup failure")
+
+        runtime = _runtime(tmp_path)
+        identity = _identity(runtime)
+        journal = WorkerSupervisorJournal(tmp_path / "workers.jsonl")
+        transport = _ScriptedByteTransport()
+        transport.feed(_ready(replace(identity, session_nonce="e" * 64)))
+        supervisor = WorkerSupervisor(
+            identity=identity,
+            journal=journal,
+            protocol="capability.query",
+            protocol_version=1,
+        )
+        with pytest.raises(WorkerSupervisorError):
+            await supervisor.start(
+                launch_port=_LaunchPort(UnsettledProcess()),  # type: ignore[arg-type]
+                launch_request=ManagedWorkerLaunchRequestV1(
+                    identity=identity,
+                    runtime=runtime,
+                    validate_current=lambda: None,
+                ),
+                transport=WorkerFramedTransport(transport),
+                correlation_id="launch-one",
+            )
+        assert supervisor.status.state == "fenced"
+        attempt = journal.status(identity.attempt_id)
+        assert attempt is not None
+        assert attempt.phase == "fenced"
+        assert journal.incomplete() == (attempt,)
+        with pytest.raises(WorkerSupervisorJournalError) as next_attempt:
+            journal.claim(
+                replace(
+                    identity,
+                    attempt_id="e" * 32,
+                    supervisor_epoch=2,
+                    session_nonce="f" * 64,
+                ),
+                max_attempts=3,
+            )
+        assert next_attempt.value.code == "worker_prior_attempt_unsettled"
+
+    asyncio.run(scenario())
+
+
+def test_only_hosting_settled_start_can_release_failed_claim(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        class SettledHosting:
+            async def start(self, request, preparation):
+                del request, preparation
+                raise HostingStartSettledError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "injected complete rollback",
+                )
+
+            async def close(self) -> None:
+                return None
+
+        class UnusedPreparation:
+            async def prepare(self, request):
+                del request
+                raise AssertionError("Hosting rejects before preparation")
+
+        runtime = _runtime(tmp_path)
+        identity = _identity(runtime)
+        request = ManagedWorkerLaunchRequestV1(
+            identity=identity,
+            runtime=runtime,
+            validate_current=lambda: None,
+        )
+        journal = WorkerSupervisorJournal(tmp_path / "settled-start.jsonl")
+        supervisor = WorkerSupervisor(
+            identity=identity,
+            journal=journal,
+            protocol="capability.query",
+            protocol_version=1,
+        )
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=SettledHosting(),  # type: ignore[arg-type]
+            preparation=UnusedPreparation(),  # type: ignore[arg-type]
+        )
+        with pytest.raises(WorkerSupervisorError) as failure:
+            await supervisor.start_session(
+                session_port=adapter,
+                launch_request=request,
+                correlation_id="settled-start",
+            )
+        assert failure.value.code == "worker_launch_failed"
+        assert supervisor.status.state == "failed"
+        record = journal.status(identity.attempt_id)
+        assert record is not None and record.phase == "process_settled"
+        successor = replace(
+            identity,
+            attempt_id="e" * 32,
+            supervisor_epoch=2,
+            session_nonce="f" * 64,
+        )
+        assert journal.claim(successor, max_attempts=3).phase == "claimed"
+
+        class ForgedPort:
+            async def start(self, request, *, correlation_id, signal=None):
+                del request, correlation_id, signal
+                try:
+                    raise HostingStartSettledError(
+                        HostingFailureCategory.PREPARATION_FAILED,
+                        "forged settled start",
+                    )
+                except HostingStartSettledError as cause:
+                    raise WorkerBindingError(
+                        "forged settled start", code="worker_hosting_start_failed"
+                    ) from cause
+
+        forged_journal = WorkerSupervisorJournal(tmp_path / "forged-start.jsonl")
+        forged = WorkerSupervisor(
+            identity=identity,
+            journal=forged_journal,
+            protocol="capability.query",
+            protocol_version=1,
+        )
+        with pytest.raises(WorkerSupervisorError):
+            await forged.start_session(
+                session_port=ForgedPort(),
+                launch_request=request,
+                correlation_id="forged-start",
+            )
+        refused = forged_journal.status(identity.attempt_id)
+        assert refused is not None and refused.phase == "failed"
+        with pytest.raises(WorkerSupervisorJournalError) as retry:
+            forged_journal.claim(successor, max_attempts=3)
+        assert retry.value.code == "worker_prior_attempt_unsettled"
 
     asyncio.run(scenario())
 

@@ -12,6 +12,8 @@ from loushang.tui import (
     SlashCommandCompletionProvider,
 )
 
+from ._plugin_completion import with_plugin_management_completion
+
 
 async def coding_inline_completion_provider(
     session: object,
@@ -24,10 +26,11 @@ async def coding_inline_completion_provider(
 
 
 def coding_completion_host(session: object) -> PreparedCatalogCompletionHost:
-    return build_session_catalog_completion_host(
+    host = build_session_catalog_completion_host(
         session,
         profile=_CODING_COMPLETION_PROFILE,
     )
+    return with_plugin_management_completion(host, session=session)
 
 
 _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(

@@ -112,6 +112,10 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
         "<lambda>",
     ),
     (
+        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        "query_coding_product_worker",
+    ),
+    (
         Path("src/loushang/coding/runtime_capability_admission.py"),
         "CodingCapabilityProfileResolution.bind",
     ),
@@ -612,6 +616,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     assert statuses == {
         ("coding.arch", 1): "production-mounted",
         ("coding.lsp", 1): "production-mounted",
+        ("coding.worker.query", 1): "production-mounted",
         ("harness.model_input", 1): "production-mounted",
         ("harness.resources", 1): "production-mounted",
         ("harness.resources", 2): "source-complete",

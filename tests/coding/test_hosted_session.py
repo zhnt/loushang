@@ -38,8 +38,11 @@ def _private_session_home(tmp_path, monkeypatch):
     home = tmp_path / "user-home"
     home.mkdir()
     for key, path in {
-        "HOME": home, "USERPROFILE": home, "LOUSHANG_HOME": tmp_path / "platform",
-        "LOUSHANG_RUNTIME_DIR": tmp_path / "runtime", "LOUSHANG_TMPDIR": tmp_path / "scratch",
+        "HOME": home,
+        "USERPROFILE": home,
+        "LOUSHANG_HOME": tmp_path / "platform",
+        "LOUSHANG_RUNTIME_DIR": tmp_path / "runtime",
+        "LOUSHANG_TMPDIR": tmp_path / "scratch",
     }.items():
         monkeypatch.setenv(key, str(path))
 
@@ -186,7 +189,9 @@ def test_hosted_product_runtime_requires_a_session_factory(
         def reject_legacy(*_args, **_kwargs):
             raise AssertionError("Hosted Product selection reached legacy startup")
 
-        monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+        monkeypatch.setattr(
+            coding_bootstrap, "_default_package_materializer", reject_legacy
+        )
         factory = CodingRealHostedSessionFactoryV1(
             services_factory=lambda cwd: create_services(
                 settings_manager=SettingsManager(
@@ -199,7 +204,9 @@ def test_hosted_product_runtime_requires_a_session_factory(
             tools=[],
             package_product_runtime_factory_for_session=select,
         )
-        with pytest.raises(TypeError, match="Package Product runtime factory is required"):
+        with pytest.raises(
+            TypeError, match="Package Product runtime factory is required"
+        ):
             await factory.create_session(
                 binding_key=SessionBindingKeyV1(
                     identity.product_id, identity.continuity_id, identity.session_id
@@ -222,6 +229,9 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
         resolve_coding_plugin_lifecycle_state_layout,
     )
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceError,
+    )
 
     layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
     epoch = resolve_coding_package_epoch_layout(layout)
@@ -239,23 +249,58 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
     monkeypatch.setattr(
         product_runtime, "open_coding_fenced_product_application_owner", refuse_product
     )
-    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
 
     async def scenario() -> None:
         candidate, claimed, identity, factory = await _construction(tmp_path)
-        with pytest.raises(ValueError, match="invalid B fence"):
+        with pytest.raises(PackageEpochFenceError):
             await factory.create_session(
                 binding_key=SessionBindingKeyV1(
                     identity.product_id, identity.continuity_id, identity.session_id
                 ),
                 opaque_session_binding=claimed.opaque_binding,
             )
-        assert selected == ["product"]
+        assert selected == []
         await claimed.close()
         await candidate.close()
         await factory.close()
 
     asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+def test_hosted_default_refuses_effective_old_settings_before_plugin_writes(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+
+    settings = tmp_path / "settings.json"
+    old_bytes = b'{"disabled_plugins":["coding.base"]}'
+    settings.write_bytes(old_bytes)
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+
+    async def scenario() -> None:
+        candidate, claimed, identity, factory = await _construction(tmp_path)
+        try:
+            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
+                await factory.create_session(
+                    binding_key=SessionBindingKeyV1(
+                        identity.product_id, identity.continuity_id, identity.session_id
+                    ),
+                    opaque_session_binding=claimed.opaque_binding,
+                )
+        finally:
+            await claimed.close()
+            await candidate.close()
+            await factory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+    assert settings.read_bytes() == old_bytes
+    assert not lifecycle.root.exists()
+    assert not lifecycle.package_root.exists()
 
 
 def test_hosted_product_runtime_missing_selection_cannot_fall_back(
@@ -294,7 +339,9 @@ def test_hosted_product_runtime_missing_selection_cannot_fall_back(
     def reject_legacy(*_args, **_kwargs):
         raise AssertionError("Hosted Product startup reached legacy Plugin path")
 
-    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
     monkeypatch.setattr(
         coding_bootstrap, "prepare_managed_coding_base_plugin_assembly", reject_legacy
     )
@@ -310,7 +357,9 @@ def test_hosted_product_runtime_missing_selection_cannot_fall_back(
             model=_model(),
             stream_fn=_stream,
             tools=[],
-            package_product_runtime_factory_for_session=lambda _manager: ProductFactory(),
+            package_product_runtime_factory_for_session=lambda _manager: (
+                ProductFactory()
+            ),
         )
         with pytest.raises(PackageProductRuntimeActivationError) as failure:
             await factory.create_session(

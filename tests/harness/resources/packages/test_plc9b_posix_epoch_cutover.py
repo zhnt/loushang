@@ -98,6 +98,7 @@ def _owner(
     *,
     coordination: _CoordinationOwner | None = None,
     snapshots: _SnapshotOwner | None = None,
+    snapshot_admission=None,
     before_fence_probe=None,
 ) -> tuple[
     PackagePosixEpochCutoverOwner,
@@ -118,6 +119,7 @@ def _owner(
         epoch_journal=journal,
         coordination=coordination,
         snapshots=snapshots,
+        snapshot_admission=snapshot_admission,
         before_fence_probe=before_fence_probe,
     )
     return owner, journal, coordination, snapshots, authority, legacy, epochs
@@ -186,6 +188,49 @@ def test_posix_cutover_uses_epoch_append_as_the_only_atomic_root_pointer(
     detached_epoch = tmp_path / "detached-epoch"
     (epochs / request.namespace_id).rename(detached_epoch)
     detached_epoch.rmdir()
+
+
+def test_posix_cutover_product_snapshot_refusal_keeps_first_fence_unpublished(
+    tmp_path: Path,
+) -> None:
+    seen: list[PackageEpochCutoverSnapshotReceiptV1] = []
+    coordination = _CoordinationOwner()
+
+    def reject(snapshot: PackageEpochCutoverSnapshotReceiptV1) -> None:
+        assert coordination._lock.locked()
+        seen.append(snapshot)
+        raise PackagePosixEpochCutoverError(
+            "Product cannot adopt snapshot",
+            code="package_epoch_snapshot_policy_refused",
+        )
+
+    owner, journal, _coordination, snapshots, authority, legacy, epochs = _owner(
+        tmp_path,
+        coordination=coordination,
+        snapshot_admission=reject,
+    )
+    request = _request(owner)
+    with pytest.raises(
+        PackagePosixEpochCutoverError,
+        match="Product cannot adopt snapshot",
+    ) as refused:
+        owner.cutover(request)
+    assert refused.value.code == "package_epoch_snapshot_policy_refused"
+    assert len(seen) == 1
+    assert seen[0].quiescence_receipt_id is not None
+    assert journal.current(STORE_ID) is None
+    assert not (epochs / request.namespace_id).exists()
+    assert (legacy / "state.json").read_bytes() == b'{"legacy":true}\n'
+
+    admitted = PackagePosixEpochCutoverOwner(
+        authority,
+        store_id=STORE_ID,
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+    ).cutover(request)
+    assert admitted.disposition == "fenced"
+    assert admitted.fence is not None
 
 
 def test_posix_cutover_advances_only_from_the_exact_current_namespace(

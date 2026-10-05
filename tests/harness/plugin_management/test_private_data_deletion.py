@@ -131,6 +131,7 @@ def test_private_data_deletion_requires_exact_separate_confirmation_and_owner_re
     receipt = coordinator.delete(current_plan, confirmation)
     assert receipt.disposition == "deleted"
     assert receipt.confirmation_id == confirmation.confirmation_id
+    assert PluginPrivateDataDeletionReceiptV1.from_dict(receipt.to_dict()) == receipt
     assert not marker.exists()
     assert (tmp_path / "receipt.json").exists()
 
@@ -174,6 +175,66 @@ def test_private_data_deletion_rejects_foreign_receipt(tmp_path: Path) -> None:
         )
 
 
+def test_private_data_receipt_replays_after_target_becomes_absent(
+    tmp_path: Path,
+) -> None:
+    class _ChangingOwner(_PrivateDataOwner):
+        def plan_for(
+            self, key: PluginInstallationKeyV1
+        ) -> PluginPrivateDataDeletionPlanV1:
+            self.target_id = (
+                "private-data:present"
+                if (self.root / "user-state.txt").exists()
+                else "private-data:absent"
+            )
+            return super().plan_for(key)
+
+        def receipt_for(
+            self,
+            plan: PluginPrivateDataDeletionPlanV1,
+            confirmation: PluginPrivateDataDeletionConfirmationV1,
+        ) -> PluginPrivateDataDeletionReceiptV1 | None:
+            receipt_path = self.root / "receipt.json"
+            if not receipt_path.exists():
+                return None
+            record = json.loads(receipt_path.read_text())
+            if (
+                record["planFingerprint"] != plan.fingerprint
+                or record["confirmationId"] != confirmation.confirmation_id
+            ):
+                return None
+            return PluginPrivateDataDeletionReceiptV1(
+                installation_key=plan.installation_key,
+                owner_id=record["ownerId"],
+                target_id=record["targetId"],
+                plan_fingerprint=record["planFingerprint"],
+                confirmation_id=record["confirmationId"],
+                receipt_id=record["receiptId"],
+                disposition=record["disposition"],
+            )
+
+    (tmp_path / "user-state.txt").write_text("private", encoding="utf-8")
+    authority = _ConfirmationAuthority(set())
+    owner = _ChangingOwner(tmp_path)
+    coordinator = PluginPrivateDataDeletionCoordinator(
+        owner, confirmation_authority=authority
+    )
+    plan = coordinator.preview(_key())
+    confirmation = PluginPrivateDataDeletionConfirmationV1(
+        plan_fingerprint=plan.fingerprint, confirmation_id="operator:replay"
+    )
+    authority.accepted.add((plan.fingerprint, confirmation.confirmation_id))
+    receipt = coordinator.delete(plan, confirmation)
+    assert coordinator.preview(_key()).target_id == "private-data:absent"
+
+    restarted_owner = _ChangingOwner(tmp_path)
+    restarted = PluginPrivateDataDeletionCoordinator(
+        restarted_owner, confirmation_authority=authority
+    )
+    assert restarted.delete(plan, confirmation) == receipt
+    assert restarted_owner.delete_calls == 0
+
+
 def test_durable_confirmation_is_required_after_restart(tmp_path: Path) -> None:
     marker = tmp_path / "user-state.txt"
     marker.write_text("private")
@@ -197,9 +258,12 @@ def test_durable_confirmation_is_required_after_restart(tmp_path: Path) -> None:
         plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
     )
     assert recorded.record_revision == 1
-    assert first.record_confirmation(
-        plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
-    ) == recorded
+    assert (
+        first.record_confirmation(
+            plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
+        )
+        == recorded
+    )
     restarted = PluginPrivateDataConfirmationJournal(path)
     assert restarted.is_confirmed(plan, confirmation)
     receipt = PluginPrivateDataDeletionCoordinator(
@@ -233,6 +297,48 @@ def test_durable_confirmation_is_required_after_restart(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="duplicate JSON key"):
         restarted.is_confirmed(plan, confirmation)
+
+
+def test_confirmation_read_does_not_create_a_lock_for_absent_journal(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "confirmations.jsonl"
+    plan = _PrivateDataOwner(tmp_path).plan_for(_key())
+    confirmation = PluginPrivateDataDeletionConfirmationV1(
+        plan_fingerprint=plan.fingerprint, confirmation_id="operator:absent"
+    )
+
+    assert not PluginPrivateDataConfirmationJournal(path).is_confirmed(
+        plan, confirmation
+    )
+    assert not path.exists()
+    assert not path.with_name(path.name + ".lock").exists()
+
+
+def test_confirmation_read_refuses_partial_tail_without_repairing_it(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "confirmations.jsonl"
+    journal = PluginPrivateDataConfirmationJournal(path)
+    plan = _PrivateDataOwner(tmp_path).plan_for(_key())
+    confirmation = PluginPrivateDataDeletionConfirmationV1(
+        plan_fingerprint=plan.fingerprint, confirmation_id="operator:approved"
+    )
+    journal.record_confirmation(
+        plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
+    )
+    with path.open("ab") as handle:
+        handle.write(b'{"recordRevision":')
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match="Journal record is not valid JSON"):
+        journal.is_confirmed(plan, confirmation)
+    assert path.read_bytes() == before
+    journal.record_confirmation(
+        plan, confirmation, actor_id="operator:alice", policy_revision="policy:1"
+    )
+    assert journal.is_confirmed(plan, confirmation)
+    assert path.read_bytes() == before[: -len(b'{"recordRevision":')]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX symlink admission")

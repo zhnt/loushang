@@ -352,9 +352,7 @@ class AdmittedPackageResourceSource:
         }
         self._snapshot: ResourceSourceSnapshot | None = None
         self._bodies: dict[str, _PackageBody] = {}
-        self._projection_bindings: tuple[
-            ResourceProjectionDescriptorBinding, ...
-        ] = ()
+        self._projection_bindings: tuple[ResourceProjectionDescriptorBinding, ...] = ()
         self._disposed = False
 
     @property
@@ -650,8 +648,7 @@ def _discover_resource(
             skill_root=locator,
             control=control,
         )
-        if resource.resource_kind == "skill"
-        and resource.locator_kind == "directory"
+        if resource.resource_kind == "skill" and resource.locator_kind == "directory"
         else None
     )
 
@@ -720,7 +717,6 @@ def _discover_resource(
         resource=resource,
         projection=projection,
         logical_path=body_path or locator,
-        body=parsed_body,
         managed_action_source=managed_action_source,
     )
     projection_binding = (
@@ -740,12 +736,13 @@ def _package_projection_descriptor(
     resource: VerifiedPackageResourceInput,
     projection: CatalogItemProjection,
     logical_path: PurePosixPath,
-    body: bytes | None,
     managed_action_source: SkillActionSourceCapture | None,
 ) -> ResourceProjectionDescriptor | None:
     if projection.descriptor is not None:
         descriptor = projection.descriptor
-        if not isinstance(descriptor, PromptFragmentDescriptor | SkillDescriptor):
+        if not isinstance(
+            descriptor, PromptFragmentDescriptor | SkillDescriptor | ThemeDescriptor
+        ):
             raise PackageResourceSourceError(
                 code="resource_source_snapshot_invalid",
                 reason="invalid_package_projection_descriptor",
@@ -765,27 +762,7 @@ def _package_projection_descriptor(
                 managed_action_source=managed_action_source,
             )
         return descriptor
-    if resource.resource_kind != "theme":
-        return None
-    try:
-        content = body.decode("utf-8") if body is not None else None
-    except UnicodeDecodeError as exc:
-        raise PackageResourceSourceError(
-            code="resource_source_snapshot_invalid",
-            reason="invalid_theme_encoding",
-        ) from exc
-    return ThemeDescriptor(
-        name=projection.canonical_name,
-        id=projection.public_id,
-        canonical_name=projection.canonical_name,
-        content=content,
-        source_path=resource.revision_handle.root / logical_path,
-        source="verified_package",
-        source_kind="external_package",
-        source_scope="package",
-        source_root=resource.revision_handle.root,
-        source_root_order=resource.source_root_order,
-    )
+    return None
 
 
 def _capture_package_skill_actions(

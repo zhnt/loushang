@@ -6,12 +6,10 @@ import re
 from pathlib import Path
 
 CONTRACT = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c5-c51-contract.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c51-contract.md"
 )
 BASELINE = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c5-c50-baseline.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md"
 )
 INVENTORY = Path(
     "docs/internals/architecture/harness/plugin/"
@@ -29,6 +27,9 @@ NATIVE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
 CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 CODING_APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 CODING_APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
+CODING_PRODUCT_START_GATE = Path(
+    "src/loushang/coding/package_product_worker_start_gate.py"
+)
 CONTRACT_TEST = Path("tests/harness/worker/test_product_activation.py")
 VERIFIER = Path("scripts/dev/verify_plc9c5_manifest.py")
 VERIFIER_TEST = Path("tests/dev/test_verify_plc9c5_manifest.py")
@@ -128,7 +129,9 @@ def _literal_collection(path: Path, name: str) -> set[str]:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
-        if not any(isinstance(target, ast.Name) and target.id == name for target in targets):
+        if not any(
+            isinstance(target, ast.Name) and target.id == name for target in targets
+        ):
             continue
         assert node.value is not None
         result = ast.literal_eval(node.value)
@@ -268,14 +271,17 @@ def test_c51_facade_exposes_only_closed_value_and_authority_contracts() -> None:
     assert implementation_all == C51_EXPORTS
     facade_all = _literal_collection(WORKER_FACADE, "__all__")
     assert C51_EXPORTS <= facade_all
-    assert not {
-        "ProductWorkerActivationCoordinator",
-        "WorkerCleanupSettlementV1",
-        "WorkerCleanupDebtV1",
-        "_ActivationStatusV1",
-        "_AttemptAdmissionLease",
-        "_MemoryActivationStateStore",
-    } & facade_all
+    assert (
+        not {
+            "ProductWorkerActivationCoordinator",
+            "WorkerCleanupSettlementV1",
+            "WorkerCleanupDebtV1",
+            "_ActivationStatusV1",
+            "_AttemptAdmissionLease",
+            "_MemoryActivationStateStore",
+        }
+        & facade_all
+    )
 
 
 def test_c51_implementation_is_product_neutral_and_synchronous() -> None:
@@ -293,7 +299,9 @@ def test_c51_implementation_is_product_neutral_and_synchronous() -> None:
         for name in imports
     )
     tree = ast.parse(_read(IMPLEMENTATION), filename=str(IMPLEMENTATION))
-    assert not any(isinstance(node, (ast.AsyncFunctionDef, ast.Await)) for node in ast.walk(tree))
+    assert not any(
+        isinstance(node, (ast.AsyncFunctionDef, ast.Await)) for node in ast.walk(tree)
+    )
     assert NATIVE_BRIDGE.is_file()
     assert "ProductWorkerNativeProfilePort" not in _read(IMPLEMENTATION)
 
@@ -408,15 +416,18 @@ def test_c51_state_machine_is_closed_durable_and_common_validated() -> None:
     assert _call_lines(recovery, "_settle_without_effect_locked")
 
 
-def test_c51_admission_decision_releases_gate_and_cleanup_requires_owner_proof() -> None:
+def test_c51_admission_decision_releases_gate_and_cleanup_requires_owner_proof() -> (
+    None
+):
     for method in ("_mark_effect_started", "_settle_without_effect"):
         node = _qualified_node(
             IMPLEMENTATION,
             f"ProductWorkerActivationCoordinator.{method}",
         )
-        assert max(_call_lines(node, "_commit_locked") or _call_lines(node, "_settle_without_effect_locked")) < max(
-            _call_lines(node, "_release_admission")
-        )
+        assert max(
+            _call_lines(node, "_commit_locked")
+            or _call_lines(node, "_settle_without_effect_locked")
+        ) < max(_call_lines(node, "_release_admission"))
     leave = _node_source(
         IMPLEMENTATION,
         "ProductWorkerActivationCoordinator._leave_admission",
@@ -432,7 +443,9 @@ def test_c51_admission_decision_releases_gate_and_cleanup_requires_owner_proof()
         assert source is not None
         assert "witness" in source
         assert "_verify_cleanup_witness" in source
-        assert "evidence_owner" not in {argument.arg for argument in node.args.kwonlyargs}
+        assert "evidence_owner" not in {
+            argument.arg for argument in node.args.kwonlyargs
+        }
     release = _node_source(
         IMPLEMENTATION,
         "ProductWorkerActivationCoordinator._release_admission",
@@ -453,9 +466,11 @@ def test_c51_admission_decision_releases_gate_and_cleanup_requires_owner_proof()
         IMPLEMENTATION,
         "ProductWorkerActivationCoordinator._open_serialized_gate",
     )
-    assert opening.index("_register_pending_release") < opening.index(
-        "            enter()"
-    ) < opening.index("_mark_release_held")
+    assert (
+        opening.index("_register_pending_release")
+        < opening.index("            enter()")
+        < opening.index("_mark_release_held")
+    )
     callback = _node_source(
         IMPLEMENTATION,
         "ProductWorkerActivationCoordinator._call_external",
@@ -467,9 +482,11 @@ def test_c51_admission_decision_releases_gate_and_cleanup_requires_owner_proof()
     )
     assert 'pending.phase = "releasing"' in release_helper
     assert "_ActivationReason.REENTRANT_CALL" in release_helper
-    assert release_helper.index('pending.phase = "releasing"') < release_helper.index(
-        "self._call_external("
-    ) < release_helper.rindex("with domain.release_condition:")
+    assert (
+        release_helper.index('pending.phase = "releasing"')
+        < release_helper.index("self._call_external(")
+        < release_helper.rindex("with domain.release_condition:")
+    )
     assert 'pending.phase in {"reserved", "held"}' in release_helper
     assert 'pending.phase != "release_due"' in release_helper
     assert 'pending.phase = "release_due"' in release_helper
@@ -530,9 +547,7 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
         "status": "implemented",
     }
     assert reports["PLC9C5-C5.2-LINUX-NATIVE"]["status"] == "implemented"
-    assert (
-        reports["PLC9C5-C5.3-WINDOWS-MECHANICS"]["status"] == "implemented"
-    )
+    assert reports["PLC9C5-C5.3-WINDOWS-MECHANICS"]["status"] == "implemented"
     assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "implemented"
     assert reports["PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE"]["status"] == "implemented"
     assert reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]["status"] == "implemented"
@@ -612,16 +627,15 @@ def test_c51_ci_makefile_and_manifest_verifier_are_required() -> None:
         assert behavior_test in verifier_tests
 
 
-def test_c51_has_only_the_accepted_c54_and_g8_consumers() -> None:
+def test_c51_has_only_the_accepted_product_consumers() -> None:
     consumers: set[Path] = set()
     for path in SOURCE_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE}:
             continue
         text = _read(path)
         imports = _imports(path)
-        if (
-            "loushang.harness.worker.product_activation" in imports
-            or any(name in text for name in C51_IMPLEMENTATION_NAMES)
+        if "loushang.harness.worker.product_activation" in imports or any(
+            name in text for name in C51_IMPLEMENTATION_NAMES
         ):
             consumers.add(path)
     assert consumers == {
@@ -629,6 +643,21 @@ def test_c51_has_only_the_accepted_c54_and_g8_consumers() -> None:
         CODING_CANARY,
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
+        Path("src/loushang/coding/package_product_worker_activation_state_journal.py"),
+        Path("src/loushang/coding/package_product_worker_capability.py"),
+        Path("src/loushang/coding/package_product_worker_payload.py"),
+        Path("src/loushang/coding/package_product_worker_pending_host.py"),
+        Path("src/loushang/coding/package_product_worker_policy.py"),
+        Path("src/loushang/coding/package_product_worker_provider.py"),
+        Path("src/loushang/coding/package_product_worker_provider_host.py"),
+        Path("src/loushang/coding/package_product_worker_session_composition.py"),
+        Path("src/loushang/coding/package_product_worker_receipt.py"),
+        Path("src/loushang/coding/package_product_worker_windows_provisioning.py"),
+        Path("src/loushang/coding/package_product_worker_windows_launch_intent.py"),
+        Path("src/loushang/coding/package_product_worker_windows_payload.py"),
+        Path("src/loushang/coding/package_product_worker_windows_receipt.py"),
+        Path("src/loushang/coding/package_product_worker_windows_receipt_journal.py"),
+        CODING_PRODUCT_START_GATE,
     }
     for path in WORKER_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE}:
@@ -647,4 +676,7 @@ def test_c51_has_only_the_accepted_c54_and_g8_consumers() -> None:
         "remote_service",
     ):
         assert forbidden not in implementation
-    assert re.search(r'owner: WorkerSessionOwner = "current"', _read(WORKER_ROOT / "owner_selection.py"))
+    assert re.search(
+        r'owner: WorkerSessionOwner = "current"',
+        _read(WORKER_ROOT / "owner_selection.py"),
+    )

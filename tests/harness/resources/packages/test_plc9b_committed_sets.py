@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.plugin_management.package_gc_dependencies import (
+    project_package_dependency_retention,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     ResolvedPackageRequirementV1,
@@ -34,7 +37,7 @@ DEPENDENCY_ARTIFACT_DIGEST = "4" * 64
 DEPENDENCY_TREE_DIGEST = "3" * 64
 
 
-def _plan() -> VerifiedClosurePlanV2:
+def _plan(operation_id: str = OPERATION_ID) -> VerifiedClosurePlanV2:
     dependency = VerifiedClosurePlanNodeV2(
         node_id="dependency-node",
         role="dependency",
@@ -73,7 +76,7 @@ def _plan() -> VerifiedClosurePlanV2:
         selected_edges=(dependency.node_id,),
     )
     return VerifiedClosurePlanV2.create(
-        operation_id=OPERATION_ID,
+        operation_id=operation_id,
         attempt_epoch=1,
         root_node_id=root.node_id,
         resolution_environment_fingerprint=ENVIRONMENT_FINGERPRINT,
@@ -82,10 +85,10 @@ def _plan() -> VerifiedClosurePlanV2:
     )
 
 
-def _root_ref() -> PluginRevisionRefV1:
+def _root_ref(store_revision: str = "revision:plugin:1") -> PluginRevisionRefV1:
     return PluginRevisionRefV1.create(
         store_identity="plugin-revision-store",
-        store_revision="revision:plugin:1",
+        store_revision=store_revision,
         installation_id="installation-test",
         plugin_id="plugin-test",
         distribution="root-plugin",
@@ -106,10 +109,16 @@ def _dependency_ref() -> VerifiedArtifactRefV1:
     )
 
 
-def _lock() -> DependencyClosureLockV2:
+def _lock(
+    operation_id: str = OPERATION_ID,
+    root_ref: PluginRevisionRefV1 | None = None,
+) -> DependencyClosureLockV2:
     return DependencyClosureLockV2.create(
-        _plan(),
-        stable_refs={"root": _root_ref(), "dependency-node": _dependency_ref()},
+        _plan(operation_id),
+        stable_refs={
+            "root": root_ref or _root_ref(),
+            "dependency-node": _dependency_ref(),
+        },
     )
 
 
@@ -147,6 +156,54 @@ def test_committed_set_journal_atomically_records_lock_and_exact_set(
     assert record.committed_set == committed
     assert PackageCommittedSetRecordV1.from_dict(record.to_dict()) == record
     assert PackageCommittedSetJournal(journal.path).records() == (record,)
+
+
+def test_dependency_retention_requires_every_holder_root_delete_proof(
+    tmp_path: Path,
+) -> None:
+    journal = PackageCommittedSetJournal(tmp_path / "committed-sets.jsonl")
+    _publish(journal)
+    first = journal.records()[0]
+    second_lock = _lock("operation-other", _root_ref("revision:plugin:2"))
+    second = PackageCommittedSetRecordV1(
+        record_revision=2,
+        closure_lock=second_lock,
+        committed_set=CommittedPackageSetRefV1.create(
+            second_lock,
+            request_fingerprint=REQUEST_FINGERPRINT,
+            product_id="coding",
+            scope_id="workspace:test",
+            installation_id="installation-test",
+            plugin_id="plugin-test",
+            classification_fingerprint=CLASSIFICATION_FINGERPRINT,
+            commit_revision=2,
+        ),
+    )
+    records = (first, second)
+    first_root = first.committed_set.root_ref.ref_id
+    second_root = second.committed_set.root_ref.ref_id
+
+    before = project_package_dependency_retention(
+        records, successfully_deleted_root_ref_ids=frozenset()
+    )
+    after_first = project_package_dependency_retention(
+        records, successfully_deleted_root_ref_ids=frozenset({first_root})
+    )
+    after_both = project_package_dependency_retention(
+        records,
+        successfully_deleted_root_ref_ids=frozenset({first_root, second_root}),
+    )
+
+    assert len(before) == len(after_first) == len(after_both) == 1
+    assert before[0].disposition == "retained"
+    assert after_first[0].live_root_ref_ids == (second_root,)
+    assert after_first[0].disposition == "retained"
+    assert after_both[0].disposition == "orphan_candidate"
+    assert after_both[0].live_root_ref_ids == ()
+    with pytest.raises(ValueError, match="no committed Package set"):
+        project_package_dependency_retention(
+            records, successfully_deleted_root_ref_ids=frozenset({"f" * 64})
+        )
 
 
 def test_committed_set_journal_serializes_concurrent_exact_publication(

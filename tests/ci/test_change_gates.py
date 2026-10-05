@@ -195,6 +195,55 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertTrue({"harness", "hosting", "windows_shell"} <= actual)
 
+    def test_coding_package_windows_paths_select_native_windows_gate(self):
+        for path in (
+            "src/loushang/coding/package_pre_b_snapshot.py",
+            "src/loushang/coding/package_installation_private_data.py",
+            "src/loushang/coding/package_legacy_windows_receipt.py",
+            "src/loushang/coding/package_external_worker_wheel.py",
+            "src/loushang/coding/cli/package_cutover.py",
+            "tests/coding/test_package_windows_pre_b_snapshot.py",
+            "tests/coding/test_package_cutover_cli.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
+    def test_windows_product_private_owner_changes_select_native_gate(self):
+        for path in (
+            "src/loushang/coding/package_private_data_windows_preview.py",
+            "src/loushang/coding/package_private_data_windows_backup.py",
+            "src/loushang/coding/package_private_data_windows_backup_expiry_owner.py",
+            "src/loushang/coding/package_private_data_windows_backup_expiry_recovery.py",
+            "src/loushang/coding/package_private_data_backup_records.py",
+            "src/loushang/foundation/windows_private_acl.py",
+            "src/loushang/harness/package_product/product_local_wheel_runtime.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
+    def test_coding_worker_product_changes_select_native_platform_gates(self):
+        for path in (
+            "src/loushang/coding/package_product_worker_payload.py",
+            "src/loushang/coding/package_product_worker_windows_provisioning.py",
+            "src/loushang/coding/package_product_worker_windows_provisioning_journal.py",
+            "src/loushang/coding/cli/package_worker_native.py",
+            "src/loushang/plugin/_coding_local_worker_wheel.py",
+            "tests/coding/test_package_product_worker_discovery.py",
+            "tests/coding/test_package_product_worker_opt_in.py",
+            "tests/coding/test_package_worker_candidate_wheel.py",
+            "tests/coding/test_package_worker_native_cli.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["hosting"])
+                self.assertTrue(plan["workflows"]["hosting"])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
     def test_markdown_test_fixtures_are_not_ordinary_documentation(self):
         self.assertIn("tui_playback", self.selected("tests/tui/fixtures/table.md"))
 

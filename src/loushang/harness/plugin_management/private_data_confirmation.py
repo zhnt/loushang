@@ -21,6 +21,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.plugin_management.private_data_deletion import (
@@ -112,7 +113,10 @@ class PluginPrivateDataConfirmationJournal:
             raise ValueError("Private-data confirmation journal path must be absolute")
         self._path = candidate
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._write_load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._read_load_policy = JournalLoadPolicy(
+            partial_tail="raise", create_lock=False
+        )
 
     @property
     def path(self) -> Path:
@@ -175,34 +179,25 @@ class PluginPrivateDataConfirmationJournal:
         ):
             raise TypeError("Exact private-data plan and confirmation are required")
         self._require_private_parent()
-        with journal_file_lock(self._path, "exclusive"):
-            records = self._load_unlocked()
+        self._require_safe_existing_journal()
+        with journal_file_read_lock(self._path, "shared", create_lock=False):
+            records = self._load_unlocked(load_policy=self._read_load_policy)
         return any(
             record.plan == plan and record.confirmation == confirmation
             for record in records
         )
 
-    def _load_unlocked(self) -> tuple[PluginPrivateDataConfirmationRecordV1, ...]:
-        try:
-            metadata = self._path.lstat()
-        except FileNotFoundError:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PluginPrivateDataConfirmationRecordV1, ...]:
+        if not self._require_safe_existing_journal():
             return ()
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or (os.name == "posix" and metadata.st_mode & 0o077)
-            or (
-                os.name == "posix"
-                and metadata.st_uid != os.geteuid()
-            )
-        ):
-            raise ValueError("Private-data confirmation journal is unsafe")
         loaded: JsonlSnapshot[None, PluginPrivateDataConfirmationRecordV1] = load_jsonl(
             self._path,
             record_codec=_CODEC,
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._unlocked_durability,
-            load_policy=self._load_policy,
+            load_policy=load_policy or self._write_load_policy,
         )
         records = loaded.records
         with self._path.open("r", encoding="utf-8") as handle:
@@ -216,6 +211,23 @@ class PluginPrivateDataConfirmationJournal:
                 raise ValueError("Private-data confirmation journal is inconsistent")
             seen_ids.add(confirmation_id)
         return records
+
+    def _require_safe_existing_journal(self) -> bool:
+        try:
+            metadata = self._path.lstat()
+        except FileNotFoundError:
+            return False
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or (os.name == "posix" and metadata.st_mode & 0o077)
+            or (
+                os.name == "posix"
+                and metadata.st_uid != os.geteuid()
+            )
+        ):
+            raise ValueError("Private-data confirmation journal is unsafe")
+        return True
 
     def _require_private_parent(self) -> None:
         metadata = self._path.parent.lstat()

@@ -38,6 +38,7 @@ _PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY = 0x0002000F
 _PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT = 0x00000001
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
+_JOB_OBJECT_QUERY = 0x0004
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
@@ -858,8 +859,9 @@ class _CtypesWin32Api:
         self,
         *,
         on_acquired: Callable[[int], None],
+        name: str | None = None,
     ) -> int:
-        return self._create_job(on_acquired=on_acquired)
+        return self._create_job(on_acquired=on_acquired, name=name)
 
     def managed_job_is_kill_on_close(self, job: int) -> bool:
         limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
@@ -1571,6 +1573,19 @@ class _CtypesWin32Api:
     def job_is_empty(self, handle: int) -> bool:
         return self.job_active_process_count(handle) == 0
 
+    def named_worker_job_absent(self, name: str) -> bool:
+        """Observe only the absence of an exact Product Worker Job name."""
+
+        _require_worker_job_name(name)
+        raw_job = self._OpenJobObjectW(_JOB_OBJECT_QUERY, False, name)
+        if not raw_job:
+            error = _last_error()
+            if error == _ERROR_FILE_NOT_FOUND:
+                return True
+            self._raise_error(error, "OpenJobObjectW")
+        self.close_handle(_handle_value(raw_job))
+        return False
+
     def terminate_job(self, handle: int, exit_code: int) -> None:
         if not self._TerminateJobObject(handle, exit_code):
             self._raise_last_error("TerminateJobObject")
@@ -1609,11 +1624,17 @@ class _CtypesWin32Api:
         self,
         *,
         on_acquired: Callable[[int], None] | None = None,
+        name: str | None = None,
     ) -> int:
-        raw_job = self._CreateJobObjectW(None, None)
+        if name is not None:
+            _require_worker_job_name(name)
+        raw_job = self._CreateJobObjectW(None, name)
         if not raw_job:
             self._raise_last_error("CreateJobObjectW")
         job = _handle_value(raw_job)
+        if name is not None and _last_error() == _ERROR_ALREADY_EXISTS:
+            self.close_handle(job)
+            raise OSError(_ERROR_ALREADY_EXISTS, "Windows Worker Job already exists")
         if on_acquired is not None:
             on_acquired(job)
         limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
@@ -1832,6 +1853,11 @@ class _CtypesWin32Api:
         self._CreateJobObjectW = _bind(
             kernel32.CreateJobObjectW,
             [ctypes.POINTER(_SECURITY_ATTRIBUTES), wintypes.LPCWSTR],
+            wintypes.HANDLE,
+        )
+        self._OpenJobObjectW = _bind(
+            kernel32.OpenJobObjectW,
+            [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR],
             wintypes.HANDLE,
         )
         self._SetInformationJobObject = _bind(
@@ -2203,6 +2229,12 @@ class _CtypesWin32Api:
         )
 
 
+def observe_windows_worker_job_absent(name: str) -> bool:
+    """Read the exact named Job state without creating or mutating a Job."""
+
+    return _CtypesWin32Api().named_worker_job_absent(name)
+
+
 def _bind(function: Any, argument_types: list[object], result_type: object) -> Any:
     function.argtypes = argument_types
     function.restype = result_type
@@ -2214,6 +2246,17 @@ def _last_error() -> int:
     if getter is None:
         return 0
     return int(getter())
+
+
+def _require_worker_job_name(name: str) -> None:
+    prefix = "Global\\LoushangWorker-"
+    if (
+        type(name) is not str
+        or not name.startswith(prefix)
+        or len(name) != len(prefix) + 64
+        or any(character not in "0123456789abcdef" for character in name[-64:])
+    ):
+        raise ValueError("Windows Worker Job name is invalid")
 
 
 def _hresult_code(result: int) -> int:

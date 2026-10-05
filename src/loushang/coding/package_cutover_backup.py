@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -10,6 +11,9 @@ from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_la
 from loushang.coding.package_pre_b_snapshot import reopen_coding_package_cutover
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
     read_posix_product_pre_b_snapshot,
+)
+from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
+    read_windows_product_pre_b_snapshot,
 )
 
 CodingCutoverBackupStatus = Literal["retained", "unknown"]
@@ -33,8 +37,10 @@ class CodingPackageCutoverBackupStatusV1:
     status_version: int = 1
 
     def __post_init__(self) -> None:
-        if type(self.status_version) is not int or self.status_version != 1 or not all(
-            (self.store_id, self.namespace_id, self.snapshot_receipt_id)
+        if (
+            type(self.status_version) is not int
+            or self.status_version != 1
+            or not all((self.store_id, self.namespace_id, self.snapshot_receipt_id))
         ):
             raise ValueError("Coding cutover backup status identity is invalid")
         if self.status == "retained":
@@ -47,9 +53,8 @@ class CodingPackageCutoverBackupStatusV1:
                 raise ValueError("Retained cutover backup requires owner evidence")
         elif self.status == "unknown":
             if (
-                self.reason not in {
-                    "snapshot_evidence_missing", "snapshot_owner_unavailable"
-                }
+                self.reason
+                not in {"snapshot_evidence_missing", "snapshot_owner_unavailable"}
                 or self.evidence_id is not None
                 or self.entry_count is not None
                 or self.byte_count is not None
@@ -82,14 +87,19 @@ def inspect_coding_package_cutover_backup(
     if not isinstance(lifecycle, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Package lifecycle layout is required")
     epoch = resolve_coding_package_epoch_layout(lifecycle)
-    cutover = reopen_coding_package_cutover(lifecycle)
+    cutover = reopen_coding_package_cutover(lifecycle, read_only=True)
     if cutover.disposition != "fenced" or cutover.fence is None:
         raise RuntimeError("Coding Package Product fence is unavailable")
     fence = cutover.fence
     receipt_id = fence.request.snapshot_receipt_id
     reason: CodingCutoverBackupReason
+    snapshot_reader = (
+        read_windows_product_pre_b_snapshot
+        if os.name == "nt"
+        else read_posix_product_pre_b_snapshot
+    )
     try:
-        evidence = read_posix_product_pre_b_snapshot(
+        evidence = snapshot_reader(
             snapshot_root=epoch.snapshot_root,
             store_id=epoch.store_id,
             snapshot_receipt_id=receipt_id,

@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
@@ -49,6 +50,7 @@ PACKAGE_RETENTION_HANDOFF_RECEIPT_VERSION = 1
 PACKAGE_RETENTION_HANDOFF_FAILURE_VERSION = 1
 PACKAGE_RETENTION_HANDOFF_RESULT_VERSION = 1
 PACKAGE_RETENTION_HANDOFF_RECORD_VERSION = 1
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 PackageDesiredStateCommitDisposition = Literal["committed", "rejected"]
 PackageDependencyPinState = Literal["acquired", "aborted", "settled"]
@@ -2165,6 +2167,32 @@ class PackageRetentionHandoffJournal:
         with self._exclusive():
             return self._load_unlocked()
 
+    def read_operation(
+        self, operation_id: str
+    ) -> PackageRetentionHandoffReceiptV1 | None:
+        """Observe the latest exact handoff without creating locks or repair."""
+
+        _require_safe_id(operation_id, name="Package operation identity")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        receipts = tuple(
+            record.receipt
+            for record in records
+            if record.receipt is not None
+            and record.receipt.request.operation_id == operation_id
+        )
+        if len({item.request.handoff_id for item in receipts}) > 1:
+            raise self._error(
+                "Package operation has conflicting handoff identities",
+                code="package_retention_handoff_stale",
+            )
+        return receipts[-1] if receipts else None
+
     def _append_unlocked(
         self,
         records: tuple[PackageRetentionHandoffRecordV1, ...],
@@ -2183,7 +2211,9 @@ class PackageRetentionHandoffJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_unlocked(self) -> tuple[PackageRetentionHandoffRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageRetentionHandoffRecordV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -2193,7 +2223,7 @@ class PackageRetentionHandoffJournal:
                 record_codec=PACKAGE_RETENTION_HANDOFF_JOURNAL_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=self._load_policy if load_policy is None else load_policy,
             )
         except (JournalFileError, OSError, UnicodeError, ValueError) as exc:
             raise self._error(

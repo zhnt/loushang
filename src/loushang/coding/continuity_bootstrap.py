@@ -287,8 +287,21 @@ async def bind_coding_configured_continuity(
     retry operation.
     """
 
+    from loushang.coding.package_product_runtime import (
+        CodingFencedProductApplicationSelection,
+    )
+
+    product_route = isinstance(
+        getattr(runtime, "_product_owner_selection", None),
+        CodingFencedProductApplicationSelection,
+    )
     try:
         sources, disabled_plugins = _configured_sources(settings_manager, cwd=cwd)
+        if product_route and (sources or disabled_plugins):
+            raise CodingContinuityBootstrapError(
+                code="coding_product_legacy_plugin_configuration_unsupported",
+                retryable=False,
+            )
     except BaseException as error:
         if not isinstance(error, Exception):
             raise
@@ -328,17 +341,25 @@ async def bind_coding_configured_continuity(
         common_layout = _common_lifecycle_layout(layout)
         prior = getattr(runtime, "_loushang_coding_continuity", None)
         existing = prior if isinstance(prior, CodingContinuityComposition) else None
-        if sys.platform.startswith("linux") and (
-            sources
-            or settings_manager is not None
-            or (existing is not None and existing.plugin_publication is not None)
+        if (
+            not product_route
+            and (sys.platform.startswith("linux") or os.name == "nt")
+            and (
+                sources
+                or settings_manager is not None
+                or (existing is not None and existing.plugin_publication is not None)
+            )
         ):
             owns_early_startup_lease = _hold_process_startup_lease(
                 common_layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
             )
-        compatibility = bind_coding_plugin_enablement_compatibility(
-            common_layout,
-            settings_manager,
+        compatibility = (
+            None
+            if product_route
+            else bind_coding_plugin_enablement_compatibility(
+                common_layout,
+                settings_manager,
+            )
         )
         if compatibility is not None:
             compatibility.reconcile()
