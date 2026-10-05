@@ -49,6 +49,7 @@ jobs:
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_candidate_requires_explicit_windows_product_flag
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
           tests/coding/test_package_product_worker_windows_crash_cleanup_review.py
           tests/coding/test_package_product_worker_windows_crash_native_settlement.py
@@ -236,6 +237,7 @@ jobs:
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_host_crash_reopens_and_retires_product_attempt
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
           -q
 

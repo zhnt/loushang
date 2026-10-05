@@ -43,7 +43,11 @@ from loushang.coding.arch.cache import (
     ImportFactCacheSnapshot,
     import_cache_root_id,
 )
-from loushang.coding.bootstrap import create_agent_session, create_services
+from loushang.coding.bootstrap import (
+    create_agent_session,
+    create_agent_session_runtime,
+    create_services,
+)
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.cli.package_gc import main as gc_cli_main
 from loushang.coding.package_arch_private_cache import (
@@ -2836,7 +2840,21 @@ def test_windows_worker_public_coding_session_reaches_selected_product(
         windows_worker_test_root,
         "windows-amd64",
         owner_id="coding",
-        ordinary_entry_only=True,
+        ordinary_entry_kind="direct",
+    )
+
+
+@pytest.mark.requires_host_runtime
+def test_windows_worker_hosted_first_session_reaches_selected_product(
+    windows_worker_test_root: Path,
+) -> None:
+    if os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        pytest.skip("native Windows backend review is required")
+    _exercise_windows_worker_wheel_transaction(
+        windows_worker_test_root,
+        "windows-amd64",
+        owner_id="coding",
+        ordinary_entry_kind="hosted",
     )
 
 
@@ -3209,7 +3227,7 @@ def _exercise_windows_worker_wheel_transaction(
     dependency_closure: bool = False,
     crash_after_healthy: bool = False,
     owner_id: str = "coding.lsp",
-    ordinary_entry_only: bool = False,
+    ordinary_entry_kind: str | None = None,
 ) -> None:
     """Only the explicit Product opener reads the inert Worker candidate."""
 
@@ -3729,48 +3747,86 @@ finally:
                     assert allowed.opt_in is not None
                     assert allowed.opt_in.native_platform == "windows-amd64"
                     assert opt_in_owner.current("workerprobe") == allowed
-                    if ordinary_entry_only:
+                    if ordinary_entry_kind is not None:
                         assert owner_id == "coding"
-                        ordinary_manager = asyncio.run(
-                            SessionManager.new(
-                                session_dir=tmp_path / "ordinary-worker-transcripts",
-                                cwd=str(workspace),
-                                session_id="windows-worker-ordinary",
-                                defer_materialization=False,
-                            )
+                        assert ordinary_entry_kind in {"direct", "hosted"}
+                        query_model = Model(
+                            id="windows-worker-query",
+                            name="Windows Worker Query",
+                            provider="test",
+                            endpoint="test",
+                            capabilities=Capabilities(
+                                input=("text",),
+                                context_window=128_000,
+                                max_tokens=4_096,
+                            ),
                         )
                         with patch(
                             "loushang.coding.package_product_runtime.version",
                             return_value="2.0.0",
                         ):
-                            ordinary_session = create_agent_session(
-                                session_manager=ordinary_manager,
-                                model=Model(
-                                    id="windows-worker-query",
-                                    name="Windows Worker Query",
-                                    provider="test",
-                                    endpoint="test",
-                                    capabilities=Capabilities(
-                                        input=("text",),
-                                        context_window=128_000,
-                                        max_tokens=4_096,
-                                    ),
-                                ),
-                                services=create_services(settings_manager=settings),
-                                worker_candidate_plugin_id="workerprobe",
-                            )
-
-                        async def exercise_ordinary_worker() -> None:
-                            try:
-                                await ordinary_session.prepare_model_call_runtime()
-                                assert (
-                                    await ordinary_session.query_worker_symbol("review")
-                                    == "Review symbol"
+                            if ordinary_entry_kind == "direct":
+                                ordinary_manager = asyncio.run(
+                                    SessionManager.new(
+                                        session_dir=(
+                                            tmp_path / "ordinary-worker-transcripts"
+                                        ),
+                                        cwd=str(workspace),
+                                        session_id="windows-worker-ordinary",
+                                        defer_materialization=False,
+                                    )
                                 )
-                            finally:
-                                await ordinary_session.dispose()
+                                ordinary_session = create_agent_session(
+                                    session_manager=ordinary_manager,
+                                    model=query_model,
+                                    services=create_services(
+                                        settings_manager=settings
+                                    ),
+                                    worker_candidate_plugin_id="workerprobe",
+                                )
 
-                        asyncio.run(exercise_ordinary_worker())
+                                async def exercise_direct_worker() -> None:
+                                    try:
+                                        await ordinary_session.prepare_model_call_runtime()
+                                        assert (
+                                            await ordinary_session.query_worker_symbol(
+                                                "review"
+                                            )
+                                            == "Review symbol"
+                                        )
+                                    finally:
+                                        await ordinary_session.dispose()
+
+                                asyncio.run(exercise_direct_worker())
+                            else:
+                                hosted_runtime = create_agent_session_runtime(
+                                    session_dir=tmp_path / "hosted-worker-transcripts",
+                                    model=query_model,
+                                    services=create_services(
+                                        settings_manager=settings
+                                    ),
+                                    worker_candidate_plugin_id="workerprobe",
+                                )
+
+                                async def exercise_hosted_worker() -> None:
+                                    try:
+                                        hosted_session = (
+                                            await hosted_runtime.create_session(
+                                                cwd=str(workspace)
+                                            )
+                                        )
+                                        assert hosted_session.session_manager.is_persisted()
+                                        await hosted_session.prepare_model_call_runtime()
+                                        assert (
+                                            await hosted_session.query_worker_symbol(
+                                                "review"
+                                            )
+                                            == "Review symbol"
+                                        )
+                                    finally:
+                                        await hosted_runtime.dispose_session_runtime()
+
+                                asyncio.run(exercise_hosted_worker())
                         history = (
                             open_coding_windows_product_worker_supervisor_journal(
                                 worker_product
