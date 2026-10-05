@@ -206,6 +206,7 @@ from loushang.coding.package_product_worker_windows_payload import (
     CodingWindowsWorkerPayloadMaterializationError,
     bind_coding_windows_product_worker_launch_request,
     materialize_coding_windows_product_worker_payload,
+    plan_coding_windows_product_worker_pending_launch,
 )
 from loushang.coding.package_product_worker_windows_payload_inventory import (
     inspect_coding_windows_product_worker_payload_attempts,
@@ -3814,6 +3815,19 @@ finally:
                     ):
                         with pytest.raises(CodingWorkerReceiptError, match="stale"):
                             receipt_owner.current_payload_and_worker_owner_id(receipt)
+                    pending = plan_coding_windows_product_worker_pending_launch(
+                        receipt_owner=receipt_owner,
+                        receipt=receipt,
+                        attempt_id="7" * 32,
+                    )
+                    assert pending.receipt_fingerprint == receipt.fingerprint
+                    assert pending.identity.attempt_id == "7" * 32
+                    assert (
+                        inspect_coding_windows_product_worker_payload_attempts(
+                            worker_product
+                        )
+                        == ()
+                    )
                     lease = materialize_coding_windows_product_worker_payload(
                         receipt_owner=receipt_owner,
                         receipt=receipt,
@@ -3835,13 +3849,31 @@ finally:
                     assert marker["attemptId"] == "7" * 32
                     assert marker["payloadDigest"] == lease.payload_digest
                     assert marker["receiptFingerprint"] == receipt.fingerprint
+                    with pytest.raises(
+                        CodingWindowsWorkerPayloadMaterializationError,
+                        match="coding_worker_payload_pending_launch_changed",
+                    ):
+                        bind_coding_windows_product_worker_launch_request(
+                            receipt_owner=receipt_owner,
+                            receipt=receipt,
+                            payload_lease=lease,
+                            supervisor_epoch=pending.identity.supervisor_epoch,
+                            pending_launch=replace(
+                                pending,
+                                identity=replace(
+                                    pending.identity, attempt_id="8" * 32
+                                ),
+                            ),
+                        )
                     request = bind_coding_windows_product_worker_launch_request(
                         receipt_owner=receipt_owner,
                         receipt=receipt,
                         payload_lease=lease,
-                        supervisor_epoch=1,
+                        supervisor_epoch=pending.identity.supervisor_epoch,
+                        pending_launch=pending,
                     )
                     request.validate_current()
+                    assert request.identity == pending.identity
                     assert request.identity.attempt_id == lease.attempt_id
                     native_plan = receipt_owner.plan_current_native_attempt(
                         receipt, request
@@ -4000,9 +4032,6 @@ finally:
                         )
                         assert journal.inspect_records() == ()
                         assert not journal.path.exists()
-                        assert not journal.path.with_name(
-                            journal.path.name + ".lock"
-                        ).exists()
                         supervisor = WorkerSupervisor(
                             identity=request.identity,
                             journal=journal,

@@ -12,7 +12,7 @@ import re
 import secrets
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 from weakref import WeakKeyDictionary
@@ -65,6 +65,9 @@ from .package_product_worker_windows_recovery_inventory import (
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
     require_coding_windows_worker_current_attempt,
 )
+from .package_product_worker_windows_supervisor_journal import (
+    open_coding_windows_product_worker_supervisor_journal,
+)
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
@@ -92,6 +95,84 @@ class CodingWindowsWorkerPayloadLeaseV1:
     payload_digest: str
     owner_id: str
     stage_identity: tuple[int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class CodingWindowsProductWorkerPendingLaunchV1:
+    """Product-checked identity held before Windows payload materialization."""
+
+    receipt_fingerprint: str
+    identity: WorkerLaunchIdentityV1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.receipt_fingerprint) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", self.receipt_fingerprint) is None
+            or type(self.identity) is not WorkerLaunchIdentityV1
+        ):
+            raise ValueError("Windows Worker pending launch identity is invalid")
+
+
+def plan_coding_windows_product_worker_pending_launch(
+    *,
+    receipt_owner: CodingWindowsWorkerProductReceiptOwner,
+    receipt: ProductWorkerActivationReceiptV1,
+    attempt_id: str,
+) -> CodingWindowsProductWorkerPendingLaunchV1:
+    """Pin a current Windows Worker identity before any payload or process."""
+
+    if (
+        os.name != "nt"
+        or type(receipt_owner) is not CodingWindowsWorkerProductReceiptOwner
+        or type(receipt) is not ProductWorkerActivationReceiptV1
+        or type(attempt_id) is not str
+        or _ATTEMPT.fullmatch(attempt_id) is None
+    ):
+        raise ValueError("Windows Worker pending launch request is invalid")
+    product = receipt_owner.product_owner
+    with product.gc_gate.guard():
+        if receipt_owner.current_witness(receipt) != receipt.authority_witness:
+            raise CodingWindowsWorkerPayloadMaterializationError(
+                "coding_worker_payload_selection_stale"
+            )
+        selected, owner_id = receipt_owner.current_payload_and_worker_owner_id(
+            receipt
+        )
+        if (
+            selected.configuration.fingerprint
+            != receipt.policy.worker_configuration_fingerprint
+        ):
+            raise CodingWindowsWorkerPayloadMaterializationError(
+                "coding_worker_payload_selection_stale"
+            )
+        receipt_owner.current_backend_capture_expectation(receipt)
+        if any(
+            item.attempt_id == attempt_id
+            for item in _inspect_windows_worker_recovery_inventory_under_gc_guard(
+                product
+            )
+        ):
+            raise CodingWindowsWorkerPayloadMaterializationError(
+                "coding_worker_payload_attempt_reused"
+            )
+        identity = _windows_worker_identity(
+            receipt=receipt,
+            owner_id=owner_id,
+            attempt_id=attempt_id,
+            supervisor_epoch=1,
+            session_nonce=secrets.token_hex(32),
+        )
+        journal = open_coding_windows_product_worker_supervisor_journal(product)
+        if journal.status(attempt_id) is not None:
+            raise CodingWindowsWorkerPayloadMaterializationError(
+                "coding_worker_payload_attempt_reused"
+            )
+        epoch = journal.next_supervisor_epoch(identity)
+        product.assert_root_gc_authority_current()
+        return CodingWindowsProductWorkerPendingLaunchV1(
+            receipt_fingerprint=receipt.fingerprint,
+            identity=replace(identity, supervisor_epoch=epoch),
+        )
 
 
 def materialize_coding_windows_product_worker_payload(
@@ -278,12 +359,39 @@ def materialize_coding_windows_product_worker_payload(
                     os.close(stage)
 
 
+def _windows_worker_identity(
+    *,
+    receipt: ProductWorkerActivationReceiptV1,
+    owner_id: str,
+    attempt_id: str,
+    supervisor_epoch: int,
+    session_nonce: str,
+) -> WorkerLaunchIdentityV1:
+    return WorkerLaunchIdentityV1(
+        plugin_id=receipt.policy.plugin_id,
+        plugin_revision_digest=receipt.policy.plugin_revision_digest,
+        contribution_id=receipt.policy.contribution_id,
+        owner_id=owner_id,
+        product_id=receipt.policy.product_id,
+        scope_id=receipt.policy.product_scope_id,
+        owner_generation=receipt.policy.owner_selection_generation,
+        declaration_fingerprint=receipt.policy.declaration_fingerprint,
+        worker_configuration_fingerprint=(
+            receipt.policy.worker_configuration_fingerprint
+        ),
+        attempt_id=attempt_id,
+        supervisor_epoch=supervisor_epoch,
+        session_nonce=session_nonce,
+    )
+
+
 def bind_coding_windows_product_worker_launch_request(
     *,
     receipt_owner: CodingWindowsWorkerProductReceiptOwner,
     receipt: ProductWorkerActivationReceiptV1,
     payload_lease: CodingWindowsWorkerPayloadLeaseV1,
     supervisor_epoch: int,
+    pending_launch: CodingWindowsProductWorkerPendingLaunchV1 | None = None,
 ) -> ManagedWorkerLaunchRequestV1:
     """Build an exact request for a staged PE; no process effect occurs here."""
 
@@ -360,6 +468,27 @@ def bind_coding_windows_product_worker_launch_request(
             product.assert_root_gc_authority_current()
 
     verify_current(initial=True)
+    if pending_launch is not None:
+        with product.gc_gate.guard():
+            if (
+                type(pending_launch) is not CodingWindowsProductWorkerPendingLaunchV1
+                or pending_launch.receipt_fingerprint != receipt.fingerprint
+                or pending_launch.identity
+                != _windows_worker_identity(
+                    receipt=receipt,
+                    owner_id=payload_lease.owner_id,
+                    attempt_id=payload_lease.attempt_id,
+                    supervisor_epoch=supervisor_epoch,
+                    session_nonce=pending_launch.identity.session_nonce,
+                )
+                or open_coding_windows_product_worker_supervisor_journal(
+                    product
+                ).next_supervisor_epoch(pending_launch.identity)
+                != supervisor_epoch
+            ):
+                raise CodingWindowsWorkerPayloadMaterializationError(
+                    "coding_worker_payload_pending_launch_changed"
+                )
 
     def validate_current() -> None:
         try:
@@ -380,21 +509,16 @@ def bind_coding_windows_product_worker_launch_request(
                 code="worker_product_selection_stale",
             ) from exc
 
-    identity = WorkerLaunchIdentityV1(
-        plugin_id=receipt.policy.plugin_id,
-        plugin_revision_digest=receipt.policy.plugin_revision_digest,
-        contribution_id=receipt.policy.contribution_id,
-        owner_id=payload_lease.owner_id,
-        product_id=receipt.policy.product_id,
-        scope_id=receipt.policy.product_scope_id,
-        owner_generation=receipt.policy.owner_selection_generation,
-        declaration_fingerprint=receipt.policy.declaration_fingerprint,
-        worker_configuration_fingerprint=(
-            receipt.policy.worker_configuration_fingerprint
-        ),
-        attempt_id=payload_lease.attempt_id,
-        supervisor_epoch=supervisor_epoch,
-        session_nonce=secrets.token_hex(32),
+    identity = (
+        pending_launch.identity
+        if pending_launch is not None
+        else _windows_worker_identity(
+            receipt=receipt,
+            owner_id=payload_lease.owner_id,
+            attempt_id=payload_lease.attempt_id,
+            supervisor_epoch=supervisor_epoch,
+            session_nonce=secrets.token_hex(32),
+        )
     )
     bound_request = ManagedWorkerLaunchRequestV1(
         identity=identity,
@@ -595,8 +719,10 @@ def _write_all(descriptor: int, body: bytes) -> None:
 
 
 __all__ = [
+    "CodingWindowsProductWorkerPendingLaunchV1",
     "CodingWindowsWorkerPayloadLeaseV1",
     "CodingWindowsWorkerPayloadMaterializationError",
     "bind_coding_windows_product_worker_launch_request",
     "materialize_coding_windows_product_worker_payload",
+    "plan_coding_windows_product_worker_pending_launch",
 ]
