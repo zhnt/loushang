@@ -48,7 +48,7 @@ from loushang.harness.plugin_management.package_gc_results import (
 
 _GC_REPAIR_ACTOR = "coding:package-gc-cli"
 _GC_REPAIR_POLICY = "coding:package-gc-repair-v1"
-_WINDOWS_CANDIDATE_ROUTE_ADMITTED = False
+_WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
 
 
 class _CodingPackageGcRepairAuthority:

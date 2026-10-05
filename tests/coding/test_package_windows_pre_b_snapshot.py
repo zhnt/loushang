@@ -5755,7 +5755,11 @@ def test_windows_builtin_candidate_cli_prepares_reviews_and_adopts(
         ),
         patch("loushang.coding.cli.package_cutover.version", return_value="2.0.0"),
     ):
-        assert cutover_cli_main(prepare_args) == 1
+        with patch(
+            "loushang.coding.cli.package_cutover._WINDOWS_CANDIDATE_ROUTE_ADMITTED",
+            False,
+        ):
+            assert cutover_cli_main(prepare_args) == 1
         assert not (epoch.control_root / "epoch.jsonl").exists()
         capsys.readouterr()
         with patch(
@@ -6165,28 +6169,28 @@ def test_windows_coding_fresh_candidate_cli_fences_bootstraps_and_replays(
             str(workspace),
             "--windows-candidate",
         )
-        assert cutover_cli_main(arguments) == 1
+        with patch(
+            "loushang.coding.cli.package_cutover._WINDOWS_CANDIDATE_ROUTE_ADMITTED",
+            False,
+        ):
+            assert cutover_cli_main(arguments) == 1
         assert not (
             resolve_coding_package_epoch_layout(lifecycle).control_root / "epoch.jsonl"
         ).exists()
         capsys.readouterr()
-        with patch(
-            "loushang.coding.cli.package_cutover._WINDOWS_CANDIDATE_ROUTE_ADMITTED",
-            True,
-        ):
-            assert (
-                cutover_cli_main(arguments + ("--review-legacy-local-plugin", "")) == 1
-            )
-            assert not (
-                resolve_coding_package_epoch_layout(lifecycle).control_root
-                / "epoch.jsonl"
-            ).exists()
-            capsys.readouterr()
-            assert cutover_cli_main(arguments) == 0
-            first = json.loads(capsys.readouterr().out)
-            assert first["disposition"] == "fenced"
-            assert cutover_cli_main(arguments) == 0
-            assert json.loads(capsys.readouterr().out) == first
+        assert (
+            cutover_cli_main(arguments + ("--review-legacy-local-plugin", "")) == 1
+        )
+        assert not (
+            resolve_coding_package_epoch_layout(lifecycle).control_root
+            / "epoch.jsonl"
+        ).exists()
+        capsys.readouterr()
+        assert cutover_cli_main(arguments) == 0
+        first = json.loads(capsys.readouterr().out)
+        assert first["disposition"] == "fenced"
+        assert cutover_cli_main(arguments) == 0
+        assert json.loads(capsys.readouterr().out) == first
 
 
 def test_windows_fresh_candidate_replay_refuses_old_desired_snapshot(
@@ -6311,17 +6315,17 @@ def test_windows_coding_gc_cli_requires_candidate_and_reads_product(
         assert gc_cli_main((*base, "list")) == 1
         assert "package_gc_platform_unsupported" in capsys.readouterr().err
         candidate = (*base, "--windows-candidate")
-        assert gc_cli_main((*candidate, "prepare")) == 1
-        assert "package_gc_platform_unsupported" in capsys.readouterr().err
         with patch(
             "loushang.coding.cli.package_gc._WINDOWS_CANDIDATE_ROUTE_ADMITTED",
-            True,
+            False,
         ):
-            assert gc_cli_main((*candidate, "prepare")) == 0
-            assert json.loads(capsys.readouterr().out)["disposition"] == "prepared"
-            assert gc_cli_main((*candidate, "list")) == 0
-            listed = json.loads(capsys.readouterr().out)
-            assert listed["candidates"] == []
+            assert gc_cli_main((*candidate, "prepare")) == 1
+        assert "package_gc_platform_unsupported" in capsys.readouterr().err
+        assert gc_cli_main((*candidate, "prepare")) == 0
+        assert json.loads(capsys.readouterr().out)["disposition"] == "prepared"
+        assert gc_cli_main((*candidate, "list")) == 0
+        listed = json.loads(capsys.readouterr().out)
+        assert listed["candidates"] == []
 
 
 def test_windows_coding_gc_cli_deletes_exact_removed_builtin_root(
@@ -6407,7 +6411,6 @@ def test_windows_coding_gc_cli_deletes_exact_removed_builtin_root(
             return_value=lifecycle,
         ),
         patch("loushang.coding.cli.package_gc.version", return_value="2.0.0"),
-        patch("loushang.coding.cli.package_gc._WINDOWS_CANDIDATE_ROUTE_ADMITTED", True),
     ):
         args = ("--workspace", str(workspace), "--windows-candidate")
         assert gc_cli_main((*args, "prepare")) == 0

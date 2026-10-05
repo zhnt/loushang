@@ -3025,6 +3025,19 @@ pre-marker payload flush interruption to leave a bounded partial stage, which
 the partial-stage reviewer can authenticate and retire before GC. Native
 normal/partial GC remains pending.
 
+Run `37295573940` on `b0b06f67` passed all four required native Windows
+jobs on one exact head: Shell, Worker admission (17/17), normal/partial
+retirement-to-GC (1/1), and crash retirement-to-GC (1/1). All three Worker
+reports have zero failures, errors, and skips and passed their strict report
+verifiers. This satisfies the native evidence condition for the explicit
+`--windows-candidate` cutover and offline GC CLI routes; the next revision
+opens those two commands only with that flag and verifies them without a
+test-only admission override. Ordinary unflagged Windows Session selection,
+write/GC commands, and general Worker routing remain separately gated.
+The same run had a Harness Linux test fail because its expected late
+descendant output file was absent; that test passed on the preceding head
+and needs an exact-head rerun or root-cause disposition before delivery.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

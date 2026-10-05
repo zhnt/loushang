@@ -95,7 +95,7 @@ from loushang.harness.resources.packages.product_windows_epoch_guard import (
     PackageProductWindowsFencedRuntimeOwner,
 )
 
-_WINDOWS_CANDIDATE_ROUTE_ADMITTED = False
+_WINDOWS_CANDIDATE_ROUTE_ADMITTED = True
 
 
 def main(argv: Sequence[str] | None = None) -> int:
