@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from hashlib import sha256
+from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
@@ -24,6 +25,7 @@ from loushang.harness.plugin_management.package_product import (
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
 )
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
     _plan_windows_lpac_product_worker_profile,
@@ -40,6 +42,7 @@ from loushang.hosting.windows_backend_material import (
     WindowsBackendMaterialExpectationV1,
 )
 
+from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .package_product_worker_policy import (
     CodingWorkerOptInV1,
     CodingWorkerPolicySelectionError,
@@ -62,6 +65,7 @@ from .package_product_worker_windows_opt_in_owner import (
 from .package_product_worker_windows_receipt_journal import (
     CodingWindowsWorkerReceiptJournal,
 )
+from .session_manager import SessionManager
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
@@ -446,6 +450,57 @@ class CodingWindowsWorkerProductReceiptOwner:
         )
 
 
+def open_coding_windows_product_selected_worker_receipt_owner(
+    *,
+    product_owner: WindowsLocalWheelProductSessionOwner,
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    transcript_directory: AgentTranscriptDirectoryRuntime,
+    session_manager: SessionManager,
+) -> CodingWindowsWorkerProductReceiptOwner:
+    """Bind an exact selected Windows Worker to its persisted Coding Session."""
+
+    if type(product_owner) is not WindowsLocalWheelProductSessionOwner:
+        raise TypeError("Windows Worker requires a Product owner")
+    if type(runtime) is not PackageProductRuntimeBindingV1:
+        raise TypeError("Windows Worker requires an active Product runtime")
+    if not isinstance(plugin_id, str) or not plugin_id or plugin_id != plugin_id.strip():
+        raise ValueError("Windows Worker Plugin identity is invalid")
+    if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+        raise TypeError("Windows Worker requires a Transcript directory owner")
+    if not isinstance(session_manager, SessionManager):
+        raise TypeError("Windows Worker requires a Coding Session owner")
+    selected_session_file = session_manager.get_session_file()
+    if (
+        not session_manager.is_persisted()
+        or selected_session_file is None
+        or session_manager.get_header().conversation_id != runtime.session_id
+        or Path(session_manager.get_cwd()).resolve(strict=True)
+        != product_owner.workspace
+        or not (
+            transcript_directory.is_authority_session_file(selected_session_file)
+            or transcript_directory.is_discovery_session_file(selected_session_file)
+        )
+    ):
+        raise ValueError("Windows Worker selected Session owner changed")
+    product_owner.assert_session_runtime_current(runtime)
+    selected = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+    )
+    discovery = CodingWorkerTranscriptDiscoveryReader(
+        directory=transcript_directory,
+        gc_gate=product_owner.gc_gate,
+        session_id=runtime.session_id,
+        selected_session_file=selected_session_file,
+    )
+    return CodingWindowsWorkerProductReceiptOwner(
+        product=product_owner,
+        runtime=runtime,
+        selected=selected,
+        session_discovery_reader=discovery,
+    )
+
+
 def read_coding_windows_product_worker_receipt_record(
     product: WindowsLocalWheelProductSessionOwner, *, receipt_fingerprint: str
 ) -> CodingWorkerReceiptRecordV1 | None:
@@ -479,5 +534,6 @@ def read_coding_windows_product_worker_receipt_record(
 
 __all__ = [
     "CodingWindowsWorkerProductReceiptOwner",
+    "open_coding_windows_product_selected_worker_receipt_owner",
     "read_coding_windows_product_worker_receipt_record",
 ]

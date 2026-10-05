@@ -215,7 +215,7 @@ from loushang.coding.package_product_worker_windows_provisioning import (
     open_coding_windows_product_worker_provisioning_state_store,
 )
 from loushang.coding.package_product_worker_windows_receipt import (
-    CodingWindowsWorkerProductReceiptOwner,
+    open_coding_windows_product_selected_worker_receipt_owner,
     read_coding_windows_product_worker_receipt_record,
 )
 from loushang.coding.package_product_worker_windows_receipt_journal import (
@@ -315,6 +315,7 @@ from loushang.harness.resources.packages.product_windows_pre_b_snapshot import (
 from loushang.harness.sandbox.package_windows_legacy_runtime import (
     PackageWindowsLegacyRuntimeActivationOwner,
 )
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.worker import (
     ManagedWorkerLaunchRequestV1,
     ProductWorkerActivationPolicyV1,
@@ -662,10 +663,27 @@ def test_windows_candidate_ordinary_session_uses_fresh_b_product(
             side_effect=AssertionError("legacy package materializer"),
         ),
     ):
-        selection = CodingFencedProductApplicationSelection(windows_candidate=True)
+        selection = CodingFencedProductApplicationSelection(
+            windows_candidate=True, worker_candidates=True
+        )
         try:
             factory = selection.factory_for_session(manager, settings_manager=settings)
             assert factory is not None
+            worker_owner = selection.product_owner_for_factory(factory)
+            assert isinstance(worker_owner, WindowsLocalWheelProductSessionOwner)
+            assert worker_owner.management is factory.management
+            foreign_selection = CodingFencedProductApplicationSelection(
+                windows_candidate=True, worker_candidates=True
+            )
+            try:
+                foreign_factory = foreign_selection.factory_for_session(
+                    manager, settings_manager=settings
+                )
+                assert foreign_factory is not None
+                with pytest.raises(RuntimeError, match="owner changed"):
+                    selection.product_owner_for_factory(foreign_factory)
+            finally:
+                foreign_selection.close()
             session = create_agent_session(
                 session_manager=manager,
                 model=Model(
@@ -3461,7 +3479,7 @@ finally:
             product.policy.source_root
         ).source_identity
         factory = worker_product.factory_for_session(
-            session_id="session:windows-worker-candidate",
+            session_id="windows-worker-candidate",
             cwd=workspace,
             runtime_id="runtime:windows-worker-candidate",
         )
@@ -3470,7 +3488,7 @@ finally:
             runtime = factory.create(
                 PackageProductRuntimeRequestV1(
                     product_id="coding",
-                    session_id="session:windows-worker-candidate",
+                    session_id="windows-worker-candidate",
                     cwd=str(workspace),
                 )
             )
@@ -3686,10 +3704,43 @@ finally:
                     assert allowed.opt_in is not None
                     assert allowed.opt_in.native_platform == "windows-amd64"
                     assert opt_in_owner.current("workerprobe") == allowed
-                    receipt_owner = CodingWindowsWorkerProductReceiptOwner(
-                        product=worker_product,
-                        runtime=runtime,
-                        selected=selected,
+                    unmaterialized_session = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "unmaterialized-worker-transcripts",
+                            cwd=str(workspace),
+                            session_id="windows-worker-candidate",
+                            persist=False,
+                        )
+                    )
+                    with pytest.raises(ValueError, match="Session owner changed"):
+                        open_coding_windows_product_selected_worker_receipt_owner(
+                            product_owner=worker_product,
+                            runtime=runtime,
+                            plugin_id="workerprobe",
+                            transcript_directory=AgentTranscriptDirectoryRuntime(
+                                session_dir=unmaterialized_session.get_session_dir()
+                            ),
+                            session_manager=unmaterialized_session,
+                        )
+                    worker_session = asyncio.run(
+                        SessionManager.new(
+                            session_dir=tmp_path / "worker-transcripts",
+                            cwd=str(workspace),
+                            session_id="windows-worker-candidate",
+                            defer_materialization=False,
+                        )
+                    )
+                    assert worker_session.is_persisted()
+                    receipt_owner = (
+                        open_coding_windows_product_selected_worker_receipt_owner(
+                            product_owner=worker_product,
+                            runtime=runtime,
+                            plugin_id="workerprobe",
+                            transcript_directory=AgentTranscriptDirectoryRuntime(
+                                session_dir=worker_session.get_session_dir()
+                            ),
+                            session_manager=worker_session,
+                        )
                     )
                     assert (
                         inspect_coding_windows_product_worker_payload_attempts(
