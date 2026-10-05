@@ -19,6 +19,7 @@ from loushang.harness.session.capability_composition_inputs import (
 )
 from loushang.harness.worker._native_profile_bridge import (
     _bind_windows_lpac_contained_product_worker_profile,
+    _create_windows_lpac_product_worker_session_host,
 )
 from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdmissionV1,
@@ -29,9 +30,6 @@ from loushang.harness.worker.capability_query import (
 from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 from loushang.harness.worker.supervisor import WorkerSupervisor
-from loushang.hosting._windows_lpac_runtime import (
-    _create_windows_lpac_child_session_host,
-)
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
@@ -150,7 +148,7 @@ class CodingWindowsProductWorkerPendingHost:
                 provisioning_state_store=native_store,
             )
             stack.push_async_callback(profile.close)
-            host = _create_windows_lpac_child_session_host(max_sessions=1)
+            host = _create_windows_lpac_product_worker_session_host()
             stack.push_async_callback(host.close)
             supervisor = WorkerSupervisor(
                 identity=request.identity,

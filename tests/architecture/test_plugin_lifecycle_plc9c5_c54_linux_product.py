@@ -86,6 +86,13 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",
     },
+    CODING_ROOT / "package_product_worker_windows_pending_host.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.capability_query",
+        "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
+        "loushang.harness.worker.supervisor",
+    },
     CODING_ROOT / "package_product_worker_session_composition.py": {
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.product_activation",

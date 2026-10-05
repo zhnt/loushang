@@ -833,6 +833,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         CODING_CANARY,
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
     }
 
     worker_consumers = {
@@ -906,6 +907,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_query_consumer.py",
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_session_composition.py",
         CODING_ROOT / "package_product_worker_receipt.py",
         CODING_ROOT / "package_product_worker_start_gate.py",
@@ -935,6 +937,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
         CODING_ROOT / "package_product_worker_windows_installed_backend.py",
         CODING_ROOT / "package_product_worker_windows_provisioning.py",
