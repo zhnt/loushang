@@ -25,10 +25,14 @@ from loushang.harness.worker._native_profile_bridge import (
     _windows_lpac_provisioning_identity,
     _WindowsLpacProductWorkerProfilePlan,
 )
-from loushang.harness.worker.contracts import ManagedWorkerLaunchRequestV1
+from loushang.harness.worker.contracts import (
+    ManagedWorkerLaunchRequestV1,
+    WorkerBindingError,
+)
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
+from loushang.hosting import observe_windows_worker_job_absent
 
 from .package_product_worker_policy import coding_worker_session_scope_id
 from .package_product_worker_windows_launch_intent import (
@@ -206,7 +210,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
             )
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            self._worker_request.validate_current()
+            self._require_store_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
@@ -226,7 +230,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
             )
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            self._worker_request.validate_current()
+            self._require_store_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
@@ -237,6 +241,46 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                 )
             self._product.assert_root_gc_authority_current()
             return committed
+
+    def _require_store_current(self) -> None:
+        try:
+            self._worker_request.validate_current()
+            return
+        except WorkerBindingError as stale:
+            # A stopped Supervisor intentionally makes its launch request
+            # unusable. Native cleanup still needs the same exact journal,
+            # retained stage and launch intent after physical process exit.
+            from .package_product_worker_windows_recovery_inventory import (
+                _current_after_verified_retirements_under_gc_guard,
+                _inspect_windows_worker_recovery_inventory_under_gc_guard,
+                require_coding_windows_worker_terminal_cleanup_attempt,
+            )
+
+            try:
+                inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(
+                    self._product
+                )
+                inventory = _current_after_verified_retirements_under_gc_guard(
+                    self._product,
+                    inventory,
+                    attempt_id=self._worker_request.identity.attempt_id,
+                )
+                job_name = require_coding_windows_worker_terminal_cleanup_attempt(
+                    inventory,
+                    attempt_id=self._worker_request.identity.attempt_id,
+                    payload_directory_identity=(
+                        self._worker_request.runtime.cwd_device,
+                        self._worker_request.runtime.cwd_inode,
+                    ),
+                    request_fingerprint=self._worker_request.fingerprint,
+                    receipt_fingerprint=self._receipt.fingerprint,
+                    identity_fingerprint=self._worker_request.identity.fingerprint,
+                )
+                self._worker_request.runtime.verify()
+                if observe_windows_worker_job_absent(job_name) is not True:
+                    raise ValueError("Windows Worker Job is still present")
+            except (OSError, RuntimeError, ValueError) as error:
+                raise stale from error
 
 
 def open_coding_windows_product_worker_provisioning_state_store(

@@ -271,6 +271,60 @@ def require_coding_windows_worker_current_attempt(
         )
 
 
+def require_coding_windows_worker_terminal_cleanup_attempt(
+    inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
+    *,
+    attempt_id: str,
+    payload_directory_identity: tuple[int, int],
+    request_fingerprint: str,
+    receipt_fingerprint: str,
+    identity_fingerprint: str,
+) -> str:
+    """Return the exact Job name only after this attempt's process settled."""
+
+    if (
+        type(inventory) is not tuple
+        or type(attempt_id) is not str
+        or type(payload_directory_identity) is not tuple
+        or len(payload_directory_identity) != 2
+        or any(type(value) is not int or value < 1 for value in payload_directory_identity)
+        or any(
+            type(value) is not str or _FINGERPRINT.fullmatch(value) is None
+            for value in (
+                request_fingerprint,
+                receipt_fingerprint,
+                identity_fingerprint,
+            )
+        )
+    ):
+        raise TypeError("Windows Worker terminal cleanup input is invalid")
+    if len(inventory) != 1 or type(inventory[0]) is not CodingWindowsWorkerRecoveryAttemptV1:
+        raise CodingWindowsWorkerRecoveryAdmissionError(
+            "coding_worker_payload_recovery_required"
+        )
+    attempt = inventory[0]
+    if (
+        attempt.attempt_id != attempt_id
+        or attempt.payload_directory_identity != payload_directory_identity
+        or attempt.launch_stage_identity != payload_directory_identity
+        or attempt.launch_request_fingerprint != request_fingerprint
+        or attempt.launch_receipt_fingerprint != receipt_fingerprint
+        or attempt.launch_identity_fingerprint != identity_fingerprint
+        or attempt.native_phase is None
+        or attempt.native_worker_request_fingerprint != request_fingerprint
+        or attempt.native_receipt_fingerprint != receipt_fingerprint
+        or type(attempt.native_job_name) is not str
+        or not attempt.native_job_name
+        or attempt.supervisor_phase not in {"stopped", "process_settled"}
+        or attempt.supervisor_process_settled is not True
+        or attempt.supervisor_identity_fingerprint != identity_fingerprint
+    ):
+        raise CodingWindowsWorkerRecoveryAdmissionError(
+            "coding_worker_payload_recovery_required"
+        )
+    return attempt.native_job_name
+
+
 def _current_after_verified_retirements_under_gc_guard(
     product: WindowsLocalWheelProductSessionOwner,
     inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],

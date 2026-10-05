@@ -2979,6 +2979,21 @@ The next native case checks live write refusal and unchanged marker bytes, then
 continues to the recovery and GC assertions. The companion Worker and normal
 GC jobs were still running at this observation.
 
+Run `37287143175` passed Windows Shell and all three native Worker journeys
+again reached healthy launch and query. Normal close then found a real Product
+boundary error: the provisioning store reused launch currentness after the
+Supervisor had durably stopped, so Native Profile cleanup was denied. Its next
+version admits only exact same-attempt terminal cleanup after the process and
+named Job are absent; launch currentness remains closed. The crash journey
+settled Supervisor, native profile and orphan lease, then found an identity
+tuple mismatch at stage deletion: Product stage review records link count in
+the third slot while the native delete primitive expects mode there. The next
+version rechecks Product's exact five-field identity on the held descriptor
+and converts it to the native same-handle identity. Focused local tests cover
+both transitions; native and full CI proof remain pending. An AppService
+Windows quality job in the same run had two startup-deadline failures; it
+passed on the preceding head and needs final-run disposition.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

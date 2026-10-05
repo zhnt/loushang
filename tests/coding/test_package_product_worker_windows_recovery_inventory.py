@@ -11,6 +11,7 @@ from loushang.coding.package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
     CodingWindowsWorkerRecoveryAttemptV1,
     require_coding_windows_worker_current_attempt,
+    require_coding_windows_worker_terminal_cleanup_attempt,
 )
 
 _ATTEMPT = "7" * 32
@@ -142,6 +143,58 @@ def test_windows_worker_current_attempt_allows_only_fresh_then_inflight() -> Non
         match="coding_worker_payload_recovery_required",
     ):
         _require(active, initial=True)
+
+
+def test_windows_worker_terminal_cleanup_requires_exact_settled_process() -> None:
+    terminal = replace(
+        _candidate(),
+        native_phase="active",
+        native_worker_request_fingerprint=_REQUEST,
+        native_receipt_fingerprint=_RECEIPT,
+        native_job_name="Global\\LoushangWorker-" + "d" * 64,
+        supervisor_phase="stopped",
+        supervisor_process_settled=True,
+        supervisor_identity_fingerprint=_IDENTITY,
+        launch_request_fingerprint=_REQUEST,
+        launch_receipt_fingerprint=_RECEIPT,
+        launch_identity_fingerprint=_IDENTITY,
+        launch_stage_identity=_STAGE,
+    )
+
+    def require(*attempts: CodingWindowsWorkerRecoveryAttemptV1) -> str:
+        return require_coding_windows_worker_terminal_cleanup_attempt(
+            attempts,
+            attempt_id=_ATTEMPT,
+            payload_directory_identity=_STAGE,
+            request_fingerprint=_REQUEST,
+            receipt_fingerprint=_RECEIPT,
+            identity_fingerprint=_IDENTITY,
+        )
+
+    assert require(terminal) == terminal.native_job_name
+    assert require(replace(terminal, native_phase="settled")) == terminal.native_job_name
+    for changed in (
+        {"attempt_id": "8" * 32},
+        {"payload_directory_identity": (13, 38)},
+        {"launch_stage_identity": (13, 38)},
+        {"launch_request_fingerprint": "d" * 64},
+        {"launch_receipt_fingerprint": "d" * 64},
+        {"launch_identity_fingerprint": "d" * 64},
+        {"native_phase": None},
+        {"native_worker_request_fingerprint": "d" * 64},
+        {"native_receipt_fingerprint": "d" * 64},
+        {"native_job_name": None},
+        {"supervisor_phase": "healthy"},
+        {"supervisor_process_settled": False},
+        {"supervisor_identity_fingerprint": "d" * 64},
+    ):
+        with pytest.raises(
+            CodingWindowsWorkerRecoveryAdmissionError,
+            match="coding_worker_payload_recovery_required",
+        ):
+            require(replace(terminal, **changed))
+    with pytest.raises(CodingWindowsWorkerRecoveryAdmissionError):
+        require(terminal, replace(terminal, attempt_id="8" * 32))
 
 
 @pytest.mark.parametrize(

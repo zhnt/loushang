@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -29,6 +31,62 @@ def _receipt() -> CodingWindowsWorkerStageRetirementReceiptV1:
         review_fingerprint="a" * 64,
         stage_identity=(1, 10),
     )
+
+
+@pytest.mark.parametrize("directory", (False, True))
+def test_stage_retirement_bridges_exact_identity_to_native_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: bool
+) -> None:
+    member = tmp_path / "member"
+    if directory:
+        member.mkdir()
+    else:
+        member.write_bytes(b"payload")
+    descriptor = os.open(member, os.O_RDONLY)
+    try:
+        metadata = os.fstat(descriptor)
+        expected = (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_nlink,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+        )
+        calls: list[tuple[int, tuple[int, int, int, int, int], bool]] = []
+
+        def capture(
+            value: int, *, expected_identity: tuple[int, int, int, int, int], directory: bool
+        ) -> None:
+            calls.append((value, expected_identity, directory))
+
+        monkeypatch.setattr(retirement, "windows_delete_open_entry", capture)
+        retirement._delete_open_stage_entry(
+            descriptor, expected=expected, directory=directory
+        )
+        assert calls == [
+            (
+                descriptor,
+                (
+                    metadata.st_dev,
+                    metadata.st_ino,
+                    metadata.st_mode,
+                    metadata.st_size,
+                    metadata.st_mtime_ns,
+                ),
+                directory,
+            )
+        ]
+        with pytest.raises(
+            CodingWindowsWorkerStageRetirementError, match="file_changed"
+        ):
+            retirement._delete_open_stage_entry(
+                descriptor,
+                expected=(expected[0], expected[1] + 1, *expected[2:]),
+                directory=directory,
+            )
+        assert len(calls) == 1
+    finally:
+        os.close(descriptor)
 
 
 def test_windows_worker_stage_retirement_receipt_is_exact() -> None:

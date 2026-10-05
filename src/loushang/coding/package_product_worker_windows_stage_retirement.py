@@ -581,9 +581,7 @@ def _delete_file_if_present(
             raise CodingWindowsWorkerStageRetirementError(
                 "coding_worker_stage_retirement_file_changed"
             )
-        windows_delete_open_entry(
-            descriptor, expected_identity=expected, directory=False
-        )
+        _delete_open_stage_entry(descriptor, expected=expected, directory=False)
     finally:
         os.close(descriptor)
     windows_flush_directory(parent)
@@ -608,7 +606,7 @@ def _delete_directory_if_empty(
             raise CodingWindowsWorkerStageRetirementError(
                 "coding_worker_stage_retirement_directory_changed"
             )
-        windows_delete_open_entry(descriptor, expected_identity=current, directory=True)
+        _delete_open_stage_entry(descriptor, expected=current, directory=True)
     finally:
         os.close(descriptor)
     windows_flush_directory(parent)
@@ -636,6 +634,38 @@ def _file_identity_at(parent: int, name: str) -> tuple[int, int, int, int, int]:
         metadata.st_nlink,
         metadata.st_size,
         metadata.st_mtime_ns,
+    )
+
+
+def _delete_open_stage_entry(
+    descriptor: int,
+    *,
+    expected: tuple[int, int, int, int, int],
+    directory: bool,
+) -> None:
+    """Bridge Product's link-count identity to the native API's mode identity."""
+
+    metadata = os.fstat(descriptor)
+    if (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+    ) != expected:
+        raise CodingWindowsWorkerStageRetirementError(
+            "coding_worker_stage_retirement_file_changed"
+        )
+    windows_delete_open_entry(
+        descriptor,
+        expected_identity=(
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+        ),
+        directory=directory,
     )
 
 
