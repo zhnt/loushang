@@ -10,8 +10,10 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import zipfile
 from base64 import urlsafe_b64encode
+from collections.abc import Iterator
 from ctypes import wintypes
 from dataclasses import replace
 from hashlib import sha256
@@ -2805,16 +2807,38 @@ def _windows_worker_dependency_wheel(name: str) -> bytes:
 
 @pytest.mark.parametrize("native_platform", ("windows-amd64", "linux-x86_64"))
 def test_windows_worker_wheel_transaction_requires_exact_native_platform(
-    tmp_path: Path, native_platform: str
+    windows_worker_test_root: Path, native_platform: str
 ) -> None:
-    _exercise_windows_worker_wheel_transaction(tmp_path, native_platform)
+    _exercise_windows_worker_wheel_transaction(windows_worker_test_root, native_platform)
+
+
+@pytest.fixture
+def windows_worker_test_root(tmp_path: Path) -> Iterator[Path]:
+    if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        yield tmp_path
+        return
+    # CreateProcessW cannot use a cwd longer than MAX_PATH. The managed pytest
+    # tree is deep enough to hide the Product launch behind Win32 error 267.
+    with tempfile.TemporaryDirectory(prefix="plc9-w-") as root:
+        candidate = (
+            Path(root)
+            / "session-state"
+            / "plugin-packages"
+            / "coding-lifecycle.epochs"
+            / ("e" * 64)
+            / "product-state"
+            / ("worker-payload-" + "7" * 32)
+        )
+        assert len(str(candidate)) < 260, "native Worker test cwd exceeds MAX_PATH"
+        yield Path(root)
 
 
 def test_windows_worker_clean_retirement_allows_fresh_product_launch(
-    tmp_path: Path,
+    windows_worker_test_root: Path,
 ) -> None:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
         pytest.skip("native Windows backend review is required")
+    tmp_path = windows_worker_test_root
     _exercise_windows_worker_wheel_transaction(
         tmp_path, "windows-amd64", clean_rotation=True
     )
@@ -3007,10 +3031,11 @@ def _assert_windows_worker_retired_history_allows_gc(
 
 
 def test_windows_worker_host_crash_reopens_and_retires_product_attempt(
-    tmp_path: Path,
+    windows_worker_test_root: Path,
 ) -> None:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
         pytest.skip("native Windows backend review is required")
+    tmp_path = windows_worker_test_root
     script = """\
 import runpy
 import sys
@@ -3138,12 +3163,12 @@ module["_exercise_windows_worker_wheel_transaction"](
 
 
 def test_windows_worker_selected_dependency_closure_remains_inert(
-    tmp_path: Path,
+    windows_worker_test_root: Path,
 ) -> None:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
         pytest.skip("native Windows backend review is required")
     _exercise_windows_worker_wheel_transaction(
-        tmp_path, "windows-amd64", dependency_closure=True
+        windows_worker_test_root, "windows-amd64", dependency_closure=True
     )
 
 

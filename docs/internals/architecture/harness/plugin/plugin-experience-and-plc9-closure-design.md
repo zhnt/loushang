@@ -2952,6 +2952,18 @@ fix pending native execution, not proof of the stack-overflow root cause. The
 normal retirement-to-GC job from the old head was still running at the time of
 the next candidate and had produced no report.
 
+Exact-head run `37283105591` passed the Windows Shell native job but all three
+real Worker launch jobs reached `CreateProcessW(LPAC)` and failed with Win32
+error 267 before any GC assertion. Their pytest-managed temporary directory
+made the Product payload working directory about 328 characters. Windows
+`CreateProcessW` cannot start a process with a current directory longer than
+`MAX_PATH`. The next native candidate uses a system temporary directory for
+these isolated acceptance journeys and checks the resulting path length before
+launch. This change removes a test-host path limit; it is not proof of Worker
+launch, recovery, or retained-history GC. The same CI run also had an unrelated
+G17 Windows native observer assertion about a console sidecar descendant;
+that failure requires separate final-CI disposition.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
