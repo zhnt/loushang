@@ -32,13 +32,16 @@ from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.capabilities.prompt import expand_prompt_template
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.resources.frontmatter import strip_frontmatter
 
 CodingDataSmokeKind = Literal["skill", "prompt"]
 
 _ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 _MAX_WHEEL_BYTES = 2 * 1024 * 1024
+_SMOKE_ARGUMENTS = "Verify the author package."
 
 
 class _OfflineAdapter:
@@ -263,11 +266,12 @@ def _document_body(
             body = archive.read(info).decode("utf-8")
     except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
         raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
-    if kind == "skill" and body.startswith("---\n"):
-        _, separator, body = body.partition("\n---\n")
-        if not separator:
-            raise _SelectionRefusal("Skill frontmatter is not terminated")
-    body = body.strip()
+    try:
+        body = strip_frontmatter(body).strip()
+        if kind == "prompt":
+            body = expand_prompt_template(body, _SMOKE_ARGUMENTS)
+    except ValueError as exc:
+        raise _SelectionRefusal("requested Resource frontmatter or template is invalid") from exc
     if not body:
         raise _SelectionRefusal("selected Resource document has no body")
     return body
@@ -321,9 +325,9 @@ def _prove_new_session_use(
         ):
             raise _SelectionRefusal("requested external Resource is absent from new Session")
         invocation = (
-            f"/skill:{resource_name} Verify the author package."
+            f"/skill:{resource_name} {_SMOKE_ARGUMENTS}"
             if kind == "skill"
-            else f"/{resource_name} Verify the author package."
+            else f"/{resource_name} {_SMOKE_ARGUMENTS}"
         )
         try:
             asyncio.run(session.prompt(invocation))
@@ -339,9 +343,17 @@ def _prove_new_session_use(
             snapshot_id = getattr(snapshots[0].payload, "snapshot_id", None)
             if not isinstance(snapshot_id, str):
                 raise RuntimeError("prepared model input has no snapshot ID")
-            logical_input = manager.rebuild_model_input(snapshot_id).logical_input
-            if not any(expected_body in text for text in _all_text(logical_input)):
-                raise RuntimeError("selected Resource body is absent from prepared model input")
+            rebuilt = manager.rebuild_model_input(snapshot_id)
+            for surface in (rebuilt.logical_input, rebuilt.prepared_payload):
+                user_text = tuple(_user_message_text(surface))
+                if not any(expected_body in text for text in user_text):
+                    raise RuntimeError(
+                        "selected Resource body is absent from prepared user message"
+                    )
+                if any(invocation in text for text in user_text):
+                    raise RuntimeError(
+                        "raw slash invocation remained in prepared user message"
+                    )
         except Exception as exc:
             raise _UseRefusal(str(exc)) from exc
     finally:
@@ -352,15 +364,24 @@ def _prove_new_session_use(
             registry.unregister_api_adapters(adapter.api)
 
 
-def _all_text(value: object) -> Iterator[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for child in value.values():
-            yield from _all_text(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            yield from _all_text(child)
+def _user_message_text(logical_input: object) -> Iterator[str]:
+    if not isinstance(logical_input, dict):
+        return
+    messages = logical_input.get("messages")
+    if not isinstance(messages, list):
+        return
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            yield content
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    value = part.get("text")
+                    if isinstance(value, str):
+                        yield value
 
 
 def _failure(

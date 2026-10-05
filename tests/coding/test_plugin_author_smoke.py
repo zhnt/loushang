@@ -22,10 +22,13 @@ def test_author_smoke_proves_product_selection_and_prepared_model_input(
     kind: str,
 ) -> None:
     document = (
-        b"---\nname: review\ndescription: Review a change.\n---\n"
-        b"# Review\nCheck the exact author smoke marker 8bc2.\n"
+        b"---\r\nname: review\r\ndescription: Review a change.\r\n---\r\n"
+        b"# Review\r\nCheck the exact author smoke marker 8bc2.\r\n"
         if kind == "skill"
-        else b"# Review\nCheck the exact author smoke marker 8bc2.\n"
+        else (
+            b"---\nname: review\ndescription: Review a change.\n---\n"
+            b"# Review\nCheck the exact author smoke marker 8bc2 and $ARGUMENTS / $1.\n"
+        )
     )
     if kind == "skill":
         wheel = write_coding_data_skill_wheel(
