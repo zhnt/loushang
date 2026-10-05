@@ -2925,6 +2925,18 @@ scratch lease, captures output to a file, and attempts to upload that file
 within the 40-minute Actions job limit. Runner loss can still prevent upload;
 the mandatory full Worker gate is unchanged.
 
+On 2026-10-05, exact-head run `37272981989` passed the Windows Shell job with
+strict native reports, including Product Package GC and its explicit candidate
+CLI on a workspace without Worker history. Its separate bounded Worker
+diagnostic again reached the 25-minute evidence deadline during the first
+real launch, with the retained stack in the provisioning journal's currentness
+check while reading the installed backend Wheel. The mandatory Worker job had
+not produced a terminal report at that observation. The GC history journeys
+were queued behind other real launch cases, so the next candidate gives normal
+and crash retirement-to-GC journeys independent Windows jobs and strict
+nonempty, no-skip reports. This improves evidence isolation; it is not native
+acceptance of the retained-history GC path.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

@@ -586,17 +586,7 @@ class WorkflowContractTests(unittest.TestCase):
             all_jobs = set(
                 re.findall(r"^  ([\w-]+):", text.split("\njobs:\n")[1], re.M)
             )
-            diagnostic_jobs = set()
-            if path.name == "windows-shell-compatibility.yml":
-                diagnostic_jobs = {"windows-worker-diagnostic"}
-                diagnostic_job = text.split("\n  windows-worker-diagnostic:\n", 1)[1].split(
-                    "\n  windows-worker:\n", 1
-                )[0]
-                self.assertIn(
-                    "if: ${{ fromJSON(inputs.plan).checks.windows_shell && github.event_name == 'pull_request' && github.head_ref == 'harness/plugin-experience-plc9-design' }}",
-                    diagnostic_job,
-                )
-            self.assertEqual(all_jobs, set(mapping) | {"selected-checks"} | diagnostic_jobs, path.name)
+            self.assertEqual(all_jobs, set(mapping) | {"selected-checks"}, path.name)
             summary = text.split("\n  selected-checks:\n")[1]
             needs = re.search(r"    needs: \[(.*)\]", summary)[1]
             self.assertEqual(set(needs.split(", ")), set(mapping), path.name)
