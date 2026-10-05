@@ -2869,7 +2869,11 @@ Package applies its existing exact-revision reference rules. A Windows Product
 journey now exercises normal launch, clean retirement, opt-in revocation,
 remove, and exact root deletion while keeping the audit receipt; it also
 expects active payload, absent authority, and unknown history to refuse.
-That journey and the additional crash/unlaunched positive GC paths still need
+The same GC assertion now follows both the normal and crash-retirement native
+journeys. The normal journey also settles and preserves unlaunched and partial
+stage histories before deleting the exact root. Negative checks cover active
+payload, absent authority, unknown or staged history, missing retirement
+receipt, and a missing activation-receipt lock. All of these paths still need
 native reports. This does not authorize pruning retained Worker history or
 opening the default Worker route.
 

@@ -194,6 +194,12 @@ from loushang.coding.package_product_worker_windows_orphan_review import (
     repair_coding_windows_product_worker_clean_exit_orphan_runtime,
     review_coding_windows_product_worker_orphan_runtime,
 )
+from loushang.coding.package_product_worker_windows_partial_stage_retirement import (
+    retire_coding_windows_product_worker_partial_stage,
+)
+from loushang.coding.package_product_worker_windows_partial_stage_review import (
+    review_coding_windows_product_worker_partial_stage,
+)
 from loushang.coding.package_product_worker_windows_payload import (
     CodingWindowsWorkerPayloadMaterializationError,
     bind_coding_windows_product_worker_launch_request,
@@ -2812,6 +2818,14 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
     _exercise_windows_worker_wheel_transaction(
         tmp_path, "windows-amd64", clean_rotation=True
     )
+    _assert_windows_worker_retired_history_allows_gc(
+        tmp_path, partial_attempt_id="b" * 32
+    )
+
+
+def _assert_windows_worker_retired_history_allows_gc(
+    tmp_path: Path, *, partial_attempt_id: str | None
+) -> None:
     workspace = tmp_path / "workspace"
     lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
         tmp_path / "session-state", cwd=workspace
@@ -2835,23 +2849,38 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
             gc.prepare()
         assert live_stage.value.code == "plugin_package_gc_worker_payload_unsettled"
 
-        review = review_coding_windows_product_worker_complete_stage(
-            product, attempt_id="9" * 32
-        )
-        retire_coding_windows_product_worker_complete_stage(
-            product, expected_review=review
-        )
+        if partial_attempt_id is None:
+            review = review_coding_windows_product_worker_complete_stage(
+                product, attempt_id="9" * 32
+            )
+            retire_coding_windows_product_worker_complete_stage(
+                product, expected_review=review
+            )
         assert not (product.state_root / ("worker-payload-" + "9" * 32)).exists()
         assert (
             product.state_root / ("worker-stage-retired-" + "9" * 32 + ".json")
         ).is_file()
+        if partial_attempt_id is not None:
+            assert (
+                product.state_root
+                / ("worker-unlaunched-stage-retired-" + "a" * 32 + ".json")
+            ).is_file()
+            partial_review = review_coding_windows_product_worker_partial_stage(
+                product, attempt_id=partial_attempt_id
+            )
+            retire_coding_windows_product_worker_partial_stage(
+                product, expected_review=partial_review
+            )
+            assert not (
+                product.state_root / ("worker-payload-" + partial_attempt_id)
+            ).exists()
 
         without_worker_proof = open_windows_local_wheel_product_root_gc(product)
         with pytest.raises(PackageProductGcExecutionError) as unproved:
             without_worker_proof.prepare()
         assert unproved.value.code == "plugin_package_gc_worker_history_unsettled"
         unknown_history = product.state_root / (
-            "worker-crash-stage-retired-" + "a" * 32 + ".json"
+            "worker-crash-stage-retired-" + "c" * 32 + ".json"
         )
         unknown_history.write_bytes(b"unproved")
         try:
@@ -2860,6 +2889,43 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
             assert corrupt.value.code == "plugin_package_gc_worker_history_unsettled"
         finally:
             unknown_history.unlink()
+
+        staged_history = product.state_root / (
+            "worker-stage-retired-" + "9" * 32 + ".json.stage"
+        )
+        staged_history.write_bytes(b"unpublished")
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as staged:
+                gc.prepare()
+            assert staged.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            staged_history.unlink()
+
+        completed_receipt = product.state_root / (
+            "worker-stage-retired-" + "9" * 32 + ".json"
+        )
+        held_receipt = product.state_root / "held-stage-retired-9.json"
+        completed_receipt.replace(held_receipt)
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as missing_receipt:
+                gc.prepare()
+            assert missing_receipt.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
+        finally:
+            held_receipt.replace(completed_receipt)
+
+        receipt_lock = product.state_root / "worker-activation-receipts.jsonl.lock"
+        held_receipt_lock = product.state_root / "held-activation-receipts.lock"
+        receipt_lock.replace(held_receipt_lock)
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as missing_lock:
+                gc.prepare()
+            assert missing_lock.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
+        finally:
+            held_receipt_lock.replace(receipt_lock)
 
         opt_in_owner = CodingWindowsWorkerProductOptInOwner(product)
         opt_in = opt_in_owner.current("workerprobe")
@@ -2922,6 +2988,20 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
         assert (
             product.state_root / ("worker-stage-retired-" + "9" * 32 + ".json")
         ).is_file()
+        if partial_attempt_id is None:
+            assert (
+                product.state_root
+                / ("worker-crash-stage-retired-" + "7" * 32 + ".json")
+            ).is_file()
+        else:
+            assert (
+                product.state_root
+                / ("worker-unlaunched-stage-retired-" + "a" * 32 + ".json")
+            ).is_file()
+            assert (
+                product.state_root
+                / ("worker-partial-stage-retired-" + partial_attempt_id + ".json")
+            ).is_file()
     finally:
         owner.close()
 
@@ -3026,6 +3106,7 @@ module["_exercise_windows_worker_wheel_transaction"](
         ).hexdigest(),
         crash_retired=True,
     )
+    _assert_windows_worker_retired_history_allows_gc(tmp_path, partial_attempt_id=None)
 
 
 def test_windows_worker_selected_dependency_closure_remains_inert(
