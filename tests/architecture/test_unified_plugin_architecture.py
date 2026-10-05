@@ -513,7 +513,7 @@ PLC9B_BOUNDARY_SINKS = (
         "posix_offline_restore.py",
         "PackagePosixOfflineRestoreMaterializer._exclusive_restore_root",
         "package-posix-offline-restore-materializer",
-        {"path_read": 2},
+        {"path_read": 3},
     ),
     (
         "posix_offline_restore.py",
