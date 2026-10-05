@@ -2561,8 +2561,6 @@ def _assert_windows_product_worker_provisioning_state(
     selected: PackageProductSelectedPluginManifestV1,
     tmp_path: Path,
     *,
-    receipt_owner: CodingWindowsWorkerProductReceiptOwner | None = None,
-    product_receipt: ProductWorkerActivationReceiptV1 | None = None,
     prior_settled_attempt_id: str | None = None,
 ) -> None:
     """Exercise rooted CAS through a real selected Windows Product owner."""
@@ -2612,17 +2610,6 @@ def _assert_windows_product_worker_provisioning_state(
     request = ManagedWorkerLaunchRequestV1(
         identity=identity, runtime=runtime, validate_current=validate_current
     )
-    if receipt_owner is not None:
-        assert product_receipt is not None
-        product_plan = receipt_owner.plan_current_native_attempt(
-            product_receipt, request
-        )
-        assert product_plan.backend_material_expectation == (
-            receipt_owner.current_backend_capture_expectation(product_receipt)
-        )
-        assert product_plan.expected_native_policy_closure_fingerprint == (
-            product_receipt.policy.expected_native_policy_closure_fingerprint
-        )
     native_profile_id = "windows-lpac-contained-pe-v1"
     catalog_revision = "native-catalog-1"
     launcher_digest = "a" * 64
@@ -3808,6 +3795,12 @@ finally:
                     native_plan = receipt_owner.plan_current_native_attempt(
                         receipt, request
                     )
+                    assert native_plan.backend_material_expectation == (
+                        receipt_owner.current_backend_capture_expectation(receipt)
+                    )
+                    assert native_plan.expected_native_policy_closure_fingerprint == (
+                        receipt.policy.expected_native_policy_closure_fingerprint
+                    )
                     with pytest.raises(ValueError, match="launch intent is invalid"):
                         open_coding_windows_product_worker_provisioning_state_store(
                             worker_product,
@@ -4140,8 +4133,6 @@ finally:
                         runtime,
                         selected,
                         tmp_path,
-                        receipt_owner=receipt_owner,
-                        product_receipt=receipt,
                         prior_settled_attempt_id="7" * 32,
                     )
                     recovery = {
@@ -4306,7 +4297,11 @@ finally:
                     worker_state_root
                     / ("worker-native-provisioning-" + "7" * 32 + ".jsonl")
                 ).is_file()
-            elif native_platform == "windows-amd64" and sys.exc_info()[0] is None:
+            elif (
+                native_platform == "windows-amd64"
+                and not rotation_pending
+                and sys.exc_info()[0] is None
+            ):
                 assert not retained_stage.exists()
             if rotation_pending:
                 _assert_windows_worker_clean_rotation(
@@ -4855,6 +4850,7 @@ try:
         review = review_coding_windows_product_worker_complete_stage(product, attempt_id="7" * 32)
         retired = retire_coding_windows_product_worker_complete_stage(product, expected_review=review)
         assert retired == retire_coding_windows_product_worker_complete_stage(product, expected_review=review)
+    print("rotation:old-stage-retired", file=sys.stderr, flush=True)
     factory = product.factory_for_session(
         session_id="session:windows-worker-rotation", cwd=workspace,
         runtime_id="runtime:windows-worker-rotation",
@@ -4914,6 +4910,7 @@ try:
             assert supervisor.status.state == "healthy"
             described = await supervisor.query({"operation": "describe", "queryVersion": 1})
             assert described["capabilities"][0]["capabilityId"] == "coding.worker.query"
+            print("rotation:new-worker-healthy", file=sys.stderr, flush=True)
             await supervisor.shutdown()
             assert supervisor.status.state == "stopped"
         finally:
@@ -4929,6 +4926,7 @@ try:
 
     asyncio.run(run_worker())
     assert profile.native_containment_settlement_witness() is not None
+    print("rotation:new-worker-settled", file=sys.stderr, flush=True)
     runtime.dispose_runtime()
     runtime = None
     factory = None
@@ -4947,24 +4945,39 @@ finally:
         factory.dispose_unbound_runtime()
     owner.close()
 """
-    completed = subprocess.run(
-        (
-            sys.executable,
-            "-c",
-            script,
-            str(workspace),
-            str(session_state),
-            expected_digest,
-            "crash-retired" if crash_retired else "clean-retained",
-        ),
-        cwd=Path(__file__).resolve().parents[2],
-        capture_output=True,
-        text=True,
-        timeout=90,
-        check=False,
+    child_stdout = workspace.parent / "rotation-child.stdout"
+    child_stderr = workspace.parent / "rotation-child.stderr"
+    try:
+        with child_stdout.open("wb") as stdout, child_stderr.open("wb") as stderr:
+            completed = subprocess.run(
+                (
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(workspace),
+                    str(session_state),
+                    expected_digest,
+                    "crash-retired" if crash_retired else "clean-retained",
+                ),
+                cwd=Path(__file__).resolve().parents[2],
+                stdout=stdout,
+                stderr=stderr,
+                timeout=900,
+                check=False,
+            )
+    except subprocess.TimeoutExpired as exc:
+        with child_stderr.open("rb") as output:
+            output.seek(0, os.SEEK_END)
+            output.seek(max(0, output.tell() - 4096))
+            tail = output.read()
+        raise AssertionError(
+            "Windows Worker rotation child did not settle within 900 seconds"
+            f"\nstderr tail: {tail!r}"
+        ) from exc
+    assert completed.returncode == 0, child_stderr.read_text(
+        encoding="utf-8", errors="replace"
     )
-    assert completed.returncode == 0, completed.stderr
-    assert json.loads(completed.stdout) == {
+    assert json.loads(child_stdout.read_text(encoding="utf-8")) == {
         "oldRetired": True,
         "newStopped": True,
         "newNativeSettled": True,

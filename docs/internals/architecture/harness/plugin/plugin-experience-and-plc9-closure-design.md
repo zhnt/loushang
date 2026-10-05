@@ -2994,6 +2994,19 @@ both transitions; native and full CI proof remain pending. An AppService
 Windows quality job in the same run had two startup-deadline failures; it
 passed on the preceding head and needs final-run disposition.
 
+Run `37290363083` on `2895c56f` passed Windows Shell. The three Worker jobs
+crossed their prior cleanup boundaries and then exposed three test-gate defects:
+the main Worker test sent a synthetic runtime outside Product state root to a
+real Product native-plan method after its real launch had already passed; the
+normal GC case asserted the old stage was absent before its pending retirement
+child ran; and the crash GC case gave a second real launch only 90 seconds.
+The follow-up removes the invalid synthetic plan call, keeps plan assertions
+beside the real request, defers the stage-absence assertion until retirement,
+and uses a bounded file-backed rotation child with stage checkpoints. One
+architecture baseline also needed the new Coding-to-Hosting named-Job observer
+listed as an explicit consumer; its focused check now passes. Native GC and
+full exact-head results remain pending after rerun.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
