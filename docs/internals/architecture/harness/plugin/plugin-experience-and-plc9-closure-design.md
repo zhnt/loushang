@@ -2970,6 +2970,15 @@ canonical path; Product correctly rejected the workspace. The next fixture
 resolves that root before constructing lifecycle and workspace identity, then
 checks the canonical payload cwd length. This is still pre-launch evidence.
 
+On `5e42de88`, the crash journey reached a healthy native Worker and completed
+its first capability query. Its next test assertion attempted to rewrite the
+live payload marker, but the native launch deliberately holds every runtime
+file with read sharing only; Windows rejected the write with `PermissionError`.
+The Product currentness negative before launch already tests marker tampering.
+The next native case checks live write refusal and unchanged marker bytes, then
+continues to the recovery and GC assertions. The companion Worker and normal
+GC jobs were still running at this observation.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

@@ -4004,14 +4004,12 @@ finally:
                                 }
                             ]
                             original_marker = marker_path.read_bytes()
-                            marker_path.write_bytes(original_marker + b" ")
-                            try:
-                                with pytest.raises(
-                                    WorkerBindingError, match="selection changed"
-                                ):
-                                    request.validate_current()
-                            finally:
-                                marker_path.write_bytes(original_marker)
+                            # Native launch pins every runtime member without
+                            # FILE_SHARE_WRITE. A live marker mutation must fail
+                            # before it can create stale Product state.
+                            with pytest.raises(PermissionError):
+                                marker_path.write_bytes(original_marker + b" ")
+                            assert marker_path.read_bytes() == original_marker
                             request.validate_current()
                             invoked = await supervisor.query(
                                 {
