@@ -3015,6 +3015,16 @@ The Supervisor correctly requires epoch 1 for a new key. The next revision
 corrects that test input; no retained-history Package GC success is claimed
 until both journeys pass their final assertions.
 
+Run `37293581528` passed the strict Worker job and Windows Shell again. Its
+crash retirement-to-GC native case passed with 1/1 tests and zero
+failures/errors/skips, including the exact-root deletion and retained-history
+refusals. The normal/partial case passed old-stage retirement and the second
+real Worker launch, then correctly rejected the test's fully materialized
+`b` stage as an invalid partial tree. The next revision injects a real
+pre-marker payload flush interruption to leave a bounded partial stage, which
+the partial-stage reviewer can authenticate and retire before GC. Native
+normal/partial GC remains pending.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

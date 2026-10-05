@@ -5168,16 +5168,29 @@ try:
         else:
             raise AssertionError("Bounded inventory allowed another attempt")
     assert not (product.state_root / ("worker-payload-" + "b" * 32)).exists()
-    fresh = materialize_coding_windows_product_worker_payload(
-        receipt_owner=receipt_owner, receipt=receipt, attempt_id="b" * 32,
-    )
+    with patch.object(
+        payload_module,
+        "windows_flush_file",
+        side_effect=OSError("injected partial payload write interruption"),
+    ):
+        try:
+            materialize_coding_windows_product_worker_payload(
+                receipt_owner=receipt_owner, receipt=receipt, attempt_id="b" * 32,
+            )
+        except OSError as error:
+            assert "partial payload write interruption" in str(error)
+        else:
+            raise AssertionError("Partial payload write interruption was not observed")
+    partial_stage = product.state_root / ("worker-payload-" + "b" * 32)
+    assert partial_stage.is_dir()
+    assert not (partial_stage / "worker-payload.json").exists()
     print(json.dumps({
         "settled": settled,
         "unlaunched": unlaunched,
         "retainedBeforeRetirement": retained,
         "retiredIdRejected": True,
         "capacityRejectedBeforeStage": True,
-        "retired": fresh.attempt_id == "b" * 32,
+        "partialRetained": True,
     }))
 finally:
     if runtime is not None:
@@ -5201,7 +5214,7 @@ finally:
         "retainedBeforeRetirement": True,
         "retiredIdRejected": True,
         "capacityRejectedBeforeStage": True,
-        "retired": True,
+        "partialRetained": True,
     }
 
 
