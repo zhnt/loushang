@@ -299,12 +299,26 @@ loushang-worker-native --workspace PATH candidate-capture \
 ```
 
 The result identifies the captured digest and reports
-`productAdmission: not_checked` and `productUse: not_checked`.
-Installation, enablement, per-install opt-in, and an approved native release
-are still separate Product decisions. The candidate must be installed and
-enabled through the fenced Product owner before the query or Python SDK
-examples below can run. A successful `build-coding-worker-candidate` or
-`candidate-capture` command alone does not make the Worker usable.
+`productAdmission: not_checked` and `productUse: not_checked`. On Linux the
+operator can then install that exact candidate disabled, and enable the
+installed revision using the returned inventory revision:
+
+```text
+loushang-worker-native --workspace PATH candidate-install \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id install-reviewworker-1
+loushang-worker-native --workspace PATH candidate-enable \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id enable-reviewworker-1 \
+  --expected-inventory-revision REVISION
+```
+
+The install result reports Product admission for that exact Wheel and returns
+`alreadyInstalled: true` when a retry finds the same installed revision. The
+enable result reports the Desired State operation. Neither proves Session use.
+Per-install opt-in and an approved native release are still separate Product
+decisions before a query or Python SDK Session can use the Worker. A successful
+build or capture alone does not make the Worker usable.
 
 On Linux, a Product operator can inspect or change per-install Worker opt-in
 with `loushang-worker-native --workspace PATH candidate-status`,

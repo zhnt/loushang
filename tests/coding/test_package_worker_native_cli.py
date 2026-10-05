@@ -37,14 +37,6 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
-from loushang.harness.package_product.product_runtime import (
-    PackageProductRuntimeRequestV1,
-)
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
-from loushang.harness.resources.packages.product_contract import (
-    PackageProductLifecycleIntentV1,
-)
 from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
 from loushang.plugin._coding_local_worker_wheel import (
     build_coding_local_worker_candidate_wheel,
@@ -589,6 +581,90 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert before_selection.returncode == 1
     assert b"coding_worker_opt_in_selection_unavailable" in before_selection.stderr
 
+    wrong_digest, _ = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        "0" * 64,
+        "--operation-id",
+        "candidate-cli-wrong-digest",
+    )
+    assert wrong_digest.returncode == 1
+    installed, installed_output = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-install",
+    )
+    assert installed.returncode == 0, installed.stderr
+    install_result = installed_output["candidateInstall"]
+    assert isinstance(install_result, dict)
+    assert install_result["pluginId"] == "reviewworker"
+    assert install_result["lifecycle"] == "installed"
+    assert install_result["alreadyInstalled"] is False
+    assert installed_output["productUse"] == "not_checked"
+    inventory_revision = install_result["inventoryRevision"]
+    assert isinstance(inventory_revision, int) and inventory_revision > 0
+    stale_enable, _ = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-stale-enable",
+        "--expected-inventory-revision",
+        "0",
+    )
+    assert stale_enable.returncode == 1
+    enabled, enabled_output = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-enable",
+        "--expected-inventory-revision",
+        str(inventory_revision),
+    )
+    assert enabled.returncode == 0, enabled.stderr
+    operation = enabled_output["candidateManagementOperation"]
+    assert isinstance(operation, dict)
+    assert operation["status"] == "terminal"
+    result = operation["result"]
+    assert isinstance(result, dict) and result["disposition"] == "succeeded"
+    repeated_enable, repeated_enable_output = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-enable",
+        "--expected-inventory-revision",
+        str(inventory_revision),
+    )
+    assert repeated_enable.returncode == 0, repeated_enable.stderr
+    assert repeated_enable_output == enabled_output
+    repeated_install, repeated_install_output = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-install",
+    )
+    assert repeated_install.returncode == 0, repeated_install.stderr
+    replayed_install = repeated_install_output["candidateInstall"]
+    assert isinstance(replayed_install, dict)
+    assert replayed_install["alreadyInstalled"] is True
+    assert replayed_install["lifecycle"] == "installed"
     selected_owner = open_coding_fenced_product_application_owner(
         layout,
         workspace=workspace,
@@ -599,60 +675,13 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     try:
         product = selected_owner.runtime_owner.product_owner
         gate_history = product.state_root / "worker-start-gates.jsonl"
-        (binding,) = tuple(
+        snapshot = product.desired_state.snapshot()
+        (selection,) = tuple(
             item
-            for item in product.policy.bindings
-            if item.source_trust_class == "local-worker-candidate"
+            for item in snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
         )
-        runtime = product.factory_for_session(
-            session_id="candidate-cli-install",
-            cwd=workspace,
-            runtime_id="candidate-cli-install",
-        ).create(
-            PackageProductRuntimeRequestV1(
-                product_id="coding",
-                session_id="candidate-cli-install",
-                cwd=str(workspace),
-            )
-        )
-        try:
-            runtime.activate()
-            result = runtime.lifecycle.route(
-                PackageProductLifecycleIntentV1(
-                    operation_id="candidate-cli-install",
-                    action="install",
-                    source=binding.source_identity,
-                    scope="project",
-                ),
-                entrypoint="cli",
-            )
-            assert result.handled
-            assert result.record is not None
-            assert result.record.lifecycle == "installed"
-            snapshot = product.desired_state.snapshot()
-            (installation,) = tuple(
-                item
-                for item in snapshot.installations
-                if item.installation_key.plugin_id == "reviewworker"
-            )
-            enabled = product.management.submit(
-                PluginManagementCommandV1(
-                    action="enable",
-                    mutation=PluginDesiredStateMutationV1(
-                        operation_id="candidate-cli-enable",
-                        idempotency_key="candidate-cli-enable",
-                        expected_inventory_revision=snapshot.inventory_revision,
-                        installation_key=installation.installation_key,
-                        desired_state="installed_enabled",
-                        package_revision=None,
-                        actor_id=product.actor_id,
-                        policy_revision=product.desired_policy_revision,
-                    ),
-                )
-            )
-            assert enabled.status == "terminal"
-        finally:
-            runtime.dispose_runtime()
+        assert selection.selection.desired_state == "installed_enabled"
     finally:
         selected_owner.close()
 
