@@ -9,28 +9,35 @@
   contracts record implemented slices; plans remain delivery records; baselines
   are implementation evidence.
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
-  PLC9 remains in development. The current delivery branch has Product-backed
+  PLC9 remains an open delivery stage. Current `main` has Product-backed
   management projections and bounded repair routes across CLI, optional RPC,
   TUI, and local management SDK; public reproducible data Skill, Prompt, and
   Theme Wheels; explicit Linux Worker candidate admission, opt-in, native
   release custody, Session use, and recovery; and POSIX root/shared-dependency
   GC plus Arch private-data backup, delete, restore, and expiry owners. Each
-  route retains its own Product gate. Ordinary third-party Worker routing,
-  Windows production Worker/private-data execution, and final Coding regression
-  remain open. The [closure candidate](plugin-experience-and-plc9-closure-design.md)
-  records current evidence and limits.
+  route retains its own Product gate. Explicit Windows candidate first-B,
+  Worker, and GC native journeys passed at the final PLC9 code head; ordinary
+  unflagged Windows routing, general third-party Worker admission, and
+  Windows private-data production use remain separately gated. The final
+  Coding offline package regression passed. The
+  [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
+  exact-head evidence and limits.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
   Migration finalization and old-release recovery are historical work, not
   current acceptance gates. The Product owner accepted automatic first-B
   cutover for a genuinely fresh Linux workspace on 2026-10-01. The ordinary
-  Session implementation and focused interruption/old-snapshot regressions are
-  in place; complete Coding regression and Windows admission remain open.
+  Session implementation, interruption/old-snapshot regressions, and full
+  Coding offline package regression have passed. Explicit Windows candidate
+  first-B and GC routes have native evidence; unflagged ordinary Windows
+  selection remains closed.
 - Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
   internal/offline POSIX root-GC execution, durable private-data confirmation
   evidence, and pre-B workspace-snapshot status projection implemented; PLC9
-  remains open.
+  remains open. Later exact-head CI passed explicit Windows candidate journeys
+  and the final Coding offline package regression; separately gated routes
+  retain their own scope-owner decisions.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.
@@ -39,6 +46,10 @@
 
 This directory is the single entrypoint for active Harness Plugin architecture,
 delivery, frozen contracts, and baselines.
+
+For current kind, Product, platform, and entry-route status, use the
+[Plugin support matrix](plugin-support-matrix.md). Earlier status lines in
+delivery records are chronological evidence and may predate later gates.
 
 ## Authority Order
 
@@ -59,6 +70,9 @@ Neither may silently override a narrower implemented owner contract.
 
 ## Start Here
 
+- [Plugin Support Matrix](plugin-support-matrix.md) separates artifact build,
+  Product admission, selected consumption, and default-route status for native
+  Resources, Extension files, and Wheels.
 - [Plugin Architecture V2](architecture.md) is the only active Plugin
   architecture master document. It defines first principles, orthogonal
   artifact/identity/contribution/execution/trust/lifetime axes, exact ownership,

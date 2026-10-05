@@ -1,5 +1,11 @@
 # Plugin Experience And PLC9 Closure: Candidate Architecture
 
+This document is a chronological design and delivery ledger. Its earlier
+status statements predate later Product gates. For current kind, platform,
+entry-route, and default-route support, use the
+[Plugin support matrix](plugin-support-matrix.md), then verify against current
+source and exact-head tests.
+
 ## Status And Authority
 
 - Design status: accepted by the Plugin scope owner on 2026-09-26 for staged

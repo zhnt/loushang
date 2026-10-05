@@ -17,6 +17,10 @@ from loushang.plugin._authoring import (
     skill_action,
     skill_action_effect,
 )
+from loushang.plugin._coding_data_scaffold import (
+    CodingDataScaffold,
+    create_coding_data_scaffold,
+)
 from loushang.plugin._coding_data_skill_wheel import (
     build_coding_data_prompt_wheel,
     build_coding_data_skill_wheel,
@@ -49,6 +53,7 @@ __all__ = [
     "PLUGIN_ENGINE_FEATURES",
     "PLUGIN_MANIFEST_VERSION",
     "CapabilityProviderSpec",
+    "CodingDataScaffold",
     "Contract",
     "PluginDefinitionBuilder",
     "PluginDefinitionFunction",
@@ -61,6 +66,7 @@ __all__ = [
     "SkillActionEffect",
     "capability_provider",
     "capability_requirement",
+    "create_coding_data_scaffold",
     "build_coding_data_prompt_wheel",
     "build_coding_data_skill_wheel",
     "build_coding_data_theme_wheel",

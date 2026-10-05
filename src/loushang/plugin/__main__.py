@@ -9,7 +9,9 @@ import stat
 from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path
+from typing import Literal
 
+from loushang.plugin._coding_data_scaffold import create_coding_data_scaffold
 from loushang.plugin._coding_data_skill_wheel import (
     write_coding_data_prompt_wheel,
     write_coding_data_skill_wheel,
@@ -43,6 +45,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     conformance_parser.add_argument("path")
     conformance_parser.add_argument("--approve-execution", action="store_true")
+    for kind in ("skill", "prompt"):
+        init_parser = commands.add_parser(
+            f"init-coding-{kind}",
+            help=f"create one editable Coding data {kind.title()} source tree",
+        )
+        init_parser.add_argument("destination")
+        init_parser.add_argument("--plugin-id", help="defaults to destination name")
+        init_parser.add_argument("--resource-name", help="defaults to Plugin ID")
+        init_parser.add_argument("--version", default="1")
     build_parser = commands.add_parser(
         "build-coding-skill",
         help="build one Coding data Skill wheel",
@@ -128,6 +139,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     worker_parser.add_argument("--output-dir", default="dist")
     args = parser.parse_args(argv)
+    if args.command in {"init-coding-skill", "init-coding-prompt"}:
+        scaffold_kind: Literal["skill", "prompt"] = (
+            "skill" if args.command == "init-coding-skill" else "prompt"
+        )
+        try:
+            scaffold = create_coding_data_scaffold(
+                args.destination,
+                kind=scaffold_kind,
+                plugin_id=args.plugin_id,
+                resource_name=args.resource_name,
+                version=args.version,
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        print(
+            json.dumps(
+                {
+                    "buildCommand": list(scaffold.build_command),
+                    "smokeCommand": list(scaffold.smoke_command),
+                    "profile": f"coding-data-{scaffold_kind}-v1",
+                    "productAdmission": "not_checked",
+                    "productSelection": "not_checked",
+                    "productUse": "not_checked",
+                    "sourcePath": str(scaffold.source_path),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "validate":
         result = validate_package(args.path)
         print(
@@ -146,6 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "manifestPath": result.manifest_path,
                     "pluginId": result.plugin_id,
                     "productAdmission": "not_checked",
+                    "productSelection": "not_checked",
                     "productUse": "not_checked",
                     "valid": result.valid,
                 },
@@ -229,6 +271,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         else "coding-data-theme-v1"
                     ),
                     "productAdmission": "not_checked",
+                    "productSelection": "not_checked",
                     "productUse": "not_checked",
                     "sha256": sha256(wheel_path.read_bytes()).hexdigest(),
                 },
@@ -265,6 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "artifactPath": str(wheel_path),
                     "profile": "coding-local-worker-candidate-v1",
                     "productAdmission": "not_checked",
+                    "productSelection": "not_checked",
                     "productUse": "not_checked",
                     "sha256": sha256(wheel_path.read_bytes()).hexdigest(),
                 },

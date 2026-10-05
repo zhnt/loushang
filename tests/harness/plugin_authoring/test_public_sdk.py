@@ -112,6 +112,7 @@ def test_generic_validation_does_not_claim_product_admission_or_use(
     assert report["valid"] is True
     assert report["pluginId"] == "org.example.review"
     assert report["productAdmission"] == "not_checked"
+    assert report["productSelection"] == "not_checked"
     assert report["productUse"] == "not_checked"
 
 
@@ -253,6 +254,7 @@ def test_coding_data_skill_cli_builds_new_artifact_from_skill_file(
         "artifactPath": str(wheel),
         "profile": "coding-data-skill-v1",
         "productAdmission": "not_checked",
+        "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
     }
@@ -309,6 +311,7 @@ def test_coding_data_prompt_cli_builds_new_artifact(
         "artifactPath": str(wheel),
         "profile": "coding-data-prompt-v1",
         "productAdmission": "not_checked",
+        "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
     }
@@ -321,6 +324,56 @@ def test_coding_data_prompt_cli_builds_new_artifact(
     )
     with pytest.raises(SystemExit, match="2"):
         plugin_cli_main(args)
+
+
+@pytest.mark.parametrize(
+    ("kind", "relative_source", "build_command"),
+    [
+        ("skill", "skills/review/SKILL.md", "build-coding-skill"),
+        ("prompt", "prompts/review.md", "build-coding-prompt"),
+    ],
+)
+def test_coding_data_scaffold_produces_buildable_source_without_replacement(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    kind: str,
+    relative_source: str,
+    build_command: str,
+) -> None:
+    root = tmp_path / "reviewpack"
+    assert plugin_cli_main(
+        [
+            f"init-coding-{kind}",
+            str(root),
+            "--resource-name",
+            "review",
+        ]
+    ) == 0
+    report = json.loads(capsys.readouterr().out)
+    source = root / relative_source
+    assert report["sourcePath"] == str(source)
+    assert report["profile"] == f"coding-data-{kind}-v1"
+    assert report["productAdmission"] == "not_checked"
+    assert report["productSelection"] == "not_checked"
+    assert report["productUse"] == "not_checked"
+    assert report["buildCommand"][:2] == ["loushang-plugin", build_command]
+    assert report["smokeCommand"][:2] == [
+        "loushang-coding-plugin-smoke",
+        str(root / "dist" / "reviewpack-1-py3-none-any.whl"),
+    ]
+    assert source.is_file()
+    assert "review" in source.read_text(encoding="utf-8")
+    assert plugin_cli_main(report["buildCommand"][1:]) == 0
+    built = json.loads(capsys.readouterr().out)
+    assert Path(built["artifactPath"]).is_file()
+    assert report["smokeCommand"][1] == built["artifactPath"]
+    original = source.read_bytes()
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main([f"init-coding-{kind}", str(root)])
+    assert source.read_bytes() == original
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main([f"init-coding-{kind}", str(tmp_path / "invalid"), "--resource-name", "BAD"])
+    assert not (tmp_path / "invalid").exists()
 
 
 def test_public_capability_helpers_are_frozen_and_use_canonical_requirement() -> None:

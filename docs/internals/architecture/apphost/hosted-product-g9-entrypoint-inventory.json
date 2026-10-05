@@ -42,6 +42,16 @@
       "surface": "cli"
     },
     {
+      "disposition": "explicit-offline-posix-plugin-author-smoke",
+      "entrypointId": "coding.plugin-author-smoke.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-coding-plugin-smoke",
+      "source": "src/loushang/coding/plugin_author_smoke.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-offline-linux-product-private-data",
       "entrypointId": "coding.plugin-private-data.command",
       "importsComposition": false,

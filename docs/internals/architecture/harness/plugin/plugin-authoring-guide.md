@@ -6,11 +6,14 @@ existing owners select, admit, bind, authorize, publish, and retire runtime
 objects.
 
 `loushang-plugin validate <package-tree>` checks the inert manifest and
-declarations. Its JSON reports `productAdmission: "not_checked"` and
-`productUse: "not_checked"`, even when `valid` is true. The Coding wheel build
-commands report the same two statuses alongside the artifact profile and
+declarations. Its JSON reports `productAdmission`, `productSelection`, and
+`productUse` as `"not_checked"`, even when `valid` is true. The Coding wheel build
+commands report the same three statuses alongside the artifact profile and
 digest. The target Product must still admit the final wheel, and its actual
 Session or Screen consumer must separately prove use.
+
+The [support matrix](plugin-support-matrix.md) records the current route and
+platform gates for each kind.
 
 ## Start With Native Resources
 
@@ -23,6 +26,7 @@ independent installation, enablement, version selection, or removal:
 | Prompt | `.loushang/prompts/<name>.md` | Coding's new Session command path exposes it as `/<name>` and expands the selected Prompt into model input. |
 | Theme | `.loushang/themes/<name>.json` | Coding's native Theme Catalog can describe it. The current Screen applies only a Product-selected external Theme Wheel, so this native file does not change Screen colors. |
 | Method | `methods/<name>/SKILL.md` | The Method loader exposes `--list-methods`, `--show-method`, and `--method` in non-interactive prompt/print/json runs. TUI and RPC Method execution are not supported. `METHOD.md` is not a Method entrypoint. |
+| Extension | `.loushang/extensions/<name>.py` or `.loushang/extensions/<name>/extension.py` | Coding loads trusted Python in-process; `register(api)` can add tools, hooks, commands, flags, and dynamic resources. `/extensions` inspects loaded extensions. This has no Wheel Package lifecycle. |
 
 `AGENTS.md` follows the separate instruction-file convention. It is not a
 Plugin Resource declaration. Use a Wheel below when the resource needs a
@@ -33,6 +37,41 @@ files use the corresponding directories under the resolved Loushang platform
 home. The Method loader uses the separate workspace `methods/` directory.
 Wheel source trees below may also contain `skills/`, `prompts/`, or `themes/`,
 but they are package inputs rather than auto-discovered workspace files.
+
+For a small code extension, place a Python file in `.loushang/extensions/`
+and define `register(api)`. The
+[runnable tool example](../../../../../examples/coding/extensions/03_custom_tool.py)
+shows the `@tool` and `api.register_tool(...)` pattern. This is a trusted
+same-process path. The old raw `--extension`/`-e` CLI arguments are removed;
+use native discovery. A declared executable Extension in a Wheel does not
+inherit this native route's Product admission.
+
+## Short Skill/Prompt Author Journey
+
+For a reusable document-only Resource, scaffold source, edit the Markdown,
+build, and run a disposable Product smoke before installing in the target
+workspace:
+
+```text
+loushang-plugin init-coding-skill ./reviewpack --resource-name review
+# Edit ./reviewpack/skills/review/SKILL.md.
+# Run buildCommand from the JSON result.
+# Run smokeCommand from the JSON result.
+```
+
+Use `init-coding-prompt` for a Prompt. Scaffold creation refuses to replace
+an existing source directory. The JSON `buildCommand` makes a deterministic
+Wheel and still reports Product admission/use as `not_checked`. The
+`smokeCommand` calls the Coding-owned `loushang-coding-plugin-smoke` entrypoint
+with that exact Wheel in a disposable, offline, fresh Coding Product workspace.
+It installs and enables the Plugin, starts a new Session,
+invokes the requested Resource, and checks the persisted prepared model input.
+The result reports `productAdmission`, `productSelection`, and `productUse`
+separately; a failed stage leaves later stages `not_checked`. It currently
+requires the ordinary POSIX Product route and proves only that temporary
+workspace. Install and enable the Wheel separately in the destination
+workspace, then check its own Session. Neither scaffold nor smoke opens the
+Theme or Worker candidate gates.
 
 ## Capability Provider
 
