@@ -52,7 +52,7 @@ from loushang.harnesstui.conversation.intents import (
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
 _PLUGIN_USAGE = (
-    "Usage: /plugins [list | explain OPERATION_ID | enable ID | disable ID | "
+    "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | "
     "remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
 )
 
@@ -75,6 +75,7 @@ def build_coding_ui_controller(
     plugin_workspace: str | Path | None = None,
     plugin_preview: Callable[[], dict[str, object]] | None = None,
     plugin_management_snapshot: Callable[[], dict[str, object]] | None = None,
+    plugin_support_status: Callable[[], dict[str, object]] | None = None,
     plugin_operation_explanation: Callable[[str], dict[str, object]] | None = None,
     plugin_command: Callable[[str], HostActionResult] | None = None,
     plugin_package_repair_command: Callable[[str], HostActionResult] | None = None,
@@ -118,7 +119,7 @@ def build_coding_ui_controller(
                 return HostActionResult(
                     error_message="/plugins conflicts with a selected Session command."
                 )
-            if text not in {"/plugins", "/plugins list"}:
+            if text not in {"/plugins", "/plugins list", "/plugins status"}:
                 words = text.split()
                 if len(words) == 4 and words[1] == "repair-package":
                     package_command = plugin_package_repair_command
@@ -208,6 +209,8 @@ def build_coding_ui_controller(
                 plugin_preview
                 if text == "/plugins"
                 else plugin_management_snapshot
+                if text == "/plugins list"
+                else plugin_support_status
             )
             if read is None and plugin_workspace is not None:
                 if text == "/plugins":
@@ -221,7 +224,7 @@ def build_coding_ui_controller(
                         assert_plugin_scope(bound_session, workspace)
                         return result
 
-                else:
+                elif text == "/plugins list":
 
                     def read() -> dict[str, object]:
                         bound_session, workspace = plugin_scope()
@@ -235,6 +238,18 @@ def build_coding_ui_controller(
                         )
                         assert_plugin_scope(bound_session, workspace)
                         return result
+                else:
+
+                    def read() -> dict[str, object]:
+                        bound_session, workspace = plugin_scope()
+                        assert_plugin_scope(bound_session, workspace)
+                        result = open_coding_plugin_management_read_client(
+                            workspace
+                        ).support_status(
+                            correlation_id="coding:tui:plugins:status"
+                        )
+                        assert_plugin_scope(bound_session, workspace)
+                        return result
             if read is None:
                 return HostActionResult(error_message="Plugin preview is unavailable.")
             try:
@@ -244,6 +259,8 @@ def build_coding_ui_controller(
                         _format_coding_plugin_preview(document)
                         if text == "/plugins"
                         else _format_coding_plugin_management_list(document)
+                        if text == "/plugins list"
+                        else _format_coding_plugin_support_status(document)
                     )
                 )
             except Exception:
@@ -396,6 +413,44 @@ def _format_coding_plugin_preview(preview: dict[str, object]) -> str:
     if gaps:
         parts.append("evidence gaps: " + ", ".join(gaps))
     return " | ".join(parts)
+
+
+def _format_coding_plugin_support_status(document: dict[str, object]) -> str:
+    """Show owner-observed stages without claiming a live Session used them."""
+
+    if document.get("supportStatusVersion") != 1 or document.get("snapshotStatus") not in {
+        "partial_evidence", "stale_evidence"
+    }:
+        raise ValueError("Plugin support status is invalid")
+    entries = document.get("installations")
+    gaps = document.get("evidenceGaps")
+    if not isinstance(entries, list) or not isinstance(gaps, list):
+        raise ValueError("Plugin support status is invalid")
+    lines = [f"Plugin support ({document['snapshotStatus']}; live use not checked)"]
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ValueError("Plugin support Installation is invalid")
+        plugin_id = item.get("pluginId")
+        desired = item.get("desiredState")
+        admission = item.get("productAdmission")
+        selection = item.get("productSelection")
+        use = item.get("productUse")
+        if any(
+            not isinstance(value, str) or not value.isprintable()
+            for value in (plugin_id, desired, admission, selection, use)
+        ):
+            raise ValueError("Plugin support Installation is invalid")
+        lines.append(
+            f"{plugin_id}: {desired}; admission={admission}; "
+            f"selection={selection}; use={use}"
+        )
+    if len(lines) == 1:
+        lines.append("No installations")
+    if gaps:
+        if any(not isinstance(item, str) or not item.isprintable() for item in gaps):
+            raise ValueError("Plugin support evidence gap is invalid")
+        lines.append("Evidence gaps: " + ", ".join(gaps))
+    return "\n".join(lines)
 
 
 def _format_coding_plugin_operation_explanation(

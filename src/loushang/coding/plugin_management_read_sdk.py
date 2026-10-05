@@ -142,6 +142,41 @@ class CodingPluginManagementReadClientV1:
         self._assert_workspace_identity()
         return preview
 
+    def support_status(
+        self,
+        *,
+        correlation_id: str,
+        composition_set_id: str = "coding-standard",
+    ) -> dict[str, object]:
+        """Join management and Product preview without asserting Session use."""
+
+        from loushang.coding.plugin_support_status import (
+            project_coding_plugin_support_status,
+        )
+
+        before = self.management_snapshot(correlation_id=f"{correlation_id}:before")
+        preview = self.preview_current(
+            correlation_id=f"{correlation_id}:preview",
+            composition_set_id=composition_set_id,
+        )
+        after = self.management_snapshot(correlation_id=f"{correlation_id}:after")
+        def desired_revision(document: dict[str, object]) -> int:
+            revisions = document.get("ownerRevisions")
+            value = revisions.get("desiredState") if isinstance(revisions, dict) else None
+            if type(value) is not int:
+                raise ValueError("Plugin support Desired State revision is invalid")
+            return value
+
+        first_revision = desired_revision(before)
+        last_revision = desired_revision(after)
+        if first_revision != last_revision:
+            # The projector marks stale evidence when its two owner revisions
+            # differ; never accidentally present an older preview as current.
+            preview = {**preview, "desiredInventoryRevision": -1}
+        return project_coding_plugin_support_status(
+            after, preview, correlation_id=correlation_id
+        )
+
     def explain_operation(
         self,
         operation_id: str,

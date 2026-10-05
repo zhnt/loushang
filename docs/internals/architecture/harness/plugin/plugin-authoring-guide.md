@@ -39,9 +39,15 @@ Wheel source trees below may also contain `skills/`, `prompts/`, or `themes/`,
 but they are package inputs rather than auto-discovered workspace files.
 
 For a small code extension, place a Python file in `.loushang/extensions/`
-and define `register(api)`. The
+and define `register(api)`. `loushang-coding-extension init
+.loushang/extensions/hello.py` creates a no-replace template and prints its
+`smokeCommand`. The smoke copies that file into a disposable fenced Product
+workspace, starts a real offline Coding Session, and calls its selected Tool.
+The Extension still executes as trusted Python in the current process; the
+disposable workspace is not a code sandbox. Neither command installs a Wheel
+or admits executable Wheels. The
 [runnable tool example](../../../../../examples/coding/extensions/03_custom_tool.py)
-shows the `@tool` and `api.register_tool(...)` pattern. This is a trusted
+shows the `@tool`, `direct_tool(...)`, and `api.register_tool(...)` pattern. This is a trusted
 same-process path. The old raw `--extension`/`-e` CLI arguments are removed;
 use native discovery. A declared executable Extension in a Wheel does not
 inherit this native route's Product admission.
@@ -70,8 +76,17 @@ The result reports `productAdmission`, `productSelection`, and `productUse`
 separately; a failed stage leaves later stages `not_checked`. It currently
 requires the ordinary POSIX Product route and proves only that temporary
 workspace. Install and enable the Wheel separately in the destination
-workspace, then check its own Session. Neither scaffold nor smoke opens the
-Theme or Worker candidate gates.
+workspace, then check its own Session. These Skill/Prompt commands do not open
+the Theme or Worker candidate gates.
+
+For the existing Screen Theme candidate, run `loushang-plugin
+init-coding-theme ./themepack --resource-name dusk`, edit
+`./themepack/themes/dusk.json`, then run its returned `buildCommand` and
+`smokeCommand`. The Theme smoke installs and enables the exact Wheel in a
+disposable fenced Product workspace, selects `theme: plugin:dusk`, and checks
+the Coding Screen Theme consumer against the authored style tokens. This is
+candidate evidence for that Wheel, not general Theme rollout, Hosted Mux
+support, or admission in the destination workspace.
 
 ## Capability Provider
 

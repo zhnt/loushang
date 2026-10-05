@@ -16,6 +16,7 @@ from io import StringIO
 from pathlib import Path
 from secrets import token_hex
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
@@ -34,11 +35,15 @@ from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.ui.plugin_theme import (
+    apply_coding_plugin_theme_to_screen,
+    parse_coding_plugin_theme_document,
+)
 from loushang.harness.capabilities.prompt import expand_prompt_template
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.frontmatter import strip_frontmatter
 
-CodingDataSmokeKind = Literal["skill", "prompt"]
+CodingDataSmokeKind = Literal["skill", "prompt", "theme"]
 
 _ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -52,7 +57,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Prove a data Wheel in a disposable offline Coding Product.",
     )
     parser.add_argument("wheel_file")
-    parser.add_argument("--kind", choices=("skill", "prompt"), required=True)
+    parser.add_argument("--kind", choices=("skill", "prompt", "theme"), required=True)
     parser.add_argument("--plugin-id", required=True)
     parser.add_argument("--resource-name", required=True)
     args = parser.parse_args(argv)
@@ -122,7 +127,7 @@ def smoke_coding_data_wheel(
     }
     if os.name != "posix":
         return _failure(report, "artifact", "ordinary_posix_product_required")
-    if kind not in {"skill", "prompt"} or _ID.fullmatch(plugin_id) is None:
+    if kind not in {"skill", "prompt", "theme"} or _ID.fullmatch(plugin_id) is None:
         return _failure(report, "artifact", "invalid_profile_identity")
     if _NAME.fullmatch(resource_name) is None:
         return _failure(report, "artifact", "invalid_resource_name")
@@ -176,6 +181,8 @@ def smoke_coding_data_wheel(
                 return _failure(
                     report, "product_selection", "product_enable_refused", enable_error, root
                 )
+            if kind == "theme":
+                settings.set_theme(f"plugin:{resource_name}", scope="project")
             try:
                 expected_body = _document_body(
                     captured, kind=kind, plugin_id=plugin_id, resource_name=resource_name
@@ -279,6 +286,8 @@ def _document_body(
         f"{plugin_id}/skills/{resource_name}/SKILL.md"
         if kind == "skill"
         else f"{plugin_id}/prompts/{resource_name}.md"
+        if kind == "prompt"
+        else f"{plugin_id}/themes/{resource_name}.json"
     )
     try:
         with ZipFile(wheel) as archive:
@@ -289,9 +298,10 @@ def _document_body(
     except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
         raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
     try:
-        body = strip_frontmatter(body).strip()
-        if kind == "prompt":
-            body = expand_prompt_template(body, _SMOKE_ARGUMENTS)
+        if kind != "theme":
+            body = strip_frontmatter(body).strip()
+            if kind == "prompt":
+                body = expand_prompt_template(body, _SMOKE_ARGUMENTS)
     except ValueError as exc:
         raise _SelectionRefusal("requested Resource frontmatter or template is invalid") from exc
     if not body:
@@ -340,12 +350,38 @@ def _prove_new_session_use(
         bundle = session.resource_bundle
         if bundle is None:
             raise _SelectionRefusal("new Session has no Resource bundle")
-        selected = bundle.skills if kind == "skill" else bundle.prompts
+        selected = (
+            bundle.skills
+            if kind == "skill"
+            else bundle.prompts
+            if kind == "prompt"
+            else bundle.themes
+        )
         if not any(
             item.name == resource_name and item.source_kind == "external_package"
             for item in selected
         ):
             raise _SelectionRefusal("requested external Resource is absent from new Session")
+        if kind == "theme":
+            try:
+                expected_tokens = parse_coding_plugin_theme_document(expected_body)
+                app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
+                current = SimpleNamespace(
+                    settings_manager=settings, resource_bundle=bundle
+                )
+                apply_coding_plugin_theme_to_screen(app, current)
+                for token, style in expected_tokens.items():
+                    resolver = (
+                        app.welcome_theme
+                        if token.startswith("welcome.")
+                        else app.transcript_theme
+                    )
+                    applied = resolver.resolve(token)
+                    if any(applied.get(key) != value for key, value in style.items()):
+                        raise RuntimeError(f"Screen did not apply Theme token {token}")
+            except Exception as exc:
+                raise _UseRefusal(str(exc)) from exc
+            return
         invocation = (
             f"/skill:{resource_name} {_SMOKE_ARGUMENTS}"
             if kind == "skill"

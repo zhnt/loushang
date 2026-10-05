@@ -10,12 +10,12 @@ does not add a second Plugin registry or change a default route.
 | --- | --- | --- | --- | --- | --- |
 | Native Skill | `.loushang/skills/<name>/SKILL.md` | Native Resource discovery; no Wheel installation | New Coding Session selects the Skill; `/skill:<name>` injects its text into model input | Coding workspace; no package lifecycle | Verify a concrete Session when asserting use |
 | Native Prompt | `.loushang/prompts/<name>.md` | Native Resource discovery; no Wheel installation | New Coding Session expands `/<name>` into model input | Coding workspace; no package lifecycle | Verify a concrete Session when asserting use |
-| Native Extension | `.loushang/extensions/<name>.py` or `<name>/extension.py` | Native Resource/Extension discovery; trusted Python loaded in the Coding process | Can register hooks, tools, commands, flags, and dynamic resources; inspect `/extensions` and prove the requested behavior in a Session | Coding workspace; separate from Wheel Package lifecycle | No general self-service executable Wheel admission follows from this route |
+| Native Extension | `.loushang/extensions/<name>.py` or `<name>/extension.py`; single-file `loushang-coding-extension init` | Native Resource/Extension discovery; trusted Python loaded in the Coding process | Can register hooks, tools, commands, flags, and dynamic resources; `loushang-coding-extension smoke` proves one Tool through an offline Session | Coding workspace; separate from Wheel Package lifecycle | No general self-service executable Wheel admission follows from this route |
 | Native Theme | `.loushang/themes/<name>.json` | Native Catalog discovery | Catalog visibility exists; native file alone does not change Coding Screen colors | Coding workspace | Screen selection/application remains Product controlled |
 | Native Method | `methods/<name>/SKILL.md` | Method loader, separate from Plugin Package | Non-interactive `--method` path; no TUI/RPC Method execution | Coding | No public Method Wheel profile |
 | Data Skill Wheel | `build-coding-skill` | Fenced Coding Product admits the constrained document-only profile | Enabled selected revision appears in a new Session; `/skill:<name>` reaches persisted prepared model input | Linux/POSIX Product path verified; not a default global Plugin selection | Per-workspace install/enable and exact Session proof |
 | Data Prompt Wheel | `build-coding-prompt` | Same constrained data profile | Enabled selected revision expands `/<name>` into persisted prepared model input | Linux/POSIX Product path verified | Per-workspace install/enable and exact Session proof |
-| Screen Theme Wheel | `build-coding-theme` | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
+| Screen Theme Wheel | `init-coding-theme` then `build-coding-theme`; disposable Screen smoke | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
 | Native Worker Wheel | `build-coding-worker-candidate` | Explicit candidate review, Product admission, native release and per-install opt-in | Explicit Linux Python SDK Session query can use the selected Worker; default Coding Session remains Current | Linux x86-64; explicit Windows AMD64 candidate routes have native evidence, ordinary Windows route remains closed | No general third-party self-service admission or default route |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
@@ -34,6 +34,14 @@ fenced Coding workspace. Its `productAdmission`, `productSelection`, and
 `productUse` fields report the stage reached. A passing smoke result is evidence
 for that exact Wheel in the temporary workspace, not an admission receipt for
 another workspace or platform. See the [authoring guide](plugin-authoring-guide.md).
+
+For a fenced POSIX workspace, `loushang-coding-plugin-status --workspace PATH`,
+`/plugins status`, and the local read SDK's `support_status()` use the same
+read-only Coding projection. It joins the management owner's Desired State and
+the Product's current composition preview. `observed_in_preview` admission
+and `projected` selection are partial evidence; `productUse` remains
+`not_checked` until an actual Session or Screen consumer proves use. A changed
+Desired State revision reports `stale_evidence` rather than a current selection.
 
 ## Product and platform gates
 

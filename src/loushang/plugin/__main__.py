@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     conformance_parser.add_argument("path")
     conformance_parser.add_argument("--approve-execution", action="store_true")
-    for kind in ("skill", "prompt"):
+    for kind in ("skill", "prompt", "theme"):
         init_parser = commands.add_parser(
             f"init-coding-{kind}",
             help=f"create one editable Coding data {kind.title()} source tree",
@@ -139,9 +139,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     worker_parser.add_argument("--output-dir", default="dist")
     args = parser.parse_args(argv)
-    if args.command in {"init-coding-skill", "init-coding-prompt"}:
-        scaffold_kind: Literal["skill", "prompt"] = (
-            "skill" if args.command == "init-coding-skill" else "prompt"
+    if args.command in {"init-coding-skill", "init-coding-prompt", "init-coding-theme"}:
+        scaffold_kind: Literal["skill", "prompt", "theme"] = (
+            args.command.removeprefix("init-coding-")
         )
         try:
             scaffold = create_coding_data_scaffold(

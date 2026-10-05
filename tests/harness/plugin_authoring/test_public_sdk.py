@@ -331,6 +331,7 @@ def test_coding_data_prompt_cli_builds_new_artifact(
     [
         ("skill", "skills/review/SKILL.md", "build-coding-skill"),
         ("prompt", "prompts/review.md", "build-coding-prompt"),
+        ("theme", "themes/review.json", "build-coding-theme"),
     ],
 )
 def test_coding_data_scaffold_produces_buildable_source_without_replacement(
@@ -362,7 +363,13 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
         str(root / "dist" / "reviewpack-1-py3-none-any.whl"),
     ]
     assert source.is_file()
-    assert "review" in source.read_text(encoding="utf-8")
+    if kind == "theme":
+        assert json.loads(source.read_text(encoding="utf-8"))["tokens"]["welcome.title"] == {
+            "color": "red",
+            "bold": True,
+        }
+    else:
+        assert "review" in source.read_text(encoding="utf-8")
     assert plugin_cli_main(report["buildCommand"][1:]) == 0
     built = json.loads(capsys.readouterr().out)
     assert Path(built["artifactPath"]).is_file()

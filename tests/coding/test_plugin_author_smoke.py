@@ -12,6 +12,7 @@ from loushang.plugin import (
     write_coding_data_prompt_wheel,
     write_coding_data_skill_wheel,
 )
+from loushang.plugin.__main__ import main as plugin_cli_main
 
 
 @pytest.mark.skipif(os.name != "posix", reason="ordinary data Product path is POSIX")
@@ -123,3 +124,23 @@ def test_author_smoke_does_not_claim_selection_after_admission_refusal(
     assert report["productAdmission"] == "failed"
     assert report["productSelection"] == "not_checked"
     assert report["productUse"] == "not_checked"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="ordinary data Product path is POSIX")
+def test_author_theme_scaffold_reaches_screen_consumer(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source_root = tmp_path / "themepack"
+    assert plugin_cli_main(
+        ["init-coding-theme", str(source_root), "--resource-name", "dusk"]
+    ) == 0
+    scaffold = json.loads(capsys.readouterr().out)
+    assert scaffold["productUse"] == "not_checked"
+    assert plugin_cli_main(scaffold["buildCommand"][1:]) == 0
+    capsys.readouterr()
+    assert smoke_cli_main(scaffold["smokeCommand"][1:]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "passed"
+    assert report["productAdmission"] == "passed"
+    assert report["productSelection"] == "passed"
+    assert report["productUse"] == "passed"

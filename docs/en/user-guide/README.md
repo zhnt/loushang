@@ -235,6 +235,13 @@ For a small workspace extension, put `<name>.py` with `register(api)` in
 executed in the Coding process. It has no independent Wheel Package lifecycle;
 the removed `--extension`/`-e` arguments are not an alternate loader.
 
+Run `loushang-coding-extension init .loushang/extensions/hello.py` to create a
+single-file template, then run the returned `smokeCommand`. It starts an offline
+Coding Session in a disposable fenced Product workspace and invokes the Tool.
+The Python Extension still runs in this process with the current user's
+permissions; the disposable workspace is not a code sandbox. Register tools
+after wrapping them with `direct_tool(...)` or `authorized_tool(...)`.
+
 An extension may include an adjacent `loushang-extension.toml` manifest to declare identity, permission level, dependencies, and expected runtime surfaces. Use `/extensions` to inspect loaded extensions, surface summaries, and diagnostics; use `/extensions <id>` for one extension. `/tools` includes source information for extension-provided tools when available.
 
 ## Packages And Plugins
@@ -249,6 +256,16 @@ Wheel in a disposable offline POSIX Product workspace and reports admission,
 selection, and prepared-model-input use separately. It does not install into
 your own workspace. See the [authoring guide](../../internals/architecture/harness/plugin/plugin-authoring-guide.md)
 and [support matrix](../../internals/architecture/harness/plugin/plugin-support-matrix.md).
+
+For a Screen Theme candidate, use `loushang-plugin init-coding-theme ./themepack
+--resource-name dusk`, then its returned build and smoke commands. The Theme
+smoke checks an explicitly selected Screen style in a temporary POSIX Product
+workspace; Hosted Mux and general Theme rollout remain separate gates.
+
+In a fenced workspace, `loushang-coding-plugin-status --workspace PATH` and
+`/plugins status` show the same read-only support stages as the local SDK's
+`support_status()` query. A projected selection is still partial evidence;
+`productUse: not_checked` means no actual Session or Screen use was verified.
 
 ```bash
 loushang --list-plugins
