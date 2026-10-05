@@ -2937,6 +2937,21 @@ and crash retirement-to-GC journeys independent Windows jobs and strict
 nonempty, no-skip reports. This improves evidence isolation; it is not native
 acceptance of the retained-history GC path.
 
+The split native run exposed two further pre-GC limits. The crash journey's
+child was stopped by its 300-second test timeout before it reached the GC
+assertions. Its next version waits on the host process with file-backed output
+and a bounded one-hour child deadline, preserving the healthy-exit check and
+diagnostic output on timeout. The separate Worker admission process exited
+with Windows stack overflow after repeated Product rooted reads and before a
+terminal JUnit report. The high-frequency `_nt_open_at` primitive constructed
+new `ctypes` ABI classes and rebound native functions on every open. The next
+candidate retains one process-local binding while keeping each request's
+buffers, handles, access flags, ACL and identity checks independent. A native
+regression exercises 128 concurrent rooted reads. This is a plausible resource
+fix pending native execution, not proof of the stack-overflow root cause. The
+normal retirement-to-GC job from the old head was still running at the time of
+the next candidate and had produced no report.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
