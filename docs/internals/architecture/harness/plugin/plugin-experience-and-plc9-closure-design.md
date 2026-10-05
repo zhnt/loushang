@@ -2964,6 +2964,12 @@ launch, recovery, or retained-history GC. The same CI run also had an unrelated
 G17 Windows native observer assertion about a console sidecar descendant;
 that failure requires separate final-CI disposition.
 
+The first short-path rerun (`37285066101`) then failed before launch because
+`TemporaryDirectory` supplied a Windows path that differed from its resolved
+canonical path; Product correctly rejected the workspace. The next fixture
+resolves that root before constructing lifecycle and workspace identity, then
+checks the canonical payload cwd length. This is still pre-launch evidence.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

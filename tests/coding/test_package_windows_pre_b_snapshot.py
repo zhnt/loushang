@@ -2820,8 +2820,9 @@ def windows_worker_test_root(tmp_path: Path) -> Iterator[Path]:
     # CreateProcessW cannot use a cwd longer than MAX_PATH. The managed pytest
     # tree is deep enough to hide the Product launch behind Win32 error 267.
     with tempfile.TemporaryDirectory(prefix="plc9-w-") as root:
+        canonical_root = Path(root).resolve(strict=True)
         candidate = (
-            Path(root)
+            canonical_root
             / "session-state"
             / "plugin-packages"
             / "coding-lifecycle.epochs"
@@ -2830,7 +2831,7 @@ def windows_worker_test_root(tmp_path: Path) -> Iterator[Path]:
             / ("worker-payload-" + "7" * 32)
         )
         assert len(str(candidate)) < 260, "native Worker test cwd exceeds MAX_PATH"
-        yield Path(root)
+        yield canonical_root
 
 
 def test_windows_worker_clean_retirement_allows_fresh_product_launch(
