@@ -3038,6 +3038,27 @@ The same run had a Harness Linux test fail because its expected late
 descendant output file was absent; that test passed on the preceding head
 and needs an exact-head rerun or root-cause disposition before delivery.
 
+Three independent final `gpt-6-astra` reviews inspected `f33576a2` after
+explicit candidate admission. Architecture and integrity found no concrete
+P0/P1/P2. Developer/operator experience found no P0/P1 and one P2: the D3j
+contract still described both Windows candidate switches as closed, and the
+user guide lacked an executable `--windows-candidate` cutover/GC recipe.
+The contract, current inventory status, and user guide now describe the
+explicit routes and separate default-route boundary; `check-docs-light`
+passes. These documentation corrections need final delivery with CI evidence.
+
+Exact code-head run `37297923719` on `f33576a2` completed successfully with
+no failed jobs. Windows Shell, Worker admission, normal/partial GC, and crash
+GC all passed their strict native JUnit verifiers. The downloaded reports show
+157/157 PLC9B, 17/17 Worker, and 1/1 for each GC journey, all with zero
+failures/errors/skips. Linux Harness passed, resolving the preceding
+late-descendant output-file failure without Product changes. Hosting passed
+on Linux, macOS, and Windows; the sustained Linux Worker Product canary
+completed 2,049 queries. Coding's offline package regression passed 4,111
+tests, with 63 documented skips and 31 existing-selector deselections.
+The remaining Git delivery step carries only the reviewed documentation P2
+correction; it does not alter this verified Product code.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

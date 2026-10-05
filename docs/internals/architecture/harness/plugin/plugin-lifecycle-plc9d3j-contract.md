@@ -2,18 +2,19 @@
 
 ## Status
 
-- Tracking: PLC9 `#509`. `loushang-package-gc` is a declared POSIX offline
-  operator route for an already fenced Coding B workspace. It is not a
+- Tracking: PLC9 `#509`. `loushang-package-gc` is an offline operator route
+  for an already fenced Coding B workspace on Linux and, with explicit
+  `--windows-candidate`, on Windows. It is not a
   Session, RPC, UI, SDK, or scheduled deletion route.
-- On non-Linux platforms the CLI returns
-  `package_gc_platform_unsupported` before opening a Product owner. The
-  Windows Store primitive does not by itself supply a Windows Product runtime
-  lease, GC fence, or operator command.
+- On Windows the CLI requires `--windows-candidate`; without it the command
+  returns `package_gc_platform_unsupported` before opening a Product owner.
+  macOS remains unsupported. The Windows route uses the fenced Product owner,
+  runtime lease, GC gate, and exact Store target.
 - Root deletion requires the exact B-owned immutable Plugin-root handoff
   crosswalk. Dependency deletion additionally requires every committed holder
   root's verified deletion, one exact dependency Store settlement, and its
   committed publisher. Neither route has private-data or backup authority.
-- The hidden Linux `--worker-candidates` switch opens the explicitly admitted
+- The hidden `--worker-candidates` switch opens the explicitly admitted
   Worker candidate Product for offline GC. It does not select Worker Sessions
   or admit dependency execution.
 
@@ -186,19 +187,18 @@ workspace identity across factory creation, transfers the live lease to the
 binding, and uses a Windows root-aware admission and transaction guard.
 Coding binds this factory only through an explicit `windows_candidate=True`
 Product owner call; default Session selection remains closed. The cutover and
-GC CLIs have `--windows-candidate` route implementations for native tests, but
-their Product admission switches remain false. Both flagged and unflagged
-Windows write commands refuse before Product effects until native evidence is
-reviewed and the switches are deliberately changed.
+GC CLIs now admit explicit `--windows-candidate` commands after native
+acceptance; unflagged Windows commands still refuse before Product effects.
 The candidate also has a native Coding first-B bootstrap and selected-manifest
 test, plus native local Source and built-in Wheel publication tests. A
 candidate Windows Product GC composition now reuses the offline reference
 gate and targets the Windows root and dependency Stores. Its native test
 installs and removes one Coding builtin, refuses an active lease, then checks
-exact root deletion and replay. None of these tests has run on Windows yet. The
-Windows quarantine path now creates and reopens its root, attempt directories,
-and artifact files with exact private ACLs; its native ACL regression is also
-unexecuted on this Linux host. A native transaction guard retains
+exact root deletion and replay. The strict Windows Shell, Worker admission,
+normal/partial retirement-to-GC, and crash retirement-to-GC jobs passed on
+the same exact head `f33576a2` (run `37297923719`). The Windows quarantine
+path creates and reopens its root, attempt directories, and artifact files
+with exact private ACLs. A native transaction guard retains
 the same coordination lock through Product admission and effects, with nested
 lease reads under the held lock. Current Windows journal locks serialize
 Product transactions, so throughput remains an explicit platform gate. A
@@ -207,14 +207,9 @@ active lease. A separate Windows pre-fence owner now registers Coding's old
 Session startup, management writer, and Continuity bootstrap before lifecycle
 preparation and holds native per-startup liveness
 locks; the first-B cutover adapter projects that live set while excluding new
-launches. A real Windows first-B Product API now captures and authenticates
-the snapshot before the fence; the default write CLI remains closed. This
-Linux host cannot execute the native cases; a retained Windows run is still
-required. The remaining Windows path must prove actual Windows Store-backed
-Package publication and GC execution on a native runner and decide default
-Session promotion
-before an operator command can delete anything. The flagged Coding GC CLI
-remains closed until that path has native Product evidence. Broader dependency
+launches. A real Windows first-B Product API captures and authenticates
+the snapshot before the fence; the default write CLI remains closed. Ordinary
+Windows Session promotion requires a separate Product decision. Broader dependency
 cleanup debt repair policy, ordinary Coding dependency-Wheel admission, and
 broader platform/recovery evidence remain separate gates. The configured
 two-Plugin Product proof does not change Coding's public local-data policy or

@@ -253,6 +253,14 @@ Stop its Loushang processes first; the command also refuses a live pre-fence wri
 
 Pre-B workspaces containing old Plugin state, settings, Sources, or Package Store members are unsupported by this Product path. The ordinary cutover command refuses them before creating a B fence or changing the old workspace. Create a fresh workspace for the Product Plugin path; already fenced B workspaces can be reopened by a fence-aware version. The historical legacy review and adoption commands remain in the CLI but are not a supported migration route for this candidate.
 
+On Windows, the fresh-workspace cutover is an explicit candidate command. Stop Loushang processes first, then run:
+
+```powershell
+loushang-package-cutover --workspace C:\path\to\workspace --windows-candidate
+```
+
+The command refuses old Plugin state and legacy Plugin/Package settings before creating a B fence. The ordinary Windows Session route is still separate from this candidate command; `--windows-candidate` does not change its default selection.
+
 For a POSIX Package operation interrupted during staging, use the exact operation ID to inspect its checkpoint and request the narrow Product recovery:
 
 ```sh
@@ -308,6 +316,16 @@ loushang-package-gc --workspace /absolute/path/to/workspace retry --reservation-
 ```
 
 This command deletes only the exact immutable Plugin root. It leaves Plugin private data untouched and makes no claim that backups have expired.
+
+On Windows, offline GC for an already fenced B workspace requires the explicit candidate flag. Stop Loushang Sessions, then prepare and list candidates before deleting one exact ID:
+
+```powershell
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate prepare
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate list
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate delete --candidate-id <candidate-id> --attempt-key <your-attempt-key>
+```
+
+The same `--windows-candidate` flag applies to `retry` with the durable reservation ID. Unflagged Windows GC commands refuse before opening Product state. Retained Worker history must have completed its Product retirement before `prepare` admits Package GC.
 
 On Linux, the separate `loushang-plugin-private-data` command handles the Installation-owned cache of `coding.arch.default`. Stop all Coding Sessions. `backup` copies and verifies that exact cache under an independent Installation backup root; `backup-status` reports `retained` only while the archive still verifies:
 
