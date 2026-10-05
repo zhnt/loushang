@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -45,6 +46,30 @@ def test_windows_rooted_regular_file_handle_reads_data(tmp_path: Path) -> None:
             assert os.read(descriptor, 1024) == b"{\"source\":\"product\"}"
         finally:
             os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
+def test_windows_rooted_file_opens_remain_isolated_under_concurrent_reads(
+    tmp_path: Path,
+) -> None:
+    member = tmp_path / "repeated.json"
+    member.write_bytes(b"concurrent rooted read")
+    parent = open_windows_directory(tmp_path)
+    try:
+        def read_once(_: int) -> bytes:
+            descriptor = open_windows_regular_file_at(
+                parent, member.name, create_new=False, write=False
+            )
+            try:
+                return os.read(descriptor, 1024)
+            finally:
+                os.close(descriptor)
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            assert tuple(executor.map(read_once, range(128))) == (
+                b"concurrent rooted read",
+            ) * 128
     finally:
         os.close(parent)
 

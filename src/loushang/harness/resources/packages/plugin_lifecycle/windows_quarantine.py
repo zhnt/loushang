@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import stat
+from functools import lru_cache
 from pathlib import Path
 from struct import unpack_from
-from typing import NoReturn
+from typing import Any, NoReturn
 
 _MAX_STREAM_INFO_BYTES = 64 * 1024
 _STREAM_INFO_HEADER_BYTES = 24
@@ -572,6 +573,58 @@ def _nt_open_at(
     import msvcrt
     from ctypes import wintypes
 
+    (
+        _ntdll,
+        nt_create_file,
+        rtl_status_to_dos_error,
+        unicode_type,
+        io_status_type,
+        attributes_type,
+    ) = _nt_open_bindings()
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_length = len(name.encode("utf-16-le"))
+    unicode_name = unicode_type(
+        length=name_length,
+        maximum_length=name_length + ctypes.sizeof(ctypes.c_wchar),
+        buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    object_attributes = attributes_type(
+        length=ctypes.sizeof(attributes_type),
+        root_directory=wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(directory_fd)),
+        object_name=ctypes.pointer(unicode_name),
+        attributes=_OBJ_CASE_INSENSITIVE,
+        security_descriptor=ctypes.c_void_p(security_descriptor),
+        security_quality_of_service=None,
+    )
+    io_status = io_status_type()
+    opened_handle = wintypes.HANDLE()
+    status = nt_create_file(
+        ctypes.byref(opened_handle),
+        desired_access,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        _FILE_ATTRIBUTE_NORMAL,
+        share_access,
+        create_disposition,
+        create_options,
+        None,
+        0,
+    )
+    if status < 0:
+        raise getattr(ctypes, "WinError")(rtl_status_to_dos_error(status))
+    if opened_handle.value is None:
+        raise OSError("Windows returned an invalid quarantine handle")
+    return int(opened_handle.value)
+
+
+@lru_cache(maxsize=1)
+def _nt_open_bindings() -> tuple[Any, Any, Any, type[Any], type[Any], type[Any]]:
+    """Retain one native ABI binding instead of creating ctypes types per open."""
+
+    import ctypes
+    from ctypes import wintypes
+
     class _UnicodeString(ctypes.Structure):
         _fields_ = (
             ("length", wintypes.USHORT),
@@ -615,44 +668,17 @@ def _nt_open_at(
         wintypes.ULONG,
     )
     nt_create_file.restype = wintypes.LONG
-    name_buffer = ctypes.create_unicode_buffer(name)
-    name_length = len(name.encode("utf-16-le"))
-    unicode_name = _UnicodeString(
-        length=name_length,
-        maximum_length=name_length + ctypes.sizeof(ctypes.c_wchar),
-        buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+    rtl_status_to_dos_error.argtypes = (wintypes.LONG,)
+    rtl_status_to_dos_error.restype = wintypes.ULONG
+    return (
+        ntdll,
+        nt_create_file,
+        rtl_status_to_dos_error,
+        _UnicodeString,
+        _IoStatusBlock,
+        _ObjectAttributes,
     )
-    object_attributes = _ObjectAttributes(
-        length=ctypes.sizeof(_ObjectAttributes),
-        root_directory=wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(directory_fd)),
-        object_name=ctypes.pointer(unicode_name),
-        attributes=_OBJ_CASE_INSENSITIVE,
-        security_descriptor=ctypes.c_void_p(security_descriptor),
-        security_quality_of_service=None,
-    )
-    io_status = _IoStatusBlock()
-    opened_handle = wintypes.HANDLE()
-    status = nt_create_file(
-        ctypes.byref(opened_handle),
-        desired_access,
-        ctypes.byref(object_attributes),
-        ctypes.byref(io_status),
-        None,
-        _FILE_ATTRIBUTE_NORMAL,
-        share_access,
-        create_disposition,
-        create_options,
-        None,
-        0,
-    )
-    if status < 0:
-        rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
-        rtl_status_to_dos_error.argtypes = (wintypes.LONG,)
-        rtl_status_to_dos_error.restype = wintypes.ULONG
-        raise getattr(ctypes, "WinError")(rtl_status_to_dos_error(status))
-    if opened_handle.value is None:
-        raise OSError("Windows returned an invalid quarantine handle")
-    return int(opened_handle.value)
 
 
 def _open_for_delete(
