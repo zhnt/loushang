@@ -229,11 +229,26 @@ repository config cannot introduce a new executable or environment override.
 
 Extensions are Python files that can register lifecycle hooks, tools, dynamic resources, commands, and flags. Start with the runnable extension examples in [examples/coding/extensions](../../../examples/coding/extensions/).
 
+For a small workspace extension, put `<name>.py` with `register(api)` in
+`.loushang/extensions/`; no Wheel build is required. A directory containing
+`extension.py` or `__init__.py` is also discovered. This is trusted Python
+executed in the Coding process. It has no independent Wheel Package lifecycle;
+the removed `--extension`/`-e` arguments are not an alternate loader.
+
 An extension may include an adjacent `loushang-extension.toml` manifest to declare identity, permission level, dependencies, and expected runtime surfaces. Use `/extensions` to inspect loaded extensions, surface summaries, and diagnostics; use `/extensions <id>` for one extension. `/tools` includes source information for extension-provided tools when available.
 
 ## Packages And Plugins
 
 Packages and plugins can contribute reusable coding assets. Common lifecycle commands:
+
+For a reusable document-only Skill or Prompt Wheel, `loushang-plugin
+init-coding-skill ./reviewpack --resource-name review` (or
+`init-coding-prompt`) creates editable source and returns exact `buildCommand`
+and `smokeCommand` arrays. The smoke command installs and consumes that exact
+Wheel in a disposable offline POSIX Product workspace and reports admission,
+selection, and prepared-model-input use separately. It does not install into
+your own workspace. See the [authoring guide](../../internals/architecture/harness/plugin/plugin-authoring-guide.md)
+and [support matrix](../../internals/architecture/harness/plugin/plugin-support-matrix.md).
 
 ```bash
 loushang --list-plugins

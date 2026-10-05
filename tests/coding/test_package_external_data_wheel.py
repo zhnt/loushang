@@ -4739,7 +4739,12 @@ def test_external_theme_wheel_reaches_selected_catalog_and_visible_tui_fallback(
             "--output-dir",
             str(tmp_path),
         ),
-        env=os.environ.copy(),
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")
+            + os.pathsep
+            + os.environ.get("PYTHONPATH", ""),
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -4751,6 +4756,7 @@ def test_external_theme_wheel_reaches_selected_catalog_and_visible_tui_fallback(
         "artifactPath": str(wheel),
         "profile": "coding-data-theme-v1",
         "productAdmission": "not_checked",
+        "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
     }

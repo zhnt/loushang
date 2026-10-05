@@ -201,11 +201,15 @@ trust 机制完成前，不能从仓库配置引入新的可执行文件或环�
 
 扩展是可以注册生命周期 hooks、工具、动态资源、命令和 flags 的 Python 文件。可以先阅读 [examples/coding/extensions](../../../examples/coding/extensions/) 中的可运行扩展示例。
 
+简单的工作区扩展可直接放在 `.loushang/extensions/<name>.py`，实现 `register(api)`；也可用包含 `extension.py` 或 `__init__.py` 的目录。无需构建 Wheel。这是 Coding 进程内运行的可信 Python，没有独立的 Wheel 安装、版本和退役生命周期。旧的 `--extension`/`-e` 参数已移除。
+
 扩展可以携带相邻的 `loushang-extension.toml` manifest，用来声明身份、权限等级、依赖和预期贡献。使用 `/extensions` 查看已加载扩展、贡献摘要和诊断；使用 `/extensions <id>` 查看单个扩展详情。`/tools` 会在可用时展示 extension tool 的来源信息。
 
 ## 包与插件
 
 包与插件可以提供可复用的 coding 资产。常见生命周期命令：
+
+文档型 Skill/Prompt Wheel 可用 `loushang-plugin init-coding-skill ./reviewpack --resource-name review`（Prompt 用 `init-coding-prompt`）创建源码；返回的 `buildCommand` 构建 Wheel，`smokeCommand` 在一次性离线 POSIX Product 工作区执行安装、选择和模型输入消费验证。结果分别报告三个阶段，不会安装到当前工作区。各类型和入口的开放状态见 [插件支持矩阵](../../internals/architecture/harness/plugin/plugin-support-matrix.md)。
 
 ```bash
 loushang --list-plugins
