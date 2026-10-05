@@ -24,7 +24,6 @@ from loushang.coding.package_pre_b_snapshot import (
 )
 from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-    admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.package_product_worker_payload import (
@@ -45,9 +44,6 @@ from loushang.harness.plugin_management.operations import PluginManagementComman
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
-)
-from loushang.harness.resources.packages.product_local_wheel_policy import (
-    PackageProductLocalWorkerAdmissionV1,
 )
 from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
 from loushang.plugin._coding_local_worker_wheel import (
@@ -423,15 +419,6 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
             executable=executable.read_bytes(),
         )
     )
-    admit_coding_external_worker_wheel(
-        layout,
-        source=source,
-        admission=PackageProductLocalWorkerAdmissionV1(
-            contribution_id="query-provider",
-            owner_id="coding",
-            native_platform="linux-x86_64",
-        ),
-    )
     release = tmp_path / "release"
     built = subprocess.run(
         (sys.executable, str(_BUILDER), "--output-dir", str(release)),
@@ -471,11 +458,72 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
             stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=90,
-            env=os.environ.copy(),
+            env={**os.environ, "PYTHONPATH": str(_ROOT / "src")},
             check=False,
         )
         document = json.loads(result.stdout) if result.stdout else {}
         return result, document
+
+    linked_dir = tmp_path / "linked-source"
+    linked_dir.mkdir()
+    linked_source = linked_dir / source.name
+    linked_source.symlink_to(source)
+    linked, _ = run(
+        "candidate-capture",
+        "--wheel",
+        str(linked_source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert linked.returncode == 1
+    admitted, admission_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert admitted.returncode == 0, admitted.stderr
+    assert admission_output["candidateCapture"] == "recorded"
+    assert admission_output["productAdmission"] == "not_checked"
+    assert admission_output["productUse"] == "not_checked"
+    candidate_binding = admission_output["workerCandidateBinding"]
+    assert isinstance(candidate_binding, dict)
+    assert candidate_binding["artifactDigest"] == sha256(source.read_bytes()).hexdigest()
+    assert candidate_binding["pluginId"] == "reviewworker"
+    refused, _ = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding.other",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert refused.returncode == 1
+    repeated, repeated_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    assert repeated_output["workerCandidateBinding"] == candidate_binding
 
     reviewed, review_output = run("review", "--wheel", str(native_wheel))
     assert reviewed.returncode == 0, reviewed.stderr

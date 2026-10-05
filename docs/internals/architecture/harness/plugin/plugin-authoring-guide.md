@@ -288,10 +288,23 @@ or claim Product use.
 This Worker Wheel recipe is currently a developer candidate, not a self-service
 install flow. `loushang --install-package` admits the supported data Resource
 Wheels; `loushang-worker-native install` installs an approved Hosting native
-release, not the author's Worker Plugin. A Product operator must separately
-admit, install, and enable the Worker candidate through the fenced Product
-owner before the query or Python SDK examples below can run. A successful
-`build-coding-worker-candidate` command alone does not make the Worker usable.
+release, not the author's Worker Plugin. On Linux, a Product operator can
+capture the exact inert Worker candidate through the fenced Product owner:
+
+```text
+loushang-worker-native --workspace PATH candidate-capture \
+  --wheel dist/reviewworker-1-py3-none-manylinux_2_17_x86_64.whl \
+  --contribution-id query-provider --owner-id coding \
+  --native-platform linux-x86_64
+```
+
+The result identifies the captured digest and reports
+`productAdmission: not_checked` and `productUse: not_checked`.
+Installation, enablement, per-install opt-in, and an approved native release
+are still separate Product decisions. The candidate must be installed and
+enabled through the fenced Product owner before the query or Python SDK
+examples below can run. A successful `build-coding-worker-candidate` or
+`candidate-capture` command alone does not make the Worker usable.
 
 On Linux, a Product operator can inspect or change per-install Worker opt-in
 with `loushang-worker-native --workspace PATH candidate-status`,

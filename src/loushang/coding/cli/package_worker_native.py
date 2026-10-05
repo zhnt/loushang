@@ -19,6 +19,7 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
 from loushang.coding.package_product_worker_native_approval import (
@@ -64,6 +65,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.resources.packages.product_local_wheel_policy import (
+    PackageProductLocalWorkerAdmissionV1,
+)
 
 _MAX_WHEEL_BYTES = 4 * 1024 * 1024
 _SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{1,127}\Z")
@@ -73,6 +77,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="loushang-worker-native")
     parser.add_argument("--workspace", default=".", help="fenced Coding workspace")
     actions = parser.add_subparsers(dest="action", required=True)
+    candidate_capture = actions.add_parser(
+        "candidate-capture", help="capture one inert Product Worker Wheel candidate"
+    )
+    candidate_capture.add_argument("--wheel", required=True)
+    candidate_capture.add_argument("--contribution-id", required=True)
+    candidate_capture.add_argument("--owner-id", required=True)
+    candidate_capture.add_argument(
+        "--native-platform", choices=("linux-x86_64",), required=True
+    )
     actions.add_parser("status", help="read the current Product approval decision")
     review = actions.add_parser("review", help="verify and review one native Wheel")
     review.add_argument("--wheel", required=True)
@@ -168,20 +181,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not workspace.is_dir():
             raise ValueError("Coding workspace is not a directory")
         lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
-        application = open_coding_fenced_product_application_owner(
-            lifecycle,
-            workspace=workspace,
-            runtime_version=version("loushang"),
-            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
-            worker_candidates=True,
-        )
-        try:
-            product = application.runtime_owner.product_owner
-            if not isinstance(product, PosixLocalWheelProductSessionOwner):
-                raise ValueError("Coding Worker native Product owner is unsupported")
-            result = _execute(product, args)
-        finally:
-            application.close()
+        result: dict[str, object]
+        if args.action == "candidate-capture":
+            binding = admit_coding_external_worker_wheel(
+                lifecycle,
+                source=Path(args.wheel).expanduser().absolute(),
+                admission=PackageProductLocalWorkerAdmissionV1(
+                    contribution_id=args.contribution_id,
+                    owner_id=args.owner_id,
+                    native_platform=args.native_platform,
+                ),
+            )
+            result = {
+                "workerCandidateBinding": binding.to_dict(),
+                "candidateCapture": "recorded",
+                "productAdmission": "not_checked",
+                "productUse": "not_checked",
+            }
+        else:
+            application = open_coding_fenced_product_application_owner(
+                lifecycle,
+                workspace=workspace,
+                runtime_version=version("loushang"),
+                runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+                worker_candidates=True,
+            )
+            try:
+                product = application.runtime_owner.product_owner
+                if not isinstance(product, PosixLocalWheelProductSessionOwner):
+                    raise ValueError("Coding Worker native Product owner is unsupported")
+                result = _execute(product, args)
+            finally:
+                application.close()
     except (OSError, RuntimeError, ValueError, PackageNotFoundError) as error:
         reason = getattr(error, "code", None)
         if not isinstance(reason, str) or _SAFE_ERROR_CODE.fullmatch(reason) is None:
