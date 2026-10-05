@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Literal
 
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
@@ -66,7 +67,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeRequestV1,
 )
-from loushang.harness.plugin_management.operations import PluginManagementCommandV1
+from loushang.harness.plugin_management.operations import (
+    PluginManagementCommandV1,
+    PluginManagementOperationEventV1,
+)
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -108,6 +112,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     candidate_enable.add_argument("--artifact-digest", required=True)
     candidate_enable.add_argument("--operation-id", required=True)
     candidate_enable.add_argument("--expected-inventory-revision", type=int, required=True)
+    for action, help_text in (
+        ("candidate-disable", "disable one exact installed Worker candidate"),
+        ("candidate-remove", "remove one Worker candidate from Desired State"),
+    ):
+        candidate_change = actions.add_parser(action, help=help_text)
+        candidate_change.add_argument("--plugin-id", required=True)
+        candidate_change.add_argument("--artifact-digest", required=True)
+        candidate_change.add_argument("--operation-id", required=True)
+        candidate_change.add_argument(
+            "--expected-inventory-revision", type=int, required=True
+        )
     actions.add_parser("status", help="read the current Product approval decision")
     review = actions.add_parser("review", help="verify and review one native Wheel")
     review.add_argument("--wheel", required=True)
@@ -249,7 +264,12 @@ def _execute(
     product: PosixLocalWheelProductSessionOwner,
     args: argparse.Namespace,
 ) -> dict[str, object]:
-    if args.action in {"candidate-install", "candidate-enable"}:
+    if args.action in {
+        "candidate-install",
+        "candidate-enable",
+        "candidate-disable",
+        "candidate-remove",
+    }:
         matching = tuple(
             binding
             for binding in product.policy.bindings
@@ -358,17 +378,60 @@ def _execute(
                 }
             finally:
                 runtime.dispose_runtime()
-        if selected is None or selected_revision is None:
+        if args.action == "candidate-remove":
+            current_opt_in = CodingWorkerProductOptInOwner(product).current(
+                args.plugin_id
+            )
+            if current_opt_in is not None and current_opt_in.action == "allow":
+                raise ValueError("Coding Worker candidate opt-in must be revoked")
+        if selected is None:
             raise ValueError("Coding Worker candidate installation changed")
+        if selected_revision is None:
+            prior = product.management.operation(args.operation_id)
+            if (
+                args.action != "candidate-remove"
+                or selected.selection.desired_state != "absent"
+                or not isinstance(prior, PluginManagementOperationEventV1)
+                or prior.command.action != "remove"
+                or prior.command.mutation.installation_key != selected.installation_key
+                or prior.command.mutation.expected_inventory_revision
+                != args.expected_inventory_revision
+                or prior.status != "terminal"
+                or prior.result is None
+                or prior.result.disposition != "succeeded"
+                or prior.result.transition is None
+                or (
+                    previous := prior.result.transition.previous_state.selection.package_revision
+                )
+                is None
+                or previous.package_source_identity != binding.source_identity
+                or previous.package_content_digest != binding.artifact_digest
+            ):
+                raise ValueError("Coding Worker candidate removal changed")
+            return {
+                "candidateManagementOperation": prior.to_dict(),
+                "inventoryRevision": snapshot.inventory_revision,
+                "productSelection": "not_checked",
+                "productUse": "not_checked",
+                "packageRetirement": "not_checked",
+            }
+        desired_action: Literal["enable", "disable", "remove"]
+        desired_state: Literal["installed_enabled", "installed_disabled", "absent"]
+        if args.action == "candidate-enable":
+            desired_action, desired_state = "enable", "installed_enabled"
+        elif args.action == "candidate-disable":
+            desired_action, desired_state = "disable", "installed_disabled"
+        else:
+            desired_action, desired_state = "remove", "absent"
         operation = product.management.submit(
             PluginManagementCommandV1(
-                action="enable",
+                action=desired_action,
                 mutation=PluginDesiredStateMutationV1(
                     operation_id=args.operation_id,
                     idempotency_key=args.operation_id,
                     expected_inventory_revision=args.expected_inventory_revision,
                     installation_key=selected.installation_key,
-                    desired_state="installed_enabled",
+                    desired_state=desired_state,
                     package_revision=None,
                     actor_id=product.actor_id,
                     policy_revision=product.desired_policy_revision,
@@ -383,8 +446,14 @@ def _execute(
             raise ValueError("Coding Worker candidate enable did not settle")
         return {
             "candidateManagementOperation": operation.to_dict(),
+            "inventoryRevision": product.desired_state.snapshot().inventory_revision,
             "productSelection": "not_checked",
             "productUse": "not_checked",
+            **(
+                {"packageRetirement": "not_checked"}
+                if args.action == "candidate-remove"
+                else {}
+            ),
         }
     if args.action == "list-gated-attempts":
         return {

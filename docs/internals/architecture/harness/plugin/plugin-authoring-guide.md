@@ -320,6 +320,28 @@ Per-install opt-in and an approved native release are still separate Product
 decisions before a query or Python SDK Session can use the Worker. A successful
 build or capture alone does not make the Worker usable.
 
+To stop and remove a selected candidate, revoke its per-install opt-in, then
+disable and remove the exact installed revision using the latest inventory
+revision for each Desired State operation:
+
+```text
+loushang-worker-native --workspace PATH candidate-revoke \
+  --plugin-id reviewworker --operation-id revoke-reviewworker-1 \
+  --expected-generation GENERATION
+loushang-worker-native --workspace PATH candidate-disable \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id disable-reviewworker-1 \
+  --expected-inventory-revision REVISION
+loushang-worker-native --workspace PATH candidate-remove \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id remove-reviewworker-1 \
+  --expected-inventory-revision NEXT_REVISION
+```
+
+`candidate-remove` changes Desired State to absent after opt-in revocation.
+It reports `packageRetirement: not_checked`; physical Package GC and any
+pinned Session retirement require separate Product evidence.
+
 On Linux, a Product operator can inspect or change per-install Worker opt-in
 with `loushang-worker-native --workspace PATH candidate-status`,
 `candidate-allow`, and `candidate-revoke`, each with `--plugin-id PLUGIN`.

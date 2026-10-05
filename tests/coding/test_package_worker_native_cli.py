@@ -638,6 +638,8 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert operation["status"] == "terminal"
     result = operation["result"]
     assert isinstance(result, dict) and result["disposition"] == "succeeded"
+    enabled_inventory_revision = enabled_output["inventoryRevision"]
+    assert isinstance(enabled_inventory_revision, int)
     repeated_enable, repeated_enable_output = run(
         "candidate-enable",
         "--plugin-id",
@@ -824,6 +826,47 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     status, status_output = run("candidate-status", "--plugin-id", "reviewworker")
     assert status.returncode == 0, status.stderr
     assert status_output == allowed_output
+    remove_while_allowed, _ = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-remove-too-early",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    assert remove_while_allowed.returncode == 1
+    disabled, disabled_output = run(
+        "candidate-disable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-disable",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    assert disabled.returncode == 0, disabled.stderr
+    disable_operation = disabled_output["candidateManagementOperation"]
+    assert isinstance(disable_operation, dict)
+    disable_result = disable_operation["result"]
+    assert isinstance(disable_result, dict)
+    assert disable_result["disposition"] == "succeeded"
+    disabled_inventory_revision = disabled_output["inventoryRevision"]
+    assert isinstance(disabled_inventory_revision, int)
+    after_disable, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_disable.returncode == 1
     revoked_candidate, revoked_candidate_output = run(
         "candidate-revoke",
         "--plugin-id",
@@ -850,7 +893,66 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "review",
     )
     assert after_revoke.returncode == 1
-    assert b"coding_worker_query_not_selected" in after_revoke.stderr
+    assert b"package_product_root_not_selected" in after_revoke.stderr
+    removed, removed_output = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-remove",
+        "--expected-inventory-revision",
+        str(disabled_inventory_revision),
+    )
+    assert removed.returncode == 0, removed.stderr
+    remove_operation = removed_output["candidateManagementOperation"]
+    assert isinstance(remove_operation, dict)
+    remove_result = remove_operation["result"]
+    assert isinstance(remove_result, dict)
+    assert remove_result["disposition"] == "succeeded"
+    assert removed_output["packageRetirement"] == "not_checked"
+    removed_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        snapshot = removed_owner.runtime_owner.product_owner.desired_state.snapshot()
+        (retired,) = tuple(
+            item
+            for item in snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
+        )
+        assert retired.selection.desired_state == "absent"
+    finally:
+        removed_owner.close()
+    removed_replay, removed_replay_output = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-remove",
+        "--expected-inventory-revision",
+        str(disabled_inventory_revision),
+    )
+    assert removed_replay.returncode == 0, removed_replay.stderr
+    assert removed_replay_output == removed_output
+    after_remove, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_remove.returncode == 1
+    assert b"package_product_root_not_selected" in after_remove.stderr
     revoked, revoked_output = run(
         "revoke",
         "--operation-id",
