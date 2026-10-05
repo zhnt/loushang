@@ -141,6 +141,14 @@ from loushang.coding.package_product_worker_policy import (
     CodingWorkerOptInV1,
     coding_worker_session_scope_id,
 )
+from loushang.coding.package_product_worker_provider import (
+    CodingWorkerProviderCandidateError,
+    coding_worker_query_capability_provider,
+    prepare_coding_selected_worker_provider_candidate,
+)
+from loushang.coding.package_product_worker_query_consumer import (
+    CODING_WORKER_QUERY_DEFINITION,
+)
 from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptError
 from loushang.coding.package_product_worker_windows_backend_release import (
     review_coding_windows_worker_backend_release,
@@ -3804,6 +3812,37 @@ finally:
                     )
                     assert receipt_owner.current_worker_owner_id(receipt) == (
                         allowed.opt_in.owner_id
+                    )
+                    query_provider = coding_worker_query_capability_provider(
+                        "workerprobe"
+                    )
+                    with pytest.raises(
+                        CodingWorkerProviderCandidateError,
+                        match="coding_worker_provider_selection_mismatch",
+                    ):
+                        prepare_coding_selected_worker_provider_candidate(
+                            receipt_owner=receipt_owner,
+                            receipt=receipt,
+                            definition=CODING_WORKER_QUERY_DEFINITION,
+                            provider=query_provider,
+                        )
+                    provider_candidate = (
+                        prepare_coding_selected_worker_provider_candidate(
+                            receipt_owner=receipt_owner,
+                            receipt=receipt,
+                            definition=replace(
+                                CODING_WORKER_QUERY_DEFINITION,
+                                owner_id="coding.lsp",
+                            ),
+                            provider=query_provider,
+                        )
+                    )
+                    assert (
+                        provider_candidate.binding_spec.native_platform
+                        == "windows-amd64"
+                    )
+                    assert provider_candidate.plugin_candidate_fingerprint == (
+                        receipt.fingerprint
                     )
                     with patch.object(
                         receipt_owner,

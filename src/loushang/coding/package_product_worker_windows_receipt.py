@@ -127,6 +127,10 @@ class CodingWindowsWorkerProductReceiptOwner:
     def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
         return self._product
 
+    @property
+    def product_runtime(self) -> PackageProductRuntimeBindingV1:
+        return self._runtime
+
     def issue(self) -> ProductWorkerActivationReceiptV1 | None:
         """Return Current on absent opt-in, otherwise persist exact authority."""
 
