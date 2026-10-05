@@ -3834,6 +3834,23 @@ finally:
                         )
                         assert history
                         assert history[-1].phase == "stopped"
+                        attempt_id = history[-1].attempt_id
+                        provisioning = (
+                            inspect_coding_windows_product_worker_provisioning_attempts(
+                                worker_product
+                            )
+                        )
+                        assert tuple(
+                            (item.attempt_id, item.phase) for item in provisioning
+                        ) == ((attempt_id, "settled"),)
+                        orphan_review = (
+                            review_coding_windows_product_worker_orphan_runtime(
+                                worker_product, attempt_id=attempt_id
+                            )
+                        )
+                        assert orphan_review.native_job_absent is True
+                        assert orphan_review.attempt is not None
+                        assert orphan_review.attempt.clean_exit_settled
                         return
                     unmaterialized_session = asyncio.run(
                         SessionManager.new(

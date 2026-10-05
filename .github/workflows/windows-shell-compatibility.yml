@@ -48,8 +48,6 @@ jobs:
           uv run python scripts/dev/run_pytest.py
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_candidate_requires_explicit_windows_product_flag
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
-          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
           tests/coding/test_package_product_worker_windows_crash_cleanup_review.py
           tests/coding/test_package_product_worker_windows_crash_native_settlement.py
@@ -72,6 +70,61 @@ jobs:
         with:
           name: windows-worker-pytest-report
           path: .artifacts/windows-shell-worker-candidate-native.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  windows-worker-session:
+    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+
+      - name: Run native Windows Worker public Session cases
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
+          PYTEST_ADDOPTS: >-
+            --tb=short
+            --junitxml=.artifacts/windows-worker-session-native.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
+          --maxfail=1
+          --durations=20
+          -vv
+
+      - name: Reject empty, skipped, or failing Windows Worker Session report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-worker-session-native.xml
+
+      - name: Upload Windows Worker Session pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-session-pytest-report
+          path: .artifacts/windows-worker-session-native.xml
           include-hidden-files: true
           if-no-files-found: warn
 
@@ -370,7 +423,7 @@ jobs:
   selected-checks:
     name: Selected checks
     if: always()
-    needs: [windows-shell, windows-worker, windows-worker-gc-normal, windows-worker-gc-crash]
+    needs: [windows-shell, windows-worker, windows-worker-session, windows-worker-gc-normal, windows-worker-gc-crash]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -380,4 +433,4 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python scripts/ci/verify_gate.py
-          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell","windows-worker-gc-normal":"windows_shell","windows-worker-gc-crash":"windows_shell"}'
+          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell","windows-worker-session":"windows_shell","windows-worker-gc-normal":"windows_shell","windows-worker-gc-crash":"windows_shell"}'
