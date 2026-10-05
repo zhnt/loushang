@@ -81,8 +81,7 @@ def create_coding_data_scaffold(
     )
     wheel_path = root / "dist" / f"{resolved_plugin_id}-{version}-py3-none-any.whl"
     smoke_command = (
-        "loushang-plugin",
-        "smoke-coding-data",
+        "loushang-coding-plugin-smoke",
         str(wheel_path),
         "--kind",
         kind,

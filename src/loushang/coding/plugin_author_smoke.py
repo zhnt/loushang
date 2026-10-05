@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import os
 import re
 import stat
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import contextmanager
 from hashlib import sha256
 from importlib.metadata import version
@@ -42,6 +44,26 @@ _ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 _MAX_WHEEL_BYTES = 2 * 1024 * 1024
 _SMOKE_ARGUMENTS = "Verify the author package."
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="loushang-coding-plugin-smoke",
+        description="Prove a data Wheel in a disposable offline Coding Product.",
+    )
+    parser.add_argument("wheel_file")
+    parser.add_argument("--kind", choices=("skill", "prompt"), required=True)
+    parser.add_argument("--plugin-id", required=True)
+    parser.add_argument("--resource-name", required=True)
+    args = parser.parse_args(argv)
+    report = smoke_coding_data_wheel(
+        args.wheel_file,
+        kind=args.kind,
+        plugin_id=args.plugin_id,
+        resource_name=args.resource_name,
+    )
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    return 0 if report["status"] == "passed" else 1
 
 
 class _OfflineAdapter:
@@ -409,4 +431,8 @@ def _failure(
     return report
 
 
-__all__ = ["smoke_coding_data_wheel"]
+__all__ = ["main", "smoke_coding_data_wheel"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

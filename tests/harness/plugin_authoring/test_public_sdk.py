@@ -357,9 +357,8 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
     assert report["productSelection"] == "not_checked"
     assert report["productUse"] == "not_checked"
     assert report["buildCommand"][:2] == ["loushang-plugin", build_command]
-    assert report["smokeCommand"][:3] == [
-        "loushang-plugin",
-        "smoke-coding-data",
+    assert report["smokeCommand"][:2] == [
+        "loushang-coding-plugin-smoke",
         str(root / "dist" / "reviewpack-1-py3-none-any.whl"),
     ]
     assert source.is_file()
@@ -367,7 +366,7 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
     assert plugin_cli_main(report["buildCommand"][1:]) == 0
     built = json.loads(capsys.readouterr().out)
     assert Path(built["artifactPath"]).is_file()
-    assert report["smokeCommand"][2] == built["artifactPath"]
+    assert report["smokeCommand"][1] == built["artifactPath"]
     original = source.read_bytes()
     with pytest.raises(SystemExit, match="2"):
         plugin_cli_main([f"init-coding-{kind}", str(root)])

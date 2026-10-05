@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from loushang.coding.plugin_author_smoke import main as smoke_cli_main
 from loushang.plugin import (
     write_coding_data_prompt_wheel,
     write_coding_data_skill_wheel,
 )
-from loushang.plugin.__main__ import main as plugin_cli_main
 
 
 @pytest.mark.skipif(os.name != "posix", reason="ordinary data Product path is POSIX")
@@ -49,7 +49,6 @@ def test_author_smoke_proves_product_selection_and_prepared_model_input(
             prompt_document=document,
         )
     args = [
-        "smoke-coding-data",
         str(wheel),
         "--kind",
         kind,
@@ -58,7 +57,7 @@ def test_author_smoke_proves_product_selection_and_prepared_model_input(
         "--resource-name",
         "review",
     ]
-    assert plugin_cli_main(args) == 0
+    assert smoke_cli_main(args) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["status"] == "passed"
     assert report["artifactSha256"] == sha256(wheel.read_bytes()).hexdigest()
@@ -82,9 +81,8 @@ def test_author_smoke_reports_the_exact_failed_boundary(
         skill_name="review",
         skill_document=b"---\nname: review\n---\n# Review\nCheck this.\n",
     )
-    assert plugin_cli_main(
+    assert smoke_cli_main(
         [
-            "smoke-coding-data",
             str(wheel),
             "--kind",
             "skill",
@@ -109,9 +107,8 @@ def test_author_smoke_does_not_claim_selection_after_admission_refusal(
 ) -> None:
     invalid_wheel = tmp_path / "invalid-1-py3-none-any.whl"
     invalid_wheel.write_bytes(b"not a Wheel")
-    assert plugin_cli_main(
+    assert smoke_cli_main(
         [
-            "smoke-coding-data",
             str(invalid_wheel),
             "--kind",
             "skill",

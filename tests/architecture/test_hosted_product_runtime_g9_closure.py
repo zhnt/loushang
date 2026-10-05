@@ -329,6 +329,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.package-cutover.command",
         "coding.package-gc.command",
         "coding.package-repair.command",
+        "coding.plugin-author-smoke.command",
         "coding.plugin-private-data.command",
         "coding.worker-native.command",
         "coding.sdk",
@@ -387,6 +388,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     for entrypoint_id, disposition in (
         ("coding.package-repair.command", "explicit-offline-posix-product-repair"),
         (
+            "coding.plugin-author-smoke.command",
+            "explicit-offline-posix-plugin-author-smoke",
+        ),
+        (
             "coding.plugin-private-data.command",
             "explicit-offline-linux-product-private-data",
         ),
@@ -441,6 +446,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.package-cutover.command": ("cli", "installed"),
         "coding.package-gc.command": ("cli", "installed"),
         "coding.package-repair.command": ("cli", "installed"),
+        "coding.plugin-author-smoke.command": ("cli", "installed"),
         "coding.plugin-private-data.command": ("cli", "installed"),
         "coding.worker-native.command": ("cli", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
@@ -460,6 +466,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
         "loushang-package-repair": "loushang.coding.cli.package_repair:main",
+        "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
@@ -479,6 +486,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.loushang-package-cutover": "coding.package-cutover.command",
         "project.scripts.loushang-package-gc": "coding.package-gc.command",
         "project.scripts.loushang-package-repair": "coding.package-repair.command",
+        "project.scripts.loushang-coding-plugin-smoke": "coding.plugin-author-smoke.command",
         "project.scripts.loushang-plugin-private-data": "coding.plugin-private-data.command",
         "project.scripts.loushang-worker-native": "coding.worker-native.command",
         "project.scripts.loushang-plugin": "plugin.cli",

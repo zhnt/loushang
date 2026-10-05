@@ -28,7 +28,7 @@ Resource discovery or the Product gate.
 
 For Skill and Prompt authors, `loushang-plugin init-coding-skill` or
 `init-coding-prompt` creates source and prints a build command. The resulting
-Wheel can be checked with `smoke-coding-data`, which runs install, enable, new
+Wheel can be checked with `loushang-coding-plugin-smoke`, which runs install, enable, new
 Session selection, and persisted model-input use in a disposable offline
 fenced Coding workspace. Its `productAdmission`, `productSelection`, and
 `productUse` fields report the stage reached. A passing smoke result is evidence

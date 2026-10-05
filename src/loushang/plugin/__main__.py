@@ -45,14 +45,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     conformance_parser.add_argument("path")
     conformance_parser.add_argument("--approve-execution", action="store_true")
-    smoke_parser = commands.add_parser(
-        "smoke-coding-data",
-        help="prove one Skill or Prompt Wheel in a disposable offline Coding Product",
-    )
-    smoke_parser.add_argument("wheel_file")
-    smoke_parser.add_argument("--kind", choices=("skill", "prompt"), required=True)
-    smoke_parser.add_argument("--plugin-id", required=True)
-    smoke_parser.add_argument("--resource-name", required=True)
     for kind in ("skill", "prompt"):
         init_parser = commands.add_parser(
             f"init-coding-{kind}",
@@ -147,17 +139,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     worker_parser.add_argument("--output-dir", default="dist")
     args = parser.parse_args(argv)
-    if args.command == "smoke-coding-data":
-        from loushang.coding.plugin_author_smoke import smoke_coding_data_wheel
-
-        report = smoke_coding_data_wheel(
-            args.wheel_file,
-            kind=args.kind,
-            plugin_id=args.plugin_id,
-            resource_name=args.resource_name,
-        )
-        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
-        return 0 if report["status"] == "passed" else 1
     if args.command in {"init-coding-skill", "init-coding-prompt"}:
         scaffold_kind: Literal["skill", "prompt"] = (
             "skill" if args.command == "init-coding-skill" else "prompt"

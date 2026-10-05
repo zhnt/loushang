@@ -62,8 +62,9 @@ loushang-plugin init-coding-skill ./reviewpack --resource-name review
 Use `init-coding-prompt` for a Prompt. Scaffold creation refuses to replace
 an existing source directory. The JSON `buildCommand` makes a deterministic
 Wheel and still reports Product admission/use as `not_checked`. The
-`smokeCommand` uses that exact Wheel in a disposable, offline, fresh Coding
-Product workspace. It installs and enables the Plugin, starts a new Session,
+`smokeCommand` calls the Coding-owned `loushang-coding-plugin-smoke` entrypoint
+with that exact Wheel in a disposable, offline, fresh Coding Product workspace.
+It installs and enables the Plugin, starts a new Session,
 invokes the requested Resource, and checks the persisted prepared model input.
 The result reports `productAdmission`, `productSelection`, and `productUse`
 separately; a failed stage leaves later stages `not_checked`. It currently
