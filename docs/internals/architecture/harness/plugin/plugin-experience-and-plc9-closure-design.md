@@ -3007,6 +3007,14 @@ architecture baseline also needed the new Coding-to-Hosting named-Job observer
 listed as an explicit consumer; its focused check now passes. Native GC and
 full exact-head results remain pending after rerun.
 
+Run `37292143248` passed the strict Windows Worker report (17 tests, zero
+errors/failures/skips), Windows Shell, Linux Harness, and Hosting on all three
+platforms. Both GC jobs then retired the old stage and reached the second
+real launch, where the test used Supervisor epoch 2 for a new session scope.
+The Supervisor correctly requires epoch 1 for a new key. The next revision
+corrects that test input; no retained-history Package GC success is claimed
+until both journeys pass their final assertions.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

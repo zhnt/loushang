@@ -4873,7 +4873,7 @@ try:
     assert lease.payload_digest == sys.argv[3]
     request = bind_coding_windows_product_worker_launch_request(
         receipt_owner=receipt_owner, receipt=receipt, payload_lease=lease,
-        supervisor_epoch=2,
+        supervisor_epoch=1,
     )
     commit_coding_windows_product_worker_launch_intent(
         product, receipt_owner=receipt_owner, receipt=receipt,
