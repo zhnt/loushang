@@ -3065,6 +3065,20 @@ tests, with 63 documented skips and 31 existing-selector deselections.
 The remaining Git delivery step carries only the reviewed documentation P2
 correction; it does not alter this verified Product code.
 
+After that exact-head run, the delivery branch added an explicit Windows
+Coding Session Worker candidate. Product-selected receipt and Provider checks
+now accept the exact Windows owner; async graph preparation stages the PE,
+commits the launch intent, binds the LPAC provisioning store, and starts the
+Supervisor before publishing the query facet. Separate native CI cases now
+exercise direct and Hosted first-Session entry through the public Python API.
+The corresponding Linux Product transaction passed 16/16, and Linux direct
+and Hosted public Session cases each passed 1/1 against the worktree source.
+Architecture documentation passed 10/10 and the light documentation check
+passed 9/9. The new Windows cases collected but skipped on Linux; their native
+results, recovery after these public entries, and the next exact-head full
+regression remain pending. This candidate does not open default Windows
+routing or general third-party Worker admission.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
