@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import cast
 
 from loushang.harness.journal import (
     JournalCodecError,
@@ -28,6 +26,8 @@ from loushang.harness.worker.activation_state_journal import (
 )
 
 from .package_product_worker_activation_history import (
+    CodingProductWorkerRetainedAttemptV1,
+    project_coding_worker_retained_attempts,
     validate_coding_worker_activation_attempt_history,
 )
 from .package_product_worker_history_segments import (
@@ -42,21 +42,6 @@ from .package_product_worker_history_segments import (
 _STEM = "worker-activation-state"
 _MAX_REVISIONS = _DEFAULT_MAX_REVISIONS
 _MAX_BYTES = _DEFAULT_MAX_BYTES
-
-
-@dataclass(frozen=True, slots=True)
-class CodingProductWorkerRetainedAttemptV1:
-    """Last retained C5 state for an attempt, including a compacted one."""
-
-    attempt_id: str
-    receipt_fingerprint: str
-    policy_fingerprint: str
-    owner_generation: int
-    host_identity: str
-    boot_identity: str
-    phase: str
-    last_seen_revision: int
-    current: bool
 
 
 class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
@@ -107,43 +92,7 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
 
         with self._bound_journal_read_only() as rooted:
             records, _history = self._load_segments(rooted)
-            latest: dict[str, tuple[int, dict[str, object]]] = {}
-            for record in records:
-                attempts = cast(
-                    dict[str, dict[str, object]], record.document["attempts"]
-                )
-                for attempt in attempts.values():
-                    latest[cast(str, attempt["attemptId"])] = (
-                        record.journal_revision,
-                        attempt,
-                    )
-            current_ids = (
-                set()
-                if not records
-                else {
-                    cast(str, attempt["attemptId"])
-                    for attempt in cast(
-                        dict[str, dict[str, object]],
-                        records[-1].document["attempts"],
-                    ).values()
-                }
-            )
-            return tuple(
-                CodingProductWorkerRetainedAttemptV1(
-                    attempt_id=attempt_id,
-                    receipt_fingerprint=cast(str, attempt["receiptFingerprint"]),
-                    policy_fingerprint=cast(str, attempt["policyFingerprint"]),
-                    owner_generation=cast(int, attempt["ownerGeneration"]),
-                    host_identity=cast(str, attempt["hostIdentity"]),
-                    boot_identity=cast(str, attempt["bootIdentity"]),
-                    phase=cast(str, attempt["phase"]),
-                    last_seen_revision=revision,
-                    current=attempt_id in current_ids,
-                )
-                for attempt_id, (revision, attempt) in sorted(
-                    latest.items(), key=lambda item: (item[1][0], item[0])
-                )
-            )
+            return project_coding_worker_retained_attempts(records)
 
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]

@@ -1658,7 +1658,9 @@ phase regression, changed immutable attempt identities, and reuse after
 compaction. Its portable cases and the existing Linux segmented cases passed
 11/11; the C5 import-boundary suite passed 7/7. A Windows Product-rooted CAS
 journal now uses these rules and commits a separate immutable byte-digest head
-for every revision. Its native reopen and complete-record-loss test is part of
+for every revision. Linux and Windows journals expose the same read-only
+projection of retained C5 attempts, including attempts absent from the latest
+state. Its native reopen and complete-record-loss test is part of
 the next strict Windows CI report. Until that report passes and the ordinary
 Host, Job/LPAC cleanup evidence, crash recovery, and Package GC joins use the
 journal, this is storage infrastructure rather than Windows C5 production

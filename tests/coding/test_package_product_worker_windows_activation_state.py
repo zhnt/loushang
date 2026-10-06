@@ -68,6 +68,7 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
             product = selection.product_owner_for_factory(factory)
             journal = CodingWindowsWorkerActivationStateJournal(product)
             assert journal.load() is None
+            assert journal.retained_attempts_read_only() == ()
             assert not any(
                 name.startswith("worker-activation-state")
                 for name in os.listdir(product.state_root)
@@ -77,6 +78,7 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
             assert journal.compare_and_swap(expected_revision=0, document=initial)
             assert journal.compare_and_swap(expected_revision=1, document=second)
             assert journal.load() == second
+            assert journal.retained_attempts_read_only() == ()
             assert not journal.compare_and_swap(expected_revision=0, document=initial)
         finally:
             try:
@@ -96,6 +98,7 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
         product = owner.runtime_owner.product_owner
         journal = CodingWindowsWorkerActivationStateJournal(product)
         assert journal.load() == second
+        assert journal.retained_attempts_read_only() == ()
         history = product.state_root / "worker-activation-state.jsonl"
         original = history.read_bytes()
         history.write_bytes(original.splitlines(keepends=True)[0])

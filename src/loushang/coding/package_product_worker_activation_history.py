@@ -7,6 +7,7 @@ protocol. This module only validates complete canonical records and identities.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import cast
 
 from loushang.harness.worker.activation_state_journal import (
@@ -28,6 +29,62 @@ _IMMUTABLE_ATTEMPT_FIELDS = (
     "receiptFingerprint",
     "required",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CodingProductWorkerRetainedAttemptV1:
+    """Last retained C5 state for an attempt, including a compacted one."""
+
+    attempt_id: str
+    receipt_fingerprint: str
+    policy_fingerprint: str
+    owner_generation: int
+    host_identity: str
+    boot_identity: str
+    phase: str
+    last_seen_revision: int
+    current: bool
+
+
+def project_coding_worker_retained_attempts(
+    records: tuple[_StateRecord, ...],
+) -> tuple[CodingProductWorkerRetainedAttemptV1, ...]:
+    """Project all validated C5 attempt references from one retained history."""
+
+    latest: dict[str, tuple[int, dict[str, object]]] = {}
+    for record in records:
+        attempts = cast(dict[str, dict[str, object]], record.document["attempts"])
+        for attempt in attempts.values():
+            latest[cast(str, attempt["attemptId"])] = (
+                record.journal_revision,
+                attempt,
+            )
+    current_ids = (
+        set()
+        if not records
+        else {
+            cast(str, attempt["attemptId"])
+            for attempt in cast(
+                dict[str, dict[str, object]], records[-1].document["attempts"]
+            ).values()
+        }
+    )
+    return tuple(
+        CodingProductWorkerRetainedAttemptV1(
+            attempt_id=attempt_id,
+            receipt_fingerprint=cast(str, attempt["receiptFingerprint"]),
+            policy_fingerprint=cast(str, attempt["policyFingerprint"]),
+            owner_generation=cast(int, attempt["ownerGeneration"]),
+            host_identity=cast(str, attempt["hostIdentity"]),
+            boot_identity=cast(str, attempt["bootIdentity"]),
+            phase=cast(str, attempt["phase"]),
+            last_seen_revision=revision,
+            current=attempt_id in current_ids,
+        )
+        for attempt_id, (revision, attempt) in sorted(
+            latest.items(), key=lambda item: (item[1][0], item[0])
+        )
+    )
 
 
 def validate_coding_worker_activation_attempt_history(
@@ -107,6 +164,8 @@ def decode_coding_worker_activation_history(
 
 
 __all__ = [
+    "CodingProductWorkerRetainedAttemptV1",
     "decode_coding_worker_activation_history",
+    "project_coding_worker_retained_attempts",
     "validate_coding_worker_activation_attempt_history",
 ]
