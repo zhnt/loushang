@@ -1666,6 +1666,10 @@ deletion. The Windows offline recovery snapshot includes the exact C5 revision
 and retained attempt projection under Package runtime quiescence and the GC read
 gate. It also distinguishes an absent C5 owner from a present empty lock, so
 an interrupted initialization cannot be mistaken for a never-started owner.
+The same lease-quiescent snapshot now observes whether each retained native
+Windows Job name is absent; a missing Job name or failed native observation
+remains unknown rather than becoming proof of absence. A future
+cleanup writer must recheck this live observation under its own locks.
 The snapshot grants no recovery write. A Coding Worker candidate Product can now
 open a policy-checked Windows C5 store, while a builtins-only Product is
 rejected. The store is not yet passed to the ordinary Windows pending Host; that

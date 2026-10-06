@@ -3042,6 +3042,15 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert not after.activation_state_owner_present
         assert after.activation_state_revision == 0
         assert after.retained_activation_attempts == ()
+        assert after.native_job_absence == ((attempt_id, True),)
+        with patch(
+            "loushang.coding.package_product_worker_windows_recovery_inventory.observe_windows_worker_job_absent",
+            side_effect=OSError("native Job observation unavailable"),
+        ):
+            unknown_job = inspect_coding_windows_product_worker_offline_recovery(
+                product
+            )
+        assert unknown_job.native_job_absence == ((attempt_id, None),)
         assert len(after.supervisor_epoch_high_water) == 1
         assert after.supervisor_epoch_high_water[0][1] >= 1
         assert after.gc_reservation_revision >= 0

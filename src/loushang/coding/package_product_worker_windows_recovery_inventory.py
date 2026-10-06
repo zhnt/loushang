@@ -16,6 +16,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.journal import WorkerAttemptPhase, WorkerAttemptRecordV1
+from loushang.hosting import observe_windows_worker_job_absent
 
 from .package_product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
@@ -53,6 +54,17 @@ from .package_product_worker_windows_supervisor_journal import (
 )
 
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _observe_native_job_absence(job_name: str | None) -> bool | None:
+    """Keep an unavailable native observation distinct from proven absence."""
+
+    if job_name is None:
+        return None
+    try:
+        return observe_windows_worker_job_absent(job_name)
+    except OSError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +185,7 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
     activation_state_owner_present: bool
     activation_state_revision: int
     retained_activation_attempts: tuple[CodingProductWorkerRetainedAttemptV1, ...]
+    native_job_absence: tuple[tuple[str, bool | None], ...]
     gc_reservation_revision: int
     gc_revision_refs: frozenset[PluginPackageRevisionRefV1]
     worker_backup_observations: tuple[CodingWorkerBackupReferenceObservationV1, ...]
@@ -689,6 +702,13 @@ def inspect_coding_windows_product_worker_offline_recovery(
             retained_activation_attempts = (
                 activation_journal.retained_attempts_read_only()
             )
+            native_job_absence = tuple(
+                (
+                    attempt.attempt_id,
+                    _observe_native_job_absence(attempt.native_job_name),
+                )
+                for attempt in attempts
+            )
             worker_backup_observations = tuple(
                 observe_coding_worker_backup_references_under_gc_guard(
                     product, attempt_id=attempt.attempt_id
@@ -710,6 +730,7 @@ def inspect_coding_windows_product_worker_offline_recovery(
                 else cast(int, activation_state["stateRevision"])
             ),
             retained_activation_attempts=retained_activation_attempts,
+            native_job_absence=native_job_absence,
             gc_reservation_revision=gc_snapshot.journal_revision,
             gc_revision_refs=coding_worker_gc_revision_refs(gc_snapshot),
             worker_backup_observations=worker_backup_observations,
