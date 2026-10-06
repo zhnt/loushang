@@ -3031,6 +3031,15 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert len(after.worker_backup_observations) == 1
         assert after.worker_backup_observations[0].attempt_id == attempt_id
         assert after.worker_backup_observations[0].references == ()
+        opt_in_path = product.state_root / "worker-opt-in.jsonl"
+        held_opt_in = product.state_root / "held-worker-opt-in.jsonl"
+        opt_in_path.replace(held_opt_in)
+        try:
+            with pytest.raises(CodingWorkerOptInJournalError) as missing_opt_in:
+                inspect_coding_windows_product_worker_offline_recovery(product)
+            assert missing_opt_in.value.code == "coding_worker_opt_in_orphan_lock"
+        finally:
+            held_opt_in.replace(opt_in_path)
     finally:
         owner.close()
     _assert_windows_worker_public_session_restarts_after_recovery(
