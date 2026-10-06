@@ -1489,11 +1489,17 @@ that C5 attempt out of the latest snapshot, and still permits Package GC
 preparation. The focused native test passed 1/1. This guards the positive
 join as well as the missing-gate refusal, while retaining all history bytes.
 
-The next implementation boundary is an attempt-level Product reference
-authority shared by the ordinary pending Host and C5. It must record the
-attempt, receipt fingerprint, selected Package revision, and native platform
-before either path can make a native effect. Cleanup may close that reference
-only after Supervisor and native process settlement, payload debt retirement,
+The Linux start-gate intent is already a durable pre-launch record used by
+both the ordinary pending Host and the explicit operator query. The retention
+review now projects it together with the exact Product receipt as a typed attempt
+reference carrying the attempt, receipt fingerprint, selected Package artifact
+digest, locator revision, and Linux platform. A changed receipt binding yields
+no reference. This read-only projection does not prove closure or permit
+history pruning; it avoids introducing a second pre-launch journal with a
+crash window between two writes. C5 activation-state records must still be
+joined to this authority, and Windows needs an equivalent typed projection of
+its launch intent and receipt. Cleanup may close a reference only after
+Supervisor and native process settlement, payload debt retirement,
 and the exact Product selection check. A crash between registration and
 settlement remains an open reference on reopen. The retention reviewer must
 read this authority under the Product GC gate and reject an absent or changed

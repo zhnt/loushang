@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -42,6 +42,49 @@ _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 
 
 @dataclass(frozen=True, slots=True)
+class CodingWorkerAttemptReferenceV1:
+    """One retained Linux gate intent joined to its exact Product receipt.
+
+    The start-gate journal supplies a durable reference for the ordinary
+    pending Host and the explicit operator query. C5 attempt state remains a
+    separate authority. This projection grants no closure or pruning power.
+    """
+
+    attempt_id: str
+    receipt_fingerprint: str
+    selected_package_revision_digest: str
+    selected_locator_revision: str
+    native_platform: Literal["linux"]
+    gate_revision: int
+    gate_phase: Literal["intent", "bound"]
+
+
+def _attempt_reference(
+    gate: CodingWorkerStartGateRecordV1 | None,
+    receipt: CodingWorkerReceiptRecordV1 | None,
+) -> CodingWorkerAttemptReferenceV1 | None:
+    if gate is None or receipt is None:
+        return None
+    policy = receipt.receipt.policy
+    if (
+        gate.receipt_fingerprint != receipt.receipt.fingerprint
+        or gate.policy_fingerprint != policy.fingerprint
+        or gate.scope_id != policy.product_scope_id
+        or policy.product_id != "coding"
+    ):
+        return None
+    return CodingWorkerAttemptReferenceV1(
+        attempt_id=gate.attempt_id,
+        receipt_fingerprint=gate.receipt_fingerprint,
+        selected_package_revision_digest=policy.plugin_revision_digest,
+        selected_locator_revision=policy.selected_locator_revision,
+        native_platform="linux",
+        gate_revision=gate.journal_revision,
+        gate_phase=gate.phase,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class CodingWorkerHistoryRetentionReviewV1:
     attempt_id: str
     gate_record: CodingWorkerStartGateRecordV1 | None
@@ -57,6 +100,12 @@ class CodingWorkerHistoryRetentionReviewV1:
     payload_stage_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
+
+    @property
+    def attempt_reference(self) -> CodingWorkerAttemptReferenceV1 | None:
+        """Project a retained gate reference without claiming it is closed."""
+
+        return _attempt_reference(self.gate_record, self.receipt_record)
 
     @property
     def missing_proofs(self) -> tuple[str, ...]:
@@ -237,6 +286,7 @@ def review_coding_product_worker_history_retention(
 
 
 __all__ = [
+    "CodingWorkerAttemptReferenceV1",
     "CodingWorkerHistoryRetentionReviewV1",
     "review_coding_product_worker_history_retention",
 ]

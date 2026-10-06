@@ -3481,6 +3481,38 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         direct_retention = review_coding_product_worker_history_retention(
                             product, attempt_id=direct_gate_attempts[0].attempt_id
                         )
+                        reference = direct_retention.attempt_reference
+                        assert reference is not None
+                        assert direct_retention.receipt_record is not None
+                        assert reference.attempt_id == direct_gate_attempts[0].attempt_id
+                        assert reference.receipt_fingerprint == (
+                            direct_gate_attempts[0].receipt_fingerprint
+                        )
+                        assert reference.selected_package_revision_digest == (
+                            direct_retention.receipt_record.receipt.policy.plugin_revision_digest
+                        )
+                        assert reference.native_platform == "linux"
+                        mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
+                            journal_revision=direct_gate_attempts[0].journal_revision,
+                            phase=direct_gate_attempts[0].phase,
+                            attempt_id=direct_gate_attempts[0].attempt_id,
+                            worker_identity_fingerprint=(
+                                direct_gate_attempts[0].worker_identity_fingerprint
+                            ),
+                            receipt_fingerprint="0" * 64,
+                            policy_fingerprint=direct_gate_attempts[0].policy_fingerprint,
+                            scope_id=direct_gate_attempts[0].scope_id,
+                            native_closure_digest=(
+                                direct_gate_attempts[0].native_closure_digest
+                            ),
+                            identity=direct_gate_attempts[0].identity,
+                        )
+                        assert (
+                            replace(
+                                direct_retention, gate_record=mismatched_gate
+                            ).attempt_reference
+                            is None
+                        )
                         assert direct_retention.activation_state_revision is None
                         assert "activation_state_absent" in direct_retention.missing_proofs
                         assert (
@@ -4601,6 +4633,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     reopened_product, attempt_id=swapped_attempt
                 )
                 assert retention.gate_record is None
+                assert retention.attempt_reference is None
                 assert retention.activation_state_revision == 2
                 assert retention.active_activation_references == ()
                 assert "start_gate_absent" in retention.missing_proofs
