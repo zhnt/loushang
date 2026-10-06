@@ -1421,9 +1421,9 @@ settlement and a fresh native group absence observation. The review records
 each related gate whose binding, Supervisor, or native absence remains
 unverified; an unsettled attempt cannot be hidden by another attempt using the
 same receipt. This remains read-only evidence and does not yet close receipt
-references across all Product owners. It reports the missing
-receipt-reference proof explicitly and grants no
-prune authority. The GC read guard also keeps nested owner reads strict and
+references across all Product owners. It reports the missing receipt-reference
+proof explicitly and grants no prune authority. The GC read guard also keeps
+nested owner reads strict and
 blocks journal append while a shared read lock is held.
 The review's payload inventory now uses the Product's original state-root
 directory identity, shared with POSIX root GC. A real Product negative first
@@ -1431,7 +1431,7 @@ showed that swapping in an empty private directory between open and scan could
 make the older visible-path check report no payload debt; the fixed reader
 refuses that descriptor. The existing Product gate/receipt/Supervisor recovery
 case passed after the change. This is an identity proof for one read, not the
-missing backup, receipt-reference, or anti-reuse checkpoint proof.
+missing receipt-reference or anti-reuse checkpoint proof.
 
 The checkpoint must be durable before old bytes are removed; a crash during
 publication must select one complete generation or refuse, never accept a
