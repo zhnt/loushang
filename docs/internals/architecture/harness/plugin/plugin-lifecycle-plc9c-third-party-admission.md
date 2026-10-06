@@ -1443,6 +1443,11 @@ gate for that receipt has a matching retained settled C5 attempt, all those
 gates have settled Supervisor and absent native-group proof, and no active C5
 reference remains. The ordinary pending Host now records and settles its own
 C5 transitions; older explicit canary attempts still lack that write path.
+The same snapshot now checks every retained gate against its own receipt,
+Supervisor, and native-group observation, including gates for other receipts.
+An orphan or unsettled gate elsewhere is a global reference debt and prevents
+the selected receipt from claiming fully verified references. A Product-wide
+checkpoint cannot rely on a review that overlooks another receipt's gate.
 This read-only result grants no checkpoint or pruning authority. The GC read guard
 also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.

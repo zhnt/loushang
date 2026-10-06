@@ -5378,6 +5378,34 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         assert retention.receipt_references_verified
         assert retention.historical_opt_in_verified
         assert "receipt_references_unverified" not in retention.missing_proofs
+        unrelated_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
+            journal_revision=max(item.journal_revision for item in gates) + 1,
+            phase="bound",
+            attempt_id="f" * 32,
+            worker_identity_fingerprint=gate.worker_identity_fingerprint,
+            receipt_fingerprint="f" * 64,
+            policy_fingerprint=gate.policy_fingerprint,
+            scope_id=gate.scope_id,
+            native_closure_digest=gate.native_closure_digest,
+            identity=gate.identity,
+        )
+        retained_gates = CodingWorkerStartGateJournal.attempts
+        with monkeypatch.context() as orphaned_other_receipt_gate:
+            orphaned_other_receipt_gate.setattr(
+                CodingWorkerStartGateJournal,
+                "attempts",
+                lambda journal: (*retained_gates(journal), unrelated_gate),
+            )
+            globally_unbound = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert globally_unbound.global_unverified_receipt_gate_references == (
+                ("f" * 32, "receipt_reference_receipt_absent"),
+            )
+            assert "global_receipt_gate_reference_unverified" in (
+                globally_unbound.missing_proofs
+            )
+            assert not globally_unbound.receipt_references_verified
         retained_receipts = receipt_journal_module.read_coding_product_worker_receipt_records(
             product
         )

@@ -204,6 +204,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     unverified_receipt_gate_references: tuple[tuple[str, str], ...]
+    global_unverified_receipt_gate_references: tuple[tuple[str, str], ...]
     receipt_references_verified: bool
     payload_stage_names: tuple[str, ...]
     retained_payload_repair_reference_names: tuple[str, ...]
@@ -284,6 +285,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("receipt_gate_attempt_unsettled")
         if self.unverified_receipt_gate_references:
             missing.append("receipt_gate_reference_unverified")
+        if self.global_unverified_receipt_gate_references:
+            missing.append("global_receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
         if self.retained_payload_repair_reference_names:
@@ -416,9 +419,7 @@ def review_coding_product_worker_history_retention(
             gates = CodingWorkerStartGateJournal(product).attempts()
             gate_by_id = {item.attempt_id: item for item in gates}
             supervisor = open_coding_product_worker_supervisor_journal(product)
-            supervisor_by_id = {
-                item.attempt_id: item for item in supervisor.attempts()
-            }
+            supervisor_by_id = {item.attempt_id: item for item in supervisor.attempts()}
             supervisor_epoch_by_key: dict[str, int] = {}
             for record in supervisor_by_id.values():
                 supervisor_epoch_by_key[record.supervisor_key] = max(
@@ -440,8 +441,7 @@ def review_coding_product_worker_history_retention(
                 if referenced_gate is None:
                     code = "activation_reference_gate_absent"
                 elif (
-                    referenced_gate.receipt_fingerprint
-                    != reference.receipt_fingerprint
+                    referenced_gate.receipt_fingerprint != reference.receipt_fingerprint
                     or referenced_gate.policy_fingerprint
                     != reference.policy_fingerprint
                 ):
@@ -473,44 +473,53 @@ def review_coding_product_worker_history_retention(
                     global_unverified_activation.append(activation_issue)
                     if relevant:
                         unverified_activation.append(activation_issue)
-            receipt_gate_references: tuple[str, ...] = ()
-            unsettled_gate_references: tuple[str, ...] = ()
-            unverified_gate_references: tuple[tuple[str, str], ...] = ()
-            if gate is not None:
-                matching_gates = tuple(
-                    item
-                    for item in gates
-                    if item.receipt_fingerprint == gate.receipt_fingerprint
+            receipt_by_fingerprint = {
+                item.receipt.fingerprint: item for item in receipts
+            }
+            receipt_gate_ids: list[str] = []
+            unsettled: list[str] = []
+            unverified: list[tuple[str, str]] = []
+            globally_unverified: list[tuple[str, str]] = []
+            for item in gates:
+                selected_receipt_gate = (
+                    gate is not None
+                    and item.receipt_fingerprint == gate.receipt_fingerprint
                 )
-                receipt_gate_references = tuple(
-                    item.attempt_id for item in matching_gates
+                if selected_receipt_gate:
+                    receipt_gate_ids.append(item.attempt_id)
+                referenced_receipt = receipt_by_fingerprint.get(
+                    item.receipt_fingerprint
                 )
-                unsettled: list[str] = []
-                unverified: list[tuple[str, str]] = []
-                for item in matching_gates:
-                    status = supervisor_by_id.get(item.attempt_id)
-                    group_status: GatedGroupStatus = (
-                        gated.group_status
-                        if item.attempt_id == attempt_id
-                        else (
-                            "unobserved"
-                            if item.identity is None
-                            else worker_native_group_status_after_restart(item.identity)
-                        )
+                group_status: GatedGroupStatus = (
+                    gated.group_status
+                    if item.attempt_id == attempt_id
+                    else (
+                        "unobserved"
+                        if item.identity is None or referenced_receipt is None
+                        else worker_native_group_status_after_restart(item.identity)
                     )
-                    issue = _receipt_gate_reference_issue(
-                        item, receipt, status, group_status
-                    )
-                    if issue is not None:
-                        if issue in {
-                            "receipt_reference_gate_unbound",
-                            "receipt_reference_supervisor_absent",
-                            "receipt_reference_supervisor_unsettled",
-                        }:
-                            unsettled.append(item.attempt_id)
-                        unverified.append((item.attempt_id, issue))
-                unsettled_gate_references = tuple(unsettled)
-                unverified_gate_references = tuple(unverified)
+                )
+                issue = _receipt_gate_reference_issue(
+                    item,
+                    referenced_receipt,
+                    supervisor_by_id.get(item.attempt_id),
+                    group_status,
+                )
+                if issue is None:
+                    continue
+                globally_unverified.append((item.attempt_id, issue))
+                if selected_receipt_gate:
+                    if issue in {
+                        "receipt_reference_gate_unbound",
+                        "receipt_reference_supervisor_absent",
+                        "receipt_reference_supervisor_unsettled",
+                    }:
+                        unsettled.append(item.attempt_id)
+                    unverified.append((item.attempt_id, issue))
+            receipt_gate_references = tuple(receipt_gate_ids)
+            unsettled_gate_references = tuple(unsettled)
+            unverified_gate_references = tuple(unverified)
+            global_unverified_gate_references = tuple(sorted(globally_unverified))
             receipt_references_verified = (
                 activation_initialized
                 and historical_opt_in_verified
@@ -525,6 +534,7 @@ def review_coding_product_worker_history_retention(
                     if reference.receipt_fingerprint == receipt.receipt.fingerprint
                 }
                 and not unverified_gate_references
+                and not global_unverified_gate_references
                 and not unverified_activation
                 and activation_state is not None
                 and not activation_state["publications"]
@@ -607,6 +617,9 @@ def review_coding_product_worker_history_retention(
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 unverified_receipt_gate_references=unverified_gate_references,
+                global_unverified_receipt_gate_references=(
+                    global_unverified_gate_references
+                ),
                 receipt_references_verified=receipt_references_verified,
                 payload_stage_names=payloads,
                 retained_payload_repair_reference_names=repair_references,

@@ -134,6 +134,7 @@ graph TD
 | `loushang-plugin-private-data` | `loushang.coding.cli.plugin_private_data:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
 | `loushang-worker-native` | `loushang.coding.cli.package_worker_native:main` |
+| `loushang-worker-windows-candidate` | `loushang.coding.cli.package_worker_windows_candidate:main` |
 
 ## Interpretation Rules
 
