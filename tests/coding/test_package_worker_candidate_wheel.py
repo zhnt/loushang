@@ -3272,6 +3272,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                     asyncio.run(exercise_selected_ordinary_worker())
                     if direct_entry_only:
+                        payloads_before_direct = frozenset(
+                            product.state_root.glob("worker-payload-*")
+                        )
+                        supervisor_journal = (
+                            open_coding_product_worker_supervisor_journal(product)
+                        )
+                        incomplete_before_direct = supervisor_journal.incomplete()
                         direct_session = create_agent_session(
                             session_manager=asyncio.run(
                                 SessionManager.load(selected_transcript)
@@ -3301,10 +3308,28 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     item.name == "worker-extra"
                                     for item in direct_session.resource_bundle.skills
                                 )
+                                revoked = product_opt_in.revoke(
+                                    plugin_id=_PLUGIN,
+                                    operation_id="worker-public-session-revoke",
+                                    expected_generation=decision.generation,
+                                )
+                                assert revoked.action == "revoke"
+                                assert revoked.kill_switch_generation == (
+                                    decision.kill_switch_generation + 1
+                                )
+                                with pytest.raises(
+                                    CapabilityWorkerFacetProxyError,
+                                    match="worker_capability_facet_proxy_owner_unavailable",
+                                ):
+                                    await direct_session.query_worker_symbol("review")
                             finally:
                                 await direct_session.dispose()
 
                         asyncio.run(exercise_direct_worker())
+                        assert frozenset(product.state_root.glob("worker-payload-*")) == (
+                            payloads_before_direct
+                        )
+                        assert supervisor_journal.incomplete() == incomplete_before_direct
                         return
                     if hosted_entry_only:
                         hosted_sessions_parent = tmp_path / "hosted-session-files"
