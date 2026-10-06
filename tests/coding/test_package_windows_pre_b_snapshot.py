@@ -2988,8 +2988,14 @@ def _assert_windows_worker_public_session_restarts_after_recovery(
             input=("text",), context_window=128_000, max_tokens=4_096
         ),
     )
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
     with patch(
         "loushang.coding.package_product_runtime.version", return_value="2.0.0"
+    ), patch(
+        "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+        return_value=lifecycle,
     ):
         if entry_kind == "direct":
             manager = asyncio.run(
@@ -3433,7 +3439,7 @@ def _exercise_windows_worker_wheel_transaction(
     dependency_closure: bool = False,
     crash_after_healthy: bool = False,
     crash_after_ordinary_query: bool = False,
-    owner_id: str = "coding.lsp",
+    owner_id: str = "coding",
     ordinary_entry_kind: str | None = None,
 ) -> None:
     """Only the explicit Product opener reads the inert Worker candidate."""
@@ -3971,6 +3977,9 @@ finally:
                         with patch(
                             "loushang.coding.package_product_runtime.version",
                             return_value="2.0.0",
+                        ), patch(
+                            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+                            return_value=lifecycle,
                         ):
                             if ordinary_entry_kind == "direct":
                                 ordinary_manager = asyncio.run(
