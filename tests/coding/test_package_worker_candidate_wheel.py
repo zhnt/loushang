@@ -6220,7 +6220,7 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
                     try:
                         with pytest.raises(CodingWorkerReceiptError) as changed:
                             receipt_owner.current_witness(receipt)
-                        assert changed.value.code == "coding_worker_receipt_corrupt"
+                        assert changed.value.code == "coding_worker_segment_head_changed"
                     finally:
                         receipt_owner.path.write_bytes(exact_receipt_history)
                 assert receipt_owner.current_witness(receipt) == (
