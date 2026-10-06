@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
@@ -27,6 +27,9 @@ from .package_product_worker_windows_activation_state_journal import (
 )
 from .package_product_worker_windows_cleanup_evidence import (
     CodingWindowsWorkerCleanupEvidenceAuthority,
+)
+from .package_product_worker_windows_crash_cleanup_review import (
+    _valid_crash_native_settlement_history,
 )
 from .package_product_worker_windows_orphan_review import (
     review_coding_windows_product_worker_orphan_runtime,
@@ -81,16 +84,17 @@ def settle_coding_windows_product_worker_crash_c5(
         or attempt.supervisor_phase != "process_settled"
         or attempt.supervisor_process_settled is not True
         or attempt.native_phase != "settled"
+        or not _valid_crash_native_settlement_history(attempt)
         or attempt.payload_directory_identity is not None
+        or attempt.observed_debts != ("payload_missing", "launch_intent_retained")
         or attempt.launch_receipt_fingerprint != record.receipt.fingerprint
     ):
         raise ValueError("Windows crash C5 Product recovery is incomplete")
     receipt = record.receipt
+    journal = CodingWindowsWorkerActivationStateJournal(product)
     retained = tuple(
         item
-        for item in CodingWindowsWorkerActivationStateJournal(
-            product
-        ).retained_attempts_read_only()
+        for item in journal.retained_attempts_read_only()
         if item.attempt_id == attempt_id
     )
     if len(retained) != 1:
@@ -101,6 +105,7 @@ def settle_coding_windows_product_worker_crash_c5(
         or c5.policy_fingerprint != receipt.policy.fingerprint
         or c5.owner_generation != receipt.policy.owner_selection_generation
         or c5.cleanup_contract_version != 2
+        or not c5.current
     ):
         raise ValueError("Windows crash C5 attempt cannot be recovered")
     evidence = CodingWindowsWorkerCleanupEvidenceAuthority.for_crash_recovery(
@@ -111,7 +116,26 @@ def settle_coding_windows_product_worker_crash_c5(
         or c5.boot_identity != evidence.boot_identity
     ):
         raise ValueError("Windows crash C5 owner identity changed")
+    state = journal.load()
+    attempts = None if state is None else state.get("attempts")
+    if not isinstance(attempts, Mapping):
+        raise ValueError("Windows crash C5 owner state is unavailable")
+    exact = tuple(
+        item
+        for item in attempts.values()
+        if isinstance(item, Mapping) and item.get("attemptId") == attempt_id
+    )
+    if (
+        len(exact) != 1
+        or exact[0].get("evidenceAuthorityId") != evidence.authority_id
+        or exact[0].get("evidenceAuthorityFingerprint")
+        != evidence.authority_fingerprint
+        or exact[0].get("phase") != c5.phase
+    ):
+        raise ValueError("Windows crash C5 evidence authority changed")
     if c5.phase == "settled":
+        if exact[0].get("cleanupSettlement") is None:
+            raise ValueError("Windows crash C5 settlement record is missing")
         return c5
     coordinator = ProductWorkerActivationCoordinator(
         authority=_ClosedWindowsCrashRecoveryAuthority(product),
@@ -145,9 +169,7 @@ def settle_coding_windows_product_worker_crash_c5(
     )
     [settled] = (
         item
-        for item in CodingWindowsWorkerActivationStateJournal(
-            product
-        ).retained_attempts_read_only()
+        for item in journal.retained_attempts_read_only()
         if item.attempt_id == attempt_id
     )
     if settled.phase != "settled":

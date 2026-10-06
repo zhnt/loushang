@@ -37,6 +37,7 @@ loushang-package-gc = "loushang.coding.cli.package_gc:main"
 loushang-package-repair = "loushang.coding.cli.package_repair:main"
 loushang-plugin-private-data = "loushang.coding.cli.plugin_private_data:main"
 loushang-worker-native = "loushang.coding.cli.package_worker_native:main"
+loushang-worker-windows-candidate = "loushang.coding.cli.package_worker_windows_candidate:main"
 
 [project.optional-dependencies]
 dev = [

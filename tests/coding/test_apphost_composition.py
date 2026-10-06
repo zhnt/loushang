@@ -560,7 +560,10 @@ def test_g9_omitted_owner_remains_current(_case: str) -> None:
         assert hosting.calls == 0
 
     _run(scenario())
-    for path in (*_CURRENT_ROOTS.values(), Path("src/loushang/coding/cli/application.py")):
+    for path in (
+        *_CURRENT_ROOTS.values(),
+        Path("src/loushang/coding/cli/application.py"),
+    ):
         assert "apphost_composition" not in path.read_text(encoding="utf-8")
 
 
@@ -987,6 +990,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "coding.plugin-private-data.command",
         "coding.plugin-support-status.command",
         "coding.worker-native.command",
+        "coding.worker-windows-candidate.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -1035,8 +1039,16 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
             "connection-library-no-entrypoint",
         ),
         "coding.hosted.command": ("hosted", "installed", "explicit-foreground-stdio"),
-        "coding.hosted-tui.command": ("hosted", "installed", "explicit-owned-foreground-tui"),
-        "coding.lmux.command": ("mux", "installed-preview", "explicit-managed-linux-preview"),
+        "coding.hosted-tui.command": (
+            "hosted",
+            "installed",
+            "explicit-owned-foreground-tui",
+        ),
+        "coding.lmux.command": (
+            "mux",
+            "installed-preview",
+            "explicit-managed-linux-preview",
+        ),
         "coding.mux.command": ("mux", "installed", "explicit-detachable-local"),
         "coding.package-cutover.command": (
             "cli",
@@ -1078,6 +1090,11 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
             "installed",
             "explicit-linux-worker-native-candidate",
         ),
+        "coding.worker-windows-candidate.command": (
+            "cli",
+            "installed-preview",
+            "explicit-offline-windows-worker-candidate-recovery",
+        ),
         "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
         "harnesstui.named-mux": (
             "mux",
@@ -1102,6 +1119,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "loushang-coding-plugin-status": "loushang.coding.plugin_support_status:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
+        "loushang-worker-windows-candidate": "loushang.coding.cli.package_worker_windows_candidate:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -1123,6 +1141,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "project.scripts.loushang-coding-plugin-status",
         "project.scripts.loushang-plugin-private-data",
         "project.scripts.loushang-worker-native",
+        "project.scripts.loushang-worker-windows-candidate",
         "project.scripts.loushang-plugin",
         "project.scripts.loushang-tui",
     }

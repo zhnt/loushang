@@ -229,6 +229,29 @@ def test_windows_c5_crash_review_requires_process_and_payload_settlement(
         ),
     )
     assert authority._review_matches(recovered)
+    assert recovered.native is not None
+    short_history = ("reserved", "settled")
+    short_witnesses = (False, True)
+    assert not authority._review_matches(
+        replace(
+            recovered,
+            runtime=replace(
+                recovered.runtime,
+                attempt=replace(
+                    recovered.runtime.attempt,
+                    native_phase_history=short_history,
+                    native_witness_present_history=short_witnesses,
+                    native_revision=2,
+                ),
+            ),
+            native=replace(
+                recovered.native,
+                phase_history=short_history,
+                witness_present_history=short_witnesses,
+                state_revision=2,
+            ),
+        )
+    )
     assert not authority._review_matches(
         replace(
             recovered,

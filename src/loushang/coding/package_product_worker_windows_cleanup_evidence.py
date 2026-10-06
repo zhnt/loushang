@@ -28,6 +28,9 @@ from .package_product_worker_activation_history import (
 from .package_product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
+from .package_product_worker_windows_crash_cleanup_review import (
+    _valid_crash_native_settlement_history,
+)
 from .package_product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
     _review_under_gc_guard,
@@ -209,6 +212,9 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
                     attempt.supervisor_process_settled is True
                     and attempt.supervisor_phase == "process_settled"
                     and attempt.payload_directory_identity is None
+                    and attempt.observed_debts
+                    == ("payload_missing", "launch_intent_retained")
+                    and _valid_crash_native_settlement_history(attempt)
                 )
             )
             or attempt.attempt_id != self._attempt_id
@@ -216,12 +222,15 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
             or attempt.launch_identity_fingerprint != self._identity_fingerprint
             or attempt.supervisor_identity_fingerprint != self._identity_fingerprint
             or attempt.launch_receipt_fingerprint != self._receipt.fingerprint
+            or attempt.native_worker_request_fingerprint != self._request_fingerprint
+            or attempt.native_receipt_fingerprint != self._receipt.fingerprint
             or record.receipt != self._receipt
             or native.phase != "settled"
             or native.last_witness_state != "SETTLED"
             or native.settlement_fingerprint is None
             or native.phase_history != attempt.native_phase_history
             or native.witness_present_history != attempt.native_witness_present_history
+            or native.state_revision != attempt.native_revision
             or native.identity.get("receiptFingerprint") != self._receipt.fingerprint
             or native.identity.get("workerRequestFingerprint")
             != self._request_fingerprint

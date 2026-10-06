@@ -1689,7 +1689,19 @@ Host now calls this owner for normal exit. A Product recovery writer uses the
 same evidence-authority version after a crash, but accepts only a
 process-settled Supervisor, settled LPAC history, repaired orphan lease,
 retired payload stage, and absent named Job. It then retires and settles the
-exact C5 attempt through the Product store.
+exact C5 attempt through the Product store. A Product recovery composition now
+resumes those ordered Supervisor, native, lease, stage, and C5 steps from their
+persisted phases; it verifies the exact trusted C5 owner before the first
+recovery write, and every writer repeats its own fresh review. The native Hosted
+crash case exercises that composition, while the direct case retains granular
+step assertions. Both await the next Windows runner report.
+The explicit offline `loushang-worker-windows-candidate --workspace <path>
+--windows-candidate inspect --attempt-id <id>` command (or `recover-crash` in
+place of `inspect`) now opens
+the fenced Product owner for one pathless inspection or ordered recovery. It
+refuses other platforms and does not open an unflagged Session route. The native
+Hosted crash case exercises inspect and recovery through this CLI; until its
+Windows report passes, the command remains a candidate surface.
 A dedicated native normal-exit case now retains a retired C5 test attempt and
 asks this owner to verify the real settled Supervisor, LPAC journal fingerprint,
 and absent named Job. It also injects a present Job and a changed LPAC witness;

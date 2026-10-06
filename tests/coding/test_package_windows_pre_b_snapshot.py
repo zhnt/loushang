@@ -52,6 +52,9 @@ from loushang.coding.bootstrap import (
 )
 from loushang.coding.cli.package_cutover import main as cutover_cli_main
 from loushang.coding.cli.package_gc import main as gc_cli_main
+from loushang.coding.cli.package_worker_windows_candidate import (
+    main as windows_worker_candidate_main,
+)
 from loushang.coding.package_arch_private_cache import (
     write_coding_arch_private_windows_snapshot,
 )
@@ -180,6 +183,9 @@ from loushang.coding.package_product_worker_windows_crash_lease_repair import (
 )
 from loushang.coding.package_product_worker_windows_crash_native_settlement import (
     settle_coding_windows_product_worker_crash_native,
+)
+from loushang.coding.package_product_worker_windows_crash_recovery import (
+    recover_coding_windows_product_worker_crash_attempt,
 )
 from loushang.coding.package_product_worker_windows_crash_stage_retirement import (
     retire_coding_windows_product_worker_crash_stage,
@@ -2904,7 +2910,9 @@ def test_windows_worker_hosted_first_session_reaches_selected_product(
 @pytest.mark.requires_host_runtime
 @pytest.mark.parametrize("entry_kind", ("direct", "hosted"))
 def test_windows_worker_public_session_crash_reopens_and_retires_product_attempt(
-    windows_worker_test_root: Path, entry_kind: str
+    windows_worker_test_root: Path,
+    entry_kind: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
         pytest.skip("native Windows backend review is required")
@@ -3001,6 +3009,21 @@ module["_exercise_windows_worker_wheel_transaction"](
             if item.attempt_id == attempt_id
         )
         assert crashed_c5.phase == "published"
+        with patch.object(
+            CodingWindowsWorkerActivationStateJournal,
+            "retained_attempts_read_only",
+            return_value=(),
+        ):
+            with pytest.raises(ValueError, match="C5 owner is missing"):
+                recover_coding_windows_product_worker_crash_attempt(
+                    product, attempt_id=attempt_id
+                )
+        assert (
+            review_coding_windows_product_worker_orphan_runtime(
+                product, attempt_id=attempt_id
+            ).attempt.supervisor_phase
+            != "process_settled"
+        )
         with pytest.raises(ValueError, match="incomplete"):
             settle_coding_windows_product_worker_crash_c5(
                 product, attempt_id=attempt_id
@@ -3013,31 +3036,96 @@ module["_exercise_windows_worker_wheel_transaction"](
             )
             == first.orphan_review.orphan_leases
         )
-        supervisor = settle_coding_windows_product_worker_crash_supervisor(
-            product, expected_review=first
-        )
-        assert supervisor is not None and supervisor.process_settled
-        second = review_coding_windows_product_worker_crash_cleanup(
-            product, attempt_id=attempt_id
-        )
-        native = settle_coding_windows_product_worker_crash_native(
-            product, expected_review=second
-        )
-        assert native.attempt_id == attempt_id
-        lease_review = review_coding_windows_product_worker_crash_lease_repair(
-            product, attempt_id=attempt_id
-        )
-        repaired = repair_coding_windows_product_worker_crash_orphan_runtime(
-            product, expected_review=lease_review
-        )
-        assert repaired == first.orphan_review.orphan_leases[0]
-        stage_review = review_coding_windows_product_worker_crash_stage(
-            product, attempt_id=attempt_id
-        )
-        retired = retire_coding_windows_product_worker_crash_stage(
-            product, expected_review=stage_review
-        )
-        assert retired.attempt_id == attempt_id
+        if entry_kind == "hosted":
+            # Exercise the offline candidate operator entry over a fresh owner.
+            with (
+                patch(
+                    "loushang.coding.cli.package_worker_windows_candidate.version",
+                    return_value="2.0.0",
+                ),
+                patch(
+                    "loushang.coding.cli.package_worker_windows_candidate.resolve_coding_plugin_lifecycle_state_layout",
+                    return_value=lifecycle,
+                ),
+            ):
+                args = (
+                    "--workspace",
+                    str(workspace),
+                    "--windows-candidate",
+                )
+                assert (
+                    windows_worker_candidate_main(
+                        (*args, "inspect", "--attempt-id", attempt_id)
+                    )
+                    == 0
+                )
+                inspected = json.loads(capsys.readouterr().out.splitlines()[-1])
+                assert inspected["c5Phase"] == "published"
+                assert inspected["orphanLeaseCount"] == 1
+                assert (
+                    windows_worker_candidate_main(
+                        (*args, "recover-crash", "--attempt-id", attempt_id)
+                    )
+                    == 0
+                )
+                recovered = json.loads(capsys.readouterr().out.splitlines()[-1])
+                assert recovered["c5Phase"] == "settled"
+            [c5_settled] = (
+                item
+                for item in CodingWindowsWorkerActivationStateJournal(
+                    product
+                ).retained_attempts_read_only()
+                if item.attempt_id == attempt_id
+            )
+            assert (
+                recover_coding_windows_product_worker_crash_attempt(
+                    product, attempt_id=attempt_id
+                )
+                == c5_settled
+            )
+        else:
+            supervisor = settle_coding_windows_product_worker_crash_supervisor(
+                product, expected_review=first
+            )
+            assert supervisor is not None and supervisor.process_settled
+            second = review_coding_windows_product_worker_crash_cleanup(
+                product, attempt_id=attempt_id
+            )
+            native = settle_coding_windows_product_worker_crash_native(
+                product, expected_review=second
+            )
+            assert native.attempt_id == attempt_id
+            lease_review = review_coding_windows_product_worker_crash_lease_repair(
+                product, attempt_id=attempt_id
+            )
+            repaired = repair_coding_windows_product_worker_crash_orphan_runtime(
+                product, expected_review=lease_review
+            )
+            assert repaired == first.orphan_review.orphan_leases[0]
+            stage_review = review_coding_windows_product_worker_crash_stage(
+                product, attempt_id=attempt_id
+            )
+            retired = retire_coding_windows_product_worker_crash_stage(
+                product, expected_review=stage_review
+            )
+            assert retired.attempt_id == attempt_id
+            with patch(
+                "loushang.coding.package_product_worker_windows_orphan_review.observe_windows_worker_job_absent",
+                return_value=False,
+            ):
+                with pytest.raises(ValueError, match="incomplete"):
+                    settle_coding_windows_product_worker_crash_c5(
+                        product, attempt_id=attempt_id
+                    )
+            c5_settled = settle_coding_windows_product_worker_crash_c5(
+                product, attempt_id=attempt_id
+            )
+            assert (
+                settle_coding_windows_product_worker_crash_c5(
+                    product, attempt_id=attempt_id
+                )
+                == c5_settled
+            )
         assert not (product.state_root / f"worker-payload-{attempt_id}").exists()
         assert (
             product.epoch_runtime.registry.review_orphans(
@@ -3045,24 +3133,7 @@ module["_exercise_windows_worker_wheel_transaction"](
             )
             == ()
         )
-        with patch(
-            "loushang.coding.package_product_worker_windows_orphan_review.observe_windows_worker_job_absent",
-            return_value=False,
-        ):
-            with pytest.raises(ValueError, match="incomplete"):
-                settle_coding_windows_product_worker_crash_c5(
-                    product, attempt_id=attempt_id
-                )
-        c5_settled = settle_coding_windows_product_worker_crash_c5(
-            product, attempt_id=attempt_id
-        )
         assert c5_settled.phase == "settled"
-        assert (
-            settle_coding_windows_product_worker_crash_c5(
-                product, attempt_id=attempt_id
-            )
-            == c5_settled
-        )
         after = inspect_coding_windows_product_worker_offline_recovery(product)
         assert len(after.attempts) == 1
         assert after.attempts[0].payload_directory_identity is None

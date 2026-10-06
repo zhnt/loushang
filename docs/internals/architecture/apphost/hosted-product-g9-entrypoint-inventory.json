@@ -92,6 +92,16 @@
       "surface": "cli"
     },
     {
+      "disposition": "explicit-offline-windows-worker-candidate-recovery",
+      "entrypointId": "coding.worker-windows-candidate.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-worker-windows-candidate",
+      "source": "src/loushang/coding/cli/package_worker_windows_candidate.py",
+      "supportStatus": "installed-preview",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-owned-foreground-tui",
       "entrypointId": "coding.hosted-tui.command",
       "importsComposition": false,

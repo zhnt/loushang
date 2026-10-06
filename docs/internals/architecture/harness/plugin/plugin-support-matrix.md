@@ -26,6 +26,11 @@ retirement; the two paths have different authority and lifecycle guarantees.
 The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
+The explicit `loushang-worker-windows-candidate` offline inspect and crash
+recovery command is implemented behind `--windows-candidate`. Its native
+end-to-end report is pending; this candidate command does not open ordinary
+Windows Session routing or general third-party Worker admission.
+
 `loushang-worker-native candidate-status` reads the retained per-install Worker
 opt-in decision and observes an exact selected Worker candidate through the
 fenced Product's read-only owner. `observed_in_read` is partial selection
