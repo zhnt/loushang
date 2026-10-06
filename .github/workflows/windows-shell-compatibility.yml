@@ -119,6 +119,7 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-worker-session-native.xml
+          --require-tests-count 4
 
       - name: Upload Windows Worker Session pytest report
         if: always()

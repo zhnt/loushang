@@ -87,6 +87,16 @@ def test_verifier_rejects_wrong_required_property(tmp_path: Path) -> None:
     assert "terminal_backend" in result.stderr
 
 
+def test_verifier_requires_exact_test_count(tmp_path: Path) -> None:
+    report = '<testsuites><testsuite tests="4" skipped="0" failures="0" errors="0"/></testsuites>'
+    accepted = _run_verifier(tmp_path, report, "--require-tests-count", "4")
+    assert accepted.returncode == 0
+
+    incomplete = _run_verifier(tmp_path, report, "--require-tests-count", "5")
+    assert incomplete.returncode == 1
+    assert "tests must be 5, got 4" in incomplete.stderr
+
+
 def _run_verifier(
     tmp_path: Path, xml: str, *args: str
 ) -> subprocess.CompletedProcess[str]:

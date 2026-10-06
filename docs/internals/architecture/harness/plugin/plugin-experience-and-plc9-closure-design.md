@@ -3121,6 +3121,12 @@ passed 1/1 with both empty and allowed status responses. The journey checks
 that status creates no new files and does not change the opt-in journal bytes.
 This status reports only the retained opt-in decision, not current Worker
 selection, native release, or Product Session use.
+The dedicated Windows Worker Session CI job now requires exactly four JUnit
+cases: Direct and Hosted clean first-Session use, plus their two parameterized
+crash/reopen/retirement cases. The report still rejects skips, failures, and
+errors. The generalized verifier and change-gate suite passed 60/60 locally;
+this strengthens the native evidence contract but does not substitute for a
+non-skipped Windows runner result.
 
 ## Independent Review Record
 

@@ -24,6 +24,12 @@ def _parser() -> argparse.ArgumentParser:
         metavar="NAME=VALUE",
         help="require a testsuite property; repeat for multiple properties",
     )
+    parser.add_argument(
+        "--require-tests-count",
+        type=int,
+        metavar="N",
+        help="require exactly N collected tests in the report",
+    )
     return parser
 
 
@@ -32,6 +38,7 @@ def verify_report(
     required_properties: tuple[str, ...] = (),
     *,
     allow_skipped: bool = False,
+    required_tests_count: int | None = None,
 ) -> str:
     try:
         root = ET.parse(report).getroot()
@@ -49,6 +56,13 @@ def verify_report(
     problems: list[str] = []
     if counts["tests"] <= 0:
         problems.append("tests must be greater than zero")
+    if required_tests_count is not None:
+        if required_tests_count <= 0:
+            problems.append("required tests count must be greater than zero")
+        elif counts["tests"] != required_tests_count:
+            problems.append(
+                f"tests must be {required_tests_count}, got {counts['tests']}"
+            )
     for key in ("failures", "errors"):
         if counts[key] != 0:
             problems.append(f"{key} must be zero, got {counts[key]}")
@@ -97,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             args.report,
             tuple(args.require_property),
             allow_skipped=args.allow_skipped,
+            required_tests_count=args.require_tests_count,
         )
     except ValueError as error:
         print(error, file=sys.stderr)
