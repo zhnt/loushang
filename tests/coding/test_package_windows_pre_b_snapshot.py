@@ -2951,6 +2951,7 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert len(gc_observations) == 1
         assert gc_observations[0].attempt_reference == references[0]
         assert gc_observations[0].active_gc_reservation_count == 0
+        assert gc_observations[0].gc_reservation_revision >= 0
         assert gc_observations[0].matching_revision_refs == ()
         first = review_coding_windows_product_worker_crash_cleanup(
             product, attempt_id=attempt_id

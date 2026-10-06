@@ -1524,7 +1524,10 @@ reservation still blocks pruning, and no backup or durable absence attestation
 is implied. Windows now uses the same exact Plugin and Wheel artifact join
 under one GC read guard for every retained launch-intent reference. Its report
 also preserves the total active reservation count, so an unrelated reservation
-cannot silently become an attempt-level absence proof. The native public
+cannot silently become an attempt-level absence proof. Both Product reviews
+now carry the GC owner's journal revision captured under the same strict read
+gate as the active reservations. That revision is checkpoint input, not a
+durable absence attestation. The native public
 Session crash/reopen case checks the no-reservation observation; its rerun is
 pending. Only after those joins can a checkpoint carry a
 durable anti-reuse high-water mark and retire sealed segments. Linux and

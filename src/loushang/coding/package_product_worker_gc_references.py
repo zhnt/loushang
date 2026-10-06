@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationSnapshotV1,
+)
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+
+
+def coding_worker_gc_revision_refs(
+    snapshot: PluginPackageGcReservationSnapshotV1,
+) -> frozenset[PluginPackageRevisionRefV1]:
+    """Extract Package revision pins from a versioned owner snapshot."""
+
+    return frozenset(
+        item.candidate.package_revision
+        for item in snapshot.active
+        if item.candidate is not None
+    )
 
 
 def matching_coding_worker_gc_revision_refs(
@@ -34,4 +49,7 @@ def matching_coding_worker_gc_revision_refs(
     )
 
 
-__all__ = ["matching_coding_worker_gc_revision_refs"]
+__all__ = [
+    "coding_worker_gc_revision_refs",
+    "matching_coding_worker_gc_revision_refs",
+]

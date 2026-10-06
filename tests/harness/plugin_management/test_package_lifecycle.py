@@ -115,6 +115,9 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     with pytest.raises(FileNotFoundError):
         with gate.read_guard():
             pass
+    with pytest.raises(FileNotFoundError):
+        with gate.read_snapshot_guard():
+            pass
     assert not path.exists()
     assert not lock.exists()
 
@@ -123,6 +126,9 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     before = tuple(sorted(item.name for item in tmp_path.iterdir()))
     with gate.read_guard() as reserved:
         assert reserved == frozenset()
+    with gate.read_snapshot_guard() as snapshot:
+        assert snapshot.journal_revision == 0
+        assert snapshot.active == ()
     assert tuple(sorted(item.name for item in tmp_path.iterdir())) == before
 
     alias = PluginPackageGcReservationJournal(path)
@@ -141,6 +147,11 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
         with gate.read_guard():
             pass
     assert invalid.value.code == "plugin_package_gc_journal_corrupt"
+    assert path.read_bytes() == original
+    with pytest.raises(PluginPackageGcReservationError) as snapshot_invalid:
+        with gate.read_snapshot_guard():
+            pass
+    assert snapshot_invalid.value.code == "plugin_package_gc_journal_corrupt"
     assert path.read_bytes() == original
 
 
@@ -226,6 +237,9 @@ def test_gc_deletion_start_requires_sealed_writers_and_forbids_cancel(
         operation_id="reserve-gc",
         idempotency_key="reserve-gc-request",
     )
+    with gate.read_snapshot_guard() as snapshot:
+        assert snapshot.journal_revision == reservation.journal_revision
+        assert snapshot.active == (reservation,)
     target = ("a" * 64,)
     with pytest.raises(PluginPackageGcReservationError) as unsealed:
         gate.begin_delete(

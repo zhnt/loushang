@@ -3496,6 +3496,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             direct_retention.receipt_record.receipt.policy.plugin_revision_digest
                         )
                         assert reference.native_platform == "linux"
+                        assert direct_retention.gc_reservation_revision >= 0
                         assert direct_retention.gc_matching_revision_refs == ()
                         mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
                             journal_revision=direct_gate_attempts[0].journal_revision,

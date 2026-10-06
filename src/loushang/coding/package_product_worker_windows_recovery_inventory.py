@@ -18,6 +18,7 @@ from loushang.harness.plugin_management.records import PluginPackageRevisionRefV
 from loushang.harness.worker.journal import WorkerAttemptPhase
 
 from .package_product_worker_gc_references import (
+    coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
 from .package_product_worker_windows_launch_intent import (
@@ -173,6 +174,7 @@ class CodingWindowsWorkerAttemptGcObservationV1:
 
     attempt_reference: CodingWindowsWorkerAttemptReferenceV1
     active_gc_reservation_count: int
+    gc_reservation_revision: int
     matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
 
 
@@ -465,7 +467,8 @@ def inspect_coding_windows_product_worker_attempt_gc_observations(
         or product.policy.product_id != "coding"
     ):
         raise OSError("Windows Worker GC observations require a Product owner")
-    with product.gc_gate.read_guard() as reservations:
+    with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+        reservations = coding_worker_gc_revision_refs(gc_snapshot)
         references = _inspect_windows_worker_attempt_references_under_gc_guard(
             product
         )
@@ -473,6 +476,7 @@ def inspect_coding_windows_product_worker_attempt_gc_observations(
             CodingWindowsWorkerAttemptGcObservationV1(
                 attempt_reference=reference,
                 active_gc_reservation_count=len(reservations),
+                gc_reservation_revision=gc_snapshot.journal_revision,
                 matching_revision_refs=matching_coding_worker_gc_revision_refs(
                     plugin_id=reference.plugin_id,
                     package_content_digest=(

@@ -371,6 +371,36 @@ class PluginPackageGcReservationJournal:
                     state.read_only = False
                     state.depth = 0
 
+    @contextmanager
+    def read_snapshot_guard(self) -> Iterator[PluginPackageGcReservationSnapshotV1]:
+        """Hold a strict read gate with its durable reservation revision.
+
+        A retention checkpoint needs both the exact active reservations and
+        the owner revision captured under the same GC lock. This view grants
+        no deletion or history-pruning authority by itself.
+        """
+
+        with self.read_guard() as package_refs:
+            events, active, _ = self._replay_unlocked(
+                load_policy=_READ_ONLY_LOAD_POLICY
+            )
+            snapshot = PluginPackageGcReservationSnapshotV1(
+                journal_revision=len(events),
+                active=tuple(
+                    sorted(active.values(), key=lambda item: item.reservation_id)
+                ),
+            )
+            if package_refs != frozenset(
+                item.candidate.package_revision
+                for item in snapshot.active
+                if item.candidate is not None
+            ):
+                raise self._error(
+                    "GC reservations changed during read",
+                    "plugin_package_gc_journal_corrupt",
+                )
+            yield snapshot
+
     def _assert_parent_current(self) -> None:
         expected = self._parent_identity
         if expected is None:

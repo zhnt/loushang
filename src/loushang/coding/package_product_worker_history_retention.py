@@ -22,6 +22,7 @@ from .package_product_worker_activation_state_journal import (
     CodingProductWorkerRetainedAttemptV1,
 )
 from .package_product_worker_gc_references import (
+    coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
@@ -120,6 +121,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     payload_stage_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
+    gc_reservation_revision: int
     gc_matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
 
     @property
@@ -217,7 +219,8 @@ def review_coding_product_worker_history_retention(
     with registry.exclusive_runtime_quiescence(
         store_id=registry.store_id, read_only=True
     ) as quiescence:
-        with product.gc_gate.read_guard() as gc_reservations:
+        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+            gc_reservations = coding_worker_gc_revision_refs(gc_snapshot)
             product.assert_root_gc_authority_current()
             gated = _review_offline(product, attempt_id=attempt_id)
             gate = gated.gate_record
@@ -348,6 +351,7 @@ def review_coding_product_worker_history_retention(
                 payload_stage_names=payloads,
                 active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
                 active_gc_reservation_count=len(gc_reservations),
+                gc_reservation_revision=gc_snapshot.journal_revision,
                 gc_matching_revision_refs=_matching_gc_revision_refs(
                     attempt_reference, gc_reservations
                 ),
