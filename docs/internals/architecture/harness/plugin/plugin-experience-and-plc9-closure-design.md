@@ -1522,12 +1522,12 @@ pre-B workspace migration removes that migration work only; fresh B and
 already-fenced B behavior, including no-write refusal of unfenced inputs,
 remain in block 5.
 
-| Closure block | Current evidence boundary (2026-10-04) | Remaining acceptance |
+| Closure block | Current evidence boundary (2026-10-06) | Remaining acceptance |
 | --- | --- | --- |
 | 1. Read-only visibility | Product-scoped preview and explanation paths have implementation and focused evidence. | Final integrated regression. |
 | 2. Data Resource authoring | Skill, Prompt, and Theme authoring and their selected Product consumers have focused evidence. | Final integrated regression; no implied Method, Asset, or Source opening. |
 | 3. Management transport | CLI, RPC, UI, and management SDK paths and repair actions have focused evidence. | Final integrated regression of the shared Product authority. |
-| 4. Executable topology | Explicit Linux installed-Worker query and negative canaries pass, including ordinary Python SDK Sessions; default routing remains closed. Windows Product release/approval/receipt, retained payload stage, and Hosting capture recheck candidates are authored; Windows-native payload and launch evidence is pending. | Durable history retention, general third-party admission, native Windows Product launch and recovery evidence, platform evidence. |
+| 4. Executable topology | Explicit Linux installed-Worker query and negative canaries pass, including ordinary Python SDK Sessions; default routing remains closed. Windows public Session direct, hosted, and crash/reopen paths passed 4/4 in native CI run `37493522912` on the previous remote head. Later GC ownership changes have local and portable evidence only. | Durable history retention, general third-party admission, exact-head native Windows GC and recovery evidence, platform evidence. |
 | 5. Storage and B workspace | Sole Desired State selection and Product GC/private-data paths have focused evidence; Windows writeback code exists. | Native Windows production and recovery evidence plus final integrated regression. |
 
 The post-development Astra architecture and integrity reviews found two
