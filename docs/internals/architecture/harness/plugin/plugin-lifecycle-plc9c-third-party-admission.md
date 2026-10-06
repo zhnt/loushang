@@ -1535,6 +1535,12 @@ than 2,048 sequential queries. More than 4,096 receipt generations, Windows
 attempt rotation, and crash/reopen checks at each checkpoint publication
 boundary remain open. Until those retention and platform reports exist, the
 explicit pilot remains bounded and general Worker routing stays closed.
+The Linux retention review now exposes its exact fact join to a caller already
+holding Package runtime quiescence and the Product GC gate. A future checkpoint
+publisher must acquire those locks in that order, take a fresh GC reservation
+snapshot under the write gate, re-run this join, and publish before releasing
+either lock. The public review remains read-only. This shared path has no
+checkpoint write or history-pruning authority by itself.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

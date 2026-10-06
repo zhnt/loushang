@@ -5372,6 +5372,22 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         retention = review_coding_product_worker_history_retention(
             product, attempt_id=attempt_id
         )
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            with product.gc_gate.guard(require_write=True):
+                writer_review = (
+                    history_retention_module._review_coding_product_worker_history_under_guard(
+                        product,
+                        attempt_id=attempt_id,
+                        active_runtime_lease_ids=(
+                            quiescence.active_runtime_lease_ids
+                        ),
+                        gc_snapshot=product.gc_gate.snapshot(),
+                    )
+                )
+        assert writer_review == retention
         assert retention.unverified_activation_references == ()
         assert retention.global_unverified_activation_references == ()
         assert retention.global_unverified_opt_in_references == ()

@@ -15,6 +15,9 @@ from typing import Literal, cast
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationSnapshotV1,
+)
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.gated_start import (
     worker_native_group_status_after_restart,
@@ -332,310 +335,302 @@ def review_coding_product_worker_history_retention(
         store_id=registry.store_id, read_only=True
     ) as quiescence:
         with product.gc_gate.read_snapshot_guard() as gc_snapshot:
-            gc_reservations = coding_worker_gc_revision_refs(gc_snapshot)
-            product.assert_root_gc_authority_current()
-            gated = _review_offline(product, attempt_id=attempt_id)
-            gate = gated.gate_record
-            receipts = read_coding_product_worker_receipt_records(product)
-            receipt = (
-                None
-                if gate is None
-                else next(
-                    (
-                        record
-                        for record in receipts
-                        if record.receipt.fingerprint == gate.receipt_fingerprint
-                    ),
-                    None,
-                )
-            )
-            opt_in = (
-                None
-                if receipt is None
-                else CodingWorkerProductOptInOwner(product).current(
-                    receipt.receipt.policy.plugin_id
-                )
-            )
-            opt_in_history = CodingWorkerOptInJournal(
-                product.state_root / "worker-opt-in.jsonl",
-                scope_id=product.policy.project_scope_id,
-                gc_gate=product.gc_gate,
-            )._history_under_gc_guard()
-            decisions_by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
-            for decision in opt_in_history:
-                decisions_by_digest.setdefault(decision.decision_digest, []).append(
-                    decision
-                )
-            unverified_opt_in: list[tuple[str, str]] = []
-            for retained_receipt in receipts:
-                decisions = decisions_by_digest.get(
-                    retained_receipt.opt_in_decision_digest, []
-                )
-                policy = retained_receipt.receipt.policy
-                if (
-                    len(decisions) != 1
-                    or decisions[0].action != "allow"
-                    or decisions[0].plugin_id != policy.plugin_id
-                    or decisions[0].scope_id != retained_receipt.scope_id
-                    or decisions[0].generation != policy.owner_selection_generation
-                    or decisions[0].kill_switch_generation
-                    != policy.kill_switch_generation
-                ):
-                    unverified_opt_in.append(
-                        (
-                            retained_receipt.receipt.fingerprint,
-                            "historical_opt_in_unverified",
-                        )
-                    )
-            global_unverified_opt_in = tuple(sorted(unverified_opt_in))
-            historical_opt_in_verified = receipt is not None and not any(
-                fingerprint == receipt.receipt.fingerprint
-                for fingerprint, _ in global_unverified_opt_in
-            )
-            activation_journal = CodingProductWorkerActivationStateJournal(
-                product.state_root / "worker-activation-state.jsonl"
-            )
-            activation_initialized, activation_state = (
-                activation_journal.load_with_presence_read_only()
-            )
-            retained_activation_references = (
-                activation_journal.retained_attempts_read_only()
-            )
-            active_references: tuple[tuple[str, str], ...] = ()
-            if activation_state is not None:
-                attempts = cast(
-                    dict[str, dict[str, object]], activation_state["attempts"]
-                )
-                active_references = tuple(
-                    sorted(
-                        (
-                            cast(str, item["receiptFingerprint"]),
-                            cast(str, item["attemptId"]),
-                        )
-                        for item in attempts.values()
-                        if item["phase"] != "settled"
-                    )
-                )
-            gates = CodingWorkerStartGateJournal(product).attempts()
-            gate_by_id = {item.attempt_id: item for item in gates}
-            supervisor = open_coding_product_worker_supervisor_journal(product)
-            supervisor_by_id = {item.attempt_id: item for item in supervisor.attempts()}
-            supervisor_epoch_by_key: dict[str, int] = {}
-            for record in supervisor_by_id.values():
-                supervisor_epoch_by_key[record.supervisor_key] = max(
-                    supervisor_epoch_by_key.get(record.supervisor_key, 0),
-                    record.supervisor_epoch,
-                )
-            unbound_supervisor_attempt_ids = tuple(
-                sorted(supervisor_by_id.keys() - gate_by_id.keys())
-            )
-            unverified_activation: list[tuple[str, str]] = []
-            global_unverified_activation: list[tuple[str, str]] = []
-            for reference in retained_activation_references:
-                relevant = reference.attempt_id == attempt_id or (
-                    receipt is not None
-                    and reference.receipt_fingerprint == receipt.receipt.fingerprint
-                )
-                referenced_gate = gate_by_id.get(reference.attempt_id)
-                code: str | None
-                if referenced_gate is None:
-                    code = "activation_reference_gate_absent"
-                elif (
-                    referenced_gate.receipt_fingerprint != reference.receipt_fingerprint
-                    or referenced_gate.policy_fingerprint
-                    != reference.policy_fingerprint
-                ):
-                    code = "activation_reference_binding_changed"
-                elif referenced_gate.phase != "bound":
-                    code = "activation_reference_gate_unbound"
-                elif reference.phase != "settled":
-                    code = "activation_reference_unsettled"
-                else:
-                    status = supervisor_by_id.get(reference.attempt_id)
-                    code = (
-                        "activation_reference_supervisor_unsettled"
-                        if status is None
-                        or not status.process_settled
-                        or status.identity_fingerprint
-                        != referenced_gate.worker_identity_fingerprint
-                        else None
-                    )
-                    if code is None and (
-                        referenced_gate.identity is None
-                        or worker_native_group_status_after_restart(
-                            referenced_gate.identity
-                        )
-                        not in {"absent", "prior_boot_absent"}
-                    ):
-                        code = "activation_reference_native_absence_unverified"
-                if code is not None:
-                    activation_issue = (reference.attempt_id, code)
-                    global_unverified_activation.append(activation_issue)
-                    if relevant:
-                        unverified_activation.append(activation_issue)
-            receipt_by_fingerprint = {
-                item.receipt.fingerprint: item for item in receipts
-            }
-            receipt_gate_ids: list[str] = []
-            unsettled: list[str] = []
-            unverified: list[tuple[str, str]] = []
-            globally_unverified: list[tuple[str, str]] = []
-            for item in gates:
-                selected_receipt_gate = (
-                    gate is not None
-                    and item.receipt_fingerprint == gate.receipt_fingerprint
-                )
-                if selected_receipt_gate:
-                    receipt_gate_ids.append(item.attempt_id)
-                referenced_receipt = receipt_by_fingerprint.get(
-                    item.receipt_fingerprint
-                )
-                group_status: GatedGroupStatus = (
-                    gated.group_status
-                    if item.attempt_id == attempt_id
-                    else (
-                        "unobserved"
-                        if item.identity is None or referenced_receipt is None
-                        else worker_native_group_status_after_restart(item.identity)
-                    )
-                )
-                issue = _receipt_gate_reference_issue(
-                    item,
-                    referenced_receipt,
-                    supervisor_by_id.get(item.attempt_id),
-                    group_status,
-                )
-                if issue is None:
-                    continue
-                globally_unverified.append((item.attempt_id, issue))
-                if selected_receipt_gate:
-                    if issue in {
-                        "receipt_reference_gate_unbound",
-                        "receipt_reference_supervisor_absent",
-                        "receipt_reference_supervisor_unsettled",
-                    }:
-                        unsettled.append(item.attempt_id)
-                    unverified.append((item.attempt_id, issue))
-            receipt_gate_references = tuple(receipt_gate_ids)
-            unsettled_gate_references = tuple(unsettled)
-            unverified_gate_references = tuple(unverified)
-            global_unverified_gate_references = tuple(sorted(globally_unverified))
-            receipt_references_verified = (
-                activation_initialized
-                and historical_opt_in_verified
-                and not global_unverified_opt_in
-                and receipt is not None
-                and gate is not None
-                and bool(receipt_gate_references)
-                and set(receipt_gate_references)
-                == {
-                    reference.attempt_id
-                    for reference in retained_activation_references
-                    if reference.receipt_fingerprint == receipt.receipt.fingerprint
-                }
-                and not unverified_gate_references
-                and not global_unverified_gate_references
-                and not unverified_activation
-                and activation_state is not None
-                and not activation_state["publications"]
-                and not any(
-                    fingerprint == receipt.receipt.fingerprint
-                    for fingerprint, _ in active_references
-                )
-            )
-            with product.pinned_state_root_gc_read() as root_fd:
-                state_names = tuple(os.listdir(root_fd))
-                payloads = tuple(
-                    sorted(
-                        name
-                        for name in state_names
-                        if name.startswith("worker-payload-")
-                    )
-                )
-                repair_references = tuple(
-                    sorted(
-                        name
-                        for name in state_names
-                        if _PAYLOAD_REPAIR.fullmatch(name) is not None
-                    )
-                )
-                unrecognized_worker_state = tuple(
-                    sorted(
-                        name
-                        for name in state_names
-                        if name.casefold().startswith(("worker-", ".worker-"))
-                        and not _known_worker_state_name(name)
-                    )
-                )
-            product.assert_root_gc_authority_current()
-            attempt_reference = _attempt_reference(gate, receipt)
-            return CodingWorkerHistoryRetentionReviewV1(
+            return _review_coding_product_worker_history_under_guard(
+                product,
                 attempt_id=attempt_id,
-                gate_record=gate,
-                attempt_record=gated.attempt_record,
-                receipt_record=receipt,
-                current_opt_in=opt_in,
-                historical_opt_in_verified=historical_opt_in_verified,
-                group_status=gated.group_status,
-                opt_in_history_revision=len(opt_in_history),
-                retained_opt_in_operation_ids=tuple(
-                    item.operation_id for item in opt_in_history
-                ),
-                start_gate_history_revision=max(
-                    (item.journal_revision for item in gates), default=0
-                ),
-                supervisor_history_revision=max(
-                    (item.record_revision for item in supervisor_by_id.values()),
-                    default=0,
-                ),
-                receipt_history_revision=len(receipts),
-                retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
-                retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),
-                retained_receipt_fingerprints=tuple(
-                    sorted(item.receipt.fingerprint for item in receipts)
-                ),
-                supervisor_epoch_high_water=tuple(
-                    sorted(supervisor_epoch_by_key.items())
-                ),
-                unbound_supervisor_attempt_ids=unbound_supervisor_attempt_ids,
-                activation_state_revision=(
-                    None
-                    if not activation_initialized
-                    else (
-                        0
-                        if activation_state is None
-                        else cast(int, activation_state["stateRevision"])
-                    )
-                ),
-                active_activation_references=active_references,
-                retained_activation_references=retained_activation_references,
-                unverified_activation_references=tuple(unverified_activation),
-                global_unverified_activation_references=tuple(
-                    sorted(global_unverified_activation)
-                ),
-                global_unverified_opt_in_references=global_unverified_opt_in,
-                receipt_gate_references=receipt_gate_references,
-                unsettled_receipt_gate_references=unsettled_gate_references,
-                unverified_receipt_gate_references=unverified_gate_references,
-                global_unverified_receipt_gate_references=(
-                    global_unverified_gate_references
-                ),
-                receipt_references_verified=receipt_references_verified,
-                payload_stage_names=payloads,
-                retained_payload_repair_reference_names=repair_references,
-                unrecognized_worker_state_names=unrecognized_worker_state,
                 active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
-                active_gc_reservation_count=len(gc_reservations),
-                gc_reservation_revision=gc_snapshot.journal_revision,
-                gc_matching_revision_refs=_matching_gc_revision_refs(
-                    attempt_reference, gc_reservations
-                ),
-                worker_backup_references=(
-                    observe_coding_worker_backup_references_under_gc_guard(
-                        product, attempt_id=attempt_id
-                    )
-                ),
+                gc_snapshot=gc_snapshot,
             )
+
+
+def _review_coding_product_worker_history_under_guard(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    active_runtime_lease_ids: tuple[str, ...],
+    gc_snapshot: PluginPackageGcReservationSnapshotV1,
+) -> CodingWorkerHistoryRetentionReviewV1:
+    """Read exact history while the caller owns runtime and GC locks."""
+
+    gc_reservations = coding_worker_gc_revision_refs(gc_snapshot)
+    product.assert_root_gc_authority_current()
+    gated = _review_offline(product, attempt_id=attempt_id)
+    gate = gated.gate_record
+    receipts = read_coding_product_worker_receipt_records(product)
+    receipt = (
+        None
+        if gate is None
+        else next(
+            (
+                record
+                for record in receipts
+                if record.receipt.fingerprint == gate.receipt_fingerprint
+            ),
+            None,
+        )
+    )
+    opt_in = (
+        None
+        if receipt is None
+        else CodingWorkerProductOptInOwner(product).current(
+            receipt.receipt.policy.plugin_id
+        )
+    )
+    opt_in_history = CodingWorkerOptInJournal(
+        product.state_root / "worker-opt-in.jsonl",
+        scope_id=product.policy.project_scope_id,
+        gc_gate=product.gc_gate,
+    )._history_under_gc_guard()
+    decisions_by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
+    for decision in opt_in_history:
+        decisions_by_digest.setdefault(decision.decision_digest, []).append(decision)
+    unverified_opt_in: list[tuple[str, str]] = []
+    for retained_receipt in receipts:
+        decisions = decisions_by_digest.get(retained_receipt.opt_in_decision_digest, [])
+        policy = retained_receipt.receipt.policy
+        if (
+            len(decisions) != 1
+            or decisions[0].action != "allow"
+            or decisions[0].plugin_id != policy.plugin_id
+            or decisions[0].scope_id != retained_receipt.scope_id
+            or decisions[0].generation != policy.owner_selection_generation
+            or decisions[0].kill_switch_generation != policy.kill_switch_generation
+        ):
+            unverified_opt_in.append(
+                (
+                    retained_receipt.receipt.fingerprint,
+                    "historical_opt_in_unverified",
+                )
+            )
+    global_unverified_opt_in = tuple(sorted(unverified_opt_in))
+    historical_opt_in_verified = receipt is not None and not any(
+        fingerprint == receipt.receipt.fingerprint
+        for fingerprint, _ in global_unverified_opt_in
+    )
+    activation_journal = CodingProductWorkerActivationStateJournal(
+        product.state_root / "worker-activation-state.jsonl"
+    )
+    activation_initialized, activation_state = (
+        activation_journal.load_with_presence_read_only()
+    )
+    retained_activation_references = activation_journal.retained_attempts_read_only()
+    active_references: tuple[tuple[str, str], ...] = ()
+    if activation_state is not None:
+        attempts = cast(dict[str, dict[str, object]], activation_state["attempts"])
+        active_references = tuple(
+            sorted(
+                (
+                    cast(str, item["receiptFingerprint"]),
+                    cast(str, item["attemptId"]),
+                )
+                for item in attempts.values()
+                if item["phase"] != "settled"
+            )
+        )
+    gates = CodingWorkerStartGateJournal(product).attempts()
+    gate_by_id = {item.attempt_id: item for item in gates}
+    supervisor = open_coding_product_worker_supervisor_journal(product)
+    supervisor_by_id = {item.attempt_id: item for item in supervisor.attempts()}
+    supervisor_epoch_by_key: dict[str, int] = {}
+    for record in supervisor_by_id.values():
+        supervisor_epoch_by_key[record.supervisor_key] = max(
+            supervisor_epoch_by_key.get(record.supervisor_key, 0),
+            record.supervisor_epoch,
+        )
+    unbound_supervisor_attempt_ids = tuple(
+        sorted(supervisor_by_id.keys() - gate_by_id.keys())
+    )
+    unverified_activation: list[tuple[str, str]] = []
+    global_unverified_activation: list[tuple[str, str]] = []
+    for reference in retained_activation_references:
+        relevant = reference.attempt_id == attempt_id or (
+            receipt is not None
+            and reference.receipt_fingerprint == receipt.receipt.fingerprint
+        )
+        referenced_gate = gate_by_id.get(reference.attempt_id)
+        code: str | None
+        if referenced_gate is None:
+            code = "activation_reference_gate_absent"
+        elif (
+            referenced_gate.receipt_fingerprint != reference.receipt_fingerprint
+            or referenced_gate.policy_fingerprint != reference.policy_fingerprint
+        ):
+            code = "activation_reference_binding_changed"
+        elif referenced_gate.phase != "bound":
+            code = "activation_reference_gate_unbound"
+        elif reference.phase != "settled":
+            code = "activation_reference_unsettled"
+        else:
+            status = supervisor_by_id.get(reference.attempt_id)
+            code = (
+                "activation_reference_supervisor_unsettled"
+                if status is None
+                or not status.process_settled
+                or status.identity_fingerprint
+                != referenced_gate.worker_identity_fingerprint
+                else None
+            )
+            if code is None and (
+                referenced_gate.identity is None
+                or worker_native_group_status_after_restart(referenced_gate.identity)
+                not in {"absent", "prior_boot_absent"}
+            ):
+                code = "activation_reference_native_absence_unverified"
+        if code is not None:
+            activation_issue = (reference.attempt_id, code)
+            global_unverified_activation.append(activation_issue)
+            if relevant:
+                unverified_activation.append(activation_issue)
+    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+    receipt_gate_ids: list[str] = []
+    unsettled: list[str] = []
+    unverified: list[tuple[str, str]] = []
+    globally_unverified: list[tuple[str, str]] = []
+    for item in gates:
+        selected_receipt_gate = (
+            gate is not None and item.receipt_fingerprint == gate.receipt_fingerprint
+        )
+        if selected_receipt_gate:
+            receipt_gate_ids.append(item.attempt_id)
+        referenced_receipt = receipt_by_fingerprint.get(item.receipt_fingerprint)
+        group_status: GatedGroupStatus = (
+            gated.group_status
+            if item.attempt_id == attempt_id
+            else (
+                "unobserved"
+                if item.identity is None or referenced_receipt is None
+                else worker_native_group_status_after_restart(item.identity)
+            )
+        )
+        issue = _receipt_gate_reference_issue(
+            item,
+            referenced_receipt,
+            supervisor_by_id.get(item.attempt_id),
+            group_status,
+        )
+        if issue is None:
+            continue
+        globally_unverified.append((item.attempt_id, issue))
+        if selected_receipt_gate:
+            if issue in {
+                "receipt_reference_gate_unbound",
+                "receipt_reference_supervisor_absent",
+                "receipt_reference_supervisor_unsettled",
+            }:
+                unsettled.append(item.attempt_id)
+            unverified.append((item.attempt_id, issue))
+    receipt_gate_references = tuple(receipt_gate_ids)
+    unsettled_gate_references = tuple(unsettled)
+    unverified_gate_references = tuple(unverified)
+    global_unverified_gate_references = tuple(sorted(globally_unverified))
+    receipt_references_verified = (
+        activation_initialized
+        and historical_opt_in_verified
+        and not global_unverified_opt_in
+        and receipt is not None
+        and gate is not None
+        and bool(receipt_gate_references)
+        and set(receipt_gate_references)
+        == {
+            reference.attempt_id
+            for reference in retained_activation_references
+            if reference.receipt_fingerprint == receipt.receipt.fingerprint
+        }
+        and not unverified_gate_references
+        and not global_unverified_gate_references
+        and not unverified_activation
+        and activation_state is not None
+        and not activation_state["publications"]
+        and not any(
+            fingerprint == receipt.receipt.fingerprint
+            for fingerprint, _ in active_references
+        )
+    )
+    with product.pinned_state_root_gc_read() as root_fd:
+        state_names = tuple(os.listdir(root_fd))
+        payloads = tuple(
+            sorted(name for name in state_names if name.startswith("worker-payload-"))
+        )
+        repair_references = tuple(
+            sorted(
+                name
+                for name in state_names
+                if _PAYLOAD_REPAIR.fullmatch(name) is not None
+            )
+        )
+        unrecognized_worker_state = tuple(
+            sorted(
+                name
+                for name in state_names
+                if name.casefold().startswith(("worker-", ".worker-"))
+                and not _known_worker_state_name(name)
+            )
+        )
+    product.assert_root_gc_authority_current()
+    attempt_reference = _attempt_reference(gate, receipt)
+    return CodingWorkerHistoryRetentionReviewV1(
+        attempt_id=attempt_id,
+        gate_record=gate,
+        attempt_record=gated.attempt_record,
+        receipt_record=receipt,
+        current_opt_in=opt_in,
+        historical_opt_in_verified=historical_opt_in_verified,
+        group_status=gated.group_status,
+        opt_in_history_revision=len(opt_in_history),
+        retained_opt_in_operation_ids=tuple(
+            item.operation_id for item in opt_in_history
+        ),
+        start_gate_history_revision=max(
+            (item.journal_revision for item in gates), default=0
+        ),
+        supervisor_history_revision=max(
+            (item.record_revision for item in supervisor_by_id.values()),
+            default=0,
+        ),
+        receipt_history_revision=len(receipts),
+        retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
+        retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),
+        retained_receipt_fingerprints=tuple(
+            sorted(item.receipt.fingerprint for item in receipts)
+        ),
+        supervisor_epoch_high_water=tuple(sorted(supervisor_epoch_by_key.items())),
+        unbound_supervisor_attempt_ids=unbound_supervisor_attempt_ids,
+        activation_state_revision=(
+            None
+            if not activation_initialized
+            else (
+                0
+                if activation_state is None
+                else cast(int, activation_state["stateRevision"])
+            )
+        ),
+        active_activation_references=active_references,
+        retained_activation_references=retained_activation_references,
+        unverified_activation_references=tuple(unverified_activation),
+        global_unverified_activation_references=tuple(
+            sorted(global_unverified_activation)
+        ),
+        global_unverified_opt_in_references=global_unverified_opt_in,
+        receipt_gate_references=receipt_gate_references,
+        unsettled_receipt_gate_references=unsettled_gate_references,
+        unverified_receipt_gate_references=unverified_gate_references,
+        global_unverified_receipt_gate_references=(global_unverified_gate_references),
+        receipt_references_verified=receipt_references_verified,
+        payload_stage_names=payloads,
+        retained_payload_repair_reference_names=repair_references,
+        unrecognized_worker_state_names=unrecognized_worker_state,
+        active_runtime_lease_ids=active_runtime_lease_ids,
+        active_gc_reservation_count=len(gc_reservations),
+        gc_reservation_revision=gc_snapshot.journal_revision,
+        gc_matching_revision_refs=_matching_gc_revision_refs(
+            attempt_reference, gc_reservations
+        ),
+        worker_backup_references=(
+            observe_coding_worker_backup_references_under_gc_guard(
+                product, attempt_id=attempt_id
+            )
+        ),
+    )
 
 
 __all__ = [
