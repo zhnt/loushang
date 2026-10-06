@@ -39,6 +39,7 @@ class CodingProductWorkerRetainedAttemptV1:
     receipt_fingerprint: str
     policy_fingerprint: str
     owner_generation: int
+    cleanup_contract_version: int
     host_identity: str
     boot_identity: str
     phase: str
@@ -75,6 +76,7 @@ def project_coding_worker_retained_attempts(
             receipt_fingerprint=cast(str, attempt["receiptFingerprint"]),
             policy_fingerprint=cast(str, attempt["policyFingerprint"]),
             owner_generation=cast(int, attempt["ownerGeneration"]),
+            cleanup_contract_version=cast(int, attempt["cleanupContractVersion"]),
             host_identity=cast(str, attempt["hostIdentity"]),
             boot_identity=cast(str, attempt["bootIdentity"]),
             phase=cast(str, attempt["phase"]),

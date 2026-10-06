@@ -1663,11 +1663,12 @@ projection of retained C5 attempts, including attempts absent from the latest
 state. Windows Package GC now recognizes only the exact C5 journal/head names;
 when a C5 owner exists, it refuses active or unmatched attempts and requires
 fresh proof that each retained launched attempt's named Job is absent before
-root deletion. The Windows offline recovery snapshot includes the exact C5
-revision and retained attempt projection under Package runtime quiescence and
-the GC read gate. It also distinguishes an absent C5 owner from a present empty
-lock, so an interrupted initialization cannot be mistaken for a never-started
-owner.
+root deletion. It also requires the V2 cleanup contract and matches C5 owner
+generation to the Product receipt. The Windows offline recovery snapshot includes
+the exact C5 revision and retained attempt projection under Package runtime
+quiescence and the GC read gate. It also distinguishes an absent C5 owner from a
+present empty lock, so an interrupted initialization cannot be mistaken for
+a never-started owner.
 The same lease-quiescent snapshot now observes whether each retained native
 Windows Job name is absent; a missing Job name or failed native observation
 remains unknown rather than becoming proof of absence. A future

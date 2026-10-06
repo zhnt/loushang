@@ -77,7 +77,7 @@ def _require_c5_gc_history(
     state: Mapping[str, object] | None,
     retained: tuple[CodingProductWorkerRetainedAttemptV1, ...],
     inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
-    receipt_policies: Mapping[str, str],
+    receipt_policies: Mapping[str, tuple[str, int]],
     native_job_absence: Mapping[str, bool | None],
 ) -> None:
     """Join settled C5 attempts to exact launched attempts and Product receipts."""
@@ -104,8 +104,10 @@ def _require_c5_gc_history(
         observed = launched[attempt_id]
         if (
             item.phase != "settled"
+            or item.cleanup_contract_version != 2
             or observed.launch_receipt_fingerprint != item.receipt_fingerprint
-            or receipt_policies.get(item.receipt_fingerprint) != item.policy_fingerprint
+            or receipt_policies.get(item.receipt_fingerprint)
+            != (item.policy_fingerprint, item.owner_generation)
             or native_job_absence.get(attempt_id) is not True
         ):
             raise ValueError("Windows Worker GC C5 attempt history is incomplete")
@@ -187,7 +189,10 @@ class CodingWindowsWorkerGcHistoryAuthority:
                     journal.retained_attempts_read_only(),
                     inventory,
                     {
-                        record.receipt.fingerprint: record.receipt.policy.fingerprint
+                        record.receipt.fingerprint: (
+                            record.receipt.policy.fingerprint,
+                            record.receipt.policy.owner_selection_generation,
+                        )
                         for record in receipts
                     },
                     {

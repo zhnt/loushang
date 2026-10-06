@@ -274,6 +274,7 @@ def test_activation_state_refuses_compacted_attempt_reuse_across_generations(
     assert retained[0].attempt_id == attempt_id
     assert retained[0].receipt_fingerprint == receipt
     assert retained[0].owner_generation == 1
+    assert retained[0].cleanup_contract_version == 1
     assert retained[0].phase == "settled"
     assert retained[0].last_seen_revision == 3
     assert not retained[0].current

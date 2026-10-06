@@ -3314,6 +3314,8 @@ revision beneath the pinned private root with an immutable committed-byte head.
 It shares Linux's retained-attempt projection. Windows Package GC now accepts
 only exact C5 names and checks any present C5 history against launched attempts
 and Product receipts plus fresh native Job absence before Package root deletion.
+The C5 join requires the Windows V2 native cleanup contract and matches the
+retained owner generation to the receipt's Product selection generation.
 The Windows offline recovery snapshot now carries the retained C5 revision and
 attempts as read-only evidence and records whether the C5 owner lock exists,
 including an empty interrupted initialization. It also reports a read-only
