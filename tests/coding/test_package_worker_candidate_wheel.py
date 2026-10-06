@@ -3519,6 +3519,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             direct_retention.receipt_record.journal_revision
                         )
                         assert direct_retention.unbound_supervisor_attempt_ids == ()
+                        assert direct_retention.unrecognized_worker_state_names == ()
                         assert direct_retention.gc_matching_revision_refs == ()
                         assert direct_retention.worker_backup_references is not None
                         assert (
@@ -7125,6 +7126,14 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         assert review.supervisor_history_revision == attempt.record_revision
         assert review.start_gate_history_revision == 0
         assert "supervisor_gate_reference_unverified" in review.missing_proofs
+        unknown = product.state_root / "worker-future-reference.json"
+        unknown.write_bytes(b"unknown owner")
+        unrecognized = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert unrecognized.unrecognized_worker_state_names == (unknown.name,)
+        assert "worker_reference_owner_unrecognized" in unrecognized.missing_proofs
+        unknown.unlink()
         assert not tuple(product.state_root.glob("worker-payload-*"))
         with pytest.raises(PackageProductGcExecutionError) as blocked:
             gc.prepare()
@@ -7443,6 +7452,11 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         assert not stage.exists()
         assert list_coding_product_worker_payload_debts(product) == ()
         intent = product.state_root / f"worker-empty-repair-{attempt_id}.json"
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.retained_payload_repair_reference_names == (intent.name,)
+        assert "payload_repair_reference_retained" in review.missing_proofs
         staging_intent = product.state_root / (
             f".worker-empty-repair-{attempt_id}.json.stage"
         )

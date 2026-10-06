@@ -1430,6 +1430,11 @@ receipt revisions and lists Supervisor attempts with no retained gate. An
 orphan Supervisor is a separate missing proof even when the selected attempt
 is elsewhere. These revision marks are checkpoint inputs, not durable
 anti-reuse or permission to retire history.
+The Linux review also classifies Product Worker state-root names against the
+current journal, native-release, payload-stage, and repair-intent owners.
+Unknown Worker-owned names and retained payload repair intents remain explicit
+reference debts. This keeps a later owner or interrupted stage from silently
+looking absent to a checkpoint candidate; it still does not authorize pruning.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

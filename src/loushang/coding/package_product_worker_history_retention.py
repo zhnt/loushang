@@ -52,6 +52,37 @@ from .package_product_worker_start_gate_recovery import (
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
+_SEGMENTED_STEMS = (
+    "worker-opt-in",
+    "worker-activation-receipts",
+    "worker-activation-state",
+    "worker-start-gates",
+    "worker-supervisor",
+)
+_SEGMENTED_SUFFIX = re.compile(
+    r"(?:\.jsonl(?:\.lock)?|\.segments\.json|\.head\.json|"
+    r"\.g[0-9]{8}\.(?:jsonl|head\.json))\Z"
+)
+_PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
+_PAYLOAD_REPAIR = re.compile(
+    r"worker-(?:empty|complete|unmarked)-repair-[0-9a-f]{32}\.json\Z"
+)
+
+
+def _known_worker_state_name(name: str) -> bool:
+    if name in {
+        "worker-native-release-v1",
+        "worker-native-release-approvals.jsonl",
+        "worker-native-release-approvals.jsonl.lock",
+    }:
+        return True
+    if _PAYLOAD_STAGE.fullmatch(name) or _PAYLOAD_REPAIR.fullmatch(name):
+        return True
+    return any(
+        _SEGMENTED_SUFFIX.fullmatch(name[len(stem) :]) is not None
+        for stem in _SEGMENTED_STEMS
+        if name.startswith(stem)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +192,8 @@ class CodingWorkerHistoryRetentionReviewV1:
     unsettled_receipt_gate_references: tuple[str, ...]
     unverified_receipt_gate_references: tuple[tuple[str, str], ...]
     payload_stage_names: tuple[str, ...]
+    retained_payload_repair_reference_names: tuple[str, ...]
+    unrecognized_worker_state_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
     gc_reservation_revision: int
@@ -233,6 +266,10 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
+        if self.retained_payload_repair_reference_names:
+            missing.append("payload_repair_reference_retained")
+        if self.unrecognized_worker_state_names:
+            missing.append("worker_reference_owner_unrecognized")
         if self.active_runtime_lease_ids:
             missing.append("runtime_lease_active")
         if self.active_gc_reservation_count:
@@ -401,11 +438,27 @@ def review_coding_product_worker_history_retention(
                 unsettled_gate_references = tuple(unsettled)
                 unverified_gate_references = tuple(unverified)
             with product.pinned_state_root_gc_read() as root_fd:
+                state_names = tuple(os.listdir(root_fd))
                 payloads = tuple(
                     sorted(
                         name
-                        for name in os.listdir(root_fd)
+                        for name in state_names
                         if name.startswith("worker-payload-")
+                    )
+                )
+                repair_references = tuple(
+                    sorted(
+                        name
+                        for name in state_names
+                        if _PAYLOAD_REPAIR.fullmatch(name) is not None
+                    )
+                )
+                unrecognized_worker_state = tuple(
+                    sorted(
+                        name
+                        for name in state_names
+                        if name.casefold().startswith(("worker-", ".worker-"))
+                        and not _known_worker_state_name(name)
                     )
                 )
             product.assert_root_gc_authority_current()
@@ -442,6 +495,8 @@ def review_coding_product_worker_history_retention(
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 unverified_receipt_gate_references=unverified_gate_references,
                 payload_stage_names=payloads,
+                retained_payload_repair_reference_names=repair_references,
+                unrecognized_worker_state_names=unrecognized_worker_state,
                 active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
                 active_gc_reservation_count=len(gc_reservations),
                 gc_reservation_revision=gc_snapshot.journal_revision,
