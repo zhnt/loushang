@@ -35,6 +35,7 @@ from .package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAttemptV1,
     _current_after_verified_retirements_under_gc_guard,
     _inspect_windows_worker_recovery_inventory_under_gc_guard,
+    _observe_native_job_absence,
 )
 from .package_product_worker_windows_stage_retirement import _RETIREMENT_NAME
 
@@ -77,6 +78,7 @@ def _require_c5_gc_history(
     retained: tuple[CodingProductWorkerRetainedAttemptV1, ...],
     inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
     receipt_policies: Mapping[str, str],
+    native_job_absence: Mapping[str, bool | None],
 ) -> None:
     """Join settled C5 attempts to exact launched attempts and Product receipts."""
 
@@ -104,6 +106,7 @@ def _require_c5_gc_history(
             item.phase != "settled"
             or observed.launch_receipt_fingerprint != item.receipt_fingerprint
             or receipt_policies.get(item.receipt_fingerprint) != item.policy_fingerprint
+            or native_job_absence.get(attempt_id) is not True
         ):
             raise ValueError("Windows Worker GC C5 attempt history is incomplete")
 
@@ -186,6 +189,12 @@ class CodingWindowsWorkerGcHistoryAuthority:
                     {
                         record.receipt.fingerprint: record.receipt.policy.fingerprint
                         for record in receipts
+                    },
+                    {
+                        attempt.attempt_id: _observe_native_job_absence(
+                            attempt.native_job_name
+                        )
+                        for attempt in inventory
                     },
                 )
             if set(windows_listdir_at(root)) != set(observed_names):

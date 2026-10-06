@@ -83,36 +83,40 @@ def test_windows_worker_gc_requires_settled_c5_to_match_launched_attempt_and_rec
         supervisor_phase=None,
         supervisor_revision=None,
         supervisor_process_settled=None,
+        native_job_name="job",
         launch_request_fingerprint="request",
         launch_receipt_fingerprint="r",
     )
     state: dict[str, object] = {"attempts": {}, "publications": {}}
-    _require_c5_gc_history(state, (retained,), (launched,), {"r": "p"})
+    jobs = {retained.attempt_id: True}
+    _require_c5_gc_history(state, (retained,), (launched,), {"r": "p"}, jobs)
     retired_before_launch = replace(
         launched,
         attempt_id="b" * 32,
+        native_job_name=None,
         launch_request_fingerprint=None,
         launch_receipt_fingerprint=None,
     )
     _require_c5_gc_history(
-        state, (retained,), (launched, retired_before_launch), {"r": "p"}
+        state, (retained,), (launched, retired_before_launch), {"r": "p"}, jobs
     )
     with pytest.raises(ValueError, match="C5 owner is incomplete"):
-        _require_c5_gc_history(None, (retained,), (launched,), {"r": "p"})
+        _require_c5_gc_history(None, (retained,), (launched,), {"r": "p"}, jobs)
     with pytest.raises(ValueError, match="C5 activation remains active"):
         _require_c5_gc_history(
             {"attempts": {}, "publications": {"p": {}}},
             (retained,),
             (launched,),
             {"r": "p"},
+            jobs,
         )
     with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
-        _require_c5_gc_history(state, (), (launched,), {"r": "p"})
+        _require_c5_gc_history(state, (), (launched,), {"r": "p"}, jobs)
     with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
-        _require_c5_gc_history(state, (retained,), (launched,), {"r": "changed"})
+        _require_c5_gc_history(state, (retained,), (launched,), {"r": "changed"}, jobs)
     with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
         _require_c5_gc_history(
-            state, (replace(retained, phase="retired"),), (launched,), {"r": "p"}
+            state, (replace(retained, phase="retired"),), (launched,), {"r": "p"}, jobs
         )
     with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
         _require_c5_gc_history(
@@ -120,4 +124,14 @@ def test_windows_worker_gc_requires_settled_c5_to_match_launched_attempt_and_rec
             (retained,),
             (replace(launched, launch_receipt_fingerprint="changed"),),
             {"r": "p"},
+            jobs,
         )
+    for native_observation in (False, None):
+        with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
+            _require_c5_gc_history(
+                state,
+                (retained,),
+                (launched,),
+                {"r": "p"},
+                {retained.attempt_id: native_observation},
+            )
