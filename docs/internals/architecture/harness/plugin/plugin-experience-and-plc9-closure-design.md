@@ -1564,8 +1564,8 @@ consumer inventories missing the new Windows receipt owner and journal; their
 focused rerun passed after the inventories were updated. The October 3
 Architecture rerun passed all 654 cases after replacing a stale count of
 `self._admit()` calls with checks of the exact handoff recovery guard and
-admission order. Complete Coding regression remains pending. Partial
-suite counters are not completion measures for any block.
+admission order. At that checkpoint, complete Coding regression remained
+pending. Partial suite counters are not completion measures for any block.
 
 1. **Read-only author and operator visibility.** Freeze an owner-revisioned
    preview/explain schema, preserve the current list and A1/A2 split, and
@@ -3078,6 +3078,22 @@ passed 9/9. The new Windows cases collected but skipped on Linux; their native
 results, recovery after these public entries, and the next exact-head full
 regression remain pending. This candidate does not open default Windows
 routing or general third-party Worker admission.
+
+The 2026-10-06 local regression against the explicit Windows Session candidate
+and its architecture-inventory correction passed the complete Harness gate
+(5,574 passed, 121 skipped), all 362 Coding test files under `not live` and
+`--skip-host-runtime` (4,778 passed, 79 skipped, 8 deselected), the complete
+Architecture suite (654 passed), the complete Hosting gate (513 passed,
+53 skipped), and the complete AppHost gate (2,758 passed, 12 skipped). The
+AppHost G8, G9, and G10 strict evidence reports passed 19/19, 16/16, and
+15/15 respectively, and the G10 installed POSIX canary passed. Coding used
+sequential file batches with the repository's leased pytest runner because a
+single run exceeded the local 164 MB runtime tmpfs; every file batch passed
+and cleaned its own scratch. This is Linux and portable regression evidence.
+The direct and Hosted Windows Worker Session cases still need non-skipped native
+CI reports, including recovery and cleanup. General third-party Worker
+admission, default Worker routing, post-development review of this final head,
+and Git delivery remain open.
 
 ## Independent Review Record
 
