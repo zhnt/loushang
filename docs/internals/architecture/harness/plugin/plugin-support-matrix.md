@@ -30,8 +30,10 @@ Resource discovery or the Product gate.
 opt-in decision and observes an exact selected Worker candidate through the
 fenced Product's read-only owner. `observed_in_read` is partial selection
 evidence, not an execution grant. The status marks changed Desired State or
-opt-in revisions as `stale_evidence`; it does not prove that a native release
-is current or that any Session used the Worker.
+opt-in revisions as `stale_evidence`. `candidateOptInAlignment` compares the
+selected candidate identity with the retained opt-in decision; even
+`identity_match_in_read` does not prove that a native release is current or
+that any Session used the Worker.
 
 For Skill and Prompt authors, `loushang-plugin init-coding-skill` or
 `init-coding-prompt` creates source and prints a build command. The resulting

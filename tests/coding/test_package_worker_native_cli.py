@@ -72,12 +72,19 @@ def test_worker_candidate_status_marks_changed_desired_revision_stale() -> None:
         def worker_opt_in_decision(self, _plugin_id: str) -> None:
             return None
 
-        def selected_worker_candidate(self, _plugin_id: str) -> object:
-            return SimpleNamespace(plugin_version="1", executable_digest="a" * 64)
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_version="1", executable_digest="a" * 64
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
 
     observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
     assert observed["snapshotStatus"] == "stale_evidence"
     assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["candidateOptInAlignment"] == "stale_evidence"
     assert observed["productUse"] == "not_checked"
 
 
@@ -98,13 +105,63 @@ def test_worker_candidate_status_marks_changed_opt_in_decision_stale() -> None:
                 return None
             return SimpleNamespace(to_dict=lambda: {"generation": 2})
 
-        def selected_worker_candidate(self, _plugin_id: str) -> object:
-            return SimpleNamespace(plugin_version="1", executable_digest="a" * 64)
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_version="1", executable_digest="a" * 64
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
 
     observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
     assert observed["snapshotStatus"] == "stale_evidence"
     assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["candidateOptInAlignment"] == "stale_evidence"
     assert observed["candidateOptInDecision"] == {"generation": 2}
+
+
+def test_worker_candidate_status_marks_old_opt_in_identity_mismatch() -> None:
+    class _StableSelection:
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                inventory_revision=1, desired_state="installed_enabled"
+            )
+
+    class _ReadOwner:
+        selected_manifests = _StableSelection()
+        decision = SimpleNamespace(
+            action="allow",
+            opt_in=SimpleNamespace(
+                plugin_id="reviewworker",
+                contribution_id="query-provider",
+                owner_id="coding",
+                artifact_digest="c" * 64,
+                native_platform="linux-x86_64",
+            ),
+            to_dict=lambda: {"generation": 1},
+        )
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> object:
+            return self.decision
+
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_id="reviewworker",
+                    plugin_version="2",
+                    contribution_id="query-provider",
+                    owner_id="coding",
+                    executable_digest="a" * 64,
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["candidateSelection"]["stage"] == "observed_in_read"
+    assert observed["candidateOptInAlignment"] == "identity_mismatch"
+    assert observed["productUse"] == "not_checked"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate status")
@@ -651,6 +708,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert candidate_output["candidateStatusVersion"] == 2
     assert candidate_output["snapshotStatus"] == "partial_evidence"
     assert candidate_output["candidateSelection"] == {"stage": "not_selected"}
+    assert candidate_output["candidateOptInAlignment"] == "not_selected"
     assert candidate_output["productUse"] == "not_checked"
     assert candidate_output["ordinarySessionRouting"] == "python_sdk_explicit_linux"
     assert candidate_output["defaultSessionRouting"] == "closed"
@@ -771,6 +829,13 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         assert selection.selection.desired_state == "installed_enabled"
     finally:
         selected_owner.close()
+
+    before_allow, before_allow_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert before_allow.returncode == 0, before_allow.stderr
+    assert before_allow_output["candidateSelection"]["stage"] == "observed_in_read"
+    assert before_allow_output["candidateOptInAlignment"] == "not_allowed"
 
     allowed, allowed_output = run(
         "candidate-allow",
@@ -923,6 +988,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "pluginVersion": "1",
         "executableDigest": sha256(executable.read_bytes()).hexdigest(),
     }
+    assert status_output["candidateOptInAlignment"] == "identity_match_in_read"
     assert status_output["productUse"] == "not_checked"
     assert worker_opt_in_journal.read_bytes() == journal_before_status
     assert tuple(
@@ -966,6 +1032,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert disabled_status_output["candidateSelection"] == {
         "stage": "not_selected"
     }
+    assert disabled_status_output["candidateOptInAlignment"] == "not_selected"
     assert disabled_status_output["candidateOptInDecision"] == decision
     assert disabled_status_output["productUse"] == "not_checked"
     after_disable, _ = run(

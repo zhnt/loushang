@@ -99,6 +99,15 @@ CodingDataResourceAdmissionPreviewV1 = PluginCurrentResourceAdmissionV1
 CodingCurrentDataResourcePreviewV1 = PluginCurrentCompositionPreviewV1
 
 
+@dataclass(frozen=True, slots=True)
+class CodingWorkerCandidateReadEvidenceV1:
+    """Selected candidate identity observed without a Worker-use decision."""
+
+    candidate: WorkerPackageCandidateV1
+    artifact_digest: str
+    native_platform: str
+
+
 @dataclass(slots=True)
 class CodingFencedProductReadOnlyPreviewOwner:
     """Hold the existing Product epoch while inspecting exact selected bytes."""
@@ -111,6 +120,13 @@ class CodingFencedProductReadOnlyPreviewOwner:
 
     def selected_worker_candidate(self, plugin_id: str) -> WorkerPackageCandidateV1:
         """Verify inert bytes of one currently selected Worker; grant no execution."""
+
+        return self.selected_worker_candidate_evidence(plugin_id).candidate
+
+    def selected_worker_candidate_evidence(
+        self, plugin_id: str
+    ) -> CodingWorkerCandidateReadEvidenceV1:
+        """Preserve the Product-selected artifact and native profile identity."""
 
         if not self.worker_candidates:
             raise PermissionError("Worker candidate read was not selected")
@@ -140,7 +156,11 @@ class CodingFencedProductReadOnlyPreviewOwner:
         if candidate.owner_id != admission.owner_id:
             raise ValueError("Selected Worker Product owner changed")
         self.epoch_runtime.assert_current()
-        return candidate
+        return CodingWorkerCandidateReadEvidenceV1(
+            candidate=candidate,
+            artifact_digest=selected.snapshot.root_ref.artifact_digest,
+            native_platform=admission.native_platform,
+        )
 
     def worker_opt_in_decision(
         self, plugin_id: str
@@ -586,4 +606,5 @@ __all__ = [
     "CodingCurrentDataResourcePreviewV1",
     "CodingDataResourceAdmissionPreviewV1",
     "CodingFencedProductReadOnlyPreviewOwner",
+    "CodingWorkerCandidateReadEvidenceV1",
 ]

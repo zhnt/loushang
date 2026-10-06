@@ -21,6 +21,7 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.package_product_preview import (
     CodingFencedProductReadOnlyPreviewOwner,
+    CodingWorkerCandidateReadEvidenceV1,
 )
 from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
@@ -290,14 +291,16 @@ def _read_candidate_status_document(
     before = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
     decision_before = owner.worker_opt_in_decision(plugin_id)
     selection: dict[str, object] = {"stage": "not_selected"}
+    evidence: CodingWorkerCandidateReadEvidenceV1 | None = None
     if before.desired_state == "installed_enabled":
         try:
-            selected = owner.selected_worker_candidate(plugin_id)
+            evidence = owner.selected_worker_candidate_evidence(plugin_id)
         except PackageProductRuntimeReadError as error:
             if error.code != "package_product_root_not_selected":
                 raise
             selection = {"stage": "blocked", "reasonCode": error.code}
         else:
+            selected = evidence.candidate
             selection = {
                 "stage": "observed_in_read",
                 "pluginVersion": selected.plugin_version,
@@ -311,12 +314,33 @@ def _read_candidate_status_document(
     )
     if stale:
         selection = {"stage": "stale_evidence"}
+        alignment = "stale_evidence"
+    elif selection["stage"] == "blocked":
+        alignment = "blocked"
+    elif evidence is None:
+        alignment = "not_selected"
+    elif decision_after is None or decision_after.action != "allow":
+        alignment = "not_allowed"
+    else:
+        opt_in = decision_after.opt_in
+        candidate = evidence.candidate
+        alignment = (
+            "identity_match_in_read"
+            if opt_in is not None
+            and opt_in.plugin_id == candidate.plugin_id
+            and opt_in.contribution_id == candidate.contribution_id
+            and opt_in.owner_id == candidate.owner_id
+            and opt_in.artifact_digest == evidence.artifact_digest
+            and opt_in.native_platform == evidence.native_platform
+            else "identity_mismatch"
+        )
     return {
         **_candidate_status_document(decision_after),
         "candidateStatusVersion": 2,
         "snapshotStatus": "stale_evidence" if stale else "partial_evidence",
         "desiredInventoryRevision": after.inventory_revision,
         "candidateSelection": selection,
+        "candidateOptInAlignment": alignment,
         "productUse": "not_checked",
     }
 

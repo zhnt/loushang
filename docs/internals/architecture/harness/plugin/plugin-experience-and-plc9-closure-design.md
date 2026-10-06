@@ -3135,6 +3135,14 @@ The cross-process Linux operator journey passed 1/1 for absent, selected, and
 disabled candidates; two focused cases cover Desired State and opt-in changes.
 This remains partial Product evidence and does not check the native release or
 admit a general Worker route.
+The V2 status now also compares the exact selected artifact, contribution,
+owner, and native platform with the retained opt-in identity. It reports
+`identity_match_in_read`, `identity_mismatch`, `not_allowed`, or `not_selected`
+without calling that observation readiness or Product use. A focused changed
+artifact-digest projection case guards the mismatch result. The real
+cross-process operator journey passed 1/1 through unselected, selected without
+allow, matching allow, and disabled states; the installed public SDK Session
+case passed 1/1 after the read-owner change.
 The dedicated Windows Worker Session CI job now requires exactly four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. The report still rejects skips, failures, and

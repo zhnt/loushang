@@ -353,7 +353,10 @@ default Coding Session routing. `candidate-status` reports
 `defaultSessionRouting: "closed"`. Its `candidateSelection` is a read-only,
 partial observation of the selected Worker version and executable digest;
 `productUse` remains `not_checked`, and a changed snapshot is reported as
-`stale_evidence`.
+`stale_evidence`. `candidateOptInAlignment: "identity_match_in_read"` means
+the selected artifact, contribution, owner, and native platform match the
+retained allow decision in this read. It is not a native release or Session-use
+check.
 The ordinary Session opt-in is available through the Python SDK only; Coding
 CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
 
