@@ -159,6 +159,9 @@ from loushang.coding.package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
 )
 from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptError
+from loushang.coding.package_product_worker_windows_activation_state_journal import (
+    CodingWindowsWorkerActivationStateJournal,
+)
 from loushang.coding.package_product_worker_windows_backend_release import (
     review_coding_windows_worker_backend_release,
 )
@@ -353,6 +356,11 @@ from loushang.harness.worker._native_profile_bridge import (
 )
 from loushang.harness.worker.hosting_adapter import (
     HostingManagedWorkerSessionAdapter,
+)
+from loushang.harness.worker.product_activation import (
+    WorkerCleanupSettlementV2,
+    _AttemptKey,
+    _initial_state,
 )
 from loushang.hosting._windows_lpac_runtime import (
     _create_windows_lpac_child_session_host,
@@ -3211,6 +3219,75 @@ def test_windows_worker_clean_retirement_allows_fresh_product_launch(
     )
 
 
+def _retain_settled_windows_c5_gc_attempt(
+    product: WindowsLocalWheelProductSessionOwner, *, attempt_id: str
+) -> None:
+    """Add a valid settled C5 fixture for the already retired native attempt."""
+
+    [attempt] = (
+        item
+        for item in inspect_coding_windows_product_worker_recovery_inventory(product)
+        if item.attempt_id == attempt_id
+    )
+    assert attempt.launch_receipt_fingerprint is not None
+    assert attempt.native_job_name is not None
+    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+        receipts = CodingWindowsWorkerReceiptJournal(
+            product.state_root / "worker-activation-receipts.jsonl",
+            scope_id=product.policy.project_scope_id,
+        ).records(directory_fd=root)
+    [record] = (
+        item
+        for item in receipts
+        if item.receipt.fingerprint == attempt.launch_receipt_fingerprint
+    )
+    receipt = record.receipt
+    generation = receipt.policy.owner_selection_generation
+    host_identity = "native-gc-test-host"
+    boot_identity = "native-gc-test-boot"
+    settlement = WorkerCleanupSettlementV2(
+        receipt_fingerprint=receipt.fingerprint,
+        attempt_id=attempt_id,
+        owner_generation=generation,
+        host_identity=host_identity,
+        boot_identity=boot_identity,
+        protocol_terminal=True,
+        domain_retired=True,
+        tree_settled=True,
+        native_containment_settled=True,
+    )
+    state = _initial_state(restart_budget=3)
+    settled = {**state, "stateRevision": 2}
+    settled["attempts"] = {
+        _AttemptKey(receipt.fingerprint, attempt_id, generation).encoded: {
+            "attemptId": attempt_id,
+            "bootIdentity": boot_identity,
+            "cleanupContractVersion": 2,
+            "cleanupDebt": None,
+            "cleanupSettlement": settlement.to_dict(),
+            "domainRetired": True,
+            "evidenceAuthorityFingerprint": "d" * 64,
+            "evidenceAuthorityId": "native-gc-test-evidence",
+            "hostIdentity": host_identity,
+            "owner": "hosting",
+            "ownerGeneration": generation,
+            "phase": "settled",
+            "policyFingerprint": receipt.policy.fingerprint,
+            "protocolTerminal": True,
+            "readiness": "ready",
+            "receiptFingerprint": receipt.fingerprint,
+            "required": receipt.policy.effective_required,
+            "restartOrdinal": 0,
+        }
+    }
+    journal = CodingWindowsWorkerActivationStateJournal(product)
+    assert journal.compare_and_swap(expected_revision=0, document=state)
+    assert journal.compare_and_swap(expected_revision=1, document=settled)
+    assert [item.attempt_id for item in journal.retained_attempts_read_only()] == [
+        attempt_id
+    ]
+
+
 def _assert_windows_worker_retired_history_allows_gc(
     tmp_path: Path, *, partial_attempt_id: str | None
 ) -> None:
@@ -3369,6 +3446,19 @@ def _assert_windows_worker_retired_history_allows_gc(
             )
         finally:
             held_opt_in.replace(opt_in_path)
+        _retain_settled_windows_c5_gc_attempt(product, attempt_id="9" * 32)
+        for observed_absence in (False, None):
+            with (
+                patch(
+                    "loushang.coding.package_product_worker_windows_gc_history._observe_native_job_absence",
+                    return_value=observed_absence,
+                ),
+                pytest.raises(PackageProductGcExecutionError) as job_unverified,
+            ):
+                gc.prepare()
+            assert job_unverified.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
         gc.prepare()
         candidate = next(
             item for item in gc.candidates() if item.package_revision == revision

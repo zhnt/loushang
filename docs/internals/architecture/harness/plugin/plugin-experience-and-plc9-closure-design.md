@@ -3326,6 +3326,11 @@ addition to the existing four Session cases. Local C5 import-boundary checks
 passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
 Windows Worker C5 writes, cleanup evidence, crash recovery, and native GC
 evidence remain open, so this candidate does not open the Windows route.
+The native Windows normal-retirement GC case now appends a settled C5 fixture
+for its real launched attempt before Package deletion. It requires the real
+named Job to be absent and injects present and unknown Job observations to
+confirm that both refuse GC. This tests the GC join; the fixture does not
+represent production Windows Host C5 writes and awaits the next native run.
 
 ## Independent Review Record
 
