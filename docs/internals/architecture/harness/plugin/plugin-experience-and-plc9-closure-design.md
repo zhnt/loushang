@@ -3102,6 +3102,13 @@ additional Worker payload or incomplete Supervisor attempt. The two focused
 native cases each passed 1/1 on 2026-10-06. This supplies W5 revocation and
 cleanup evidence for both explicit SDK entries, not general third-party
 Worker admission or its full operator and update lifecycle.
+The direct public Session now also has a separate installed-Product disable
+case: while the Session is open, Desired State changes to disabled; its next
+Worker query is fenced, disposal clears the new attempt, and a newly created
+public Session refuses the unselected Product root with
+`package_product_root_not_selected`. This focused native case passed 1/1 on
+2026-10-06. Update while pinned and the general W5 author/operator path remain
+separate acceptance work.
 
 ## Independent Review Record
 

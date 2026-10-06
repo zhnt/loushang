@@ -538,7 +538,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     protocol_queries: int = 1,
     direct_entry_only: bool = False,
     hosted_entry_only: bool = False,
+    disable_while_direct_session_open: bool = False,
 ) -> None:
+    assert not disable_while_direct_session_open or direct_entry_only
     installed_native = native_mode in {
         "installed-release",
         "repaired-release",
@@ -3279,21 +3281,22 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             open_coding_product_worker_supervisor_journal(product)
                         )
                         incomplete_before_direct = supervisor_journal.incomplete()
+                        direct_model = Model(
+                            id="direct-worker",
+                            name="Direct Worker",
+                            provider="test",
+                            endpoint="test",
+                            capabilities=Capabilities(
+                                input=("text",),
+                                context_window=128_000,
+                                max_tokens=4_096,
+                            ),
+                        )
                         direct_session = create_agent_session(
                             session_manager=asyncio.run(
                                 SessionManager.load(selected_transcript)
                             ),
-                            model=Model(
-                                id="direct-worker",
-                                name="Direct Worker",
-                                provider="test",
-                                endpoint="test",
-                                capabilities=Capabilities(
-                                    input=("text",),
-                                    context_window=128_000,
-                                    max_tokens=4_096,
-                                ),
-                            ),
+                            model=direct_model,
                             services=create_services(settings_manager=settings),
                             worker_candidate_plugin_id=_PLUGIN,
                         )
@@ -3308,15 +3311,43 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     item.name == "worker-extra"
                                     for item in direct_session.resource_bundle.skills
                                 )
-                                revoked = product_opt_in.revoke(
-                                    plugin_id=_PLUGIN,
-                                    operation_id="worker-public-session-revoke",
-                                    expected_generation=decision.generation,
-                                )
-                                assert revoked.action == "revoke"
-                                assert revoked.kill_switch_generation == (
-                                    decision.kill_switch_generation + 1
-                                )
+                                if disable_while_direct_session_open:
+                                    disabled = product.management.submit(
+                                        PluginManagementCommandV1(
+                                            action="disable",
+                                            mutation=PluginDesiredStateMutationV1(
+                                                operation_id=(
+                                                    "worker-public-session-disable"
+                                                ),
+                                                idempotency_key=(
+                                                    "worker-public-session-disable"
+                                                ),
+                                                expected_inventory_revision=(
+                                                    product.desired_state.snapshot().inventory_revision
+                                                ),
+                                                installation_key=(
+                                                    installations[0].installation_key
+                                                ),
+                                                desired_state="installed_disabled",
+                                                package_revision=None,
+                                                actor_id=product.actor_id,
+                                                policy_revision=(
+                                                    product.desired_policy_revision
+                                                ),
+                                            ),
+                                        )
+                                    )
+                                    assert disabled.status == "terminal"
+                                else:
+                                    revoked = product_opt_in.revoke(
+                                        plugin_id=_PLUGIN,
+                                        operation_id="worker-public-session-revoke",
+                                        expected_generation=decision.generation,
+                                    )
+                                    assert revoked.action == "revoke"
+                                    assert revoked.kill_switch_generation == (
+                                        decision.kill_switch_generation + 1
+                                    )
                                 with pytest.raises(
                                     CapabilityWorkerFacetProxyError,
                                     match="worker_capability_facet_proxy_owner_unavailable",
@@ -3330,6 +3361,21 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             payloads_before_direct
                         )
                         assert supervisor_journal.incomplete() == incomplete_before_direct
+                        if disable_while_direct_session_open:
+                            with pytest.raises(
+                                PackageProductRuntimeReadError
+                            ) as disabled_new_session:
+                                create_agent_session(
+                                    session_manager=asyncio.run(
+                                        SessionManager.load(selected_transcript)
+                                    ),
+                                    model=direct_model,
+                                    services=create_services(settings_manager=settings),
+                                    worker_candidate_plugin_id=_PLUGIN,
+                                )
+                            assert disabled_new_session.value.code == (
+                                "package_product_root_not_selected"
+                            )
                         return
                     if hosted_entry_only:
                         payloads_before_hosted = frozenset(
@@ -4912,6 +4958,20 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         "installed-protocol",
         monkeypatch,
         direct_entry_only=True,
+    )
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
+def test_explicit_worker_public_coding_session_disable_fences_pinned_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        disable_while_direct_session_open=True,
     )
 
 
