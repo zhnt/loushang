@@ -168,7 +168,8 @@ def test_windows_crash_stage_retirement_resumes_after_root_delete(
                 events.append("package.exit")
 
     @contextmanager
-    def gc_guard():
+    def gc_guard(*, require_write: bool):
+        assert require_write
         events.append("gc.enter")
         try:
             yield
