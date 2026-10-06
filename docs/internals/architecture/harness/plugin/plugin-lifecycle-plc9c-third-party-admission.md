@@ -1380,6 +1380,11 @@ rotation does not solve sustained storage or history pruning. Earlier explicit
 Linux canary attempts can have no C5 activation-state journal; the review
 reports that absence as an unresolved reference proof rather than treating it
 as zero active references.
+The Linux Package GC history authority now requires the retained C5 attempt
+IDs to equal every retained start-gate attempt ID before it permits root
+deletion. A settled Supervisor and absent native group cannot compensate for
+a missing C5 attempt; the explicit public Session GC regression checks this
+refusal before adding the missing retained records.
 The C5 journal now exposes a strict, no-create, read-only inventory of every
 retained attempt's last phase and revision, including attempts absent from the
 current compacted state. The compacted-ID regression first failed because that
@@ -1630,6 +1635,13 @@ the same four-case Windows run. Only after those joins can a checkpoint carry a
 durable anti-reuse high-water mark and retire sealed segments. Linux and
 Windows must use the same reference semantics, with their respective native
 settlement witnesses.
+The Windows offline recovery reader now captures the complete retained opt-in,
+receipt, and Supervisor histories, the Package GC reservation revision and
+active revision refs, and typed Worker-backup observations while holding runtime
+quiescence and one Product GC read snapshot. Its opt-in reader is strict and
+does not create an absent journal. These records are inputs for a later
+checkpoint's operation and attempt anti-reuse proofs; the current reader does
+not publish a checkpoint or permit history pruning.
 Linux Package GC now consumes a Coding-owned, read-only Worker history
 authority through the existing Product GC port. When Worker history is present,
 an unbound authority refuses GC. The bound authority requires every retained

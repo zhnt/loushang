@@ -62,6 +62,17 @@ class CodingWindowsWorkerOptInJournal:
         self, plugin_id: str, *, directory_fd: int
     ) -> CodingWorkerOptInDecisionV1 | None:
         self._require_plugin_id(plugin_id)
+        events = self.history_read_only(directory_fd=directory_fd)
+        return next(
+            (event for event in reversed(events) if event.plugin_id == plugin_id),
+            None,
+        )
+
+    def history_read_only(
+        self, *, directory_fd: int
+    ) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Read every retained operation without creating a journal or lock."""
+
         self._require_root(directory_fd)
         with WindowsPrivateDirectoryAcl() as acl:
             acl.validate(directory_fd)
@@ -74,7 +85,7 @@ class CodingWindowsWorkerOptInJournal:
                     windows_stat_at(directory_fd, _NAME)
                 except FileNotFoundError:
                     self._assert_visible_root(directory_fd)
-                    return None
+                    return ()
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_lock_missing"
                 ) from None
@@ -91,17 +102,14 @@ class CodingWindowsWorkerOptInJournal:
                             "coding_worker_opt_in_orphan_lock"
                         )
                     self._assert_visible_root(directory_fd)
-                    return None
+                    return ()
                 if not initialized:
                     raise CodingWorkerOptInJournalError(
                         "coding_worker_opt_in_lock_corrupt"
                     )
                 events = self._decode(raw)
             self._assert_visible_root(directory_fd)
-            return next(
-                (event for event in reversed(events) if event.plugin_id == plugin_id),
-                None,
-            )
+            return events
 
     def change(
         self,

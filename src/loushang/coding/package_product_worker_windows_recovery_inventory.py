@@ -15,7 +15,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
-from loushang.harness.worker.journal import WorkerAttemptPhase
+from loushang.harness.worker.journal import WorkerAttemptPhase, WorkerAttemptRecordV1
 
 from .package_product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
@@ -25,14 +25,22 @@ from .package_product_worker_gc_references import (
     coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
+from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
+from .package_product_worker_receipt import CodingWorkerReceiptRecordV1
 from .package_product_worker_windows_launch_intent import (
     _inspect_intents_under_gc_guard,
+)
+from .package_product_worker_windows_opt_in_journal import (
+    CodingWindowsWorkerOptInJournal,
 )
 from .package_product_worker_windows_payload_inventory import (
     inspect_coding_windows_product_worker_payload_attempts,
 )
 from .package_product_worker_windows_provisioning import (
     inspect_coding_windows_product_worker_provisioning_attempts,
+)
+from .package_product_worker_windows_receipt_journal import (
+    CodingWindowsWorkerReceiptJournal,
 )
 from .package_product_worker_windows_supervisor_journal import (
     open_coding_windows_product_worker_supervisor_journal,
@@ -144,11 +152,21 @@ class CodingWindowsWorkerRecoveryAttemptV1:
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerOfflineRecoverySnapshotV1:
-    """One lease-quiescent, no-effect view for a later recovery decision."""
+    """One lease-quiescent, no-effect view for a later recovery decision.
+
+    Retained histories and GC/backup observations are checkpoint inputs only.
+    This view grants no receipt retirement, Package GC, or pruning authority.
+    """
 
     store_id: str
     lease_owner_revision: int
     attempts: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...]
+    opt_in_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
+    receipt_records: tuple[CodingWorkerReceiptRecordV1, ...]
+    supervisor_records: tuple[WorkerAttemptRecordV1, ...]
+    gc_reservation_revision: int
+    gc_revision_refs: frozenset[PluginPackageRevisionRefV1]
+    worker_backup_observations: tuple[CodingWorkerBackupReferenceObservationV1, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -609,11 +627,41 @@ def inspect_coding_windows_product_worker_offline_recovery(
             raise CodingWindowsWorkerRecoveryAdmissionError(
                 "coding_worker_offline_recovery_runtime_active"
             )
-        attempts = inspect_coding_windows_product_worker_recovery_inventory(product)
+        with product.gc_gate.read_snapshot_guard() as gc_snapshot:
+            attempts = _inspect_windows_worker_recovery_inventory_under_gc_guard(
+                product
+            )
+            with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+                opt_in_decisions = CodingWindowsWorkerOptInJournal(
+                    product.state_root / "worker-opt-in.jsonl",
+                    scope_id=product.policy.project_scope_id,
+                ).history_read_only(directory_fd=root)
+                receipt_records = CodingWindowsWorkerReceiptJournal(
+                    product.state_root / "worker-activation-receipts.jsonl",
+                    scope_id=product.policy.project_scope_id,
+                ).records(directory_fd=root)
+            supervisor_records = (
+                open_coding_windows_product_worker_supervisor_journal(
+                    product
+                ).inspect_records()
+            )
+            worker_backup_observations = tuple(
+                observe_coding_worker_backup_references_under_gc_guard(
+                    product, attempt_id=attempt.attempt_id
+                )
+                for attempt in attempts
+            )
+            product.assert_root_gc_authority_current()
         return CodingWindowsWorkerOfflineRecoverySnapshotV1(
             store_id=registry.store_id,
             lease_owner_revision=quiescence.owner_revision,
             attempts=attempts,
+            opt_in_decisions=opt_in_decisions,
+            receipt_records=receipt_records,
+            supervisor_records=supervisor_records,
+            gc_reservation_revision=gc_snapshot.journal_revision,
+            gc_revision_refs=coding_worker_gc_revision_refs(gc_snapshot),
+            worker_backup_observations=worker_backup_observations,
         )
 
 

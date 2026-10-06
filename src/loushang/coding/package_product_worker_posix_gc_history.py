@@ -147,6 +147,10 @@ class CodingPosixWorkerGcHistoryAuthority:
             }
             if set(gate_by_id) != set(attempt_by_id):
                 raise ValueError("Linux Worker GC attempt history is incomplete")
+            if set(gate_by_id) != {
+                item.attempt_id for item in retained_activation_attempts
+            }:
+                raise ValueError("Linux Worker GC C5 attempt history is incomplete")
             for activation_attempt in retained_activation_attempts:
                 gate = gate_by_id.get(activation_attempt.attempt_id)
                 if (

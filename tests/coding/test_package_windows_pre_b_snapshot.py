@@ -2512,6 +2512,7 @@ def _assert_windows_product_worker_opt_in_journal(
         product.assert_root_gc_authority_current()
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             assert journal.current(candidate.plugin_id, directory_fd=root) is None
+            assert journal.history_read_only(directory_fd=root) == ()
             assert not path.exists()
             opt_in = CodingWorkerOptInV1(
                 plugin_id=candidate.plugin_id,
@@ -2532,6 +2533,7 @@ def _assert_windows_product_worker_opt_in_journal(
                 opt_in=opt_in,
             )
             assert journal.current(candidate.plugin_id, directory_fd=root) == allow
+            assert journal.history_read_only(directory_fd=root) == (allow,)
             assert (
                 journal.change(
                     directory_fd=root,
@@ -2586,6 +2588,10 @@ def _assert_windows_product_worker_opt_in_journal(
     with product.gc_gate.guard():
         with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             assert reopened.current(candidate.plugin_id, directory_fd=root) == revoked
+            assert reopened.history_read_only(directory_fd=root) == (
+                allow,
+                revoked,
+            )
             foreign = CodingWindowsWorkerOptInJournal(
                 path, scope_id="workspace:foreign"
             )
@@ -3010,6 +3016,21 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert len(after.attempts) == 1
         assert after.attempts[0].payload_directory_identity is None
         assert after.attempts[0].supervisor_phase == "process_settled"
+        assert after.opt_in_decisions
+        assert len({item.operation_id for item in after.opt_in_decisions}) == len(
+            after.opt_in_decisions
+        )
+        assert after.receipt_records
+        assert after.receipt_records[-1].receipt.fingerprint == (
+            after.attempts[0].launch_receipt_fingerprint
+        )
+        assert after.supervisor_records[-1].attempt_id == attempt_id
+        assert after.supervisor_records[-1].phase == "process_settled"
+        assert after.gc_reservation_revision >= 0
+        assert after.gc_revision_refs == frozenset()
+        assert len(after.worker_backup_observations) == 1
+        assert after.worker_backup_observations[0].attempt_id == attempt_id
+        assert after.worker_backup_observations[0].references == ()
     finally:
         owner.close()
     _assert_windows_worker_public_session_restarts_after_recovery(
