@@ -22,6 +22,9 @@ from loushang.coding.package_product_worker_windows_activation_state_journal imp
 from loushang.coding.package_product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
+from loushang.coding.package_product_worker_windows_recovery_inventory import (
+    inspect_coding_windows_product_worker_offline_recovery,
+)
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_gc_executor import (
@@ -108,6 +111,9 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
         journal = CodingWindowsWorkerActivationStateJournal(product)
         assert journal.load() == second
         assert journal.retained_attempts_read_only() == ()
+        recovery = inspect_coding_windows_product_worker_offline_recovery(product)
+        assert recovery.activation_state_revision == 2
+        assert recovery.retained_activation_attempts == ()
         gc = open_windows_local_wheel_product_root_gc(
             product,
             worker_history_authority=CodingWindowsWorkerGcHistoryAuthority(product),
@@ -122,6 +128,9 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
         with pytest.raises(PackageProductGcExecutionError) as lost_gc:
             gc.prepare()
         assert lost_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(WorkerActivationStateJournalError) as lost_recovery:
+            inspect_coding_windows_product_worker_offline_recovery(product)
+        assert lost_recovery.value.code == "worker_activation_state_corrupt"
         history.write_bytes(original)
         head = product.state_root / "worker-activation-state.h00000002.json"
         original_head = head.read_bytes()

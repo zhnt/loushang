@@ -21,12 +21,18 @@ from .package_product_backup_types import (
     CodingWorkerBackupReferenceObservationV1,
     observe_coding_worker_backup_references_under_gc_guard,
 )
+from .package_product_worker_activation_history import (
+    CodingProductWorkerRetainedAttemptV1,
+)
 from .package_product_worker_gc_references import (
     coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_receipt import CodingWorkerReceiptRecordV1
+from .package_product_worker_windows_activation_state_journal import (
+    CodingWindowsWorkerActivationStateJournal,
+)
 from .package_product_worker_windows_launch_intent import (
     _inspect_intents_under_gc_guard,
 )
@@ -164,6 +170,8 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
     opt_in_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
     receipt_records: tuple[CodingWorkerReceiptRecordV1, ...]
     supervisor_records: tuple[WorkerAttemptRecordV1, ...]
+    activation_state_revision: int
+    retained_activation_attempts: tuple[CodingProductWorkerRetainedAttemptV1, ...]
     gc_reservation_revision: int
     gc_revision_refs: frozenset[PluginPackageRevisionRefV1]
     worker_backup_observations: tuple[CodingWorkerBackupReferenceObservationV1, ...]
@@ -178,7 +186,9 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
 
     @property
     def supervisor_history_revision(self) -> int:
-        return max((item.record_revision for item in self.supervisor_records), default=0)
+        return max(
+            (item.record_revision for item in self.supervisor_records), default=0
+        )
 
     @property
     def retained_opt_in_operation_ids(self) -> tuple[str, ...]:
@@ -379,7 +389,9 @@ def require_coding_windows_worker_terminal_cleanup_attempt(
         or type(attempt_id) is not str
         or type(payload_directory_identity) is not tuple
         or len(payload_directory_identity) != 2
-        or any(type(value) is not int or value < 1 for value in payload_directory_identity)
+        or any(
+            type(value) is not int or value < 1 for value in payload_directory_identity
+        )
         or any(
             type(value) is not str or _FINGERPRINT.fullmatch(value) is None
             for value in (
@@ -390,7 +402,10 @@ def require_coding_windows_worker_terminal_cleanup_attempt(
         )
     ):
         raise TypeError("Windows Worker terminal cleanup input is invalid")
-    if len(inventory) != 1 or type(inventory[0]) is not CodingWindowsWorkerRecoveryAttemptV1:
+    if (
+        len(inventory) != 1
+        or type(inventory[0]) is not CodingWindowsWorkerRecoveryAttemptV1
+    ):
         raise CodingWindowsWorkerRecoveryAdmissionError(
             "coding_worker_payload_recovery_required"
         )
@@ -525,9 +540,7 @@ def inspect_coding_windows_product_worker_attempt_gc_observations(
         raise OSError("Windows Worker GC observations require a Product owner")
     with product.gc_gate.read_snapshot_guard() as gc_snapshot:
         reservations = coding_worker_gc_revision_refs(gc_snapshot)
-        references = _inspect_windows_worker_attempt_references_under_gc_guard(
-            product
-        )
+        references = _inspect_windows_worker_attempt_references_under_gc_guard(product)
         return tuple(
             CodingWindowsWorkerAttemptGcObservationV1(
                 attempt_reference=reference,
@@ -535,9 +548,7 @@ def inspect_coding_windows_product_worker_attempt_gc_observations(
                 gc_reservation_revision=gc_snapshot.journal_revision,
                 matching_revision_refs=matching_coding_worker_gc_revision_refs(
                     plugin_id=reference.plugin_id,
-                    package_content_digest=(
-                        reference.selected_package_revision_digest
-                    ),
+                    package_content_digest=(reference.selected_package_revision_digest),
                     reservations=reservations,
                 ),
                 worker_backup_references=(
@@ -564,9 +575,7 @@ def _inspect_windows_worker_attempt_references_under_gc_guard(
             product.state_root / "worker-activation-receipts.jsonl",
             scope_id=product.policy.project_scope_id,
         ).records(directory_fd=root)
-    receipt_by_fingerprint = {
-        record.receipt.fingerprint: record for record in receipts
-    }
+    receipt_by_fingerprint = {record.receipt.fingerprint: record for record in receipts}
     if len(receipt_by_fingerprint) != len(receipts):
         raise CodingWindowsWorkerRecoveryAdmissionError(
             "coding_worker_attempt_reference_receipt_conflict"
@@ -596,8 +605,7 @@ def _inspect_windows_worker_attempt_references_under_gc_guard(
             receipt_fingerprint is None
             or identity_fingerprint is None
             or any(
-                type(value) is not str
-                or _FINGERPRINT.fullmatch(value) is None
+                type(value) is not str or _FINGERPRINT.fullmatch(value) is None
                 for value in (
                     request_fingerprint,
                     receipt_fingerprint,
@@ -610,16 +618,13 @@ def _inspect_windows_worker_attempt_references_under_gc_guard(
             or (
                 attempt.native_phase is not None
                 and (
-                    attempt.native_worker_request_fingerprint
-                    != request_fingerprint
-                    or attempt.native_receipt_fingerprint
-                    != receipt_fingerprint
+                    attempt.native_worker_request_fingerprint != request_fingerprint
+                    or attempt.native_receipt_fingerprint != receipt_fingerprint
                 )
             )
             or (
                 attempt.supervisor_phase is not None
-                and attempt.supervisor_identity_fingerprint
-                != identity_fingerprint
+                and attempt.supervisor_identity_fingerprint != identity_fingerprint
             )
         ):
             raise CodingWindowsWorkerRecoveryAdmissionError(
@@ -673,10 +678,13 @@ def inspect_coding_windows_product_worker_offline_recovery(
                     product.state_root / "worker-activation-receipts.jsonl",
                     scope_id=product.policy.project_scope_id,
                 ).records(directory_fd=root)
-            supervisor_records = (
-                open_coding_windows_product_worker_supervisor_journal(
-                    product
-                ).inspect_records()
+            supervisor_records = open_coding_windows_product_worker_supervisor_journal(
+                product
+            ).inspect_records()
+            activation_journal = CodingWindowsWorkerActivationStateJournal(product)
+            activation_state = activation_journal.load()
+            retained_activation_attempts = (
+                activation_journal.retained_attempts_read_only()
             )
             worker_backup_observations = tuple(
                 observe_coding_worker_backup_references_under_gc_guard(
@@ -692,6 +700,12 @@ def inspect_coding_windows_product_worker_offline_recovery(
             opt_in_decisions=opt_in_decisions,
             receipt_records=receipt_records,
             supervisor_records=supervisor_records,
+            activation_state_revision=(
+                0
+                if activation_state is None
+                else cast(int, activation_state["stateRevision"])
+            ),
+            retained_activation_attempts=retained_activation_attempts,
             gc_reservation_revision=gc_snapshot.journal_revision,
             gc_revision_refs=coding_worker_gc_revision_refs(gc_snapshot),
             worker_backup_observations=worker_backup_observations,

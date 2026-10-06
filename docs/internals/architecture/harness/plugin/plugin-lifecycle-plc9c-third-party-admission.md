@@ -1662,7 +1662,10 @@ for every revision. Linux and Windows journals expose the same read-only
 projection of retained C5 attempts, including attempts absent from the latest
 state. Windows Package GC now recognizes only the exact C5 journal/head names;
 when a C5 owner exists, it refuses active or unmatched attempts before root
-deletion. Its native reopen, GC join, and complete-record-loss test is part of
+deletion. The Windows offline recovery snapshot includes the exact C5 revision
+and retained attempt projection under Package runtime quiescence and the GC read
+gate; it grants no recovery write. Its native reopen, GC join, and
+complete-record-loss test is part of
 the next strict Windows CI report. Until that report passes and the ordinary
 Host, Job/LPAC cleanup evidence, and crash recovery use the
 journal, this is storage infrastructure rather than Windows C5 production
