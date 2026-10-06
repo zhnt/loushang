@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import loushang.coding.package_product_worker_windows_cleanup_evidence as cleanup_module
 from loushang.coding.package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
 )
@@ -168,6 +170,39 @@ def test_windows_c5_cleanup_review_requires_exact_settled_product_join(
     assert not authority._review_matches(
         replace(review, native=replace(review.native, last_witness_state="DEBT"))
     )
+
+
+def test_windows_c5_cleanup_read_preserves_registry_orphan_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authority, review, _witness = _settled_review(tmp_path)
+    orphan = SimpleNamespace(runtime_id=authority._receipt.policy.product_runtime_id)
+    registry = authority._product.epoch_runtime.registry
+    registry.review_orphans = lambda *, store_id: (orphan,)
+    authority._product.gc_gate = SimpleNamespace(guard=nullcontext)
+    authority._product.assert_root_gc_authority_current = lambda: None
+    monkeypatch.setattr(
+        cleanup_module,
+        "_review_under_gc_guard",
+        lambda product, *, attempt_id, orphans: replace(
+            review.runtime, orphan_leases=orphans
+        ),
+    )
+    monkeypatch.setattr(
+        cleanup_module,
+        "inspect_coding_windows_product_worker_provisioning_attempts",
+        lambda product: (review.native,),
+    )
+    monkeypatch.setattr(
+        cleanup_module,
+        "CodingWindowsWorkerActivationStateJournal",
+        lambda product: SimpleNamespace(
+            retained_attempts_read_only=lambda: (review.activation,)
+        ),
+    )
+    fresh = authority.current_tree_witness(attempt_id=review.runtime.attempt_id)
+    assert fresh.runtime.orphan_leases == (orphan,)
+    assert not authority._review_matches(fresh)
 
 
 def test_windows_c5_native_witness_reopens_exact_settled_journal(

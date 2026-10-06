@@ -98,10 +98,12 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
     ) -> CodingWindowsWorkerLiveCleanupReviewV1:
         if attempt_id != self._request.identity.attempt_id:
             raise ValueError("Windows C5 cleanup attempt changed")
+        registry = self._product.epoch_runtime.registry
+        orphans = registry.review_orphans(store_id=registry.store_id)
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             runtime = _review_under_gc_guard(
-                self._product, attempt_id=attempt_id, orphans=()
+                self._product, attempt_id=attempt_id, orphans=orphans
             )
             native = tuple(
                 item

@@ -1684,6 +1684,13 @@ history and settlement fingerprint, absent named Job, and retired C5 reference.
 Its runtime-incarnation token in the C5 boot-identity slot grants no OS reboot
 inference: changed-boot and orphan-lease verifiers remain closed. The pending
 Host has not yet called this owner or written C5 state.
+A dedicated native normal-exit case now retains a retired C5 test attempt and
+asks this owner to verify the real settled Supervisor, LPAC journal fingerprint,
+and absent named Job. It also injects a present Job and a changed LPAC witness;
+both must refuse. The owner reads the registry's actual orphan leases before
+the Product GC read, instead of assuming that set is empty. The case is queued
+in the strict Windows Worker Session CI job and has not yet produced a native
+pass report.
 An expected revision above zero against a genuinely absent C5 owner now returns
 a CAS miss without creating its lock; orphan state still fails closed.
 Its native reopen, GC join, and
