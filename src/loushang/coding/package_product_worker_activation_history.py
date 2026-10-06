@@ -111,7 +111,10 @@ def validate_coding_worker_activation_attempt_history(
                 raise ValueError("Activation attempt identity was reused")
             seen_attempt_ids[attempt_id] = key
             prior_attempt = previous.get(key)
-            if prior_attempt is not None:
+            if prior_attempt is None:
+                if attempt["phase"] != "registered":
+                    raise ValueError("Activation attempt appeared after registration")
+            else:
                 if any(
                     attempt[field] != prior_attempt[field]
                     for field in _IMMUTABLE_ATTEMPT_FIELDS

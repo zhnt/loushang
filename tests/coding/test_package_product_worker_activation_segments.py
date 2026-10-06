@@ -331,6 +331,36 @@ def test_activation_state_refuses_rebinding_existing_attempt_identity(
     assert corrupt.value.code == "worker_activation_state_corrupt"
 
 
+def test_activation_state_refuses_first_observation_as_settled(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    receipt = "a" * 64
+    attempt_id = "b" * 32
+    initial = _initial_state(restart_budget=3)
+    settled = _next_state(initial)
+    attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
+    attempt.update(
+        phase="settled",
+        domainRetired=True,
+        protocolTerminal=True,
+        cleanupSettlement=WorkerCleanupSettlementV1(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity="host-a",
+            boot_identity="boot-a",
+            protocol_terminal=True,
+            domain_retired=True,
+            tree_settled=True,
+        ).to_dict(),
+    )
+    settled["attempts"] = {_AttemptKey(receipt, attempt_id, 1).encoded: attempt}
+    assert journal.compare_and_swap(expected_revision=0, document=initial)
+    with pytest.raises(WorkerActivationStateJournalError) as conflict:
+        journal.compare_and_swap(expected_revision=1, document=settled)
+    assert conflict.value.code == "worker_activation_state_history_conflict"
+    assert journal.load_read_only() == initial
+
+
 def test_activation_state_product_journal_runs_real_c5_lifecycle_across_seals(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

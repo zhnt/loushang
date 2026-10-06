@@ -3318,6 +3318,8 @@ The C5 join requires the Windows V2 native cleanup contract and matches the
 retained owner generation to the receipt's Product selection generation.
 The shared C5 replay guard now treats the cleanup contract version as an
 immutable attempt field; a later revision cannot upgrade a V1 attempt to V2.
+It also requires a newly observed attempt to enter as `registered`, so a
+retained record cannot first appear with an unsupported settlement claim.
 The Windows offline recovery snapshot now carries the retained C5 revision and
 attempts as read-only evidence and records whether the C5 owner lock exists,
 including an empty interrupted initialization. It also reports a read-only
@@ -3330,8 +3332,9 @@ addition to the existing four Session cases. Local C5 import-boundary checks
 passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
 Windows Worker C5 writes, cleanup evidence, crash recovery, and native GC
 evidence remain open, so this candidate does not open the Windows route.
-The native Windows normal-retirement GC case now appends a settled C5 fixture
-for its real launched attempt before Package deletion. It requires the real
+The native Windows normal-retirement GC case now appends a C5 fixture through
+registered, effect-started, retired, and settled revisions for its real
+launched attempt before Package deletion. It requires the real
 named Job to be absent and injects present and unknown Job observations to
 confirm that both refuse GC. This tests the GC join; the fixture does not
 represent production Windows Host C5 writes and awaits the next native run.

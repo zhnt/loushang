@@ -3257,32 +3257,56 @@ def _retain_settled_windows_c5_gc_attempt(
         native_containment_settled=True,
     )
     state = _initial_state(restart_budget=3)
-    settled = {**state, "stateRevision": 2}
-    settled["attempts"] = {
-        _AttemptKey(receipt.fingerprint, attempt_id, generation).encoded: {
-            "attemptId": attempt_id,
-            "bootIdentity": boot_identity,
-            "cleanupContractVersion": 2,
-            "cleanupDebt": None,
-            "cleanupSettlement": settlement.to_dict(),
-            "domainRetired": True,
-            "evidenceAuthorityFingerprint": "d" * 64,
-            "evidenceAuthorityId": "native-gc-test-evidence",
-            "hostIdentity": host_identity,
-            "owner": "hosting",
-            "ownerGeneration": generation,
-            "phase": "settled",
-            "policyFingerprint": receipt.policy.fingerprint,
-            "protocolTerminal": True,
-            "readiness": "ready",
-            "receiptFingerprint": receipt.fingerprint,
-            "required": receipt.policy.effective_required,
-            "restartOrdinal": 0,
-        }
+    key = _AttemptKey(receipt.fingerprint, attempt_id, generation).encoded
+    registered_attempt = {
+        "attemptId": attempt_id,
+        "bootIdentity": boot_identity,
+        "cleanupContractVersion": 2,
+        "cleanupDebt": None,
+        "cleanupSettlement": None,
+        "domainRetired": False,
+        "evidenceAuthorityFingerprint": "d" * 64,
+        "evidenceAuthorityId": "native-gc-test-evidence",
+        "hostIdentity": host_identity,
+        "owner": "hosting",
+        "ownerGeneration": generation,
+        "phase": "registered",
+        "policyFingerprint": receipt.policy.fingerprint,
+        "protocolTerminal": False,
+        "readiness": "pending",
+        "receiptFingerprint": receipt.fingerprint,
+        "required": receipt.policy.effective_required,
+        "restartOrdinal": 0,
+    }
+    registered = {**state, "stateRevision": 2, "attempts": {key: registered_attempt}}
+    effect_started = {
+        **state,
+        "stateRevision": 3,
+        "attempts": {key: {**registered_attempt, "phase": "effect_started"}},
+    }
+    retired_attempt = {
+        **registered_attempt,
+        "phase": "retired",
+        "domainRetired": True,
+        "protocolTerminal": True,
+    }
+    retired = {**state, "stateRevision": 4, "attempts": {key: retired_attempt}}
+    settled = {
+        **state,
+        "stateRevision": 5,
+        "attempts": {
+            key: {
+                **retired_attempt,
+                "phase": "settled",
+                "cleanupSettlement": settlement.to_dict(),
+            }
+        },
     }
     journal = CodingWindowsWorkerActivationStateJournal(product)
-    assert journal.compare_and_swap(expected_revision=0, document=state)
-    assert journal.compare_and_swap(expected_revision=1, document=settled)
+    for revision, document in enumerate(
+        (state, registered, effect_started, retired, settled)
+    ):
+        assert journal.compare_and_swap(expected_revision=revision, document=document)
     assert [item.attempt_id for item in journal.retained_attempts_read_only()] == [
         attempt_id
     ]
