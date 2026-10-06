@@ -19,6 +19,7 @@ from loushang.ai.types import UserMessage
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding.cli.package_worker_native import main as worker_native_main
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -46,6 +47,24 @@ from tests.coding.test_package_worker_candidate_wheel import _QUERY_WORKER_SOURC
 _ROOT = Path(__file__).resolve().parents[2]
 _BUILDER = _ROOT / "scripts/dev/build_posix_containment_launcher.py"
 _WHEEL_BUILDER = _ROOT / "scripts/dev/build_posix_native_release_wheel.py"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate status")
+def test_worker_candidate_status_refuses_unfenced_workspace_without_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+    assert worker_native_main(
+        ["--workspace", str(workspace), "candidate-status", "--plugin-id", "example"]
+    ) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "Coding Worker native command refused:" in output.err
+    assert tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    ) == before
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux Product payload custody")
@@ -560,10 +579,16 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert isinstance(installed_closure, dict)
     installed_revision = installed_closure["nativeProfileCatalogRevision"]
     assert isinstance(installed_revision, str) and installed_revision.endswith(":g1")
+    before_candidate_status = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     candidate_status, candidate_output = run(
         "candidate-status", "--plugin-id", "reviewworker"
     )
     assert candidate_status.returncode == 0, candidate_status.stderr
+    assert tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    ) == before_candidate_status
     assert candidate_output == {
         "candidateOptInDecision": None,
         "ordinarySessionRouting": "python_sdk_explicit_linux",
@@ -823,9 +848,18 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     )
     assert stale.returncode == 1
     assert b"coding_worker_opt_in_stale" in stale.stderr
+    worker_opt_in_journal = next(tmp_path.rglob("worker-opt-in.jsonl"))
+    journal_before_status = worker_opt_in_journal.read_bytes()
+    before_candidate_status = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
     status, status_output = run("candidate-status", "--plugin-id", "reviewworker")
     assert status.returncode == 0, status.stderr
     assert status_output == allowed_output
+    assert worker_opt_in_journal.read_bytes() == journal_before_status
+    assert tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    ) == before_candidate_status
     remove_while_allowed, _ = run(
         "candidate-remove",
         "--plugin-id",

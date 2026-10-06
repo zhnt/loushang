@@ -84,6 +84,10 @@ from .package_legacy_binding_catalog import CodingLegacyLocalBindingCatalog
 from .package_legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
 )
+from .package_product_worker_opt_in import (
+    CodingWorkerOptInDecisionV1,
+    CodingWorkerOptInJournal,
+)
 from .resource_runtime import CodingResourceLoader
 
 CodingDataResourceAdmissionPreviewV1 = PluginCurrentResourceAdmissionV1
@@ -97,6 +101,21 @@ class CodingFencedProductReadOnlyPreviewOwner:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
     policy: PackageProductLocalWheelPolicy
     selected_manifests: _LocalWheelSelectedManifestReader
+    gc_gate: PluginPackageGcReservationJournal
+
+    def worker_opt_in_decision(
+        self, plugin_id: str
+    ) -> CodingWorkerOptInDecisionV1 | None:
+        """Read one existing Worker decision without conferring selection or use."""
+
+        self.epoch_runtime.assert_current()
+        decision = CodingWorkerOptInJournal(
+            self.epoch_runtime.control_root / "product-state/worker-opt-in.jsonl",
+            scope_id=self.policy.project_scope_id,
+            gc_gate=self.gc_gate,
+        ).current_read_only(plugin_id)
+        self.epoch_runtime.assert_current()
+        return decision
 
     def preview_current_data_resources(
         self,
@@ -427,6 +446,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 selected_manifests=_LocalWheelSelectedManifestReader(
                     policy=policy, root_reader=root_reader, read_only=True
                 ),
+                gc_gate=gate,
             )
         except BaseException:
             runtime.close()

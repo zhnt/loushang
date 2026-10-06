@@ -297,6 +297,16 @@ class CodingWorkerOptInJournal:
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
 
+    def current_read_only(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
+        """Inspect an existing Product decision without creating owner state."""
+
+        self._require_plugin_id(plugin_id)
+        with self._gc_gate.read_guard(), self._bound_journal(
+            create_lock=False
+        ) as rooted:
+            events, _history = self._load_history(rooted)
+            return self._latest(events, plugin_id)
+
     def change(
         self,
         *,

@@ -3113,6 +3113,14 @@ the old Session's next query is fenced, and disposal leaves no additional
 payload or incomplete Supervisor attempt. That focused native case also
 passed 1/1 on 2026-10-06. The general W5 author/operator path remains
 separate acceptance work.
+The Worker `candidate-status` CLI now uses the fenced Product read-only owner
+and a shared-lock, no-create opt-in journal read. The journal's focused suite
+passed 6/6, the installed Linux Product Session verified the same decision
+through the read-only owner (1/1), and the fresh-process operator journey
+passed 1/1 with both empty and allowed status responses. The journey checks
+that status creates no new files and does not change the opt-in journal bytes.
+This status reports only the retained opt-in decision, not current Worker
+selection, native release, or Product Session use.
 
 ## Independent Review Record
 

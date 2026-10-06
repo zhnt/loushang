@@ -19,6 +19,9 @@ from typing import Literal
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding.package_product_preview import (
+    CodingFencedProductReadOnlyPreviewOwner,
+)
 from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     admit_coding_external_worker_wheel,
@@ -35,6 +38,7 @@ from loushang.coding.package_product_worker_native_install import (
 from loushang.coding.package_product_worker_operator_query import (
     query_coding_product_worker,
 )
+from loushang.coding.package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from loushang.coding.package_product_worker_opt_in_owner import (
     CodingWorkerProductOptInOwner,
 )
@@ -235,6 +239,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "productAdmission": "not_checked",
                 "productUse": "not_checked",
             }
+        elif args.action == "candidate-status":
+            with CodingFencedProductReadOnlyPreviewOwner.open(
+                lifecycle
+            ) as read_owner:
+                result = _candidate_status_document(
+                    read_owner.worker_opt_in_decision(args.plugin_id)
+                )
         else:
             application = open_coding_fenced_product_application_owner(
                 lifecycle,
@@ -258,6 +269,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     sys.stdout.write(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
     return 0
+
+
+def _candidate_status_document(
+    decision: CodingWorkerOptInDecisionV1 | None,
+) -> dict[str, object]:
+    return {
+        "candidateOptInDecision": None if decision is None else decision.to_dict(),
+        "ordinarySessionRouting": "python_sdk_explicit_linux",
+        "defaultSessionRouting": "closed",
+    }
 
 
 def _execute(
@@ -476,14 +497,7 @@ def _execute(
     if args.action in {"candidate-status", "candidate-allow", "candidate-revoke"}:
         opt_in = CodingWorkerProductOptInOwner(product)
         if args.action == "candidate-status":
-            current = opt_in.current(args.plugin_id)
-            return {
-                "candidateOptInDecision": (
-                    None if current is None else current.to_dict()
-                ),
-                "ordinarySessionRouting": "python_sdk_explicit_linux",
-                "defaultSessionRouting": "closed",
-            }
+            return _candidate_status_document(opt_in.current(args.plugin_id))
         if args.action == "candidate-allow":
             candidate_decision = opt_in.allow(
                 plugin_id=args.plugin_id,

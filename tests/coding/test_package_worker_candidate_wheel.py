@@ -67,6 +67,9 @@ from loushang.coding.package_external_worker_wheel import (
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
+from loushang.coding.package_product_preview import (
+    CodingFencedProductReadOnlyPreviewOwner,
+)
 from loushang.coding.package_product_runtime import (
     admit_coding_external_data_wheel,
     admit_coding_external_worker_wheel,
@@ -1200,6 +1203,11 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 assert decision.opt_in.owner_id == _OWNER
                 assert product_opt_in.current(_PLUGIN) == decision
+                if direct_entry_only:
+                    with CodingFencedProductReadOnlyPreviewOwner.open(
+                        lifecycle
+                    ) as read_owner:
+                        assert read_owner.worker_opt_in_decision(_PLUGIN) == decision
                 assert execute_native_cli(
                     product,
                     Namespace(action="candidate-status", plugin_id=_PLUGIN),

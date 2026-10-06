@@ -127,6 +127,58 @@ def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(
         reopened.current(opt_in.plugin_id)
 
 
+def test_worker_opt_in_read_only_status_requires_existing_gc_gate_and_never_writes(
+    tmp_path,
+) -> None:
+    root = tmp_path / "product-state"
+    root.mkdir(mode=0o700)
+    gate = PluginPackageGcReservationJournal(root / "gc-reservations.jsonl")
+    journal = CodingWorkerOptInJournal(
+        root / "worker-opt-in.jsonl",
+        scope_id="workspace:" + "a" * 64,
+        gc_gate=gate,
+    )
+    with pytest.raises(FileNotFoundError):
+        journal.current_read_only("example.worker")
+    assert tuple(root.iterdir()) == ()
+
+    with gate.guard():
+        pass
+    assert journal.current_read_only("example.worker") is None
+    assert not journal.path.exists()
+    assert not (root / "worker-opt-in.jsonl.lock").exists()
+
+    opt_in = CodingWorkerOptInV1(
+        plugin_id="example.worker",
+        contribution_id="query-provider",
+        owner_id="coding.lsp",
+        artifact_digest=sha256(b"wheel").hexdigest(),
+        native_platform="linux-x86_64",
+        owner_selection_generation=1,
+        kill_switch_generation=0,
+        require_worker=True,
+    )
+    allowed = journal.change(
+        plugin_id=opt_in.plugin_id,
+        operation_id="allow-read-only",
+        expected_generation=0,
+        action="allow",
+        opt_in=opt_in,
+    )
+    before = {path.name: path.read_bytes() for path in root.iterdir()}
+    assert journal.current_read_only(opt_in.plugin_id) == allowed
+    assert {path.name: path.read_bytes() for path in root.iterdir()} == before
+
+    lock = root / "worker-opt-in.jsonl.lock"
+    retained_lock = root / "retained-worker-opt-in.lock"
+    lock.rename(retained_lock)
+    with pytest.raises(CodingWorkerOptInJournalError) as missing_lock:
+        journal.current_read_only(opt_in.plugin_id)
+    assert missing_lock.value.code == "coding_worker_opt_in_lock_missing"
+    assert not lock.exists()
+    assert journal.path.read_bytes() == before[journal.path.name]
+
+
 def test_worker_opt_in_rotates_without_resetting_generation_or_operation_id(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
