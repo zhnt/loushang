@@ -3121,6 +3121,12 @@ passed 1/1 with both empty and allowed status responses. The journey checks
 that status creates no new files and does not change the opt-in journal bytes.
 This status reports only the retained opt-in decision, not current Worker
 selection, native release, or Product Session use.
+An explicitly Worker-aware read-only Product owner can now load the Worker
+Source binding and verify one selected Store root, declaration, and native
+executable as inert candidate evidence. The installed Linux public Session
+case confirmed the exact version and executable digest (1/1); the ordinary
+data preview owner refuses this Worker read. This evidence is internal and
+does not change the `candidate-status` output or grant execution.
 The dedicated Windows Worker Session CI job now requires exactly four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. The report still rejects skips, failures, and

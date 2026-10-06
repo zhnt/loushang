@@ -21,6 +21,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs,
     _LocalWheelSelectedManifestReader,
 )
+from loushang.harness.package_product.product_worker_candidate import (
+    verify_product_selected_worker_candidate,
+)
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
@@ -54,6 +57,7 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
+from loushang.harness.worker.package_candidate import WorkerPackageCandidateV1
 
 from ._base_plugin import CodingBasePluginAssemblyError
 from ._base_product_composition import (
@@ -80,6 +84,7 @@ from .package_builtin_wheel import (
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .package_external_data_wheel import CodingExternalDataWheelCatalog
 from .package_external_dependency_wheel import CodingExternalDependencyWheelCatalog
+from .package_external_worker_wheel import CodingExternalWorkerWheelCatalog
 from .package_legacy_binding_catalog import CodingLegacyLocalBindingCatalog
 from .package_legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
@@ -102,6 +107,40 @@ class CodingFencedProductReadOnlyPreviewOwner:
     policy: PackageProductLocalWheelPolicy
     selected_manifests: _LocalWheelSelectedManifestReader
     gc_gate: PluginPackageGcReservationJournal
+    worker_candidates: bool = False
+
+    def selected_worker_candidate(self, plugin_id: str) -> WorkerPackageCandidateV1:
+        """Verify inert bytes of one currently selected Worker; grant no execution."""
+
+        if not self.worker_candidates:
+            raise PermissionError("Worker candidate read was not selected")
+        self.epoch_runtime.assert_current()
+        selected = self.selected_manifests.capture_selected_manifest_for_plugin(
+            plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+        )
+        matches = tuple(
+            binding
+            for binding in self.policy.bindings
+            if binding.plugin_id == plugin_id
+            and binding.source_trust_class == "local-worker-candidate"
+            and binding.source_identity
+            == selected.snapshot.package_revision.package_source_identity
+            and binding.artifact_digest == selected.snapshot.root_ref.artifact_digest
+            and binding.worker_admission is not None
+        )
+        if len(matches) != 1:
+            raise ValueError("Selected Worker Product binding is unavailable")
+        admission = matches[0].worker_admission
+        assert admission is not None
+        candidate = verify_product_selected_worker_candidate(
+            selected,
+            contribution_id=admission.contribution_id,
+            native_platform=admission.native_platform,
+        )
+        if candidate.owner_id != admission.owner_id:
+            raise ValueError("Selected Worker Product owner changed")
+        self.epoch_runtime.assert_current()
+        return candidate
 
     def worker_opt_in_decision(
         self, plugin_id: str
@@ -340,6 +379,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
         layout: CodingPluginLifecycleStateLayout,
         *,
         workspace_guard: Callable[[], None] | None = None,
+        worker_candidates: bool = False,
     ) -> CodingFencedProductReadOnlyPreviewOwner:
         if workspace_guard is not None:
             workspace_guard()
@@ -408,6 +448,15 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 scope_id=layout.scope_id,
                 read_only=True,
             ).extend_policy(policy)
+            if worker_candidates:
+                policy = CodingExternalWorkerWheelCatalog(
+                    state_root / "external-worker-wheel-bindings.jsonl",
+                    source_root=source_root,
+                    store_id=epoch.store_id,
+                    namespace_id=switch.namespace_id,
+                    scope_id=layout.scope_id,
+                    read_only=True,
+                ).extend_policy(policy)
             strict = JournalLoadPolicy(partial_tail="raise", create_lock=False)
             gate = PluginPackageGcReservationJournal(
                 state_root / "gc-reservations.jsonl", load_policy=strict
@@ -447,6 +496,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
                     policy=policy, root_reader=root_reader, read_only=True
                 ),
                 gc_gate=gate,
+                worker_candidates=worker_candidates,
             )
         except BaseException:
             runtime.close()

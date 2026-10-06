@@ -1208,6 +1208,18 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         lifecycle
                     ) as read_owner:
                         assert read_owner.worker_opt_in_decision(_PLUGIN) == decision
+                        with pytest.raises(PermissionError):
+                            read_owner.selected_worker_candidate(_PLUGIN)
+                    with CodingFencedProductReadOnlyPreviewOwner.open(
+                        lifecycle, worker_candidates=True
+                    ) as read_worker_owner:
+                        observed = read_worker_owner.selected_worker_candidate(
+                            _PLUGIN
+                        )
+                        assert observed.plugin_version == _VERSION
+                        assert observed.executable_digest == sha256(
+                            executable.read_bytes()
+                        ).hexdigest()
                 assert execute_native_cli(
                     product,
                     Namespace(action="candidate-status", plugin_id=_PLUGIN),
