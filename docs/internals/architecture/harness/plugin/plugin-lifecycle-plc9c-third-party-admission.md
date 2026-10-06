@@ -1496,9 +1496,12 @@ reference carrying the attempt, receipt fingerprint, selected Package artifact
 digest, locator revision, and Linux platform. A changed receipt binding yields
 no reference. This read-only projection does not prove closure or permit
 history pruning; it avoids introducing a second pre-launch journal with a
-crash window between two writes. C5 activation-state records must still be
-joined to this authority, and Windows needs an equivalent typed projection of
-its launch intent and receipt. Cleanup may close a reference only after
+crash window between two writes. Windows now has a read-only equivalent that
+joins each retained launch intent to its exact receipt under the Product GC
+read guard; it refuses native or Supervisor history without an intent and a
+changed binding. Its native crash/reopen case is pending CI. C5
+activation-state records still need to be joined to the shared attempt
+authority. Cleanup may close a reference only after
 Supervisor and native process settlement, payload debt retirement,
 and the exact Product selection check. A crash between registration and
 settlement remains an open reference on reopen. The retention reviewer must

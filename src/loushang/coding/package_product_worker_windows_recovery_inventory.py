@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal, cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -140,6 +140,22 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
     store_id: str
     lease_owner_revision: int
     attempts: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CodingWindowsWorkerAttemptReferenceV1:
+    """One retained launch intent joined to its exact Windows Product receipt.
+
+    This is read-only evidence. It does not certify native cleanup or permit
+    receipt retirement, backup expiry, Package GC, or history pruning.
+    """
+
+    attempt_id: str
+    receipt_fingerprint: str
+    selected_package_revision_digest: str
+    selected_locator_revision: str
+    native_platform: Literal["windows"]
+    launch_request_fingerprint: str
 
 
 class CodingWindowsWorkerRecoveryAdmissionError(RuntimeError):
@@ -400,6 +416,110 @@ def inspect_coding_windows_product_worker_recovery_inventory(
         return _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
 
 
+def inspect_coding_windows_product_worker_attempt_references(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> tuple[CodingWindowsWorkerAttemptReferenceV1, ...]:
+    """Project every durable launch intent with its retained Product receipt.
+
+    Partial stages without an intent remain recovery debts, not references.
+    An observed native or Supervisor effect without an intent refuses the whole
+    projection. No runtime quiescence or state mutation is needed for this read.
+    """
+
+    if (
+        os.name != "nt"
+        or type(product) is not WindowsLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+    ):
+        raise OSError("Windows Worker attempt references require a Product owner")
+    from .package_product_worker_windows_receipt_journal import (
+        CodingWindowsWorkerReceiptJournal,
+    )
+
+    with product.gc_gate.read_guard():
+        product.assert_root_gc_authority_current()
+        attempts = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
+        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+            receipts = CodingWindowsWorkerReceiptJournal(
+                product.state_root / "worker-activation-receipts.jsonl",
+                scope_id=product.policy.project_scope_id,
+            ).records(directory_fd=root)
+        receipt_by_fingerprint = {
+            record.receipt.fingerprint: record for record in receipts
+        }
+        if len(receipt_by_fingerprint) != len(receipts):
+            raise CodingWindowsWorkerRecoveryAdmissionError(
+                "coding_worker_attempt_reference_receipt_conflict"
+            )
+        references: list[CodingWindowsWorkerAttemptReferenceV1] = []
+        for attempt in attempts:
+            request_fingerprint = attempt.launch_request_fingerprint
+            receipt_fingerprint = attempt.launch_receipt_fingerprint
+            identity_fingerprint = attempt.launch_identity_fingerprint
+            if request_fingerprint is None:
+                if (
+                    receipt_fingerprint is not None
+                    or identity_fingerprint is not None
+                    or attempt.native_phase is not None
+                    or attempt.supervisor_phase is not None
+                ):
+                    raise CodingWindowsWorkerRecoveryAdmissionError(
+                        "coding_worker_attempt_reference_intent_absent"
+                    )
+                continue
+            receipt = (
+                None
+                if receipt_fingerprint is None
+                else receipt_by_fingerprint.get(receipt_fingerprint)
+            )
+            if (
+                receipt_fingerprint is None
+                or identity_fingerprint is None
+                or any(
+                    type(value) is not str
+                    or _FINGERPRINT.fullmatch(value) is None
+                    for value in (
+                        request_fingerprint,
+                        receipt_fingerprint,
+                        identity_fingerprint,
+                    )
+                )
+                or attempt.launch_stage_identity is None
+                or receipt is None
+                or receipt.receipt.policy.product_id != "coding"
+                or (
+                    attempt.native_phase is not None
+                    and (
+                        attempt.native_worker_request_fingerprint
+                        != request_fingerprint
+                        or attempt.native_receipt_fingerprint
+                        != receipt_fingerprint
+                    )
+                )
+                or (
+                    attempt.supervisor_phase is not None
+                    and attempt.supervisor_identity_fingerprint
+                    != identity_fingerprint
+                )
+            ):
+                raise CodingWindowsWorkerRecoveryAdmissionError(
+                    "coding_worker_attempt_reference_binding_changed"
+                )
+            policy = receipt.receipt.policy
+            references.append(
+                CodingWindowsWorkerAttemptReferenceV1(
+                    attempt_id=attempt.attempt_id,
+                    receipt_fingerprint=receipt_fingerprint,
+                    selected_package_revision_digest=policy.plugin_revision_digest,
+                    selected_locator_revision=policy.selected_locator_revision,
+                    native_platform="windows",
+                    launch_request_fingerprint=request_fingerprint,
+                )
+            )
+        product.assert_root_gc_authority_current()
+        return tuple(references)
+
+
 def inspect_coding_windows_product_worker_offline_recovery(
     product: WindowsLocalWheelProductSessionOwner,
 ) -> CodingWindowsWorkerOfflineRecoverySnapshotV1:
@@ -531,9 +651,11 @@ def _inspect_windows_worker_recovery_inventory_under_gc_guard(
 
 __all__ = [
     "CodingWindowsWorkerRecoveryAdmissionError",
+    "CodingWindowsWorkerAttemptReferenceV1",
     "CodingWindowsWorkerRecoveryAttemptV1",
     "CodingWindowsWorkerOfflineRecoverySnapshotV1",
     "inspect_coding_windows_product_worker_offline_recovery",
+    "inspect_coding_windows_product_worker_attempt_references",
     "inspect_coding_windows_product_worker_recovery_inventory",
     "require_coding_windows_worker_current_attempt",
 ]
