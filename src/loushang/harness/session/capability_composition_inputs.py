@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from _thread import LockType
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
+from threading import Lock
 from typing import Literal, Protocol, TypeAlias, cast, runtime_checkable
 
 from loushang.harness.capabilities.consumer_requirements import (
@@ -431,6 +433,19 @@ OwnerGenerationTransition: TypeAlias = Callable[[object], None]
 OwnerGenerationReceiptProvider: TypeAlias = Callable[
     [object], OwnerGenerationRetirementReceipt
 ]
+# A graph may outlast its admission window while preparing a native Worker.
+# Its owner start is single-use and remains bounded even if preparation stalls.
+_MAX_OWNER_STAGING_START_MS = 900_000
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class SessionCapabilityOwnerAdmissionStart:
+    """One in-process start accepted before a potentially slow graph bind."""
+
+    authority_gate: SessionCapabilityOwnerAuthorityGate = field(repr=False)
+    admission_fingerprint: str
+    started_at: int
+    _token: object = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,6 +464,12 @@ class SessionCapabilityOwnerAuthorityGate:
         compare=False,
     )
     clock: Callable[[], int] = field(repr=False, compare=False)
+    _active_starts: dict[object, tuple[str, int, bool]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _start_lock: LockType = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.authority_context, ProductCompositionAuthorityContext):
@@ -465,6 +486,75 @@ class SessionCapabilityOwnerAuthorityGate:
             raise TypeError("Owner authority gate requires current authority readers")
 
     def validate(self, admission: OwnerContributionAdmissionRecord) -> None:
+        self._validate_current(admission, require_window=True)
+
+    def begin(
+        self, admission: OwnerContributionAdmissionRecord
+    ) -> SessionCapabilityOwnerAdmissionStart:
+        """Pin one timely admission for this graph preparation only."""
+
+        started_at = self._validate_current(admission, require_window=True)
+        token = object()
+        with self._start_lock:
+            self._active_starts[token] = (admission.fingerprint, started_at, False)
+        return SessionCapabilityOwnerAdmissionStart(
+            authority_gate=self,
+            admission_fingerprint=admission.fingerprint,
+            started_at=started_at,
+            _token=token,
+        )
+
+    def validate_started(
+        self,
+        admission: OwnerContributionAdmissionRecord,
+        start: SessionCapabilityOwnerAdmissionStart,
+        *,
+        consume: bool = False,
+    ) -> None:
+        """Recheck live authority after work started within the admission window."""
+
+        if (
+            type(start) is not SessionCapabilityOwnerAdmissionStart
+            or start.authority_gate is not self
+            or start.admission_fingerprint != admission.fingerprint
+        ):
+            raise ValueError("Owner contribution start witness is invalid")
+        with self._start_lock:
+            recorded = self._active_starts.get(start._token)
+            if recorded is None or recorded[:2] != (
+                start.admission_fingerprint,
+                start.started_at,
+            ):
+                raise ValueError("Owner contribution start witness is not active")
+            if consume:
+                if not recorded[2]:
+                    raise ValueError("Owner contribution start witness was not staged")
+                del self._active_starts[start._token]
+            else:
+                if recorded[2]:
+                    raise ValueError("Owner contribution start witness already staged")
+                self._active_starts[start._token] = (*recorded[:2], True)
+        now = self._validate_current(admission, require_window=False)
+        if (
+            now < start.started_at
+            or now - start.started_at >= _MAX_OWNER_STAGING_START_MS
+        ):
+            raise ValueError("Owner contribution start witness expired")
+
+    def abort(self, start: SessionCapabilityOwnerAdmissionStart) -> None:
+        """Release a start whose graph never committed an owner generation."""
+
+        if (
+            type(start) is not SessionCapabilityOwnerAdmissionStart
+            or start.authority_gate is not self
+        ):
+            raise ValueError("Owner contribution start witness is invalid")
+        with self._start_lock:
+            self._active_starts.pop(start._token, None)
+
+    def _validate_current(
+        self, admission: OwnerContributionAdmissionRecord, *, require_window: bool
+    ) -> int:
         context = self.authority_context
         candidate = admission.candidate
         if (
@@ -478,7 +568,7 @@ class SessionCapabilityOwnerAuthorityGate:
         now = self.clock()
         if isinstance(now, bool) or not isinstance(now, int) or now < 0:
             raise ValueError("Owner authority gate clock must be non-negative integer")
-        if not admission.issued_at <= now < admission.expires_at:
+        if require_window and not admission.issued_at <= now < admission.expires_at:
             raise ValueError("Owner contribution admission is not current")
         current_product_policy = self.product_policy_revision_reader(
             context.product_id,
@@ -535,6 +625,7 @@ class SessionCapabilityOwnerAuthorityGate:
             != candidate.source_trust_policy_revision
         ):
             raise ValueError("Owner contribution source trust identity is stale")
+        return now
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,6 +701,9 @@ class StagedSessionCapabilityOwnerGeneration:
     binding: SessionCapabilityOwnerGenerationBinding
     admission: OwnerContributionAdmissionRecord = field(repr=False)
     value: object = field(repr=False)
+    started_admission: SessionCapabilityOwnerAdmissionStart | None = field(
+        default=None, repr=False
+    )
     commit_started: bool = False
     committed: bool = False
     disposed: bool = False
@@ -629,7 +723,12 @@ class StagedSessionCapabilityOwnerGeneration:
             return
         if self.commit_started:
             raise RuntimeError("owner generation commit cleanup is pending")
-        self.binding.authority_gate.validate(self.admission)
+        if self.started_admission is None:
+            self.binding.authority_gate.validate(self.admission)
+        else:
+            self.binding.authority_gate.validate_started(
+                self.admission, self.started_admission, consume=True
+            )
         self.commit_started = True
         _run_owner_generation_transition(
             self.binding.commit,
@@ -713,6 +812,7 @@ async def stage_session_capability_owner_generations(
     admissions: tuple[OwnerContributionAdmissionRecord, ...],
     bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...],
     captures: tuple[SessionCapabilityConsumerCapture, ...],
+    started_admissions: tuple[SessionCapabilityOwnerAdmissionStart, ...] = (),
 ) -> tuple[StagedSessionCapabilityOwnerGeneration, ...]:
     """Stage exact owners transactionally after Consumer capture."""
 
@@ -722,6 +822,20 @@ async def stage_session_capability_owner_generations(
             bindings=bindings,
         )
     )
+    if any(
+        type(start) is not SessionCapabilityOwnerAdmissionStart
+        for start in started_admissions
+    ):
+        raise TypeError("Owner contribution start witnesses have invalid type")
+    starts_by_fingerprint = {
+        start.admission_fingerprint: start for start in started_admissions
+    }
+    if started_admissions and (
+        len(starts_by_fingerprint) != len(started_admissions)
+        or set(starts_by_fingerprint)
+        != {admission.fingerprint for admission in admission_values}
+    ):
+        raise ValueError("Owner contribution start witnesses do not match admissions")
 
     captures_by_admission: dict[str, list[SessionCapabilityConsumerCapture]] = {}
     for capture in captures:
@@ -740,7 +854,11 @@ async def stage_session_capability_owner_generations(
             strict=True,
         ):
             owner_captures = tuple(captures_by_admission.get(admission.fingerprint, ()))
-            binding.authority_gate.validate(admission)
+            start = starts_by_fingerprint.get(admission.fingerprint)
+            if start is None:
+                binding.authority_gate.validate(admission)
+            else:
+                binding.authority_gate.validate_started(admission, start)
             result = binding.stage(owner_captures)
             stage_cancellation: asyncio.CancelledError | None = None
             if inspect.isawaitable(result):
@@ -759,6 +877,7 @@ async def stage_session_capability_owner_generations(
                     binding=binding,
                     admission=admission,
                     value=result,
+                    started_admission=start,
                 )
             )
             if stage_cancellation is not None:
@@ -915,6 +1034,7 @@ __all__ = [
     "SessionCapabilityOwnerGenerationBinding",
     "SessionCapabilityOwnerGenerationStagingError",
     "SessionCapabilityOwnerAuthorityGate",
+    "SessionCapabilityOwnerAdmissionStart",
     "SessionCompositionChange",
     "StagedSessionCapabilityOwnerGeneration",
     "commit_session_capability_owner_generations",
