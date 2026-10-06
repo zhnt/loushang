@@ -1656,9 +1656,13 @@ segmented journal and a platform-neutral canonical-record decoder intended for
 Windows Product custody. The decoder rejects torn or changed canonical records,
 phase regression, changed immutable attempt identities, and reuse after
 compaction. Its portable cases and the existing Linux segmented cases passed
-11/11; the C5 import-boundary suite passed 7/7. Windows still needs a pinned-root
-durable CAS journal, native containment and Job cleanup evidence, and Product
-recovery wiring before those rules become Windows C5 production behavior.
+11/11; the C5 import-boundary suite passed 7/7. A Windows Product-rooted CAS
+journal now uses these rules and commits a separate immutable byte-digest head
+for every revision. Its native reopen and complete-record-loss test is part of
+the next strict Windows CI report. Until that report passes and the ordinary
+Host, Job/LPAC cleanup evidence, crash recovery, and Package GC joins use the
+journal, this is storage infrastructure rather than Windows C5 production
+behavior.
 The snapshot also projects each journal's retained revision, opt-in operation
 IDs, Supervisor attempt IDs and per-key epoch high-water marks, and receipt
 fingerprints from those exact histories. The native crash/reopen candidate

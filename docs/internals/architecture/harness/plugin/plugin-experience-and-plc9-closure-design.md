@@ -3143,9 +3143,10 @@ artifact-digest projection case guards the mismatch result. The real
 cross-process operator journey passed 1/1 through unselected, selected without
 allow, matching allow, and disabled states; the installed public SDK Session
 case passed 1/1 after the read-owner change.
-The dedicated Windows Worker Session CI job now requires exactly four JUnit
+The dedicated Windows Worker Session CI job originally required four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
-crash/reopen/retirement cases. The report still rejects skips, failures, and
+crash/reopen/retirement cases. It now requires a fifth native Product-rooted C5
+journal reopen and tamper-refusal case. The report rejects skips, failures, and
 errors. The generalized verifier and change-gate suite passed 60/60 locally;
 this strengthens the native evidence contract but does not substitute for a
 non-skipped Windows runner result.
@@ -3306,8 +3307,15 @@ expected host-runtime skips and zero failures.
 The C5 attempt replay rules were extracted for Linux and a future Windows
 Product journal. A portable canonical-record decoder and the existing Linux
 segmented journal passed 11/11 focused tests, and the C5 architecture import
-boundary passed 7/7. Windows Product C5 persistence and recovery remain open;
-the decoder alone does not establish Windows Worker lifecycle closure.
+boundary passed 7/7. At that checkpoint Windows Product C5 persistence and
+recovery remained open; the decoder alone did not establish lifecycle closure.
+The Windows Product-rooted C5 CAS journal now persists each canonical state
+revision beneath the pinned private root with an immutable committed-byte head.
+The next native Windows Session job requires its reopen and complete-record-loss
+case in addition to the existing four Session cases. Local C5 import-boundary
+checks passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
+Windows Worker C5 writes, cleanup evidence, crash recovery, and GC integration
+remain open, so this storage candidate does not open the Windows route.
 
 ## Independent Review Record
 

@@ -1,0 +1,121 @@
+"""Native Windows C5 state bytes stay bound to one Product root."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from loushang.coding._plugin_lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+    open_coding_fenced_product_application_owner,
+)
+from loushang.coding.package_product_worker_windows_activation_state_journal import (
+    CodingWindowsWorkerActivationStateJournal,
+)
+from loushang.coding.session_manager import SessionManager
+from loushang.harness.config.agent import SettingsManager
+from loushang.harness.worker.activation_state_journal import (
+    WorkerActivationStateJournalError,
+)
+from loushang.harness.worker.product_activation import _initial_state
+
+
+@pytest.mark.requires_host_runtime
+def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        pytest.skip("native Windows backend review is required")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
+    ):
+        selection = CodingFencedProductApplicationSelection(
+            windows_candidate=True, worker_candidates=True
+        )
+        factory = None
+        try:
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            product = selection.product_owner_for_factory(factory)
+            journal = CodingWindowsWorkerActivationStateJournal(product)
+            assert journal.load() is None
+            assert not any(
+                name.startswith("worker-activation-state")
+                for name in os.listdir(product.state_root)
+            )
+            initial = _initial_state(restart_budget=3)
+            second = {**initial, "stateRevision": 2}
+            assert journal.compare_and_swap(expected_revision=0, document=initial)
+            assert journal.compare_and_swap(expected_revision=1, document=second)
+            assert journal.load() == second
+            assert not journal.compare_and_swap(expected_revision=0, document=initial)
+        finally:
+            try:
+                if factory is not None:
+                    factory.dispose_unbound_runtime()
+            finally:
+                selection.close()
+
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        windows_candidate=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        journal = CodingWindowsWorkerActivationStateJournal(product)
+        assert journal.load() == second
+        history = product.state_root / "worker-activation-state.jsonl"
+        original = history.read_bytes()
+        history.write_bytes(original.splitlines(keepends=True)[0])
+        with pytest.raises(WorkerActivationStateJournalError) as lost_revision:
+            journal.load()
+        assert lost_revision.value.code == "worker_activation_state_corrupt"
+        history.write_bytes(original)
+        head = product.state_root / "worker-activation-state.h00000002.json"
+        original_head = head.read_bytes()
+        head.write_bytes(b"{}")
+        with pytest.raises(WorkerActivationStateJournalError) as changed_head:
+            journal.load()
+        assert changed_head.value.code == "worker_activation_state_corrupt"
+        head.write_bytes(original_head)
+        assert journal.load() == second
+        history.unlink()
+        with pytest.raises(WorkerActivationStateJournalError) as orphan_lock:
+            journal.load()
+        assert orphan_lock.value.code == "worker_activation_state_corrupt"
+        history.write_bytes(original)
+        assert journal.load() == second
+    finally:
+        owner.close()

@@ -108,6 +108,7 @@ jobs:
             --junitxml=.artifacts/windows-worker-session-native.xml
         run: >-
           uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_product_worker_windows_activation_state.py::test_windows_product_c5_state_reopens_and_refuses_complete_record_loss
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_crash_reopens_and_retires_product_attempt
@@ -119,7 +120,7 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-worker-session-native.xml
-          --require-tests-count 4
+          --require-tests-count 5
 
       - name: Upload Windows Worker Session pytest report
         if: always()
