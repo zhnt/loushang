@@ -286,7 +286,9 @@ def review_coding_product_worker_history_retention(
             activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
             )
-            activation_state = activation_journal.load_read_only()
+            activation_initialized, activation_state = (
+                activation_journal.load_with_presence_read_only()
+            )
             retained_activation_references = (
                 activation_journal.retained_attempts_read_only()
             )
@@ -402,8 +404,12 @@ def review_coding_product_worker_history_retention(
                 group_status=gated.group_status,
                 activation_state_revision=(
                     None
-                    if activation_state is None
-                    else cast(int, activation_state["stateRevision"])
+                    if not activation_initialized
+                    else (
+                        0
+                        if activation_state is None
+                        else cast(int, activation_state["stateRevision"])
+                    )
                 ),
                 active_activation_references=active_references,
                 retained_activation_references=retained_activation_references,

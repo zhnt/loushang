@@ -41,7 +41,7 @@ class CodingProductWorkerActivationStateStore:
         return self._journal.path
 
     def load(self) -> Mapping[str, object] | None:
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             current = self._journal.load()
             self._product.assert_root_gc_authority_current()
@@ -50,7 +50,7 @@ class CodingProductWorkerActivationStateStore:
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]
     ) -> bool:
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             committed = self._journal.compare_and_swap(
                 expected_revision=expected_revision, document=document

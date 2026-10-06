@@ -35,6 +35,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.worker.gated_start import WorkerNativeProcessIdentityV1
 
+from .package_product_worker_activation_state_journal import (
+    CodingProductWorkerActivationStateJournal,
+)
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
@@ -307,7 +310,7 @@ class CodingWorkerStartGateJournal:
             for binding in self._product.policy.bindings
         ):
             raise ValueError("Coding Worker candidate Product owner is required")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with self._bound_journal() as rooted:
                 records, history = self._load_history(rooted)
@@ -337,6 +340,15 @@ class CodingWorkerStartGateJournal:
                     raise CodingWorkerStartGateJournalError(
                         "coding_worker_start_gate_binding_changed"
                     )
+                activation = CodingProductWorkerActivationStateJournal(
+                    self._product.state_root / "worker-activation-state.jsonl"
+                )
+                if not activation.initialized_read_only():
+                    if records:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_activation_history_missing"
+                        )
+                    activation.load()
                 record = CodingWorkerStartGateRecordV1.create(
                     journal_revision=len(records) + 1,
                     phase=phase,

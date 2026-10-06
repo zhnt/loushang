@@ -328,6 +328,9 @@ from loushang.harness.transcript.discovery import (
 from loushang.harness.worker._native_profile_bridge import (
     _bind_posix_static_contained_product_worker_profile,
 )
+from loushang.harness.worker.activation_state_journal import (
+    WorkerActivationStateJournalError,
+)
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAuthorityV1,
@@ -3574,8 +3577,29 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             ).attempt_reference
                             is None
                         )
-                        assert direct_retention.activation_state_revision is None
-                        assert "activation_state_absent" in direct_retention.missing_proofs
+                        assert direct_retention.activation_state_revision == 0
+                        assert (
+                            "activation_state_absent"
+                            not in direct_retention.missing_proofs
+                        )
+                        activation_path = (
+                            product.state_root / "worker-activation-state.jsonl"
+                        )
+                        hidden_activation_path = (
+                            product.state_root / "worker-activation-state.hidden"
+                        )
+                        activation_path.rename(hidden_activation_path)
+                        try:
+                            with pytest.raises(
+                                WorkerActivationStateJournalError,
+                                match="worker_activation_state_orphan_lock",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        finally:
+                            hidden_activation_path.rename(activation_path)
                         assert (
                             "receipt_references_unverified"
                             in direct_retention.missing_proofs
@@ -4665,9 +4689,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 assert retention.attempt_record is not None
                 assert retention.attempt_record.process_settled
                 assert retention.receipt_record is not None
-                assert retention.activation_state_revision is None
+                assert retention.activation_state_revision == 0
                 assert retention.active_activation_references == ()
-                assert "activation_state_absent" in retention.missing_proofs
+                assert "activation_state_absent" not in retention.missing_proofs
                 assert journaled_plan.attempt_id in retention.receipt_gate_references
                 assert (
                     journaled_plan.attempt_id

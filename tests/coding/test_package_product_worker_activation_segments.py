@@ -95,12 +95,16 @@ def test_activation_state_reopens_multiple_sealed_generations_and_refuses_change
     monkeypatch.setattr(activation_module, "_MAX_REVISIONS", 1)
     journal = _journal(tmp_path)
     assert journal.load_read_only() is None
+    assert journal.initialized_read_only() is False
+    assert journal.load_with_presence_read_only() == (False, None)
     assert tuple(journal.path.parent.iterdir()) == ()
 
     initial = _initial_state(restart_budget=3)
     second = _next_state(initial)
     third = _next_state(second)
     assert journal.compare_and_swap(expected_revision=0, document=initial)
+    assert journal.initialized_read_only() is True
+    assert journal.load_with_presence_read_only() == (True, initial)
     assert journal.compare_and_swap(expected_revision=1, document=second)
     assert journal.compare_and_swap(expected_revision=2, document=third)
     manifest = journal.path.parent / "worker-activation-state.segments.json"

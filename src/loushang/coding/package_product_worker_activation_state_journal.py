@@ -91,6 +91,25 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
             records, _history = self._load_segments(rooted)
             return None if not records else dict(records[-1].document)
 
+    def load_with_presence_read_only(
+        self,
+    ) -> tuple[bool, Mapping[str, object] | None]:
+        """Read the latest state and durable owner presence under one lock."""
+
+        with self._bound_journal_read_only() as rooted:
+            records, _history = self._load_segments(rooted)
+            try:
+                rooted.stat()
+            except FileNotFoundError:
+                return False, None
+            return True, None if not records else dict(records[-1].document)
+
+    def initialized_read_only(self) -> bool:
+        """Distinguish a durable empty history from an absent C5 owner."""
+
+        initialized, _state = self.load_with_presence_read_only()
+        return initialized
+
     def retained_attempts_read_only(
         self,
     ) -> tuple[CodingProductWorkerRetainedAttemptV1, ...]:

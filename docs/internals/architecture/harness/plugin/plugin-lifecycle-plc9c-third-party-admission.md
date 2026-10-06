@@ -1475,24 +1475,23 @@ anti-reuse proofs above.
 The real public Linux Coding Session route was then checked after query,
 disable, and update. In all three installed-Product cases the newly started
 attempt had durable start-gate and Supervisor settlement, while the separate
-C5 activation-state journal was absent. The read-only retention review
-correctly reported `activation_state_absent` and
-`receipt_references_unverified`; all three Session cases passed with that
-explicit missing proof. The ordinary pending Host currently owns its attempt
-through the start gate and Supervisor rather than the C5 CAS coordinator.
-The C5 canary's durable state test therefore cannot stand in for the ordinary
-Session's receipt-reference proof. W5 must join these lifecycle authorities
-or supply an equally durable Product-owned reference witness before any
-history pruning or general third-party route is accepted.
+C5 activation-state journal was initially absent. The first valid start-gate
+write now establishes an empty, head-verified C5 history under the Product GC
+gate; later gate writes refuse a missing C5 owner. The read-only retention
+review distinguishes that durable empty history from a missing journal. The
+ordinary pending Host still owns its attempt through the start gate and
+Supervisor rather than C5 CAS transitions, so the review continues to report
+`receipt_references_unverified`. W5 must join these lifecycle authorities
+before any history pruning or general third-party route is accepted.
 The read-only retention review now exposes every retained C5 attempt, including
 one settled and compacted out of the latest snapshot. Linux Package GC also
 joins those retained C5 attempts to start-gate and Supervisor history and
 refuses an absent gate, unsettled attempt, or changed receipt/policy binding.
 A real Product regression first showed that a compacted C5 attempt without a
 gate was accepted as empty history, then passed with this refusal. This closes
-that Package-deletion gap only; the ordinary pending Host still lacks the
-shared attempt-reference record, and backup, checkpoint, and history-pruning
-authority remain open.
+that Package-deletion gap only; the ordinary pending Host still lacks C5 state
+transitions, and receipt closure, checkpoint, and history-pruning authority
+remain open.
 A second real Product case now starts and settles an ordinary Worker, adds a
 settled C5 record with the same attempt, receipt, and policy binding, compacts
 that C5 attempt out of the latest snapshot, and still permits Package GC
