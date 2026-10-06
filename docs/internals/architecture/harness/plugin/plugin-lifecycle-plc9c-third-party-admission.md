@@ -1400,11 +1400,16 @@ only after no active or recoverable attempt references it and the current
 opt-in decision has moved past it. An unknown observation retains the debt.
 The current backup-retention projection describes the Arch Installation's
 private-data backup, not a Worker attempt. The GC reservation snapshot names
-Package revisions, not Worker attempt IDs. Neither owner currently supplies an
-attempt-level absence proof. A terminal Supervisor record and absent payload
-therefore cannot authorize historical deletion; Product needs an explicit
-attempt-to-retention binding or an owner attestation covering every backup and
-GC reference before checkpoint publication.
+Package revisions, not Worker attempt IDs. The current Coding Product backup
+topology admits only Arch private-data backups. Its POSIX and Windows backup
+writer constructors use the same versioned type authority; the Linux retention
+review now records an attempt-specific observation that Worker backup is
+unsupported. If a Worker backup kind is added, this observation refuses until
+that owner provides an attempt-reference inventory. It does not speak for
+external workspace copies or a future Product release. A terminal Supervisor
+record and absent payload still cannot authorize historical deletion; the
+checkpoint must bind this topology revision and the GC owner's reservation
+revision to the exact attempt and receipt closure proof.
 The Linux Product now has a read-only attempt-retention review that joins the
 start gate, Supervisor settlement, exact receipt, current activation-state
 references and opt-in decision,
@@ -1518,15 +1523,17 @@ and the exact Product selection check. A crash between registration and
 settlement remains an open reference on reopen. The retention reviewer must
 read this authority under the Product GC gate and reject an absent or changed
 record; initializing an empty C5 journal after an ordinary launch would not
-prove the old attempt. Product backup and GC owners then need typed
-attempt-level absence attestations for that same reference, rather than
-inferring absence from the Arch private-data backup projection or a Package
-revision-only reservation. The Linux review now reports GC reservations whose
+prove the old attempt. The Linux Product now records a typed, versioned
+no-Worker-backup observation from the Product backup type authority. The GC
+owner still needs an exact attempt-level closure decision; an Arch private-data
+backup projection or Package revision-only reservation cannot supply it. The
+Linux review now reports GC reservations whose
 plugin ID and Package content digest match the attempt's receipt. This is a
 conservative attempt-to-revision join under the GC read guard; any active GC
-reservation still blocks pruning, and no backup or durable absence attestation
-is implied. Windows now uses the same exact Plugin and Wheel artifact join
-under one GC read guard for every retained launch-intent reference. Its report
+reservation still blocks pruning, and the join grants no durable
+attempt-level absence attestation. Windows now uses the same exact Plugin and
+Wheel artifact join under one GC read guard for every retained launch-intent
+reference. Its report
 also preserves the total active reservation count, so an unrelated reservation
 cannot silently become an attempt-level absence proof. Both Product reviews
 now carry the GC owner's journal revision captured under the same strict read

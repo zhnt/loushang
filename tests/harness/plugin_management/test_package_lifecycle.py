@@ -135,6 +135,10 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     with gate.read_guard():
         with alias.guard() as reserved:
             assert reserved == frozenset()
+        with pytest.raises(PluginPackageGcReservationError) as nested_write:
+            with alias.guard(require_write=True):
+                pass
+        assert nested_write.value.code == "plugin_package_gc_read_guard_nested"
         path.write_bytes(b'{"partial":')
         with pytest.raises(PluginPackageGcReservationError) as nested_invalid:
             with alias.guard():

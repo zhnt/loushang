@@ -29,6 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
 import loushang.coding.package_product_worker_native_install as native_install_module
@@ -3498,6 +3499,46 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         assert reference.native_platform == "linux"
                         assert direct_retention.gc_reservation_revision >= 0
                         assert direct_retention.gc_matching_revision_refs == ()
+                        assert direct_retention.worker_backup_references is not None
+                        assert (
+                            direct_retention.worker_backup_references.references == ()
+                        )
+                        assert (
+                            "worker_backup_references_unverified"
+                            not in direct_retention.missing_proofs
+                        )
+                        with monkeypatch.context() as altered_backup_topology:
+                            altered_backup_topology.setattr(
+                                backup_types_module,
+                                "_SUPPORTED_BACKUP_KINDS",
+                                ("arch_private_data", "worker_attempt"),
+                            )
+                            with pytest.raises(
+                                ValueError,
+                                match="backup topology changed",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        backup_topology_path = (
+                            product.state_root / "coding-backup-types.json"
+                        )
+                        hidden_topology_path = (
+                            product.state_root / "coding-backup-types.hidden"
+                        )
+                        backup_topology_path.rename(hidden_topology_path)
+                        try:
+                            with pytest.raises(
+                                ValueError,
+                                match="absent after Worker history",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        finally:
+                            hidden_topology_path.rename(backup_topology_path)
                         assert direct_retention.unverified_receipt_gate_references == ()
                         assert direct_retention.attempt_record is not None
                         assert history_retention_module._receipt_gate_reference_issue(
@@ -4634,7 +4675,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 assert retention.group_status in {"absent", "prior_boot_absent"}
                 assert "payload_stage_retained" in retention.missing_proofs
-                assert "worker_backup_references_unverified" in (
+                assert retention.worker_backup_references is not None
+                assert retention.worker_backup_references.references == ()
+                assert "worker_backup_references_unverified" not in (
                     retention.missing_proofs
                 )
             elif has_journaled_debt:

@@ -1,7 +1,8 @@
 """Read-only Product evidence for one Linux Worker history-retention decision.
 
-This inventory grants no journal deletion authority. In particular, the
-existing backup and GC owners do not attest to attempt-level references.
+This inventory grants no journal deletion authority. The current Product
+backup type authority attests that Worker backups are unsupported; GC still
+lacks an attempt-level closure decision.
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from loushang.harness.worker.gated_start import (
 )
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
+from .package_product_backup_types import (
+    CodingWorkerBackupReferenceObservationV1,
+    observe_coding_worker_backup_references_under_gc_guard,
+)
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
     CodingProductWorkerRetainedAttemptV1,
@@ -156,6 +161,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     active_gc_reservation_count: int
     gc_reservation_revision: int
     gc_matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
+    worker_backup_references: CodingWorkerBackupReferenceObservationV1 | None
 
     @property
     def attempt_reference(self) -> CodingWorkerAttemptReferenceV1 | None:
@@ -227,12 +233,16 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("gc_reservation_scope_unverified")
         if self.gc_matching_revision_refs:
             missing.append("gc_attempt_package_revision_active")
-        missing.extend(
-            (
-                "receipt_references_unverified",
-                "worker_backup_references_unverified",
-            )
-        )
+        missing.append("receipt_references_unverified")
+        backup = self.worker_backup_references
+        if (
+            backup is None
+            or backup.attempt_id != self.attempt_id
+            or backup.worker_backup_supported is not False
+        ):
+            missing.append("worker_backup_references_unverified")
+        elif backup.references:
+            missing.append("worker_backup_reference_active")
         return tuple(missing)
 
 
@@ -407,6 +417,11 @@ def review_coding_product_worker_history_retention(
                 gc_reservation_revision=gc_snapshot.journal_revision,
                 gc_matching_revision_refs=_matching_gc_revision_refs(
                     attempt_reference, gc_reservations
+                ),
+                worker_backup_references=(
+                    observe_coding_worker_backup_references_under_gc_guard(
+                        product, attempt_id=attempt_id
+                    )
                 ),
             )
 

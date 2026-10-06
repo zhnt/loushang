@@ -302,14 +302,19 @@ class PluginPackageGcReservationJournal:
 
     @contextmanager
     def guard(
-        self, *, before_load: Callable[[], None] | None = None
+        self,
+        *,
+        before_load: Callable[[], None] | None = None,
+        require_write: bool = False,
     ) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+        if type(require_write) is not bool:
+            raise TypeError("GC guard write requirement must be explicit")
         self._assert_parent_current()
         state = self._lock_state
         with state.thread_lock:
             self._assert_parent_current()
             if state.depth:
-                if state.read_only and before_load is not None:
+                if state.read_only and (before_load is not None or require_write):
                     raise self._error(
                         "GC read guard cannot run a writer preflight",
                         "plugin_package_gc_read_guard_nested",

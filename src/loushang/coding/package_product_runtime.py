@@ -112,6 +112,7 @@ from .package_legacy_snapshot_member import (
 from .package_private_data_deletion_journal import (
     CodingArchPrivateDataDeletionJournal,
 )
+from .package_product_backup_types import ensure_coding_product_backup_types
 from .package_product_worker_opt_in import CodingWorkerOptInJournal
 from .package_source_snapshot import require_coding_fresh_settings_without_writes
 from .session_manager import SessionManager
@@ -170,6 +171,12 @@ def open_coding_package_product_state(
     gate = PluginPackageGcReservationJournal(
         state_root / "gc-reservations.jsonl",
         parent_identity=(state_metadata.st_dev, state_metadata.st_ino),
+    )
+    ensure_coding_product_backup_types(
+        state_root=state_root,
+        scope_id=lifecycle.scope_id,
+        epoch_runtime=epoch_runtime,
+        gc_gate=gate,
     )
     desired = PluginDesiredStateLedger(state_root / "desired-state.jsonl", gc_gate=gate)
     management = PluginManagementService(
