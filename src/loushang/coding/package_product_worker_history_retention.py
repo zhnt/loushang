@@ -15,6 +15,9 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.worker.gated_start import (
+    worker_native_group_status_after_restart,
+)
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
 from .package_product_worker_activation_state_journal import (
@@ -104,6 +107,35 @@ def _matching_gc_revision_refs(
     )
 
 
+def _receipt_gate_reference_issue(
+    gate: CodingWorkerStartGateRecordV1,
+    receipt: CodingWorkerReceiptRecordV1 | None,
+    supervisor: WorkerAttemptRecordV1 | None,
+    group_status: GatedGroupStatus,
+) -> str | None:
+    """Require every attempt naming a receipt to have settled native custody."""
+
+    if receipt is None:
+        return "receipt_reference_receipt_absent"
+    if (
+        gate.receipt_fingerprint != receipt.receipt.fingerprint
+        or gate.policy_fingerprint != receipt.receipt.policy.fingerprint
+        or gate.scope_id != receipt.receipt.policy.product_scope_id
+    ):
+        return "receipt_reference_binding_changed"
+    if gate.phase != "bound":
+        return "receipt_reference_gate_unbound"
+    if supervisor is None:
+        return "receipt_reference_supervisor_absent"
+    if supervisor.identity_fingerprint != gate.worker_identity_fingerprint:
+        return "receipt_reference_supervisor_binding_changed"
+    if not supervisor.process_settled:
+        return "receipt_reference_supervisor_unsettled"
+    if group_status not in {"absent", "prior_boot_absent"}:
+        return "receipt_reference_native_absence_unverified"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWorkerHistoryRetentionReviewV1:
     attempt_id: str
@@ -118,6 +150,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     unverified_activation_references: tuple[tuple[str, str], ...]
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
+    unverified_receipt_gate_references: tuple[tuple[str, str], ...]
     payload_stage_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
@@ -184,6 +217,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("activation_receipt_reference_unverified")
         if self.unsettled_receipt_gate_references:
             missing.append("receipt_gate_attempt_unsettled")
+        if self.unverified_receipt_gate_references:
+            missing.append("receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
         if self.active_runtime_lease_ids:
@@ -302,6 +337,7 @@ def review_coding_product_worker_history_retention(
                     unverified_activation.append((reference.attempt_id, code))
             receipt_gate_references: tuple[str, ...] = ()
             unsettled_gate_references: tuple[str, ...] = ()
+            unverified_gate_references: tuple[tuple[str, str], ...] = ()
             if gate is not None:
                 matching_gates = tuple(
                     item
@@ -312,15 +348,31 @@ def review_coding_product_worker_history_retention(
                     item.attempt_id for item in matching_gates
                 )
                 unsettled: list[str] = []
+                unverified: list[tuple[str, str]] = []
                 for item in matching_gates:
                     status = supervisor_by_id.get(item.attempt_id)
-                    if (
-                        item.phase != "bound"
-                        or status is None
-                        or not status.process_settled
-                    ):
-                        unsettled.append(item.attempt_id)
+                    group_status: GatedGroupStatus = (
+                        gated.group_status
+                        if item.attempt_id == attempt_id
+                        else (
+                            "unobserved"
+                            if item.identity is None
+                            else worker_native_group_status_after_restart(item.identity)
+                        )
+                    )
+                    issue = _receipt_gate_reference_issue(
+                        item, receipt, status, group_status
+                    )
+                    if issue is not None:
+                        if issue in {
+                            "receipt_reference_gate_unbound",
+                            "receipt_reference_supervisor_absent",
+                            "receipt_reference_supervisor_unsettled",
+                        }:
+                            unsettled.append(item.attempt_id)
+                        unverified.append((item.attempt_id, issue))
                 unsettled_gate_references = tuple(unsettled)
+                unverified_gate_references = tuple(unverified)
             with product.pinned_state_root_gc_read() as root_fd:
                 payloads = tuple(
                     sorted(
@@ -348,6 +400,7 @@ def review_coding_product_worker_history_retention(
                 unverified_activation_references=tuple(unverified_activation),
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
+                unverified_receipt_gate_references=unverified_gate_references,
                 payload_stage_names=payloads,
                 active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
                 active_gc_reservation_count=len(gc_reservations),

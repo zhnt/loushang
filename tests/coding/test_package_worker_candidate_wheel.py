@@ -3498,6 +3498,14 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         assert reference.native_platform == "linux"
                         assert direct_retention.gc_reservation_revision >= 0
                         assert direct_retention.gc_matching_revision_refs == ()
+                        assert direct_retention.unverified_receipt_gate_references == ()
+                        assert direct_retention.attempt_record is not None
+                        assert history_retention_module._receipt_gate_reference_issue(
+                            direct_gate_attempts[0],
+                            direct_retention.receipt_record,
+                            direct_retention.attempt_record,
+                            "present",
+                        ) == "receipt_reference_native_absence_unverified"
                         mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
                             journal_revision=direct_gate_attempts[0].journal_revision,
                             phase=direct_gate_attempts[0].phase,
@@ -3513,6 +3521,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             ),
                             identity=direct_gate_attempts[0].identity,
                         )
+                        assert history_retention_module._receipt_gate_reference_issue(
+                            mismatched_gate,
+                            direct_retention.receipt_record,
+                            direct_retention.attempt_record,
+                            "absent",
+                        ) == "receipt_reference_binding_changed"
                         assert (
                             replace(
                                 direct_retention, gate_record=mismatched_gate

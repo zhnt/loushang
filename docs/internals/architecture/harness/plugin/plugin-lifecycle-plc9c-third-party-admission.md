@@ -1411,7 +1411,11 @@ references and opt-in decision,
 fresh native group observation, payload inventory, runtime leases, and GC
 reservations while holding the Product owner locks. It also checks every
 retained start-gate reference to the receipt against that attempt's Supervisor
-settlement. It reports the missing
+settlement and a fresh native group absence observation. The review records
+each related gate whose binding, Supervisor, or native absence remains
+unverified; an unsettled attempt cannot be hidden by another attempt using the
+same receipt. This remains read-only evidence and does not yet close receipt
+references across all Product owners. It reports the missing
 attempt-level backup and receipt-reference proofs explicitly and grants no
 prune authority. The GC read guard also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
