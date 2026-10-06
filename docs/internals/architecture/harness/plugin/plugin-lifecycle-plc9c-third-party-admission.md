@@ -1425,6 +1425,11 @@ references across all Product owners. It reports the missing receipt-reference
 proof explicitly and grants no prune authority. The GC read guard also keeps
 nested owner reads strict and
 blocks journal append while a shared read lock is held.
+The same snapshot now records the global retained start-gate, Supervisor, and
+receipt revisions and lists Supervisor attempts with no retained gate. An
+orphan Supervisor is a separate missing proof even when the selected attempt
+is elsewhere. These revision marks are checkpoint inputs, not durable
+anti-reuse or permission to retire history.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

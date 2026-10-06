@@ -3507,6 +3507,18 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         )
                         assert reference.native_platform == "linux"
                         assert direct_retention.gc_reservation_revision >= 0
+                        assert direct_retention.start_gate_history_revision >= (
+                            direct_gate_attempts[0].journal_revision
+                        )
+                        assert direct_retention.attempt_record is not None
+                        assert direct_retention.supervisor_history_revision >= (
+                            direct_retention.attempt_record.record_revision
+                        )
+                        assert direct_retention.receipt_record is not None
+                        assert direct_retention.receipt_history_revision >= (
+                            direct_retention.receipt_record.journal_revision
+                        )
+                        assert direct_retention.unbound_supervisor_attempt_ids == ()
                         assert direct_retention.gc_matching_revision_refs == ()
                         assert direct_retention.worker_backup_references is not None
                         assert (
@@ -7106,6 +7118,13 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
             identity, max_attempts=1
         )
         assert not attempt.process_settled
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.unbound_supervisor_attempt_ids == (attempt_id,)
+        assert review.supervisor_history_revision == attempt.record_revision
+        assert review.start_gate_history_revision == 0
+        assert "supervisor_gate_reference_unverified" in review.missing_proofs
         assert not tuple(product.state_root.glob("worker-payload-*"))
         with pytest.raises(PackageProductGcExecutionError) as blocked:
             gc.prepare()

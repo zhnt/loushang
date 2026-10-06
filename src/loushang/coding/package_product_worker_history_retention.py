@@ -40,7 +40,7 @@ from .package_product_worker_payload import (
 )
 from .package_product_worker_receipt import (
     CodingWorkerReceiptRecordV1,
-    read_coding_product_worker_receipt_record,
+    read_coding_product_worker_receipt_records,
 )
 from .package_product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
@@ -149,6 +149,10 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_record: CodingWorkerReceiptRecordV1 | None
     current_opt_in: CodingWorkerOptInDecisionV1 | None
     group_status: GatedGroupStatus
+    start_gate_history_revision: int
+    supervisor_history_revision: int
+    receipt_history_revision: int
+    unbound_supervisor_attempt_ids: tuple[str, ...]
     activation_state_revision: int | None
     active_activation_references: tuple[tuple[str, str], ...]
     retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
@@ -221,6 +225,8 @@ class CodingWorkerHistoryRetentionReviewV1:
                 missing.append("activation_attempt_binding_changed")
         if self.unverified_activation_references:
             missing.append("activation_receipt_reference_unverified")
+        if self.unbound_supervisor_attempt_ids:
+            missing.append("supervisor_gate_reference_unverified")
         if self.unsettled_receipt_gate_references:
             missing.append("receipt_gate_attempt_unsettled")
         if self.unverified_receipt_gate_references:
@@ -269,11 +275,17 @@ def review_coding_product_worker_history_retention(
             product.assert_root_gc_authority_current()
             gated = _review_offline(product, attempt_id=attempt_id)
             gate = gated.gate_record
+            receipts = read_coding_product_worker_receipt_records(product)
             receipt = (
                 None
                 if gate is None
-                else read_coding_product_worker_receipt_record(
-                    product, receipt_fingerprint=gate.receipt_fingerprint
+                else next(
+                    (
+                        record
+                        for record in receipts
+                        if record.receipt.fingerprint == gate.receipt_fingerprint
+                    ),
+                    None,
                 )
             )
             opt_in = (
@@ -313,6 +325,9 @@ def review_coding_product_worker_history_retention(
             supervisor_by_id = {
                 item.attempt_id: item for item in supervisor.attempts()
             }
+            unbound_supervisor_attempt_ids = tuple(
+                sorted(supervisor_by_id.keys() - gate_by_id.keys())
+            )
             unverified_activation: list[tuple[str, str]] = []
             for reference in retained_activation_references:
                 if reference.attempt_id != attempt_id and (
@@ -402,6 +417,15 @@ def review_coding_product_worker_history_retention(
                 receipt_record=receipt,
                 current_opt_in=opt_in,
                 group_status=gated.group_status,
+                start_gate_history_revision=max(
+                    (item.journal_revision for item in gates), default=0
+                ),
+                supervisor_history_revision=max(
+                    (item.record_revision for item in supervisor_by_id.values()),
+                    default=0,
+                ),
+                receipt_history_revision=len(receipts),
+                unbound_supervisor_attempt_ids=unbound_supervisor_attempt_ids,
                 activation_state_revision=(
                     None
                     if not activation_initialized
