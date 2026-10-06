@@ -3142,6 +3142,15 @@ errors. The generalized verifier and change-gate suite passed 60/60 locally;
 this strengthens the native evidence contract but does not substitute for a
 non-skipped Windows runner result.
 
+The 2026-10-06 full Harness check on `2a9962fc` passed Ruff and mypy over 770
+source files. Its pytest run had 5,572 passes and 121 skips, with two failing
+architecture import-boundary assertions: the new read-only Product preview
+imported a Worker type directly. Commit `cb46e2e2` routes that type through the
+Package Product adapter instead; both failing cases then passed 2/2, and Ruff
+and mypy passed for the changed files. A complete Harness rerun on the fixed
+head remains pending, so this is a focused repair rather than a final green
+gate.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
