@@ -3300,6 +3300,10 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         payloads_before_direct = frozenset(
                             product.state_root.glob("worker-payload-*")
                         )
+                        gate_attempts_before_direct = {
+                            item.attempt_id
+                            for item in CodingWorkerStartGateJournal(product).attempts()
+                        }
                         supervisor_journal = (
                             open_coding_product_worker_supervisor_journal(product)
                         )
@@ -3459,6 +3463,21 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             payloads_before_direct
                         )
                         assert supervisor_journal.incomplete() == incomplete_before_direct
+                        direct_gate_attempts = tuple(
+                            item
+                            for item in CodingWorkerStartGateJournal(product).attempts()
+                            if item.attempt_id not in gate_attempts_before_direct
+                        )
+                        assert len(direct_gate_attempts) == 1
+                        direct_retention = review_coding_product_worker_history_retention(
+                            product, attempt_id=direct_gate_attempts[0].attempt_id
+                        )
+                        assert direct_retention.activation_state_revision is None
+                        assert "activation_state_absent" in direct_retention.missing_proofs
+                        assert (
+                            "receipt_references_unverified"
+                            in direct_retention.missing_proofs
+                        )
                         if disable_while_direct_session_open:
                             with pytest.raises(
                                 PackageProductRuntimeReadError

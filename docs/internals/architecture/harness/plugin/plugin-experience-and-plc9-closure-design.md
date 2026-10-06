@@ -3199,6 +3199,14 @@ coverage, not a single-process order-equivalent Coding gate; exact-head CI
 remains required. The complete `make check-harness` on `ffe8ec6f` passed Ruff,
 mypy over 770 source files, and 5,574 pytest cases with 121 skips and zero
 failures in 21 minutes 56 seconds.
+The next real public Linux Worker Session regression joined each newly
+started start-gate attempt to the read-only retention review after Session
+disposal. Query, disable, and update passed 3/3 in 7 minutes 55 seconds. Each
+review found a settled ordinary attempt but no C5 activation-state journal,
+and retained `activation_state_absent` and
+`receipt_references_unverified` as missing proofs. This makes the W5
+cross-lifecycle reference gap executable evidence rather than an inferred
+permission to prune or open general routing.
 
 ## Independent Review Record
 

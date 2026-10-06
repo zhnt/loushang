@@ -1456,6 +1456,18 @@ repair; it cannot silently accept a shorter history. This closes the active
 tail integrity gap for newly created Product state. History pruning, restore,
 and broader routing still require the separate attempt-level retention and
 anti-reuse proofs above.
+The real public Linux Coding Session route was then checked after query,
+disable, and update. In all three installed-Product cases the newly started
+attempt had durable start-gate and Supervisor settlement, while the separate
+C5 activation-state journal was absent. The read-only retention review
+correctly reported `activation_state_absent` and
+`receipt_references_unverified`; all three Session cases passed with that
+explicit missing proof. The ordinary pending Host currently owns its attempt
+through the start gate and Supervisor rather than the C5 CAS coordinator.
+The C5 canary's durable state test therefore cannot stand in for the ordinary
+Session's receipt-reference proof. W5 must join these lifecycle authorities
+or supply an equally durable Product-owned reference witness before any
+history pruning or general third-party route is accepted.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty
