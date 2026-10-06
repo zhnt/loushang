@@ -137,6 +137,11 @@ class CodingWindowsWorkerActivationStateJournal:
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root,
             ):
                 self._require_root(root, acl)
+                if expected_revision and not self._lock_exists(root):
+                    self._require_no_state_entries(root)
+                    self._require_root(root, acl)
+                    self._product.assert_root_gc_authority_current()
+                    return False
                 self._prepare_lock(root, acl)
                 with journal_file_lock_at(root, _LOCK, "exclusive") as lock:
                     initialized = self._validate_lock(root, acl, lock)

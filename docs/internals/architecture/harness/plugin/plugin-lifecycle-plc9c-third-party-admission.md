@@ -1667,6 +1667,8 @@ and retained attempt projection under Package runtime quiescence and the GC read
 gate; it grants no recovery write. A Coding Worker candidate Product can now
 open a policy-checked Windows C5 store, while a builtins-only Product is
 rejected. The store is not yet passed to the ordinary Windows pending Host.
+An expected revision above zero against a genuinely absent C5 owner now returns
+a CAS miss without creating its lock; orphan state still fails closed.
 Its native reopen, GC join, and
 complete-record-loss test is part of
 the next strict Windows CI report. Until that report passes and the ordinary

@@ -92,6 +92,11 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
             )
             initial = _initial_state(restart_budget=3)
             second = {**initial, "stateRevision": 2}
+            assert not journal.compare_and_swap(expected_revision=1, document=second)
+            assert not any(
+                name.startswith("worker-activation-state")
+                for name in os.listdir(product.state_root)
+            )
             assert journal.compare_and_swap(expected_revision=0, document=initial)
             assert journal.compare_and_swap(expected_revision=1, document=second)
             assert journal.load() == second
