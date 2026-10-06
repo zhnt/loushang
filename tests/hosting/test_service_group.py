@@ -10,10 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from loushang.hosting import service_group as service_group_module
 from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceObserverV1
 from loushang.hosting.service_group import (
     LinuxServiceGroupObservationV1,
+    linux_current_boot_id,
     linux_service_group_absent_after_restart,
     linux_service_group_recovery_status,
 )
@@ -23,6 +25,20 @@ from .test_service_process import launched as launched
 pytestmark = pytest.mark.skipif(
     sys.platform != "linux", reason="Linux service group observations"
 )
+
+
+@pytest.mark.parametrize("boot", [b"", b"not-a-boot-id", b"\xff" * 36])
+def test_current_boot_identity_refuses_invalid_procfs_value(monkeypatch, boot):
+    original = service_group_module._read_file
+
+    def changed(path, *args, **kwargs):
+        if path == "/proc/sys/kernel/random/boot_id":
+            return boot
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(service_group_module, "_read_file", changed)
+    with pytest.raises(HostingError):
+        linux_current_boot_id()
 
 
 def test_original_live_group_then_reaped_exit(launched, monkeypatch):
@@ -90,6 +106,7 @@ def test_reopened_group_absence_requires_same_boot_and_namespace(
 ):
     owner, endpoint, _, _ = launched
     identity = owner.identity
+    assert linux_current_boot_id() == identity.boot_id
     assert not linux_service_group_absent_after_restart(identity)
     assert linux_service_group_recovery_status(identity) == "present"
     assert _reopened_group_status(identity) == "present"

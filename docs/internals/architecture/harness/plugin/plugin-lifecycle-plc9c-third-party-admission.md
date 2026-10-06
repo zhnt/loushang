@@ -1440,6 +1440,17 @@ its history continues to report the missing receipt-reference proof. This
 read-only result grants no checkpoint or pruning authority. The GC read guard
 also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
+Linux Hosting now exposes a strict current boot ID alongside its existing
+application-scoped machine key. A Coding Product cleanup-evidence owner uses
+both identities to re-open an exact retention review before accepting a C5
+tree-settlement witness: the selected gate must be bound, the Supervisor
+process settled, the native group absent on the same boot, the payload and
+repair debts absent, and the retained C5 attempt must match the receipt,
+generation, host, and boot. A changed witness or generation refuses. The
+real installed Product test exercises this verifier with a synthetic settled
+C5 history; the ordinary pending Host does not invoke it yet. Changed-boot
+absence and registered-lease expiry methods remain closed. This verification
+port alone does not write C5 transitions or authorize history pruning.
 The same snapshot now records the global retained start-gate, Supervisor, and
 receipt revisions and lists Supervisor attempts with no retained gate. It also
 reads the complete opt-in operation history under the Product GC read gate and

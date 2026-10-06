@@ -83,6 +83,9 @@ from loushang.coding.package_product_worker_capability import (
     CodingProductWorkerCapabilityAuthority,
     CodingWorkerCapabilityBindingError,
 )
+from loushang.coding.package_product_worker_cleanup_evidence import (
+    CodingPosixWorkerCleanupEvidenceAuthority,
+)
 from loushang.coding.package_product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
@@ -5255,6 +5258,9 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         gate = gates[0]
         receipt = gate.receipt_fingerprint
         attempt_id = gate.attempt_id
+        cleanup_evidence = CodingPosixWorkerCleanupEvidenceAuthority(product)
+        host_identity = cleanup_evidence.host_identity
+        boot_identity = cleanup_evidence.boot_identity
         receipt_gates = tuple(
             item for item in gates if item.receipt_fingerprint == receipt
         )
@@ -5273,6 +5279,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 receipt=receipt, attempt_id=referenced_attempt_id
             )
             c5_attempt["policyFingerprint"] = receipt_gate.policy_fingerprint
+            c5_attempt["hostIdentity"] = host_identity
+            c5_attempt["bootIdentity"] = boot_identity
             registered_attempts[key] = c5_attempt
             settled_attempt = dict(c5_attempt)
             settled_attempt.update(
@@ -5283,8 +5291,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                     receipt_fingerprint=receipt,
                     attempt_id=referenced_attempt_id,
                     owner_generation=1,
-                    host_identity="host-a",
-                    boot_identity="boot-a",
+                    host_identity=host_identity,
+                    boot_identity=boot_identity,
                     protocol_terminal=True,
                     domain_retired=True,
                     tree_settled=True,
@@ -5317,6 +5325,36 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         assert retention.global_unverified_activation_references == ()
         assert retention.receipt_references_verified
         assert "receipt_references_unverified" not in retention.missing_proofs
+        assert cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=retention,
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
+        assert not cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=replace(retention, group_status="present"),
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
+        assert not cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=2,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=retention,
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
         retained_reader = (
             activation_state_journal_module.CodingProductWorkerActivationStateJournal.retained_attempts_read_only
         )
