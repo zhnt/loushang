@@ -19,6 +19,9 @@ from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_posix_gc_history import (
+    CodingPosixWorkerGcHistoryAuthority,
+)
 from loushang.coding.package_product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
@@ -158,6 +161,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else open_posix_local_wheel_product_root_gc(
                     product,
                     repair_authority=_CodingPackageGcRepairAuthority(),
+                    worker_history_authority=CodingPosixWorkerGcHistoryAuthority(
+                        product
+                    ),
                 )
             )
             document = _run(gc, args)

@@ -179,7 +179,9 @@ class PackageProductGcWorkerHistoryAuthorityPort(Protocol):
     """Product-specific proof that retained Worker history has no GC debt."""
 
     @property
-    def product_owner(self) -> WindowsLocalWheelProductSessionOwner: ...
+    def product_owner(
+        self,
+    ) -> PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner: ...
 
     def require_settled(self, *, observed_names: tuple[str, ...]) -> None: ...
 
@@ -220,8 +222,7 @@ class LocalWheelProductRootGcOwner:
             or (
                 self.worker_history_authority is not None
                 and (
-                    not isinstance(self.product, WindowsLocalWheelProductSessionOwner)
-                    or self.worker_history_authority.product_owner is not self.product
+                    self.worker_history_authority.product_owner is not self.product
                     or not callable(
                         getattr(self.worker_history_authority, "require_settled", None)
                     )
@@ -289,7 +290,24 @@ class LocalWheelProductRootGcOwner:
             )
             for name in names
         )
-        if has_windows_history:
+        has_posix_history = isinstance(
+            self.product, PosixLocalWheelProductSessionOwner
+        ) and any(
+            name.casefold().startswith(
+                (
+                    "worker-start-gates",
+                    ".worker-start-gates",
+                    "worker-supervisor",
+                    ".worker-supervisor",
+                    "worker-activation-receipts",
+                    ".worker-activation-receipts",
+                    "worker-activation-state",
+                    ".worker-activation-state",
+                )
+            )
+            for name in names
+        )
+        if has_windows_history or has_posix_history:
             try:
                 if self.worker_history_authority is None:
                     raise ValueError("Worker history authority is absent")
@@ -1085,12 +1103,17 @@ def open_posix_local_wheel_product_root_gc(
     product: PosixLocalWheelProductSessionOwner,
     *,
     repair_authority: PackageProductGcDependencyRepairAuthorityPort | None = None,
+    worker_history_authority: PackageProductGcWorkerHistoryAuthorityPort | None = None,
 ) -> LocalWheelProductRootGcOwner:
     """Open persisted B owners; opening alone grants no deletion or seal."""
 
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError("Fenced local-Wheel Product owner is required")
-    return _open_local_wheel_product_root_gc(product, repair_authority=repair_authority)
+    return _open_local_wheel_product_root_gc(
+        product,
+        repair_authority=repair_authority,
+        worker_history_authority=worker_history_authority,
+    )
 
 
 def open_windows_local_wheel_product_root_gc(

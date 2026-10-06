@@ -97,6 +97,17 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         with self._reading():
             return super().incomplete()
 
+    def attempts(self) -> tuple[WorkerAttemptRecordV1, ...]:
+        """Read every retained attempt's latest record without creating state."""
+
+        with self._reading(), self._exclusive():
+            latest: dict[str, WorkerAttemptRecordV1] = {}
+            for record in self._load_unlocked():
+                latest[record.attempt_id] = record
+            return tuple(
+                sorted(latest.values(), key=lambda record: record.record_revision)
+            )
+
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
         with self._product.gc_gate.guard(), self._thread_lock:

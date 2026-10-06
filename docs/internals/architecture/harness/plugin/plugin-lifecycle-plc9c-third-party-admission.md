@@ -1468,6 +1468,39 @@ The C5 canary's durable state test therefore cannot stand in for the ordinary
 Session's receipt-reference proof. W5 must join these lifecycle authorities
 or supply an equally durable Product-owned reference witness before any
 history pruning or general third-party route is accepted.
+
+The next implementation boundary is an attempt-level Product reference
+authority shared by the ordinary pending Host and C5. It must record the
+attempt, receipt fingerprint, selected Package revision, and native platform
+before either path can make a native effect. Cleanup may close that reference
+only after Supervisor and native process settlement, payload debt retirement,
+and the exact Product selection check. A crash between registration and
+settlement remains an open reference on reopen. The retention reviewer must
+read this authority under the Product GC gate and reject an absent or changed
+record; initializing an empty C5 journal after an ordinary launch would not
+prove the old attempt. Product backup and GC owners then need typed
+attempt-level absence attestations for that same reference, rather than
+inferring absence from the Arch private-data backup projection or a Package
+revision-only reservation. Only after those joins can a checkpoint carry a
+durable anti-reuse high-water mark and retire sealed segments. Linux and
+Windows must use the same reference semantics, with their respective native
+settlement witnesses.
+Linux Package GC now consumes a Coding-owned, read-only Worker history
+authority through the existing Product GC port. When Worker history is present,
+an unbound authority refuses GC. The bound authority requires every retained
+start-gate attempt to have a matching process-settled Supervisor record and
+historical receipt, verifies native group absence, and refuses active C5
+state or changed journal bytes. It can inspect historical gates after the
+candidate is no longer in the current Product policy; only new gate writes
+still require that policy. A real installed public Session passed GC after
+settlement and refused GC when its retained gate bytes changed. A separate
+Product case first reproduced GC success with a missing payload and unsettled
+Supervisor attempt; it now refuses both an absent authority and the bound
+authority. A synthetic attempt with settled Supervisor history but no gate
+also remains GC debt after payload repair. These checks protect Package root
+deletion and retain all Worker history. They do not provide the shared
+attempt-reference, backup, checkpoint, or anti-reuse proofs required to prune
+history or open general routing.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty

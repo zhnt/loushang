@@ -36,7 +36,6 @@ from loushang.harness.worker.contracts import (
 )
 from loushang.harness.worker.journal import (
     WorkerAttemptRecordV1,
-    WorkerSupervisorJournal,
     WorkerSupervisorJournalError,
 )
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
@@ -108,7 +107,7 @@ class CodingProductWorkerPendingLaunchV1:
 
 def open_coding_product_worker_supervisor_journal(
     product: PosixLocalWheelProductSessionOwner,
-) -> WorkerSupervisorJournal:
+) -> CodingProductWorkerSupervisorJournal:
     """Bind every Coding Worker attempt to this Product's durable state root."""
 
     if not isinstance(product, PosixLocalWheelProductSessionOwner):

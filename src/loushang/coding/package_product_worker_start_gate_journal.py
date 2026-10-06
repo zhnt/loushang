@@ -249,12 +249,8 @@ class CodingWorkerStartGateJournal:
         if (
             not isinstance(product, PosixLocalWheelProductSessionOwner)
             or product.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
         ):
-            raise ValueError("Coding Worker candidate Product owner is required")
+            raise ValueError("Coding Product owner is required")
         self._product = product
         self._path = product.state_root / _FILE_NAME
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
@@ -306,6 +302,11 @@ class CodingWorkerStartGateJournal:
         native_closure_digest: str,
         identity: WorkerNativeProcessIdentityV1 | None = None,
     ) -> CodingWorkerStartGateRecordV1:
+        if not any(
+            binding.source_trust_class == "local-worker-candidate"
+            for binding in self._product.policy.bindings
+        ):
+            raise ValueError("Coding Worker candidate Product owner is required")
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             with self._bound_journal() as rooted:

@@ -145,6 +145,9 @@ from loushang.coding.package_product_worker_policy import (
     coding_worker_session_scope_id,
     derive_coding_selected_worker_policy,
 )
+from loushang.coding.package_product_worker_posix_gc_history import (
+    CodingPosixWorkerGcHistoryAuthority,
+)
 from loushang.coding.package_product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
     CodingWorkerProviderCandidateError,
@@ -5076,6 +5079,36 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         monkeypatch,
         direct_entry_only=True,
     )
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    reopened = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = reopened.runtime_owner.product_owner
+        gates = CodingWorkerStartGateJournal(product).attempts()
+        assert gates
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        gc.prepare()
+        gate_path = CodingWorkerStartGateJournal(product).path
+        retained_gate = gate_path.read_bytes()
+        gate_path.write_bytes(retained_gate + b"{}\n")
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as changed:
+                gc.prepare()
+            assert changed.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            gate_path.write_bytes(retained_gate)
+        gc.prepare()
+    finally:
+        reopened.close()
 
 
 @pytest.mark.requires_host_runtime
@@ -6648,7 +6681,12 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
                     )
                 finally:
                     update_runtime.dispose_runtime()
-                gc = open_posix_local_wheel_product_root_gc(worker_product)
+                gc = open_posix_local_wheel_product_root_gc(
+                    worker_product,
+                    worker_history_authority=CodingPosixWorkerGcHistoryAuthority(
+                        worker_product
+                    ),
+                )
                 with pytest.raises(PackageProductGcExecutionError) as live_gc:
                     gc.prepare()
                 assert live_gc.value.code == "plugin_package_gc_runtime_active"
@@ -6676,7 +6714,12 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
         finally:
             runtime.dispose_runtime()
         if shape == "valid":
-            gc = open_posix_local_wheel_product_root_gc(worker_product)
+            gc = open_posix_local_wheel_product_root_gc(
+                worker_product,
+                worker_history_authority=CodingPosixWorkerGcHistoryAuthority(
+                    worker_product
+                ),
+            )
             gc.prepare()
             old_candidate = next(
                 item
@@ -6821,6 +6864,77 @@ def test_worker_payload_gc_scan_keeps_original_product_root_during_swap(
         with pytest.raises(PackageProductGcExecutionError) as blocked:
             gc._require_no_worker_payload_debt()
         assert blocked.value.code == "plugin_package_gc_worker_payload_unsettled"
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_package_gc_refuses_unsettled_history_without_payload(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        lifecycle,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        gc = open_posix_local_wheel_product_root_gc(product)
+        gc.prepare()
+        authority = CodingPosixWorkerGcHistoryAuthority(product)
+        with_authority = open_posix_local_wheel_product_root_gc(
+            product, worker_history_authority=authority
+        )
+        entries_before_read = set(os.listdir(product.state_root))
+        authority.require_settled(observed_names=tuple(os.listdir(product.state_root)))
+        assert set(os.listdir(product.state_root)) == entries_before_read
+        attempt_id = "35" * 16
+        identity = WorkerLaunchIdentityV1(
+            plugin_id="workerprobe",
+            plugin_revision_digest="a" * 64,
+            contribution_id="query-provider",
+            owner_id="coding",
+            product_id="coding",
+            scope_id="test-scope",
+            owner_generation=1,
+            declaration_fingerprint="b" * 64,
+            worker_configuration_fingerprint="c" * 64,
+            attempt_id=attempt_id,
+            supervisor_epoch=1,
+            session_nonce="d" * 64,
+        )
+        attempt = open_coding_product_worker_supervisor_journal(product).claim(
+            identity, max_attempts=1
+        )
+        assert not attempt.process_settled
+        assert not tuple(product.state_root.glob("worker-payload-*"))
+        with pytest.raises(PackageProductGcExecutionError) as blocked:
+            gc.prepare()
+        assert blocked.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(PackageProductGcExecutionError) as unsettled:
+            with_authority.prepare()
+        assert unsettled.value.code == "plugin_package_gc_worker_history_unsettled"
     finally:
         owner.close()
 
@@ -7231,7 +7345,10 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             preview_coding_product_worker_payload_debt(product, attempt_id=attempt_id)
             == plan
         )
-        gc = open_posix_local_wheel_product_root_gc(product)
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
         with pytest.raises(PackageProductGcExecutionError):
             gc.prepare()
         replacement_stage = product.state_root / "replacement-complete-worker-stage"
@@ -7403,7 +7520,11 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             held_intent.rename(intent)
         else:
             replacement_stage.rmdir()
-        gc.prepare()
+        with pytest.raises(PackageProductGcExecutionError) as orphan_history:
+            gc.prepare()
+        assert orphan_history.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
     finally:
         owner.close()
 

@@ -3217,6 +3217,23 @@ The complete file was then rerun with `not live` and native host-runtime cases
 enabled on `b6502668`: 43 passed, one platform-conditional skip, and zero
 failures in 24 minutes 22 seconds. The single skipped case does not supply a
 Windows-native report; the dedicated Windows Session CI gate remains open.
+Linux Package GC then gained a read-only Worker history authority. A
+regression first proved that GC accepted an unsettled Supervisor attempt after
+its payload directory disappeared. The fixed GC gate refuses that attempt
+with or without the bound authority, while a real installed public Session
+passes GC after complete settlement and refuses changed retained gate bytes.
+The focused Product positive/negative run passed 2/2. Five synthetic payload
+repair variants now retain GC debt after their stage is removed because their
+Supervisor record has no start-gate reference; the focused repaired case
+passed. This is Package root deletion protection, not Worker history pruning
+or a general third-party route.
+The complete offline Worker candidate and Package GC CLI files passed
+35 tests with 12 existing host-runtime skips after those call sites were
+updated. Architecture documentation checks passed 10/10. Before this GC
+change, the same head passed the complete Hosting gate (513 passed,
+53 skipped), AppHost gate (2,758 passed, 12 skipped, all G8/G9/G10 evidence
+and installed canary), and Architecture suite (654 passed); those broad
+results are a pre-change baseline, not exact-head final regression.
 
 ## Independent Review Record
 

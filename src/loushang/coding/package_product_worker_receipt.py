@@ -791,6 +791,23 @@ def read_coding_product_worker_receipt_record(
         or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
     ):
         raise ValueError("Coding Worker receipt fingerprint is invalid")
+    return next(
+        (
+            record
+            for record in read_coding_product_worker_receipt_records(product)
+            if record.receipt.fingerprint == receipt_fingerprint
+        ),
+        None,
+    )
+
+
+def read_coding_product_worker_receipt_records(
+    product: PosixLocalWheelProductSessionOwner,
+) -> tuple[CodingWorkerReceiptRecordV1, ...]:
+    """Read all exact historical receipts without creating Product state."""
+
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError("Coding Worker Product owner is required")
     path = product.state_root / "worker-activation-receipts.jsonl"
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     with product.gc_gate.guard():
@@ -829,14 +846,7 @@ def read_coding_product_worker_receipt_record(
                 raise CodingWorkerReceiptError(
                     "coding_worker_receipt_state_root_changed"
                 )
-            return next(
-                (
-                    record
-                    for record in records
-                    if record.receipt.fingerprint == receipt_fingerprint
-                ),
-                None,
-            )
+            return records
         finally:
             os.close(root_fd)
 
@@ -1054,4 +1064,5 @@ __all__ = [
     "open_coding_product_selected_worker_receipt_owner",
     "open_coding_selected_worker_receipt_owner",
     "read_coding_product_worker_receipt_record",
+    "read_coding_product_worker_receipt_records",
 ]
