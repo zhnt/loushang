@@ -3234,6 +3234,13 @@ change, the same head passed the complete Hosting gate (513 passed,
 53 skipped), AppHost gate (2,758 passed, 12 skipped, all G8/G9/G10 evidence
 and installed canary), and Architecture suite (654 passed); those broad
 results are a pre-change baseline, not exact-head final regression.
+The complete `make check-harness` on `68100ffb` passed Ruff and mypy over
+770 source files; pytest had 5,572 passes, 121 skips, and two failures because
+the existing C50/C54 import inventories did not yet name the new Linux GC
+history owner. Its only Harness Worker import is the native group observer.
+Both exact architecture assertions passed 2/2 after the inventories were
+updated. This focused repair does not replace a complete Harness rerun on the
+repaired head.
 
 ## Independent Review Record
 

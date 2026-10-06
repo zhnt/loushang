@@ -24,6 +24,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_history_retention.py": {
         "loushang.harness.worker.journal"
     },
+    CODING_ROOT / "package_product_worker_posix_gc_history.py": {
+        "loushang.harness.worker.gated_start"
+    },
     CODING_ROOT / "package_product_worker_start_gate.py": {
         "loushang.harness.worker._native_profile_bridge",
         "loushang.harness.worker.contracts",

@@ -898,6 +898,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_capability.py",
         CODING_ROOT / "package_product_worker_activation_state_journal.py",
         CODING_ROOT / "package_product_worker_history_retention.py",
+        CODING_ROOT / "package_product_worker_posix_gc_history.py",
         CODING_ROOT / "package_product_worker_installed_native.py",
         CODING_ROOT / "package_product_worker_native_release.py",
         CODING_ROOT / "package_product_worker_payload.py",
