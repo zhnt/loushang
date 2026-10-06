@@ -301,7 +301,8 @@ class _PreparedComponentAttempt:
         if now < admission.issued_at or now >= admission.expires_at:
             _raise_host(
                 "capability_provider_admission_not_current",
-                "Selected Capability Provider admission expired before start.",
+                "Selected Capability Provider admission expired before start: "
+                f"{self.resolved.capability_id}.",
             )
         self.lifecycle.validate_current(
             self.reservation,

@@ -19,6 +19,7 @@ from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from struct import pack_into
+from time import monotonic
 from unittest.mock import patch
 
 import pytest
@@ -689,12 +690,23 @@ def test_windows_candidate_ordinary_session_uses_fresh_b_product(
                 windows_candidate=True, worker_candidates=True
             )
             try:
+                foreign_manager = asyncio.run(
+                    SessionManager.new(
+                        session_dir=tmp_path / "foreign-sessions",
+                        cwd=str(workspace),
+                        session_id="plc9-windows-foreign-owner",
+                        persist=False,
+                    )
+                )
                 foreign_factory = foreign_selection.factory_for_session(
-                    manager, settings_manager=settings
+                    foreign_manager, settings_manager=settings
                 )
                 assert foreign_factory is not None
-                with pytest.raises(RuntimeError, match="owner changed"):
-                    selection.product_owner_for_factory(foreign_factory)
+                try:
+                    with pytest.raises(RuntimeError, match="owner changed"):
+                        selection.product_owner_for_factory(foreign_factory)
+                finally:
+                    foreign_factory.dispose_unbound_runtime()
             finally:
                 foreign_selection.close()
             session = create_agent_session(
@@ -3992,6 +4004,7 @@ finally:
                                         defer_materialization=False,
                                     )
                                 )
+                                session_start = monotonic()
                                 ordinary_session = create_agent_session(
                                     session_manager=ordinary_manager,
                                     model=query_model,
@@ -4000,8 +4013,14 @@ finally:
                                     ),
                                     worker_candidate_plugin_id="workerprobe",
                                 )
+                                print(
+                                    "windows-public-worker-session-created:"
+                                    f"{monotonic() - session_start:.3f}s",
+                                    flush=True,
+                                )
 
                                 async def exercise_direct_worker() -> None:
+                                    prepare_start = monotonic()
                                     try:
                                         await ordinary_session.prepare_model_call_runtime()
                                         assert (
@@ -4017,6 +4036,11 @@ finally:
                                             )
                                             os._exit(7)
                                     finally:
+                                        print(
+                                            "windows-public-worker-graph-prepare:"
+                                            f"{monotonic() - prepare_start:.3f}s",
+                                            flush=True,
+                                        )
                                         await ordinary_session.dispose()
 
                                 asyncio.run(exercise_direct_worker())
