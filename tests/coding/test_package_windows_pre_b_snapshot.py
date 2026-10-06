@@ -3062,6 +3062,45 @@ module["_exercise_windows_worker_wheel_transaction"](
                 inspected = json.loads(capsys.readouterr().out.splitlines()[-1])
                 assert inspected["c5Phase"] == "published"
                 assert inspected["orphanLeaseCount"] == 1
+                with patch(
+                    "loushang.coding.package_product_worker_windows_crash_recovery.settle_coding_windows_product_worker_crash_native",
+                    side_effect=OSError("injected native recovery pause"),
+                ):
+                    assert (
+                        windows_worker_candidate_main(
+                            (*args, "recover-crash", "--attempt-id", attempt_id)
+                        )
+                        == 1
+                    )
+                assert "windows_worker_candidate_recovery_unavailable" in (
+                    capsys.readouterr().err
+                )
+                after_supervisor = review_coding_windows_product_worker_orphan_runtime(
+                    product, attempt_id=attempt_id
+                )
+                assert after_supervisor.attempt is not None
+                assert after_supervisor.attempt.supervisor_phase == "process_settled"
+                assert after_supervisor.attempt.native_phase != "settled"
+                with patch(
+                    "loushang.coding.package_product_worker_windows_crash_recovery.settle_coding_windows_product_worker_crash_c5",
+                    side_effect=OSError("injected C5 recovery pause"),
+                ):
+                    assert (
+                        windows_worker_candidate_main(
+                            (*args, "recover-crash", "--attempt-id", attempt_id)
+                        )
+                        == 1
+                    )
+                assert "windows_worker_candidate_recovery_unavailable" in (
+                    capsys.readouterr().err
+                )
+                before_c5 = review_coding_windows_product_worker_orphan_runtime(
+                    product, attempt_id=attempt_id
+                )
+                assert before_c5.attempt is not None
+                assert before_c5.attempt.native_phase == "settled"
+                assert before_c5.attempt.payload_directory_identity is None
+                assert before_c5.orphan_leases == ()
                 assert (
                     windows_worker_candidate_main(
                         (*args, "recover-crash", "--attempt-id", attempt_id)

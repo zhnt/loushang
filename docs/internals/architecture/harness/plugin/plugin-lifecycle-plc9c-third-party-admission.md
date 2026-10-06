@@ -1701,7 +1701,11 @@ place of `inspect`) now opens
 the fenced Product owner for one pathless inspection or ordered recovery. It
 refuses other platforms and does not open an unflagged Session route. The native
 Hosted crash case exercises inspect and recovery through this CLI; until its
-Windows report passes, the command remains a candidate surface.
+Windows report passes, the command remains a candidate surface. That native
+case now stops recovery once after Supervisor settlement and once after stage
+retirement, then reruns the CLI from each persisted phase before accepting C5
+settlement. The first resumed path must not restart a settled Supervisor; the
+second must not repeat native, lease, or stage effects.
 A dedicated native normal-exit case now retains a retired C5 test attempt and
 asks this owner to verify the real settled Supervisor, LPAC journal fingerprint,
 and absent named Job. It also injects a present Job and a changed LPAC witness;
