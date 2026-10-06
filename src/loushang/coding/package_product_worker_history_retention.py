@@ -200,6 +200,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
     unverified_activation_references: tuple[tuple[str, str], ...]
     global_unverified_activation_references: tuple[tuple[str, str], ...]
+    global_unverified_opt_in_references: tuple[tuple[str, str], ...]
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     unverified_receipt_gate_references: tuple[tuple[str, str], ...]
@@ -275,6 +276,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("activation_receipt_reference_unverified")
         if self.global_unverified_activation_references:
             missing.append("global_activation_reference_unverified")
+        if self.global_unverified_opt_in_references:
+            missing.append("global_opt_in_reference_unverified")
         if self.unbound_supervisor_attempt_ids:
             missing.append("supervisor_gate_reference_unverified")
         if self.unsettled_receipt_gate_references:
@@ -355,24 +358,37 @@ def review_coding_product_worker_history_retention(
                 scope_id=product.policy.project_scope_id,
                 gc_gate=product.gc_gate,
             )._history_under_gc_guard()
-            historical_opt_in_verified = False
-            if receipt is not None:
-                historical_decisions = tuple(
+            decisions_by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
+            for decision in opt_in_history:
+                decisions_by_digest.setdefault(decision.decision_digest, []).append(
                     decision
-                    for decision in opt_in_history
-                    if decision.decision_digest == receipt.opt_in_decision_digest
                 )
-                historical_opt_in_verified = (
-                    len(historical_decisions) == 1
-                    and historical_decisions[0].action == "allow"
-                    and historical_decisions[0].plugin_id
-                    == receipt.receipt.policy.plugin_id
-                    and historical_decisions[0].scope_id == receipt.scope_id
-                    and historical_decisions[0].generation
-                    == receipt.receipt.policy.owner_selection_generation
-                    and historical_decisions[0].kill_switch_generation
-                    == receipt.receipt.policy.kill_switch_generation
+            unverified_opt_in: list[tuple[str, str]] = []
+            for retained_receipt in receipts:
+                decisions = decisions_by_digest.get(
+                    retained_receipt.opt_in_decision_digest, []
                 )
+                policy = retained_receipt.receipt.policy
+                if (
+                    len(decisions) != 1
+                    or decisions[0].action != "allow"
+                    or decisions[0].plugin_id != policy.plugin_id
+                    or decisions[0].scope_id != retained_receipt.scope_id
+                    or decisions[0].generation != policy.owner_selection_generation
+                    or decisions[0].kill_switch_generation
+                    != policy.kill_switch_generation
+                ):
+                    unverified_opt_in.append(
+                        (
+                            retained_receipt.receipt.fingerprint,
+                            "historical_opt_in_unverified",
+                        )
+                    )
+            global_unverified_opt_in = tuple(sorted(unverified_opt_in))
+            historical_opt_in_verified = receipt is not None and not any(
+                fingerprint == receipt.receipt.fingerprint
+                for fingerprint, _ in global_unverified_opt_in
+            )
             activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
             )
@@ -498,6 +514,7 @@ def review_coding_product_worker_history_retention(
             receipt_references_verified = (
                 activation_initialized
                 and historical_opt_in_verified
+                and not global_unverified_opt_in
                 and receipt is not None
                 and gate is not None
                 and bool(receipt_gate_references)
@@ -586,6 +603,7 @@ def review_coding_product_worker_history_retention(
                 global_unverified_activation_references=tuple(
                     sorted(global_unverified_activation)
                 ),
+                global_unverified_opt_in_references=global_unverified_opt_in,
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 unverified_receipt_gate_references=unverified_gate_references,

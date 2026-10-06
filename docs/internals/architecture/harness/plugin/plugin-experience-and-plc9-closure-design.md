@@ -3296,6 +3296,13 @@ passed 29 tests, skipped seven platform-conditional cases, and deselected
 limit could not accommodate that exact scope plus setup time, its limit is now
 45 minutes. This does not replace the next pushed-head CI gate or the native
 Windows report for the new changes.
+The Linux retention review now checks every retained receipt's historical
+opt-in binding in the same Product snapshot. A real installed-Product case
+passed with an injected second typed receipt lacking its historical allow:
+the unrelated first receipt could no longer claim globally verified references.
+The focused regression passed 1/1; this remains read-only checkpoint input.
+The complete offline Worker candidate file then passed 35 tests with 12
+expected host-runtime skips and zero failures.
 
 ## Independent Review Record
 

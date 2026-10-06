@@ -1686,6 +1686,12 @@ generation, and kill-switch generation. Its real installed-Product regression
 passed the positive and missing-history cases; missing history also prevents
 the review from claiming verified receipt references. This is a read-only
 checkpoint input and grants no retirement or pruning authority.
+The review now applies that join to every retained receipt in the same Product
+snapshot. An injected second typed receipt with no matching historical allow
+becomes a global unverified opt-in reference and prevents the otherwise clean
+first receipt from claiming verified references. The installed-Product positive
+and this negative passed in one focused regression. This still does not
+publish a checkpoint or authorize sealed-segment deletion.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty

@@ -5374,9 +5374,38 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         )
         assert retention.unverified_activation_references == ()
         assert retention.global_unverified_activation_references == ()
+        assert retention.global_unverified_opt_in_references == ()
         assert retention.receipt_references_verified
         assert retention.historical_opt_in_verified
         assert "receipt_references_unverified" not in retention.missing_proofs
+        retained_receipts = receipt_journal_module.read_coding_product_worker_receipt_records(
+            product
+        )
+        orphan_receipt = replace(
+            retained_receipts[-1].receipt,
+            issue_sequence=len(retained_receipts) + 1,
+            issue_nonce="unmatched-opt-in-history",
+        )
+        orphan_record = receipt_journal_module.CodingWorkerReceiptRecordV1.create(
+            journal_revision=orphan_receipt.issue_sequence,
+            scope_id=product.policy.project_scope_id,
+            opt_in_decision_digest="f" * 64,
+            receipt=orphan_receipt,
+        )
+        with monkeypatch.context() as orphaned_receipt_history:
+            orphaned_receipt_history.setattr(
+                history_retention_module,
+                "read_coding_product_worker_receipt_records",
+                lambda _product: (*retained_receipts, orphan_record),
+            )
+            unbound_elsewhere = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert unbound_elsewhere.global_unverified_opt_in_references == (
+                (orphan_receipt.fingerprint, "historical_opt_in_unverified"),
+            )
+            assert "global_opt_in_reference_unverified" in unbound_elsewhere.missing_proofs
+            assert not unbound_elsewhere.receipt_references_verified
         with monkeypatch.context() as missing_opt_in_history:
             missing_opt_in_history.setattr(
                 CodingWorkerOptInJournal,
