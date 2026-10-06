@@ -14,6 +14,7 @@ from typing import Literal, cast
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
 from .package_product_worker_activation_state_journal import (
@@ -51,6 +52,7 @@ class CodingWorkerAttemptReferenceV1:
     """
 
     attempt_id: str
+    plugin_id: str
     receipt_fingerprint: str
     selected_package_revision_digest: str
     selected_locator_revision: str
@@ -75,12 +77,36 @@ def _attempt_reference(
         return None
     return CodingWorkerAttemptReferenceV1(
         attempt_id=gate.attempt_id,
+        plugin_id=policy.plugin_id,
         receipt_fingerprint=gate.receipt_fingerprint,
         selected_package_revision_digest=policy.plugin_revision_digest,
         selected_locator_revision=policy.selected_locator_revision,
         native_platform="linux",
         gate_revision=gate.journal_revision,
         gate_phase=gate.phase,
+    )
+
+
+def _matching_gc_revision_refs(
+    reference: CodingWorkerAttemptReferenceV1 | None,
+    reservations: frozenset[PluginPackageRevisionRefV1],
+) -> tuple[PluginPackageRevisionRefV1, ...]:
+    if reference is None:
+        return ()
+    return tuple(
+        sorted(
+            (
+                item
+                for item in reservations
+                if item.plugin_id == reference.plugin_id
+                and item.package_content_digest
+                == reference.selected_package_revision_digest
+            ),
+            key=lambda item: (
+                item.dependency_lock_digest,
+                item.package_source_identity,
+            ),
+        )
     )
 
 
@@ -101,6 +127,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     payload_stage_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
+    gc_matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
 
     @property
     def attempt_reference(self) -> CodingWorkerAttemptReferenceV1 | None:
@@ -168,6 +195,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("runtime_lease_active")
         if self.active_gc_reservation_count:
             missing.append("gc_reservation_scope_unverified")
+        if self.gc_matching_revision_refs:
+            missing.append("gc_attempt_package_revision_active")
         missing.extend(
             (
                 "receipt_references_unverified",
@@ -305,6 +334,7 @@ def review_coding_product_worker_history_retention(
                     )
                 )
             product.assert_root_gc_authority_current()
+            attempt_reference = _attempt_reference(gate, receipt)
             return CodingWorkerHistoryRetentionReviewV1(
                 attempt_id=attempt_id,
                 gate_record=gate,
@@ -325,6 +355,9 @@ def review_coding_product_worker_history_retention(
                 payload_stage_names=payloads,
                 active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
                 active_gc_reservation_count=len(gc_reservations),
+                gc_matching_revision_refs=_matching_gc_revision_refs(
+                    attempt_reference, gc_reservations
+                ),
             )
 
 

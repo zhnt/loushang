@@ -151,6 +151,7 @@ class CodingWindowsWorkerAttemptReferenceV1:
     """
 
     attempt_id: str
+    plugin_id: str
     receipt_fingerprint: str
     selected_package_revision_digest: str
     selected_locator_revision: str
@@ -509,6 +510,7 @@ def inspect_coding_windows_product_worker_attempt_references(
             references.append(
                 CodingWindowsWorkerAttemptReferenceV1(
                     attempt_id=attempt.attempt_id,
+                    plugin_id=policy.plugin_id,
                     receipt_fingerprint=receipt_fingerprint,
                     selected_package_revision_digest=policy.plugin_revision_digest,
                     selected_locator_revision=policy.selected_locator_revision,

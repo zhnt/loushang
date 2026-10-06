@@ -273,7 +273,10 @@ from loushang.harness.plugin_management.package_gc_target import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
+    PluginPackageRevisionRefV1,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
@@ -3485,6 +3488,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         assert reference is not None
                         assert direct_retention.receipt_record is not None
                         assert reference.attempt_id == direct_gate_attempts[0].attempt_id
+                        assert reference.plugin_id == _PLUGIN
                         assert reference.receipt_fingerprint == (
                             direct_gate_attempts[0].receipt_fingerprint
                         )
@@ -3492,6 +3496,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             direct_retention.receipt_record.receipt.policy.plugin_revision_digest
                         )
                         assert reference.native_platform == "linux"
+                        assert direct_retention.gc_matching_revision_refs == ()
                         mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
                             journal_revision=direct_gate_attempts[0].journal_revision,
                             phase=direct_gate_attempts[0].phase,
@@ -7022,6 +7027,37 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         assert unsettled.value.code == "plugin_package_gc_worker_history_unsettled"
     finally:
         owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_gc_revision_join_keeps_all_same_artifact_pins() -> None:
+    reference = history_retention_module.CodingWorkerAttemptReferenceV1(
+        attempt_id="1" * 32,
+        plugin_id="workerprobe",
+        receipt_fingerprint="2" * 64,
+        selected_package_revision_digest="a" * 64,
+        selected_locator_revision="selected-v1",
+        native_platform="linux",
+        gate_revision=1,
+        gate_phase="bound",
+    )
+    matching = tuple(
+        PluginPackageRevisionRefV1(
+            plugin_id="workerprobe",
+            plugin_version="1",
+            package_content_digest="a" * 64,
+            dependency_lock_digest=lock,
+            package_source_identity="source-" + lock[0],
+        )
+        for lock in ("b" * 64, "c" * 64)
+    )
+    other_plugin = replace(matching[0], plugin_id="another")
+    other_artifact = replace(matching[0], package_content_digest="d" * 64)
+    assert history_retention_module._matching_gc_revision_refs(
+        reference, frozenset((*matching, other_plugin, other_artifact))
+    ) == matching
 
 
 @pytest.mark.skipif(

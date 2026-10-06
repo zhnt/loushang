@@ -2939,6 +2939,7 @@ module["_exercise_windows_worker_wheel_transaction"](
         )
         assert len(references) == 1
         assert references[0].attempt_id == attempt_id
+        assert references[0].plugin_id == "workerprobe"
         assert references[0].receipt_fingerprint == (
             attempts[0].launch_receipt_fingerprint
         )

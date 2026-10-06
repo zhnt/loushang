@@ -1517,7 +1517,11 @@ record; initializing an empty C5 journal after an ordinary launch would not
 prove the old attempt. Product backup and GC owners then need typed
 attempt-level absence attestations for that same reference, rather than
 inferring absence from the Arch private-data backup projection or a Package
-revision-only reservation. Only after those joins can a checkpoint carry a
+revision-only reservation. The Linux review now reports GC reservations whose
+plugin ID and Package content digest match the attempt's receipt. This is a
+conservative attempt-to-revision join under the GC read guard; any active GC
+reservation still blocks pruning, and no backup or durable absence attestation
+is implied. Only after those joins can a checkpoint carry a
 durable anti-reuse high-water mark and retire sealed segments. Linux and
 Windows must use the same reference semantics, with their respective native
 settlement witnesses.
