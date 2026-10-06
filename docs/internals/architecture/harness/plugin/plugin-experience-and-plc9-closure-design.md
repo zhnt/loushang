@@ -3258,6 +3258,18 @@ failures in 18 minutes 58 seconds. This includes the real settled public
 Session Package GC positive, changed retained-gate refusal, and the
 no-payload unsettled-history refusal. The final Harness rerun and native
 Windows Session report remain separate acceptance gates.
+CI run `37520786728` on pushed head `83bfc783` completed the dedicated
+Linux sustained Worker job successfully. Its downloaded JUnit report passed
+the repository verifier with one test, zero skips, failures, or errors at
+`/home/dev/lsspace/.artifacts/plugin-plc9/worker-sustained-37520786728.xml`.
+This exercises 2,049 queries within one Product Worker attempt; it does not
+exercise 4,096 receipt generations, checkpoint publication, or history pruning.
+The run's Windows Session and full Coding jobs remain in progress, and its
+Host Runtime selected gate failed after the underlying job reported a real
+missing-C5 Package GC assertion and then reached its 10-minute timeout. The
+missing-C5 GC check passed its focused local regression after correction, and
+the next head raises that job's time limit to 20 minutes. The current run is
+therefore not an exact-head acceptance result for the correction.
 
 ## Independent Review Record
 
