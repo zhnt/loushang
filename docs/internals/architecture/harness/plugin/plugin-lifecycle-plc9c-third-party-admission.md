@@ -1444,9 +1444,18 @@ and the contiguous global revision chain, and refuse an unreferenced segment,
 missing seal, duplicate attempt or receipt, or stale writer generation. An
 interrupted manifest publication therefore leaves either the old complete
 generation or a refused orphan; it cannot silently shorten history.
-The current bounded pilot does not authenticate the active file's last
-committed length or digest. History pruning, restore, and broader routing
-require that additional proof so a truncated active file cannot appear valid.
+The active file now has a per-generation, Product-owned head containing its
+last committed length and digest. A first writer publishes the empty head
+after creating the durable lock and empty file; sealing publishes the empty
+successor and its head before the manifest names it. Every append checks the
+previous head, writes and syncs the record, verifies exact resulting bytes,
+then atomically publishes the next head. Readers refuse a missing or changed
+head, including a file shortened at a complete record boundary. A crash after
+the append but before head publication leaves an explicit refusal for operator
+repair; it cannot silently accept a shorter history. This closes the active
+tail integrity gap for newly created Product state. History pruning, restore,
+and broader routing still require the separate attempt-level retention and
+anti-reuse proofs above.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty

@@ -34,6 +34,8 @@ from loushang.harness.worker.journal import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
@@ -107,7 +109,8 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                     not stat.S_ISDIR(opened.st_mode)
                     or opened.st_uid != os.geteuid()
                     or stat.S_IMODE(opened.st_mode) & 0o077
-                    or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
+                    or (opened.st_dev, opened.st_ino)
+                    != (visible.st_dev, visible.st_ino)
                 ):
                     raise self._error(
                         "Worker Supervisor Product root is unsafe",
@@ -119,19 +122,25 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         history_present = self._exists(rooted) or self._exists(
                             rooted.sibling(f"{_STEM}.segments.json")
                         )
-                        lock_present = self._exists(rooted.sibling(f"{_STEM}.jsonl.lock"))
+                        lock_present = self._exists(
+                            rooted.sibling(f"{_STEM}.jsonl.lock")
+                        )
                         if history_present != lock_present:
                             raise self._error(
                                 "Worker Supervisor lock and history disagree",
                                 code="worker_supervisor_journal_corrupt",
                             )
                         if lock_present or not self._read_only.get():
-                            rooted.acquire_lock(
+                            created = rooted.acquire_lock(
                                 exclusive=True,
                                 suffix=".lock",
                                 create=not lock_present,
                                 initialize_empty_target_if_new=not lock_present,
                             )
+                            if created:
+                                initialize_coding_worker_active_head(
+                                    rooted, stem=_STEM, stream_id=_STEM
+                                )
                         self._active_rooted = rooted
                         try:
                             yield
@@ -220,16 +229,22 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                 "Worker Supervisor history was not loaded",
                 code="worker_supervisor_journal_corrupt",
             )
-        line = json.dumps(
-            record.to_dict(), ensure_ascii=False, sort_keys=True
-        ).encode("utf-8") + b"\n"
+        line = (
+            json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True).encode(
+                "utf-8"
+            )
+            + b"\n"
+        )
         if len(line) > _MAX_BYTES:
             raise self._error(
                 "Worker Supervisor record exceeds capacity",
                 code="worker_supervisor_journal_capacity",
             )
         active_records = record.record_revision - 1 - history.last_sealed_revision
-        if active_records >= _MAX_RECORDS or len(history.active_raw) + len(line) > _MAX_BYTES:
+        if (
+            active_records >= _MAX_RECORDS
+            or len(history.active_raw) + len(line) > _MAX_BYTES
+        ):
             try:
                 seal_coding_worker_active_segment(
                     rooted,
@@ -249,9 +264,7 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         else:
             generation = history.active_generation
         name = (
-            f"{_STEM}.jsonl"
-            if generation == 0
-            else f"{_STEM}.g{generation:08d}.jsonl"
+            f"{_STEM}.jsonl" if generation == 0 else f"{_STEM}.g{generation:08d}.jsonl"
         )
         append_jsonl_record(
             self.path,
@@ -260,6 +273,16 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             format_profile=SORTED_UNICODE_JSONL_FORMAT,
             durability=self._durability,
             bound_file=rooted.sibling(name),
+        )
+        commit_coding_worker_active_segment(
+            rooted,
+            stem=_STEM,
+            stream_id=_STEM,
+            generation=generation,
+            previous_raw=(
+                b"" if generation != history.active_generation else history.active_raw
+            ),
+            appended_line=line,
         )
 
     def _require_bound(self) -> RootedFile:

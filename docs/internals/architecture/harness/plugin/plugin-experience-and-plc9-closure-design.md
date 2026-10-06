@@ -3173,6 +3173,18 @@ skips, and zero failures in 20 minutes 42 seconds. This clears the local
 Harness regression after the import-boundary repair; Coding's separate broad
 suite, Windows-native reports, and final delivery checks remain separate.
 
+On 2026-10-06, the Linux Product Worker segmented journals gained a durable
+per-generation active head for the opt-in, start-gate, receipt, activation-state,
+and Supervisor streams. It commits the exact active byte length and digest
+after each append and is published empty before a new generation becomes
+active. Focused journal regressions passed 26/26, including complete-record
+truncation, missing head, uncommitted append, and missing successor-head
+refusals. Three separate real installed-Product public Session cases passed
+for query, disable fencing, and update fencing. Architecture documentation
+checks passed 10/10. This closes the active-tail proof for newly created Linux
+Product state; attempt-level backup/GC retention, safe pruning, Windows
+native Session evidence, and general third-party routing are still open.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

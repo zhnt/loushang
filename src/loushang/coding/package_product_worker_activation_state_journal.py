@@ -30,6 +30,8 @@ from loushang.harness.worker.product_activation import _ATTEMPT_TRANSITIONS
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
@@ -55,11 +57,13 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
     """Keep every CAS revision across immutable Product-owned generations."""
 
     def _acquire_journal_lock(self, rooted: RootedFile) -> None:
-        rooted.acquire_lock(
+        created = rooted.acquire_lock(
             exclusive=True,
             suffix=".lock",
             initialize_empty_target_if_new=True,
         )
+        if created:
+            initialize_coding_worker_active_head(rooted, stem=_STEM, stream_id=_STEM)
 
     def load(self) -> Mapping[str, object] | None:
         with self._bound_journal() as rooted:
@@ -127,6 +131,18 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                 format_profile=_FORMAT,
                 durability=self._durability,
                 bound_file=rooted.sibling(name),
+            )
+            commit_coding_worker_active_segment(
+                rooted,
+                stem=_STEM,
+                stream_id=_STEM,
+                generation=generation,
+                previous_raw=(
+                    b""
+                    if generation != history.active_generation
+                    else history.active_raw
+                ),
+                appended_line=line,
             )
             return True
 

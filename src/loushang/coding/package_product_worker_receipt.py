@@ -67,6 +67,8 @@ from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryRea
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
@@ -355,6 +357,7 @@ class CodingWorkerProductReceiptOwner:
                         "worker-activation-receipts"
                         f".g{history.active_generation + 1:08d}.jsonl"
                     )
+                    generation = history.active_generation + 1
                 else:
                     target = rooted.sibling(
                         self._path.name
@@ -362,6 +365,7 @@ class CodingWorkerProductReceiptOwner:
                         else "worker-activation-receipts"
                         f".g{history.active_generation:08d}.jsonl"
                     )
+                    generation = history.active_generation
                 append_jsonl_record(
                     self._path,
                     record,
@@ -369,6 +373,18 @@ class CodingWorkerProductReceiptOwner:
                     format_profile=SORTED_UNICODE_JSONL_FORMAT,
                     durability=self._durability,
                     bound_file=target,
+                )
+                commit_coding_worker_active_segment(
+                    rooted,
+                    stem="worker-activation-receipts",
+                    stream_id="worker-activation-receipts",
+                    generation=generation,
+                    previous_raw=(
+                        b""
+                        if generation != history.active_generation
+                        else history.active_raw
+                    ),
+                    appended_line=record_bytes,
                 )
                 return receipt
 
@@ -499,9 +515,7 @@ class CodingWorkerProductReceiptOwner:
 
     def current_runtime_binding(
         self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[
-        CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str
-    ]:
+    ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
         """Capture one coherent selected payload, native release, and owner."""
 
         reader = self._native_closure_reader
@@ -715,11 +729,17 @@ class CodingWorkerProductReceiptOwner:
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
                 with file_io.bind(self._path, durable=True) as rooted:
-                    rooted.acquire_lock(
+                    created = rooted.acquire_lock(
                         exclusive=True,
                         suffix=".lock",
                         initialize_empty_target_if_new=True,
                     )
+                    if created:
+                        initialize_coding_worker_active_head(
+                            rooted,
+                            stem="worker-activation-receipts",
+                            stream_id="worker-activation-receipts",
+                        )
                     yield rooted
             finally:
                 file_io.cleanup()

@@ -713,7 +713,8 @@ class RootedFile:
         create: bool = True,
         expected_identity: tuple[int, int] | None = None,
         initialize_empty_target_if_new: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Return whether this call created the lock and empty first target."""
         import fcntl
 
         self._require_active()
@@ -725,7 +726,9 @@ class RootedFile:
             or any(type(value) is not int or value < 0 for value in expected_identity)
         ):
             raise ValueError("rooted IO lock identity is invalid")
-        if initialize_empty_target_if_new and (not exclusive or not create or not suffix):
+        if initialize_empty_target_if_new and (
+            not exclusive or not create or not suffix
+        ):
             raise ValueError(
                 "rooted IO target initialization requires a separate new exclusive lock"
             )
@@ -772,6 +775,7 @@ class RootedFile:
             self.sync_directory()
             self.create_new(b"")
         # Closing this independent OFD releases the lock, never LOCK_UN.
+        return created
 
 
 @dataclass(frozen=True)

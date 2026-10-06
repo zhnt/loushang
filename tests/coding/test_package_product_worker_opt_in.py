@@ -13,7 +13,6 @@ from loushang.coding.package_product_worker_opt_in import (
     CodingWorkerOptInJournalError,
 )
 from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
-from loushang.harness.journal import JournalFileError
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
@@ -55,13 +54,16 @@ def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(
         journal.path, scope_id="workspace:" + "a" * 64, gc_gate=gate
     )
     assert reopened.current(opt_in.plugin_id) == allowed
-    assert reopened.change(
-        plugin_id=opt_in.plugin_id,
-        operation_id="allow-1",
-        expected_generation=0,
-        action="allow",
-        opt_in=opt_in,
-    ) == allowed
+    assert (
+        reopened.change(
+            plugin_id=opt_in.plugin_id,
+            operation_id="allow-1",
+            expected_generation=0,
+            action="allow",
+            opt_in=opt_in,
+        )
+        == allowed
+    )
     with pytest.raises(CodingWorkerOptInJournalError) as stale:
         reopened.change(
             plugin_id=opt_in.plugin_id,
@@ -104,9 +106,7 @@ def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(
         operation_id="allow-3",
         expected_generation=2,
         action="allow",
-        opt_in=replace(
-            opt_in, owner_selection_generation=3, kill_switch_generation=1
-        ),
+        opt_in=replace(opt_in, owner_selection_generation=3, kill_switch_generation=1),
     )
     assert allowed_again.generation == 3
     assert allowed_again.kill_switch_generation == 1
@@ -123,8 +123,9 @@ def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(
     retained.rename(journal.path)
     with journal.path.open("ab") as handle:
         handle.write(b"{")
-    with pytest.raises(JournalFileError):
+    with pytest.raises(CodingWorkerOptInJournalError) as truncated:
         reopened.current(opt_in.plugin_id)
+    assert truncated.value.code == "coding_worker_segment_head_changed"
 
 
 def test_worker_opt_in_read_only_status_requires_existing_gc_gate_and_never_writes(
@@ -219,21 +220,22 @@ def test_worker_opt_in_rotates_without_resetting_generation_or_operation_id(
         journal.path, scope_id=journal.scope_id, gc_gate=gate
     )
     assert reopened.current(opt_in.plugin_id) == revoked
-    assert reopened.change(
-        plugin_id=opt_in.plugin_id,
-        operation_id="allow-1",
-        expected_generation=0,
-        action="allow",
-        opt_in=opt_in,
-    ) == allowed
+    assert (
+        reopened.change(
+            plugin_id=opt_in.plugin_id,
+            operation_id="allow-1",
+            expected_generation=0,
+            action="allow",
+            opt_in=opt_in,
+        )
+        == allowed
+    )
     allowed_again = reopened.change(
         plugin_id=opt_in.plugin_id,
         operation_id="allow-3",
         expected_generation=2,
         action="allow",
-        opt_in=replace(
-            opt_in, owner_selection_generation=3, kill_switch_generation=1
-        ),
+        opt_in=replace(opt_in, owner_selection_generation=3, kill_switch_generation=1),
     )
     assert allowed_again.journal_revision == 3
     assert allowed_again.generation == 3

@@ -38,6 +38,8 @@ from loushang.harness.worker.gated_start import WorkerNativeProcessIdentityV1
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
@@ -368,12 +370,14 @@ class CodingWorkerStartGateJournal:
                     target = rooted.sibling(
                         f"worker-start-gates.g{history.active_generation + 1:08d}.jsonl"
                     )
+                    generation = history.active_generation + 1
                 else:
                     target = rooted.sibling(
                         self._path.name
                         if history.active_generation == 0
                         else f"worker-start-gates.g{history.active_generation:08d}.jsonl"
                     )
+                    generation = history.active_generation
                 append_jsonl_record(
                     self._path,
                     record,
@@ -381,6 +385,18 @@ class CodingWorkerStartGateJournal:
                     format_profile=_FORMAT,
                     durability=self._durability,
                     bound_file=target,
+                )
+                commit_coding_worker_active_segment(
+                    rooted,
+                    stem="worker-start-gates",
+                    stream_id="worker-start-gates",
+                    generation=generation,
+                    previous_raw=(
+                        b""
+                        if generation != history.active_generation
+                        else history.active_raw
+                    ),
+                    appended_line=record_bytes,
                 )
                 return record
 
@@ -411,11 +427,17 @@ class CodingWorkerStartGateJournal:
             try:
                 with io.bind(self._path, durable=True) as rooted:
                     if create_lock:
-                        rooted.acquire_lock(
+                        created = rooted.acquire_lock(
                             exclusive=True,
                             suffix=".lock",
                             initialize_empty_target_if_new=True,
                         )
+                        if created:
+                            initialize_coding_worker_active_head(
+                                rooted,
+                                stem="worker-start-gates",
+                                stream_id="worker-start-gates",
+                            )
                     else:
                         try:
                             rooted.stat()

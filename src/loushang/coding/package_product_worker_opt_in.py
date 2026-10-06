@@ -37,6 +37,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
@@ -301,9 +303,10 @@ class CodingWorkerOptInJournal:
         """Inspect an existing Product decision without creating owner state."""
 
         self._require_plugin_id(plugin_id)
-        with self._gc_gate.read_guard(), self._bound_journal(
-            create_lock=False
-        ) as rooted:
+        with (
+            self._gc_gate.read_guard(),
+            self._bound_journal(create_lock=False) as rooted,
+        ):
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
 
@@ -407,6 +410,18 @@ class CodingWorkerOptInJournal:
                 durability=self._durability,
                 bound_file=target,
             )
+            commit_coding_worker_active_segment(
+                rooted,
+                stem=_STEM,
+                stream_id=_STEM,
+                generation=generation,
+                previous_raw=(
+                    b""
+                    if generation != history.active_generation
+                    else history.active_raw
+                ),
+                appended_line=line,
+            )
             return decision
 
     @contextmanager
@@ -420,8 +435,7 @@ class CodingWorkerOptInJournal:
                 not stat.S_ISDIR(opened.st_mode)
                 or opened.st_uid != os.geteuid()
                 or stat.S_IMODE(opened.st_mode) & 0o077
-                or (opened.st_dev, opened.st_ino)
-                != (visible.st_dev, visible.st_ino)
+                or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
             ):
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_state_root_unsafe"
@@ -448,11 +462,15 @@ class CodingWorkerOptInJournal:
                                 raise CodingWorkerOptInJournalError(
                                     "coding_worker_opt_in_lock_missing"
                                 ) from exc
-                        rooted.acquire_lock(
+                        created = rooted.acquire_lock(
                             exclusive=True,
                             suffix=".lock",
                             initialize_empty_target_if_new=True,
                         )
+                        if created:
+                            initialize_coding_worker_active_head(
+                                rooted, stem=_STEM, stream_id=_STEM
+                            )
                     else:
                         try:
                             rooted.stat()
@@ -494,9 +512,7 @@ class CodingWorkerOptInJournal:
 
     def _load_history(
         self, rooted: RootedFile
-    ) -> tuple[
-        tuple[CodingWorkerOptInDecisionV1, ...], CodingWorkerSegmentedHistoryV1
-    ]:
+    ) -> tuple[tuple[CodingWorkerOptInDecisionV1, ...], CodingWorkerSegmentedHistoryV1]:
         try:
             history = read_coding_worker_segmented_history(
                 rooted,
@@ -512,17 +528,14 @@ class CodingWorkerOptInJournal:
                 raw.decode("utf-8"),
                 target=self._path,
                 record_codec=_CODEC,
-                load_policy=JournalLoadPolicy(
-                    partial_tail="raise", create_lock=False
-                ),
+                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
             ).records
             lines = raw.splitlines(keepends=True)
             if (
                 len(segment) > _MAX_EVENTS
                 or len(segment) != len(lines)
                 or any(
-                    event.journal_revision != revision
-                    or line != _opt_in_line(event)
+                    event.journal_revision != revision or line != _opt_in_line(event)
                     for revision, (event, line) in enumerate(
                         zip(segment, lines, strict=True), len(events) + 1
                     )
@@ -560,9 +573,12 @@ class CodingWorkerOptInJournal:
 
 
 def _opt_in_line(decision: CodingWorkerOptInDecisionV1) -> bytes:
-    return json.dumps(decision.to_dict(), ensure_ascii=False, sort_keys=True).encode(
-        "utf-8"
-    ) + b"\n"
+    return (
+        json.dumps(decision.to_dict(), ensure_ascii=False, sort_keys=True).encode(
+            "utf-8"
+        )
+        + b"\n"
+    )
 
 
 __all__ = [
