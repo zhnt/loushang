@@ -3232,6 +3232,15 @@ def _assert_windows_worker_retired_history_allows_gc(
         finally:
             staged_history.unlink()
 
+        unknown_state = product.state_root / "worker-future-reference.json"
+        unknown_state.write_bytes(b"unknown owner")
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as unknown:
+                gc.prepare()
+            assert unknown.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            unknown_state.unlink()
+
         completed_receipt = product.state_root / (
             "worker-stage-retired-" + "9" * 32 + ".json"
         )

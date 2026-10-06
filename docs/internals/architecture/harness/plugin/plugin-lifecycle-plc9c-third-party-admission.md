@@ -1450,7 +1450,10 @@ unknown name or a repair intent without the established journal prefixes. The
 end-to-end Linux Product regression first showed `gc.prepare()` skipped the
 authority for an isolated unknown name; it now refuses both unbound and bound
 GC, while a clean no-Worker preparation still passes. Windows still needs its
-own complete Worker-name ownership classification before the same claim applies.
+own native Product evidence for the same claim. Its history authority now
+classifies every Worker-prefixed state-root name against the current exact
+Windows owners and refuses unknown or staged names; the portable positive and
+negative classifier cases pass, but they do not replace a native GC run.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

@@ -34,18 +34,27 @@ _EXACT = frozenset(
         "worker-supervisor.jsonl.lock",
         "worker-activation-receipts.jsonl",
         "worker-activation-receipts.jsonl.lock",
+        "worker-opt-in.jsonl",
+        "worker-opt-in.jsonl.lock",
+        "worker-native-release-approvals.jsonl",
+        "worker-native-release-approvals.jsonl.lock",
+        "worker-native-release-v1",
+        "worker-native-backend-release-v1.whl",
     }
 )
-_PREFIXES = (
-    "worker-launch-intent-",
-    "worker-native-provisioning-",
-    "worker-supervisor",
-    "worker-activation-receipts",
-    "worker-stage-",
-    "worker-partial-stage-",
-    "worker-unlaunched-stage-",
-    "worker-crash-stage-",
-)
+
+
+def _require_known_windows_worker_state_names(names: tuple[str, ...]) -> None:
+    for name in names:
+        if not name.casefold().startswith(("worker-", ".worker-")):
+            continue
+        if (
+            name not in _EXACT
+            and _INTENT.fullmatch(name) is None
+            and _NATIVE.fullmatch(name) is None
+            and _RETIREMENT_NAME.fullmatch(name) is None
+        ):
+            raise ValueError("Windows Worker GC state owner is unrecognized")
 
 
 class CodingWindowsWorkerGcHistoryAuthority:
@@ -79,19 +88,7 @@ class CodingWindowsWorkerGcHistoryAuthority:
         with self._product.epoch_runtime.borrow_product_state_root_descriptor() as root:
             if set(windows_listdir_at(root)) != set(observed_names):
                 raise ValueError("Windows Worker GC inventory changed")
-            for name in observed_names:
-                if not name.casefold().startswith(_PREFIXES):
-                    continue
-                if not (
-                    not name.endswith(".stage")
-                    and (
-                        name in _EXACT
-                        or _INTENT.fullmatch(name)
-                        or _NATIVE.fullmatch(name)
-                        or _RETIREMENT_NAME.fullmatch(name)
-                    )
-                ):
-                    raise ValueError("Windows Worker GC history name is invalid")
+            _require_known_windows_worker_state_names(observed_names)
 
             inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(
                 self._product
