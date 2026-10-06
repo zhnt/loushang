@@ -3290,6 +3290,12 @@ generation, and kill-switch generation. A real installed-Product regression
 passed after first reproducing the missing proof; suppressing the retained
 opt-in history makes receipt references unverified. This supplies a checkpoint
 input, not checkpoint publication or permission to prune history.
+The complete local non-live Host Runtime selection on the current branch
+passed 29 tests, skipped seven platform-conditional cases, and deselected
+18,701 cases in 22 minutes 29 seconds. Because the workflow's 20-minute job
+limit could not accommodate that exact scope plus setup time, its limit is now
+45 minutes. This does not replace the next pushed-head CI gate or the native
+Windows report for the new changes.
 
 ## Independent Review Record
 
