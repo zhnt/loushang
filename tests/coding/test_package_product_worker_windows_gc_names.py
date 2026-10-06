@@ -17,7 +17,6 @@ def test_windows_worker_gc_accepts_current_owned_state_names() -> None:
             "worker-opt-in.jsonl.lock",
             "worker-native-release-approvals.jsonl",
             "worker-native-release-approvals.jsonl.lock",
-            "worker-native-release-v1",
             "worker-native-backend-release-v1.whl",
             "worker-activation-receipts.jsonl",
             "worker-activation-receipts.jsonl.lock",
@@ -36,6 +35,7 @@ def test_windows_worker_gc_accepts_current_owned_state_names() -> None:
     "name",
     (
         "worker-future-reference.json",
+        "worker-native-release-v1",
         ".worker-future-reference.json.stage",
         "worker-opt-in.jsonl.stage",
         "worker-native-provisioning-" + "ab" * 16 + ".jsonl.stage",

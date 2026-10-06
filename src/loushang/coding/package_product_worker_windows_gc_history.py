@@ -38,7 +38,6 @@ _EXACT = frozenset(
         "worker-opt-in.jsonl.lock",
         "worker-native-release-approvals.jsonl",
         "worker-native-release-approvals.jsonl.lock",
-        "worker-native-release-v1",
         "worker-native-backend-release-v1.whl",
     }
 )
