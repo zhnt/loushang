@@ -3315,7 +3315,8 @@ It shares Linux's retained-attempt projection. Windows Package GC now accepts
 only exact C5 names and checks any present C5 history against launched attempts
 and Product receipts before Package root deletion. The Windows offline recovery
 snapshot now carries the retained C5 revision and attempts as read-only
-evidence. The next native Windows Session job requires its reopen, GC join,
+evidence and records whether the C5 owner lock exists, including an empty
+interrupted initialization. The next native Windows Session job requires its reopen, GC join,
 recovery read, and complete-record-loss case in
 addition to the existing four Session cases. Local C5 import-boundary checks
 passed 7/7; the new Windows case collected and skipped on Linux. Ordinary

@@ -3039,6 +3039,9 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert after.supervisor_records[-1].phase == "process_settled"
         assert after.supervisor_history_revision == len(after.supervisor_records)
         assert after.retained_supervisor_attempt_ids == (attempt_id,)
+        assert not after.activation_state_owner_present
+        assert after.activation_state_revision == 0
+        assert after.retained_activation_attempts == ()
         assert len(after.supervisor_epoch_high_water) == 1
         assert after.supervisor_epoch_high_water[0][1] >= 1
         assert after.gc_reservation_revision >= 0

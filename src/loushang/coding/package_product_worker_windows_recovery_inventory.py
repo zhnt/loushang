@@ -170,6 +170,7 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
     opt_in_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
     receipt_records: tuple[CodingWorkerReceiptRecordV1, ...]
     supervisor_records: tuple[WorkerAttemptRecordV1, ...]
+    activation_state_owner_present: bool
     activation_state_revision: int
     retained_activation_attempts: tuple[CodingProductWorkerRetainedAttemptV1, ...]
     gc_reservation_revision: int
@@ -682,7 +683,9 @@ def inspect_coding_windows_product_worker_offline_recovery(
                 product
             ).inspect_records()
             activation_journal = CodingWindowsWorkerActivationStateJournal(product)
-            activation_state = activation_journal.load()
+            activation_owner_present, activation_state = (
+                activation_journal.load_with_presence_read_only()
+            )
             retained_activation_attempts = (
                 activation_journal.retained_attempts_read_only()
             )
@@ -700,6 +703,7 @@ def inspect_coding_windows_product_worker_offline_recovery(
             opt_in_decisions=opt_in_decisions,
             receipt_records=receipt_records,
             supervisor_records=supervisor_records,
+            activation_state_owner_present=activation_owner_present,
             activation_state_revision=(
                 0
                 if activation_state is None

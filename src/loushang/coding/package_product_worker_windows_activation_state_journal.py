@@ -86,17 +86,26 @@ class CodingWindowsWorkerActivationStateJournal:
     def load(self) -> Mapping[str, object] | None:
         """Read exact committed state without manufacturing a missing owner."""
 
-        records = self._read_records()
+        _present, records = self._read_records_with_presence()
         return None if not records else dict(records[-1].document)
+
+    def load_with_presence_read_only(
+        self,
+    ) -> tuple[bool, Mapping[str, object] | None]:
+        """Distinguish an absent owner from an uncommitted empty lock."""
+
+        present, records = self._read_records_with_presence()
+        return present, None if not records else dict(records[-1].document)
 
     def retained_attempts_read_only(
         self,
     ) -> tuple[CodingProductWorkerRetainedAttemptV1, ...]:
         """Inventory historical attempts without creating or pruning state."""
 
-        return project_coding_worker_retained_attempts(self._read_records())
+        _present, records = self._read_records_with_presence()
+        return project_coding_worker_retained_attempts(records)
 
-    def _read_records(self) -> tuple[_StateRecord, ...]:
+    def _read_records_with_presence(self) -> tuple[bool, tuple[_StateRecord, ...]]:
         with self._product.gc_gate.guard(), self._thread_lock:
             self._product.assert_root_gc_authority_current()
             with (
@@ -108,7 +117,7 @@ class CodingWindowsWorkerActivationStateJournal:
                     self._require_no_state_entries(root)
                     self._require_root(root, acl)
                     self._product.assert_root_gc_authority_current()
-                    return ()
+                    return False, ()
                 with journal_file_lock_at(root, _LOCK, "shared") as lock:
                     initialized = self._validate_lock(root, acl, lock)
                     raw = self._read_raw(root, acl)
@@ -117,7 +126,7 @@ class CodingWindowsWorkerActivationStateJournal:
                     )
                 self._require_root(root, acl)
                 self._product.assert_root_gc_authority_current()
-                return records
+                return True, records
 
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]

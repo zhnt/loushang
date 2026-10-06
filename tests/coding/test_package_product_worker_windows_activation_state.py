@@ -29,6 +29,7 @@ from loushang.coding.package_product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_offline_recovery,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_gc_executor import (
     PackageProductGcExecutionError,
@@ -85,6 +86,7 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
                 open_coding_windows_product_worker_activation_state_store(product)
             journal = CodingWindowsWorkerActivationStateJournal(product)
             assert journal.load() is None
+            assert journal.load_with_presence_read_only() == (False, None)
             assert journal.retained_attempts_read_only() == ()
             assert not any(
                 name.startswith("worker-activation-state")
@@ -97,9 +99,17 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
                 name.startswith("worker-activation-state")
                 for name in os.listdir(product.state_root)
             )
+            with product.gc_gate.guard(require_write=True):
+                with (
+                    WindowsPrivateDirectoryAcl() as acl,
+                    product.epoch_runtime.borrow_product_state_root_descriptor() as root,
+                ):
+                    journal._prepare_lock(root, acl)
+            assert journal.load_with_presence_read_only() == (True, None)
             assert journal.compare_and_swap(expected_revision=0, document=initial)
             assert journal.compare_and_swap(expected_revision=1, document=second)
             assert journal.load() == second
+            assert journal.load_with_presence_read_only() == (True, second)
             assert journal.retained_attempts_read_only() == ()
             assert not journal.compare_and_swap(expected_revision=0, document=initial)
         finally:
@@ -120,8 +130,10 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
         product = owner.runtime_owner.product_owner
         journal = CodingWindowsWorkerActivationStateJournal(product)
         assert journal.load() == second
+        assert journal.load_with_presence_read_only() == (True, second)
         assert journal.retained_attempts_read_only() == ()
         recovery = inspect_coding_windows_product_worker_offline_recovery(product)
+        assert recovery.activation_state_owner_present
         assert recovery.activation_state_revision == 2
         assert recovery.retained_activation_attempts == ()
         gc = open_windows_local_wheel_product_root_gc(

@@ -1664,7 +1664,9 @@ state. Windows Package GC now recognizes only the exact C5 journal/head names;
 when a C5 owner exists, it refuses active or unmatched attempts before root
 deletion. The Windows offline recovery snapshot includes the exact C5 revision
 and retained attempt projection under Package runtime quiescence and the GC read
-gate; it grants no recovery write. A Coding Worker candidate Product can now
+gate. It also distinguishes an absent C5 owner from a present empty lock, so
+an interrupted initialization cannot be mistaken for a never-started owner.
+The snapshot grants no recovery write. A Coding Worker candidate Product can now
 open a policy-checked Windows C5 store, while a builtins-only Product is
 rejected. The store is not yet passed to the ordinary Windows pending Host.
 An expected revision above zero against a genuinely absent C5 owner now returns
