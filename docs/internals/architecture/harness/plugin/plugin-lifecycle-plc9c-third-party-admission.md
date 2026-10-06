@@ -1946,7 +1946,12 @@ and materializes a new transcript under its owner, constructs the ordinary
 Session with an explicit Worker, completes the same SDK query, retains the Skill,
 and disposes the runtime. Its verified report is
 `/home/dev/lsspace/.artifacts/plugin-plc9/w5-sdk-hosted-r2-20261004.xml`.
-Windows native proof and default routing remain closed. A separate negative
+Windows native proof was still open at that stage; the explicit Windows AMD64
+Direct, Hosted, and two crash/reopen Session cases later passed 4/4 with no
+skips or failures in CI run `37511360385` on `acd038cb`. The report was
+downloaded and passed `verify_pytest_xml.py --require-tests-count 4`.
+The current code head needs its own native result, and default Windows routing
+remains closed. A separate negative
 gate proves unmaterialized direct Sessions and nonpersistent hosted runtimes
 refuse before Product selection; its report is
 `/home/dev/lsspace/.artifacts/plugin-plc9/w5-runtime-persist-refusal-20261004.xml`.
