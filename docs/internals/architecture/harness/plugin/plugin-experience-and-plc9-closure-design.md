@@ -3213,6 +3213,10 @@ corruption error. The active-head journal correctly refused the changed bytes
 with `coding_worker_segment_head_changed`; that exact assertion was updated,
 and the repaired-release native case passed 1/1 in 3 minutes 3 seconds.
 The interrupted file run was not a complete host-runtime gate.
+The complete file was then rerun with `not live` and native host-runtime cases
+enabled on `b6502668`: 43 passed, one platform-conditional skip, and zero
+failures in 24 minutes 22 seconds. The single skipped case does not supply a
+Windows-native report; the dedicated Windows Session CI gate remains open.
 
 ## Independent Review Record
 
