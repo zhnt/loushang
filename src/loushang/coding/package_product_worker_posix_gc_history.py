@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import os
 import sys
+from hashlib import sha256
 from typing import cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
 )
 from loushang.harness.worker.gated_start import (
     worker_native_group_status_after_restart,
@@ -25,6 +29,10 @@ from .package_product_worker_history_retention import (
     _known_worker_state_name,
 )
 from .package_product_worker_payload import (
+    _read_complete_repair_intent,
+    _read_empty_repair_intent,
+    _read_unmarked_repair_intent,
+    _stage_exists,
     open_coding_product_worker_supervisor_journal,
 )
 from .package_product_worker_receipt import (
@@ -74,8 +82,6 @@ class CodingPosixWorkerGcHistoryAuthority:
                 lowered = name.casefold()
                 if lowered.startswith(("worker-", ".worker-")) and not _known_worker_state_name(name):
                     raise ValueError("Linux Worker GC reference owner is unrecognized")
-                if _PAYLOAD_REPAIR.fullmatch(name):
-                    raise ValueError("Linux Worker GC payload repair reference is retained")
                 if any(
                     lowered.startswith(stem) or lowered.startswith("." + stem)
                     for stem in _HISTORY_STEMS
@@ -106,6 +112,36 @@ class CodingPosixWorkerGcHistoryAuthority:
 
             gate_by_id = {item.attempt_id: item for item in gates}
             attempt_by_id = {item.attempt_id: item for item in attempts}
+            for name in observed_names:
+                repair = _PAYLOAD_REPAIR.fullmatch(name)
+                if repair is None:
+                    continue
+                attempt_id = repair.group("attempt")
+                if _stage_exists(root_fd, attempt_id):
+                    raise ValueError("Linux Worker GC payload repair is incomplete")
+                record = attempt_by_id.get(attempt_id)
+                kind = repair.group("kind")
+                if kind == "empty":
+                    valid = (
+                        _read_empty_repair_intent(root_fd, attempt_id) is not None
+                        and record is None
+                    )
+                elif kind == "unmarked":
+                    valid = (
+                        _read_unmarked_repair_intent(root_fd, attempt_id) is not None
+                        and record is None
+                    )
+                else:
+                    complete = _read_complete_repair_intent(root_fd, attempt_id)
+                    valid = (
+                        complete is not None
+                        and record is not None
+                        and record.process_settled
+                        and complete[1]
+                        == sha256(canonical_json_bytes(record.to_dict())).hexdigest()
+                    )
+                if not valid:
+                    raise ValueError("Linux Worker GC payload repair reference is unverified")
             receipt_by_fingerprint = {
                 item.receipt.fingerprint: item for item in receipts
             }

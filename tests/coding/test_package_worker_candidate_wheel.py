@@ -7126,10 +7126,11 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         with pytest.raises(PackageProductGcExecutionError) as repair_blocked:
             with_authority.prepare()
         assert repair_blocked.value.code == "plugin_package_gc_worker_history_unsettled"
-        with pytest.raises(ValueError, match="payload repair reference is retained"):
+        with pytest.raises(CodingWorkerPayloadMaterializationError) as bad_repair:
             authority.require_settled(
                 observed_names=tuple(os.listdir(product.state_root))
             )
+        assert bad_repair.value.code == "coding_worker_payload_empty_repair_unverified"
         repair_before_attempt.unlink()
         attempt_id = "35" * 16
         identity = WorkerLaunchIdentityV1(
@@ -7539,7 +7540,15 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         )
         intent.unlink()
         held_intent.rename(intent)
-        gc.prepare()
+        with pytest.raises(PackageProductGcExecutionError) as no_repair_authority:
+            gc.prepare()
+        assert no_repair_authority.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
 
         crash_attempt = "56" * 16
         crash_stage = product.state_root / f"worker-payload-{crash_attempt}"
@@ -7911,6 +7920,12 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
         assert orphan_history.value.code == (
             "plugin_package_gc_worker_history_unsettled"
         )
+        with pytest.raises(PackageProductGcExecutionError) as bound_orphan:
+            open_posix_local_wheel_product_root_gc(
+                product,
+                worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+            ).prepare()
+        assert bound_orphan.value.code == "plugin_package_gc_worker_history_unsettled"
     finally:
         owner.close()
 
@@ -8221,6 +8236,14 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
             )
             intent.unlink()
             held_intent.rename(intent)
-        open_posix_local_wheel_product_root_gc(product).prepare()
+        with pytest.raises(PackageProductGcExecutionError) as no_repair_authority:
+            open_posix_local_wheel_product_root_gc(product).prepare()
+        assert no_repair_authority.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
     finally:
         owner.close()

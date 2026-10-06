@@ -1442,8 +1442,11 @@ The Linux Package GC history authority now rejects an unknown Worker state-root
 name under its pinned root read as well. A Product negative first showed that
 the read-only review noticed such a name while the GC history authority accepted
 it; the authority now refuses the same observation before Package deletion.
-It also refuses a retained payload repair intent even when no payload stage
-remains, so an interrupted repair cannot be erased by Package GC.
+For a retained payload repair intent, it verifies the exact canonical record,
+absent payload stage, and the required Supervisor state under the pinned Product
+root. Completed repairs can then permit Package GC; malformed or incomplete
+repairs still refuse it. These durable repair records remain reference debts for
+history pruning, which needs a separate checkpoint proof.
 The Product Package GC dispatcher now invokes its platform Worker history
 authority whenever any Worker-owned state-root name is present, including an
 unknown name or a repair intent without the established journal prefixes. The
@@ -1559,7 +1562,11 @@ changed binding. A native crash/reopen run passed both clean public Session
 routes but exposed a fixture-owned install runtime lease still orphaned beside
 the public Session lease; the crash fixture now closes that setup runtime
 before the deliberate process exit and asserts the complete orphan set. This
-native repair path needs a rerun. The Linux
+native repair path passed on 2026-10-06 in CI run `37493522912`: the direct and
+hosted crash/reopen cases and both clean public Session routes passed 4/4 with
+zero skips, failures, or errors in the verified Windows JUnit report. This is
+evidence for that remote head; the subsequent local GC ownership changes still
+need native reruns. The Linux
 retention review now also joins retained C5 attempts relevant to the selected
 attempt or receipt against gate and Supervisor history. Missing gates, changed
 bindings, unbound gates, and unsettled Supervisors remain explicit reference
@@ -1586,8 +1593,8 @@ cannot silently become an attempt-level absence proof. Both Product reviews
 now carry the GC owner's journal revision captured under the same strict read
 gate as the active reservations. That revision is checkpoint input, not a
 durable absence attestation. The native public
-Session crash/reopen case checks the no-reservation observation; its rerun is
-pending. Only after those joins can a checkpoint carry a
+Session crash/reopen case checks the no-reservation observation and passed in
+the same four-case Windows run. Only after those joins can a checkpoint carry a
 durable anti-reuse high-water mark and retire sealed segments. Linux and
 Windows must use the same reference semantics, with their respective native
 settlement witnesses.

@@ -68,7 +68,8 @@ _SEGMENTED_SUFFIX = re.compile(
 )
 _PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
 _PAYLOAD_REPAIR = re.compile(
-    r"worker-(?:empty|complete|unmarked)-repair-[0-9a-f]{32}\.json\Z"
+    r"worker-(?P<kind>empty|complete|unmarked)-repair-"
+    r"(?P<attempt>[0-9a-f]{32})\.json\Z"
 )
 
 
