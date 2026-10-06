@@ -3086,6 +3086,16 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                 is None
                             )
                             await session.prepare_model_call_runtime()
+                            prepared_activation = (
+                                review_coding_product_worker_history_retention(
+                                    product, attempt_id=deferred_attempt
+                                ).retained_activation_references
+                            )
+                            assert any(
+                                item.attempt_id == deferred_attempt
+                                and item.phase == "published"
+                                for item in prepared_activation
+                            ), prepared_activation
                             assert await bind_coding_worker_query_consumer(
                                 session
                             ).query(symbol="review") == "Review symbol"
@@ -3101,6 +3111,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     assert not (
                         product.state_root / f"worker-payload-{deferred_attempt}"
                     ).exists()
+                    deferred_activation = review_coding_product_worker_history_retention(
+                        product, attempt_id=deferred_attempt
+                    ).retained_activation_references
+                    assert any(
+                        item.attempt_id == deferred_attempt and item.phase == "settled"
+                        for item in deferred_activation
+                    ), deferred_activation
                     failed_attempt = "e2" * 16
                     failed_pending = plan_coding_product_worker_pending_launch(
                         receipt_owner=receipt_owner,
@@ -3151,6 +3168,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     assert not (
                         product.state_root / f"worker-payload-{failed_attempt}"
                     ).exists()
+                    failed_activation = review_coding_product_worker_history_retention(
+                        product, attempt_id=failed_attempt
+                    ).retained_activation_references
+                    assert any(
+                        item.attempt_id == failed_attempt and item.phase == "settled"
+                        for item in failed_activation
+                    ), failed_activation
                     payloads_before_ordinary_bootstrap = tuple(
                         product.state_root.glob("worker-payload-*")
                     )
@@ -3609,7 +3633,15 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             ).attempt_reference
                             is None
                         )
-                        assert direct_retention.activation_state_revision == 0
+                        assert (
+                            direct_retention.activation_state_revision is not None
+                            and direct_retention.activation_state_revision >= 1
+                        )
+                        assert any(
+                            item.attempt_id == direct_gate_attempts[0].attempt_id
+                            and item.phase == "settled"
+                            for item in direct_retention.retained_activation_references
+                        )
                         assert (
                             "activation_state_absent"
                             not in direct_retention.missing_proofs
@@ -3634,7 +3666,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             hidden_activation_path.rename(activation_path)
                         assert (
                             "receipt_references_unverified"
-                            in direct_retention.missing_proofs
+                            not in direct_retention.missing_proofs
                         )
                         if disable_while_direct_session_open:
                             with pytest.raises(
@@ -4721,7 +4753,14 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 assert retention.attempt_record is not None
                 assert retention.attempt_record.process_settled
                 assert retention.receipt_record is not None
-                assert retention.activation_state_revision == 0
+                assert (
+                    retention.activation_state_revision is not None
+                    and retention.activation_state_revision >= 1
+                )
+                assert not any(
+                    item.attempt_id == journaled_plan.attempt_id
+                    for item in retention.retained_activation_references
+                )
                 assert retention.active_activation_references == ()
                 assert "activation_state_absent" not in retention.missing_proofs
                 assert journaled_plan.attempt_id in retention.receipt_gate_references
@@ -5254,7 +5293,6 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             product,
             worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
         )
-        gc.prepare()
         gate = gates[0]
         receipt = gate.receipt_fingerprint
         attempt_id = gate.attempt_id
@@ -5270,10 +5308,22 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         )
         assert not before_c5.receipt_references_verified
         assert "receipt_references_unverified" in before_c5.missing_proofs
-        registered_attempts: dict[str, dict[str, object]] = {}
-        settled_attempts: dict[str, dict[str, object]] = {}
+        with pytest.raises(PackageProductGcExecutionError) as missing_c5:
+            gc.prepare()
+        assert missing_c5.value.code == "plugin_package_gc_worker_history_unsettled"
+        activation_store = open_coding_product_worker_activation_state_store(product)
+        current_state = activation_store.load()
+        assert current_state is not None
+        existing_attempts = dict(current_state["attempts"])
+        existing_attempt_ids = {
+            item["attemptId"] for item in existing_attempts.values()
+        }
+        registered_attempts = dict(existing_attempts)
+        settled_attempts = dict(existing_attempts)
         for receipt_gate in receipt_gates:
             referenced_attempt_id = receipt_gate.attempt_id
+            if referenced_attempt_id in existing_attempt_ids:
+                continue
             key = _AttemptKey(receipt, referenced_attempt_id, 1).encoded
             c5_attempt = _registered_attempt(
                 receipt=receipt, attempt_id=referenced_attempt_id
@@ -5299,8 +5349,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 ).to_dict(),
             )
             settled_attempts[key] = settled_attempt
-        initial = _initial_state(restart_budget=3)
-        registered = _next_state(initial)
+        assert len(registered_attempts) > len(existing_attempts)
+        registered = _next_state(current_state)
         registered["attempts"] = registered_attempts
         settled = _next_state(registered)
         settled["attempts"] = settled_attempts
@@ -5312,7 +5362,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             )
         )
         for revision, state in enumerate(
-            (initial, registered, settled, compacted)
+            (registered, settled, compacted),
+            start=current_state["stateRevision"],
         ):
             assert activation_journal.compare_and_swap(
                 expected_revision=revision, document=state
@@ -5388,7 +5439,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                         item.attempt_id,
                         "activation_reference_native_absence_unverified",
                     )
-                    for item in receipt_gates
+                    for item in retention.retained_activation_references
                 )
             )
             assert not observed_present.receipt_references_verified

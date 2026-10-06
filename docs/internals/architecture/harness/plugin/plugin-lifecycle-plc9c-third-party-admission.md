@@ -1949,3 +1949,18 @@ Windows native proof and default routing remain closed. A separate negative
 gate proves unmaterialized direct Sessions and nonpersistent hosted runtimes
 refuse before Product selection; its report is
 `/home/dev/lsspace/.artifacts/plugin-plc9/w5-runtime-persist-refusal-20261004.xml`.
+
+The explicit Linux ordinary Session now records its pending Worker attempt in
+Product C5 state before the native effect. The graph publication callback
+publishes the exact attempt only after its Provider is visible. Session disposal
+and failed graph preparation retire the attempt and record protocol and tree
+settlement after Product reopens the bound start gate, Supervisor result, native
+group, payload state, and receipt. A Supervisor shutdown exception does not
+skip this evidence check after the process and payload close. The installed
+Product regression checks the direct Session, failed preparation, retained C5
+references, and Package GC's positive and changed-history refusal paths.
+The per-receipt GC positive case adds settled test records for older explicit
+canary attempts that do not use this pending Host; it does not claim those
+attempts now write C5 in production.
+Changed-boot and registered-lease recovery still refuse; this evidence owner
+does not authorize crash recovery or general third-party Worker routing.
