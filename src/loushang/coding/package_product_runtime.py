@@ -563,6 +563,23 @@ class CodingFencedProductApplicationSelection:
 
 
 @dataclass(slots=True)
+class _CodingSessionProductRuntimeRelease:
+    """Keep the original lease identity visible through Session disposal."""
+
+    release: Callable[[], None]
+    selection: CodingFencedProductApplicationSelection
+
+    @property
+    def registry(self) -> object:
+        lease = getattr(self.release, "__self__", None)
+        return getattr(lease, "registry", None)
+
+    def dispose(self) -> None:
+        self.release()
+        self.selection.close()
+
+
+@dataclass(slots=True)
 class CodingSessionOwnedProductRuntimeFactory:
     """Transfer a one-Session Product owner to the runtime binding's disposal."""
 
@@ -614,11 +631,7 @@ class CodingSessionOwnedProductRuntimeFactory:
             self.selection.close()
 
     def _dispose_binding(self, release: Callable[[], None]) -> Callable[[], None]:
-        def dispose() -> None:
-            release()
-            self.selection.close()
-
-        return dispose
+        return _CodingSessionProductRuntimeRelease(release, self.selection).dispose
 
 
 @dataclass(frozen=True, slots=True)

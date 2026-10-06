@@ -4184,7 +4184,7 @@ finally:
                             definition=replace(
                                 CODING_WORKER_QUERY_DEFINITION,
                                 owner_id=(
-                                    "coding.lsp" if owner_id == "coding" else "coding"
+                                    "coding.worker" if owner_id == "coding" else "coding"
                                 ),
                             ),
                             provider=query_provider,
