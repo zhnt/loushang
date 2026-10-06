@@ -1541,6 +1541,16 @@ publisher must acquire those locks in that order, take a fresh GC reservation
 snapshot under the write gate, re-run this join, and publish before releasing
 either lock. The public review remains read-only. This shared path has no
 checkpoint write or history-pruning authority by itself.
+The join now also strictly reads the opt-in, receipt, C5, start-gate, and
+Supervisor segment manifests and active heads from the pinned Product state
+root. It records each stream's segment lengths and SHA-256 digests, active
+generation, last sealed revision, total record revision, and a canonical
+snapshot fingerprint. The review compares those total revisions with each
+strict semantic journal replay and reports a mismatch as a missing proof. A
+future checkpoint must bind those fingerprints together with the existing
+semantic references and high-water marks; a revision count or ID inventory
+alone cannot prove unchanged historical bytes. No segment is retired by this
+capture.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

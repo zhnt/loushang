@@ -36,6 +36,11 @@ from .package_product_worker_gc_references import (
     coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CODING_WORKER_HISTORY_STREAM_STEMS,
+    CodingWorkerHistoryStreamSnapshotV1,
+    capture_coding_worker_history_streams_under_gc_guard,
+)
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
@@ -58,13 +63,7 @@ from .package_product_worker_start_gate_recovery import (
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_SEGMENTED_STEMS = (
-    "worker-opt-in",
-    "worker-activation-receipts",
-    "worker-activation-state",
-    "worker-start-gates",
-    "worker-supervisor",
-)
+_SEGMENTED_STEMS = CODING_WORKER_HISTORY_STREAM_STEMS
 _SEGMENTED_SUFFIX = re.compile(
     r"(?:\.jsonl(?:\.lock)?|\.segments\.json|\.head\.json|"
     r"\.g[0-9]{8}\.(?:jsonl|head\.json))\Z"
@@ -196,6 +195,8 @@ class CodingWorkerHistoryRetentionReviewV1:
     retained_start_gate_attempt_ids: tuple[str, ...]
     retained_supervisor_attempt_ids: tuple[str, ...]
     retained_receipt_fingerprints: tuple[str, ...]
+    history_stream_snapshots: tuple[CodingWorkerHistoryStreamSnapshotV1, ...]
+    history_stream_revisions_match: bool
     supervisor_epoch_high_water: tuple[tuple[str, int], ...]
     unbound_supervisor_attempt_ids: tuple[str, ...]
     activation_state_revision: int | None
@@ -296,6 +297,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("payload_repair_reference_retained")
         if self.unrecognized_worker_state_names:
             missing.append("worker_reference_owner_unrecognized")
+        if not self.history_stream_revisions_match:
+            missing.append("history_stream_revision_changed")
         if self.active_runtime_lease_ids:
             missing.append("runtime_lease_active")
         if self.active_gc_reservation_count:
@@ -568,6 +571,26 @@ def _review_coding_product_worker_history_under_guard(
         )
     product.assert_root_gc_authority_current()
     attempt_reference = _attempt_reference(gate, receipt)
+    history_stream_snapshots = capture_coding_worker_history_streams_under_gc_guard(
+        product
+    )
+    expected_stream_revisions = {
+        "worker-opt-in": len(opt_in_history),
+        "worker-activation-receipts": len(receipts),
+        "worker-activation-state": (
+            0
+            if activation_state is None
+            else cast(int, activation_state["stateRevision"])
+        ),
+        "worker-start-gates": max((item.journal_revision for item in gates), default=0),
+        "worker-supervisor": max(
+            (item.record_revision for item in supervisor_by_id.values()), default=0
+        ),
+    }
+    stream_revisions_match = all(
+        snapshot.total_revision == expected_stream_revisions[snapshot.stem]
+        for snapshot in history_stream_snapshots
+    )
     return CodingWorkerHistoryRetentionReviewV1(
         attempt_id=attempt_id,
         gate_record=gate,
@@ -593,6 +616,8 @@ def _review_coding_product_worker_history_under_guard(
         retained_receipt_fingerprints=tuple(
             sorted(item.receipt.fingerprint for item in receipts)
         ),
+        history_stream_snapshots=history_stream_snapshots,
+        history_stream_revisions_match=stream_revisions_match,
         supervisor_epoch_high_water=tuple(sorted(supervisor_epoch_by_key.items())),
         unbound_supervisor_attempt_ids=unbound_supervisor_attempt_ids,
         activation_state_revision=(

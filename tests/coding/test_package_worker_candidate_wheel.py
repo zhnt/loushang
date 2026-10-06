@@ -5388,6 +5388,25 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                     )
                 )
         assert writer_review == retention
+        assert retention.history_stream_revisions_match
+        assert tuple(
+            snapshot.stem for snapshot in retention.history_stream_snapshots
+        ) == (
+            "worker-opt-in",
+            "worker-activation-receipts",
+            "worker-activation-state",
+            "worker-start-gates",
+            "worker-supervisor",
+        )
+        assert all(
+            snapshot.segment_byte_counts[-1] > 0
+            for snapshot in retention.history_stream_snapshots
+        )
+        with pytest.raises(ValueError, match="snapshot is invalid"):
+            replace(
+                retention.history_stream_snapshots[0],
+                segment_digests=("0" * 64,),
+            )
         assert retention.unverified_activation_references == ()
         assert retention.global_unverified_activation_references == ()
         assert retention.global_unverified_opt_in_references == ()
@@ -5448,6 +5467,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             assert unbound_elsewhere.global_unverified_opt_in_references == (
                 (orphan_receipt.fingerprint, "historical_opt_in_unverified"),
             )
+            assert not unbound_elsewhere.history_stream_revisions_match
+            assert "history_stream_revision_changed" in unbound_elsewhere.missing_proofs
             assert "global_opt_in_reference_unverified" in unbound_elsewhere.missing_proofs
             assert not unbound_elsewhere.receipt_references_verified
         with monkeypatch.context() as missing_opt_in_history:
