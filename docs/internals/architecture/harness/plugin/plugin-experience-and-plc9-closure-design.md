@@ -3167,6 +3167,11 @@ processes. It reports native release and Product use as `not_checked` and
 does not execute the Worker. The real static-ELF positive and invalid-Wheel
 negative cases passed 2/2 on 2026-10-06. This shortens the author feedback
 path without opening general Worker self-service.
+The full Harness check was then rerun on `0749c90f`: Ruff passed, mypy found
+no issues in 770 source files, and pytest finished with 5,574 passes, 121
+skips, and zero failures in 20 minutes 42 seconds. This clears the local
+Harness regression after the import-boundary repair; Coding's separate broad
+suite, Windows-native reports, and final delivery checks remain separate.
 
 ## Independent Review Record
 
