@@ -22,6 +22,7 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     _LocalWheelSelectedManifestReader,
 )
 from loushang.harness.package_product.product_worker_candidate import (
+    WorkerPackageCandidateV1,
     verify_product_selected_worker_candidate,
 )
 from loushang.harness.plugin_management.current_preview import (
@@ -57,7 +58,6 @@ from loushang.harness.resources.packages.product_epoch_guard import (
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelPolicy,
 )
-from loushang.harness.worker.package_candidate import WorkerPackageCandidateV1
 
 from ._base_plugin import CodingBasePluginAssemblyError
 from ._base_product_composition import (
