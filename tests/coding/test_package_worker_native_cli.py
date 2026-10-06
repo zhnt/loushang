@@ -33,6 +33,12 @@ from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_activation_state_journal import (
+    CodingProductWorkerActivationStateJournal,
+)
+from loushang.coding.package_product_worker_operator_query import (
+    query_coding_product_worker,
+)
 from loushang.coding.package_product_worker_payload import (
     CodingWorkerPayloadDebtPlanV1,
     open_coding_product_worker_supervisor_journal,
@@ -44,6 +50,7 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.session import AgentProductSession
 from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
 from loushang.plugin._coding_local_worker_wheel import (
     build_coding_local_worker_candidate_wheel,
@@ -930,6 +937,43 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert isinstance(attempts, list) and len(attempts) == 4
     assert len({item["attemptId"] for item in attempts}) == 4
     assert all(item["phase"] == "bound" for item in attempts)
+    retained = CodingProductWorkerActivationStateJournal(
+        gate_history.with_name("worker-activation-state.jsonl")
+    ).retained_attempts_read_only()
+    assert {item.attempt_id for item in retained} == {
+        item["attemptId"] for item in attempts
+    }
+    assert all(item.phase == "settled" for item in retained)
+    failing_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        async def fail_graph(_session: AgentProductSession) -> None:
+            raise RuntimeError("injected query graph failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(AgentProductSession, "prepare_model_call_runtime", fail_graph)
+            with pytest.raises(RuntimeError, match="injected query graph failure"):
+                asyncio.run(
+                    query_coding_product_worker(
+                        product=failing_owner.runtime_owner.product_owner,
+                        workspace=workspace,
+                        plugin_id="reviewworker",
+                        session_file=session_file,
+                        symbol="review",
+                    )
+                )
+        after_failure = CodingProductWorkerActivationStateJournal(
+            gate_history.with_name("worker-activation-state.jsonl")
+        ).retained_attempts_read_only()
+        assert len(after_failure) == len(retained) + 1
+        assert all(item.phase == "settled" for item in after_failure)
+    finally:
+        failing_owner.close()
     gate_lock = gate_history.with_name(gate_history.name + ".lock")
     hidden_lock = gate_lock.with_name(gate_lock.name + ".held")
     gate_lock.rename(hidden_lock)

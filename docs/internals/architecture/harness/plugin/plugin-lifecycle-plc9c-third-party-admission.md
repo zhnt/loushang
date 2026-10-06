@@ -1571,6 +1571,15 @@ Supervisor, so the review reported `receipt_references_unverified`. The current
 Linux explicit Session Host also writes C5 transitions. Earlier attempt
 references and the later checkpoint must still be joined before history
 pruning or general third-party routing is accepted.
+The public Linux `loushang-worker-native query` entrypoint now uses the same
+Product C5 coordinator: it records admission before first effect, publishes
+after Session graph preparation, and retires and settles only after the Worker
+process and payload have been cleaned up. Its cross-process Product regression
+first found four settled start gates with no C5 records; after the change all
+four had retained settled C5 attempts. A graph-preparation failure after
+Worker start also left a fifth settled attempt. This closes that explicit CLI
+write path, while the low-level canary fixture and durable checkpoint/pruning
+gates remain separate.
 The read-only retention review now exposes every retained C5 attempt, including
 one settled and compacted out of the latest snapshot. Linux Package GC also
 joins those retained C5 attempts to start-gate and Supervisor history and

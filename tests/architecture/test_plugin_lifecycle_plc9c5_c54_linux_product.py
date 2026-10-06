@@ -80,6 +80,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.gated_start",
         "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",
     },
     CODING_ROOT / "package_product_worker_pending_host.py": {

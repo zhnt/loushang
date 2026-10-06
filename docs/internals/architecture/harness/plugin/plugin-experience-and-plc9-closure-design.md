@@ -3264,12 +3264,21 @@ the repository verifier with one test, zero skips, failures, or errors at
 `/home/dev/lsspace/.artifacts/plugin-plc9/worker-sustained-37520786728.xml`.
 This exercises 2,049 queries within one Product Worker attempt; it does not
 exercise 4,096 receipt generations, checkpoint publication, or history pruning.
-The run's Windows Session and full Coding jobs remain in progress, and its
-Host Runtime selected gate failed after the underlying job reported a real
+The run's full Coding job passed; its Windows Session job remains in progress.
+The Host Runtime selected gate failed after the underlying job reported a real
 missing-C5 Package GC assertion and then reached its 10-minute timeout. The
 missing-C5 GC check passed its focused local regression after correction, and
 the next head raises that job's time limit to 20 minutes. The current run is
 therefore not an exact-head acceptance result for the correction.
+The explicit Linux Worker query CLI also lacked production C5 writes: its real
+cross-process regression showed four bound start gates and zero retained C5
+attempts. The CLI now uses the Product C5 coordinator from before first effect
+through graph publication and verified post-cleanup settlement. The same
+regression passed after the change, including an injected graph-preparation
+failure after Worker startup; all five attempts were retained and settled.
+Focused C50/C54 architecture tests passed 16/16, and the generated package
+dependency document remained current. This is local evidence for the explicit
+CLI route; the manual canary fixture and exact-head full CI remain separate.
 
 ## Independent Review Record
 
