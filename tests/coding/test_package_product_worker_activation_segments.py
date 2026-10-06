@@ -263,6 +263,16 @@ def test_activation_state_refuses_compacted_attempt_reuse_across_generations(
     assert CodingProductWorkerActivationStateJournal(journal.path).load_read_only() == (
         compacted
     )
+    retained = CodingProductWorkerActivationStateJournal(
+        journal.path
+    ).retained_attempts_read_only()
+    assert len(retained) == 1
+    assert retained[0].attempt_id == attempt_id
+    assert retained[0].receipt_fingerprint == receipt
+    assert retained[0].owner_generation == 1
+    assert retained[0].phase == "settled"
+    assert retained[0].last_seen_revision == 3
+    assert not retained[0].current
 
     monkeypatch.setattr(activation_module, "_MAX_REVISIONS", 2)
     active = journal.path.parent / "worker-activation-state.g00000003.jsonl"
