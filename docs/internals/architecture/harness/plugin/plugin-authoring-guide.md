@@ -266,6 +266,20 @@ changed input bytes, oversized sources, invalid native format, and replacing
 an existing output. Its JSON reports
 `profile: "coding-local-worker-candidate-v1"`,
 `productAdmission: "not_checked"`, and `productUse: "not_checked"`.
+On Linux, authors can check Product admission and selection for that exact
+Wheel in a disposable offline workspace:
+
+```text
+loushang-coding-plugin-smoke dist/reviewworker-1-py3-none-manylinux_2_17_x86_64.whl \
+  --kind worker --plugin-id reviewworker \
+  --contribution-id query-provider --owner-id coding
+```
+
+A passing Worker smoke reports `productAdmission: "passed"` and
+`productSelection: "passed"`. It leaves `nativeRelease` and `productUse` as
+`not_checked`: it does not approve a native release, run the executable, or
+authorize the caller's real workspace. A failed Product stage is reported
+without claiming later stages.
 Python authors can use `build_coding_local_worker_candidate_wheel()` for bytes
 or `write_coding_local_worker_candidate_wheel()` for a new file. The Coding
 Product still requires its explicit Worker candidate policy, installation,

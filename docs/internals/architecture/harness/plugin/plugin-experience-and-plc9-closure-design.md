@@ -3159,6 +3159,15 @@ and mypy passed for the changed files. A complete Harness rerun on the fixed
 head remains pending, so this is a focused repair rather than a final green
 gate.
 
+The Linux author smoke command now accepts `--kind worker` with exact
+contribution and owner IDs. It takes one bounded Wheel snapshot, creates a
+disposable fenced Product workspace, then checks candidate capture,
+installation, enablement, and read-only selection in separate command
+processes. It reports native release and Product use as `not_checked` and
+does not execute the Worker. The real static-ELF positive and invalid-Wheel
+negative cases passed 2/2 on 2026-10-06. This shortens the author feedback
+path without opening general Worker self-service.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

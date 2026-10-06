@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
 from hashlib import sha256
 from pathlib import Path
 
@@ -13,6 +16,75 @@ from loushang.plugin import (
     write_coding_data_skill_wheel,
 )
 from loushang.plugin.__main__ import main as plugin_cli_main
+from loushang.plugin._coding_local_worker_wheel import (
+    write_coding_local_worker_candidate_wheel,
+)
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate smoke")
+def test_author_worker_smoke_proves_admission_and_selection_without_use(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    compiler = shutil.which("cc")
+    assert compiler is not None
+    source = tmp_path / "candidate.c"
+    source.write_text("int main(void) { return 42; }\n", encoding="ascii")
+    executable = tmp_path / "query-worker"
+    built = subprocess.run(
+        (
+            compiler, "-static", "-O2", "-s", "-o", str(executable),
+            str(source),
+        ),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    wheel = write_coding_local_worker_candidate_wheel(
+        tmp_path,
+        plugin_id="reviewworker",
+        version="1",
+        contribution_id="query-provider",
+        owner_id="coding",
+        native_platform="linux-x86_64",
+        wheel_tag="py3-none-manylinux_2_17_x86_64",
+        executable=executable.read_bytes(),
+    )
+    assert smoke_cli_main(
+        [
+            str(wheel), "--kind", "worker", "--plugin-id", "reviewworker",
+            "--contribution-id", "query-provider", "--owner-id", "coding",
+        ]
+    ) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "passed"
+    assert report["artifactSha256"] == sha256(wheel.read_bytes()).hexdigest()
+    assert report["productAdmission"] == "passed"
+    assert report["productSelection"] == "passed"
+    assert report["selectedPluginVersion"] == "1"
+    assert report["nativeRelease"] == "not_checked"
+    assert report["productUse"] == "not_checked"
+    assert report["workspace"] == "disposable"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate smoke")
+def test_author_worker_smoke_does_not_claim_selection_after_bad_wheel(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wheel = tmp_path / "reviewworker-1-py3-none-manylinux_2_17_x86_64.whl"
+    wheel.write_bytes(b"not a Worker Wheel")
+    assert smoke_cli_main(
+        [
+            str(wheel), "--kind", "worker", "--plugin-id", "reviewworker",
+            "--contribution-id", "query-provider", "--owner-id", "coding",
+        ]
+    ) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "failed"
+    assert report["productAdmission"] == "failed"
+    assert report["productSelection"] == "not_checked"
+    assert report["productUse"] == "not_checked"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="ordinary data Product path is POSIX")

@@ -8,6 +8,8 @@ import json
 import os
 import re
 import stat
+import subprocess
+import sys
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import contextmanager
 from hashlib import sha256
@@ -54,21 +56,198 @@ _SMOKE_ARGUMENTS = "Verify the author package."
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="loushang-coding-plugin-smoke",
-        description="Prove a data Wheel in a disposable offline Coding Product.",
+        description="Check a Wheel in a disposable offline Coding Product.",
     )
     parser.add_argument("wheel_file")
-    parser.add_argument("--kind", choices=("skill", "prompt", "theme"), required=True)
-    parser.add_argument("--plugin-id", required=True)
-    parser.add_argument("--resource-name", required=True)
-    args = parser.parse_args(argv)
-    report = smoke_coding_data_wheel(
-        args.wheel_file,
-        kind=args.kind,
-        plugin_id=args.plugin_id,
-        resource_name=args.resource_name,
+    parser.add_argument(
+        "--kind", choices=("skill", "prompt", "theme", "worker"), required=True
     )
+    parser.add_argument("--plugin-id", required=True)
+    parser.add_argument("--resource-name")
+    parser.add_argument("--contribution-id")
+    parser.add_argument("--owner-id")
+    args = parser.parse_args(argv)
+    if args.kind == "worker":
+        if args.resource_name is not None:
+            parser.error("--resource-name is for data Resources only")
+        if args.contribution_id is None or args.owner_id is None:
+            parser.error("Worker smoke requires --contribution-id and --owner-id")
+        report = smoke_coding_worker_candidate_wheel(
+            args.wheel_file,
+            plugin_id=args.plugin_id,
+            contribution_id=args.contribution_id,
+            owner_id=args.owner_id,
+        )
+    else:
+        if args.resource_name is None:
+            parser.error("Data Resource smoke requires --resource-name")
+        if args.contribution_id is not None or args.owner_id is not None:
+            parser.error("--contribution-id and --owner-id are for Worker only")
+        report = smoke_coding_data_wheel(
+            args.wheel_file,
+            kind=args.kind,
+            plugin_id=args.plugin_id,
+            resource_name=args.resource_name,
+        )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
+
+
+def smoke_coding_worker_candidate_wheel(
+    wheel_path: str | Path,
+    *,
+    plugin_id: str,
+    contribution_id: str,
+    owner_id: str,
+) -> dict[str, object]:
+    """Prove inert Linux Worker admission and selection in a disposable Product."""
+
+    report: dict[str, object] = {
+        "status": "failed",
+        "smokeProfile": "coding-worker-candidate-selection-v1",
+        "artifactSha256": None,
+        "productAdmission": "not_checked",
+        "productSelection": "not_checked",
+        "nativeRelease": "not_checked",
+        "productUse": "not_checked",
+        "workspace": "disposable",
+    }
+    if not sys.platform.startswith("linux") or os.name != "posix":
+        return _failure(report, "artifact", "linux_worker_candidate_required")
+    if _ID.fullmatch(plugin_id) is None:
+        return _failure(report, "artifact", "invalid_profile_identity")
+    try:
+        wheel_bytes = _capture_wheel(Path(wheel_path))
+    except (OSError, ValueError) as exc:
+        return _failure(report, "artifact", "wheel_capture_refused", str(exc))
+    report["artifactSha256"] = sha256(wheel_bytes).hexdigest()
+
+    with TemporaryDirectory(prefix="loushang-worker-author-smoke-") as scratch:
+        root = Path(scratch)
+        workspace = root / "workspace"
+        workspace.mkdir(mode=0o700)
+        captured = root / Path(wheel_path).name
+        captured.write_bytes(wheel_bytes)
+        with _temporary_home(root / "home"):
+            layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+            settings = SettingsManager(
+                global_settings_path=root / "global-settings.json",
+                project_settings_path=workspace / ".loushang" / "settings.json",
+            )
+            try:
+                cutover_and_bootstrap_coding_package_product(
+                    layout,
+                    settings,
+                    workspace=workspace,
+                    namespace_id=token_hex(32),
+                    runtime_version=version("loushang"),
+                    runtime_protocol_epoch=2,
+                )
+            except Exception as exc:
+                return _failure(
+                    report, "workspace_setup", "product_cutover_refused", str(exc), root
+                )
+            try:
+                capture = _run_worker_candidate_command(
+                    workspace,
+                    "candidate-capture",
+                    "--wheel",
+                    str(captured),
+                    "--contribution-id",
+                    contribution_id,
+                    "--owner-id",
+                    owner_id,
+                    "--native-platform",
+                    "linux-x86_64",
+                )
+                binding = capture["workerCandidateBinding"]
+                if not isinstance(binding, dict) or binding.get("pluginId") != plugin_id:
+                    raise ValueError("Captured Worker identity differs from request")
+                digest = binding["artifactDigest"]
+                if digest != report["artifactSha256"]:
+                    raise ValueError("Captured Worker differs from the author Wheel")
+                installed = _run_worker_candidate_command(
+                    workspace,
+                    "candidate-install",
+                    "--plugin-id",
+                    plugin_id,
+                    "--artifact-digest",
+                    digest,
+                    "--operation-id",
+                    "author-smoke-install",
+                )
+            except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+                return _failure(
+                    report, "product_admission", "worker_candidate_admission_refused",
+                    str(exc), root,
+                )
+            report["productAdmission"] = "passed"
+            try:
+                install_result = installed["candidateInstall"]
+                if not isinstance(install_result, dict):
+                    raise ValueError("Product install result is unavailable")
+                revision = install_result["inventoryRevision"]
+                if type(revision) is not int:
+                    raise ValueError("Product inventory revision is unavailable")
+                _run_worker_candidate_command(
+                    workspace,
+                    "candidate-enable",
+                    "--plugin-id",
+                    plugin_id,
+                    "--artifact-digest",
+                    digest,
+                    "--operation-id",
+                    "author-smoke-enable",
+                    "--expected-inventory-revision",
+                    str(revision),
+                )
+                status = _run_worker_candidate_command(
+                    workspace, "candidate-status", "--plugin-id", plugin_id
+                )
+                selection = status["candidateSelection"]
+                if (
+                    not isinstance(selection, dict)
+                    or selection.get("stage") != "observed_in_read"
+                    or status.get("snapshotStatus") != "partial_evidence"
+                    or status.get("candidateOptInAlignment") != "not_allowed"
+                ):
+                    raise ValueError("Selected Worker was not observed in Product")
+            except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+                return _failure(
+                    report, "product_selection", "worker_candidate_selection_refused",
+                    str(exc), root,
+                )
+            report["productSelection"] = "passed"
+            report["selectedPluginVersion"] = selection["pluginVersion"]
+            report["status"] = "passed"
+            return report
+
+
+def _run_worker_candidate_command(
+    workspace: Path, action: str, *arguments: str
+) -> dict[str, object]:
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-m",
+            "loushang.coding.cli.package_worker_native",
+            "--workspace",
+            str(workspace),
+            action,
+            *arguments,
+        ),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip()[-1000:] or "Worker command refused")
+    result = json.loads(completed.stdout)
+    if not isinstance(result, dict):
+        raise ValueError("Worker command returned an invalid Product result")
+    return result
 
 
 class _OfflineAdapter:
@@ -467,7 +646,7 @@ def _failure(
     return report
 
 
-__all__ = ["main", "smoke_coding_data_wheel"]
+__all__ = ["main", "smoke_coding_data_wheel", "smoke_coding_worker_candidate_wheel"]
 
 
 if __name__ == "__main__":
