@@ -3185,6 +3185,21 @@ checks passed 10/10. This closes the active-tail proof for newly created Linux
 Product state; attempt-level backup/GC retention, safe pruning, Windows
 native Session evidence, and general third-party routing are still open.
 
+The active-head change and its receipt-error regression were committed as
+`b95ffd9d` and `ffe8ec6f`. On the latter head, a bounded offline Coding run
+covered all 362 sorted test files in separate processes: 4,786 passed, 84
+skipped, and eight deselected by existing selectors. A mixed batch exhausted
+the default 164 MiB pytest runtime filesystem; the affected SDK file passed
+14/14 in a private `/tmp` runtime, Session exports passed 19/19 alone, and the
+remaining eight files passed 197/197 alone. The Worker candidate file passed
+32 with 12 host-runtime skips after its byte-corruption assertion was aligned
+with the new active-head error. Three separate installed-Product public Worker
+Session cases passed for query, disable, and update. This is complete file
+coverage, not a single-process order-equivalent Coding gate; exact-head CI
+remains required. The complete `make check-harness` on `ffe8ec6f` passed Ruff,
+mypy over 770 source files, and 5,574 pytest cases with 121 skips and zero
+failures in 21 minutes 56 seconds.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
