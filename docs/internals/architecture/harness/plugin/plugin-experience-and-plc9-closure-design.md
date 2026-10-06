@@ -3316,6 +3316,8 @@ only exact C5 names and checks any present C5 history against launched attempts
 and Product receipts plus fresh native Job absence before Package root deletion.
 The C5 join requires the Windows V2 native cleanup contract and matches the
 retained owner generation to the receipt's Product selection generation.
+The shared C5 replay guard now treats the cleanup contract version as an
+immutable attempt field; a later revision cannot upgrade a V1 attempt to V2.
 The Windows offline recovery snapshot now carries the retained C5 revision and
 attempts as read-only evidence and records whether the C5 owner lock exists,
 including an empty interrupted initialization. It also reports a read-only

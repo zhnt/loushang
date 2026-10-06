@@ -291,9 +291,16 @@ def test_activation_state_refuses_compacted_attempt_reuse_across_generations(
     assert changed.value.code == "worker_activation_state_corrupt"
 
 
-@pytest.mark.parametrize("field", ("hostIdentity", "bootIdentity"))
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("hostIdentity", "different-owner"),
+        ("bootIdentity", "different-owner"),
+        ("cleanupContractVersion", 2),
+    ),
+)
 def test_activation_state_refuses_rebinding_existing_attempt_identity(
-    tmp_path: Path, field: str
+    tmp_path: Path, field: str, value: str | int
 ) -> None:
     journal = _journal(tmp_path)
     receipt = "a" * 64
@@ -308,7 +315,7 @@ def test_activation_state_refuses_rebinding_existing_attempt_identity(
 
     rebound = _next_state(registered)
     attempt = dict(registered_attempt)
-    attempt[field] = "different-owner"
+    attempt[field] = value
     rebound["attempts"] = {key: attempt}
     with pytest.raises(WorkerActivationStateJournalError) as conflict:
         journal.compare_and_swap(expected_revision=2, document=rebound)

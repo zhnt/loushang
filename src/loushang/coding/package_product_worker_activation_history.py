@@ -20,6 +20,7 @@ from loushang.harness.worker.product_activation import _ATTEMPT_TRANSITIONS
 _IMMUTABLE_ATTEMPT_FIELDS = (
     "attemptId",
     "bootIdentity",
+    "cleanupContractVersion",
     "evidenceAuthorityFingerprint",
     "evidenceAuthorityId",
     "hostIdentity",
