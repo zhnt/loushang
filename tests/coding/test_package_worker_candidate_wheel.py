@@ -7055,9 +7055,13 @@ def test_worker_gc_revision_join_keeps_all_same_artifact_pins() -> None:
     )
     other_plugin = replace(matching[0], plugin_id="another")
     other_artifact = replace(matching[0], package_content_digest="d" * 64)
+    same_lock_newer_version = replace(matching[0], plugin_version="2")
     assert history_retention_module._matching_gc_revision_refs(
-        reference, frozenset((*matching, other_plugin, other_artifact))
-    ) == matching
+        reference,
+        frozenset(
+            (*matching, other_plugin, other_artifact, same_lock_newer_version)
+        ),
+    ) == (matching[0], same_lock_newer_version, matching[1])
 
 
 @pytest.mark.skipif(

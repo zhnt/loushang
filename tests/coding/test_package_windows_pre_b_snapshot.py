@@ -237,6 +237,7 @@ from loushang.coding.package_product_worker_windows_receipt_journal import (
 )
 from loushang.coding.package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
+    inspect_coding_windows_product_worker_attempt_gc_observations,
     inspect_coding_windows_product_worker_attempt_references,
     inspect_coding_windows_product_worker_offline_recovery,
     inspect_coding_windows_product_worker_recovery_inventory,
@@ -2944,6 +2945,13 @@ module["_exercise_windows_worker_wheel_transaction"](
             attempts[0].launch_receipt_fingerprint
         )
         assert references[0].native_platform == "windows"
+        gc_observations = inspect_coding_windows_product_worker_attempt_gc_observations(
+            product
+        )
+        assert len(gc_observations) == 1
+        assert gc_observations[0].attempt_reference == references[0]
+        assert gc_observations[0].active_gc_reservation_count == 0
+        assert gc_observations[0].matching_revision_refs == ()
         first = review_coding_windows_product_worker_crash_cleanup(
             product, attempt_id=attempt_id
         )

@@ -21,6 +21,9 @@ from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
     CodingProductWorkerRetainedAttemptV1,
 )
+from .package_product_worker_gc_references import (
+    matching_coding_worker_gc_revision_refs,
+)
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_opt_in_owner import CodingWorkerProductOptInOwner
 from .package_product_worker_payload import (
@@ -93,20 +96,10 @@ def _matching_gc_revision_refs(
 ) -> tuple[PluginPackageRevisionRefV1, ...]:
     if reference is None:
         return ()
-    return tuple(
-        sorted(
-            (
-                item
-                for item in reservations
-                if item.plugin_id == reference.plugin_id
-                and item.package_content_digest
-                == reference.selected_package_revision_digest
-            ),
-            key=lambda item: (
-                item.dependency_lock_digest,
-                item.package_source_identity,
-            ),
-        )
+    return matching_coding_worker_gc_revision_refs(
+        plugin_id=reference.plugin_id,
+        package_content_digest=reference.selected_package_revision_digest,
+        reservations=reservations,
     )
 
 

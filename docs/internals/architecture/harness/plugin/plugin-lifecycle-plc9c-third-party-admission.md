@@ -1521,7 +1521,12 @@ revision-only reservation. The Linux review now reports GC reservations whose
 plugin ID and Package content digest match the attempt's receipt. This is a
 conservative attempt-to-revision join under the GC read guard; any active GC
 reservation still blocks pruning, and no backup or durable absence attestation
-is implied. Only after those joins can a checkpoint carry a
+is implied. Windows now uses the same exact Plugin and Wheel artifact join
+under one GC read guard for every retained launch-intent reference. Its report
+also preserves the total active reservation count, so an unrelated reservation
+cannot silently become an attempt-level absence proof. The native public
+Session crash/reopen case checks the no-reservation observation; its rerun is
+pending. Only after those joins can a checkpoint carry a
 durable anti-reuse high-water mark and retire sealed segments. Linux and
 Windows must use the same reference semantics, with their respective native
 settlement witnesses.

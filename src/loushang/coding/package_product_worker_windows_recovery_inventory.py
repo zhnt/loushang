@@ -14,8 +14,12 @@ from typing import Literal, cast
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.journal import WorkerAttemptPhase
 
+from .package_product_worker_gc_references import (
+    matching_coding_worker_gc_revision_refs,
+)
 from .package_product_worker_windows_launch_intent import (
     _inspect_intents_under_gc_guard,
 )
@@ -157,6 +161,19 @@ class CodingWindowsWorkerAttemptReferenceV1:
     selected_locator_revision: str
     native_platform: Literal["windows"]
     launch_request_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class CodingWindowsWorkerAttemptGcObservationV1:
+    """One attempt reference joined to the current Package GC reservations.
+
+    The reservation journal only names Package revisions. Even an empty match
+    cannot prove that backup or other Product owners released this attempt.
+    """
+
+    attempt_reference: CodingWindowsWorkerAttemptReferenceV1
+    active_gc_reservation_count: int
+    matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
 
 
 class CodingWindowsWorkerRecoveryAdmissionError(RuntimeError):
@@ -433,93 +450,130 @@ def inspect_coding_windows_product_worker_attempt_references(
         or product.policy.product_id != "coding"
     ):
         raise OSError("Windows Worker attempt references require a Product owner")
+    with product.gc_gate.read_guard():
+        return _inspect_windows_worker_attempt_references_under_gc_guard(product)
+
+
+def inspect_coding_windows_product_worker_attempt_gc_observations(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> tuple[CodingWindowsWorkerAttemptGcObservationV1, ...]:
+    """Join retained launch references to active GC reservations under one gate."""
+
+    if (
+        os.name != "nt"
+        or type(product) is not WindowsLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+    ):
+        raise OSError("Windows Worker GC observations require a Product owner")
+    with product.gc_gate.read_guard() as reservations:
+        references = _inspect_windows_worker_attempt_references_under_gc_guard(
+            product
+        )
+        return tuple(
+            CodingWindowsWorkerAttemptGcObservationV1(
+                attempt_reference=reference,
+                active_gc_reservation_count=len(reservations),
+                matching_revision_refs=matching_coding_worker_gc_revision_refs(
+                    plugin_id=reference.plugin_id,
+                    package_content_digest=(
+                        reference.selected_package_revision_digest
+                    ),
+                    reservations=reservations,
+                ),
+            )
+            for reference in references
+        )
+
+
+def _inspect_windows_worker_attempt_references_under_gc_guard(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> tuple[CodingWindowsWorkerAttemptReferenceV1, ...]:
     from .package_product_worker_windows_receipt_journal import (
         CodingWindowsWorkerReceiptJournal,
     )
 
-    with product.gc_gate.read_guard():
-        product.assert_root_gc_authority_current()
-        attempts = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
-        with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
-            receipts = CodingWindowsWorkerReceiptJournal(
-                product.state_root / "worker-activation-receipts.jsonl",
-                scope_id=product.policy.project_scope_id,
-            ).records(directory_fd=root)
-        receipt_by_fingerprint = {
-            record.receipt.fingerprint: record for record in receipts
-        }
-        if len(receipt_by_fingerprint) != len(receipts):
-            raise CodingWindowsWorkerRecoveryAdmissionError(
-                "coding_worker_attempt_reference_receipt_conflict"
-            )
-        references: list[CodingWindowsWorkerAttemptReferenceV1] = []
-        for attempt in attempts:
-            request_fingerprint = attempt.launch_request_fingerprint
-            receipt_fingerprint = attempt.launch_receipt_fingerprint
-            identity_fingerprint = attempt.launch_identity_fingerprint
-            if request_fingerprint is None:
-                if (
-                    receipt_fingerprint is not None
-                    or identity_fingerprint is not None
-                    or attempt.native_phase is not None
-                    or attempt.supervisor_phase is not None
-                ):
-                    raise CodingWindowsWorkerRecoveryAdmissionError(
-                        "coding_worker_attempt_reference_intent_absent"
-                    )
-                continue
-            receipt = (
-                None
-                if receipt_fingerprint is None
-                else receipt_by_fingerprint.get(receipt_fingerprint)
-            )
+    product.assert_root_gc_authority_current()
+    attempts = _inspect_windows_worker_recovery_inventory_under_gc_guard(product)
+    with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
+        receipts = CodingWindowsWorkerReceiptJournal(
+            product.state_root / "worker-activation-receipts.jsonl",
+            scope_id=product.policy.project_scope_id,
+        ).records(directory_fd=root)
+    receipt_by_fingerprint = {
+        record.receipt.fingerprint: record for record in receipts
+    }
+    if len(receipt_by_fingerprint) != len(receipts):
+        raise CodingWindowsWorkerRecoveryAdmissionError(
+            "coding_worker_attempt_reference_receipt_conflict"
+        )
+    references: list[CodingWindowsWorkerAttemptReferenceV1] = []
+    for attempt in attempts:
+        request_fingerprint = attempt.launch_request_fingerprint
+        receipt_fingerprint = attempt.launch_receipt_fingerprint
+        identity_fingerprint = attempt.launch_identity_fingerprint
+        if request_fingerprint is None:
             if (
-                receipt_fingerprint is None
-                or identity_fingerprint is None
-                or any(
-                    type(value) is not str
-                    or _FINGERPRINT.fullmatch(value) is None
-                    for value in (
-                        request_fingerprint,
-                        receipt_fingerprint,
-                        identity_fingerprint,
-                    )
-                )
-                or attempt.launch_stage_identity is None
-                or receipt is None
-                or receipt.receipt.policy.product_id != "coding"
-                or (
-                    attempt.native_phase is not None
-                    and (
-                        attempt.native_worker_request_fingerprint
-                        != request_fingerprint
-                        or attempt.native_receipt_fingerprint
-                        != receipt_fingerprint
-                    )
-                )
-                or (
-                    attempt.supervisor_phase is not None
-                    and attempt.supervisor_identity_fingerprint
-                    != identity_fingerprint
-                )
+                receipt_fingerprint is not None
+                or identity_fingerprint is not None
+                or attempt.native_phase is not None
+                or attempt.supervisor_phase is not None
             ):
                 raise CodingWindowsWorkerRecoveryAdmissionError(
-                    "coding_worker_attempt_reference_binding_changed"
+                    "coding_worker_attempt_reference_intent_absent"
                 )
-            policy = receipt.receipt.policy
-            references.append(
-                CodingWindowsWorkerAttemptReferenceV1(
-                    attempt_id=attempt.attempt_id,
-                    plugin_id=policy.plugin_id,
-                    receipt_fingerprint=receipt_fingerprint,
-                    selected_package_revision_digest=policy.plugin_revision_digest,
-                    selected_locator_revision=policy.selected_locator_revision,
-                    native_platform="windows",
-                    launch_request_fingerprint=request_fingerprint,
+            continue
+        receipt = (
+            None
+            if receipt_fingerprint is None
+            else receipt_by_fingerprint.get(receipt_fingerprint)
+        )
+        if (
+            receipt_fingerprint is None
+            or identity_fingerprint is None
+            or any(
+                type(value) is not str
+                or _FINGERPRINT.fullmatch(value) is None
+                for value in (
+                    request_fingerprint,
+                    receipt_fingerprint,
+                    identity_fingerprint,
                 )
             )
-        product.assert_root_gc_authority_current()
-        return tuple(references)
+            or attempt.launch_stage_identity is None
+            or receipt is None
+            or receipt.receipt.policy.product_id != "coding"
+            or (
+                attempt.native_phase is not None
+                and (
+                    attempt.native_worker_request_fingerprint
+                    != request_fingerprint
+                    or attempt.native_receipt_fingerprint
+                    != receipt_fingerprint
+                )
+            )
+            or (
+                attempt.supervisor_phase is not None
+                and attempt.supervisor_identity_fingerprint
+                != identity_fingerprint
+            )
+        ):
+            raise CodingWindowsWorkerRecoveryAdmissionError(
+                "coding_worker_attempt_reference_binding_changed"
+            )
+        policy = receipt.receipt.policy
+        references.append(
+            CodingWindowsWorkerAttemptReferenceV1(
+                attempt_id=attempt.attempt_id,
+                plugin_id=policy.plugin_id,
+                receipt_fingerprint=receipt_fingerprint,
+                selected_package_revision_digest=policy.plugin_revision_digest,
+                selected_locator_revision=policy.selected_locator_revision,
+                native_platform="windows",
+                launch_request_fingerprint=request_fingerprint,
+            )
+        )
+    product.assert_root_gc_authority_current()
+    return tuple(references)
 
 
 def inspect_coding_windows_product_worker_offline_recovery(
@@ -653,11 +707,13 @@ def _inspect_windows_worker_recovery_inventory_under_gc_guard(
 
 __all__ = [
     "CodingWindowsWorkerRecoveryAdmissionError",
+    "CodingWindowsWorkerAttemptGcObservationV1",
     "CodingWindowsWorkerAttemptReferenceV1",
     "CodingWindowsWorkerRecoveryAttemptV1",
     "CodingWindowsWorkerOfflineRecoverySnapshotV1",
     "inspect_coding_windows_product_worker_offline_recovery",
     "inspect_coding_windows_product_worker_attempt_references",
+    "inspect_coding_windows_product_worker_attempt_gc_observations",
     "inspect_coding_windows_product_worker_recovery_inventory",
     "require_coding_windows_worker_current_attempt",
 ]
