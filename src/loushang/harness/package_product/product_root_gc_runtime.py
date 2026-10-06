@@ -245,7 +245,7 @@ class LocalWheelProductRootGcOwner:
                     code="plugin_package_gc_runtime_active",
                 )
             self.product.assert_root_gc_authority_current()
-            with self.product.gc_gate.guard():
+            with self.product.gc_gate.guard(require_write=True):
                 if require_no_worker_payload_debt:
                     self._require_no_worker_payload_debt()
                 yield

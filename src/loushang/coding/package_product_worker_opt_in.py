@@ -333,7 +333,7 @@ class CodingWorkerOptInJournal:
             or (action == "revoke" and opt_in is not None)
         ):
             raise ValueError("Coding Worker opt-in command is invalid")
-        with self._gc_gate.guard(), self._bound_journal() as rooted:
+        with self._gc_gate.guard(require_write=True), self._bound_journal() as rooted:
             events, history = self._load_history(rooted)
             replay = next(
                 (event for event in events if event.operation_id == operation_id), None

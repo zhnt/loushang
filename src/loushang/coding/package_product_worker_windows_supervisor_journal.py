@@ -64,7 +64,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
         # Match the recovery inventory's Product-gate-before-journal order.
-        with self._product.gc_gate.guard(), self._thread_lock:
+        with self._product.gc_gate.guard(require_write=True), self._thread_lock:
             self._product.assert_root_gc_authority_current()
             with (
                 WindowsPrivateDirectoryAcl() as acl,

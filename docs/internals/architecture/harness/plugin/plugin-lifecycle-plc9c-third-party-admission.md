@@ -1425,6 +1425,15 @@ references across all Product owners. It reports the missing receipt-reference
 proof explicitly and grants no prune authority. The GC read guard also keeps
 nested owner reads strict and
 blocks journal append while a shared read lock is held.
+A regression then showed that the concrete opt-in writer could revoke inside
+the same thread's GC read snapshot through a nested default guard. The GC
+reference-writer fence, reservation mutations, Product root GC, and Product
+Worker state writers now require write admission; the shared read gate rejects
+that nested write before state changes. The Linux receipt witness now uses the
+strict no-create receipt reader. The native release approval query likewise
+reads without creating its journal lock, so the Product retention review can
+inspect it inside the shared GC snapshot. This repairs snapshot atomicity for these
+bound owners, while checkpoint publication and history pruning remain closed.
 The review's payload inventory now uses the Product's original state-root
 directory identity, shared with POSIX root GC. A real Product negative first
 showed that swapping in an empty private directory between open and scan could

@@ -82,7 +82,7 @@ def settle_coding_windows_product_worker_crash_supervisor(
     ) as lease:
         if lease != expected_lease:
             raise ValueError("Windows Worker crash Supervisor lease changed")
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             current = _review_under_gc_guard(
                 product, attempt_id=attempt_id, orphans=(lease,)
             )

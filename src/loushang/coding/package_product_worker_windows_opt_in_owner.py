@@ -66,7 +66,7 @@ class CodingWindowsWorkerProductOptInOwner:
 
         if type(require_worker) is not bool:
             raise TypeError("Coding Worker requiredness must be boolean")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             bindings = tuple(
                 binding
@@ -206,7 +206,7 @@ class CodingWindowsWorkerProductOptInOwner:
     ) -> CodingWorkerOptInDecisionV1:
         """Persist a kill generation even if the release has disappeared."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root

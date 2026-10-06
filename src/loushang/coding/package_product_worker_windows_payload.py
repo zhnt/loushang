@@ -197,7 +197,7 @@ def materialize_coding_windows_product_worker_payload(
         raise ValueError("Windows Worker payload request is invalid")
     product = receipt_owner.product_owner
     stage_name = "worker-payload-" + attempt_id
-    with product.gc_gate.guard():
+    with product.gc_gate.guard(require_write=True):
         product.assert_root_gc_authority_current()
         payload, owner_id = receipt_owner.current_payload_and_worker_owner_id(receipt)
         if (

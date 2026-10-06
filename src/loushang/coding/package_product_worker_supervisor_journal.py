@@ -110,7 +110,9 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
 
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
-        with self._product.gc_gate.guard(), self._thread_lock:
+        with self._product.gc_gate.guard(
+            require_write=not self._read_only.get()
+        ), self._thread_lock:
             self._product.assert_root_gc_authority_current()
             root_fd = os.open(self.path.parent, _DIR_FLAGS)
             try:

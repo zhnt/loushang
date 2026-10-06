@@ -61,7 +61,7 @@ class CodingWorkerProductOptInOwner:
 
         if type(require_worker) is not bool:
             raise TypeError("Coding Worker requiredness must be boolean")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             bindings = tuple(
                 binding
@@ -190,7 +190,7 @@ class CodingWorkerProductOptInOwner:
     ) -> CodingWorkerOptInDecisionV1:
         """Revoke even when the selected candidate or native bytes disappeared."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             return self._journal.change(
                 plugin_id=plugin_id,

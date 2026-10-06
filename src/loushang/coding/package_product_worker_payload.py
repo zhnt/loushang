@@ -335,7 +335,7 @@ def materialize_coding_product_worker_payload(
     cleanup_plan: CodingWorkerPayloadDebtPlanV1 | None = None
     try:
         _require_private_visible_root(state_root, root_fd)
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             payload = receipt_owner.current_selected_payload(receipt)
             native_material = receipt_owner.current_native_launch_material(receipt)
@@ -407,7 +407,7 @@ def materialize_coding_product_worker_payload(
     finally:
         try:
             if created:
-                with product.gc_gate.guard():
+                with product.gc_gate.guard(require_write=True):
                     _require_visible_stage(stage_name, root_fd, stage_fd)
                     if cleanup_plan is not None:
                         current = _verify_debt(root_fd, attempt_id)

@@ -300,7 +300,7 @@ class CodingWorkerProductReceiptOwner:
     def issue(self) -> ProductWorkerActivationReceiptV1 | None:
         """Return Current on absent opt-in; otherwise issue one durable receipt."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             decision = self._opt_in.current(
                 self._selected.snapshot.installation_key.plugin_id
@@ -392,7 +392,7 @@ class CodingWorkerProductReceiptOwner:
     def serialized_admission(self) -> Iterator[None]:
         """Hold the same Product selection gate through Worker first effect."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             yield
 
     def current_witness(
@@ -410,8 +410,10 @@ class CodingWorkerProductReceiptOwner:
             ):
                 return _STALE_WITNESS
             self._product.assert_root_gc_authority_current()
-            with self._bound_journal() as rooted:
-                record = self._latest(self._load(rooted), receipt.policy)
+            record = self._latest(
+                read_coding_product_worker_receipt_records(self._product),
+                receipt.policy,
+            )
             if record is None or record.receipt != receipt:
                 return _STALE_WITNESS
             decision = self._opt_in.current(receipt.policy.plugin_id)
@@ -644,7 +646,7 @@ class CodingWorkerProductReceiptOwner:
 
         if type(expected_generation) is not int or expected_generation < 0:
             raise ValueError("Coding Worker kill-switch generation is invalid")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             plugin_id = self._selected.snapshot.installation_key.plugin_id
             decision = self._opt_in.current(plugin_id)

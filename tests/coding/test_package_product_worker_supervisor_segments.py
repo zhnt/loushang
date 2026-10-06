@@ -22,6 +22,9 @@ from loushang.coding.package_product_worker_payload import (
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationError,
+)
 from loushang.harness.worker import WorkerLaunchIdentityV1
 from loushang.harness.worker.journal import WorkerSupervisorJournalError
 
@@ -92,6 +95,12 @@ def test_product_supervisor_empty_reads_do_not_create_history_or_reset_orphan_lo
         assert orphan.value.code == "worker_supervisor_journal_corrupt"
         assert not history.exists()
         lock.unlink()
+        with product.gc_gate.read_snapshot_guard():
+            assert journal.status(identity.attempt_id) is None
+            with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                journal.claim(identity, max_attempts=3)
+            assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+            assert not lock.exists() and not history.exists()
         journal.claim(identity, max_attempts=3)
         history.unlink()
         with pytest.raises(WorkerSupervisorJournalError) as missing:

@@ -724,6 +724,11 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     )
     try:
         product = explicit.runtime_owner.product_owner
+        approval_reader = CodingWorkerNativeApprovalJournal(product)
+        approval_lock = product.state_root / "worker-native-release-approvals.jsonl.lock"
+        with product.gc_gate.read_snapshot_guard():
+            assert approval_reader.current() is None
+            assert not approval_reader.path.exists() and not approval_lock.exists()
         if native_mode == "test-facts":
             activation_state = open_coding_product_worker_activation_state_store(
                 product

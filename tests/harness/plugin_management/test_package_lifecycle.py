@@ -24,6 +24,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
     PluginInstanceLedgerContinuityFamilyAuthority,
     PluginInstanceLedgerContinuitySecurityRetirementAuthority,
 )
+from loushang.harness.plugin_management.gc_fence import gc_reference_guard
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
     PluginInstanceLeaseFamilyReleaseV1,
@@ -135,6 +136,21 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     with gate.read_guard():
         with alias.guard() as reserved:
             assert reserved == frozenset()
+        with pytest.raises(PluginPackageGcReservationError) as reference_write:
+            with gc_reference_guard(alias):
+                pass
+        assert reference_write.value.code == "plugin_package_gc_read_guard_nested"
+        with pytest.raises(PluginPackageGcReservationError) as reservation_write:
+            alias.cancel(
+                "a" * 64,
+                operation_id="cancel-inside-read",
+                idempotency_key="cancel-inside-read",
+                reason_code="test",
+            )
+        assert reservation_write.value.code == "plugin_package_gc_read_guard_nested"
+        with pytest.raises(PluginPackageGcReservationError) as repairing_snapshot:
+            alias.snapshot()
+        assert repairing_snapshot.value.code == "plugin_package_gc_read_guard_nested"
         with pytest.raises(PluginPackageGcReservationError) as nested_write:
             with alias.guard(require_write=True):
                 pass

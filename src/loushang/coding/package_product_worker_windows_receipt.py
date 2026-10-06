@@ -134,7 +134,7 @@ class CodingWindowsWorkerProductReceiptOwner:
     def issue(self) -> ProductWorkerActivationReceiptV1 | None:
         """Return Current on absent opt-in, otherwise persist exact authority."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
             decision = self._opt_in.current(
@@ -160,7 +160,7 @@ class CodingWindowsWorkerProductReceiptOwner:
     def serialized_admission(self) -> Iterator[None]:
         """Hold Product selection and GC through the first Worker effect."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             yield
 

@@ -279,7 +279,7 @@ def _repair_ordinary_coding_orphan_runtime_leases(
     product = owner.runtime_owner.product_owner
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise RuntimeError("Coding ordinary orphan recovery requires POSIX Product")
-    with product.gc_gate.guard():
+    with product.gc_gate.guard(require_write=True):
         product.assert_root_gc_authority_current()
         root_fd = os.open(
             product.state_root,

@@ -135,7 +135,7 @@ def install_coding_product_worker_native_release(
     ):
         raise ValueError("Worker native profile approval changed")
 
-    with product_owner.gc_gate.guard():
+    with product_owner.gc_gate.guard(require_write=True):
         product_owner.assert_root_gc_authority_current()
         _require_current_approval(approval_owner, approved)
         if not any(
@@ -224,7 +224,7 @@ def repair_coding_product_worker_native_release(
         or approval_owner.product_owner is not product_owner
     ):
         raise TypeError("Coding Product native repair owners are required")
-    with product_owner.gc_gate.guard():
+    with product_owner.gc_gate.guard(require_write=True):
         product_owner.assert_root_gc_authority_current()
         _require_current_approval(approval_owner, approved)
         if not any(

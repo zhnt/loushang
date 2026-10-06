@@ -15,6 +15,7 @@ from loushang.coding.package_product_worker_opt_in import (
 from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationError,
     PluginPackageGcReservationJournal,
 )
 
@@ -168,6 +169,19 @@ def test_worker_opt_in_read_only_status_requires_existing_gc_gate_and_never_writ
     )
     before = {path.name: path.read_bytes() for path in root.iterdir()}
     assert journal.current_read_only(opt_in.plugin_id) == allowed
+    assert {path.name: path.read_bytes() for path in root.iterdir()} == before
+    with gate.read_snapshot_guard():
+        assert journal.current(opt_in.plugin_id) == allowed
+        with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+            journal.change(
+                plugin_id=opt_in.plugin_id,
+                operation_id="revoke-inside-read-guard",
+                expected_generation=1,
+                action="revoke",
+                opt_in=None,
+            )
+        assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+        assert journal.current(opt_in.plugin_id) == allowed
     assert {path.name: path.read_bytes() for path in root.iterdir()} == before
 
     lock = root / "worker-opt-in.jsonl.lock"

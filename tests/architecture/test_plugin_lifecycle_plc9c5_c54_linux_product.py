@@ -22,7 +22,8 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_history_retention.py": {
-        "loushang.harness.worker.journal"
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_posix_gc_history.py": {
         "loushang.harness.worker.gated_start"

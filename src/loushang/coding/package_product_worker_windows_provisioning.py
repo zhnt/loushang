@@ -221,7 +221,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]
     ) -> bool:
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             self._require_launch_intent(
                 self._product,

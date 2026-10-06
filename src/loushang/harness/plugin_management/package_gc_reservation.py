@@ -421,7 +421,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError("Plugin Package GC parent directory changed")
 
     def snapshot(self) -> PluginPackageGcReservationSnapshotV1:
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, _ = self._replay_unlocked()
             return PluginPackageGcReservationSnapshotV1(
                 journal_revision=len(events),
@@ -453,7 +453,7 @@ class PluginPackageGcReservationJournal:
                 "GC journal overlaps an owner", "plugin_package_gc_graph_unbound"
             )
         _require_identity(operation_id, idempotency_key)
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, _ = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -502,7 +502,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError(
                 "Exact GC reservation and cancellation reason are required"
             )
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, started = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -552,7 +552,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError("Exact GC reservation is required")
         if not lifecycle.gc_reservation_graph_bound_to(self):
             raise self._error("GC owner graph is not fully fenced", "plugin_package_gc_graph_unbound")
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, started = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -584,7 +584,7 @@ class PluginPackageGcReservationJournal:
             return event
 
     def deletion_start(self, reservation_id: str) -> PluginPackageGcDeletionStartV2 | None:
-        with self.guard():
+        with self.guard(require_write=True):
             _, _, started = self._replay_unlocked()
             return started.get(reservation_id)
 
