@@ -1668,7 +1668,9 @@ gate. It also distinguishes an absent C5 owner from a present empty lock, so
 an interrupted initialization cannot be mistaken for a never-started owner.
 The snapshot grants no recovery write. A Coding Worker candidate Product can now
 open a policy-checked Windows C5 store, while a builtins-only Product is
-rejected. The store is not yet passed to the ordinary Windows pending Host.
+rejected. The store is not yet passed to the ordinary Windows pending Host; that
+uncoupled Host now refuses any retained C5 owner before payload or launch-intent
+effects, including an empty lock from interrupted initialization.
 An expected revision above zero against a genuinely absent C5 owner now returns
 a CAS miss without creating its lock; orphan state still fails closed.
 Its native reopen, GC join, and

@@ -3316,7 +3316,9 @@ only exact C5 names and checks any present C5 history against launched attempts
 and Product receipts before Package root deletion. The Windows offline recovery
 snapshot now carries the retained C5 revision and attempts as read-only
 evidence and records whether the C5 owner lock exists, including an empty
-interrupted initialization. The next native Windows Session job requires its reopen, GC join,
+interrupted initialization. The current Windows pending Host refuses an existing
+C5 owner before any payload or launch-intent effect until it owns C5 writes and
+settlement itself. The next native Windows Session job requires its reopen, GC join,
 recovery read, and complete-record-loss case in
 addition to the existing four Session cases. Local C5 import-boundary checks
 passed 7/7; the new Windows case collected and skipped on Linux. Ordinary

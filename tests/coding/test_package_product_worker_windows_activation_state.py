@@ -25,6 +25,10 @@ from loushang.coding.package_product_worker_windows_activation_state_journal imp
 from loushang.coding.package_product_worker_windows_gc_history import (
     CodingWindowsWorkerGcHistoryAuthority,
 )
+from loushang.coding.package_product_worker_windows_pending_host import (
+    CodingWindowsWorkerPendingHostError,
+    _require_uncoupled_windows_host_c5_absent,
+)
 from loushang.coding.package_product_worker_windows_recovery_inventory import (
     inspect_coding_windows_product_worker_offline_recovery,
 )
@@ -87,6 +91,7 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
             journal = CodingWindowsWorkerActivationStateJournal(product)
             assert journal.load() is None
             assert journal.load_with_presence_read_only() == (False, None)
+            _require_uncoupled_windows_host_c5_absent(product)
             assert journal.retained_attempts_read_only() == ()
             assert not any(
                 name.startswith("worker-activation-state")
@@ -106,6 +111,11 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
                 ):
                     journal._prepare_lock(root, acl)
             assert journal.load_with_presence_read_only() == (True, None)
+            with pytest.raises(CodingWindowsWorkerPendingHostError) as existing_c5:
+                _require_uncoupled_windows_host_c5_absent(product)
+            assert existing_c5.value.code == (
+                "coding_worker_pending_c5_owner_requires_recovery"
+            )
             assert journal.compare_and_swap(expected_revision=0, document=initial)
             assert journal.compare_and_swap(expected_revision=1, document=second)
             assert journal.load() == second

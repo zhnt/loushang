@@ -13,6 +13,9 @@ from loushang.harness.capabilities.provider_admission import (
 from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    WindowsLocalWheelProductSessionOwner,
+)
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -49,6 +52,9 @@ from .package_product_worker_query_consumer import (
 from .package_product_worker_session_composition import (
     prepare_coding_product_worker_session_inputs,
 )
+from .package_product_worker_windows_activation_state_journal import (
+    CodingWindowsWorkerActivationStateJournal,
+)
 from .package_product_worker_windows_launch_intent import (
     commit_coding_windows_product_worker_launch_intent,
 )
@@ -74,6 +80,20 @@ class CodingWindowsWorkerPendingHostError(RuntimeError):
         self.code = code
 
 
+def _require_uncoupled_windows_host_c5_absent(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> None:
+    """Refuse a retained C5 owner until this Host writes and settles C5 itself."""
+
+    present, _state = CodingWindowsWorkerActivationStateJournal(
+        product
+    ).load_with_presence_read_only()
+    if present:
+        raise CodingWindowsWorkerPendingHostError(
+            "coding_worker_pending_c5_owner_requires_recovery"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWindowsProductWorkerPendingHost:
     resolved_providers: ResolvedCapabilityProviderSet
@@ -92,6 +112,7 @@ class CodingWindowsProductWorkerPendingHost:
         if type(graph_generation) is not int or graph_generation < 1:
             raise TypeError("Windows Worker graph generation is invalid")
         self.base_policy_binding.assert_current()
+        _require_uncoupled_windows_host_c5_absent(self.receipt_owner.product_owner)
         stack = AsyncExitStack()
 
         async def release() -> None:
@@ -122,9 +143,7 @@ class CodingWindowsProductWorkerPendingHost:
                     "coding_worker_pending_launch_identity_changed"
                 )
             selected = self.receipt_owner.current_selected_manifest(self.receipt)
-            plan = self.receipt_owner.plan_current_native_attempt(
-                self.receipt, request
-            )
+            plan = self.receipt_owner.plan_current_native_attempt(self.receipt, request)
             commit_coding_windows_product_worker_launch_intent(
                 self.receipt_owner.product_owner,
                 receipt_owner=self.receipt_owner,
