@@ -1375,6 +1375,12 @@ rotation does not solve sustained storage or history pruning. The current
 installed Linux pilot can have no C5 activation-state journal; the review
 reports that absence as an unresolved reference proof rather than treating it
 as zero active references.
+The C5 journal now exposes a strict, no-create, read-only inventory of every
+retained attempt's last phase and revision, including attempts absent from the
+current compacted state. The compacted-ID regression first failed because that
+inventory was missing, then passed after the reader was added; the complete
+segmented C5 file passed 9/9. This reader does not yet join the ordinary Host
+start gate, backup or GC references, and it grants no deletion authority.
 The Windows
 LPAC provisioning inventory likewise has a bounded attempt count. These are
 safe refusals for a pilot, not yet a retention policy for sustained third-party
