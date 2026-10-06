@@ -1499,7 +1499,11 @@ history pruning; it avoids introducing a second pre-launch journal with a
 crash window between two writes. Windows now has a read-only equivalent that
 joins each retained launch intent to its exact receipt under the Product GC
 read guard; it refuses native or Supervisor history without an intent and a
-changed binding. Its native crash/reopen case is pending CI. The Linux
+changed binding. A native crash/reopen run passed both clean public Session
+routes but exposed a fixture-owned install runtime lease still orphaned beside
+the public Session lease; the crash fixture now closes that setup runtime
+before the deliberate process exit and asserts the complete orphan set. This
+native repair path needs a rerun. The Linux
 retention review now also joins retained C5 attempts relevant to the selected
 attempt or receipt against gate and Supervisor history. Missing gates, changed
 bindings, unbound gates, and unsettled Supervisors remain explicit reference

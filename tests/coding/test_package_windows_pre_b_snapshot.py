@@ -2948,6 +2948,9 @@ module["_exercise_windows_worker_wheel_transaction"](
         )
         assert first.orphan_review.native_job_absent is True
         assert len(first.orphan_review.orphan_leases) == 1
+        assert product.epoch_runtime.registry.review_orphans(
+            store_id=product.epoch_runtime.registry.store_id
+        ) == first.orphan_review.orphan_leases
         supervisor = settle_coding_windows_product_worker_crash_supervisor(
             product, expected_review=first
         )
@@ -3985,6 +3988,10 @@ finally:
                     if ordinary_entry_kind is not None:
                         assert owner_id == "coding"
                         assert ordinary_entry_kind in {"direct", "hosted"}
+                        if crash_after_ordinary_query:
+                            # The install runtime is fixture setup. The crash
+                            # must leave only the public Session's lease orphaned.
+                            runtime.dispose_runtime()
                         query_model = Model(
                             id="windows-worker-query",
                             name="Windows Worker Query",
