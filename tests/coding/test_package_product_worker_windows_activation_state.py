@@ -16,6 +16,9 @@ from loushang.coding.package_product_runtime import (
     CodingFencedProductApplicationSelection,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_activation_state import (
+    open_coding_windows_product_worker_activation_state_store,
+)
 from loushang.coding.package_product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
 )
@@ -78,6 +81,8 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
             factory = selection.factory_for_session(manager, settings_manager=settings)
             assert factory is not None
             product = selection.product_owner_for_factory(factory)
+            with pytest.raises(ValueError, match="candidate owner is required"):
+                open_coding_windows_product_worker_activation_state_store(product)
             journal = CodingWindowsWorkerActivationStateJournal(product)
             assert journal.load() is None
             assert journal.retained_attempts_read_only() == ()

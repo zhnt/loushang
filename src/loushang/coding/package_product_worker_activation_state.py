@@ -12,10 +12,14 @@ from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner,
 )
 
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
+)
+from .package_product_worker_windows_activation_state_journal import (
+    CodingWindowsWorkerActivationStateJournal,
 )
 
 
@@ -67,7 +71,42 @@ def open_coding_product_worker_activation_state_store(
     return CodingProductWorkerActivationStateStore(product)
 
 
+class CodingWindowsWorkerActivationStateStore:
+    """Bind Windows C5 CAS writes to the selected Coding Worker Product."""
+
+    def __init__(self, product: WindowsLocalWheelProductSessionOwner) -> None:
+        if type(product) is not WindowsLocalWheelProductSessionOwner:
+            raise TypeError("Windows Worker activation state requires a Product owner")
+        product.assert_root_gc_authority_current()
+        if product.policy.product_id != "coding" or not any(
+            binding.source_trust_class == "local-worker-candidate"
+            for binding in product.policy.bindings
+        ):
+            raise ValueError("Windows Worker candidate owner is required")
+        self._journal = CodingWindowsWorkerActivationStateJournal(product)
+
+    def load(self) -> Mapping[str, object] | None:
+        return self._journal.load()
+
+    def compare_and_swap(
+        self, *, expected_revision: int, document: Mapping[str, object]
+    ) -> bool:
+        return self._journal.compare_and_swap(
+            expected_revision=expected_revision, document=document
+        )
+
+
+def open_coding_windows_product_worker_activation_state_store(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> CodingWindowsWorkerActivationStateStore:
+    """Open the production C5 port only under a candidate Product policy."""
+
+    return CodingWindowsWorkerActivationStateStore(product)
+
+
 __all__ = [
     "CodingProductWorkerActivationStateStore",
+    "CodingWindowsWorkerActivationStateStore",
     "open_coding_product_worker_activation_state_store",
+    "open_coding_windows_product_worker_activation_state_store",
 ]

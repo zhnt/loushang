@@ -133,6 +133,9 @@ from loushang.coding.package_product_runtime import (
     open_coding_fenced_product_application_owner,
     open_coding_package_product_state,
 )
+from loushang.coding.package_product_worker_activation_state import (
+    open_coding_windows_product_worker_activation_state_store,
+)
 from loushang.coding.package_product_worker_native_approval import (
     CodingWorkerNativeApprovalError,
     CodingWorkerNativeReleaseApprovalV1,
@@ -3797,6 +3800,16 @@ finally:
             assert any(
                 item.plugin_id == "workerprobe"
                 for item in worker_product.policy.bindings
+            )
+            assert (
+                open_coding_windows_product_worker_activation_state_store(
+                    worker_product
+                ).load()
+                is None
+            )
+            assert not any(
+                name.startswith("worker-activation-state")
+                for name in os.listdir(worker_state_root)
             )
             if dependency_closure:
                 dependency_bindings = []
