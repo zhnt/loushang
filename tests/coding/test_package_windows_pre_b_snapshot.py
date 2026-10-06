@@ -3020,12 +3020,24 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert len({item.operation_id for item in after.opt_in_decisions}) == len(
             after.opt_in_decisions
         )
+        assert after.opt_in_history_revision == len(after.opt_in_decisions)
+        assert after.retained_opt_in_operation_ids == tuple(
+            item.operation_id for item in after.opt_in_decisions
+        )
         assert after.receipt_records
+        assert after.receipt_history_revision == len(after.receipt_records)
         assert after.receipt_records[-1].receipt.fingerprint == (
             after.attempts[0].launch_receipt_fingerprint
         )
+        assert after.retained_receipt_fingerprints == (
+            after.attempts[0].launch_receipt_fingerprint,
+        )
         assert after.supervisor_records[-1].attempt_id == attempt_id
         assert after.supervisor_records[-1].phase == "process_settled"
+        assert after.supervisor_history_revision == len(after.supervisor_records)
+        assert after.retained_supervisor_attempt_ids == (attempt_id,)
+        assert len(after.supervisor_epoch_high_water) == 1
+        assert after.supervisor_epoch_high_water[0][1] >= 1
         assert after.gc_reservation_revision >= 0
         assert after.gc_revision_refs == frozenset()
         assert len(after.worker_backup_observations) == 1

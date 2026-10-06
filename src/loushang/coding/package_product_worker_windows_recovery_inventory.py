@@ -168,6 +168,39 @@ class CodingWindowsWorkerOfflineRecoverySnapshotV1:
     gc_revision_refs: frozenset[PluginPackageRevisionRefV1]
     worker_backup_observations: tuple[CodingWorkerBackupReferenceObservationV1, ...]
 
+    @property
+    def opt_in_history_revision(self) -> int:
+        return max((item.journal_revision for item in self.opt_in_decisions), default=0)
+
+    @property
+    def receipt_history_revision(self) -> int:
+        return max((item.journal_revision for item in self.receipt_records), default=0)
+
+    @property
+    def supervisor_history_revision(self) -> int:
+        return max((item.record_revision for item in self.supervisor_records), default=0)
+
+    @property
+    def retained_opt_in_operation_ids(self) -> tuple[str, ...]:
+        return tuple(item.operation_id for item in self.opt_in_decisions)
+
+    @property
+    def retained_supervisor_attempt_ids(self) -> tuple[str, ...]:
+        return tuple(sorted({item.attempt_id for item in self.supervisor_records}))
+
+    @property
+    def retained_receipt_fingerprints(self) -> tuple[str, ...]:
+        return tuple(sorted(item.receipt.fingerprint for item in self.receipt_records))
+
+    @property
+    def supervisor_epoch_high_water(self) -> tuple[tuple[str, int], ...]:
+        highest: dict[str, int] = {}
+        for record in self.supervisor_records:
+            highest[record.supervisor_key] = max(
+                highest.get(record.supervisor_key, 0), record.supervisor_epoch
+            )
+        return tuple(sorted(highest.items()))
+
 
 @dataclass(frozen=True, slots=True)
 class CodingWindowsWorkerAttemptReferenceV1:

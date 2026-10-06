@@ -1642,6 +1642,11 @@ quiescence and one Product GC read snapshot. Its opt-in reader is strict and
 does not create an absent journal. These records are inputs for a later
 checkpoint's operation and attempt anti-reuse proofs; the current reader does
 not publish a checkpoint or permit history pruning.
+The snapshot also projects each journal's retained revision, opt-in operation
+IDs, Supervisor attempt IDs and per-key epoch high-water marks, and receipt
+fingerprints from those exact histories. The native crash/reopen candidate
+checks those projections and refuses a missing opt-in history behind a retained
+lock; its new assertions still await the next Windows runner report.
 Linux Package GC now consumes a Coding-owned, read-only Worker history
 authority through the existing Product GC port. When Worker history is present,
 an unbound authority refuses GC. The bound authority requires every retained
