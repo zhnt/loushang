@@ -5297,6 +5297,19 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             product, attempt_id=attempt_id
         )
         assert retention.unverified_activation_references == ()
+        assert retention.global_unverified_activation_references == ()
+        with monkeypatch.context() as changed_native_observation:
+            changed_native_observation.setattr(
+                history_retention_module,
+                "worker_native_group_status_after_restart",
+                lambda _identity: "present",
+            )
+            observed_present = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert observed_present.global_unverified_activation_references == (
+                (attempt_id, "activation_reference_native_absence_unverified"),
+            )
         gc.prepare()
         gate_path = CodingWorkerStartGateJournal(product).path
         retained_gate = gate_path.read_bytes()
@@ -7302,6 +7315,14 @@ def test_worker_package_gc_refuses_compacted_c5_attempt_without_gate(
         assert review.unverified_activation_references == (
             (attempt_id, "activation_reference_gate_absent"),
         )
+        elsewhere = review_coding_product_worker_history_retention(
+            product, attempt_id="c" * 32
+        )
+        assert elsewhere.unverified_activation_references == ()
+        assert elsewhere.global_unverified_activation_references == (
+            (attempt_id, "activation_reference_gate_absent"),
+        )
+        assert "global_activation_reference_unverified" in elsewhere.missing_proofs
         assert "start_gate_absent" in review.missing_proofs
         authority = CodingPosixWorkerGcHistoryAuthority(product)
         with pytest.raises(ValueError, match="C5 attempt history is incomplete"):

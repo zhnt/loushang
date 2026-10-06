@@ -1381,8 +1381,15 @@ current compacted state. The compacted-ID regression first failed because that
 inventory was missing, then passed after the reader was added; the complete
 segmented C5 file passed 9/9. This reader does not yet join the ordinary Host
 start gate, backup or GC references, and it grants no deletion authority.
-The Windows
-LPAC provisioning inventory likewise has a bounded attempt count. These are
+The Linux Product retention review now reports unverified retained C5
+references across the whole Product snapshot as well as those related to the
+selected attempt or receipt. A compacted C5 attempt with no gate remains a
+visible global debt even when reviewing another attempt; a settled C5 attempt
+with a matching gate and Supervisor remains a positive case only when its
+native process group is also observed absent. A present or unobserved group
+remains a global debt. This is a checkpoint input, not receipt closure or
+history-pruning authority. The Windows LPAC provisioning inventory likewise
+has a bounded attempt count. These are
 safe refusals for a pilot, not yet a retention policy for sustained third-party
 use. Removing the numeric checks or increasing them only moves the failure
 point.
@@ -1455,11 +1462,13 @@ authority whenever any Worker-owned state-root name is present, including an
 unknown name or a repair intent without the established journal prefixes. The
 end-to-end Linux Product regression first showed `gc.prepare()` skipped the
 authority for an isolated unknown name; it now refuses both unbound and bound
-GC, while a clean no-Worker preparation still passes. Windows still needs its
-own native Product evidence for the same claim. Its history authority now
-classifies every Worker-prefixed state-root name against the current exact
-Windows owners and refuses unknown or staged names; the portable positive and
-negative classifier cases pass, but they do not replace a native GC run.
+GC, while a clean no-Worker preparation still passes. The Windows history
+authority now classifies every Worker-prefixed state-root name against the
+current exact Windows owners and refuses unknown or staged names. The portable classifier
+cases pass, and CI run `37502903364` on pushed head `8c3d6b87` passed the
+native normal/partial-stage GC and host-crash GC jobs separately, 1/1 each with
+verified zero-skip JUnit reports. These jobs prove their stated journeys, not
+long-term checkpoint, history pruning, or general Worker admission.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

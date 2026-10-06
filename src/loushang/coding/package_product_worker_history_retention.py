@@ -198,6 +198,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     active_activation_references: tuple[tuple[str, str], ...]
     retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
     unverified_activation_references: tuple[tuple[str, str], ...]
+    global_unverified_activation_references: tuple[tuple[str, str], ...]
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     unverified_receipt_gate_references: tuple[tuple[str, str], ...]
@@ -268,6 +269,8 @@ class CodingWorkerHistoryRetentionReviewV1:
                 missing.append("activation_attempt_binding_changed")
         if self.unverified_activation_references:
             missing.append("activation_receipt_reference_unverified")
+        if self.global_unverified_activation_references:
+            missing.append("global_activation_reference_unverified")
         if self.unbound_supervisor_attempt_ids:
             missing.append("supervisor_gate_reference_unverified")
         if self.unsettled_receipt_gate_references:
@@ -387,12 +390,12 @@ def review_coding_product_worker_history_retention(
                 sorted(supervisor_by_id.keys() - gate_by_id.keys())
             )
             unverified_activation: list[tuple[str, str]] = []
+            global_unverified_activation: list[tuple[str, str]] = []
             for reference in retained_activation_references:
-                if reference.attempt_id != attempt_id and (
-                    receipt is None
-                    or reference.receipt_fingerprint != receipt.receipt.fingerprint
-                ):
-                    continue
+                relevant = reference.attempt_id == attempt_id or (
+                    receipt is not None
+                    and reference.receipt_fingerprint == receipt.receipt.fingerprint
+                )
                 referenced_gate = gate_by_id.get(reference.attempt_id)
                 code: str | None
                 if referenced_gate is None:
@@ -418,8 +421,19 @@ def review_coding_product_worker_history_retention(
                         != referenced_gate.worker_identity_fingerprint
                         else None
                     )
+                    if code is None and (
+                        referenced_gate.identity is None
+                        or worker_native_group_status_after_restart(
+                            referenced_gate.identity
+                        )
+                        not in {"absent", "prior_boot_absent"}
+                    ):
+                        code = "activation_reference_native_absence_unverified"
                 if code is not None:
-                    unverified_activation.append((reference.attempt_id, code))
+                    activation_issue = (reference.attempt_id, code)
+                    global_unverified_activation.append(activation_issue)
+                    if relevant:
+                        unverified_activation.append(activation_issue)
             receipt_gate_references: tuple[str, ...] = ()
             unsettled_gate_references: tuple[str, ...] = ()
             unverified_gate_references: tuple[tuple[str, str], ...] = ()
@@ -524,6 +538,9 @@ def review_coding_product_worker_history_retention(
                 active_activation_references=active_references,
                 retained_activation_references=retained_activation_references,
                 unverified_activation_references=tuple(unverified_activation),
+                global_unverified_activation_references=tuple(
+                    sorted(global_unverified_activation)
+                ),
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 unverified_receipt_gate_references=unverified_gate_references,
