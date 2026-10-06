@@ -3241,6 +3241,12 @@ history owner. Its only Harness Worker import is the native group observer.
 Both exact architecture assertions passed 2/2 after the inventories were
 updated. This focused repair does not replace a complete Harness rerun on the
 repaired head.
+The complete Worker candidate file on `508883be` then passed with native
+host-runtime enabled: 44 passed, one platform-conditional skip, and zero
+failures in 18 minutes 58 seconds. This includes the real settled public
+Session Package GC positive, changed retained-gate refusal, and the
+no-payload unsettled-history refusal. The final Harness rerun and native
+Windows Session report remain separate acceptance gates.
 
 ## Independent Review Record
 
