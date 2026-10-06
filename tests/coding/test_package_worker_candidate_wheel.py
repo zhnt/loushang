@@ -7108,6 +7108,12 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         assert set(os.listdir(product.state_root)) == entries_before_read
         unknown_before_attempt = product.state_root / "worker-future-reference.json"
         unknown_before_attempt.write_bytes(b"unknown owner")
+        with pytest.raises(PackageProductGcExecutionError) as unknown_unbound:
+            gc.prepare()
+        assert unknown_unbound.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(PackageProductGcExecutionError) as unknown_bound:
+            with_authority.prepare()
+        assert unknown_bound.value.code == "plugin_package_gc_worker_history_unsettled"
         with pytest.raises(ValueError, match="reference owner is unrecognized"):
             authority.require_settled(
                 observed_names=tuple(os.listdir(product.state_root))
@@ -7117,6 +7123,9 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
             product.state_root / f"worker-empty-repair-{'36' * 16}.json"
         )
         repair_before_attempt.write_bytes(b"retained repair")
+        with pytest.raises(PackageProductGcExecutionError) as repair_blocked:
+            with_authority.prepare()
+        assert repair_blocked.value.code == "plugin_package_gc_worker_history_unsettled"
         with pytest.raises(ValueError, match="payload repair reference is retained"):
             authority.require_settled(
                 observed_names=tuple(os.listdir(product.state_root))

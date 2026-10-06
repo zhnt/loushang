@@ -1444,6 +1444,13 @@ the read-only review noticed such a name while the GC history authority accepted
 it; the authority now refuses the same observation before Package deletion.
 It also refuses a retained payload repair intent even when no payload stage
 remains, so an interrupted repair cannot be erased by Package GC.
+The Product Package GC dispatcher now invokes its platform Worker history
+authority whenever any Worker-owned state-root name is present, including an
+unknown name or a repair intent without the established journal prefixes. The
+end-to-end Linux Product regression first showed `gc.prepare()` skipped the
+authority for an isolated unknown name; it now refuses both unbound and bound
+GC, while a clean no-Worker preparation still passes. Windows still needs its
+own complete Worker-name ownership classification before the same claim applies.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

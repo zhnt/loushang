@@ -273,41 +273,10 @@ class LocalWheelProductRootGcOwner:
                 "Worker payload attempt must settle before Package GC",
                 code="plugin_package_gc_worker_payload_unsettled",
             )
-        has_windows_history = isinstance(
-            self.product, WindowsLocalWheelProductSessionOwner
-        ) and any(
-            name.casefold().startswith(
-                (
-                    "worker-launch-intent-",
-                    "worker-native-provisioning-",
-                    "worker-supervisor",
-                    "worker-activation-receipts",
-                    "worker-stage-",
-                    "worker-partial-stage-",
-                    "worker-unlaunched-stage-",
-                    "worker-crash-stage-",
-                )
-            )
-            for name in names
+        has_worker_state = any(
+            name.casefold().startswith(("worker-", ".worker-")) for name in names
         )
-        has_posix_history = isinstance(
-            self.product, PosixLocalWheelProductSessionOwner
-        ) and any(
-            name.casefold().startswith(
-                (
-                    "worker-start-gates",
-                    ".worker-start-gates",
-                    "worker-supervisor",
-                    ".worker-supervisor",
-                    "worker-activation-receipts",
-                    ".worker-activation-receipts",
-                    "worker-activation-state",
-                    ".worker-activation-state",
-                )
-            )
-            for name in names
-        )
-        if has_windows_history or has_posix_history:
+        if has_worker_state:
             try:
                 if self.worker_history_authority is None:
                     raise ValueError("Worker history authority is absent")
