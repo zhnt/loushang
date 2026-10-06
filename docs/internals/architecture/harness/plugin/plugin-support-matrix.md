@@ -27,9 +27,11 @@ The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
 `loushang-worker-native candidate-status` reads the retained per-install Worker
-opt-in decision through the fenced Product's read-only owner. That decision is
-one authority fact; it does not prove that the candidate is still selected,
-that a native release is current, or that any Session used the Worker.
+opt-in decision and observes an exact selected Worker candidate through the
+fenced Product's read-only owner. `observed_in_read` is partial selection
+evidence, not an execution grant. The status marks changed Desired State or
+opt-in revisions as `stale_evidence`; it does not prove that a native release
+is current or that any Session used the Worker.
 
 For Skill and Prompt authors, `loushang-plugin init-coding-skill` or
 `init-coding-prompt` creates source and prints a build command. The resulting

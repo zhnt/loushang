@@ -350,7 +350,10 @@ can set `--require-worker`. The Product derives the selected candidate and
 requires an approved installed native release. These commands do not change
 default Coding Session routing. `candidate-status` reports
 `ordinarySessionRouting: "python_sdk_explicit_linux"` and
-`defaultSessionRouting: "closed"`.
+`defaultSessionRouting: "closed"`. Its `candidateSelection` is a read-only,
+partial observation of the selected Worker version and executable digest;
+`productUse` remains `not_checked`, and a changed snapshot is reported as
+`stale_evidence`.
 The ordinary Session opt-in is available through the Python SDK only; Coding
 CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
 

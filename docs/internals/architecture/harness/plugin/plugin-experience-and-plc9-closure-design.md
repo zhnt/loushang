@@ -3119,14 +3119,22 @@ passed 6/6, the installed Linux Product Session verified the same decision
 through the read-only owner (1/1), and the fresh-process operator journey
 passed 1/1 with both empty and allowed status responses. The journey checks
 that status creates no new files and does not change the opt-in journal bytes.
-This status reports only the retained opt-in decision, not current Worker
-selection, native release, or Product Session use.
+That first read-only status reported only the retained opt-in decision, not
+Worker selection, native release, or Product Session use.
 An explicitly Worker-aware read-only Product owner can now load the Worker
 Source binding and verify one selected Store root, declaration, and native
 executable as inert candidate evidence. The installed Linux public Session
 case confirmed the exact version and executable digest (1/1); the ordinary
 data preview owner refuses this Worker read. This evidence is internal and
-does not change the `candidate-status` output or grant execution.
+initially did not change the `candidate-status` output or grant execution.
+The current `candidate-status` V2 now joins the opt-in observation and that
+selected candidate evidence. It marks changed Desired State or opt-in
+revisions `stale_evidence`, reports an observed version and executable digest
+only for an exact selected Worker, and keeps `productUse: not_checked`.
+The cross-process Linux operator journey passed 1/1 for absent, selected, and
+disabled candidates; two focused cases cover Desired State and opt-in changes.
+This remains partial Product evidence and does not check the native release or
+admit a general Worker route.
 The dedicated Windows Worker Session CI job now requires exactly four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. The report still rejects skips, failures, and

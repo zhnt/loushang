@@ -75,6 +75,9 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
 )
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -241,11 +244,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
         elif args.action == "candidate-status":
             with CodingFencedProductReadOnlyPreviewOwner.open(
-                lifecycle
+                lifecycle, worker_candidates=True
             ) as read_owner:
-                result = _candidate_status_document(
-                    read_owner.worker_opt_in_decision(args.plugin_id)
-                )
+                result = _read_candidate_status_document(read_owner, args.plugin_id)
         else:
             application = open_coding_fenced_product_application_owner(
                 lifecycle,
@@ -278,6 +279,45 @@ def _candidate_status_document(
         "candidateOptInDecision": None if decision is None else decision.to_dict(),
         "ordinarySessionRouting": "python_sdk_explicit_linux",
         "defaultSessionRouting": "closed",
+    }
+
+
+def _read_candidate_status_document(
+    owner: CodingFencedProductReadOnlyPreviewOwner, plugin_id: str
+) -> dict[str, object]:
+    """Join read-only selection and opt-in observations as partial evidence."""
+
+    before = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
+    decision_before = owner.worker_opt_in_decision(plugin_id)
+    selection: dict[str, object] = {"stage": "not_selected"}
+    if before.desired_state == "installed_enabled":
+        try:
+            selected = owner.selected_worker_candidate(plugin_id)
+        except PackageProductRuntimeReadError as error:
+            if error.code != "package_product_root_not_selected":
+                raise
+            selection = {"stage": "blocked", "reasonCode": error.code}
+        else:
+            selection = {
+                "stage": "observed_in_read",
+                "pluginVersion": selected.plugin_version,
+                "executableDigest": selected.executable_digest,
+            }
+    after = owner.selected_manifests.capture_plugin_desired_selection_for(plugin_id)
+    decision_after = owner.worker_opt_in_decision(plugin_id)
+    stale = (
+        before.inventory_revision != after.inventory_revision
+        or decision_before != decision_after
+    )
+    if stale:
+        selection = {"stage": "stale_evidence"}
+    return {
+        **_candidate_status_document(decision_after),
+        "candidateStatusVersion": 2,
+        "snapshotStatus": "stale_evidence" if stale else "partial_evidence",
+        "desiredInventoryRevision": after.inventory_revision,
+        "candidateSelection": selection,
+        "productUse": "not_checked",
     }
 
 

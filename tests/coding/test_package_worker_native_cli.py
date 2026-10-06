@@ -11,6 +11,7 @@ import sys
 from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,7 +20,12 @@ from loushang.ai.types import UserMessage
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
-from loushang.coding.cli.package_worker_native import main as worker_native_main
+from loushang.coding.cli.package_worker_native import (
+    _read_candidate_status_document,
+)
+from loushang.coding.cli.package_worker_native import (
+    main as worker_native_main,
+)
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -47,6 +53,58 @@ from tests.coding.test_package_worker_candidate_wheel import _QUERY_WORKER_SOURC
 _ROOT = Path(__file__).resolve().parents[2]
 _BUILDER = _ROOT / "scripts/dev/build_posix_containment_launcher.py"
 _WHEEL_BUILDER = _ROOT / "scripts/dev/build_posix_native_release_wheel.py"
+
+
+def test_worker_candidate_status_marks_changed_desired_revision_stale() -> None:
+    class _ChangingSelection:
+        calls = 0
+
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            self.calls += 1
+            return SimpleNamespace(
+                inventory_revision=self.calls,
+                desired_state="installed_enabled",
+            )
+
+    class _ReadOwner:
+        selected_manifests = _ChangingSelection()
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> None:
+            return None
+
+        def selected_worker_candidate(self, _plugin_id: str) -> object:
+            return SimpleNamespace(plugin_version="1", executable_digest="a" * 64)
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["snapshotStatus"] == "stale_evidence"
+    assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["productUse"] == "not_checked"
+
+
+def test_worker_candidate_status_marks_changed_opt_in_decision_stale() -> None:
+    class _StableSelection:
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                inventory_revision=1, desired_state="installed_enabled"
+            )
+
+    class _ReadOwner:
+        selected_manifests = _StableSelection()
+        reads = 0
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> object:
+            self.reads += 1
+            if self.reads == 1:
+                return None
+            return SimpleNamespace(to_dict=lambda: {"generation": 2})
+
+        def selected_worker_candidate(self, _plugin_id: str) -> object:
+            return SimpleNamespace(plugin_version="1", executable_digest="a" * 64)
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["snapshotStatus"] == "stale_evidence"
+    assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["candidateOptInDecision"] == {"generation": 2}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate status")
@@ -589,11 +647,13 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert tuple(
         sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
     ) == before_candidate_status
-    assert candidate_output == {
-        "candidateOptInDecision": None,
-        "ordinarySessionRouting": "python_sdk_explicit_linux",
-        "defaultSessionRouting": "closed",
-    }
+    assert candidate_output["candidateOptInDecision"] is None
+    assert candidate_output["candidateStatusVersion"] == 2
+    assert candidate_output["snapshotStatus"] == "partial_evidence"
+    assert candidate_output["candidateSelection"] == {"stage": "not_selected"}
+    assert candidate_output["productUse"] == "not_checked"
+    assert candidate_output["ordinarySessionRouting"] == "python_sdk_explicit_linux"
+    assert candidate_output["defaultSessionRouting"] == "closed"
     before_selection, _ = run(
         "candidate-allow",
         "--plugin-id",
@@ -855,7 +915,15 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     )
     status, status_output = run("candidate-status", "--plugin-id", "reviewworker")
     assert status.returncode == 0, status.stderr
-    assert status_output == allowed_output
+    assert all(status_output[key] == value for key, value in allowed_output.items())
+    assert status_output["candidateStatusVersion"] == 2
+    assert status_output["snapshotStatus"] == "partial_evidence"
+    assert status_output["candidateSelection"] == {
+        "stage": "observed_in_read",
+        "pluginVersion": "1",
+        "executableDigest": sha256(executable.read_bytes()).hexdigest(),
+    }
+    assert status_output["productUse"] == "not_checked"
     assert worker_opt_in_journal.read_bytes() == journal_before_status
     assert tuple(
         sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
@@ -891,6 +959,15 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert disable_result["disposition"] == "succeeded"
     disabled_inventory_revision = disabled_output["inventoryRevision"]
     assert isinstance(disabled_inventory_revision, int)
+    disabled_status, disabled_status_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert disabled_status.returncode == 0, disabled_status.stderr
+    assert disabled_status_output["candidateSelection"] == {
+        "stage": "not_selected"
+    }
+    assert disabled_status_output["candidateOptInDecision"] == decision
+    assert disabled_status_output["productUse"] == "not_checked"
     after_disable, _ = run(
         "query",
         "--plugin-id",
