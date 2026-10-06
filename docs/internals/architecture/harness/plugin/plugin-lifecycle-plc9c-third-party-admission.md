@@ -1376,16 +1376,17 @@ policy, owner, and evidence-authority identities across revisions. A regression
 first reproduced a valid CAS rewrite of host or boot identity; Product CAS now
 rejects it before append, and strict replay rejects the same bytes in retained
 history. All historical full-state records are still retained, so this
-rotation does not solve sustained storage or history pruning. The current
-installed Linux pilot can have no C5 activation-state journal; the review
+rotation does not solve sustained storage or history pruning. Earlier explicit
+Linux canary attempts can have no C5 activation-state journal; the review
 reports that absence as an unresolved reference proof rather than treating it
 as zero active references.
 The C5 journal now exposes a strict, no-create, read-only inventory of every
 retained attempt's last phase and revision, including attempts absent from the
 current compacted state. The compacted-ID regression first failed because that
 inventory was missing, then passed after the reader was added; the complete
-segmented C5 file passed 9/9. This reader does not yet join the ordinary Host
-start gate, backup or GC references, and it grants no deletion authority.
+segmented C5 file passed 9/9. The later Product retention review joins the
+ordinary Host start gate, backup, and GC references; this journal reader alone
+grants no deletion authority.
 The Linux Product retention review now reports unverified retained C5
 references across the whole Product snapshot as well as those related to the
 selected attempt or receipt. A compacted C5 attempt with no gate remains a
@@ -1435,9 +1436,9 @@ unverified; an unsettled attempt cannot be hidden by another attempt using the
 same receipt. The review reports receipt references verified only when every
 gate for that receipt has a matching retained settled C5 attempt, all those
 gates have settled Supervisor and absent native-group proof, and no active C5
-reference remains. The ordinary pending Host still lacks C5 transitions, so
-its history continues to report the missing receipt-reference proof. This
-read-only result grants no checkpoint or pruning authority. The GC read guard
+reference remains. The ordinary pending Host now records and settles its own
+C5 transitions; older explicit canary attempts still lack that write path.
+This read-only result grants no checkpoint or pruning authority. The GC read guard
 also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
 Linux Hosting now exposes a strict current boot ID alongside its existing
@@ -1448,7 +1449,7 @@ process settled, the native group absent on the same boot, the payload and
 repair debts absent, and the retained C5 attempt must match the receipt,
 generation, host, and boot. A changed witness or generation refuses. The
 real installed Product test exercises this verifier with a synthetic settled
-C5 history; the ordinary pending Host does not invoke it yet. Changed-boot
+C5 history, and the ordinary pending Host now invokes it on release. Changed-boot
 absence and registered-lease expiry methods remain closed. This verification
 port alone does not write C5 transitions or authorize history pruning.
 The same snapshot now records the global retained start-gate, Supervisor, and
@@ -1560,19 +1561,19 @@ C5 activation-state journal was initially absent. The first valid start-gate
 write now establishes an empty, head-verified C5 history under the Product GC
 gate; later gate writes refuse a missing C5 owner. The read-only retention
 review distinguishes that durable empty history from a missing journal. The
-ordinary pending Host still owns its attempt through the start gate and
-Supervisor rather than C5 CAS transitions, so the review continues to report
-`receipt_references_unverified`. W5 must join these lifecycle authorities
-before any history pruning or general third-party route is accepted.
+ordinary pending Host then owned its attempt through the start gate and
+Supervisor, so the review reported `receipt_references_unverified`. The current
+Linux explicit Session Host also writes C5 transitions. Earlier attempt
+references and the later checkpoint must still be joined before history
+pruning or general third-party routing is accepted.
 The read-only retention review now exposes every retained C5 attempt, including
 one settled and compacted out of the latest snapshot. Linux Package GC also
 joins those retained C5 attempts to start-gate and Supervisor history and
 refuses an absent gate, unsettled attempt, or changed receipt/policy binding.
 A real Product regression first showed that a compacted C5 attempt without a
 gate was accepted as empty history, then passed with this refusal. This closes
-that Package-deletion gap only; the ordinary pending Host still lacks C5 state
-transitions, and receipt closure, checkpoint, and history-pruning authority
-remain open.
+that Package-deletion gap only. The later ordinary pending Host writes C5 state;
+checkpoint and history-pruning authority remain open.
 A second real Product case now starts and settles an ordinary Worker, adds a
 settled C5 record with the same attempt, receipt, and policy binding, compacts
 that C5 attempt out of the latest snapshot, and still permits Package GC
