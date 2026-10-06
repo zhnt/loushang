@@ -1532,7 +1532,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             assert gate_corruption.value.code == (
                                 "coding_worker_sealed_segment_changed"
                                 if native_mode == "installed-release"
-                                else "coding_worker_start_gate_corrupt"
+                                else "coding_worker_segment_head_changed"
                             )
                         finally:
                             gate_journal.path.write_bytes(gate_history)

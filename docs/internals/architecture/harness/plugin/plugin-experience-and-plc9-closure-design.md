@@ -3207,6 +3207,12 @@ and retained `activation_state_absent` and
 `receipt_references_unverified` as missing proofs. This makes the W5
 cross-lifecycle reference gap executable evidence rather than an inferred
 permission to prune or open general routing.
+The first local host-runtime Worker candidate file run on that head stopped
+after its repaired-release case expected the older generic start-gate
+corruption error. The active-head journal correctly refused the changed bytes
+with `coding_worker_segment_head_changed`; that exact assertion was updated,
+and the repaired-release native case passed 1/1 in 3 minutes 3 seconds.
+The interrupted file run was not a complete host-runtime gate.
 
 ## Independent Review Record
 
