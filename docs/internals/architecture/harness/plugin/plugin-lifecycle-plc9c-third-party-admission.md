@@ -1434,6 +1434,10 @@ strict no-create receipt reader. The native release approval query likewise
 reads without creating its journal lock, so the Product retention review can
 inspect it inside the shared GC snapshot. This repairs snapshot atomicity for these
 bound owners, while checkpoint publication and history pruning remain closed.
+The three Linux payload-debt repair paths also require GC write admission while
+their read-only previews retain snapshot access. A real Product regression
+first deleted an empty payload stage inside a GC read snapshot, then passed
+after the write fence was applied to empty, complete, and unmarked repairs.
 The Product backup-type initializer now carries management recovery's workspace
 preflight into its GC lock and refuses a missing GC lock on an existing
 management workspace. A substituted workspace cannot trigger tail repair

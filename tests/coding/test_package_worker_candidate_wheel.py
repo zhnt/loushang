@@ -266,6 +266,7 @@ from loushang.harness.package_product.product_worker_candidate import (
 )
 from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationError,
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_gc_target import (
@@ -7404,6 +7405,16 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         assert stage.is_dir() and held.is_dir()
         stage.rmdir()
         held.rename(stage)
+        with product.gc_gate.read_snapshot_guard():
+            assert preview_coding_product_worker_empty_payload_debt(
+                product, attempt_id=attempt_id
+            ) == plan
+            with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                repair_coding_product_worker_empty_payload_debt(
+                    product, expected_plan=plan
+                )
+            assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+            assert stage.is_dir()
         replacement_stage = product.state_root / "replacement-empty-worker-stage"
         replacement_stage.mkdir(mode=0o700)
         assert (
@@ -7756,6 +7767,13 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             payload.chmod(0o600)
             payload.write_bytes(body)
             payload.chmod(0o500)
+            with product.gc_gate.read_snapshot_guard():
+                with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                    repair_coding_product_worker_payload_debt(
+                        product, expected_plan=plan
+                    )
+                assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+                assert stage.is_dir()
         assert (
             repair_coding_product_worker_payload_debt(product, expected_plan=plan)
             == plan
@@ -8087,6 +8105,13 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
                     product, expected_review=review
                 )
             payload.write_bytes(b"incomplete Worker payload")
+            with product.gc_gate.read_snapshot_guard():
+                with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                    repair_coding_product_worker_unmarked_payload_debt(
+                        product, expected_review=review
+                    )
+                assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+                assert stage.is_dir()
         assert (
             repair_coding_product_worker_unmarked_payload_debt(
                 product, expected_review=review

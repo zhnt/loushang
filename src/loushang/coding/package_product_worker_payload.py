@@ -757,7 +757,7 @@ def repair_coding_product_worker_unmarked_payload_debt(
 
     if not isinstance(expected_review, CodingWorkerUnmarkedPayloadDebtReviewV1):
         raise TypeError("Coding Worker unmarked payload review is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -914,7 +914,7 @@ def repair_coding_product_worker_payload_debt(
 
     if not isinstance(expected_plan, CodingWorkerPayloadDebtPlanV1):
         raise TypeError("Coding Worker payload debt plan is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -1045,7 +1045,7 @@ def repair_coding_product_worker_empty_payload_debt(
 
     if not isinstance(expected_plan, CodingWorkerEmptyPayloadDebtPlanV1):
         raise TypeError("Coding Worker empty payload debt plan is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -1632,7 +1632,9 @@ def _remove_empty_stage(root_fd: int, stage_name: str) -> None:
 
 
 @contextmanager
-def _offline(product: PosixLocalWheelProductSessionOwner) -> Iterator[None]:
+def _offline(
+    product: PosixLocalWheelProductSessionOwner, *, require_write: bool = False
+) -> Iterator[None]:
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError("Coding Worker Product owner is required")
     registry = product.epoch_runtime.registry
@@ -1644,7 +1646,7 @@ def _offline(product: PosixLocalWheelProductSessionOwner) -> Iterator[None]:
                 "coding_worker_payload_runtime_active"
             )
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=require_write):
             yield
         product.assert_root_gc_authority_current()
 
