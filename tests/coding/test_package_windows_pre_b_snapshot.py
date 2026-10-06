@@ -2858,6 +2858,212 @@ def test_windows_worker_hosted_first_session_reaches_selected_product(
     )
 
 
+@pytest.mark.requires_host_runtime
+@pytest.mark.parametrize("entry_kind", ("direct", "hosted"))
+def test_windows_worker_public_session_crash_reopens_and_retires_product_attempt(
+    windows_worker_test_root: Path, entry_kind: str
+) -> None:
+    if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        pytest.skip("native Windows backend review is required")
+    tmp_path = windows_worker_test_root
+    script = """\
+import runpy
+import sys
+from pathlib import Path
+
+module = runpy.run_path(sys.argv[1])
+module["_exercise_windows_worker_wheel_transaction"](
+    Path(sys.argv[2]), "windows-amd64", owner_id="coding",
+    ordinary_entry_kind=sys.argv[3], crash_after_ordinary_query=True,
+)
+"""
+    child_stdout = tmp_path / f"public-{entry_kind}-crash.stdout"
+    child_stderr = tmp_path / f"public-{entry_kind}-crash.stderr"
+    with child_stdout.open("wb") as stdout, child_stderr.open("wb") as stderr:
+        crashed = subprocess.run(
+            (
+                sys.executable,
+                "-c",
+                script,
+                str(Path(__file__).resolve()),
+                str(tmp_path),
+                entry_kind,
+            ),
+            cwd=Path(__file__).resolve().parents[2],
+            stdout=stdout,
+            stderr=stderr,
+            timeout=3600,
+            check=False,
+        )
+    assert crashed.returncode == 7, child_stderr.read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert f"windows-public-worker-healthy:{entry_kind}\n" in child_stdout.read_text(
+        encoding="utf-8"
+    )
+
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+        windows_candidate=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        attempts = inspect_coding_windows_product_worker_offline_recovery(
+            product
+        ).attempts
+        assert len(attempts) == 1
+        attempt_id = attempts[0].attempt_id
+        first = review_coding_windows_product_worker_crash_cleanup(
+            product, attempt_id=attempt_id
+        )
+        assert first.orphan_review.native_job_absent is True
+        assert len(first.orphan_review.orphan_leases) == 1
+        supervisor = settle_coding_windows_product_worker_crash_supervisor(
+            product, expected_review=first
+        )
+        assert supervisor is not None and supervisor.process_settled
+        second = review_coding_windows_product_worker_crash_cleanup(
+            product, attempt_id=attempt_id
+        )
+        native = settle_coding_windows_product_worker_crash_native(
+            product, expected_review=second
+        )
+        assert native.attempt_id == attempt_id
+        lease_review = review_coding_windows_product_worker_crash_lease_repair(
+            product, attempt_id=attempt_id
+        )
+        repaired = repair_coding_windows_product_worker_crash_orphan_runtime(
+            product, expected_review=lease_review
+        )
+        assert repaired == first.orphan_review.orphan_leases[0]
+        stage_review = review_coding_windows_product_worker_crash_stage(
+            product, attempt_id=attempt_id
+        )
+        retired = retire_coding_windows_product_worker_crash_stage(
+            product, expected_review=stage_review
+        )
+        assert retired.attempt_id == attempt_id
+        assert not (product.state_root / f"worker-payload-{attempt_id}").exists()
+        assert (
+            product.epoch_runtime.registry.review_orphans(
+                store_id=product.epoch_runtime.registry.store_id
+            )
+            == ()
+        )
+        after = inspect_coding_windows_product_worker_offline_recovery(product)
+        assert len(after.attempts) == 1
+        assert after.attempts[0].payload_directory_identity is None
+        assert after.attempts[0].supervisor_phase == "process_settled"
+    finally:
+        owner.close()
+    _assert_windows_worker_public_session_restarts_after_recovery(
+        tmp_path=tmp_path,
+        workspace=workspace,
+        entry_kind=entry_kind,
+        retired_attempt_id=attempt_id,
+    )
+
+
+def _assert_windows_worker_public_session_restarts_after_recovery(
+    *, tmp_path: Path, workspace: Path, entry_kind: str, retired_attempt_id: str
+) -> None:
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global" / "settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    query_model = Model(
+        id="windows-worker-query-after-recovery",
+        name="Windows Worker Query After Recovery",
+        provider="test",
+        endpoint="test",
+        capabilities=Capabilities(
+            input=("text",), context_window=128_000, max_tokens=4_096
+        ),
+    )
+    with patch(
+        "loushang.coding.package_product_runtime.version", return_value="2.0.0"
+    ):
+        if entry_kind == "direct":
+            manager = asyncio.run(
+                SessionManager.new(
+                    session_dir=tmp_path / "reopened-worker-transcripts",
+                    cwd=str(workspace),
+                    session_id="windows-worker-reopened",
+                    defer_materialization=False,
+                )
+            )
+            session = create_agent_session(
+                session_manager=manager,
+                model=query_model,
+                services=create_services(settings_manager=settings),
+                worker_candidate_plugin_id="workerprobe",
+            )
+
+            async def query_direct() -> None:
+                try:
+                    await session.prepare_model_call_runtime()
+                    assert await session.query_worker_symbol("review") == "Review symbol"
+                finally:
+                    await session.dispose()
+
+            asyncio.run(query_direct())
+        else:
+            assert entry_kind == "hosted"
+            runtime = create_agent_session_runtime(
+                session_dir=tmp_path / "reopened-hosted-worker-transcripts",
+                model=query_model,
+                services=create_services(settings_manager=settings),
+                worker_candidate_plugin_id="workerprobe",
+            )
+
+            async def query_hosted() -> None:
+                try:
+                    session = await runtime.create_session(cwd=str(workspace))
+                    await session.prepare_model_call_runtime()
+                    assert await session.query_worker_symbol("review") == "Review symbol"
+                finally:
+                    await runtime.dispose_session_runtime()
+
+            asyncio.run(query_hosted())
+
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+        windows_candidate=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        history = open_coding_windows_product_worker_supervisor_journal(
+            product
+        ).inspect_records()
+        assert len({item.attempt_id for item in history}) == 2
+        assert history[-1].attempt_id != retired_attempt_id
+        assert history[-1].phase == "stopped"
+        attempts = inspect_coding_windows_product_worker_offline_recovery(
+            product
+        ).attempts
+        attempts_by_id = {item.attempt_id: item for item in attempts}
+        assert set(attempts_by_id) == {retired_attempt_id, history[-1].attempt_id}
+        assert attempts_by_id[retired_attempt_id].payload_directory_identity is None
+        assert attempts_by_id[history[-1].attempt_id].native_phase == "settled"
+    finally:
+        owner.close()
+
+
 @pytest.fixture
 def windows_worker_test_root(tmp_path: Path) -> Iterator[Path]:
     if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
@@ -3226,6 +3432,7 @@ def _exercise_windows_worker_wheel_transaction(
     clean_rotation: bool = False,
     dependency_closure: bool = False,
     crash_after_healthy: bool = False,
+    crash_after_ordinary_query: bool = False,
     owner_id: str = "coding.lsp",
     ordinary_entry_kind: str | None = None,
 ) -> None:
@@ -3794,6 +4001,12 @@ finally:
                                             )
                                             == "Review symbol"
                                         )
+                                        if crash_after_ordinary_query:
+                                            print(
+                                                "windows-public-worker-healthy:direct",
+                                                flush=True,
+                                            )
+                                            os._exit(7)
                                     finally:
                                         await ordinary_session.dispose()
 
@@ -3823,6 +4036,12 @@ finally:
                                             )
                                             == "Review symbol"
                                         )
+                                        if crash_after_ordinary_query:
+                                            print(
+                                                "windows-public-worker-healthy:hosted",
+                                                flush=True,
+                                            )
+                                            os._exit(7)
                                     finally:
                                         await hosted_runtime.dispose_session_runtime()
 
