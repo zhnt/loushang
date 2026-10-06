@@ -17,6 +17,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
 from loushang.harness.worker.journal import WorkerAttemptPhase
 
+from .package_product_backup_types import (
+    CodingWorkerBackupReferenceObservationV1,
+    observe_coding_worker_backup_references_under_gc_guard,
+)
 from .package_product_worker_gc_references import (
     coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
@@ -176,6 +180,7 @@ class CodingWindowsWorkerAttemptGcObservationV1:
     active_gc_reservation_count: int
     gc_reservation_revision: int
     matching_revision_refs: tuple[PluginPackageRevisionRefV1, ...]
+    worker_backup_references: CodingWorkerBackupReferenceObservationV1
 
 
 class CodingWindowsWorkerRecoveryAdmissionError(RuntimeError):
@@ -483,6 +488,11 @@ def inspect_coding_windows_product_worker_attempt_gc_observations(
                         reference.selected_package_revision_digest
                     ),
                     reservations=reservations,
+                ),
+                worker_backup_references=(
+                    observe_coding_worker_backup_references_under_gc_guard(
+                        product, attempt_id=reference.attempt_id
+                    )
                 ),
             )
             for reference in references

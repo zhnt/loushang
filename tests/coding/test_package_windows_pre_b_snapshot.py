@@ -30,6 +30,7 @@ import loushang.coding.package_private_data_windows_backup as windows_backup_mod
 import loushang.coding.package_private_data_windows_backup_expiry_owner as windows_expiry_module
 import loushang.coding.package_private_data_windows_deletion_owner as windows_deletion_module
 import loushang.coding.package_private_data_windows_restore_owner as windows_restore_module
+import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_windows_payload as windows_payload_module
 from loushang.ai.model import Capabilities, Model
 from loushang.coding._plugin_lifecycle import (
@@ -2953,6 +2954,18 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert gc_observations[0].active_gc_reservation_count == 0
         assert gc_observations[0].gc_reservation_revision >= 0
         assert gc_observations[0].matching_revision_refs == ()
+        assert gc_observations[0].worker_backup_references.attempt_id == attempt_id
+        assert gc_observations[0].worker_backup_references.worker_backup_supported is False
+        assert gc_observations[0].worker_backup_references.references == ()
+        with patch.object(
+            backup_types_module,
+            "_SUPPORTED_BACKUP_KINDS",
+            ("arch_private_data", "worker_attempt"),
+        ):
+            with pytest.raises(ValueError, match="backup topology changed"):
+                inspect_coding_windows_product_worker_attempt_gc_observations(
+                    product
+                )
         first = review_coding_windows_product_worker_crash_cleanup(
             product, attempt_id=attempt_id
         )

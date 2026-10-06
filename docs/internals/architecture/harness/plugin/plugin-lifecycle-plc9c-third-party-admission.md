@@ -1404,7 +1404,8 @@ Package revisions, not Worker attempt IDs. The current Coding Product backup
 topology admits only Arch private-data backups. Its POSIX and Windows backup
 writer constructors use the same versioned type authority; the Linux retention
 review now records an attempt-specific observation that Worker backup is
-unsupported. If a Worker backup kind is added, this observation refuses until
+unsupported; the Windows retained launch-intent review records the same
+typed observation. If a Worker backup kind is added, these observations refuse until
 that owner provides an attempt-reference inventory. It does not speak for
 external workspace copies or a future Product release. A terminal Supervisor
 record and absent payload still cannot authorize historical deletion; the
@@ -1421,7 +1422,7 @@ each related gate whose binding, Supervisor, or native absence remains
 unverified; an unsettled attempt cannot be hidden by another attempt using the
 same receipt. This remains read-only evidence and does not yet close receipt
 references across all Product owners. It reports the missing
-attempt-level backup and receipt-reference proofs explicitly and grants no
+receipt-reference proof explicitly and grants no
 prune authority. The GC read guard also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
 The review's payload inventory now uses the Product's original state-root
