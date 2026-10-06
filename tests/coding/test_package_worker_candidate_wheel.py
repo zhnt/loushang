@@ -5375,7 +5375,20 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         assert retention.unverified_activation_references == ()
         assert retention.global_unverified_activation_references == ()
         assert retention.receipt_references_verified
+        assert retention.historical_opt_in_verified
         assert "receipt_references_unverified" not in retention.missing_proofs
+        with monkeypatch.context() as missing_opt_in_history:
+            missing_opt_in_history.setattr(
+                CodingWorkerOptInJournal,
+                "_history_under_gc_guard",
+                lambda _journal: (),
+            )
+            unbound_opt_in = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert not unbound_opt_in.historical_opt_in_verified
+            assert "historical_opt_in_unverified" in unbound_opt_in.missing_proofs
+            assert not unbound_opt_in.receipt_references_verified
         assert cleanup_evidence.verify_tree_settlement(
             receipt_fingerprint=receipt,
             attempt_id=attempt_id,

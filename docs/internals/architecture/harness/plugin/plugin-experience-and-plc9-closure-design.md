@@ -3264,7 +3264,12 @@ the repository verifier with one test, zero skips, failures, or errors at
 `/home/dev/lsspace/.artifacts/plugin-plc9/worker-sustained-37520786728.xml`.
 This exercises 2,049 queries within one Product Worker attempt; it does not
 exercise 4,096 receipt generations, checkpoint publication, or history pruning.
-The run's full Coding job passed; its Windows Session job remains in progress.
+The run's full Coding job passed. Its Windows Worker Session job also passed;
+the downloaded JUnit report passed the repository verifier with four tests,
+zero skips, failures, or errors at
+`/home/dev/lsspace/.artifacts/plugin-plc9/windows-worker-session-37520786728.xml`.
+The overall run concluded as cancelled after the Host Runtime selected gate
+failed, so it is not a green exact-head acceptance result.
 The Host Runtime selected gate failed after the underlying job reported a real
 missing-C5 Package GC assertion and then reached its 10-minute timeout. The
 missing-C5 GC check passed its focused local regression after correction, and
@@ -3279,6 +3284,12 @@ failure after Worker startup; all five attempts were retained and settled.
 Focused C50/C54 architecture tests passed 16/16, and the generated package
 dependency document remained current. This is local evidence for the explicit
 CLI route; the manual canary fixture and exact-head full CI remain separate.
+The Linux retention review now joins each reviewed receipt to exactly one
+historical `allow` opt-in decision with the same digest, Plugin, scope, owner
+generation, and kill-switch generation. A real installed-Product regression
+passed after first reproducing the missing proof; suppressing the retained
+opt-in history makes receipt references unverified. This supplies a checkpoint
+input, not checkpoint publication or permission to prune history.
 
 ## Independent Review Record
 

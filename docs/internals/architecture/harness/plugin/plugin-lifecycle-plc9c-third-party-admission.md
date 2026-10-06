@@ -1680,6 +1680,12 @@ Worker audit records. The real Linux public Session case passed the missing
 history refusal and restored-history positive; the Windows Product GC case has
 the corresponding native positive and negative assertions pending CI. This
 join does not publish an anti-reuse checkpoint or authorize history pruning.
+The Linux Product retention review now requires the reviewed receipt to bind
+exactly one historical `allow` decision, including the original scope, owner
+generation, and kill-switch generation. Its real installed-Product regression
+passed the positive and missing-history cases; missing history also prevents
+the review from claiming verified receipt references. This is a read-only
+checkpoint input and grants no retirement or pruning authority.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty

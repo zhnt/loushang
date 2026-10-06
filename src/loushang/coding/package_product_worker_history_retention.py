@@ -183,6 +183,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     attempt_record: WorkerAttemptRecordV1 | None
     receipt_record: CodingWorkerReceiptRecordV1 | None
     current_opt_in: CodingWorkerOptInDecisionV1 | None
+    historical_opt_in_verified: bool
     group_status: GatedGroupStatus
     opt_in_history_revision: int
     retained_opt_in_operation_ids: tuple[str, ...]
@@ -245,6 +246,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             or receipt.receipt.policy.product_scope_id != gate.scope_id
         ):
             missing.append("activation_receipt_binding_changed")
+        if receipt is not None and not self.historical_opt_in_verified:
+            missing.append("historical_opt_in_unverified")
         if (
             receipt is not None
             and self.current_opt_in is not None
@@ -352,6 +355,24 @@ def review_coding_product_worker_history_retention(
                 scope_id=product.policy.project_scope_id,
                 gc_gate=product.gc_gate,
             )._history_under_gc_guard()
+            historical_opt_in_verified = False
+            if receipt is not None:
+                historical_decisions = tuple(
+                    decision
+                    for decision in opt_in_history
+                    if decision.decision_digest == receipt.opt_in_decision_digest
+                )
+                historical_opt_in_verified = (
+                    len(historical_decisions) == 1
+                    and historical_decisions[0].action == "allow"
+                    and historical_decisions[0].plugin_id
+                    == receipt.receipt.policy.plugin_id
+                    and historical_decisions[0].scope_id == receipt.scope_id
+                    and historical_decisions[0].generation
+                    == receipt.receipt.policy.owner_selection_generation
+                    and historical_decisions[0].kill_switch_generation
+                    == receipt.receipt.policy.kill_switch_generation
+                )
             activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
             )
@@ -476,6 +497,7 @@ def review_coding_product_worker_history_retention(
                 unverified_gate_references = tuple(unverified)
             receipt_references_verified = (
                 activation_initialized
+                and historical_opt_in_verified
                 and receipt is not None
                 and gate is not None
                 and bool(receipt_gate_references)
@@ -526,6 +548,7 @@ def review_coding_product_worker_history_retention(
                 attempt_record=gated.attempt_record,
                 receipt_record=receipt,
                 current_opt_in=opt_in,
+                historical_opt_in_verified=historical_opt_in_verified,
                 group_status=gated.group_status,
                 opt_in_history_revision=len(opt_in_history),
                 retained_opt_in_operation_ids=tuple(
