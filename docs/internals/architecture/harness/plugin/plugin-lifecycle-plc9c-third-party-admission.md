@@ -1045,7 +1045,12 @@ reopen case: a separate process admits and launches the Product Worker, proves
 a live query, and exits without cleanup; a fresh process opens the same Product,
 observes the absent Job and orphan lease, then performs four fresh-reviewed
 settlement steps and verifies that the reviewed payload stage is retired. The
-case remains a candidate until its native Windows CI result is retained.
+direct and hosted crash/reopen cases passed in CI run `37502903364` on
+`8c3d6b87`. The uploaded `windows-worker-session-pytest-report` passed the
+repository XML verifier with 4 tests, zero skips, failures, or errors across
+both clean public Session paths and both crash/reopen paths. Later local Worker
+history changes still require their own exact-head CI rerun; this evidence
+does not open general third-party Worker routing.
 One narrower clean-exit writeback candidate is now available when the Worker
 and LPAC cleanup reached their durable terminal witnesses before the Product
 runtime process disappeared. It requires the full launch, grant, revoke,
