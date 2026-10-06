@@ -3519,6 +3519,10 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             direct_retention.receipt_record.journal_revision
                         )
                         assert direct_retention.unbound_supervisor_attempt_ids == ()
+                        assert direct_retention.retained_start_gate_attempt_ids
+                        assert direct_retention.retained_supervisor_attempt_ids
+                        assert direct_retention.retained_receipt_fingerprints
+                        assert direct_retention.supervisor_epoch_high_water
                         assert direct_retention.opt_in_history_revision >= 1
                         assert direct_retention.current_opt_in is not None
                         assert (
@@ -7155,6 +7159,10 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
             product, attempt_id=attempt_id
         )
         assert review.unbound_supervisor_attempt_ids == (attempt_id,)
+        assert review.retained_start_gate_attempt_ids == ()
+        assert review.retained_supervisor_attempt_ids == (attempt_id,)
+        assert review.retained_receipt_fingerprints == ()
+        assert review.supervisor_epoch_high_water == ((attempt.supervisor_key, 1),)
         assert review.supervisor_history_revision == attempt.record_revision
         assert review.start_gate_history_revision == 0
         assert review.opt_in_history_revision == 0

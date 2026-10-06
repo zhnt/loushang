@@ -1429,7 +1429,10 @@ The same snapshot now records the global retained start-gate, Supervisor, and
 receipt revisions and lists Supervisor attempts with no retained gate. It also
 reads the complete opt-in operation history under the Product GC read gate and
 records its global revision and retained operation IDs without creating a
-missing journal. An
+missing journal. The same read records every retained gate and Supervisor
+attempt ID, receipt fingerprint, and the maximum Supervisor epoch for each
+Supervisor key. These are exact anti-reuse checkpoint inputs; no retired ID is
+removed by this review. An
 orphan Supervisor is a separate missing proof even when the selected attempt
 is elsewhere. These revision marks are checkpoint inputs, not durable
 anti-reuse or permission to retire history.

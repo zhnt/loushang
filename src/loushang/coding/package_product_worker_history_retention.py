@@ -189,6 +189,10 @@ class CodingWorkerHistoryRetentionReviewV1:
     start_gate_history_revision: int
     supervisor_history_revision: int
     receipt_history_revision: int
+    retained_start_gate_attempt_ids: tuple[str, ...]
+    retained_supervisor_attempt_ids: tuple[str, ...]
+    retained_receipt_fingerprints: tuple[str, ...]
+    supervisor_epoch_high_water: tuple[tuple[str, int], ...]
     unbound_supervisor_attempt_ids: tuple[str, ...]
     activation_state_revision: int | None
     active_activation_references: tuple[tuple[str, str], ...]
@@ -373,6 +377,12 @@ def review_coding_product_worker_history_retention(
             supervisor_by_id = {
                 item.attempt_id: item for item in supervisor.attempts()
             }
+            supervisor_epoch_by_key: dict[str, int] = {}
+            for record in supervisor_by_id.values():
+                supervisor_epoch_by_key[record.supervisor_key] = max(
+                    supervisor_epoch_by_key.get(record.supervisor_key, 0),
+                    record.supervisor_epoch,
+                )
             unbound_supervisor_attempt_ids = tuple(
                 sorted(supervisor_by_id.keys() - gate_by_id.keys())
             )
@@ -493,6 +503,14 @@ def review_coding_product_worker_history_retention(
                     default=0,
                 ),
                 receipt_history_revision=len(receipts),
+                retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
+                retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),
+                retained_receipt_fingerprints=tuple(
+                    sorted(item.receipt.fingerprint for item in receipts)
+                ),
+                supervisor_epoch_high_water=tuple(
+                    sorted(supervisor_epoch_by_key.items())
+                ),
                 unbound_supervisor_attempt_ids=unbound_supervisor_attempt_ids,
                 activation_state_revision=(
                     None
