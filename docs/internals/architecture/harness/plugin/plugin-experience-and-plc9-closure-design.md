@@ -3343,6 +3343,10 @@ journal fingerprint from its pinned, strictly decoded state. The native Worker
 case compares that value with the profile's V2 settlement witness. This gives
 a later C5 cleanup authority a durable byte identity for the native join;
 it does not itself authorize C5 settlement.
+A read-only Windows cleanup evidence owner now performs the normal-exit join
+across C5, Product receipt, launch identity, Supervisor, LPAC journal, and
+named Job absence. Its changed-boot and orphan-lease methods refuse; the
+ordinary Windows Host does not yet use it, and no C5 settlement is claimed.
 
 ## Independent Review Record
 

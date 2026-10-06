@@ -1678,6 +1678,12 @@ open a policy-checked Windows C5 store, while a builtins-only Product is
 rejected. The store is not yet passed to the ordinary Windows pending Host; that
 uncoupled Host now refuses any retained C5 owner before payload or launch-intent
 effects, including an empty lock from interrupted initialization.
+A read-only Windows C5 cleanup evidence owner now joins one normal-exit attempt
+across the Product receipt, launch identity, settled Supervisor, complete LPAC
+history and settlement fingerprint, absent named Job, and retired C5 reference.
+Its runtime-incarnation token in the C5 boot-identity slot grants no OS reboot
+inference: changed-boot and orphan-lease verifiers remain closed. The pending
+Host has not yet called this owner or written C5 state.
 An expected revision above zero against a genuinely absent C5 owner now returns
 a CAS miss without creating its lock; orphan state still fails closed.
 Its native reopen, GC join, and
