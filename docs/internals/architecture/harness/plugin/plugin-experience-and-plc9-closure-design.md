@@ -3149,6 +3149,17 @@ crash/reopen/retirement cases. The report still rejects skips, failures, and
 errors. The generalized verifier and change-gate suite passed 60/60 locally;
 this strengthens the native evidence contract but does not substitute for a
 non-skipped Windows runner result.
+The later native Windows public Session job on `43bf85d8` reached the direct
+ordinary graph but failed after 522 seconds when the first-party `coding.lsp`
+Provider admission expired before its factory ran. The Session now accepts
+each in-process Provider admission and its exact activation decision at graph
+start, consumes that decision before a potentially slow Worker preparation,
+and carries a single-use in-process start witness for at most 15 minutes.
+Factory construction still rechecks current owner, source trust, Product
+policy, exact consumed decision, and retained authorization. Without that
+witness the original decision and admission expiry rules remain in force.
+The component, activation-journal, and AgentProduct contract suite passed
+53/53 locally; exact-head native Windows confirmation remains pending.
 
 The 2026-10-06 full Harness check on `2a9962fc` passed Ruff and mypy over 770
 source files. Its pytest run had 5,572 passes and 121 skips, with two failing

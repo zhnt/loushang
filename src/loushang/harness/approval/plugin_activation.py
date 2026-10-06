@@ -1350,6 +1350,7 @@ class PluginActivationDecisionJournal:
         reservation: ActivationUseReservationV1,
         *,
         expected_state: PluginActivationUseState,
+        started_at_unix_ms: int | None = None,
     ) -> None:
         if not isinstance(reservation, ActivationUseReservationV1):
             raise TypeError("Activation use validation requires an exact reservation")
@@ -1373,7 +1374,22 @@ class PluginActivationDecisionJournal:
                     code="plugin_activation_use_authority_mismatch",
                 )
             now = self._now()
-            if now < decision.issued_at_unix_ms or now >= decision.expires_at_unix_ms:
+            if started_at_unix_ms is None:
+                decision_time_current = (
+                    decision.issued_at_unix_ms
+                    <= now
+                    < decision.expires_at_unix_ms
+                )
+            else:
+                decision_time_current = (
+                    type(started_at_unix_ms) is int
+                    and decision.issued_at_unix_ms
+                    <= started_at_unix_ms
+                    < decision.expires_at_unix_ms
+                    and started_at_unix_ms <= now
+                    and now - started_at_unix_ms < 900_000
+                )
+            if not decision_time_current:
                 raise self._error(
                     "Plugin activation decision expired before execution start",
                     code="plugin_activation_decision_expired",

@@ -41,6 +41,7 @@ from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.component_host import (
+    CapabilityComponentAdmissionStart,
     CapabilityComponentHost,
 )
 from loushang.harness.capabilities.contracts import CapabilityRequirement
@@ -1606,6 +1607,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             prepared_components: list[PreparedSessionCapabilityComponent] = []
             owner_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...] = ()
             owner_starts: list[SessionCapabilityOwnerAdmissionStart] = []
+            component_starts: dict[int, CapabilityComponentAdmissionStart] = {}
             resource_consumer_installed = False
             skill_catalog_consumer_installed = False
             try:
@@ -1628,20 +1630,33 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                     for request in composition_inputs.component_requests:
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
+                            continue
+                        assert component_host is not None
+                        component_starts[id(request)] = component_host.begin_admission(
+                            request.resolved,
+                            owner_snapshot=request.owner_snapshot,
+                            trust_snapshot=request.trust_snapshot,
+                            decision_id=request.activation_decision_id,
+                        )
+                    for request in composition_inputs.component_requests:
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
+                            continue
+                        assert component_host is not None
+                        prepared_components.append(
+                            component_host.prepare_component(
+                                request.resolved,
+                                package=request.package,
+                                owner_snapshot=request.owner_snapshot,
+                                trust_snapshot=request.trust_snapshot,
+                                decision_id=request.activation_decision_id,
+                                admission_start=component_starts[id(request)],
+                            )
+                        )
+                    for request in composition_inputs.component_requests:
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             prepared_components.append(
                                 await request.prepare_component(
                                     self._capability_graph_runtime.generation + 1
-                                )
-                            )
-                        else:
-                            assert component_host is not None
-                            prepared_components.append(
-                                component_host.prepare_component(
-                                    request.resolved,
-                                    package=request.package,
-                                    owner_snapshot=request.owner_snapshot,
-                                    trust_snapshot=request.trust_snapshot,
-                                    decision_id=request.activation_decision_id,
                                 )
                             )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap
@@ -1901,6 +1916,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                 raise
             finally:
+                for component_start in reversed(tuple(component_starts.values())):
+                    component_start.host.abort_admission_start(component_start)
                 for start in reversed(owner_starts):
                     start.authority_gate.abort(start)
             staged_candidate = self._staged_resource_candidate
