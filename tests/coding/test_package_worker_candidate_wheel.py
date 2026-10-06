@@ -3332,6 +3332,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         assert supervisor_journal.incomplete() == incomplete_before_direct
                         return
                     if hosted_entry_only:
+                        payloads_before_hosted = frozenset(
+                            product.state_root.glob("worker-payload-*")
+                        )
+                        supervisor_journal = (
+                            open_coding_product_worker_supervisor_journal(product)
+                        )
+                        incomplete_before_hosted = supervisor_journal.incomplete()
                         hosted_sessions_parent = tmp_path / "hosted-session-files"
                         hosted_sessions_parent.mkdir(mode=0o700)
                         hosted_runtime = create_agent_session_runtime(
@@ -3365,10 +3372,28 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     item.name == "worker-extra"
                                     for item in session.resource_bundle.skills
                                 )
+                                revoked = product_opt_in.revoke(
+                                    plugin_id=_PLUGIN,
+                                    operation_id="worker-hosted-session-revoke",
+                                    expected_generation=decision.generation,
+                                )
+                                assert revoked.action == "revoke"
+                                assert revoked.kill_switch_generation == (
+                                    decision.kill_switch_generation + 1
+                                )
+                                with pytest.raises(
+                                    CapabilityWorkerFacetProxyError,
+                                    match="worker_capability_facet_proxy_owner_unavailable",
+                                ):
+                                    await session.query_worker_symbol("review")
                             finally:
                                 await hosted_runtime.dispose_session_runtime()
 
                         asyncio.run(exercise_hosted_worker())
+                        assert frozenset(product.state_root.glob("worker-payload-*")) == (
+                            payloads_before_hosted
+                        )
+                        assert supervisor_journal.incomplete() == incomplete_before_hosted
                         return
                 if native_mode == "installed-release":
                     settled_start_attempt = "ad" * 16

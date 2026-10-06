@@ -3095,12 +3095,13 @@ CI reports, including recovery and cleanup. General third-party Worker
 admission, default Worker routing, post-development review of this final head,
 and Git delivery remain open.
 
-The explicit Linux public Coding Session regression now also revokes the
-per-install Worker opt-in after a successful query while that Session is open.
-A subsequent public query is fenced; disposal leaves no additional Worker
-payload or incomplete Supervisor attempt. The focused native case passed 1/1
-on 2026-10-06. This supplies one W5 revocation and cleanup edge, not general
-third-party Worker admission or its full operator and update lifecycle.
+The explicit Linux Direct and Hosted public Coding Session regressions now
+also revoke the per-install Worker opt-in after a successful query while each
+Session is open. A subsequent public query is fenced; disposal leaves no
+additional Worker payload or incomplete Supervisor attempt. The two focused
+native cases each passed 1/1 on 2026-10-06. This supplies W5 revocation and
+cleanup evidence for both explicit SDK entries, not general third-party
+Worker admission or its full operator and update lifecycle.
 
 ## Independent Review Record
 
