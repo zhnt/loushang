@@ -1483,6 +1483,11 @@ gate was accepted as empty history, then passed with this refusal. This closes
 that Package-deletion gap only; the ordinary pending Host still lacks the
 shared attempt-reference record, and backup, checkpoint, and history-pruning
 authority remain open.
+A second real Product case now starts and settles an ordinary Worker, adds a
+settled C5 record with the same attempt, receipt, and policy binding, compacts
+that C5 attempt out of the latest snapshot, and still permits Package GC
+preparation. The focused native test passed 1/1. This guards the positive
+join as well as the missing-gate refusal, while retaining all history bytes.
 
 The next implementation boundary is an attempt-level Product reference
 authority shared by the ordinary pending Host and C5. It must record the

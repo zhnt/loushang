@@ -5103,6 +5103,48 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
         )
         gc.prepare()
+        gate = gates[0]
+        receipt = gate.receipt_fingerprint
+        attempt_id = gate.attempt_id
+        key = _AttemptKey(receipt, attempt_id, 1).encoded
+        c5_attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
+        c5_attempt["policyFingerprint"] = gate.policy_fingerprint
+        initial = _initial_state(restart_budget=3)
+        registered = _next_state(initial)
+        registered["attempts"] = {key: c5_attempt}
+        settled = _next_state(registered)
+        settled_attempt = dict(c5_attempt)
+        settled_attempt.update(
+            phase="settled",
+            domainRetired=True,
+            protocolTerminal=True,
+            cleanupSettlement=WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt,
+                attempt_id=attempt_id,
+                owner_generation=1,
+                host_identity="host-a",
+                boot_identity="boot-a",
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ).to_dict(),
+        )
+        settled["attempts"] = {key: settled_attempt}
+        compacted = _next_state(settled)
+        compacted["attempts"] = {}
+        activation_journal = (
+            activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+                product.state_root / "worker-activation-state.jsonl"
+            )
+        )
+        for revision, state in enumerate(
+            (initial, registered, settled, compacted)
+        ):
+            assert activation_journal.compare_and_swap(
+                expected_revision=revision, document=state
+            )
+        assert not activation_journal.retained_attempts_read_only()[0].current
+        gc.prepare()
         gate_path = CodingWorkerStartGateJournal(product).path
         retained_gate = gate_path.read_bytes()
         gate_path.write_bytes(retained_gate + b"{}\n")
