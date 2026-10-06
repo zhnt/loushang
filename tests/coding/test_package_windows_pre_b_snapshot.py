@@ -2928,9 +2928,9 @@ module["_exercise_windows_worker_wheel_transaction"](
     )
     try:
         product = owner.runtime_owner.product_owner
-        attempts = inspect_coding_windows_product_worker_offline_recovery(
+        attempts = inspect_coding_windows_product_worker_recovery_inventory(
             product
-        ).attempts
+        )
         assert len(attempts) == 1
         attempt_id = attempts[0].attempt_id
         first = review_coding_windows_product_worker_crash_cleanup(
