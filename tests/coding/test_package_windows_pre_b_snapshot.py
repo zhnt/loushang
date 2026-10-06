@@ -353,6 +353,7 @@ from loushang.harness.worker._native_profile_bridge import (
     _bind_windows_lpac_contained_product_worker_profile,
     _windows_lpac_provisioning_identity,
     _WindowsLpacProductWorkerProfilePlan,
+    _WindowsNativeContainmentSettlementWitness,
 )
 from loushang.harness.worker.hosting_adapter import (
     HostingManagedWorkerSessionAdapter,
@@ -2804,12 +2805,14 @@ def _assert_windows_product_worker_provisioning_state(
     )
     assert current_attempt.phase == "reserved"
     assert current_attempt.unsettled
+    assert current_attempt.settlement_fingerprint is None
     if prior_settled_attempt_id is not None:
         prior_attempt = next(
             item for item in inventory if item.attempt_id == prior_settled_attempt_id
         )
         assert prior_attempt.phase == "settled"
         assert not prior_attempt.unsettled
+        assert prior_attempt.settlement_fingerprint is not None
     reopened = open_coding_windows_product_worker_provisioning_state_store(
         product,
         runtime=product_runtime,
@@ -4786,19 +4789,22 @@ finally:
                                         await host.close()
 
                     asyncio.run(exercise_native_hosting())
-                    assert (
+                    native_witness = (
                         native_profile.native_containment_settlement_witness()
-                        is not None
                     )
-                    assert (
-                        next(
-                            item
-                            for item in inspect_coding_windows_product_worker_provisioning_attempts(
-                                worker_product
-                            )
-                            if item.attempt_id == "7" * 32
-                        ).phase
-                        == "settled"
+                    assert isinstance(
+                        native_witness, _WindowsNativeContainmentSettlementWitness
+                    )
+                    settled_attempt = next(
+                        item
+                        for item in inspect_coding_windows_product_worker_provisioning_attempts(
+                            worker_product
+                        )
+                        if item.attempt_id == "7" * 32
+                    )
+                    assert settled_attempt.phase == "settled"
+                    assert settled_attempt.settlement_fingerprint == (
+                        native_witness.journal_fingerprint
                     )
                     with pytest.raises(WorkerBindingError, match="selection changed"):
                         request.validate_current()

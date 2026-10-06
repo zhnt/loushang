@@ -44,6 +44,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
     _WINDOWS_LPAC_PROFILE_ID,
+    _document_fingerprint,
     _require_opaque,
     _validate_windows_journal,
 )
@@ -92,6 +93,7 @@ class WindowsWorkerProvisioningAttemptV1:
     phase_history: tuple[str, ...]
     witness_present_history: tuple[bool, ...]
     last_witness_state: str | None
+    settlement_fingerprint: str | None
 
     @property
     def unsettled(self) -> bool:
@@ -276,6 +278,14 @@ def inspect_windows_worker_provisioning_attempts(
                                     "state"
                                 ],
                             )
+                        ),
+                        settlement_fingerprint=(
+                            _document_fingerprint(
+                                "loushang.worker.windows-lpac-settlement/v1",
+                                current.document,
+                            )
+                            if current.document["phase"] == "settled"
+                            else None
                         ),
                     )
                 )

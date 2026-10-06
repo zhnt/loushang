@@ -3338,6 +3338,11 @@ launched attempt before Package deletion. It requires the real
 named Job to be absent and injects present and unknown Job observations to
 confirm that both refuse GC. This tests the GC join; the fixture does not
 represent production Windows Host C5 writes and awaits the next native run.
+The Windows LPAC provisioning inventory now projects the exact settled
+journal fingerprint from its pinned, strictly decoded state. The native Worker
+case compares that value with the profile's V2 settlement witness. This gives
+a later C5 cleanup authority a durable byte identity for the native join;
+it does not itself authorize C5 settlement.
 
 ## Independent Review Record
 
