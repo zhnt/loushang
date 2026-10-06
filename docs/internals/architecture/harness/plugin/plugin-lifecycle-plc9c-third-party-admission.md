@@ -1435,6 +1435,12 @@ current journal, native-release, payload-stage, and repair-intent owners.
 Unknown Worker-owned names and retained payload repair intents remain explicit
 reference debts. This keeps a later owner or interrupted stage from silently
 looking absent to a checkpoint candidate; it still does not authorize pruning.
+The Linux Package GC history authority now rejects an unknown Worker state-root
+name under its pinned root read as well. A Product negative first showed that
+the read-only review noticed such a name while the GC history authority accepted
+it; the authority now refuses the same observation before Package deletion.
+It also refuses a retained payload repair intent even when no payload stage
+remains, so an interrupted repair cannot be erased by Package GC.
 A regression then showed that the concrete opt-in writer could revoke inside
 the same thread's GC read snapshot through a nested default guard. The GC
 reference-writer fence, reservation mutations, Product root GC, and Product

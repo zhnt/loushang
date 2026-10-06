@@ -20,6 +20,10 @@ from loushang.harness.worker.gated_start import (
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
+from .package_product_worker_history_retention import (
+    _PAYLOAD_REPAIR,
+    _known_worker_state_name,
+)
 from .package_product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
 )
@@ -68,6 +72,10 @@ class CodingPosixWorkerGcHistoryAuthority:
                 raise ValueError("Linux Worker GC inventory changed")
             for name in observed_names:
                 lowered = name.casefold()
+                if lowered.startswith(("worker-", ".worker-")) and not _known_worker_state_name(name):
+                    raise ValueError("Linux Worker GC reference owner is unrecognized")
+                if _PAYLOAD_REPAIR.fullmatch(name):
+                    raise ValueError("Linux Worker GC payload repair reference is retained")
                 if any(
                     lowered.startswith(stem) or lowered.startswith("." + stem)
                     for stem in _HISTORY_STEMS
