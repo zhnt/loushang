@@ -1660,9 +1660,11 @@ compaction. Its portable cases and the existing Linux segmented cases passed
 journal now uses these rules and commits a separate immutable byte-digest head
 for every revision. Linux and Windows journals expose the same read-only
 projection of retained C5 attempts, including attempts absent from the latest
-state. Its native reopen and complete-record-loss test is part of
+state. Windows Package GC now recognizes only the exact C5 journal/head names;
+when a C5 owner exists, it refuses active or unmatched attempts before root
+deletion. Its native reopen, GC join, and complete-record-loss test is part of
 the next strict Windows CI report. Until that report passes and the ordinary
-Host, Job/LPAC cleanup evidence, crash recovery, and Package GC joins use the
+Host, Job/LPAC cleanup evidence, and crash recovery use the
 journal, this is storage infrastructure rather than Windows C5 production
 behavior.
 The snapshot also projects each journal's retained revision, opt-in operation

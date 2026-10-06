@@ -3311,11 +3311,14 @@ boundary passed 7/7. At that checkpoint Windows Product C5 persistence and
 recovery remained open; the decoder alone did not establish lifecycle closure.
 The Windows Product-rooted C5 CAS journal now persists each canonical state
 revision beneath the pinned private root with an immutable committed-byte head.
-The next native Windows Session job requires its reopen and complete-record-loss
-case in addition to the existing four Session cases. Local C5 import-boundary
-checks passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
-Windows Worker C5 writes, cleanup evidence, crash recovery, and GC integration
-remain open, so this storage candidate does not open the Windows route.
+It shares Linux's retained-attempt projection. Windows Package GC now accepts
+only exact C5 names and checks any present C5 history against launched attempts
+and Product receipts before Package root deletion. The next native Windows
+Session job requires its reopen, GC join, and complete-record-loss case in
+addition to the existing four Session cases. Local C5 import-boundary checks
+passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
+Windows Worker C5 writes, cleanup evidence, crash recovery, and native GC
+evidence remain open, so this candidate does not open the Windows route.
 
 ## Independent Review Record
 
