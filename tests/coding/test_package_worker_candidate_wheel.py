@@ -5177,6 +5177,10 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 expected_revision=revision, document=state
             )
         assert not activation_journal.retained_attempts_read_only()[0].current
+        retention = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert retention.unverified_activation_references == ()
         gc.prepare()
         gate_path = CodingWorkerStartGateJournal(product).path
         retained_gate = gate_path.read_bytes()
@@ -7097,6 +7101,9 @@ def test_worker_package_gc_refuses_compacted_c5_attempt_without_gate(
             for reference in review.retained_activation_references
         ) == (attempt_id,)
         assert not review.retained_activation_references[0].current
+        assert review.unverified_activation_references == (
+            (attempt_id, "activation_reference_gate_absent"),
+        )
         assert "start_gate_absent" in review.missing_proofs
         authority = CodingPosixWorkerGcHistoryAuthority(product)
         with pytest.raises(ValueError, match="C5 attempt history is incomplete"):

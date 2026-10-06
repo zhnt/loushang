@@ -95,6 +95,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     activation_state_revision: int | None
     active_activation_references: tuple[tuple[str, str], ...]
     retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
+    unverified_activation_references: tuple[tuple[str, str], ...]
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     payload_stage_names: tuple[str, ...]
@@ -157,6 +158,8 @@ class CodingWorkerHistoryRetentionReviewV1:
                 or reference.policy_fingerprint != gate.policy_fingerprint
             ):
                 missing.append("activation_attempt_binding_changed")
+        if self.unverified_activation_references:
+            missing.append("activation_receipt_reference_unverified")
         if self.unsettled_receipt_gate_references:
             missing.append("receipt_gate_attempt_unsettled")
         if self.payload_stage_names:
@@ -232,21 +235,60 @@ def review_coding_product_worker_history_retention(
                         if item["phase"] != "settled"
                     )
                 )
+            gates = CodingWorkerStartGateJournal(product).attempts()
+            gate_by_id = {item.attempt_id: item for item in gates}
+            supervisor = open_coding_product_worker_supervisor_journal(product)
+            supervisor_by_id = {
+                item.attempt_id: item for item in supervisor.attempts()
+            }
+            unverified_activation: list[tuple[str, str]] = []
+            for reference in retained_activation_references:
+                if reference.attempt_id != attempt_id and (
+                    receipt is None
+                    or reference.receipt_fingerprint != receipt.receipt.fingerprint
+                ):
+                    continue
+                referenced_gate = gate_by_id.get(reference.attempt_id)
+                code: str | None
+                if referenced_gate is None:
+                    code = "activation_reference_gate_absent"
+                elif (
+                    referenced_gate.receipt_fingerprint
+                    != reference.receipt_fingerprint
+                    or referenced_gate.policy_fingerprint
+                    != reference.policy_fingerprint
+                ):
+                    code = "activation_reference_binding_changed"
+                elif referenced_gate.phase != "bound":
+                    code = "activation_reference_gate_unbound"
+                elif reference.phase != "settled":
+                    code = "activation_reference_unsettled"
+                else:
+                    status = supervisor_by_id.get(reference.attempt_id)
+                    code = (
+                        "activation_reference_supervisor_unsettled"
+                        if status is None
+                        or not status.process_settled
+                        or status.identity_fingerprint
+                        != referenced_gate.worker_identity_fingerprint
+                        else None
+                    )
+                if code is not None:
+                    unverified_activation.append((reference.attempt_id, code))
             receipt_gate_references: tuple[str, ...] = ()
             unsettled_gate_references: tuple[str, ...] = ()
             if gate is not None:
                 matching_gates = tuple(
                     item
-                    for item in CodingWorkerStartGateJournal(product).attempts()
+                    for item in gates
                     if item.receipt_fingerprint == gate.receipt_fingerprint
                 )
                 receipt_gate_references = tuple(
                     item.attempt_id for item in matching_gates
                 )
-                supervisor = open_coding_product_worker_supervisor_journal(product)
                 unsettled: list[str] = []
                 for item in matching_gates:
-                    status = supervisor.status(item.attempt_id)
+                    status = supervisor_by_id.get(item.attempt_id)
                     if (
                         item.phase != "bound"
                         or status is None
@@ -277,6 +319,7 @@ def review_coding_product_worker_history_retention(
                 ),
                 active_activation_references=active_references,
                 retained_activation_references=retained_activation_references,
+                unverified_activation_references=tuple(unverified_activation),
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 payload_stage_names=payloads,

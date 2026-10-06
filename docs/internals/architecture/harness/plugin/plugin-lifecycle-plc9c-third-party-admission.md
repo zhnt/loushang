@@ -1491,18 +1491,21 @@ join as well as the missing-gate refusal, while retaining all history bytes.
 
 The Linux start-gate intent is already a durable pre-launch record used by
 both the ordinary pending Host and the explicit operator query. The retention
-review now projects it together with the exact Product receipt as a typed attempt
-reference carrying the attempt, receipt fingerprint, selected Package artifact
+review now projects it together with the exact Product receipt as a typed
+attempt reference carrying the attempt, receipt fingerprint, selected Package artifact
 digest, locator revision, and Linux platform. A changed receipt binding yields
 no reference. This read-only projection does not prove closure or permit
 history pruning; it avoids introducing a second pre-launch journal with a
 crash window between two writes. Windows now has a read-only equivalent that
 joins each retained launch intent to its exact receipt under the Product GC
 read guard; it refuses native or Supervisor history without an intent and a
-changed binding. Its native crash/reopen case is pending CI. C5
-activation-state records still need to be joined to the shared attempt
-authority. Cleanup may close a reference only after
-Supervisor and native process settlement, payload debt retirement,
+changed binding. Its native crash/reopen case is pending CI. The Linux
+retention review now also joins retained C5 attempts relevant to the selected
+attempt or receipt against gate and Supervisor history. Missing gates, changed
+bindings, unbound gates, and unsettled Supervisors remain explicit reference
+debts, including after C5 compaction. This join does not attest native absence
+for every related attempt or close a reference. Cleanup may close a reference
+only after Supervisor and native process settlement, payload debt retirement,
 and the exact Product selection check. A crash between registration and
 settlement remains an open reference on reopen. The retention reviewer must
 read this authority under the Product GC gate and reject an absent or changed
