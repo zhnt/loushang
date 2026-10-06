@@ -168,6 +168,9 @@ from loushang.coding.package_product_worker_windows_backend_release import (
 from loushang.coding.package_product_worker_windows_cleanup_evidence import (
     CodingWindowsWorkerCleanupEvidenceAuthority,
 )
+from loushang.coding.package_product_worker_windows_crash_c5_settlement import (
+    settle_coding_windows_product_worker_crash_c5,
+)
 from loushang.coding.package_product_worker_windows_crash_cleanup_review import (
     review_coding_windows_product_worker_crash_cleanup,
 )
@@ -2990,6 +2993,18 @@ module["_exercise_windows_worker_wheel_transaction"](
         first = review_coding_windows_product_worker_crash_cleanup(
             product, attempt_id=attempt_id
         )
+        [crashed_c5] = (
+            item
+            for item in CodingWindowsWorkerActivationStateJournal(
+                product
+            ).retained_attempts_read_only()
+            if item.attempt_id == attempt_id
+        )
+        assert crashed_c5.phase == "published"
+        with pytest.raises(ValueError, match="incomplete"):
+            settle_coding_windows_product_worker_crash_c5(
+                product, attempt_id=attempt_id
+            )
         assert first.orphan_review.native_job_absent is True
         assert len(first.orphan_review.orphan_leases) == 1
         assert (
@@ -3030,6 +3045,24 @@ module["_exercise_windows_worker_wheel_transaction"](
             )
             == ()
         )
+        with patch(
+            "loushang.coding.package_product_worker_windows_orphan_review.observe_windows_worker_job_absent",
+            return_value=False,
+        ):
+            with pytest.raises(ValueError, match="incomplete"):
+                settle_coding_windows_product_worker_crash_c5(
+                    product, attempt_id=attempt_id
+                )
+        c5_settled = settle_coding_windows_product_worker_crash_c5(
+            product, attempt_id=attempt_id
+        )
+        assert c5_settled.phase == "settled"
+        assert (
+            settle_coding_windows_product_worker_crash_c5(
+                product, attempt_id=attempt_id
+            )
+            == c5_settled
+        )
         after = inspect_coding_windows_product_worker_offline_recovery(product)
         assert len(after.attempts) == 1
         assert after.attempts[0].payload_directory_identity is None
@@ -3054,9 +3087,9 @@ module["_exercise_windows_worker_wheel_transaction"](
         assert after.supervisor_records[-1].phase == "process_settled"
         assert after.supervisor_history_revision == len(after.supervisor_records)
         assert after.retained_supervisor_attempt_ids == (attempt_id,)
-        assert not after.activation_state_owner_present
-        assert after.activation_state_revision == 0
-        assert after.retained_activation_attempts == ()
+        assert after.activation_state_owner_present
+        assert after.activation_state_revision >= 6
+        assert after.retained_activation_attempts == (c5_settled,)
         assert after.native_job_absence == ((attempt_id, True),)
         with patch(
             "loushang.coding.package_product_worker_windows_recovery_inventory.observe_windows_worker_job_absent",
@@ -4382,6 +4415,15 @@ finally:
                         assert orphan_review.native_job_absent is True
                         assert orphan_review.attempt is not None
                         assert orphan_review.attempt.clean_exit_settled
+                        [activation] = (
+                            item
+                            for item in CodingWindowsWorkerActivationStateJournal(
+                                worker_product
+                            ).retained_attempts_read_only()
+                            if item.attempt_id == attempt_id
+                        )
+                        assert activation.phase == "settled"
+                        assert activation.cleanup_contract_version == 2
                         return
                     unmaterialized_session = asyncio.run(
                         SessionManager.new(
@@ -5091,13 +5133,14 @@ finally:
                         read_coding_windows_worker_installed_backend_release(
                             worker_product
                         )
-                    opt_revoked = opt_in_owner.revoke(
-                        plugin_id="workerprobe",
-                        operation_id="windows-worker-product-revoke-2",
-                        expected_generation=1,
-                    )
+                    assert receipt_owner.latch_kill_switch(expected_generation=0) == 1
+                    assert receipt_owner.latch_kill_switch(expected_generation=0) == 1
+                    opt_revoked = opt_in_owner.current("workerprobe")
+                    assert opt_revoked is not None
                     assert opt_revoked.action == "revoke"
                     assert opt_revoked.generation == 2
+                    with pytest.raises(CodingWorkerReceiptError, match="stale"):
+                        receipt_owner.latch_kill_switch(expected_generation=1)
                     assert opt_in_owner.current("workerprobe") == opt_revoked
                     assert receipt_owner.current_witness(receipt) != (
                         receipt.authority_witness

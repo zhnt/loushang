@@ -22,6 +22,9 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
 )
@@ -209,6 +212,46 @@ class CodingWindowsWorkerProductReceiptOwner:
                 return _STALE_WITNESS
             return receipt.authority_witness
 
+    def latch_kill_switch(self, *, expected_generation: int) -> int:
+        """Persist a Windows opt-in revocation before C5 retires its domain."""
+
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise ValueError("Windows Worker kill-switch generation is invalid")
+        with self._product.gc_gate.guard(require_write=True):
+            self._product.assert_root_gc_authority_current()
+            plugin_id = self._selected.snapshot.installation_key.plugin_id
+            decision = self._opt_in.current(plugin_id)
+            if decision is None:
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
+            if (
+                decision.action == "revoke"
+                and decision.kill_switch_generation == expected_generation + 1
+            ):
+                return decision.kill_switch_generation
+            if (
+                decision.action != "allow"
+                or decision.kill_switch_generation != expected_generation
+            ):
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
+            operation_id = (
+                "worker-kill-"
+                + sha256(
+                    canonical_json_bytes(
+                        {
+                            "scopeId": self._product.policy.project_scope_id,
+                            "pluginId": plugin_id,
+                            "expectedGeneration": expected_generation,
+                        }
+                    )
+                ).hexdigest()
+            )
+            revoked = self._opt_in.revoke(
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=decision.generation,
+            )
+            return revoked.kill_switch_generation
+
     def current_backend_capture_expectation(
         self, receipt: ProductWorkerActivationReceiptV1
     ) -> WindowsBackendMaterialExpectationV1:
@@ -261,7 +304,9 @@ class CodingWindowsWorkerProductReceiptOwner:
             PackageProductRuntimeActivationError,
             PackageProductRuntimeReadError,
         ) as exc:
-            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale") from exc
+            raise CodingWorkerReceiptError(
+                "coding_worker_selected_payload_stale"
+            ) from exc
         if selected != self._selected:
             raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
         return selected
@@ -281,9 +326,7 @@ class CodingWindowsWorkerProductReceiptOwner:
         assert configuration is not None
         root = manifest.root_relative_path.as_posix()
         prefix = "" if root == "." else f"{root}/"
-        body = dict(selected.snapshot.files).get(
-            f"{prefix}{configuration.entrypoint}"
-        )
+        body = dict(selected.snapshot.files).get(f"{prefix}{configuration.entrypoint}")
         if (
             body is None
             or candidate.executable_digest != sha256(body).hexdigest()
@@ -392,7 +435,9 @@ class CodingWindowsWorkerProductReceiptOwner:
                 self._product
             )
             if worker_request.runtime.package_root.parent != self._product.state_root:
-                raise CodingWorkerReceiptError("coding_worker_native_payload_root_changed")
+                raise CodingWorkerReceiptError(
+                    "coding_worker_native_payload_root_changed"
+                )
             plan = _plan_windows_lpac_product_worker_profile(
                 worker_request=worker_request,
                 native_profile_catalog_revision=(
@@ -468,7 +513,11 @@ def open_coding_windows_product_selected_worker_receipt_owner(
         raise TypeError("Windows Worker requires a Product owner")
     if type(runtime) is not PackageProductRuntimeBindingV1:
         raise TypeError("Windows Worker requires an active Product runtime")
-    if not isinstance(plugin_id, str) or not plugin_id or plugin_id != plugin_id.strip():
+    if (
+        not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id != plugin_id.strip()
+    ):
         raise ValueError("Windows Worker Plugin identity is invalid")
     if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
         raise TypeError("Windows Worker requires a Transcript directory owner")

@@ -11,6 +11,9 @@ import os
 from dataclasses import dataclass
 from hashlib import sha256
 
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    WindowsLocalWheelProductSessionOwner,
+)
 from loushang.harness.worker._native_profile_bridge import (
     _WindowsNativeContainmentSettlementWitness,
 )
@@ -28,6 +31,7 @@ from .package_product_worker_windows_activation_state_journal import (
 from .package_product_worker_windows_orphan_review import (
     CodingWindowsWorkerOrphanRuntimeReviewV1,
     _review_under_gc_guard,
+    review_coding_windows_product_worker_orphan_runtime,
 )
 from .package_product_worker_windows_provisioning import (
     inspect_coding_windows_product_worker_provisioning_attempts,
@@ -39,9 +43,9 @@ from .package_product_worker_windows_receipt import (
     CodingWindowsWorkerProductReceiptOwner,
 )
 
-_AUTHORITY_ID = "coding.windows-worker.cleanup-evidence.v1"
+_AUTHORITY_ID = "coding.windows-worker.cleanup-evidence.v2"
 _AUTHORITY_FINGERPRINT = sha256(
-    b"loushang.coding.windows-worker.cleanup-evidence/v1"
+    b"loushang.coding.windows-worker.cleanup-evidence/v2"
 ).hexdigest()
 
 
@@ -83,7 +87,53 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
         receipt_owner.product_owner.assert_root_gc_authority_current()
         self._product = receipt_owner.product_owner
         self._receipt = receipt
-        self._request = request
+        self._attempt_id = request.identity.attempt_id
+        self._owner_generation = request.identity.owner_generation
+        self._request_fingerprint = request.fingerprint
+        self._identity_fingerprint = request.identity.fingerprint
+        self._mode = "normal"
+
+    @classmethod
+    def for_crash_recovery(
+        cls,
+        *,
+        product: WindowsLocalWheelProductSessionOwner,
+        receipt: ProductWorkerActivationReceiptV1,
+        attempt_id: str,
+    ) -> CodingWindowsWorkerCleanupEvidenceAuthority:
+        """Bind a dead Session only from its persisted Product recovery join."""
+
+        if (
+            os.name != "nt"
+            or type(product) is not WindowsLocalWheelProductSessionOwner
+            or product.policy.product_id != "coding"
+            or type(receipt) is not ProductWorkerActivationReceiptV1
+        ):
+            raise ValueError("Windows C5 crash recovery requires an exact Product")
+        review = review_coding_windows_product_worker_orphan_runtime(
+            product, attempt_id=attempt_id
+        )
+        attempt = review.attempt
+        if (
+            attempt is None
+            or review.receipt_record is None
+            or review.receipt_record.receipt != receipt
+            or attempt.launch_request_fingerprint is None
+            or attempt.launch_identity_fingerprint is None
+            or attempt.supervisor_process_settled is not True
+            or attempt.supervisor_phase != "process_settled"
+            or attempt.payload_directory_identity is not None
+        ):
+            raise ValueError("Windows C5 crash recovery history is incomplete")
+        authority = cls.__new__(cls)
+        authority._product = product
+        authority._receipt = receipt
+        authority._attempt_id = attempt_id
+        authority._owner_generation = receipt.policy.owner_selection_generation
+        authority._request_fingerprint = attempt.launch_request_fingerprint
+        authority._identity_fingerprint = attempt.launch_identity_fingerprint
+        authority._mode = "crash"
+        return authority
 
     @property
     def host_identity(self) -> str:
@@ -96,7 +146,7 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
     def current_tree_witness(
         self, *, attempt_id: str
     ) -> CodingWindowsWorkerLiveCleanupReviewV1:
-        if attempt_id != self._request.identity.attempt_id:
+        if attempt_id != self._attempt_id:
             raise ValueError("Windows C5 cleanup attempt changed")
         registry = self._product.epoch_runtime.registry
         orphans = registry.review_orphans(store_id=registry.store_id)
@@ -152,10 +202,19 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
             or activation is None
             or runtime.orphan_leases
             or runtime.native_job_absent is not True
-            or not attempt.clean_exit_settled
-            or attempt.attempt_id != self._request.identity.attempt_id
-            or attempt.launch_request_fingerprint != self._request.fingerprint
-            or attempt.launch_identity_fingerprint != self._request.identity.fingerprint
+            or not (
+                attempt.clean_exit_settled
+                if self._mode == "normal"
+                else (
+                    attempt.supervisor_process_settled is True
+                    and attempt.supervisor_phase == "process_settled"
+                    and attempt.payload_directory_identity is None
+                )
+            )
+            or attempt.attempt_id != self._attempt_id
+            or attempt.launch_request_fingerprint != self._request_fingerprint
+            or attempt.launch_identity_fingerprint != self._identity_fingerprint
+            or attempt.supervisor_identity_fingerprint != self._identity_fingerprint
             or attempt.launch_receipt_fingerprint != self._receipt.fingerprint
             or record.receipt != self._receipt
             or native.phase != "settled"
@@ -165,15 +224,14 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
             or native.witness_present_history != attempt.native_witness_present_history
             or native.identity.get("receiptFingerprint") != self._receipt.fingerprint
             or native.identity.get("workerRequestFingerprint")
-            != self._request.fingerprint
-            or native.identity.get("ownerGeneration")
-            != self._request.identity.owner_generation
+            != self._request_fingerprint
+            or native.identity.get("ownerGeneration") != self._owner_generation
             or native.identity.get("jobObjectName") != attempt.native_job_name
             or activation.phase != "retired"
             or activation.cleanup_contract_version != 2
             or activation.receipt_fingerprint != self._receipt.fingerprint
             or activation.policy_fingerprint != self._receipt.policy.fingerprint
-            or activation.owner_generation != self._request.identity.owner_generation
+            or activation.owner_generation != self._owner_generation
             or activation.host_identity != self.host_identity
             or activation.boot_identity != self.boot_identity
         ):
@@ -241,10 +299,26 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
             native is not None
             and self._review_matches(fresh)
             and witness.receipt_fingerprint == self._receipt.fingerprint
-            and witness.worker_request_fingerprint == self._request.fingerprint
+            and witness.worker_request_fingerprint == self._request_fingerprint
             and witness.attempt_id == attempt_id
             and witness.owner_generation == owner_generation
             and witness.journal_fingerprint == native.settlement_fingerprint
+        )
+
+    def current_native_witness(self) -> _WindowsNativeContainmentSettlementWitness:
+        """Derive the exact native witness from settled, rechecked Product bytes."""
+
+        review = self.current_tree_witness(attempt_id=self._attempt_id)
+        if not self._review_matches(review) or review.native is None:
+            raise ValueError("Windows C5 native settlement is unproven")
+        fingerprint = review.native.settlement_fingerprint
+        assert fingerprint is not None
+        return _WindowsNativeContainmentSettlementWitness(
+            receipt_fingerprint=self._receipt.fingerprint,
+            worker_request_fingerprint=self._request_fingerprint,
+            attempt_id=self._attempt_id,
+            owner_generation=self._owner_generation,
+            journal_fingerprint=fingerprint,
         )
 
     def _identity_matches(
@@ -260,8 +334,8 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
     ) -> bool:
         return (
             receipt_fingerprint == self._receipt.fingerprint
-            and attempt_id == self._request.identity.attempt_id
-            and owner_generation == self._request.identity.owner_generation
+            and attempt_id == self._attempt_id
+            and owner_generation == self._owner_generation
             and host_identity == self.host_identity
             and boot_identity == self.boot_identity
             and evidence_authority_id == self.authority_id

@@ -31,10 +31,19 @@ from loushang.harness.worker.capability_query import (
     bind_capability_query_worker_adapter,
 )
 from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
+from loushang.harness.worker.product_activation import (
+    ProductWorkerActivationCoordinator,
+    ProductWorkerActivationReceiptV1,
+    WorkerCleanupDebtV2,
+    WorkerCleanupSettlementV2,
+    _CleanupDebtReasonV2,
+)
 from loushang.harness.worker.supervisor import WorkerSupervisor
 from loushang.hosting.windows_backend_material import WINDOWS_LPAC_PLATFORM_IMPORTS
 
+from .package_product_worker_activation_state import (
+    open_coding_windows_product_worker_activation_state_store,
+)
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .package_product_worker_provider import CodingWorkerBaseCompositionPolicyBinding
 from .package_product_worker_provider_host import (
@@ -54,6 +63,9 @@ from .package_product_worker_session_composition import (
 )
 from .package_product_worker_windows_activation_state_journal import (
     CodingWindowsWorkerActivationStateJournal,
+)
+from .package_product_worker_windows_cleanup_evidence import (
+    CodingWindowsWorkerCleanupEvidenceAuthority,
 )
 from .package_product_worker_windows_launch_intent import (
     commit_coding_windows_product_worker_launch_intent,
@@ -94,6 +106,29 @@ def _require_uncoupled_windows_host_c5_absent(
         )
 
 
+def _require_windows_host_c5_recovered(
+    product: WindowsLocalWheelProductSessionOwner,
+) -> None:
+    """Keep interrupted initialization and unfinished attempts out of a new Host."""
+
+    present, state = CodingWindowsWorkerActivationStateJournal(
+        product
+    ).load_with_presence_read_only()
+    if present and state is None:
+        raise CodingWindowsWorkerPendingHostError(
+            "coding_worker_pending_c5_owner_requires_recovery"
+        )
+    if state is not None and any(
+        attempt.phase != "settled"
+        for attempt in CodingWindowsWorkerActivationStateJournal(
+            product
+        ).retained_attempts_read_only()
+    ):
+        raise CodingWindowsWorkerPendingHostError(
+            "coding_worker_pending_c5_owner_requires_recovery"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWindowsProductWorkerPendingHost:
     resolved_providers: ResolvedCapabilityProviderSet
@@ -112,12 +147,81 @@ class CodingWindowsProductWorkerPendingHost:
         if type(graph_generation) is not int or graph_generation < 1:
             raise TypeError("Windows Worker graph generation is invalid")
         self.base_policy_binding.assert_current()
-        _require_uncoupled_windows_host_c5_absent(self.receipt_owner.product_owner)
+        _require_windows_host_c5_recovered(self.receipt_owner.product_owner)
         stack = AsyncExitStack()
+        coordinator: ProductWorkerActivationCoordinator | None = None
+        cleanup_evidence: CodingWindowsWorkerCleanupEvidenceAuthority | None = None
+        profile = None
+        effect_started = False
 
         async def release() -> None:
+            async def settle() -> None:
+                try:
+                    await stack.aclose()
+                    if not effect_started:
+                        return
+                    assert coordinator is not None
+                    assert cleanup_evidence is not None
+                    assert profile is not None
+                    identity = self.pending_launch.identity
+                    coordinator.retire_exact(
+                        receipt=self.receipt,
+                        attempt_id=identity.attempt_id,
+                        owner_generation=identity.owner_generation,
+                    )
+                    coordinator.record_protocol_terminal(
+                        receipt=self.receipt,
+                        attempt_id=identity.attempt_id,
+                        owner_generation=identity.owner_generation,
+                    )
+                    coordinator.record_cleanup_settlement(
+                        WorkerCleanupSettlementV2(
+                            receipt_fingerprint=self.receipt.fingerprint,
+                            attempt_id=identity.attempt_id,
+                            owner_generation=identity.owner_generation,
+                            host_identity=cleanup_evidence.host_identity,
+                            boot_identity=cleanup_evidence.boot_identity,
+                            protocol_terminal=True,
+                            domain_retired=True,
+                            tree_settled=True,
+                            native_containment_settled=True,
+                        ),
+                        witness=cleanup_evidence.current_tree_witness(
+                            attempt_id=identity.attempt_id
+                        ),
+                        native_containment_witness=(
+                            profile.native_containment_settlement_witness()
+                        ),
+                    )
+                except BaseException as cleanup_error:
+                    if effect_started:
+                        assert coordinator is not None
+                        assert cleanup_evidence is not None
+                        identity = self.pending_launch.identity
+                        try:
+                            coordinator.record_cleanup_debt(
+                                WorkerCleanupDebtV2(
+                                    receipt_fingerprint=self.receipt.fingerprint,
+                                    attempt_id=identity.attempt_id,
+                                    owner_generation=identity.owner_generation,
+                                    host_identity=cleanup_evidence.host_identity,
+                                    boot_identity=cleanup_evidence.boot_identity,
+                                    process_tree_unknown=True,
+                                    native_containment_unknown=True,
+                                    reason=(
+                                        _CleanupDebtReasonV2.TREE_AND_NATIVE_CONTAINMENT_UNKNOWN
+                                    ),
+                                )
+                            )
+                        except BaseException as debt_error:
+                            cleanup_error.add_note(
+                                "Windows Worker C5 cleanup debt write failed: "
+                                + type(debt_error).__name__
+                            )
+                    raise
+
             task = asyncio.create_task(
-                stack.aclose(),
+                settle(),
                 name=(
                     "coding-windows-worker-release-"
                     + self.pending_launch.identity.attempt_id
@@ -167,6 +271,29 @@ class CodingWindowsProductWorkerPendingHost:
                 provisioning_state_store=native_store,
             )
             stack.push_async_callback(profile.close)
+            cleanup_evidence = CodingWindowsWorkerCleanupEvidenceAuthority(
+                receipt_owner=self.receipt_owner,
+                receipt=self.receipt,
+                request=request,
+            )
+            coordinator = ProductWorkerActivationCoordinator(
+                authority=self.receipt_owner,
+                evidence_authority=cleanup_evidence,
+                trusted_evidence_authority_id=cleanup_evidence.authority_id,
+                trusted_evidence_authority_fingerprint=(
+                    cleanup_evidence.authority_fingerprint
+                ),
+                state_store=open_coding_windows_product_worker_activation_state_store(
+                    self.receipt_owner.product_owner
+                ),
+            )
+            if (
+                coordinator.evaluate(self.receipt.policy, self.receipt).get("reason")
+                != "admitted"
+            ):
+                raise CodingWindowsWorkerPendingHostError(
+                    "coding_worker_pending_c5_admission_refused"
+                )
             host = _create_windows_lpac_product_worker_session_host()
             stack.push_async_callback(host.close)
             supervisor = WorkerSupervisor(
@@ -187,6 +314,17 @@ class CodingWindowsProductWorkerPendingHost:
                     await supervisor.settle_failed_process()
 
             stack.push_async_callback(settle_supervisor)
+            with coordinator.admission(
+                policy=self.receipt.policy,
+                receipt=self.receipt,
+                attempt_id=request.identity.attempt_id,
+                owner_generation=request.identity.owner_generation,
+                host_identity=cleanup_evidence.host_identity,
+                boot_identity=cleanup_evidence.boot_identity,
+                cleanup_contract_version=profile.cleanup_contract_version,
+            ) as admission:
+                admission.begin_effect()
+                effect_started = True
             await supervisor.start_session(
                 session_port=HostingManagedWorkerSessionAdapter(
                     hosting=host,
@@ -227,6 +365,22 @@ class CodingWindowsProductWorkerPendingHost:
                 raise CodingWindowsWorkerPendingHostError(
                     "coding_worker_pending_descriptor_mismatch"
                 )
+
+            def commit_c5() -> None:
+                assert coordinator is not None
+                coordinator.publish(
+                    receipt=self.receipt,
+                    attempt_id=request.identity.attempt_id,
+                    owner_generation=request.identity.owner_generation,
+                    realized_native_policy_closure_fingerprint=(
+                        profile.realized_native_policy_closure_fingerprint
+                    ),
+                    native_profile_catalog_revision=(
+                        profile.native_profile_catalog_revision
+                    ),
+                    native_profile_id=profile.native_profile_id,
+                )
+
             [resolved] = self.resolved_providers.entries
             return prepare_coding_worker_provider_binding(
                 resolved=resolved,
@@ -240,6 +394,7 @@ class CodingWindowsProductWorkerPendingHost:
                 release_attempt=release,
                 base_policy_binding=self.base_policy_binding,
                 renewing_provider_owner=self.provider_owner,
+                on_graph_publication=commit_c5,
             )
         except BaseException as error:
             try:

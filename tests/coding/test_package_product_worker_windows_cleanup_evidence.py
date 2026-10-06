@@ -63,7 +63,11 @@ def _settled_review(
         epoch_runtime=SimpleNamespace(registry=SimpleNamespace(store_id="a" * 64))
     )
     authority._receipt = receipt
-    authority._request = request
+    authority._attempt_id = request.identity.attempt_id
+    authority._owner_generation = request.identity.owner_generation
+    authority._request_fingerprint = request.fingerprint
+    authority._identity_fingerprint = request.identity.fingerprint
+    authority._mode = "normal"
     attempt_id = request.identity.attempt_id
     job_name = "Global\\LoushangWorker-" + plan.operation_nonce
     attempt = CodingWindowsWorkerRecoveryAttemptV1(
@@ -203,6 +207,39 @@ def test_windows_c5_cleanup_read_preserves_registry_orphan_lease(
     fresh = authority.current_tree_witness(attempt_id=review.runtime.attempt_id)
     assert fresh.runtime.orphan_leases == (orphan,)
     assert not authority._review_matches(fresh)
+
+
+def test_windows_c5_crash_review_requires_process_and_payload_settlement(
+    tmp_path: Path,
+) -> None:
+    authority, review, _witness = _settled_review(tmp_path)
+    authority._mode = "crash"
+    attempt = review.runtime.attempt
+    assert attempt is not None
+    recovered = replace(
+        review,
+        runtime=replace(
+            review.runtime,
+            attempt=replace(
+                attempt,
+                supervisor_phase="process_settled",
+                supervisor_process_settled=True,
+                payload_directory_identity=None,
+            ),
+        ),
+    )
+    assert authority._review_matches(recovered)
+    assert not authority._review_matches(
+        replace(
+            recovered,
+            runtime=replace(
+                recovered.runtime,
+                attempt=replace(
+                    recovered.runtime.attempt, payload_directory_identity=(1, 2)
+                ),
+            ),
+        )
+    )
 
 
 def test_windows_c5_native_witness_reopens_exact_settled_journal(

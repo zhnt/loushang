@@ -3345,14 +3345,18 @@ a later C5 cleanup authority a durable byte identity for the native join;
 it does not itself authorize C5 settlement.
 A read-only Windows cleanup evidence owner now performs the normal-exit join
 across C5, Product receipt, launch identity, Supervisor, LPAC journal, and
-named Job absence. Its changed-boot and orphan-lease methods refuse; the
-ordinary Windows Host does not yet use it, and no C5 settlement is claimed.
+named Job absence. Its changed-boot and orphan-lease methods refuse. The
+ordinary Windows Host now registers and publishes C5, then uses the owner to
+settle normal exit or record cleanup debt. A Product-only crash recovery writer
+uses the same authority version after exact Supervisor, LPAC, lease, payload,
+and Job recovery; it cannot admit a new Worker. These writes await native CI
+verification, so Windows C5 production closure is not yet claimed.
 The native normal-exit Worker test now exercises that owner against a real
 settled attempt and a retired C5 test record, with present-Job and changed-LPAC
 witness refusals. It reads actual registry orphan leases. The Windows Session
 CI job includes the case and requires six non-skipped results; a native report
-is still pending. Portable owner checks passed 3/3, while this case skipped on
-Linux. This is evidence-owner validation, not a production C5 write path.
+is still pending. Portable owner checks passed 4/4, while this case skipped on
+Linux. The new C5 Host and crash writeback paths also await that native gate.
 
 ## Independent Review Record
 

@@ -1673,32 +1673,38 @@ The same lease-quiescent snapshot now observes whether each retained native
 Windows Job name is absent; a missing Job name or failed native observation
 remains unknown rather than becoming proof of absence. A future
 cleanup writer must recheck this live observation under its own locks.
-The snapshot grants no recovery write. A Coding Worker candidate Product can now
+The snapshot grants no recovery write. A Coding Worker candidate Product can
 open a policy-checked Windows C5 store, while a builtins-only Product is
-rejected. The store is not yet passed to the ordinary Windows pending Host; that
-uncoupled Host now refuses any retained C5 owner before payload or launch-intent
-effects, including an empty lock from interrupted initialization.
+rejected. The Windows pending Host now opens that store, refuses an interrupted
+empty owner and unfinished prior attempts, registers its own attempt before
+native launch, publishes it with the graph, and settles or records cleanup debt
+on release. Its payload and launch-intent recovery remain separate Product
+owners; C5 registration follows their initial materialization.
 A read-only Windows C5 cleanup evidence owner now joins one normal-exit attempt
 across the Product receipt, launch identity, settled Supervisor, complete LPAC
 history and settlement fingerprint, absent named Job, and retired C5 reference.
 Its runtime-incarnation token in the C5 boot-identity slot grants no OS reboot
 inference: changed-boot and orphan-lease verifiers remain closed. The pending
-Host has not yet called this owner or written C5 state.
+Host now calls this owner for normal exit. A Product recovery writer uses the
+same evidence-authority version after a crash, but accepts only a
+process-settled Supervisor, settled LPAC history, repaired orphan lease,
+retired payload stage, and absent named Job. It then retires and settles the
+exact C5 attempt through the Product store.
 A dedicated native normal-exit case now retains a retired C5 test attempt and
 asks this owner to verify the real settled Supervisor, LPAC journal fingerprint,
 and absent named Job. It also injects a present Job and a changed LPAC witness;
 both must refuse. The owner reads the registry's actual orphan leases before
 the Product GC read, instead of assuming that set is empty. The case is queued
 in the strict Windows Worker Session CI job and has not yet produced a native
-pass report.
+pass report. The public direct, Hosted, and crash restart cases now assert
+normal C5 settlement and crash recovery writeback; these changed native
+assertions also await a Windows report.
 An expected revision above zero against a genuinely absent C5 owner now returns
 a CAS miss without creating its lock; orphan state still fails closed.
-Its native reopen, GC join, and
-complete-record-loss test is part of
-the next strict Windows CI report. Until that report passes and the ordinary
-Host, Job/LPAC cleanup evidence, and crash recovery use the
-journal, this is storage infrastructure rather than Windows C5 production
-behavior.
+Its native reopen, GC join, and complete-record-loss test is part of the next
+strict Windows CI report. The Host and crash recovery wiring are candidate
+implementation until that report verifies them; the unflagged Windows route
+remains closed.
 The snapshot also projects each journal's retained revision, opt-in operation
 IDs, Supervisor attempt IDs and per-key epoch high-water marks, and receipt
 fingerprints from those exact histories. The native crash/reopen candidate
