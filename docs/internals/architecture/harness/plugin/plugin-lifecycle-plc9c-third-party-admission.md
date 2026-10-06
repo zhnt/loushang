@@ -1387,9 +1387,9 @@ selected attempt or receipt. A compacted C5 attempt with no gate remains a
 visible global debt even when reviewing another attempt; a settled C5 attempt
 with a matching gate and Supervisor remains a positive case only when its
 native process group is also observed absent. A present or unobserved group
-remains a global debt. This is a checkpoint input, not receipt closure or
-history-pruning authority. The Windows LPAC provisioning inventory likewise
-has a bounded attempt count. These are
+remains a global debt. This inventory alone is a checkpoint input, not receipt
+closure or history-pruning authority. The Windows LPAC provisioning inventory
+likewise has a bounded attempt count. These are
 safe refusals for a pilot, not yet a retention policy for sustained third-party
 use. Removing the numeric checks or increasing them only moves the failure
 point.
@@ -1427,10 +1427,13 @@ retained start-gate reference to the receipt against that attempt's Supervisor
 settlement and a fresh native group absence observation. The review records
 each related gate whose binding, Supervisor, or native absence remains
 unverified; an unsettled attempt cannot be hidden by another attempt using the
-same receipt. This remains read-only evidence and does not yet close receipt
-references across all Product owners. It reports the missing receipt-reference
-proof explicitly and grants no prune authority. The GC read guard also keeps
-nested owner reads strict and
+same receipt. The review reports receipt references verified only when every
+gate for that receipt has a matching retained settled C5 attempt, all those
+gates have settled Supervisor and absent native-group proof, and no active C5
+reference remains. The ordinary pending Host still lacks C5 transitions, so
+its history continues to report the missing receipt-reference proof. This
+read-only result grants no checkpoint or pruning authority. The GC read guard
+also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
 The same snapshot now records the global retained start-gate, Supervisor, and
 receipt revisions and lists Supervisor attempts with no retained gate. It also

@@ -202,6 +202,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     unverified_receipt_gate_references: tuple[tuple[str, str], ...]
+    receipt_references_verified: bool
     payload_stage_names: tuple[str, ...]
     retained_payload_repair_reference_names: tuple[str, ...]
     unrecognized_worker_state_names: tuple[str, ...]
@@ -289,7 +290,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("gc_reservation_scope_unverified")
         if self.gc_matching_revision_refs:
             missing.append("gc_attempt_package_revision_active")
-        missing.append("receipt_references_unverified")
+        if not self.receipt_references_verified:
+            missing.append("receipt_references_unverified")
         backup = self.worker_backup_references
         if (
             backup is None
@@ -472,6 +474,26 @@ def review_coding_product_worker_history_retention(
                         unverified.append((item.attempt_id, issue))
                 unsettled_gate_references = tuple(unsettled)
                 unverified_gate_references = tuple(unverified)
+            receipt_references_verified = (
+                activation_initialized
+                and receipt is not None
+                and gate is not None
+                and bool(receipt_gate_references)
+                and set(receipt_gate_references)
+                == {
+                    reference.attempt_id
+                    for reference in retained_activation_references
+                    if reference.receipt_fingerprint == receipt.receipt.fingerprint
+                }
+                and not unverified_gate_references
+                and not unverified_activation
+                and activation_state is not None
+                and not activation_state["publications"]
+                and not any(
+                    fingerprint == receipt.receipt.fingerprint
+                    for fingerprint, _ in active_references
+                )
+            )
             with product.pinned_state_root_gc_read() as root_fd:
                 state_names = tuple(os.listdir(root_fd))
                 payloads = tuple(
@@ -544,6 +566,7 @@ def review_coding_product_worker_history_retention(
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 unverified_receipt_gate_references=unverified_gate_references,
+                receipt_references_verified=receipt_references_verified,
                 payload_stage_names=payloads,
                 retained_payload_repair_reference_names=repair_references,
                 unrecognized_worker_state_names=unrecognized_worker_state,

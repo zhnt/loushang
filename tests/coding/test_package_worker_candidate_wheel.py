@@ -5255,30 +5255,47 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         gate = gates[0]
         receipt = gate.receipt_fingerprint
         attempt_id = gate.attempt_id
-        key = _AttemptKey(receipt, attempt_id, 1).encoded
-        c5_attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
-        c5_attempt["policyFingerprint"] = gate.policy_fingerprint
+        receipt_gates = tuple(
+            item for item in gates if item.receipt_fingerprint == receipt
+        )
+        assert len(receipt_gates) > 1
+        before_c5 = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert not before_c5.receipt_references_verified
+        assert "receipt_references_unverified" in before_c5.missing_proofs
+        registered_attempts: dict[str, dict[str, object]] = {}
+        settled_attempts: dict[str, dict[str, object]] = {}
+        for receipt_gate in receipt_gates:
+            referenced_attempt_id = receipt_gate.attempt_id
+            key = _AttemptKey(receipt, referenced_attempt_id, 1).encoded
+            c5_attempt = _registered_attempt(
+                receipt=receipt, attempt_id=referenced_attempt_id
+            )
+            c5_attempt["policyFingerprint"] = receipt_gate.policy_fingerprint
+            registered_attempts[key] = c5_attempt
+            settled_attempt = dict(c5_attempt)
+            settled_attempt.update(
+                phase="settled",
+                domainRetired=True,
+                protocolTerminal=True,
+                cleanupSettlement=WorkerCleanupSettlementV1(
+                    receipt_fingerprint=receipt,
+                    attempt_id=referenced_attempt_id,
+                    owner_generation=1,
+                    host_identity="host-a",
+                    boot_identity="boot-a",
+                    protocol_terminal=True,
+                    domain_retired=True,
+                    tree_settled=True,
+                ).to_dict(),
+            )
+            settled_attempts[key] = settled_attempt
         initial = _initial_state(restart_budget=3)
         registered = _next_state(initial)
-        registered["attempts"] = {key: c5_attempt}
+        registered["attempts"] = registered_attempts
         settled = _next_state(registered)
-        settled_attempt = dict(c5_attempt)
-        settled_attempt.update(
-            phase="settled",
-            domainRetired=True,
-            protocolTerminal=True,
-            cleanupSettlement=WorkerCleanupSettlementV1(
-                receipt_fingerprint=receipt,
-                attempt_id=attempt_id,
-                owner_generation=1,
-                host_identity="host-a",
-                boot_identity="boot-a",
-                protocol_terminal=True,
-                domain_retired=True,
-                tree_settled=True,
-            ).to_dict(),
-        )
-        settled["attempts"] = {key: settled_attempt}
+        settled["attempts"] = settled_attempts
         compacted = _next_state(settled)
         compacted["attempts"] = {}
         activation_journal = (
@@ -5298,6 +5315,26 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         )
         assert retention.unverified_activation_references == ()
         assert retention.global_unverified_activation_references == ()
+        assert retention.receipt_references_verified
+        assert "receipt_references_unverified" not in retention.missing_proofs
+        retained_reader = (
+            activation_state_journal_module.CodingProductWorkerActivationStateJournal.retained_attempts_read_only
+        )
+        with monkeypatch.context() as missing_c5_reference:
+            missing_c5_reference.setattr(
+                activation_state_journal_module.CodingProductWorkerActivationStateJournal,
+                "retained_attempts_read_only",
+                lambda journal: tuple(
+                    item
+                    for item in retained_reader(journal)
+                    if item.attempt_id != receipt_gates[-1].attempt_id
+                ),
+            )
+            incomplete = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert not incomplete.receipt_references_verified
+            assert "receipt_references_unverified" in incomplete.missing_proofs
         with monkeypatch.context() as changed_native_observation:
             changed_native_observation.setattr(
                 history_retention_module,
@@ -5307,9 +5344,16 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             observed_present = review_coding_product_worker_history_retention(
                 product, attempt_id=attempt_id
             )
-            assert observed_present.global_unverified_activation_references == (
-                (attempt_id, "activation_reference_native_absence_unverified"),
+            assert observed_present.global_unverified_activation_references == tuple(
+                sorted(
+                    (
+                        item.attempt_id,
+                        "activation_reference_native_absence_unverified",
+                    )
+                    for item in receipt_gates
+                )
             )
+            assert not observed_present.receipt_references_verified
         gc.prepare()
         gate_path = CodingWorkerStartGateJournal(product).path
         retained_gate = gate_path.read_bytes()
