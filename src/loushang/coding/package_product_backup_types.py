@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -71,17 +72,18 @@ def ensure_coding_product_backup_types(
         | PackageProductWindowsFencedRuntimeOwner
     ),
     gc_gate: PluginPackageGcReservationJournal,
+    before_load: Callable[[], None] | None = None,
 ) -> None:
     """Publish the closed backup owner set before any Worker history exists."""
 
     if not isinstance(gc_gate, PluginPackageGcReservationJournal):
         raise TypeError("Coding backup topology requires the Product GC gate")
-    with gc_gate.guard(require_write=True):
+    with gc_gate.guard(before_load=before_load, require_write=True):
         _read_topology(
             state_root=state_root,
             scope_id=scope_id,
             epoch_runtime=epoch_runtime,
-            create_if_new=True,
+            create_if_new=before_load is None,
         )
 
 

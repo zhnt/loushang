@@ -177,6 +177,7 @@ def open_coding_package_product_state(
         scope_id=lifecycle.scope_id,
         epoch_runtime=epoch_runtime,
         gc_gate=gate,
+        before_load=before_recovery,
     )
     desired = PluginDesiredStateLedger(state_root / "desired-state.jsonl", gc_gate=gate)
     management = PluginManagementService(

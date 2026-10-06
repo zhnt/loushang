@@ -1434,6 +1434,11 @@ strict no-create receipt reader. The native release approval query likewise
 reads without creating its journal lock, so the Product retention review can
 inspect it inside the shared GC snapshot. This repairs snapshot atomicity for these
 bound owners, while checkpoint publication and history pruning remain closed.
+The Product backup-type initializer now carries management recovery's workspace
+preflight into its GC lock and refuses a missing GC lock on an existing
+management workspace. A substituted workspace cannot trigger tail repair
+before the identity check; focused Coding recovery regressions cover both
+the swap and missing-lock cases.
 The review's payload inventory now uses the Product's original state-root
 directory identity, shared with POSIX root GC. A real Product negative first
 showed that swapping in an empty private directory between open and scan could
