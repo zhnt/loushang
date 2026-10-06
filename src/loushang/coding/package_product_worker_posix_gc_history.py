@@ -81,9 +81,13 @@ class CodingPosixWorkerGcHistoryAuthority:
             supervisor = open_coding_product_worker_supervisor_journal(product)
             attempts = supervisor.attempts()
             receipts = read_coding_product_worker_receipt_records(product)
-            activation = CodingProductWorkerActivationStateJournal(
+            activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
-            ).load_read_only()
+            )
+            activation = activation_journal.load_read_only()
+            retained_activation_attempts = (
+                activation_journal.retained_attempts_read_only()
+            )
             if activation is not None:
                 active = cast(dict[str, dict[str, object]], activation["attempts"])
                 publications = cast(dict[str, object], activation["publications"])
@@ -99,6 +103,18 @@ class CodingPosixWorkerGcHistoryAuthority:
             }
             if set(gate_by_id) != set(attempt_by_id):
                 raise ValueError("Linux Worker GC attempt history is incomplete")
+            for activation_attempt in retained_activation_attempts:
+                gate = gate_by_id.get(activation_attempt.attempt_id)
+                if (
+                    activation_attempt.phase != "settled"
+                    or gate is None
+                    or activation_attempt.attempt_id not in attempt_by_id
+                    or gate.receipt_fingerprint
+                    != activation_attempt.receipt_fingerprint
+                    or gate.policy_fingerprint
+                    != activation_attempt.policy_fingerprint
+                ):
+                    raise ValueError("Linux Worker GC C5 attempt history is incomplete")
             for gate in gates:
                 attempt = attempt_by_id[gate.attempt_id]
                 receipt = receipt_by_fingerprint.get(gate.receipt_fingerprint)

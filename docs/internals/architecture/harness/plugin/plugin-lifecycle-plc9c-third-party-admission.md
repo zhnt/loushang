@@ -1474,6 +1474,15 @@ The C5 canary's durable state test therefore cannot stand in for the ordinary
 Session's receipt-reference proof. W5 must join these lifecycle authorities
 or supply an equally durable Product-owned reference witness before any
 history pruning or general third-party route is accepted.
+The read-only retention review now exposes every retained C5 attempt, including
+one settled and compacted out of the latest snapshot. Linux Package GC also
+joins those retained C5 attempts to start-gate and Supervisor history and
+refuses an absent gate, unsettled attempt, or changed receipt/policy binding.
+A real Product regression first showed that a compacted C5 attempt without a
+gate was accepted as empty history, then passed with this refusal. This closes
+that Package-deletion gap only; the ordinary pending Host still lacks the
+shared attempt-reference record, and backup, checkpoint, and history-pruning
+authority remain open.
 
 The next implementation boundary is an attempt-level Product reference
 authority shared by the ordinary pending Host and C5. It must record the

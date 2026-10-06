@@ -354,6 +354,8 @@ from loushang.harness.worker.journal import (
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
+    WorkerCleanupSettlementV1,
+    _AttemptKey,
     _initial_state,
 )
 from loushang.harness.worker.supervisor import WorkerSupervisor, WorkerSupervisorError
@@ -367,6 +369,10 @@ from loushang.plugin._coding_local_worker_wheel import (
     write_coding_local_worker_candidate_wheel,
 )
 from tests.coding.test_package_external_data_wheel import _data_wheel
+from tests.coding.test_package_product_worker_activation_segments import (
+    _next_state,
+    _registered_attempt,
+)
 from tests.harness.worker.test_product_activation import _CleanupEvidenceOwner
 from tests.hosting.test_posix_launch_preparation import _native_host
 
@@ -6935,6 +6941,93 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         with pytest.raises(PackageProductGcExecutionError) as unsettled:
             with_authority.prepare()
         assert unsettled.value.code == "plugin_package_gc_worker_history_unsettled"
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_package_gc_refuses_compacted_c5_attempt_without_gate(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        lifecycle,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        receipt = "a" * 64
+        attempt_id = "b" * 32
+        key = _AttemptKey(receipt, attempt_id, 1).encoded
+        attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
+        initial = _initial_state(restart_budget=3)
+        registered = _next_state(initial)
+        registered["attempts"] = {key: attempt}
+        settled = _next_state(registered)
+        settled_attempt = dict(attempt)
+        settled_attempt.update(
+            phase="settled",
+            domainRetired=True,
+            protocolTerminal=True,
+            cleanupSettlement=WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt,
+                attempt_id=attempt_id,
+                owner_generation=1,
+                host_identity="host-a",
+                boot_identity="boot-a",
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ).to_dict(),
+        )
+        settled["attempts"] = {key: settled_attempt}
+        compacted = _next_state(settled)
+        compacted["attempts"] = {}
+        journal = activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+            product.state_root / "worker-activation-state.jsonl"
+        )
+        for revision, state in enumerate(
+            (initial, registered, settled, compacted)
+        ):
+            assert journal.compare_and_swap(expected_revision=revision, document=state)
+        assert journal.load_read_only() == compacted
+        assert len(journal.retained_attempts_read_only()) == 1
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.gate_record is None
+        assert tuple(
+            reference.attempt_id
+            for reference in review.retained_activation_references
+        ) == (attempt_id,)
+        assert not review.retained_activation_references[0].current
+        assert "start_gate_absent" in review.missing_proofs
+        authority = CodingPosixWorkerGcHistoryAuthority(product)
+        with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
+            authority.require_settled(
+                observed_names=tuple(os.listdir(product.state_root))
+            )
     finally:
         owner.close()
 

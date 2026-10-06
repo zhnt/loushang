@@ -18,6 +18,7 @@ from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
+    CodingProductWorkerRetainedAttemptV1,
 )
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_opt_in_owner import CodingWorkerProductOptInOwner
@@ -50,6 +51,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     group_status: GatedGroupStatus
     activation_state_revision: int | None
     active_activation_references: tuple[tuple[str, str], ...]
+    retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
     receipt_gate_references: tuple[str, ...]
     unsettled_receipt_gate_references: tuple[str, ...]
     payload_stage_names: tuple[str, ...]
@@ -96,6 +98,16 @@ class CodingWorkerHistoryRetentionReviewV1:
             for fingerprint, _ in self.active_activation_references
         ):
             missing.append("activation_receipt_active")
+        for reference in self.retained_activation_references:
+            if reference.attempt_id != self.attempt_id:
+                continue
+            if reference.phase != "settled":
+                missing.append("activation_attempt_unsettled")
+            if gate is not None and (
+                reference.receipt_fingerprint != gate.receipt_fingerprint
+                or reference.policy_fingerprint != gate.policy_fingerprint
+            ):
+                missing.append("activation_attempt_binding_changed")
         if self.unsettled_receipt_gate_references:
             missing.append("receipt_gate_attempt_unsettled")
         if self.payload_stage_names:
@@ -149,9 +161,13 @@ def review_coding_product_worker_history_retention(
                     receipt.receipt.policy.plugin_id
                 )
             )
-            activation_state = CodingProductWorkerActivationStateJournal(
+            activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
-            ).load_read_only()
+            )
+            activation_state = activation_journal.load_read_only()
+            retained_activation_references = (
+                activation_journal.retained_attempts_read_only()
+            )
             active_references: tuple[tuple[str, str], ...] = ()
             if activation_state is not None:
                 attempts = cast(
@@ -211,6 +227,7 @@ def review_coding_product_worker_history_retention(
                     else cast(int, activation_state["stateRevision"])
                 ),
                 active_activation_references=active_references,
+                retained_activation_references=retained_activation_references,
                 receipt_gate_references=receipt_gate_references,
                 unsettled_receipt_gate_references=unsettled_gate_references,
                 payload_stage_names=payloads,
