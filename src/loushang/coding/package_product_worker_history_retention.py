@@ -33,7 +33,10 @@ from .package_product_worker_gc_references import (
     coding_worker_gc_revision_refs,
     matching_coding_worker_gc_revision_refs,
 )
-from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
+from .package_product_worker_opt_in import (
+    CodingWorkerOptInDecisionV1,
+    CodingWorkerOptInJournal,
+)
 from .package_product_worker_opt_in_owner import CodingWorkerProductOptInOwner
 from .package_product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
@@ -180,6 +183,8 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_record: CodingWorkerReceiptRecordV1 | None
     current_opt_in: CodingWorkerOptInDecisionV1 | None
     group_status: GatedGroupStatus
+    opt_in_history_revision: int
+    retained_opt_in_operation_ids: tuple[str, ...]
     start_gate_history_revision: int
     supervisor_history_revision: int
     receipt_history_revision: int
@@ -332,6 +337,11 @@ def review_coding_product_worker_history_retention(
                     receipt.receipt.policy.plugin_id
                 )
             )
+            opt_in_history = CodingWorkerOptInJournal(
+                product.state_root / "worker-opt-in.jsonl",
+                scope_id=product.policy.project_scope_id,
+                gc_gate=product.gc_gate,
+            )._history_under_gc_guard()
             activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
             )
@@ -470,6 +480,10 @@ def review_coding_product_worker_history_retention(
                 receipt_record=receipt,
                 current_opt_in=opt_in,
                 group_status=gated.group_status,
+                opt_in_history_revision=len(opt_in_history),
+                retained_opt_in_operation_ids=tuple(
+                    item.operation_id for item in opt_in_history
+                ),
                 start_gate_history_revision=max(
                     (item.journal_revision for item in gates), default=0
                 ),

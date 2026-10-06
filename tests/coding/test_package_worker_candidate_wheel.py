@@ -3519,6 +3519,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             direct_retention.receipt_record.journal_revision
                         )
                         assert direct_retention.unbound_supervisor_attempt_ids == ()
+                        assert direct_retention.opt_in_history_revision >= 1
+                        assert direct_retention.current_opt_in is not None
+                        assert (
+                            direct_retention.current_opt_in.operation_id
+                            in direct_retention.retained_opt_in_operation_ids
+                        )
                         assert direct_retention.unrecognized_worker_state_names == ()
                         assert direct_retention.gc_matching_revision_refs == ()
                         assert direct_retention.worker_backup_references is not None
@@ -7141,6 +7147,8 @@ def test_worker_package_gc_refuses_unsettled_history_without_payload(
         assert review.unbound_supervisor_attempt_ids == (attempt_id,)
         assert review.supervisor_history_revision == attempt.record_revision
         assert review.start_gate_history_revision == 0
+        assert review.opt_in_history_revision == 0
+        assert review.retained_opt_in_operation_ids == ()
         assert "supervisor_gate_reference_unverified" in review.missing_proofs
         unknown = product.state_root / "worker-future-reference.json"
         unknown.write_bytes(b"unknown owner")

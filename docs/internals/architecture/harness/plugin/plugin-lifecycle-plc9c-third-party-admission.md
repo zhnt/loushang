@@ -1426,7 +1426,10 @@ proof explicitly and grants no prune authority. The GC read guard also keeps
 nested owner reads strict and
 blocks journal append while a shared read lock is held.
 The same snapshot now records the global retained start-gate, Supervisor, and
-receipt revisions and lists Supervisor attempts with no retained gate. An
+receipt revisions and lists Supervisor attempts with no retained gate. It also
+reads the complete opt-in operation history under the Product GC read gate and
+records its global revision and retained operation IDs without creating a
+missing journal. An
 orphan Supervisor is a separate missing proof even when the selected attempt
 is elsewhere. These revision marks are checkpoint inputs, not durable
 anti-reuse or permission to retire history.

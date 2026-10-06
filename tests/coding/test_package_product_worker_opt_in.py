@@ -112,6 +112,7 @@ def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(
     assert allowed_again.generation == 3
     assert allowed_again.kill_switch_generation == 1
     assert journal.current(opt_in.plugin_id) == allowed_again
+    assert reopened.history_read_only() == (allowed, revoked, allowed_again)
     retained = root / "retained-worker-opt-in.jsonl"
     journal.path.rename(retained)
     victim = tmp_path / "victim.jsonl"
@@ -142,11 +143,14 @@ def test_worker_opt_in_read_only_status_requires_existing_gc_gate_and_never_writ
     )
     with pytest.raises(FileNotFoundError):
         journal.current_read_only("example.worker")
+    with pytest.raises(FileNotFoundError):
+        journal.history_read_only()
     assert tuple(root.iterdir()) == ()
 
     with gate.guard():
         pass
     assert journal.current_read_only("example.worker") is None
+    assert journal.history_read_only() == ()
     assert not journal.path.exists()
     assert not (root / "worker-opt-in.jsonl.lock").exists()
 
@@ -169,6 +173,7 @@ def test_worker_opt_in_read_only_status_requires_existing_gc_gate_and_never_writ
     )
     before = {path.name: path.read_bytes() for path in root.iterdir()}
     assert journal.current_read_only(opt_in.plugin_id) == allowed
+    assert journal.history_read_only() == (allowed,)
     assert {path.name: path.read_bytes() for path in root.iterdir()} == before
     with gate.read_snapshot_guard():
         assert journal.current(opt_in.plugin_id) == allowed

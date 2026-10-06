@@ -310,6 +310,19 @@ class CodingWorkerOptInJournal:
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
 
+    def history_read_only(self) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Inventory every retained operation under the Product GC read gate."""
+
+        with self._gc_gate.read_guard():
+            return self._history_under_gc_guard()
+
+    def _history_under_gc_guard(self) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Read while the Product reviewer already holds its GC snapshot."""
+
+        with self._bound_journal(create_lock=False) as rooted:
+            events, _history = self._load_history(rooted)
+            return events
+
     def change(
         self,
         *,
