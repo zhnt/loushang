@@ -1651,6 +1651,14 @@ quiescence and one Product GC read snapshot. Its opt-in reader is strict and
 does not create an absent journal. These records are inputs for a later
 checkpoint's operation and attempt anti-reuse proofs; the current reader does
 not publish a checkpoint or permit history pruning.
+The C5 full-state replay rules are now shared between the existing Linux
+segmented journal and a platform-neutral canonical-record decoder intended for
+Windows Product custody. The decoder rejects torn or changed canonical records,
+phase regression, changed immutable attempt identities, and reuse after
+compaction. Its portable cases and the existing Linux segmented cases passed
+11/11; the C5 import-boundary suite passed 7/7. Windows still needs a pinned-root
+durable CAS journal, native containment and Job cleanup evidence, and Product
+recovery wiring before those rules become Windows C5 production behavior.
 The snapshot also projects each journal's retained revision, opt-in operation
 IDs, Supervisor attempt IDs and per-key epoch high-water marks, and receipt
 fingerprints from those exact histories. The native crash/reopen candidate

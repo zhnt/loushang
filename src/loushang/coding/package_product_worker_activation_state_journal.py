@@ -26,8 +26,10 @@ from loushang.harness.worker.activation_state_journal import (
 from loushang.harness.worker.activation_state_journal import (
     _MAX_REVISIONS as _DEFAULT_MAX_REVISIONS,
 )
-from loushang.harness.worker.product_activation import _ATTEMPT_TRANSITIONS
 
+from .package_product_worker_activation_history import (
+    validate_coding_worker_activation_attempt_history,
+)
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
@@ -40,18 +42,6 @@ from .package_product_worker_history_segments import (
 _STEM = "worker-activation-state"
 _MAX_REVISIONS = _DEFAULT_MAX_REVISIONS
 _MAX_BYTES = _DEFAULT_MAX_BYTES
-_IMMUTABLE_ATTEMPT_FIELDS = (
-    "attemptId",
-    "bootIdentity",
-    "evidenceAuthorityFingerprint",
-    "evidenceAuthorityId",
-    "hostIdentity",
-    "owner",
-    "ownerGeneration",
-    "policyFingerprint",
-    "receiptFingerprint",
-    "required",
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +162,7 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
             if current_revision != expected_revision:
                 return False
             try:
-                _validate_attempt_history((*records, record))
+                validate_coding_worker_activation_attempt_history((*records, record))
             except ValueError as exc:
                 raise WorkerActivationStateJournalError(
                     "worker_activation_state_history_conflict"
@@ -266,7 +256,7 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                 ):
                     raise ValueError("Worker activation state sealed revision changed")
             result = tuple(records)
-            _validate_attempt_history(result)
+            validate_coding_worker_activation_attempt_history(result)
             return result, history
         except (
             CodingWorkerHistorySegmentError,
@@ -280,41 +270,6 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
             raise WorkerActivationStateJournalError(
                 "worker_activation_state_corrupt"
             ) from exc
-
-
-def _validate_attempt_history(records: tuple[_StateRecord, ...]) -> None:
-    """A compacted attempt cannot be minted again under another CAS revision."""
-
-    seen_attempt_ids: dict[str, str] = {}
-    removed_keys: set[str] = set()
-    previous: dict[str, dict[str, object]] = {}
-    for record in records:
-        current = cast(dict[str, dict[str, object]], record.document["attempts"])
-        for key in previous.keys() - current.keys():
-            if previous[key]["phase"] != "settled":
-                raise ValueError("Unsettled activation attempt was removed")
-            removed_keys.add(key)
-        for key, attempt in current.items():
-            attempt_id = cast(str, attempt["attemptId"])
-            prior_key = seen_attempt_ids.get(attempt_id)
-            if key in removed_keys or (prior_key is not None and prior_key != key):
-                raise ValueError("Activation attempt identity was reused")
-            seen_attempt_ids[attempt_id] = key
-            prior_attempt = previous.get(key)
-            if prior_attempt is not None:
-                if any(
-                    attempt[field] != prior_attempt[field]
-                    for field in _IMMUTABLE_ATTEMPT_FIELDS
-                ):
-                    raise ValueError("Activation attempt identity changed")
-                prior_phase = cast(str, prior_attempt["phase"])
-                phase = cast(str, attempt["phase"])
-                if (
-                    phase != prior_phase
-                    and phase not in _ATTEMPT_TRANSITIONS[prior_phase]
-                ):
-                    raise ValueError("Activation attempt phase regressed")
-        previous = current
 
 
 __all__ = [

@@ -3303,6 +3303,11 @@ the unrelated first receipt could no longer claim globally verified references.
 The focused regression passed 1/1; this remains read-only checkpoint input.
 The complete offline Worker candidate file then passed 35 tests with 12
 expected host-runtime skips and zero failures.
+The C5 attempt replay rules were extracted for Linux and a future Windows
+Product journal. A portable canonical-record decoder and the existing Linux
+segmented journal passed 11/11 focused tests, and the C5 architecture import
+boundary passed 7/7. Windows Product C5 persistence and recovery remain open;
+the decoder alone does not establish Windows Worker lifecycle closure.
 
 ## Independent Review Record
 
