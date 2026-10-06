@@ -3107,7 +3107,11 @@ case: while the Session is open, Desired State changes to disabled; its next
 Worker query is fenced, disposal clears the new attempt, and a newly created
 public Session refuses the unselected Product root with
 `package_product_root_not_selected`. This focused native case passed 1/1 on
-2026-10-06. Update while pinned and the general W5 author/operator path remain
+2026-10-06. A separate direct public Session case installs an accepted Worker
+version 2 while version 1 is pinned: the new Product selection is verified,
+the old Session's next query is fenced, and disposal leaves no additional
+payload or incomplete Supervisor attempt. That focused native case also
+passed 1/1 on 2026-10-06. The general W5 author/operator path remains
 separate acceptance work.
 
 ## Independent Review Record

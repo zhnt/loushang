@@ -539,8 +539,11 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     direct_entry_only: bool = False,
     hosted_entry_only: bool = False,
     disable_while_direct_session_open: bool = False,
+    update_while_direct_session_open: bool = False,
 ) -> None:
     assert not disable_while_direct_session_open or direct_entry_only
+    assert not update_while_direct_session_open or direct_entry_only
+    assert not (disable_while_direct_session_open and update_while_direct_session_open)
     installed_native = native_mode in {
         "installed-release",
         "repaired-release",
@@ -3338,6 +3341,81 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                         )
                                     )
                                     assert disabled.status == "terminal"
+                                elif update_while_direct_session_open:
+                                    updated_payload = (
+                                        build_coding_local_worker_candidate_wheel(
+                                            plugin_id=_PLUGIN,
+                                            version="2",
+                                            contribution_id=_CONTRIBUTION,
+                                            owner_id=_OWNER,
+                                            native_platform="linux-x86_64",
+                                            wheel_tag=_TAG,
+                                            executable=executable.read_bytes(),
+                                        )
+                                    )
+                                    updated_source = (
+                                        product.policy.source_root
+                                        / f"{_PLUGIN}-2-{_TAG}.whl"
+                                    )
+                                    updated_source.write_bytes(updated_payload)
+                                    updated_binding = replace(
+                                        binding,
+                                        source_identity=str(updated_source),
+                                        requested_package=f"{_PLUGIN}==2",
+                                        artifact_digest=sha256(updated_payload).hexdigest(),
+                                    )
+                                    updated_policy = replace(
+                                        product.policy,
+                                        bindings=tuple(
+                                            sorted(
+                                                (
+                                                    *product.policy.bindings,
+                                                    updated_binding,
+                                                ),
+                                                key=lambda item: item.source_identity,
+                                            )
+                                        ),
+                                    )
+                                    updated_product = replace(
+                                        product, policy=updated_policy
+                                    )
+                                    updated_runtime = updated_product.factory_for_session(
+                                        session_id="worker-public-session-update",
+                                        cwd=workspace,
+                                        runtime_id="worker-public-session-update",
+                                    ).create(
+                                        PackageProductRuntimeRequestV1(
+                                            product_id="coding",
+                                            session_id="worker-public-session-update",
+                                            cwd=str(workspace),
+                                        )
+                                    )
+                                    try:
+                                        updated_runtime.activate()
+                                        updated = updated_runtime.lifecycle.route(
+                                            PackageProductLifecycleIntentV1(
+                                                operation_id=(
+                                                    "worker-public-session-update"
+                                                ),
+                                                action="update",
+                                                source=str(updated_source),
+                                                scope="project",
+                                            ),
+                                            entrypoint="cli",
+                                        )
+                                        assert updated.handled
+                                        assert updated.record is not None
+                                        assert updated.record.lifecycle == "installed"
+                                        selected_updated = (
+                                            updated_runtime.capture_selected_plugin_manifest_for(
+                                                _PLUGIN,
+                                                max_files=16,
+                                                max_total_bytes=16 * 1024 * 1024,
+                                            )
+                                        )
+                                        assert selected_updated.manifest.version == "2"
+                                    finally:
+                                        updated_runtime.dispose_runtime()
                                 else:
                                     revoked = product_opt_in.revoke(
                                         plugin_id=_PLUGIN,
@@ -4972,6 +5050,20 @@ def test_explicit_worker_public_coding_session_disable_fences_pinned_product(
         monkeypatch,
         direct_entry_only=True,
         disable_while_direct_session_open=True,
+    )
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
+def test_explicit_worker_public_coding_session_update_fences_pinned_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        update_while_direct_session_open=True,
     )
 
 
