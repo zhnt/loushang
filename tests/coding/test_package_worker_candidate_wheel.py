@@ -5443,6 +5443,17 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 )
             )
             assert not observed_present.receipt_references_verified
+        opt_in_path = product.state_root / "worker-opt-in.jsonl"
+        held_opt_in = product.state_root / "held-worker-opt-in-for-gc.jsonl"
+        opt_in_path.replace(held_opt_in)
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as missing_opt_in:
+                gc.prepare()
+            assert missing_opt_in.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
+        finally:
+            held_opt_in.replace(opt_in_path)
         gc.prepare()
         gate_path = CodingWorkerStartGateJournal(product).path
         retained_gate = gate_path.read_bytes()

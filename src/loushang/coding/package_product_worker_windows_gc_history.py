@@ -17,6 +17,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
     windows_listdir_at,
 )
 
+from .package_product_worker_windows_opt_in_journal import (
+    CodingWindowsWorkerOptInJournal,
+)
 from .package_product_worker_windows_receipt_journal import (
     CodingWindowsWorkerReceiptJournal,
 )
@@ -101,6 +104,21 @@ class CodingWindowsWorkerGcHistoryAuthority:
                 self._product.state_root / "worker-activation-receipts.jsonl",
                 scope_id=self._product.policy.project_scope_id,
             ).records(directory_fd=root)
+            opt_in_decisions = CodingWindowsWorkerOptInJournal(
+                self._product.state_root / "worker-opt-in.jsonl",
+                scope_id=self._product.policy.project_scope_id,
+            ).history_read_only(directory_fd=root)
+            opt_in_by_digest = {
+                decision.decision_digest: decision for decision in opt_in_decisions
+            }
+            if any(
+                (decision := opt_in_by_digest.get(record.opt_in_decision_digest))
+                is None
+                or decision.action != "allow"
+                or decision.plugin_id != record.receipt.policy.plugin_id
+                for record in receipts
+            ):
+                raise ValueError("Windows Worker GC opt-in history is incomplete")
             receipt_fingerprints = {record.receipt.fingerprint for record in receipts}
             if any(
                 attempt.launch_receipt_fingerprint is not None

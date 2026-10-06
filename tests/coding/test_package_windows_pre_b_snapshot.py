@@ -3343,6 +3343,17 @@ def _assert_windows_worker_retired_history_allows_gc(
         )
         assert removed.result is not None
         assert removed.result.disposition == "succeeded"
+        opt_in_path = product.state_root / "worker-opt-in.jsonl"
+        held_opt_in = product.state_root / "held-worker-opt-in-for-gc.jsonl"
+        opt_in_path.replace(held_opt_in)
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as missing_opt_in:
+                gc.prepare()
+            assert missing_opt_in.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
+        finally:
+            held_opt_in.replace(opt_in_path)
         gc.prepare()
         candidate = next(
             item for item in gc.candidates() if item.package_revision == revision

@@ -28,6 +28,7 @@ from .package_product_worker_history_retention import (
     _PAYLOAD_REPAIR,
     _known_worker_state_name,
 )
+from .package_product_worker_opt_in import CodingWorkerOptInJournal
 from .package_product_worker_payload import (
     _read_complete_repair_intent,
     _read_empty_repair_intent,
@@ -95,6 +96,22 @@ class CodingPosixWorkerGcHistoryAuthority:
             supervisor = open_coding_product_worker_supervisor_journal(product)
             attempts = supervisor.attempts()
             receipts = read_coding_product_worker_receipt_records(product)
+            opt_in_decisions = CodingWorkerOptInJournal(
+                product.state_root / "worker-opt-in.jsonl",
+                scope_id=product.policy.project_scope_id,
+                gc_gate=product.gc_gate,
+            )._history_under_gc_guard()
+            opt_in_by_digest = {
+                decision.decision_digest: decision for decision in opt_in_decisions
+            }
+            if any(
+                (decision := opt_in_by_digest.get(record.opt_in_decision_digest))
+                is None
+                or decision.action != "allow"
+                or decision.plugin_id != record.receipt.policy.plugin_id
+                for record in receipts
+            ):
+                raise ValueError("Linux Worker GC opt-in history is incomplete")
             activation_journal = CodingProductWorkerActivationStateJournal(
                 product.state_root / "worker-activation-state.jsonl"
             )

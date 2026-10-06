@@ -1663,6 +1663,14 @@ also remains GC debt after payload repair. These checks protect Package root
 deletion and retain all Worker history. They do not provide the shared
 attempt-reference, backup, checkpoint, or anti-reuse proofs required to prune
 history or open general routing.
+Both Linux and Windows Package GC history readers now join each retained
+activation receipt to its exact historical `allow` opt-in decision for the
+same Plugin. An absent or orphaned opt-in journal, changed decision digest, or
+missing historical allow refuses Package root deletion while retaining all
+Worker audit records. The real Linux public Session case passed the missing
+history refusal and restored-history positive; the Windows Product GC case has
+the corresponding native positive and negative assertions pending CI. This
+join does not publish an anti-reuse checkpoint or authorize history pruning.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty
