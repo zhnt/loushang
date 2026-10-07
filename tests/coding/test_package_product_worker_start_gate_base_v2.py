@@ -41,7 +41,7 @@ from loushang.harness.worker.gated_start import WorkerNativeProcessIdentityV1
 
 
 def _record(
-    revision: int, *, attempt_id: str, bound: bool
+    revision: int, *, attempt_id: str, bound: bool, scope_id: str = "scope"
 ) -> CodingWorkerStartGateRecordV1:
     return CodingWorkerStartGateRecordV1.create(
         journal_revision=revision,
@@ -50,7 +50,7 @@ def _record(
         worker_identity_fingerprint="c" * 64,
         receipt_fingerprint="d" * 64,
         policy_fingerprint="e" * 64,
-        scope_id="scope",
+        scope_id=scope_id,
         native_closure_digest="f" * 64,
         identity=(
             WorkerNativeProcessIdentityV1(
@@ -71,14 +71,16 @@ def _line(record: CodingWorkerStartGateRecordV1) -> bytes:
     return canonical_json_bytes(record.to_dict()) + b"\n"
 
 
-def _history() -> tuple[
+def _history(
+    *, scope_a: str = "scope", scope_b: str = "scope"
+) -> tuple[
     CodingWorkerSegmentedHistoryV1, tuple[CodingWorkerStartGateRecordV1, ...]
 ]:
     records = (
-        _record(1, attempt_id="a" * 32, bound=False),
-        _record(2, attempt_id="a" * 32, bound=True),
-        _record(3, attempt_id="b" * 32, bound=False),
-        _record(4, attempt_id="b" * 32, bound=True),
+        _record(1, attempt_id="a" * 32, bound=False, scope_id=scope_a),
+        _record(2, attempt_id="a" * 32, bound=True, scope_id=scope_a),
+        _record(3, attempt_id="b" * 32, bound=False, scope_id=scope_b),
+        _record(4, attempt_id="b" * 32, bound=True, scope_id=scope_b),
     )
     old = b"".join(_line(item) for item in records[:3])
     active = _line(records[3])
@@ -207,6 +209,20 @@ def test_start_gate_base_replays_live_bound_and_binds_tombstone_chain() -> None:
             history=history,
             semantic_base=premature_base,
         )
+
+
+def test_start_gate_base_preserves_distinct_session_scopes_under_product_owner() -> None:
+    history, records = _history(scope_a="session-a", scope_b="session-b")
+    base = CodingWorkerStartGateSemanticBaseV2.from_v1_history(
+        history=history,
+        scope_id="product-scope",
+        first_retained_generation=1,
+        retired_attempt_ids=("a" * 32,),
+    )
+    assert base.scope_id == "product-scope"
+    assert base.current_records == (records[2],)
+    assert base.replay_retained((history.active_raw,)).current_records == (records[3],)
+    assert CodingWorkerStartGateSemanticBaseV2.from_bytes(base.to_bytes()) == base
 
 
 def test_start_gate_base_refuses_retired_reuse_and_changed_binding() -> None:

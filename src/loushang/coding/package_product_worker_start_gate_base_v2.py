@@ -1,7 +1,8 @@
 """Typed Start Gate state at a V2 Worker history boundary.
 
-Checkpoint tombstones select retired attempts. Product-wide closure must prove
-those attempts have no native or recovery references before any cutover.
+Checkpoint tombstones select retired attempts. The base scope identifies the
+Product owner; gate records retain their individual Session scopes. Product-wide
+closure must prove retired attempts have no native or recovery references.
 """
 
 from __future__ import annotations
@@ -54,7 +55,6 @@ class CodingWorkerStartGateSemanticBaseV2:
             or type(self.current_records) is not tuple
             or any(
                 type(item) is not CodingWorkerStartGateRecordV1
-                or item.scope_id != self.scope_id
                 or item.journal_revision > self.cutoff_revision
                 for item in self.current_records
             )
@@ -172,7 +172,7 @@ class CodingWorkerStartGateSemanticBaseV2:
             if len(records) != seal.last_revision:
                 raise ValueError("Coding Worker Start Gate V2 source revision changed")
         try:
-            latest = _fold_start_gate_records(tuple(records), scope_id=scope_id)
+            latest = _fold_start_gate_records(tuple(records))
         except ValueError as exc:
             raise ValueError("Coding Worker Start Gate V2 source is invalid") from exc
         return cls(
@@ -206,7 +206,6 @@ class CodingWorkerStartGateSemanticBaseV2:
                 tuple(records),
                 initial_latest={item.attempt_id: item for item in self.current_records},
                 retired_attempt_ids=frozenset(self.retired_attempt_ids),
-                scope_id=self.scope_id,
             )
         except ValueError as exc:
             raise ValueError(
