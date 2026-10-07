@@ -6,6 +6,7 @@ Worker launch, native release approval, or recovery authority by itself.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -46,6 +47,8 @@ from .package_product_worker_windows_provisioning_journal import (
     WindowsWorkerProvisioningStateJournal,
     inspect_windows_worker_provisioning_attempts,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class CodingWindowsProductWorkerProvisioningStateStore:
@@ -253,6 +256,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
             # Supervisor invalidates the launch request. Only the same exact
             # terminal attempt may finish native cleanup after process exit.
             from .package_product_worker_windows_recovery_inventory import (
+                CodingWindowsWorkerRecoveryAdmissionError,
                 _current_after_verified_retirements_under_gc_guard,
                 _inspect_windows_worker_recovery_inventory_under_gc_guard,
                 require_coding_windows_worker_terminal_cleanup_attempt,
@@ -267,17 +271,66 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                     inventory,
                     attempt_id=self._worker_request.identity.attempt_id,
                 )
-                job_name = require_coding_windows_worker_terminal_cleanup_attempt(
-                    inventory,
-                    attempt_id=self._worker_request.identity.attempt_id,
-                    payload_directory_identity=(
+                try:
+                    job_name = require_coding_windows_worker_terminal_cleanup_attempt(
+                        inventory,
+                        attempt_id=self._worker_request.identity.attempt_id,
+                        payload_directory_identity=(
+                            self._worker_request.runtime.cwd_device,
+                            self._worker_request.runtime.cwd_inode,
+                        ),
+                        request_fingerprint=self._worker_request.fingerprint,
+                        receipt_fingerprint=self._receipt.fingerprint,
+                        identity_fingerprint=self._worker_request.identity.fingerprint,
+                    )
+                except CodingWindowsWorkerRecoveryAdmissionError:
+                    attempt = inventory[0] if len(inventory) == 1 else None
+                    expected_stage = (
                         self._worker_request.runtime.cwd_device,
                         self._worker_request.runtime.cwd_inode,
-                    ),
-                    request_fingerprint=self._worker_request.fingerprint,
-                    receipt_fingerprint=self._receipt.fingerprint,
-                    identity_fingerprint=self._worker_request.identity.fingerprint,
-                )
+                    )
+                    _logger.error(
+                        "Windows Worker terminal cleanup evidence mismatch: %s",
+                        {
+                            "attempt_count": len(inventory),
+                            "attempt_matches": attempt is not None
+                            and attempt.attempt_id
+                            == self._worker_request.identity.attempt_id,
+                            "payload_matches": attempt is not None
+                            and attempt.payload_directory_identity == expected_stage,
+                            "launch_stage_matches": attempt is not None
+                            and attempt.launch_stage_identity == expected_stage,
+                            "launch_request_matches": attempt is not None
+                            and attempt.launch_request_fingerprint
+                            == self._worker_request.fingerprint,
+                            "launch_receipt_matches": attempt is not None
+                            and attempt.launch_receipt_fingerprint
+                            == self._receipt.fingerprint,
+                            "launch_identity_matches": attempt is not None
+                            and attempt.launch_identity_fingerprint
+                            == self._worker_request.identity.fingerprint,
+                            "native_phase": None
+                            if attempt is None
+                            else attempt.native_phase,
+                            "native_request_matches": attempt is not None
+                            and attempt.native_worker_request_fingerprint
+                            == self._worker_request.fingerprint,
+                            "native_receipt_matches": attempt is not None
+                            and attempt.native_receipt_fingerprint
+                            == self._receipt.fingerprint,
+                            "native_job_present": attempt is not None
+                            and bool(attempt.native_job_name),
+                            "supervisor_phase": None
+                            if attempt is None
+                            else attempt.supervisor_phase,
+                            "supervisor_process_settled": attempt is not None
+                            and attempt.supervisor_process_settled,
+                            "supervisor_identity_matches": attempt is not None
+                            and attempt.supervisor_identity_fingerprint
+                            == self._worker_request.identity.fingerprint,
+                        },
+                    )
+                    raise
                 self._worker_request.runtime.verify()
                 if observe_windows_worker_job_absent(job_name) is not True:
                     raise ValueError("Windows Worker Job is still present")
