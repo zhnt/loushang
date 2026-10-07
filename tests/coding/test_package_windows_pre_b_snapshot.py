@@ -367,6 +367,7 @@ from loushang.harness.worker._native_profile_bridge import (
     _WindowsLpacProductWorkerProfilePlan,
     _WindowsNativeContainmentSettlementWitness,
 )
+from loushang.harness.worker.facet_proxy import CapabilityWorkerFacetProxyError
 from loushang.harness.worker.hosting_adapter import (
     HostingManagedWorkerSessionAdapter,
 )
@@ -2908,6 +2909,21 @@ def test_windows_worker_hosted_first_session_reaches_selected_product(
 
 
 @pytest.mark.requires_host_runtime
+def test_windows_worker_public_session_disable_fences_pinned_product(
+    windows_worker_test_root: Path,
+) -> None:
+    if os.name != "nt" or os.environ.get("LOUSHANG_WINDOWS_BACKEND_REVIEW") != "1":
+        pytest.skip("native Windows backend review is required")
+    _exercise_windows_worker_wheel_transaction(
+        windows_worker_test_root,
+        "windows-amd64",
+        owner_id="coding",
+        ordinary_entry_kind="direct",
+        disable_while_ordinary_session_open=True,
+    )
+
+
+@pytest.mark.requires_host_runtime
 @pytest.mark.parametrize("entry_kind", ("direct", "hosted"))
 def test_windows_worker_public_session_crash_reopens_and_retires_product_attempt(
     windows_worker_test_root: Path,
@@ -3480,7 +3496,7 @@ def _retain_windows_c5_test_attempt(
                 **retired_attempt,
                 "phase": "settled",
                 "cleanupSettlement": settlement.to_dict(),
-            }
+            },
         },
     }
     documents = (() if prior is not None else (state,)) + (
@@ -3666,7 +3682,9 @@ def _assert_windows_worker_retired_history_allows_gc(
                 product
             ).retained_attempts_read_only()
         }
-        for earlier in inspect_coding_windows_product_worker_recovery_inventory(product):
+        for earlier in inspect_coding_windows_product_worker_recovery_inventory(
+            product
+        ):
             if (
                 earlier.attempt_id == "9" * 32
                 or earlier.attempt_id in retained_ids
@@ -3913,8 +3931,13 @@ def _exercise_windows_worker_wheel_transaction(
     c5_cleanup_review: bool = False,
     owner_id: str = "coding",
     ordinary_entry_kind: str | None = None,
+    disable_while_ordinary_session_open: bool = False,
 ) -> None:
     """Only the explicit Product opener reads the inert Worker candidate."""
+
+    assert not disable_while_ordinary_session_open or (
+        ordinary_entry_kind == "direct" and not crash_after_ordinary_query
+    )
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -4504,6 +4527,51 @@ finally:
                                             )
                                             == "Review symbol"
                                         )
+                                        if disable_while_ordinary_session_open:
+                                            snapshot = (
+                                                worker_product.desired_state.snapshot()
+                                            )
+                                            disabled = worker_product.management.submit(
+                                                PluginManagementCommandV1(
+                                                    action="disable",
+                                                    mutation=PluginDesiredStateMutationV1(
+                                                        operation_id=(
+                                                            "windows-worker-session-disable"
+                                                        ),
+                                                        idempotency_key=(
+                                                            "windows-worker-session-disable"
+                                                        ),
+                                                        expected_inventory_revision=(
+                                                            snapshot.inventory_revision
+                                                        ),
+                                                        installation_key=(
+                                                            installed[
+                                                                0
+                                                            ].installation_key
+                                                        ),
+                                                        desired_state=(
+                                                            "installed_disabled"
+                                                        ),
+                                                        package_revision=None,
+                                                        actor_id=(
+                                                            worker_product.actor_id
+                                                        ),
+                                                        policy_revision=(
+                                                            worker_product.desired_policy_revision
+                                                        ),
+                                                    ),
+                                                )
+                                            )
+                                            assert disabled.status == "terminal"
+                                            with pytest.raises(
+                                                CapabilityWorkerFacetProxyError,
+                                                match=(
+                                                    "worker_capability_facet_proxy_owner_unavailable"
+                                                ),
+                                            ):
+                                                await ordinary_session.query_worker_symbol(
+                                                    "review"
+                                                )
                                         if crash_after_ordinary_query:
                                             print(
                                                 "windows-public-worker-healthy:direct",
@@ -4585,6 +4653,15 @@ finally:
                         )
                         assert activation.phase == "settled"
                         assert activation.cleanup_contract_version == 2
+                        if disable_while_ordinary_session_open:
+                            assert (
+                                next(
+                                    item
+                                    for item in worker_product.desired_state.snapshot().installations
+                                    if item.installation_key.plugin_id == "workerprobe"
+                                ).selection.desired_state
+                                == "installed_disabled"
+                            )
                         return
                     unmaterialized_session = asyncio.run(
                         SessionManager.new(
