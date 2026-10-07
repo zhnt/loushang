@@ -20,6 +20,9 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     verify_product_selected_worker_candidate,
 )
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.worker._native_profile_bridge import (
     _WINDOWS_LPAC_PROFILE_ID,
     _windows_lpac_provisioning_identity,
@@ -209,7 +212,6 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                 worker_request=self._worker_request,
             )
             self._product.assert_session_runtime_current(self._runtime)
-            self._runtime.assert_selected_plugin_manifest_current(self._selected)
             self._require_store_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
@@ -229,7 +231,6 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                 worker_request=self._worker_request,
             )
             self._product.assert_session_runtime_current(self._runtime)
-            self._runtime.assert_selected_plugin_manifest_current(self._selected)
             self._require_store_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
@@ -244,12 +245,13 @@ class CodingWindowsProductWorkerProvisioningStateStore:
 
     def _require_store_current(self) -> None:
         try:
+            self._runtime.assert_selected_plugin_manifest_current(self._selected)
             self._worker_request.validate_current()
             return
-        except WorkerBindingError as stale:
-            # A stopped Supervisor intentionally makes its launch request
-            # unusable. Native cleanup still needs the same exact journal,
-            # retained stage and launch intent after physical process exit.
+        except (PackageProductRuntimeReadError, WorkerBindingError) as stale:
+            # Disable or update invalidates Product selection, and a stopped
+            # Supervisor invalidates the launch request. Only the same exact
+            # terminal attempt may finish native cleanup after process exit.
             from .package_product_worker_windows_recovery_inventory import (
                 _current_after_verified_retirements_under_gc_guard,
                 _inspect_windows_worker_recovery_inventory_under_gc_guard,
