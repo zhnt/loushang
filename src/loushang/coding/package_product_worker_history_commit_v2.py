@@ -20,6 +20,7 @@ from .package_product_worker_history_preflight_v2 import (
 )
 from .package_product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
+    require_coding_worker_v2_retained_reference_closure,
 )
 from .package_product_worker_history_read_v2 import (
     read_coding_worker_v2_retained_history,
@@ -35,6 +36,7 @@ from .package_product_worker_history_v2_names import (
     PREPARATION_INTENT_NAME,
     PRODUCT_OWNER_INDEX_NAME,
 )
+from .package_product_worker_receipt_base_v2 import CodingWorkerReceiptReplayV2
 
 _MAX_INDEX_BYTES = 4096
 
@@ -77,10 +79,22 @@ def commit_coding_worker_v2_owner_under_guard(
         if existing != expected:
             raise CodingWorkerV2OwnerCommitError("coding_worker_v2_owner_changed")
     else:
-        for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
+        verified = tuple(
             verify_coding_worker_v2_precommit_history(
                 rooted, stem=stem, prepared=prepared
             )
+            for stem in CODING_WORKER_HISTORY_STREAM_STEMS
+        )
+        receipt_replay = verified[1].replay
+        if not isinstance(receipt_replay, CodingWorkerReceiptReplayV2):
+            raise CodingWorkerV2OwnerCommitError(
+                "coding_worker_v2_receipt_replay_changed"
+            )
+        require_coding_worker_v2_retained_reference_closure(
+            opt_in_base=prepared.semantic_bases[0],
+            opt_in_segments=verified[0].segments,
+            retained_receipts=receipt_replay.retained_records,
+        )
         rooted.sibling(PRODUCT_OWNER_INDEX_NAME).create_new(expected)
 
     for stem in CODING_WORKER_HISTORY_STREAM_STEMS:

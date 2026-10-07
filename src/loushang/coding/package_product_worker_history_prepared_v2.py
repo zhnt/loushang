@@ -32,9 +32,12 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
 )
+from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_opt_in_base_v2 import (
     CodingWorkerOptInSemanticBaseV2,
+    _parse_opt_in_segment,
 )
+from .package_product_worker_receipt import CodingWorkerReceiptRecordV1
 from .package_product_worker_receipt_base_v2 import (
     CodingWorkerReceiptSemanticBaseV2,
 )
@@ -59,6 +62,40 @@ class _SemanticBaseV2(Protocol):
     def scope_id(self) -> str: ...
 
     def to_bytes(self) -> bytes: ...
+
+
+def require_coding_worker_v2_retained_reference_closure(
+    *,
+    opt_in_base: CodingWorkerOptInSemanticBaseV2,
+    opt_in_segments: tuple[bytes, ...],
+    retained_receipts: tuple[CodingWorkerReceiptRecordV1, ...],
+) -> None:
+    """Refuse a cutoff that loses an allow still named by a retained receipt."""
+
+    opt_in_base.replay_retained(opt_in_segments)
+    decisions = (
+        *opt_in_base.latest_decisions,
+        *(
+            decision
+            for raw in opt_in_segments
+            for decision in _parse_opt_in_segment(raw)
+        ),
+    )
+    by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
+    for decision in decisions:
+        by_digest.setdefault(decision.decision_digest, []).append(decision)
+    for record in retained_receipts:
+        policy = record.receipt.policy
+        matching = by_digest.get(record.opt_in_decision_digest, [])
+        if (
+            len(matching) != 1
+            or matching[0].action != "allow"
+            or matching[0].plugin_id != policy.plugin_id
+            or matching[0].scope_id != record.scope_id
+            or matching[0].generation != policy.owner_selection_generation
+            or matching[0].kill_switch_generation != policy.kill_switch_generation
+        ):
+            raise ValueError("Coding Worker V2 retained receipt opt-in unproved")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +240,15 @@ class CodingWorkerPreparedProductCutoverV2:
                 retired_attempt_ids=retired_attempt_ids,
             ),
         )
+        require_coding_worker_v2_retained_reference_closure(
+            opt_in_base=bases[0],
+            opt_in_segments=histories[0].segments[first_retained_generations[0] :],
+            retained_receipts=bases[1]
+            .replay_retained(
+                histories[1].segments[first_retained_generations[1] :]
+            )
+            .retained_records,
+        )
         streams = (
             CodingWorkerStreamCutoverV2.from_opt_in_base(
                 checkpoint=checkpoint,
@@ -244,4 +290,8 @@ class CodingWorkerPreparedProductCutoverV2:
         )
 
 
-__all__ = ["CodingWorkerPreparedProductCutoverV2", "CodingWorkerTypedBasesV2"]
+__all__ = [
+    "CodingWorkerPreparedProductCutoverV2",
+    "CodingWorkerTypedBasesV2",
+    "require_coding_worker_v2_retained_reference_closure",
+]

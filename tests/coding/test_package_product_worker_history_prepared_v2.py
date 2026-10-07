@@ -217,3 +217,106 @@ def test_prepared_product_cutover_refuses_repeated_checkpoint_ids() -> None:
             histories=histories,
             first_retained_generations=(1, 1, 1, 1, 1),
         )
+
+
+@pytest.mark.parametrize("retained_sealed", [False, True])
+def test_prepared_cutover_requires_retained_receipt_allow_reference(
+    retained_sealed: bool,
+) -> None:
+    checkpoints, _anchor, histories = _sources()
+    prior = checkpoints[0]
+    _, decisions = _opt_in_history()
+    decision = decisions[0] if retained_sealed else decisions[2]
+    policy = replace(
+        _policy(),
+        product_scope_id="scope",
+        plugin_id="plugin-a",
+        owner_selection_generation=decision.generation,
+        kill_switch_generation=decision.kill_switch_generation,
+    )
+    receipt = replace(
+        _receipt(policy=policy),
+        issue_sequence=2,
+        issue_nonce="retained-receipt",
+    )
+    record = CodingWorkerReceiptRecordV1.create(
+        journal_revision=2,
+        scope_id="scope",
+        opt_in_decision_digest=decision.decision_digest,
+        receipt=receipt,
+    )
+    old_history = histories[1]
+    assert old_history.manifest is not None
+    raw = _linux_receipt_line(record)
+    receipt_history = CodingWorkerSegmentedHistoryV1(
+        manifest=CodingWorkerSegmentManifestV1(
+            stream_id="worker-activation-receipts",
+            active_generation=2 if retained_sealed else 1,
+            sealed=(
+                *old_history.manifest.sealed,
+                *(
+                    (
+                        CodingWorkerSealedSegmentV1(
+                            generation=1,
+                            first_revision=2,
+                            last_revision=2,
+                            byte_count=len(raw),
+                            digest=sha256(raw).hexdigest(),
+                        ),
+                    )
+                    if retained_sealed
+                    else ()
+                ),
+            ),
+        ),
+        segments=(old_history.segments[0], raw, b"")
+        if retained_sealed
+        else (old_history.segments[0], raw),
+    )
+    revised_histories = (histories[0], receipt_history, *histories[2:])
+    snapshots = tuple(
+        CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=stem,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        for stem, history in zip(
+            CODING_WORKER_HISTORY_STREAM_STEMS, revised_histories, strict=True
+        )
+    )
+    checkpoint = CodingWorkerHistoryCheckpointV1.create(
+        journal_revision=1,
+        scope_id=prior.scope_id,
+        store_id=prior.store_id,
+        attempt_id=prior.attempt_id,
+        receipt_fingerprint=prior.receipt_fingerprint,
+        previous_digest="",
+        gc_reservation_revision=prior.gc_reservation_revision,
+        backup_topology_revision=prior.backup_topology_revision,
+        stream_snapshots=snapshots,
+        new_opt_in_operation_ids=prior.new_opt_in_operation_ids,
+        new_attempt_ids=prior.new_attempt_ids,
+        new_receipt_fingerprints=tuple(
+            sorted((*prior.new_receipt_fingerprints, receipt.fingerprint))
+        ),
+        opt_in_generation_high_water=prior.opt_in_generation_high_water,
+        supervisor_epoch_high_water=prior.supervisor_epoch_high_water,
+    )
+    anchor = CodingWorkerCheckpointAnchorV1.create(
+        scope_id="scope",
+        store_id="store",
+        latest_revision=1,
+        latest_digest=checkpoint.record_digest,
+    )
+    kwargs = {
+        "checkpoints": (checkpoint,),
+        "anchor": anchor,
+        "histories": revised_histories,
+        "first_retained_generations": (1, 1, 1, 1, 1),
+    }
+    if retained_sealed:
+        with pytest.raises(ValueError, match="retained receipt opt-in unproved"):
+            CodingWorkerPreparedProductCutoverV2.from_v1_histories(**kwargs)
+    else:
+        CodingWorkerPreparedProductCutoverV2.from_v1_histories(**kwargs)

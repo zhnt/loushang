@@ -163,6 +163,11 @@ class CodingPosixWorkerGcHistoryAuthority:
                 is None
                 or decision.action != "allow"
                 or decision.plugin_id != record.receipt.policy.plugin_id
+                or decision.scope_id != record.scope_id
+                or decision.generation
+                != record.receipt.policy.owner_selection_generation
+                or decision.kill_switch_generation
+                != record.receipt.policy.kill_switch_generation
                 for record in receipts
             ):
                 raise ValueError("Linux Worker GC opt-in history is incomplete")
