@@ -1721,6 +1721,15 @@ prefix bytes, altered base state, reused operation IDs, and generation rollback
 refuse. This remains a candidate in memory: no base file,
 V2 reader, Product cutover publication, or source deletion exists yet.
 
+The second typed semantic-base slice covers activation receipts. It projects
+the sealed V1 prefix into the last issued sequence and every retired receipt
+fingerprint, then replays retained records at the original sequence while
+refusing gaps and fingerprint reuse. Its cutover factory reprojects the prefix
+and binds the canonical base digest to the checkpoint and exact seal chain.
+This does not prove that an old receipt is unreferenced by C5, native recovery,
+backup, or Package GC; the Product-wide closure must still prove those joins
+before publication. No receipt base file, V2 reader, or deletion path exists.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later
