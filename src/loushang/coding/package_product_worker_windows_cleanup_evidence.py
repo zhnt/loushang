@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import cast
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
@@ -304,14 +305,15 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
         except (OSError, RuntimeError, ValueError):
             return False
         native = fresh.native
+        native_witness = cast(_WindowsNativeContainmentSettlementWitness, witness)
         return bool(
             native is not None
             and self._review_matches(fresh)
-            and witness.receipt_fingerprint == self._receipt.fingerprint
-            and witness.worker_request_fingerprint == self._request_fingerprint
-            and witness.attempt_id == attempt_id
-            and witness.owner_generation == owner_generation
-            and witness.journal_fingerprint == native.settlement_fingerprint
+            and native_witness.receipt_fingerprint == self._receipt.fingerprint
+            and native_witness.worker_request_fingerprint == self._request_fingerprint
+            and native_witness.attempt_id == attempt_id
+            and native_witness.owner_generation == owner_generation
+            and native_witness.journal_fingerprint == native.settlement_fingerprint
         )
 
     def current_native_witness(self) -> _WindowsNativeContainmentSettlementWitness:

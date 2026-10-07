@@ -41,6 +41,11 @@ from loushang.harness.package_product.product_gc_executor import (
 from loushang.harness.package_product.product_root_gc_runtime import (
     open_windows_local_wheel_product_root_gc,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
+    windows_flush_directory,
+    windows_flush_file,
+)
 from loushang.harness.worker.activation_state_journal import (
     WorkerActivationStateJournalError,
 )
@@ -177,7 +182,25 @@ def test_windows_product_c5_state_reopens_and_refuses_complete_record_loss(
         with pytest.raises(WorkerActivationStateJournalError) as orphan_lock:
             journal.load()
         assert orphan_lock.value.code == "worker_activation_state_corrupt"
-        history.write_bytes(original)
+        with product.gc_gate.guard(require_write=True):
+            with (
+                WindowsPrivateDirectoryAcl() as acl,
+                product.epoch_runtime.borrow_product_state_root_descriptor() as root,
+            ):
+                descriptor = open_windows_regular_file_at(
+                    root,
+                    "worker-activation-state.jsonl",
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                with os.fdopen(descriptor, "wb") as restored:
+                    acl.validate(restored.fileno())
+                    assert restored.write(original) == len(original)
+                    restored.flush()
+                    windows_flush_file(restored.fileno())
+                windows_flush_directory(root)
         assert journal.load() == second
     finally:
         owner.close()

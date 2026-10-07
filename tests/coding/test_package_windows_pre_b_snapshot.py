@@ -3416,7 +3416,16 @@ def _retain_windows_c5_test_attempt(
         tree_settled=True,
         native_containment_settled=True,
     )
-    state = _initial_state(restart_budget=3)
+    journal = CodingWindowsWorkerActivationStateJournal(product)
+    prior = journal.load()
+    prior_attempt_ids = {
+        item.attempt_id for item in journal.retained_attempts_read_only()
+    }
+    state = _initial_state(restart_budget=3) if prior is None else dict(prior)
+    revision = state["stateRevision"]
+    assert type(revision) is int
+    prior_attempts = state["attempts"]
+    assert type(prior_attempts) is dict
     key = _AttemptKey(receipt.fingerprint, attempt_id, generation).encoded
     registered_attempt = {
         "attemptId": attempt_id,
@@ -3438,11 +3447,18 @@ def _retain_windows_c5_test_attempt(
         "required": receipt.policy.effective_required,
         "restartOrdinal": 0,
     }
-    registered = {**state, "stateRevision": 2, "attempts": {key: registered_attempt}}
-    effect_started = {
+    registered = {
         **state,
-        "stateRevision": 3,
-        "attempts": {key: {**registered_attempt, "phase": "effect_started"}},
+        "stateRevision": revision + 1,
+        "attempts": {**prior_attempts, key: registered_attempt},
+    }
+    effect_started = {
+        **registered,
+        "stateRevision": revision + 2,
+        "attempts": {
+            **prior_attempts,
+            key: {**registered_attempt, "phase": "effect_started"},
+        },
     }
     retired_attempt = {
         **registered_attempt,
@@ -3450,11 +3466,16 @@ def _retain_windows_c5_test_attempt(
         "domainRetired": True,
         "protocolTerminal": True,
     }
-    retired = {**state, "stateRevision": 4, "attempts": {key: retired_attempt}}
+    retired = {
+        **effect_started,
+        "stateRevision": revision + 3,
+        "attempts": {**prior_attempts, key: retired_attempt},
+    }
     settled_state = {
-        **state,
-        "stateRevision": 5,
+        **retired,
+        "stateRevision": revision + 4,
         "attempts": {
+            **prior_attempts,
             key: {
                 **retired_attempt,
                 "phase": "settled",
@@ -3462,15 +3483,23 @@ def _retain_windows_c5_test_attempt(
             }
         },
     }
-    journal = CodingWindowsWorkerActivationStateJournal(product)
-    documents = (state, registered, effect_started, retired)
+    documents = (() if prior is not None else (state,)) + (
+        registered,
+        effect_started,
+        retired,
+    )
     if settled:
         documents += (settled_state,)
-    for revision, document in enumerate(documents):
-        assert journal.compare_and_swap(expected_revision=revision, document=document)
-    assert [item.attempt_id for item in journal.retained_attempts_read_only()] == [
-        attempt_id
-    ]
+    for document in documents:
+        document_revision = document["stateRevision"]
+        assert type(document_revision) is int
+        assert journal.compare_and_swap(
+            expected_revision=document_revision - 1, document=document
+        )
+    assert {item.attempt_id for item in journal.retained_attempts_read_only()} == {
+        *prior_attempt_ids,
+        attempt_id,
+    }
 
 
 def _assert_windows_worker_retired_history_allows_gc(
@@ -3631,6 +3660,28 @@ def _assert_windows_worker_retired_history_allows_gc(
             )
         finally:
             held_opt_in.replace(opt_in_path)
+        retained_ids = {
+            item.attempt_id
+            for item in CodingWindowsWorkerActivationStateJournal(
+                product
+            ).retained_attempts_read_only()
+        }
+        for earlier in inspect_coding_windows_product_worker_recovery_inventory(product):
+            if (
+                earlier.attempt_id == "9" * 32
+                or earlier.attempt_id in retained_ids
+                or earlier.launch_request_fingerprint is None
+            ):
+                continue
+            _retain_windows_c5_test_attempt(
+                product,
+                attempt_id=earlier.attempt_id,
+                host_identity="native-gc-prior-test-host",
+                boot_identity="native-gc-prior-test-boot",
+                evidence_authority_id="native-gc-prior-test-evidence",
+                evidence_authority_fingerprint="e" * 64,
+                settled=True,
+            )
         _retain_windows_c5_test_attempt(
             product,
             attempt_id="9" * 32,
