@@ -61,13 +61,15 @@ def test_activation_v2_cas_after_retired_segment_deletion(
     assert journal.load_read_only() == prior
     assert journal.load_with_presence_read_only() == (True, prior)
     assert not journal.compare_and_swap(expected_revision=4, document=prior)
-    with pytest.raises(
-        WorkerActivationStateJournalError, match="v2_inventory_unavailable"
-    ):
-        journal.retained_attempts_read_only()
+    retained = journal.retained_attempts_read_only()
+    assert len(retained) == 1
+    assert retained[0].attempt_id == "b" * 32
+    assert retained[0].phase == "settled"
+    assert not retained[0].current
     next_state = _next_state(prior)
     assert journal.compare_and_swap(expected_revision=5, document=next_state)
     assert journal.load_read_only() == next_state
+    assert journal.retained_attempts_read_only() == retained
 
     reused = _next_state(next_state)
     key = _AttemptKey("a" * 64, "b" * 32, 1).encoded

@@ -147,9 +147,49 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
 
         with self._bound_journal_read_only() as rooted:
             if self._v2_owner_exists(rooted):
-                raise WorkerActivationStateJournalError(
-                    "worker_activation_state_v2_inventory_unavailable"
+                from .package_product_worker_activation_base_v2 import (
+                    _parse_c5_segment,
                 )
+                from .package_product_worker_history_stage_v2 import (
+                    read_coding_worker_v2_preparation,
+                )
+
+                history, _replay = self._load_v2_state(rooted)
+                try:
+                    prepared = read_coding_worker_v2_preparation(rooted)
+                    if prepared is None:
+                        raise ValueError("Coding Worker V2 preparation is absent")
+                    activation_base = prepared.semantic_bases[2]
+                    retired_ids = frozenset(
+                        prepared.semantic_bases[3].retired_attempt_ids
+                    )
+                    if not set(activation_base.retired_attempt_ids) <= retired_ids:
+                        raise ValueError("Retired C5 attempt lacks a gate tombstone")
+                    revision = activation_base.cutoff_revision
+                    retained_records = [activation_base.last_record]
+                    for raw in history.segments[
+                        activation_base.first_retained_generation :
+                    ]:
+                        segment = _parse_c5_segment(raw, first_revision=revision + 1)
+                        retained_records.extend(segment)
+                        revision += len(segment)
+                    attempts = project_coding_worker_retained_attempts(
+                        tuple(retained_records)
+                    )
+                    if any(
+                        item.attempt_id in retired_ids and item.phase != "settled"
+                        for item in attempts
+                    ):
+                        raise ValueError("Retired C5 attempt is unsettled")
+                    return tuple(
+                        item
+                        for item in attempts
+                        if item.attempt_id not in retired_ids
+                    )
+                except (OSError, ValueError) as exc:
+                    raise WorkerActivationStateJournalError(
+                        "worker_activation_state_v2_inventory_corrupt"
+                    ) from exc
             records, _history = self._load_segments(rooted)
             return project_coding_worker_retained_attempts(records)
 
