@@ -1536,21 +1536,32 @@ attempt rotation, and crash/reopen checks at each checkpoint publication
 boundary remain open. Until those retention and platform reports exist, the
 explicit pilot remains bounded and general Worker routing stays closed.
 The Linux retention review now exposes its exact fact join to a caller already
-holding Package runtime quiescence and the Product GC gate. A future checkpoint
-publisher must acquire those locks in that order, take a fresh GC reservation
-snapshot under the write gate, re-run this join, and publish before releasing
-either lock. The public review remains read-only. This shared path has no
-checkpoint write or history-pruning authority by itself.
+holding Package runtime quiescence and the Product GC gate. The candidate
+checkpoint publisher acquires those locks in that order, takes a fresh GC
+reservation snapshot under the write gate, re-runs the join, and publishes
+before releasing either lock. The public review remains read-only.
 The join now also strictly reads the opt-in, receipt, C5, start-gate, and
 Supervisor segment manifests and active heads from the pinned Product state
 root. It records each stream's segment lengths and SHA-256 digests, active
 generation, last sealed revision, total record revision, and a canonical
 snapshot fingerprint. The review compares those total revisions with each
 strict semantic journal replay and reports a mismatch as a missing proof. A
-future checkpoint must bind those fingerprints together with the existing
-semantic references and high-water marks; a revision count or ID inventory
-alone cannot prove unchanged historical bytes. No segment is retired by this
-capture.
+checkpoint binds those fingerprints together with the existing semantic
+references and high-water marks; a revision count or ID inventory alone cannot
+prove unchanged historical bytes.
+The candidate checkpoint journal now appends a digest-chained Product record
+containing the five stream snapshots, new opt-in operation IDs, new attempt IDs,
+new receipt fingerprints, current opt-in and Supervisor high-water marks, the
+GC reservation revision, and the versioned backup-topology revision. It refuses
+publication while any closure proof is missing. A complete record survives
+reopen; an append without its committed active head is refused. Package GC
+strictly replays a present checkpoint journal but still proves its own retained
+Worker histories. A real Product fault injection now proves that an appended
+record without its committed active head is refused on reopen and by Package
+GC; it does not yet provide an automated repair path for that interruption.
+The checkpoint grants no journal deletion, ID-reuse bypass, default routing,
+or general third-party Worker admission. Repair after interruption and the
+remaining publication boundaries still need Product-level tests.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

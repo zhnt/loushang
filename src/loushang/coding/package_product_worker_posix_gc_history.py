@@ -24,6 +24,9 @@ from loushang.harness.worker.gated_start import (
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
+from .package_product_worker_history_checkpoint import (
+    read_coding_product_worker_history_checkpoints_under_gc_guard,
+)
 from .package_product_worker_history_retention import (
     _PAYLOAD_REPAIR,
     _known_worker_state_name,
@@ -48,6 +51,7 @@ _HISTORY_STEMS = (
     "worker-activation-state",
     "worker-start-gates",
     "worker-supervisor",
+    "worker-history-checkpoints",
 )
 
 
@@ -81,7 +85,9 @@ class CodingPosixWorkerGcHistoryAuthority:
                 raise ValueError("Linux Worker GC inventory changed")
             for name in observed_names:
                 lowered = name.casefold()
-                if lowered.startswith(("worker-", ".worker-")) and not _known_worker_state_name(name):
+                if lowered.startswith(
+                    ("worker-", ".worker-")
+                ) and not _known_worker_state_name(name):
                     raise ValueError("Linux Worker GC reference owner is unrecognized")
                 if any(
                     lowered.startswith(stem) or lowered.startswith("." + stem)
@@ -91,6 +97,12 @@ class CodingPosixWorkerGcHistoryAuthority:
                     for stem in _HISTORY_STEMS
                 ):
                     raise ValueError("Linux Worker GC history name is invalid")
+
+            if any(
+                name.startswith("worker-history-checkpoints.")
+                for name in observed_names
+            ):
+                read_coding_product_worker_history_checkpoints_under_gc_guard(product)
 
             gates = CodingWorkerStartGateJournal(product).attempts()
             supervisor = open_coding_product_worker_supervisor_journal(product)
@@ -158,7 +170,9 @@ class CodingPosixWorkerGcHistoryAuthority:
                         == sha256(canonical_json_bytes(record.to_dict())).hexdigest()
                     )
                 if not valid:
-                    raise ValueError("Linux Worker GC payload repair reference is unverified")
+                    raise ValueError(
+                        "Linux Worker GC payload repair reference is unverified"
+                    )
             receipt_by_fingerprint = {
                 item.receipt.fingerprint: item for item in receipts
             }
@@ -176,8 +190,7 @@ class CodingPosixWorkerGcHistoryAuthority:
                     or activation_attempt.attempt_id not in attempt_by_id
                     or gate.receipt_fingerprint
                     != activation_attempt.receipt_fingerprint
-                    or gate.policy_fingerprint
-                    != activation_attempt.policy_fingerprint
+                    or gate.policy_fingerprint != activation_attempt.policy_fingerprint
                 ):
                     raise ValueError("Linux Worker GC C5 attempt history is incomplete")
             for gate in gates:
@@ -187,8 +200,7 @@ class CodingPosixWorkerGcHistoryAuthority:
                     gate.phase != "bound"
                     or gate.identity is None
                     or not attempt.process_settled
-                    or attempt.identity_fingerprint
-                    != gate.worker_identity_fingerprint
+                    or attempt.identity_fingerprint != gate.worker_identity_fingerprint
                     or receipt is None
                     or receipt.receipt.policy.product_id != "coding"
                     or receipt.receipt.policy.product_scope_id != gate.scope_id

@@ -63,7 +63,7 @@ from .package_product_worker_start_gate_recovery import (
 )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
-_SEGMENTED_STEMS = CODING_WORKER_HISTORY_STREAM_STEMS
+_SEGMENTED_STEMS = (*CODING_WORKER_HISTORY_STREAM_STEMS, "worker-history-checkpoints")
 _SEGMENTED_SUFFIX = re.compile(
     r"(?:\.jsonl(?:\.lock)?|\.segments\.json|\.head\.json|"
     r"\.g[0-9]{8}\.(?:jsonl|head\.json))\Z"
@@ -189,6 +189,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     group_status: GatedGroupStatus
     opt_in_history_revision: int
     retained_opt_in_operation_ids: tuple[str, ...]
+    opt_in_generation_high_water: tuple[tuple[str, int, int, str, str], ...]
     start_gate_history_revision: int
     supervisor_history_revision: int
     receipt_history_revision: int
@@ -202,6 +203,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     activation_state_revision: int | None
     active_activation_references: tuple[tuple[str, str], ...]
     retained_activation_references: tuple[CodingProductWorkerRetainedAttemptV1, ...]
+    global_activation_reference_ids_match: bool
     unverified_activation_references: tuple[tuple[str, str], ...]
     global_unverified_activation_references: tuple[tuple[str, str], ...]
     global_unverified_opt_in_references: tuple[tuple[str, str], ...]
@@ -281,6 +283,8 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("activation_receipt_reference_unverified")
         if self.global_unverified_activation_references:
             missing.append("global_activation_reference_unverified")
+        if not self.global_activation_reference_ids_match:
+            missing.append("global_activation_attempt_ids_unmatched")
         if self.global_unverified_opt_in_references:
             missing.append("global_opt_in_reference_unverified")
         if self.unbound_supervisor_attempt_ids:
@@ -384,6 +388,9 @@ def _review_coding_product_worker_history_under_guard(
         scope_id=product.policy.project_scope_id,
         gc_gate=product.gc_gate,
     )._history_under_gc_guard()
+    latest_opt_in_by_plugin: dict[str, CodingWorkerOptInDecisionV1] = {}
+    for decision in opt_in_history:
+        latest_opt_in_by_plugin[decision.plugin_id] = decision
     decisions_by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
     for decision in opt_in_history:
         decisions_by_digest.setdefault(decision.decision_digest, []).append(decision)
@@ -603,6 +610,18 @@ def _review_coding_product_worker_history_under_guard(
         retained_opt_in_operation_ids=tuple(
             item.operation_id for item in opt_in_history
         ),
+        opt_in_generation_high_water=tuple(
+            sorted(
+                (
+                    item.plugin_id,
+                    item.generation,
+                    item.kill_switch_generation,
+                    item.action,
+                    item.decision_digest,
+                )
+                for item in latest_opt_in_by_plugin.values()
+            )
+        ),
         start_gate_history_revision=max(
             (item.journal_revision for item in gates), default=0
         ),
@@ -631,6 +650,11 @@ def _review_coding_product_worker_history_under_guard(
         ),
         active_activation_references=active_references,
         retained_activation_references=retained_activation_references,
+        global_activation_reference_ids_match=(
+            len(retained_activation_references) == len(gate_by_id)
+            and {item.attempt_id for item in retained_activation_references}
+            == set(gate_by_id)
+        ),
         unverified_activation_references=tuple(unverified_activation),
         global_unverified_activation_references=tuple(
             sorted(global_unverified_activation)

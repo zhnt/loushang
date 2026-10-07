@@ -31,6 +31,7 @@ import pytest
 
 import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
+import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
 import loushang.coding.package_product_worker_native_install as native_install_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
@@ -89,8 +90,15 @@ from loushang.coding.package_product_worker_cleanup_evidence import (
 from loushang.coding.package_product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
+from loushang.coding.package_product_worker_history_checkpoint import (
+    publish_coding_product_worker_history_checkpoint,
+    read_coding_product_worker_history_checkpoints_under_gc_guard,
+)
 from loushang.coding.package_product_worker_history_retention import (
     review_coding_product_worker_history_retention,
+)
+from loushang.coding.package_product_worker_history_segments import (
+    CodingWorkerHistorySegmentError,
 )
 from loushang.coding.package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
@@ -5388,6 +5396,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                     )
                 )
         assert writer_review == retention
+        assert retention.global_activation_reference_ids_match
         assert retention.history_stream_revisions_match
         assert tuple(
             snapshot.stem for snapshot in retention.history_stream_snapshots
@@ -5529,6 +5538,8 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             incomplete = review_coding_product_worker_history_retention(
                 product, attempt_id=attempt_id
             )
+            assert not incomplete.global_activation_reference_ids_match
+            assert "global_activation_attempt_ids_unmatched" in incomplete.missing_proofs
             assert not incomplete.receipt_references_verified
             assert "receipt_references_unverified" in incomplete.missing_proofs
         with monkeypatch.context() as changed_native_observation:
@@ -5550,6 +5561,28 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 )
             )
             assert not observed_present.receipt_references_verified
+        opt_in_owner = CodingWorkerProductOptInOwner(product)
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None and current_opt_in.action == "revoke"
+        checkpoint_review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert checkpoint_review.missing_proofs == ()
+        checkpoint = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert checkpoint.attempt_id == attempt_id
+        assert checkpoint.stream_snapshots == checkpoint_review.history_stream_snapshots
+        assert (
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=attempt_id
+            )
+            == checkpoint
+        )
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint,)
         opt_in_path = product.state_root / "worker-opt-in.jsonl"
         held_opt_in = product.state_root / "held-worker-opt-in-for-gc.jsonl"
         opt_in_path.replace(held_opt_in)
@@ -5572,6 +5605,38 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         finally:
             gate_path.write_bytes(retained_gate)
         gc.prepare()
+        latest_opt_in = opt_in_owner.current(_PLUGIN)
+        assert latest_opt_in is not None and latest_opt_in.action == "revoke"
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-interrupted-revoke",
+            expected_generation=latest_opt_in.generation,
+        )
+
+        def fail_checkpoint_head(*_args: object, **_kwargs: object) -> None:
+            raise OSError("injected checkpoint head pause")
+
+        with monkeypatch.context() as interrupted_checkpoint:
+            interrupted_checkpoint.setattr(
+                checkpoint_module,
+                "commit_coding_worker_active_segment",
+                fail_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with product.gc_gate.read_guard():
+            with pytest.raises(
+                CodingWorkerHistorySegmentError,
+                match="coding_worker_segment_head_changed",
+            ):
+                read_coding_product_worker_history_checkpoints_under_gc_guard(
+                    product
+                )
+        with pytest.raises(PackageProductGcExecutionError) as interrupted_gc:
+            gc.prepare()
+        assert interrupted_gc.value.code == "plugin_package_gc_worker_history_unsettled"
     finally:
         reopened.close()
 

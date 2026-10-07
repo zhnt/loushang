@@ -61,6 +61,47 @@ class CodingWorkerHistoryStreamSnapshotV1:
     segment_digests: tuple[str, ...]
     fingerprint: str
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "activeGeneration": self.active_generation,
+            "fingerprint": self.fingerprint,
+            "lastSealedRevision": self.last_sealed_revision,
+            "segmentByteCounts": list(self.segment_byte_counts),
+            "segmentDigests": list(self.segment_digests),
+            "stem": self.stem,
+            "totalRevision": self.total_revision,
+            "version": 1,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> CodingWorkerHistoryStreamSnapshotV1:
+        if type(value) is not dict or set(value) != {
+            "activeGeneration",
+            "fingerprint",
+            "lastSealedRevision",
+            "segmentByteCounts",
+            "segmentDigests",
+            "stem",
+            "totalRevision",
+            "version",
+        }:
+            raise ValueError("Coding Worker history stream snapshot shape is invalid")
+        if (
+            value["version"] != 1
+            or type(value["segmentByteCounts"]) is not list
+            or type(value["segmentDigests"]) is not list
+        ):
+            raise ValueError("Coding Worker history stream snapshot version is invalid")
+        return cls(
+            stem=value["stem"],
+            active_generation=value["activeGeneration"],
+            last_sealed_revision=value["lastSealedRevision"],
+            total_revision=value["totalRevision"],
+            segment_byte_counts=tuple(value["segmentByteCounts"]),
+            segment_digests=tuple(value["segmentDigests"]),
+            fingerprint=value["fingerprint"],
+        )
+
     def __post_init__(self) -> None:
         if (
             type(self.stem) is not str
