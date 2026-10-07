@@ -113,13 +113,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     candidate_install.add_argument("--plugin-id", required=True)
     candidate_install.add_argument("--artifact-digest", required=True)
     candidate_install.add_argument("--operation-id", required=True)
+    candidate_update = actions.add_parser(
+        "candidate-update", help="update one installed Worker from an exact revision"
+    )
+    candidate_update.add_argument("--plugin-id", required=True)
+    candidate_update.add_argument("--from-artifact-digest", required=True)
+    candidate_update.add_argument("--artifact-digest", required=True)
+    candidate_update.add_argument("--operation-id", required=True)
+    candidate_update.add_argument(
+        "--expected-inventory-revision", type=int, required=True
+    )
     candidate_enable = actions.add_parser(
         "candidate-enable", help="enable one exact installed Worker candidate"
     )
     candidate_enable.add_argument("--plugin-id", required=True)
     candidate_enable.add_argument("--artifact-digest", required=True)
     candidate_enable.add_argument("--operation-id", required=True)
-    candidate_enable.add_argument("--expected-inventory-revision", type=int, required=True)
+    candidate_enable.add_argument(
+        "--expected-inventory-revision", type=int, required=True
+    )
     for action, help_text in (
         ("candidate-disable", "disable one exact installed Worker candidate"),
         ("candidate-remove", "remove one Worker candidate from Desired State"),
@@ -259,7 +271,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             try:
                 product = application.runtime_owner.product_owner
                 if not isinstance(product, PosixLocalWheelProductSessionOwner):
-                    raise ValueError("Coding Worker native Product owner is unsupported")
+                    raise ValueError(
+                        "Coding Worker native Product owner is unsupported"
+                    )
                 result = _execute(product, args)
             finally:
                 application.close()
@@ -351,6 +365,7 @@ def _execute(
 ) -> dict[str, object]:
     if args.action in {
         "candidate-install",
+        "candidate-update",
         "candidate-enable",
         "candidate-disable",
         "candidate-remove",
@@ -379,6 +394,85 @@ def _execute(
         selected_revision = (
             None if selected is None else selected.selection.package_revision
         )
+        if args.action == "candidate-update":
+            if (
+                snapshot.inventory_revision != args.expected_inventory_revision
+                or selected is None
+                or selected_revision is None
+                or selected_revision.package_content_digest != args.from_artifact_digest
+                or args.from_artifact_digest == args.artifact_digest
+                or selected.selection.desired_state
+                not in {"installed_enabled", "installed_disabled"}
+            ):
+                raise ValueError("Coding Worker candidate update selection changed")
+            current_opt_in = CodingWorkerProductOptInOwner(product).current(
+                args.plugin_id
+            )
+            if current_opt_in is not None and current_opt_in.action == "allow":
+                raise ValueError("Coding Worker candidate opt-in must be revoked")
+            session_id = f"worker-candidate-update-{secrets.token_hex(16)}"
+            factory = product.factory_for_session(
+                session_id=session_id,
+                cwd=product.workspace,
+                runtime_id=session_id,
+            )
+            try:
+                runtime = factory.create(
+                    PackageProductRuntimeRequestV1(
+                        product_id="coding",
+                        session_id=session_id,
+                        cwd=str(product.workspace),
+                    )
+                )
+            except BaseException:
+                factory.dispose_unbound_runtime()
+                raise
+            try:
+                runtime.activate()
+                routed = runtime.lifecycle.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id=args.operation_id,
+                        action="update",
+                        source=binding.source_identity,
+                        scope="project",
+                    ),
+                    entrypoint="cli",
+                )
+                if (
+                    not routed.handled
+                    or routed.record is None
+                    or routed.record.lifecycle != "installed"
+                ):
+                    raise ValueError("Coding Worker candidate update did not settle")
+                updated_snapshot = product.desired_state.snapshot()
+                updated = tuple(
+                    item
+                    for item in updated_snapshot.installations
+                    if item.installation_key == selected.installation_key
+                )
+                if (
+                    len(updated) != 1
+                    or updated[0].selection.package_revision is None
+                    or updated[0].selection.package_revision.package_source_identity
+                    != binding.source_identity
+                    or updated[0].selection.package_revision.package_content_digest
+                    != binding.artifact_digest
+                ):
+                    raise ValueError("Coding Worker candidate update selection changed")
+                return {
+                    "candidateUpdate": {
+                        "pluginId": args.plugin_id,
+                        "fromArtifactDigest": args.from_artifact_digest,
+                        "artifactDigest": args.artifact_digest,
+                        "lifecycle": routed.record.lifecycle,
+                        "inventoryRevision": updated_snapshot.inventory_revision,
+                    },
+                    "productAdmission": "installed",
+                    "productSelection": "not_checked",
+                    "productUse": "not_checked",
+                }
+            finally:
+                runtime.dispose_runtime()
         if selected_revision is not None and (
             selected_revision.package_source_identity != binding.source_identity
             or selected_revision.package_content_digest != binding.artifact_digest
@@ -448,7 +542,9 @@ def _execute(
                     or committed[0].selection.package_revision.package_content_digest
                     != binding.artifact_digest
                 ):
-                    raise ValueError("Coding Worker candidate install selection changed")
+                    raise ValueError(
+                        "Coding Worker candidate install selection changed"
+                    )
                 return {
                     "candidateInstall": {
                         "pluginId": args.plugin_id,
@@ -486,7 +582,8 @@ def _execute(
                 or prior.result.disposition != "succeeded"
                 or prior.result.transition is None
                 or (
-                    previous := prior.result.transition.previous_state.selection.package_revision
+                    previous
+                    := prior.result.transition.previous_state.selection.package_revision
                 )
                 is None
                 or previous.package_source_identity != binding.source_identity

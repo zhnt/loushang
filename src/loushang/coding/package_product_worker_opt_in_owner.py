@@ -64,20 +64,17 @@ class CodingWorkerProductOptInOwner:
             raise TypeError("Coding Worker requiredness must be boolean")
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
-            bindings = tuple(
+            candidates = tuple(
                 binding
                 for binding in self._product.policy.bindings
                 if binding.plugin_id == plugin_id
                 and binding.source_trust_class == "local-worker-candidate"
                 and binding.worker_admission is not None
             )
-            if len(bindings) != 1:
+            if not candidates:
                 raise CodingWorkerProductOptInError(
                     "coding_worker_opt_in_candidate_unavailable"
                 )
-            binding = bindings[0]
-            admission = binding.worker_admission
-            assert admission is not None
             key = PluginInstallationKeyV1(
                 product_id="coding",
                 installation_scope="workspace",
@@ -87,14 +84,35 @@ class CodingWorkerProductOptInOwner:
             snapshot = self._product.desired_state.snapshot()
             selected = snapshot.installation(key).selection
             revision = selected.package_revision
-            crosswalks = tuple(
-                item
-                for item in self._product.gc_bindings.for_revision(revision)
-                if item.request.product_id == "coding"
-                and item.request.scope_id == key.scope_id
-                and item.request.plugin_id == plugin_id
-                and item.desired_transition_revision <= snapshot.inventory_revision
-            ) if revision is not None else ()
+            if selected.desired_state != "installed_enabled" or revision is None:
+                raise CodingWorkerProductOptInError(
+                    "coding_worker_opt_in_selection_unavailable"
+                )
+            bindings = tuple(
+                binding
+                for binding in candidates
+                if binding.source_identity == revision.package_source_identity
+                and binding.artifact_digest == revision.package_content_digest
+            )
+            if len(bindings) != 1:
+                raise CodingWorkerProductOptInError(
+                    "coding_worker_opt_in_candidate_unavailable"
+                )
+            binding = bindings[0]
+            admission = binding.worker_admission
+            assert admission is not None
+            crosswalks = (
+                tuple(
+                    item
+                    for item in self._product.gc_bindings.for_revision(revision)
+                    if item.request.product_id == "coding"
+                    and item.request.scope_id == key.scope_id
+                    and item.request.plugin_id == plugin_id
+                    and item.desired_transition_revision <= snapshot.inventory_revision
+                )
+                if revision is not None
+                else ()
+            )
             if (
                 selected.desired_state != "installed_enabled"
                 or revision is None

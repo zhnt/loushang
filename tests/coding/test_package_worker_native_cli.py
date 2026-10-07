@@ -177,16 +177,28 @@ def test_worker_candidate_status_refuses_unfenced_workspace_without_writes(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir(mode=0o700)
-    before = tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
-    assert worker_native_main(
-        ["--workspace", str(workspace), "candidate-status", "--plugin-id", "example"]
-    ) == 1
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
+    assert (
+        worker_native_main(
+            [
+                "--workspace",
+                str(workspace),
+                "candidate-status",
+                "--plugin-id",
+                "example",
+            ]
+        )
+        == 1
+    )
     output = capsys.readouterr()
     assert output.out == ""
     assert "Coding Worker native command refused:" in output.err
-    assert tuple(
-        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
-    ) == before
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux Product payload custody")
@@ -630,7 +642,9 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert admission_output["productUse"] == "not_checked"
     candidate_binding = admission_output["workerCandidateBinding"]
     assert isinstance(candidate_binding, dict)
-    assert candidate_binding["artifactDigest"] == sha256(source.read_bytes()).hexdigest()
+    assert (
+        candidate_binding["artifactDigest"] == sha256(source.read_bytes()).hexdigest()
+    )
     assert candidate_binding["pluginId"] == "reviewworker"
     refused, _ = run(
         "candidate-capture",
@@ -708,9 +722,10 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "candidate-status", "--plugin-id", "reviewworker"
     )
     assert candidate_status.returncode == 0, candidate_status.stderr
-    assert tuple(
-        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
-    ) == before_candidate_status
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before_candidate_status
+    )
     assert candidate_output["candidateOptInDecision"] is None
     assert candidate_output["candidateStatusVersion"] == 2
     assert candidate_output["snapshotStatus"] == "partial_evidence"
@@ -952,6 +967,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         worker_candidates=True,
     )
     try:
+
         async def fail_graph(_session: AgentProductSession) -> None:
             raise RuntimeError("injected query graph failure")
 
@@ -1035,15 +1051,121 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert status_output["candidateOptInAlignment"] == "identity_match_in_read"
     assert status_output["productUse"] == "not_checked"
     assert worker_opt_in_journal.read_bytes() == journal_before_status
-    assert tuple(
-        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
-    ) == before_candidate_status
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before_candidate_status
+    )
+    update_source = tmp_path / "reviewworker-2-py3-none-manylinux_2_17_x86_64.whl"
+    update_source.write_bytes(
+        build_coding_local_worker_candidate_wheel(
+            plugin_id="reviewworker",
+            version="2",
+            contribution_id="query-provider",
+            owner_id="coding",
+            native_platform="linux-x86_64",
+            wheel_tag="py3-none-manylinux_2_17_x86_64",
+            executable=executable.read_bytes(),
+        )
+    )
+    captured_update, update_capture_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(update_source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert captured_update.returncode == 0, captured_update.stderr
+    update_binding = update_capture_output["workerCandidateBinding"]
+    assert isinstance(update_binding, dict)
+    update_digest = update_binding["artifactDigest"]
+    assert isinstance(update_digest, str)
+    update_args = (
+        "candidate-update",
+        "--plugin-id",
+        "reviewworker",
+        "--from-artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-update",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    update_while_allowed, _ = run(*update_args)
+    assert update_while_allowed.returncode == 1
+    revoked_for_update, revoked_for_update_output = run(
+        "candidate-revoke",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-revoke-for-update",
+        "--expected-generation",
+        "1",
+    )
+    assert revoked_for_update.returncode == 0, revoked_for_update.stderr
+    assert revoked_for_update_output["candidateOptInDecision"]["action"] == "revoke"
+    stale_update, _ = run(*update_args[:-1], "0")
+    assert stale_update.returncode == 1
+    updated, updated_output = run(*update_args)
+    assert updated.returncode == 0, updated.stderr
+    candidate_update = updated_output["candidateUpdate"]
+    assert isinstance(candidate_update, dict)
+    assert candidate_update["fromArtifactDigest"] == candidate_binding["artifactDigest"]
+    assert candidate_update["artifactDigest"] == update_digest
+    assert candidate_update["lifecycle"] == "installed"
+    enabled_inventory_revision = candidate_update["inventoryRevision"]
+    assert isinstance(enabled_inventory_revision, int)
+    update_replay, _ = run(*update_args)
+    assert update_replay.returncode == 1
+    after_update_without_allow, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_update_without_allow.returncode == 1
+    selected_update, selected_update_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert selected_update.returncode == 0, selected_update.stderr
+    assert selected_update_output["candidateSelection"]["pluginVersion"] == "2"
+    allowed_update, allowed_update_output = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-allow-update",
+        "--expected-generation",
+        "2",
+    )
+    assert allowed_update.returncode == 0, allowed_update.stderr
+    decision = allowed_update_output["candidateOptInDecision"]
+    assert decision["generation"] == 3
+    updated_query, updated_query_output = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert updated_query.returncode == 0, updated_query.stderr
+    assert updated_query_output == query_output
     remove_while_allowed, _ = run(
         "candidate-remove",
         "--plugin-id",
         "reviewworker",
         "--artifact-digest",
-        str(candidate_binding["artifactDigest"]),
+        update_digest,
         "--operation-id",
         "candidate-cli-remove-too-early",
         "--expected-inventory-revision",
@@ -1055,7 +1177,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "--plugin-id",
         "reviewworker",
         "--artifact-digest",
-        str(candidate_binding["artifactDigest"]),
+        update_digest,
         "--operation-id",
         "candidate-cli-disable",
         "--expected-inventory-revision",
@@ -1073,9 +1195,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "candidate-status", "--plugin-id", "reviewworker"
     )
     assert disabled_status.returncode == 0, disabled_status.stderr
-    assert disabled_status_output["candidateSelection"] == {
-        "stage": "not_selected"
-    }
+    assert disabled_status_output["candidateSelection"] == {"stage": "not_selected"}
     assert disabled_status_output["candidateOptInAlignment"] == "not_selected"
     assert disabled_status_output["candidateOptInDecision"] == decision
     assert disabled_status_output["productUse"] == "not_checked"
@@ -1096,15 +1216,18 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "--operation-id",
         "candidate-cli-revoke",
         "--expected-generation",
-        "1",
+        "3",
     )
     assert revoked_candidate.returncode == 0, revoked_candidate.stderr
     revoked_decision = revoked_candidate_output["candidateOptInDecision"]
-    assert revoked_candidate_output["ordinarySessionRouting"] == "python_sdk_explicit_linux"
+    assert (
+        revoked_candidate_output["ordinarySessionRouting"]
+        == "python_sdk_explicit_linux"
+    )
     assert revoked_candidate_output["defaultSessionRouting"] == "closed"
     assert isinstance(revoked_decision, dict)
     assert revoked_decision["action"] == "revoke"
-    assert revoked_decision["killSwitchGeneration"] == 1
+    assert revoked_decision["killSwitchGeneration"] == 2
     after_revoke, _ = run(
         "query",
         "--plugin-id",
@@ -1121,7 +1244,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "--plugin-id",
         "reviewworker",
         "--artifact-digest",
-        str(candidate_binding["artifactDigest"]),
+        update_digest,
         "--operation-id",
         "candidate-cli-remove",
         "--expected-inventory-revision",
@@ -1156,7 +1279,7 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
         "--plugin-id",
         "reviewworker",
         "--artifact-digest",
-        str(candidate_binding["artifactDigest"]),
+        update_digest,
         "--operation-id",
         "candidate-cli-remove",
         "--expected-inventory-revision",

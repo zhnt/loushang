@@ -68,20 +68,17 @@ class CodingWindowsWorkerProductOptInOwner:
             raise TypeError("Coding Worker requiredness must be boolean")
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
-            bindings = tuple(
+            candidates = tuple(
                 binding
                 for binding in self._product.policy.bindings
                 if binding.plugin_id == plugin_id
                 and binding.source_trust_class == "local-worker-candidate"
                 and binding.worker_admission is not None
             )
-            if len(bindings) != 1:
+            if not candidates:
                 raise CodingWorkerProductOptInError(
                     "coding_worker_opt_in_candidate_unavailable"
                 )
-            binding = bindings[0]
-            admission = binding.worker_admission
-            assert admission is not None
             key = PluginInstallationKeyV1(
                 product_id="coding",
                 installation_scope="workspace",
@@ -91,6 +88,23 @@ class CodingWindowsWorkerProductOptInOwner:
             snapshot = self._product.desired_state.snapshot()
             selected = snapshot.installation(key).selection
             revision = selected.package_revision
+            if selected.desired_state != "installed_enabled" or revision is None:
+                raise CodingWorkerProductOptInError(
+                    "coding_worker_opt_in_selection_unavailable"
+                )
+            bindings = tuple(
+                binding
+                for binding in candidates
+                if binding.source_identity == revision.package_source_identity
+                and binding.artifact_digest == revision.package_content_digest
+            )
+            if len(bindings) != 1:
+                raise CodingWorkerProductOptInError(
+                    "coding_worker_opt_in_candidate_unavailable"
+                )
+            binding = bindings[0]
+            admission = binding.worker_admission
+            assert admission is not None
             crosswalks = (
                 tuple(
                     item

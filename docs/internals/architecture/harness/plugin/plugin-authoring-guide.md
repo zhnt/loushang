@@ -334,6 +334,33 @@ Per-install opt-in and an approved native release are still separate Product
 decisions before a query or Python SDK Session can use the Worker. A successful
 build or capture alone does not make the Worker usable.
 
+For an installed Linux candidate, capture the new Wheel under its new versioned
+filename, revoke the current per-install opt-in, then update the exact old
+selection. Use the new digest from `candidate-capture` and the current inventory
+revision from the Product operation:
+
+```text
+loushang-worker-native --workspace PATH candidate-revoke \
+  --plugin-id reviewworker --operation-id revoke-before-update \
+  --expected-generation GENERATION
+loushang-worker-native --workspace PATH candidate-update \
+  --plugin-id reviewworker --from-artifact-digest OLD_DIGEST \
+  --artifact-digest NEW_DIGEST --operation-id update-reviewworker-2 \
+  --expected-inventory-revision REVISION
+loushang-worker-native --workspace PATH candidate-allow \
+  --plugin-id reviewworker --operation-id allow-reviewworker-2 \
+  --expected-generation NEXT_GENERATION
+```
+
+The update refuses an allowed opt-in, a changed old selection, or a stale
+inventory revision. It uses the Product lifecycle update transaction and reports
+`productUse: not_checked`; the new revision needs a fresh allow decision and an
+actual Session query for use evidence. A repeated update after the selected
+revision changes is refused; inspect `candidate-status` and the selected
+inventory before retrying with a new operation. Old Session receipts are fenced
+by the changed selected revision. The former Wheel remains subject to separate
+retirement and Package GC checks.
+
 To stop and remove a selected candidate, revoke its per-install opt-in, then
 disable and remove the exact installed revision using the latest inventory
 revision for each Desired State operation:
