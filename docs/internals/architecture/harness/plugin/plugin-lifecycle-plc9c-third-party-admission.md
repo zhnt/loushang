@@ -1679,6 +1679,14 @@ so the existing rollback and stale-repair flow remains available, and
 the Product passes its store identity when constructing this writer. This is
 one of five required writer joins and does not make V2 cutover authoritative.
 
+The Linux Product receipt issuer now joins the same anchored checkpoint before
+issuing or replaying a receipt. It requires the checkpoint's receipt bytes to
+remain an exact prefix, derives the next global issue sequence above both the
+retained records and checkpoint waterline, and refuses a candidate fingerprint
+already recorded by any checkpoint. A strictly recognized uncommitted
+checkpoint tail still supplies only its committed prefix. This is the second
+writer join; the receipt reader still requires complete version-1 history.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

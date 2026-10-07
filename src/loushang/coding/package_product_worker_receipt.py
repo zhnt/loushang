@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -72,6 +72,9 @@ from .package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
 from .package_product_worker_installed_native import (
     CodingProductInstalledWorkerReleaseReader,
     CodingWorkerNativeLaunchMaterialV1,
@@ -86,6 +89,11 @@ from .package_product_worker_policy import (
     derive_coding_selected_worker_policy,
 )
 from .session_manager import SessionManager
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 _MAX_RECEIPTS = 4096
@@ -317,6 +325,10 @@ class CodingWorkerProductReceiptOwner:
                     scope_id=self._product.policy.project_scope_id,
                     load_policy=self._load_policy,
                 )
+                checkpoints = self._checkpoint_writer_fence(rooted)
+                checkpoint_revision = self._assert_checkpoint_source(
+                    checkpoints, history
+                )
                 latest = self._latest(records, policy)
                 if (
                     latest is not None
@@ -324,13 +336,20 @@ class CodingWorkerProductReceiptOwner:
                     and latest.receipt.policy.fingerprint == policy.fingerprint
                 ):
                     return latest.receipt
+                last_revision = (
+                    0 if not records else records[-1].journal_revision
+                )
+                next_revision = max(last_revision, checkpoint_revision) + 1
                 receipt = ProductWorkerActivationReceiptV1(
                     policy=policy,
-                    issue_sequence=len(records) + 1,
+                    issue_sequence=next_revision,
                     issue_nonce=secrets.token_hex(16),
                 )
+                self._assert_checkpoint_fingerprint_fresh(
+                    checkpoints, receipt.fingerprint
+                )
                 record = CodingWorkerReceiptRecordV1.create(
-                    journal_revision=len(records) + 1,
+                    journal_revision=next_revision,
                     scope_id=self._product.policy.project_scope_id,
                     opt_in_decision_digest=decision.decision_digest,
                     receipt=receipt,
@@ -339,7 +358,7 @@ class CodingWorkerProductReceiptOwner:
                 if len(record_bytes) > _MAX_RECEIPT_SEGMENT_BYTES:
                     raise CodingWorkerReceiptError("coding_worker_receipt_capacity")
                 if (
-                    len(records) - history.last_sealed_revision >= _MAX_RECEIPTS
+                    last_revision - history.last_sealed_revision >= _MAX_RECEIPTS
                     or len(history.active_raw) + len(record_bytes)
                     > _MAX_RECEIPT_SEGMENT_BYTES
                 ):
@@ -349,7 +368,7 @@ class CodingWorkerProductReceiptOwner:
                             stem="worker-activation-receipts",
                             stream_id="worker-activation-receipts",
                             history=history,
-                            last_revision=len(records),
+                            last_revision=last_revision,
                         )
                     except CodingWorkerHistorySegmentError as exc:
                         raise CodingWorkerReceiptError(exc.code) from exc
@@ -387,6 +406,58 @@ class CodingWorkerProductReceiptOwner:
                     appended_line=record_bytes,
                 )
                 return receipt
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerReceiptError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> int:
+        if not checkpoints:
+            return 0
+        prior = checkpoints[-1].stream_snapshots[1]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem="worker-activation-receipts",
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerReceiptError("coding_worker_receipt_checkpoint_source_changed")
+        return prior.total_revision
+
+    @staticmethod
+    def _assert_checkpoint_fingerprint_fresh(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        fingerprint: str,
+    ) -> None:
+        if any(
+            fingerprint in item.new_receipt_fingerprints for item in checkpoints
+        ):
+            raise CodingWorkerReceiptError("coding_worker_receipt_fingerprint_retired")
 
     @contextmanager
     def serialized_admission(self) -> Iterator[None]:
