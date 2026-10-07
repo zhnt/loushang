@@ -41,6 +41,7 @@ from .package_product_worker_activation_state_journal import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
@@ -49,10 +50,14 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 
 if TYPE_CHECKING:
     from .package_product_worker_history_checkpoint import (
         CodingWorkerHistoryCheckpointV1,
+    )
+    from .package_product_worker_start_gate_base_v2 import (
+        CodingWorkerStartGateReplayV2,
     )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
@@ -311,7 +316,11 @@ class CodingWorkerStartGateJournal:
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             with self._bound_journal(create_lock=False) as rooted:
-                records = self._load(rooted)
+                if self._v2_owner_exists(rooted):
+                    _history, replay = self._load_v2_state(rooted)
+                    records = replay.current_records
+                else:
+                    records = self._load(rooted)
                 return next(
                     (
                         record
@@ -327,9 +336,16 @@ class CodingWorkerStartGateJournal:
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             with self._bound_journal(create_lock=False) as rooted:
-                latest: dict[str, CodingWorkerStartGateRecordV1] = {}
-                for record in self._load(rooted):
-                    latest[record.attempt_id] = record
+                latest: dict[str, CodingWorkerStartGateRecordV1]
+                if self._v2_owner_exists(rooted):
+                    _history, replay = self._load_v2_state(rooted)
+                    latest = {
+                        record.attempt_id: record for record in replay.current_records
+                    }
+                else:
+                    latest = {}
+                    for record in self._load(rooted):
+                        latest[record.attempt_id] = record
                 self._product.assert_root_gc_authority_current()
                 return tuple(
                     sorted(latest.values(), key=lambda record: record.journal_revision)
@@ -355,11 +371,30 @@ class CodingWorkerStartGateJournal:
         with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with self._bound_journal() as rooted:
-                records, history = self._load_history(rooted)
                 checkpoints = self._checkpoint_writer_fence(rooted)
-                checkpoint_revision = self._assert_checkpoint_source(
-                    checkpoints, history
-                )
+                if self._v2_owner_exists(rooted):
+                    history, replay = self._load_v2_state(rooted)
+                    records = replay.current_records
+                    last_revision = replay.last_revision
+                    checkpoint_revision = (
+                        0
+                        if not checkpoints
+                        else checkpoints[-1].stream_snapshots[3].total_revision
+                    )
+                    if checkpoint_revision > last_revision:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_checkpoint_source_changed"
+                        )
+                    if attempt_id in replay.retired_attempt_ids:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_attempt_retired"
+                        )
+                else:
+                    records, history = self._load_history(rooted)
+                    checkpoint_revision = self._assert_checkpoint_source(
+                        checkpoints, history
+                    )
+                    last_revision = 0 if not records else records[-1].journal_revision
                 self._assert_checkpoint_attempt_available(checkpoints, attempt_id)
                 previous = next(
                     (
@@ -396,7 +431,6 @@ class CodingWorkerStartGateJournal:
                             "coding_worker_start_gate_activation_history_missing"
                         )
                     activation.load()
-                last_revision = 0 if not records else records[-1].journal_revision
                 next_revision = max(last_revision, checkpoint_revision) + 1
                 record = CodingWorkerStartGateRecordV1.create(
                     journal_revision=next_revision,
@@ -542,7 +576,16 @@ class CodingWorkerStartGateJournal:
             io = RootedFileIO(self._path.parent, root_fd)
             try:
                 with io.bind(self._path, durable=True) as rooted:
-                    if create_lock:
+                    if self._v2_owner_exists(rooted):
+                        try:
+                            rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                exclusive=create_lock, suffix="", create=False
+                            )
+                        except FileNotFoundError as exc:
+                            raise CodingWorkerStartGateJournalError(
+                                "coding_worker_start_gate_lock_missing"
+                            ) from exc
+                    elif create_lock:
                         created = rooted.acquire_lock(
                             exclusive=True,
                             suffix=".lock",
@@ -589,6 +632,75 @@ class CodingWorkerStartGateJournal:
     def _load(self, rooted: RootedFile) -> tuple[CodingWorkerStartGateRecordV1, ...]:
         records, _history = self._load_history(rooted)
         return records
+
+    @staticmethod
+    def _v2_owner_exists(rooted: RootedFile) -> bool:
+        try:
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _load_v2_state(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerSegmentedHistoryV1, CodingWorkerStartGateReplayV2]:
+        """Read a committed base and retained physical Start Gate generations."""
+
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+        from .package_product_worker_start_gate_base_v2 import (
+            CodingWorkerStartGateReplayV2,
+        )
+
+        stem = "worker-start-gates"
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if (
+                owner.scope_id != self._product.policy.project_scope_id
+                or owner.store_id != self._product.epoch_runtime.registry.store_id
+            ):
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_owner_changed"
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=stem)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerStartGateReplayV2) or any(
+                record.scope_id != owner.scope_id for record in replay.current_records
+            ):
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_owner_changed"
+                )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                rooted.sibling(stem + ".segments.json").read_bytes(
+                    max_bytes=1024 * 1024
+                ),
+                stream_id=stem,
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_manifest_changed"
+                )
+            return (
+                CodingWorkerSegmentedHistoryV1(
+                    manifest=manifest,
+                    segments=(b"",) * retained.first_retained_generation
+                    + retained.segments,
+                ),
+                replay,
+            )
+        except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+            raise CodingWorkerStartGateJournalError(exc.code) from exc
+        except (OSError, ValueError) as exc:
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_v2_corrupt"
+            ) from exc
 
     def _load_history(
         self, rooted: RootedFile
