@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -251,6 +251,40 @@ _CODEC = FunctionalJournalRecordCodec(
     encoder=CodingWorkerStartGateRecordV1.to_dict,
     decoder=_decode,
 )
+
+
+def _fold_start_gate_records(
+    records: tuple[CodingWorkerStartGateRecordV1, ...],
+    *,
+    initial_latest: Mapping[str, CodingWorkerStartGateRecordV1] | None = None,
+    retired_attempt_ids: frozenset[str] = frozenset(),
+    scope_id: str | None = None,
+) -> dict[str, CodingWorkerStartGateRecordV1]:
+    """Validate intent/bound continuity across V1 or a typed V2 boundary."""
+
+    latest = {} if initial_latest is None else dict(initial_latest)
+    for record in records:
+        if record.attempt_id in retired_attempt_ids or (
+            scope_id is not None and record.scope_id != scope_id
+        ):
+            raise ValueError("Worker gate retired attempt or scope changed")
+        previous = latest.get(record.attempt_id)
+        if record.phase == "intent":
+            if previous is not None:
+                raise ValueError("Worker gate attempt repeated")
+        elif (
+            previous is None
+            or previous.phase != "intent"
+            or previous.receipt_fingerprint != record.receipt_fingerprint
+            or previous.worker_identity_fingerprint
+            != record.worker_identity_fingerprint
+            or previous.policy_fingerprint != record.policy_fingerprint
+            or previous.scope_id != record.scope_id
+            or previous.native_closure_digest != record.native_closure_digest
+        ):
+            raise ValueError("Worker gate binding changed")
+        latest[record.attempt_id] = record
+    return latest
 
 
 class CodingWorkerStartGateJournal:
@@ -604,24 +638,7 @@ class CodingWorkerStartGateJournal:
                 ):
                     raise ValueError("Worker gate sealed revision changed")
             records = tuple(all_records)
-            latest: dict[str, CodingWorkerStartGateRecordV1] = {}
-            for record in records:
-                previous = latest.get(record.attempt_id)
-                if record.phase == "intent":
-                    if previous is not None:
-                        raise ValueError("Worker gate attempt repeated")
-                elif (
-                    previous is None
-                    or previous.phase != "intent"
-                    or previous.receipt_fingerprint != record.receipt_fingerprint
-                    or previous.worker_identity_fingerprint
-                    != record.worker_identity_fingerprint
-                    or previous.policy_fingerprint != record.policy_fingerprint
-                    or previous.scope_id != record.scope_id
-                    or previous.native_closure_digest != record.native_closure_digest
-                ):
-                    raise ValueError("Worker gate binding changed")
-                latest[record.attempt_id] = record
+            _fold_start_gate_records(records)
             return records, history
         except (JournalCodecError, UnicodeError, ValueError) as exc:
             raise CodingWorkerStartGateJournalError(

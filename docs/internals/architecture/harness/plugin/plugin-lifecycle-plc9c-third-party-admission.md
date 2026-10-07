@@ -1739,6 +1739,16 @@ key. The C5 cutover factory reprojects the sealed V1 prefix before binding the
 base digest to the checkpoint. This still has no base file, V2 reader,
 publication, or deletion authority.
 
+The fourth typed semantic-base slice covers Start Gates. It retains the latest
+intent or bound record for each attempt outside the anchored checkpoint
+chain's retired-ID set, plus the global revision and that exact tombstone set.
+Retained records must continue the intent-to-bound transition and cannot reuse
+a retired ID or change a binding. Candidate cutover creation now replays the
+retained bytes for all four typed streams, so a checkpoint cannot retire an
+attempt that still has a later Start Gate record. Product-wide closure must
+still prove that excluded gates have no native or recovery references before
+any base is published or old segment removed.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later
