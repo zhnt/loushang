@@ -3387,6 +3387,18 @@ on that head. The later Product-selection preflight change and documentation
 updates require a new exact-head CI run before final PR acceptance. Explicit
 Windows candidate gates and general Worker routing remain separately closed.
 
+On 2026-10-07 the real installed Linux Product Worker `installed-protocol`
+case passed on the later branch, with an independently verified 1/1 non-skipped
+JUnit report at `/tmp/plc9-v2-product-664.xml`. It published a five-stream
+checkpoint, staged and committed the V2 Product owner, retired the owner-named
+sealed segments through durable deletion debt, reopened retained history,
+prepared Package GC, then created a fresh ordinary Coding Session that queried
+the selected Worker after cutover and prepared GC again. The source already
+contains this bounded commit/retire path, so an older status line saying that
+Product cannot publish or prune V2 history is no longer current. The test does
+not prove Windows V2, restore across retired bytes, every publication crash
+boundary, or general Worker routing.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate

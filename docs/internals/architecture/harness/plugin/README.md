@@ -22,16 +22,17 @@
   Coding offline package regression passed. The
   [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
   exact-head evidence and limits.
-- Worker history V2 is still a staged candidate. Product can durably prepare
-  five typed stream bases and verify a retained physical history with exact
-  deletion debt. All five Worker journals can read and append through their
-  typed bases when a valid Product V2 owner index already exists, including
-  after retired segments are absent. Receipt full-history reads and activation
-  GC inventory still refuse under V2. Product does not yet publish the owner
-  index or execute history pruning; Product-wide recovery and retention need
-  their V2 joins before cutover. A precommit physical proof now runs the same
-  five-stream reader against staged bytes before an owner file exists and
-  refuses changed heads or premature deletion debt.
+- Linux Worker history V2 has a bounded Product cutover path. Under Product
+  runtime quiescence and the GC write gate, it prepares five typed stream
+  bases, publishes one exact owner index after physical and reference proof,
+  and retires only the sealed source segments named by durable deletion debt.
+  All five journals read and append through the typed bases after cutover;
+  receipt full-history reads still refuse because retired records cannot be
+  reconstructed. A real installed Product Worker case passed owner commit,
+  physical retirement, a fresh Session query, and Package GC preparation after
+  retirement. This is candidate evidence for that Linux path. Windows V2,
+  backup/restore and wider crash-boundary evidence, general third-party Worker
+  routing, and default activation retain their separate gates.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
