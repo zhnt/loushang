@@ -4626,7 +4626,11 @@ finally:
                             worker_product
                         ).inspect_records()
                         assert history
-                        assert history[-1].phase == "stopped"
+                        assert history[-1].phase == (
+                            "process_settled"
+                            if disable_while_ordinary_session_open
+                            else "stopped"
+                        )
                         attempt_id = history[-1].attempt_id
                         provisioning = (
                             inspect_coding_windows_product_worker_provisioning_attempts(
@@ -4643,7 +4647,10 @@ finally:
                         )
                         assert orphan_review.native_job_absent is True
                         assert orphan_review.attempt is not None
-                        assert orphan_review.attempt.clean_exit_settled
+                        if disable_while_ordinary_session_open:
+                            assert orphan_review.attempt.fenced_exit_settled
+                        else:
+                            assert orphan_review.attempt.clean_exit_settled
                         [activation] = (
                             item
                             for item in CodingWindowsWorkerActivationStateJournal(
