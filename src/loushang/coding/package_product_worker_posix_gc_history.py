@@ -9,8 +9,10 @@ from __future__ import annotations
 import os
 import sys
 from hashlib import sha256
+from pathlib import Path
 from typing import cast
 
+from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -27,13 +29,20 @@ from .package_product_worker_activation_state_journal import (
 from .package_product_worker_history_checkpoint import (
     read_coding_product_worker_history_checkpoints_under_gc_guard,
 )
+from .package_product_worker_history_read_v2 import (
+    read_coding_worker_v2_retained_history,
+)
 from .package_product_worker_history_retention import (
     _PAYLOAD_REPAIR,
     _known_worker_state_name,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CODING_WORKER_HISTORY_STREAM_STEMS,
+)
 from .package_product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
     PREPARATION_STATE_NAMES,
+    PRODUCT_OWNER_INDEX_NAME,
 )
 from .package_product_worker_opt_in import CodingWorkerOptInJournal
 from .package_product_worker_payload import (
@@ -57,6 +66,20 @@ _HISTORY_STEMS = (
     "worker-supervisor",
     "worker-history-checkpoints",
 )
+
+
+def _require_committed_v2_history(*, state_root: Path, root_fd: int) -> None:
+    """Prove the committed Product owner and all five retained streams."""
+
+    file_io = RootedFileIO(state_root, root_fd)
+    try:
+        with file_io.bind(
+            state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+        ) as rooted:
+            for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
+                read_coding_worker_v2_retained_history(rooted, stem=stem)
+    finally:
+        file_io.cleanup()
 
 
 class CodingPosixWorkerGcHistoryAuthority:
@@ -89,9 +112,11 @@ class CodingPosixWorkerGcHistoryAuthority:
                 raise ValueError("Linux Worker GC inventory changed")
             for name in observed_names:
                 lowered = name.casefold()
-                if lowered.startswith(
-                    ("worker-", ".worker-")
-                ) and not _known_worker_state_name(name):
+                if (
+                    lowered.startswith(("worker-", ".worker-"))
+                    and name != PRODUCT_OWNER_INDEX_NAME
+                    and not _known_worker_state_name(name)
+                ):
                     raise ValueError("Linux Worker GC reference owner is unrecognized")
                 if any(
                     lowered.startswith(stem) or lowered.startswith("." + stem)
@@ -102,7 +127,11 @@ class CodingPosixWorkerGcHistoryAuthority:
                 ):
                     raise ValueError("Linux Worker GC history name is invalid")
 
-            if any(
+            if PRODUCT_OWNER_INDEX_NAME in observed_names:
+                _require_committed_v2_history(
+                    state_root=product.state_root, root_fd=root_fd
+                )
+            elif any(
                 name in (*PREPARATION_STATE_NAMES, DELETION_LEDGER_NAME)
                 for name in observed_names
             ):
