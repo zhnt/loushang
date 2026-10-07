@@ -152,6 +152,7 @@ class CodingWindowsProductWorkerPendingHost:
         coordinator: ProductWorkerActivationCoordinator | None = None
         cleanup_evidence: CodingWindowsWorkerCleanupEvidenceAuthority | None = None
         profile = None
+        supervisor: WorkerSupervisor | None = None
         effect_started = False
 
         async def release() -> None:
@@ -270,7 +271,19 @@ class CodingWindowsProductWorkerPendingHost:
                 platform_imports=WINDOWS_LPAC_PLATFORM_IMPORTS,
                 provisioning_state_store=native_store,
             )
-            stack.push_async_callback(profile.close)
+
+            async def close_unowned_profile() -> None:
+                # Once Supervisor starts a process, Hosting owns preparation
+                # release and invokes it only after the process tree settles.
+                # Do not bypass that ordering when a failed close leaves a
+                # fenced attempt and its native cleanup debt behind.
+                if supervisor is None or supervisor.status.state in {
+                    "created",
+                    "stopped",
+                }:
+                    await profile.close()
+
+            stack.push_async_callback(close_unowned_profile)
             cleanup_evidence = CodingWindowsWorkerCleanupEvidenceAuthority(
                 receipt_owner=self.receipt_owner,
                 receipt=self.receipt,

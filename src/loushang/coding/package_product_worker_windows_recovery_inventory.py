@@ -398,6 +398,42 @@ def require_coding_windows_worker_terminal_cleanup_attempt(
 ) -> str:
     """Return the exact Job name only after this attempt's process settled."""
 
+    job_name = require_coding_windows_worker_native_release_attempt(
+        inventory,
+        attempt_id=attempt_id,
+        payload_directory_identity=payload_directory_identity,
+        request_fingerprint=request_fingerprint,
+        receipt_fingerprint=receipt_fingerprint,
+        identity_fingerprint=identity_fingerprint,
+    )
+    attempt = inventory[0]
+    if (
+        attempt.supervisor_phase not in {"stopped", "process_settled"}
+        or attempt.supervisor_process_settled is not True
+    ):
+        raise CodingWindowsWorkerRecoveryAdmissionError(
+            "coding_worker_payload_recovery_required"
+        )
+    return job_name
+
+
+def require_coding_windows_worker_native_release_attempt(
+    inventory: tuple[CodingWindowsWorkerRecoveryAttemptV1, ...],
+    *,
+    attempt_id: str,
+    payload_directory_identity: tuple[int, int],
+    request_fingerprint: str,
+    receipt_fingerprint: str,
+    identity_fingerprint: str,
+) -> str:
+    """Identify an exact retained attempt in a terminal Supervisor phase.
+
+    Hosting reaps the process tree before it closes native preparation. The
+    Supervisor records process settlement only after that close completes, so
+    native release must be allowed to finish while its terminal phase is fenced.
+    This check does not certify physical settlement, C5 cleanup, or Package GC.
+    """
+
     if (
         type(inventory) is not tuple
         or type(attempt_id) is not str
@@ -436,8 +472,8 @@ def require_coding_windows_worker_terminal_cleanup_attempt(
         or attempt.native_receipt_fingerprint != receipt_fingerprint
         or type(attempt.native_job_name) is not str
         or not attempt.native_job_name
-        or attempt.supervisor_phase not in {"stopped", "process_settled"}
-        or attempt.supervisor_process_settled is not True
+        or attempt.supervisor_phase
+        not in {"stopped", "failed", "fenced", "process_settled"}
         or attempt.supervisor_identity_fingerprint != identity_fingerprint
     ):
         raise CodingWindowsWorkerRecoveryAdmissionError(
