@@ -1687,6 +1687,13 @@ already recorded by any checkpoint. A strictly recognized uncommitted
 checkpoint tail still supplies only its committed prefix. This is the second
 writer join; the receipt reader still requires complete version-1 history.
 
+The Linux Product start-gate appender is the third writer join. It verifies
+the checkpoint's exact start-gate byte prefix before an intent or bound record,
+refuses any attempt ID already retired by an anchored checkpoint, and derives
+the next global journal revision above both retained records and the checkpoint
+waterline. The existing V1 replay and Product admission checks remain in
+effect; the gate reader still requires complete version-1 history.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

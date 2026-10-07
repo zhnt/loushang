@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -46,6 +46,14 @@ from .package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -314,6 +322,11 @@ class CodingWorkerStartGateJournal:
             self._product.assert_root_gc_authority_current()
             with self._bound_journal() as rooted:
                 records, history = self._load_history(rooted)
+                checkpoints = self._checkpoint_writer_fence(rooted)
+                checkpoint_revision = self._assert_checkpoint_source(
+                    checkpoints, history
+                )
+                self._assert_checkpoint_attempt_available(checkpoints, attempt_id)
                 previous = next(
                     (
                         record
@@ -349,8 +362,10 @@ class CodingWorkerStartGateJournal:
                             "coding_worker_start_gate_activation_history_missing"
                         )
                     activation.load()
+                last_revision = 0 if not records else records[-1].journal_revision
+                next_revision = max(last_revision, checkpoint_revision) + 1
                 record = CodingWorkerStartGateRecordV1.create(
-                    journal_revision=len(records) + 1,
+                    journal_revision=next_revision,
                     phase=phase,
                     attempt_id=attempt_id,
                     worker_identity_fingerprint=worker_identity_fingerprint,
@@ -360,7 +375,7 @@ class CodingWorkerStartGateJournal:
                     native_closure_digest=native_closure_digest,
                     identity=identity,
                 )
-                active_records = len(records) - history.last_sealed_revision
+                active_records = last_revision - history.last_sealed_revision
                 record_bytes = canonical_json_bytes(record.to_dict()) + b"\n"
                 if len(record_bytes) > _MAX_BYTES:
                     raise CodingWorkerStartGateJournalError(
@@ -376,7 +391,7 @@ class CodingWorkerStartGateJournal:
                             stem="worker-start-gates",
                             stream_id="worker-start-gates",
                             history=history,
-                            last_revision=len(records),
+                            last_revision=last_revision,
                         )
                     except CodingWorkerHistorySegmentError as exc:
                         raise CodingWorkerStartGateJournalError(exc.code) from exc
@@ -412,6 +427,60 @@ class CodingWorkerStartGateJournal:
                     appended_line=record_bytes,
                 )
                 return record
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerStartGateJournalError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> int:
+        if not checkpoints:
+            return 0
+        prior = checkpoints[-1].stream_snapshots[3]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem="worker-start-gates",
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_checkpoint_source_changed"
+            )
+        return prior.total_revision
+
+    @staticmethod
+    def _assert_checkpoint_attempt_available(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        attempt_id: str,
+    ) -> None:
+        if any(attempt_id in item.new_attempt_ids for item in checkpoints):
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_attempt_retired"
+            )
 
     @contextmanager
     def _bound_journal(self, *, create_lock: bool = True) -> Iterator[RootedFile]:
