@@ -1613,6 +1613,58 @@ The anchor does not authorize pruning or make removed journal history
 reconstructible. Source-history retirement, writer-enforced anti-reuse, and
 the Windows equivalent remain separate gates.
 
+### Source-history retirement format candidate
+
+The current segment manifest is version 1: generation zero and revision one
+must be present, and every semantic reader replays all records. Deleting even
+one sealed segment under that format is corruption. A retirement implementation
+therefore needs a new, explicit manifest version and a Product-owned semantic
+base; it must not reinterpret a missing version-1 segment as a retired one.
+
+The version-2 cutover record for each of the five streams must name the exact
+checkpoint anchor revision and digest, the original sealed segment byte counts
+and digests through the cutoff, the first retained generation and global record
+revision, and a typed semantic base at that boundary. The retained segment
+names keep their original generations and record revisions. The reader checks
+the version-2 manifest and Product anchor before projecting the base plus all
+retained bytes. While deletion debt is open, it accepts only old segments
+listed by that debt with their original byte counts and digests. It rejects a
+gap, an unknown old segment, a changed segment, or an anchor that lags the
+cutover. A version-1 reader continues to require the complete original
+history; there is no silent mixed-format mode.
+
+One Product-owned cutover index commits all five prepared stream records
+together against the same anchor. Until that index commits, every stream is
+version 1 authority; after it commits, every stream is version 2 authority.
+
+| Stream | Semantic base required before a prefix can be removed |
+| --- | --- |
+| Opt-in | Last complete decision per Plugin, including any active allow policy, selection and kill-switch generations, and every retired operation ID. |
+| Activation receipts | Last issued sequence and retired receipt fingerprints; every receipt still named by a live or recoverable attempt remains in retained bytes. |
+| C5 activation state | Exact current attempts and CAS revision, plus every retired attempt ID and immutable admission identity needed to refuse reuse. |
+| Start gates | Exact current unbound or bound attempts and global revision; retired attempt IDs remain in the checkpoint index. |
+| Supervisor | Exact current attempt and retry-window state, per-key epoch high water, global revision, and retired attempt IDs. |
+
+The Product writer first proves every proposed retired attempt or receipt has
+no recovery, native process, payload, backup, or GC reference using a fresh
+reopen under runtime quiescence and the GC write gate. It publishes and anchors
+the checkpoint, then durably records a retirement intent with exact source
+segments and the typed base. Only after the version-2 readers and all five
+writers can join that base may it commit the Product cutover index. Physical
+removal of old sealed segments follows through a durable deletion ledger.
+Interruption before cutover leaves version 1 authoritative; after cutover it
+leaves a resumable deletion debt. Package GC must replay the cutover and debt
+before deleting a Package root. Writers must consult checkpoint tombstones and
+high-water marks before accepting a new operation, attempt, receipt, or epoch.
+
+This is the required target protocol, not implemented authority. The first
+code slice proves a read-only retirement preview against complete version-1
+bytes and explicit negative cases. A later slice must define and verify the
+version-2 manifest; subsequent slices must carry the typed bases through every
+reader and writer, then prove the publication/deletion crash matrix on a real
+Product and Windows equivalent
+before any source segment is physically removed in production.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later
