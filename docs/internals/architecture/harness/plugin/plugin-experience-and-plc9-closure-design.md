@@ -3159,6 +3159,18 @@ artifact-digest projection case guards the mismatch result. The real
 cross-process operator journey passed 1/1 through unselected, selected without
 allow, matching allow, and disabled states; the installed public SDK Session
 case passed 1/1 after the read-owner change.
+The Linux operator journey now also uses a public `candidate-update` command:
+it captures a second exact Wheel, refuses an update while the first revision is
+still allowed or the inventory revision is stale, revokes opt-in, commits the
+Product update, refuses use before a new allow, and queries the new version
+after re-allow. The updated cross-process native case passed 1/1 in 301 seconds
+on 2026-10-07. Both Linux and Windows opt-in owners now select the exact
+Product-selected Source binding when historical versions remain in the
+catalog. The same cross-process journey then removes the v2 selection, uses
+the explicit offline Package GC command to delete both v1 and v2 candidates,
+and checks that both physical roots are absent. That extended native case
+passed 1/1 in 315 seconds on 2026-10-07. This does not establish the Windows
+update/GC combination or general third-party self-service.
 The dedicated Windows Worker Session CI job originally required four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. It now requires a fifth native Product-rooted C5

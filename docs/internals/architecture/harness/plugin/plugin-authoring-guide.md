@@ -382,6 +382,21 @@ loushang-worker-native --workspace PATH candidate-remove \
 `candidate-remove` changes Desired State to absent after opt-in revocation.
 It reports `packageRetirement: not_checked`; physical Package GC and any
 pinned Session retirement require separate Product evidence.
+After every pinned Session has been disposed and the Worker attempt history is
+settled, a Linux candidate operator can run the separate offline Package GC
+command and delete each exact candidate returned for this Plugin:
+
+```text
+loushang-package-gc --workspace PATH --worker-candidates prepare
+loushang-package-gc --workspace PATH --worker-candidates list
+loushang-package-gc --workspace PATH --worker-candidates delete \
+  --candidate-id CANDIDATE_ID --attempt-key retire-reviewworker-1
+```
+
+The update-to-remove operator regression deletes both the old and new Wheel
+roots and checks their physical absence. `candidate-remove` itself never claims
+that deletion. An unsettled attempt or retained reference keeps GC closed; the
+operator must use the exact review and repair path for that debt.
 
 On Linux, a Product operator can inspect or change per-install Worker opt-in
 with `loushang-worker-native --workspace PATH candidate-status`,

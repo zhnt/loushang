@@ -50,6 +50,15 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.package_gc_target import (
+    resolve_plugin_package_gc_root_target,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+)
 from loushang.harness.session import AgentProductSession
 from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
 from loushang.plugin._coding_local_worker_wheel import (
@@ -849,6 +858,8 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
             if item.installation_key.plugin_id == "reviewworker"
         )
         assert selection.selection.desired_state == "installed_enabled"
+        old_revision = selection.selection.package_revision
+        assert old_revision is not None
     finally:
         selected_owner.close()
 
@@ -1160,6 +1171,27 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     )
     assert updated_query.returncode == 0, updated_query.stderr
     assert updated_query_output == query_output
+    updated_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        updated_snapshot = (
+            updated_owner.runtime_owner.product_owner.desired_state.snapshot()
+        )
+        (updated_selection,) = tuple(
+            item
+            for item in updated_snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
+        )
+        new_revision = updated_selection.selection.package_revision
+        assert new_revision is not None
+        assert new_revision.package_content_digest == update_digest
+    finally:
+        updated_owner.close()
     remove_while_allowed, _ = run(
         "candidate-remove",
         "--plugin-id",
@@ -1287,6 +1319,79 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     )
     assert removed_replay.returncode == 0, removed_replay.stderr
     assert removed_replay_output == removed_output
+    retired_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        product = retired_owner.runtime_owner.product_owner
+        settlements = PackageStoreSettlementJournal(
+            product.state_root / "root-settlements.jsonl"
+        ).records()
+        committed_sets = PackageCommittedSetJournal(
+            product.state_root / "committed-sets.jsonl"
+        ).records()
+        retired_roots = tuple(
+            product.plugin_store_root
+            / resolve_plugin_package_gc_root_target(
+                revision,
+                bindings=product.gc_bindings.records(),
+                claims=product.gc_bindings.claims(),
+                committed_sets=committed_sets,
+                settlements=settlements,
+            ).settlement.final_name
+            for revision in (old_revision, new_revision)
+        )
+        assert all(root.is_dir() for root in retired_roots)
+    finally:
+        retired_owner.close()
+    gc_command = (
+        sys.executable,
+        "-m",
+        "loushang.coding.cli.package_gc",
+        "--workspace",
+        str(workspace),
+        "--worker-candidates",
+    )
+
+    def run_gc(
+        *args: str,
+    ) -> tuple[subprocess.CompletedProcess[bytes], dict[str, object]]:
+        result = subprocess.run(
+            (*gc_command, *args),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=90,
+            env={**os.environ, "PYTHONPATH": str(_ROOT / "src")},
+            check=False,
+        )
+        return result, json.loads(result.stdout) if result.stdout else {}
+
+    prepared_gc, prepared_gc_output = run_gc("prepare")
+    assert prepared_gc.returncode == 0, prepared_gc.stderr
+    assert prepared_gc_output["disposition"] == "prepared"
+    listed_gc, listed_gc_output = run_gc("list")
+    assert listed_gc.returncode == 0, listed_gc.stderr
+    worker_candidates = tuple(
+        item
+        for item in listed_gc_output["candidates"]
+        if item["pluginId"] == "reviewworker"
+    )
+    assert len(worker_candidates) == 2
+    for index, item in enumerate(worker_candidates, start=1):
+        deleted_gc, deleted_gc_output = run_gc(
+            "delete",
+            "--candidate-id",
+            item["candidateId"],
+            "--attempt-key",
+            f"worker-candidate-cli-gc-{index}",
+        )
+        assert deleted_gc.returncode == 0, deleted_gc.stderr
+        assert deleted_gc_output["disposition"] == "succeeded"
+    assert all(not root.exists() for root in retired_roots)
     after_remove, _ = run(
         "query",
         "--plugin-id",
