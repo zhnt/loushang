@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from loushang.coding import package_product_worker_history_commit_v2 as commit_module
 from loushang.coding.package_product_worker_history_commit_v2 import (
     CodingWorkerV2OwnerCommitError,
+    commit_coding_product_worker_v2_owner,
     commit_coding_worker_v2_owner_under_guard,
 )
 from loushang.coding.package_product_worker_history_read_v2 import (
@@ -25,6 +31,9 @@ from loushang.coding.package_product_worker_history_v2_names import (
     PRODUCT_OWNER_INDEX_NAME,
 )
 from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductSessionOwner,
+)
 from tests.coding.test_package_product_worker_history_read_v2 import _write_sources
 from tests.coding.test_package_product_worker_history_stage_v2 import _rooted
 
@@ -100,3 +109,134 @@ def test_v2_owner_commit_interrupted_before_publication_remains_retryable(
         assert commit_coding_worker_v2_owner_under_guard(rooted, prepared=prepared) == (
             prepared.index
         )
+
+
+def _product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, calls: list[str]
+) -> PosixLocalWheelProductSessionOwner:
+    product = object.__new__(PosixLocalWheelProductSessionOwner)
+    object.__setattr__(product, "state_root", tmp_path)
+    object.__setattr__(product, "policy", SimpleNamespace(product_id="coding"))
+
+    class Registry:
+        store_id = "store"
+
+        @contextmanager
+        def exclusive_runtime_quiescence(
+            self, *, store_id: str
+        ) -> Iterator[SimpleNamespace]:
+            assert store_id == self.store_id
+            calls.append("runtime-enter")
+            try:
+                yield SimpleNamespace(active_runtime_lease_ids=())
+            finally:
+                calls.append("runtime-exit")
+
+    class Gate:
+        @contextmanager
+        def guard(self, *, require_write: bool) -> Iterator[None]:
+            assert require_write
+            calls.append("gc-enter")
+            try:
+                yield
+            finally:
+                calls.append("gc-exit")
+
+        def snapshot(self) -> object:
+            calls.append("gc-snapshot")
+            return object()
+
+    @contextmanager
+    def pinned(_self: PosixLocalWheelProductSessionOwner) -> Iterator[int]:
+        fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            yield fd
+        finally:
+            os.close(fd)
+
+    object.__setattr__(product, "epoch_runtime", SimpleNamespace(registry=Registry()))
+    object.__setattr__(product, "gc_gate", Gate())
+    monkeypatch.setattr(
+        PosixLocalWheelProductSessionOwner,
+        "assert_root_gc_authority_current",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        PosixLocalWheelProductSessionOwner, "pinned_state_root_gc_read", pinned
+    )
+    return product
+
+
+def test_product_v2_owner_commit_rechecks_preflight_and_retries_under_custody(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _rooted(tmp_path) as rooted:
+        prepared = _write_sources(rooted)
+        _locks(rooted)
+    calls: list[str] = []
+    product = _product(tmp_path, monkeypatch, calls)
+
+    def preflight(_product: object, **_kwargs: object) -> object:
+        assert calls == ["runtime-enter", "gc-enter", "gc-snapshot"]
+        return prepared
+
+    monkeypatch.setattr(
+        commit_module,
+        "_prepare_coding_product_worker_history_cutover_under_guard",
+        preflight,
+    )
+    assert (
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 1)
+        )
+        == prepared.index
+    )
+    assert calls == [
+        "runtime-enter",
+        "gc-enter",
+        "gc-snapshot",
+        "gc-exit",
+        "runtime-exit",
+    ]
+    assert (tmp_path / PRODUCT_OWNER_INDEX_NAME).read_bytes() == (
+        prepared.index.to_bytes()
+    )
+
+    def no_preflight(_product: object, **_kwargs: object) -> object:
+        raise AssertionError("committed V2 must not reopen pruned V1 history")
+
+    monkeypatch.setattr(
+        commit_module,
+        "_prepare_coding_product_worker_history_cutover_under_guard",
+        no_preflight,
+    )
+    assert (
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 1)
+        )
+        == prepared.index
+    )
+
+
+def test_product_v2_owner_commit_rejects_stale_preflight_before_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _rooted(tmp_path) as rooted:
+        _write_sources(rooted)
+        _locks(rooted)
+    product = _product(tmp_path, monkeypatch, [])
+    monkeypatch.setattr(
+        commit_module,
+        "_prepare_coding_product_worker_history_cutover_under_guard",
+        lambda _product, **_kwargs: object(),
+    )
+    with pytest.raises(CodingWorkerV2OwnerCommitError, match="preparation_stale"):
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 1)
+        )
+    assert not (tmp_path / PRODUCT_OWNER_INDEX_NAME).exists()
+    with pytest.raises(CodingWorkerV2OwnerCommitError, match="cutoffs_changed"):
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 2)
+        )
+    assert not (tmp_path / PRODUCT_OWNER_INDEX_NAME).exists()
