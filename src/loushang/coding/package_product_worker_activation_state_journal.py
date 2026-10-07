@@ -29,12 +29,14 @@ from loushang.harness.worker.activation_state_journal import (
 
 from .package_product_worker_activation_history import (
     CodingProductWorkerRetainedAttemptV1,
+    _fold_coding_worker_activation_attempt_history,
     project_coding_worker_retained_attempts,
     validate_coding_worker_activation_attempt_history,
 )
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
@@ -43,8 +45,12 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 
 if TYPE_CHECKING:
+    from .package_product_worker_activation_base_v2 import (
+        CodingWorkerActivationReplayV2,
+    )
     from .package_product_worker_history_checkpoint import (
         CodingWorkerHistoryCheckpointV1,
     )
@@ -75,6 +81,16 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
         self._checkpoint_store_id = store_id
 
     def _acquire_journal_lock(self, rooted: RootedFile) -> None:
+        if self._v2_owner_exists(rooted):
+            try:
+                rooted.sibling(self.path.name + ".lock").acquire_lock(
+                    exclusive=True, suffix="", create=False
+                )
+            except FileNotFoundError as exc:
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_lock_missing"
+                ) from exc
+            return
         created = rooted.acquire_lock(
             exclusive=True,
             suffix=".lock",
@@ -83,13 +99,22 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
         if created:
             initialize_coding_worker_active_head(rooted, stem=_STEM, stream_id=_STEM)
 
+    def _read_only_replacement_owner_exists(self, rooted: RootedFile) -> bool:
+        return self._v2_owner_exists(rooted)
+
     def load(self) -> Mapping[str, object] | None:
         with self._bound_journal() as rooted:
+            if self._v2_owner_exists(rooted):
+                _history, replay = self._load_v2_state(rooted)
+                return dict(replay.last_record.document)
             records, _history = self._load_segments(rooted)
             return None if not records else dict(records[-1].document)
 
     def load_read_only(self) -> Mapping[str, object] | None:
         with self._bound_journal_read_only() as rooted:
+            if self._v2_owner_exists(rooted):
+                _history, replay = self._load_v2_state(rooted)
+                return dict(replay.last_record.document)
             records, _history = self._load_segments(rooted)
             return None if not records else dict(records[-1].document)
 
@@ -99,6 +124,9 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
         """Read the latest state and durable owner presence under one lock."""
 
         with self._bound_journal_read_only() as rooted:
+            if self._v2_owner_exists(rooted):
+                _history, replay = self._load_v2_state(rooted)
+                return True, dict(replay.last_record.document)
             records, _history = self._load_segments(rooted)
             try:
                 rooted.stat()
@@ -118,6 +146,10 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
         """Inventory every C5 attempt without creating or pruning history."""
 
         with self._bound_journal_read_only() as rooted:
+            if self._v2_owner_exists(rooted):
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_v2_inventory_unavailable"
+                )
             records, _history = self._load_segments(rooted)
             return project_coding_worker_retained_attempts(records)
 
@@ -133,18 +165,45 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
         if len(line) > _MAX_BYTES:
             raise WorkerActivationStateJournalError("worker_activation_state_capacity")
         with self._bound_journal() as rooted:
-            records, history = self._load_segments(rooted)
             checkpoints = self._checkpoint_writer_fence(rooted)
-            checkpoint_revision = self._assert_checkpoint_source(checkpoints, history)
-            current_revision = max(
-                0 if not records else records[-1].journal_revision,
-                checkpoint_revision,
-            )
+            records: tuple[_StateRecord, ...]
+            if self._v2_owner_exists(rooted):
+                history, replay = self._load_v2_state(rooted)
+                records = (replay.last_record,)
+                current_revision = replay.last_record.journal_revision
+                checkpoint_revision = (
+                    0
+                    if not checkpoints
+                    else checkpoints[-1].stream_snapshots[2].total_revision
+                )
+                if checkpoint_revision > current_revision:
+                    raise WorkerActivationStateJournalError(
+                        "worker_activation_state_checkpoint_source_changed"
+                    )
+            else:
+                records, history = self._load_segments(rooted)
+                replay = None
+                checkpoint_revision = self._assert_checkpoint_source(
+                    checkpoints, history
+                )
+                current_revision = max(
+                    0 if not records else records[-1].journal_revision,
+                    checkpoint_revision,
+                )
             if current_revision != expected_revision:
                 return False
             self._assert_checkpoint_attempts_fresh(checkpoints, records, record)
             try:
-                validate_coding_worker_activation_attempt_history((*records, record))
+                if replay is None:
+                    validate_coding_worker_activation_attempt_history(
+                        (*records, record)
+                    )
+                else:
+                    _fold_coding_worker_activation_attempt_history(
+                        (record,),
+                        previous_record=replay.last_record,
+                        retired_attempt_ids=replay.retired_attempt_ids,
+                    )
             except ValueError as exc:
                 raise WorkerActivationStateJournalError(
                     "worker_activation_state_history_conflict"
@@ -197,6 +256,77 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                 appended_line=line,
             )
             return True
+
+    @staticmethod
+    def _v2_owner_exists(rooted: RootedFile) -> bool:
+        try:
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _load_v2_state(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerSegmentedHistoryV1, CodingWorkerActivationReplayV2]:
+        """Read typed C5 state while its retired source generation may be absent."""
+
+        from .package_product_worker_activation_base_v2 import (
+            CodingWorkerActivationReplayV2,
+        )
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if (
+                self._checkpoint_scope_id is not None
+                and self._checkpoint_scope_id != owner.scope_id
+            ) or (
+                self._checkpoint_store_id is not None
+                and self._checkpoint_store_id != owner.store_id
+            ):
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_v2_owner_changed"
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=_STEM)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerActivationReplayV2):
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_v2_owner_changed"
+                )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                rooted.sibling(_STEM + ".segments.json").read_bytes(
+                    max_bytes=1024 * 1024
+                ),
+                stream_id=_STEM,
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_v2_manifest_changed"
+                )
+            return (
+                CodingWorkerSegmentedHistoryV1(
+                    manifest=manifest,
+                    segments=(b"",) * retained.first_retained_generation
+                    + retained.segments,
+                ),
+                replay,
+            )
+        except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+            raise WorkerActivationStateJournalError(
+                "worker_activation_state_corrupt"
+            ) from exc
+        except (OSError, ValueError) as exc:
+            raise WorkerActivationStateJournalError(
+                "worker_activation_state_corrupt"
+            ) from exc
 
     def _checkpoint_writer_fence(
         self, rooted: RootedFile

@@ -201,7 +201,8 @@ class WorkerActivationStateJournal:
                     not stat.S_ISDIR(opened.st_mode)
                     or opened.st_uid != os.geteuid()
                     or stat.S_IMODE(opened.st_mode) & 0o077
-                    or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
+                    or (opened.st_dev, opened.st_ino)
+                    != (visible.st_dev, visible.st_ino)
                 ):
                     raise WorkerActivationStateJournalError(
                         "worker_activation_state_root_unsafe"
@@ -264,14 +265,28 @@ class WorkerActivationStateJournal:
                     try:
                         rooted.stat()
                     except FileNotFoundError:
-                        try:
-                            rooted.sibling(self._path.name + ".lock").stat()
-                        except FileNotFoundError:
-                            pass
+                        if self._read_only_replacement_owner_exists(rooted):
+                            try:
+                                rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                    exclusive=False, suffix="", create=False
+                                )
+                            except FileNotFoundError as exc:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_lock_missing"
+                                ) from exc
+                            except BlockingIOError as exc:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_busy"
+                                ) from exc
                         else:
-                            raise WorkerActivationStateJournalError(
-                                "worker_activation_state_orphan_lock"
-                            ) from None
+                            try:
+                                rooted.sibling(self._path.name + ".lock").stat()
+                            except FileNotFoundError:
+                                pass
+                            else:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_orphan_lock"
+                                ) from None
                     else:
                         try:
                             rooted.acquire_lock(
@@ -295,6 +310,11 @@ class WorkerActivationStateJournal:
                 )
         finally:
             os.close(parent_fd)
+
+    def _read_only_replacement_owner_exists(self, rooted: RootedFile) -> bool:
+        """Subclasses may bind a different durable source under this lock."""
+
+        return False
 
     def _load(self, rooted: RootedFile) -> tuple[bytes, tuple[_StateRecord, ...]]:
         try:

@@ -69,6 +69,8 @@ def test_start_gate_v2_current_and_append_after_retired_deletion(
         )
         rooted.sibling(_segment_name(stem, 0)).unlink()
         rooted.sibling(_head_name(stem, 0)).unlink()
+        rooted.sibling(_segment_name("worker-activation-state", 0)).unlink()
+        rooted.sibling(_head_name("worker-activation-state", 0)).unlink()
 
     journal = _journal(tmp_path)
     assert journal.current("a" * 32) is None
