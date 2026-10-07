@@ -12,6 +12,7 @@ from loushang.coding.package_product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointError,
     CodingWorkerHistoryCheckpointV1,
     _anchor_for_records,
+    _is_empty_seal_successor,
     _read_records,
     _read_records_or_repair_empty_bootstrap,
 )
@@ -80,6 +81,14 @@ def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision()
     assert prior.is_exact_prefix_of(
         rotated_snapshot, current_segments=rotated
     )
+    assert _is_empty_seal_successor(appended_snapshot, rotated_snapshot)
+    rewritten_rotated = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-start-gates",
+        active_generation=1,
+        last_sealed_revision=2,
+        segments=(rewritten[0], b""),
+    )
+    assert not _is_empty_seal_successor(appended_snapshot, rewritten_rotated)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")

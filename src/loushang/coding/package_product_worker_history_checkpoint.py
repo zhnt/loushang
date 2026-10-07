@@ -316,6 +316,23 @@ class CodingWorkerHistoryCheckpointV1:
         )
 
 
+def _is_empty_seal_successor(
+    old: CodingWorkerHistoryStreamSnapshotV1,
+    current: CodingWorkerHistoryStreamSnapshotV1,
+) -> bool:
+    """Recognize one exact sealed prefix with an empty active successor."""
+
+    return (
+        current.stem == old.stem
+        and current.total_revision == old.total_revision
+        and current.active_generation == old.active_generation + 1
+        and current.last_sealed_revision == old.total_revision
+        and current.segment_byte_counts == (*old.segment_byte_counts, 0)
+        and current.segment_digests
+        == (*old.segment_digests, sha256(b"").hexdigest())
+    )
+
+
 def _read_records(
     rooted: RootedFile,
     *,
@@ -395,6 +412,7 @@ def _read_records(
                         or (
                             current.total_revision == old.total_revision
                             and current.fingerprint != old.fingerprint
+                            and not _is_empty_seal_successor(old, current)
                         )
                         for old, current in zip(
                             previous.stream_snapshots,
