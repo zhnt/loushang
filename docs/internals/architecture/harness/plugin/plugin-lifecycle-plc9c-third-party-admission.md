@@ -1702,6 +1702,15 @@ through a later state revision. The Product binds the writer to its scope and
 store identity under the GC write gate. The C5 reader still requires complete
 version-1 history; this fence grants no cutover or pruning authority.
 
+The Linux Product Supervisor appender is the fifth writer join. Under the
+Product GC write gate and its journal lock, it verifies the anchored
+checkpoint's exact Supervisor byte prefix and refuses a global record revision
+at or below the checkpoint waterline. A new claim cannot reuse an attempt ID
+or a per-key epoch already recorded by a checkpoint. Existing attempt
+transitions continue through the retained version-1 history. The Supervisor
+reader and epoch allocator still require that complete history; no version-2
+cutover or source deletion is authorized by this writer fence.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

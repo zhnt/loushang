@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -39,6 +40,14 @@ from .package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
 
 _STEM = "worker-supervisor"
 _MAX_RECORDS = 4096
@@ -242,6 +251,8 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                 "Worker Supervisor history was not loaded",
                 code="worker_supervisor_journal_corrupt",
             )
+        checkpoints = self._checkpoint_writer_fence(rooted)
+        self._assert_checkpoint_write(checkpoints, history, record)
         line = (
             json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True).encode(
                 "utf-8"
@@ -297,6 +308,79 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             ),
             appended_line=line,
         )
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise self._error(
+                "Worker Supervisor checkpoint could not be verified", code=exc.code
+            ) from exc
+
+    def _assert_checkpoint_write(
+        self,
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+        record: WorkerAttemptRecordV1,
+    ) -> None:
+        if not checkpoints:
+            return
+        prior = checkpoints[-1].stream_snapshots[4]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=_STEM,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise self._error(
+                "Worker Supervisor checkpoint source changed",
+                code="worker_supervisor_checkpoint_source_changed",
+            )
+        if record.record_revision <= prior.total_revision:
+            raise self._error(
+                "Worker Supervisor checkpoint revision was reused",
+                code="worker_supervisor_checkpoint_revision_retired",
+            )
+        if record.phase != "claimed":
+            return
+        if any(record.attempt_id in item.new_attempt_ids for item in checkpoints):
+            raise self._error(
+                "Worker Supervisor checkpoint attempt ID was reused",
+                code="worker_supervisor_checkpoint_attempt_retired",
+            )
+        epoch_high_water = max(
+            (
+                epoch
+                for item in checkpoints
+                for key, epoch in item.supervisor_epoch_high_water
+                if key == record.supervisor_key
+            ),
+            default=0,
+        )
+        if record.supervisor_epoch <= epoch_high_water:
+            raise self._error(
+                "Worker Supervisor checkpoint epoch was reused",
+                code="worker_supervisor_checkpoint_epoch_retired",
+            )
 
     def _require_bound(self) -> RootedFile:
         if self._active_rooted is None:
