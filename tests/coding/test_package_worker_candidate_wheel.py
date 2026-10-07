@@ -97,11 +97,23 @@ from loushang.coding.package_product_worker_history_checkpoint import (
     repair_coding_product_worker_history_checkpoint_append,
     rollback_coding_product_worker_history_checkpoint_tail,
 )
+from loushang.coding.package_product_worker_history_commit_v2 import (
+    commit_coding_product_worker_v2_owner,
+)
 from loushang.coding.package_product_worker_history_retention import (
     review_coding_product_worker_history_retention,
 )
+from loushang.coding.package_product_worker_history_retire_v2 import (
+    retire_coding_product_worker_v2_history,
+)
+from loushang.coding.package_product_worker_history_rotate_v2 import (
+    seal_coding_product_worker_v1_history_for_v2,
+)
 from loushang.coding.package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
+)
+from loushang.coding.package_product_worker_history_stage_v2 import (
+    stage_coding_product_worker_v2_preparation,
 )
 from loushang.coding.package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
@@ -5776,6 +5788,37 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
                 product
             ) == (checkpoint, repaired, fresh, anchored)
         gc.prepare()
+        cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+        assert cutoffs == (1, 1, 1, 1, 1)
+        sealed = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert sealed.journal_revision == anchored.journal_revision + 1
+        assert all(
+            snapshot.active_generation >= 1 for snapshot in sealed.stream_snapshots
+        )
+        staged = stage_coding_product_worker_v2_preparation(
+            product, first_retained_generations=cutoffs
+        )
+        assert staged.checkpoint_digest == sealed.record_digest
+        committed = commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=cutoffs
+        )
+        assert committed.checkpoint_digest == sealed.record_digest
+        gc.prepare()
+        assert retire_coding_product_worker_v2_history(product)
+        assert not retire_coding_product_worker_v2_history(product)
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh, anchored, sealed)
+        gc.prepare()
+        assert (
+            commit_coding_product_worker_v2_owner(
+                product, first_retained_generations=cutoffs
+            )
+            == committed
+        )
     finally:
         reopened.close()
 
