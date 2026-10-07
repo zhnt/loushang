@@ -1340,7 +1340,9 @@ Supervisor reads leave no lock or history, and a retained lock with missing
 history refuses an epoch reset. Existing
 payload recovery tests passed 11 cases, and the installed Linux native Worker
 case passed after this integration. Claims and transitions still replay the
-retained history, and no terminal-history checkpoint or anti-reuse index exists.
+retained history. A later Product checkpoint candidate records exact stream
+snapshots and historical IDs, but no journal retirement or writer-enforced
+anti-reuse index exists.
 The opt-in journal also passed forced rollover, revocation/reallow replay,
 changed-seal refusal, and post-publication interruption. A real Product Wheel
 case forced both opt-in and receipt rollover and retained the old receipt.
@@ -1507,7 +1509,8 @@ that nested write before state changes. The Linux receipt witness now uses the
 strict no-create receipt reader. The native release approval query likewise
 reads without creating its journal lock, so the Product retention review can
 inspect it inside the shared GC snapshot. This repairs snapshot atomicity for these
-bound owners, while checkpoint publication and history pruning remain closed.
+bound owners. The later candidate checkpoint publisher uses the write gate;
+history pruning remains closed.
 The three Linux payload-debt repair paths also require GC write admission while
 their read-only previews retain snapshot access. A real Product regression
 first deleted an empty payload stage inside a GC read snapshot, then passed
@@ -1548,7 +1551,10 @@ snapshot fingerprint. The review compares those total revisions with each
 strict semantic journal replay and reports a mismatch as a missing proof. A
 checkpoint binds those fingerprints together with the existing semantic
 references and high-water marks; a revision count or ID inventory alone cannot
-prove unchanged historical bytes.
+prove unchanged historical bytes. Subsequent publication and repair now reopen
+all five strict streams and verify each prior segment digest against the exact
+current byte prefix, including the former active segment after append or
+rotation. A higher revision cannot conceal rewritten old records.
 The candidate checkpoint journal now appends a digest-chained Product record
 containing the five stream snapshots, new opt-in operation IDs, new attempt IDs,
 new receipt fingerprints, current opt-in and Supervisor high-water marks, the

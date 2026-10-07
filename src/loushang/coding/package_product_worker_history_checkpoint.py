@@ -35,6 +35,7 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
+    verify_coding_worker_history_stream_extensions_under_gc_guard,
 )
 
 _STEM = "worker-history-checkpoints"
@@ -444,6 +445,14 @@ def _candidate_for_review(
     if review.receipt_record is None or review.worker_backup_references is None:
         raise CodingWorkerHistoryCheckpointError(
             "coding_worker_checkpoint_closure_unproven"
+        )
+    if records and not verify_coding_worker_history_stream_extensions_under_gc_guard(
+        product,
+        previous=records[-1].stream_snapshots,
+        current=review.history_stream_snapshots,
+    ):
+        raise CodingWorkerHistoryCheckpointError(
+            "coding_worker_checkpoint_source_rewritten"
         )
     seen_operations = {
         item for record in records for item in record.new_opt_in_operation_ids

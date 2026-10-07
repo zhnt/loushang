@@ -61,6 +61,44 @@ class CodingWorkerHistoryStreamSnapshotV1:
     segment_digests: tuple[str, ...]
     fingerprint: str
 
+    def is_exact_prefix_of(
+        self,
+        current: CodingWorkerHistoryStreamSnapshotV1,
+        *,
+        current_segments: tuple[bytes, ...],
+    ) -> bool:
+        """Prove every byte previously captured still precedes new records."""
+
+        if (
+            type(current) is not CodingWorkerHistoryStreamSnapshotV1
+            or self.stem != current.stem
+            or self.active_generation > current.active_generation
+            or self.total_revision > current.total_revision
+            or self.last_sealed_revision > current.last_sealed_revision
+            or len(current_segments) != current.active_generation + 1
+            or CodingWorkerHistoryStreamSnapshotV1.capture(
+                stem=current.stem,
+                active_generation=current.active_generation,
+                last_sealed_revision=current.last_sealed_revision,
+                segments=current_segments,
+            )
+            != current
+        ):
+            return False
+        for generation in range(self.active_generation + 1):
+            count = self.segment_byte_counts[generation]
+            if (
+                count > len(current_segments[generation])
+                or sha256(current_segments[generation][:count]).hexdigest()
+                != self.segment_digests[generation]
+                or (
+                    generation < self.active_generation
+                    and count != len(current_segments[generation])
+                )
+            ):
+                return False
+        return True
+
     def to_dict(self) -> dict[str, object]:
         return {
             "activeGeneration": self.active_generation,
@@ -209,8 +247,49 @@ def capture_coding_worker_history_streams_under_gc_guard(
             file_io.cleanup()
 
 
+def verify_coding_worker_history_stream_extensions_under_gc_guard(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    previous: tuple[CodingWorkerHistoryStreamSnapshotV1, ...],
+    current: tuple[CodingWorkerHistoryStreamSnapshotV1, ...],
+) -> bool:
+    """Reopen all five exact streams and prove their checkpointed byte prefixes."""
+
+    if (
+        type(product) is not PosixLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+        or tuple(item.stem for item in previous)
+        != CODING_WORKER_HISTORY_STREAM_STEMS
+        or tuple(item.stem for item in current)
+        != CODING_WORKER_HISTORY_STREAM_STEMS
+    ):
+        raise ValueError("Coding Worker stream extension requires its Product")
+    product.assert_root_gc_authority_current()
+    with product.pinned_state_root_gc_read() as root_fd:
+        file_io = RootedFileIO(product.state_root, root_fd)
+        try:
+            for old, now in zip(previous, current, strict=True):
+                with file_io.bind(
+                    product.state_root / f"{now.stem}.jsonl", durable=False
+                ) as rooted:
+                    history = read_coding_worker_segmented_history(
+                        rooted,
+                        stem=now.stem,
+                        stream_id=now.stem,
+                        max_segment_bytes=_MAX_SEGMENT_BYTES,
+                    )
+                if not old.is_exact_prefix_of(
+                    now, current_segments=history.segments
+                ):
+                    return False
+            return True
+        finally:
+            file_io.cleanup()
+
+
 __all__ = [
     "CODING_WORKER_HISTORY_STREAM_STEMS",
     "CodingWorkerHistoryStreamSnapshotV1",
     "capture_coding_worker_history_streams_under_gc_guard",
+    "verify_coding_worker_history_stream_extensions_under_gc_guard",
 ]

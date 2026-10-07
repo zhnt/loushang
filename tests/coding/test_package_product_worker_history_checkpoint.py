@@ -27,6 +27,50 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 
+def test_worker_checkpoint_stream_requires_exact_old_bytes_before_new_revision() -> None:
+    first = b'{"journalRevision":1}\n'
+    next_record = b'{"journalRevision":2}\n'
+    prior = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-start-gates",
+        active_generation=0,
+        last_sealed_revision=0,
+        segments=(first,),
+    )
+    appended = (first + next_record,)
+    appended_snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-start-gates",
+        active_generation=0,
+        last_sealed_revision=0,
+        segments=appended,
+    )
+    assert prior.is_exact_prefix_of(
+        appended_snapshot, current_segments=appended
+    )
+
+    rewritten = (b'{"journalRevision":9}\n' + next_record,)
+    rewritten_snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-start-gates",
+        active_generation=0,
+        last_sealed_revision=0,
+        segments=rewritten,
+    )
+    assert rewritten_snapshot.total_revision > prior.total_revision
+    assert not prior.is_exact_prefix_of(
+        rewritten_snapshot, current_segments=rewritten
+    )
+
+    rotated = (first + next_record, b"")
+    rotated_snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-start-gates",
+        active_generation=1,
+        last_sealed_revision=2,
+        segments=rotated,
+    )
+    assert prior.is_exact_prefix_of(
+        rotated_snapshot, current_segments=rotated
+    )
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")
 def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_append(
     tmp_path: Path,
