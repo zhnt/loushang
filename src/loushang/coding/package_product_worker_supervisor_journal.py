@@ -35,6 +35,7 @@ from loushang.harness.worker.journal import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
@@ -43,10 +44,14 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 
 if TYPE_CHECKING:
     from .package_product_worker_history_checkpoint import (
         CodingWorkerHistoryCheckpointV1,
+    )
+    from .package_product_worker_supervisor_base_v2 import (
+        CodingWorkerSupervisorReplayV2,
     )
 
 _STEM = "worker-supervisor"
@@ -80,6 +85,7 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         self._thread_lock = threading.Lock()
         self._active_rooted: RootedFile | None = None
         self._active_history: CodingWorkerSegmentedHistoryV1 | None = None
+        self._active_replay: CodingWorkerSupervisorReplayV2 | None = None
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._strict_load = JournalLoadPolicy(partial_tail="raise", create_lock=False)
         self._read_only: ContextVar[bool] = ContextVar(
@@ -119,9 +125,10 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
 
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
-        with self._product.gc_gate.guard(
-            require_write=not self._read_only.get()
-        ), self._thread_lock:
+        with (
+            self._product.gc_gate.guard(require_write=not self._read_only.get()),
+            self._thread_lock,
+        ):
             self._product.assert_root_gc_authority_current()
             root_fd = os.open(self.path.parent, _DIR_FLAGS)
             try:
@@ -147,6 +154,14 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         lock_present = self._exists(
                             rooted.sibling(f"{_STEM}.jsonl.lock")
                         )
+                        if (
+                            self._exists(rooted.sibling(PRODUCT_OWNER_INDEX_NAME))
+                            and not lock_present
+                        ):
+                            raise self._error(
+                                "Worker Supervisor V2 lock is missing",
+                                code="worker_supervisor_journal_corrupt",
+                            )
                         if history_present != lock_present:
                             raise self._error(
                                 "Worker Supervisor lock and history disagree",
@@ -170,6 +185,7 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         finally:
                             self._active_rooted = None
                             self._active_history = None
+                            self._active_replay = None
                 finally:
                     io.cleanup()
                 after = self.path.parent.lstat()
@@ -183,7 +199,13 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
 
     def _load_unlocked(self) -> tuple[WorkerAttemptRecordV1, ...]:
         rooted = self._require_bound()
+        if self._exists(rooted.sibling(PRODUCT_OWNER_INDEX_NAME)):
+            history, replay = self._load_v2_state(rooted)
+            self._active_history = history
+            self._active_replay = replay
+            return replay.current_attempts
         try:
+            self._active_replay = None
             history = read_coding_worker_segmented_history(
                 rooted,
                 stem=_STEM,
@@ -241,6 +263,112 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                 code="worker_supervisor_journal_corrupt",
             ) from exc
 
+    def _load_v2_state(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerSegmentedHistoryV1, CodingWorkerSupervisorReplayV2]:
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+        from .package_product_worker_supervisor_base_v2 import (
+            CodingWorkerSupervisorReplayV2,
+        )
+
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if (
+                owner.scope_id != self._product.policy.project_scope_id
+                or owner.store_id != self._product.epoch_runtime.registry.store_id
+            ):
+                raise self._error(
+                    "Worker Supervisor V2 owner changed",
+                    code="worker_supervisor_journal_corrupt",
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=_STEM)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerSupervisorReplayV2):
+                raise self._error(
+                    "Worker Supervisor V2 replay changed",
+                    code="worker_supervisor_journal_corrupt",
+                )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                rooted.sibling(_STEM + ".segments.json").read_bytes(
+                    max_bytes=1024 * 1024
+                ),
+                stream_id=_STEM,
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise self._error(
+                    "Worker Supervisor V2 manifest changed",
+                    code="worker_supervisor_journal_corrupt",
+                )
+            return (
+                CodingWorkerSegmentedHistoryV1(
+                    manifest=manifest,
+                    segments=(b"",) * retained.first_retained_generation
+                    + retained.segments,
+                ),
+                replay,
+            )
+        except (
+            CodingWorkerV2ReadError,
+            CodingWorkerHistorySegmentError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise self._error(
+                "Worker Supervisor V2 history is corrupt",
+                code="worker_supervisor_journal_corrupt",
+            ) from exc
+
+    def _last_revision_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...]
+    ) -> int:
+        return (
+            super()._last_revision_unlocked(records)
+            if self._active_replay is None
+            else self._active_replay.last_revision
+        )
+
+    def _latest_for_key_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...], key: str
+    ) -> WorkerAttemptRecordV1 | None:
+        if self._active_replay is None:
+            return super()._latest_for_key_unlocked(records, key)
+        return next(
+            (
+                item.last_record
+                for item in self._active_replay.key_states
+                if item.supervisor_key == key
+            ),
+            None,
+        )
+
+    def _claims_since_stop_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...], key: str
+    ) -> int:
+        if self._active_replay is None:
+            return super()._claims_since_stop_unlocked(records, key)
+        return next(
+            (
+                item.claims_since_stop
+                for item in self._active_replay.key_states
+                if item.supervisor_key == key
+            ),
+            0,
+        )
+
+    def _attempt_retired_unlocked(self, attempt_id: str) -> bool:
+        return (
+            self._active_replay is not None
+            and attempt_id in self._active_replay.retired_attempt_ids
+        )
+
     def _append_unlocked(self, record: WorkerAttemptRecordV1) -> None:
         if type(record) is not WorkerAttemptRecordV1:
             raise TypeError("Worker Supervisor requires an exact record")
@@ -249,6 +377,14 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         if history is None or record.record_revision <= history.last_sealed_revision:
             raise self._error(
                 "Worker Supervisor history was not loaded",
+                code="worker_supervisor_journal_corrupt",
+            )
+        if (
+            self._active_replay is not None
+            and record.record_revision != self._active_replay.last_revision + 1
+        ):
+            raise self._error(
+                "Worker Supervisor V2 revision changed",
                 code="worker_supervisor_journal_corrupt",
             )
         checkpoints = self._checkpoint_writer_fence(rooted)
@@ -344,13 +480,19 @@ class CodingProductWorkerSupervisorJournal(WorkerSupervisorJournal):
         if not checkpoints:
             return
         prior = checkpoints[-1].stream_snapshots[4]
-        current = CodingWorkerHistoryStreamSnapshotV1.capture(
-            stem=_STEM,
-            active_generation=history.active_generation,
-            last_sealed_revision=history.last_sealed_revision,
-            segments=history.segments,
-        )
-        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+        if self._active_replay is None:
+            current = CodingWorkerHistoryStreamSnapshotV1.capture(
+                stem=_STEM,
+                active_generation=history.active_generation,
+                last_sealed_revision=history.last_sealed_revision,
+                segments=history.segments,
+            )
+            source_changed = not prior.is_exact_prefix_of(
+                current, current_segments=history.segments
+            )
+        else:
+            source_changed = prior.total_revision > self._active_replay.last_revision
+        if source_changed:
             raise self._error(
                 "Worker Supervisor checkpoint source changed",
                 code="worker_supervisor_checkpoint_source_changed",

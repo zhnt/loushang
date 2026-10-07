@@ -239,7 +239,12 @@ class WorkerSupervisorJournal:
                     "Worker attempt id was already durably claimed",
                     code="worker_attempt_already_claimed",
                 )
-            current = _latest_for_key(records, key)
+            if self._attempt_retired_unlocked(identity.attempt_id):
+                raise self._error(
+                    "Worker attempt id was already durably retired",
+                    code="worker_attempt_already_claimed",
+                )
+            current = self._latest_for_key_unlocked(records, key)
             if current is not None and not current.process_settled:
                 raise self._error(
                     "Prior Worker attempt is not durably settled",
@@ -251,22 +256,8 @@ class WorkerSupervisorJournal:
                     "Worker supervisor epoch is stale or non-contiguous",
                     code="worker_supervisor_epoch_stale",
                 )
-            last_clean_stop_revision = max(
-                (
-                    record.record_revision
-                    for record in records
-                    if record.supervisor_key == key and record.phase == "stopped"
-                ),
-                default=0,
-            )
-            claimed = tuple(
-                record
-                for record in records
-                if record.supervisor_key == key
-                and record.phase == "claimed"
-                and record.record_revision > last_clean_stop_revision
-            )
-            if len(claimed) >= max_attempts:
+            claims_since_stop = self._claims_since_stop_unlocked(records, key)
+            if claims_since_stop >= max_attempts:
                 raise self._error(
                     "Worker restart budget is exhausted",
                     code="worker_restart_budget_exhausted",
@@ -277,9 +268,9 @@ class WorkerSupervisorJournal:
                 attempt_id=identity.attempt_id,
                 supervisor_epoch=identity.supervisor_epoch,
                 phase="claimed",
-                record_revision=len(records) + 1,
+                record_revision=self._last_revision_unlocked(records) + 1,
                 prior_attempt_revision=0,
-                restart_ordinal=len(claimed) + 1,
+                restart_ordinal=claims_since_stop + 1,
             )
             self._append_unlocked(record)
             return record
@@ -327,7 +318,7 @@ class WorkerSupervisorJournal:
                 attempt_id=current.attempt_id,
                 supervisor_epoch=current.supervisor_epoch,
                 phase=next_phase,
-                record_revision=len(records) + 1,
+                record_revision=self._last_revision_unlocked(records) + 1,
                 prior_attempt_revision=current.record_revision,
                 restart_ordinal=current.restart_ordinal,
                 failure_code=failure_code,
@@ -345,7 +336,8 @@ class WorkerSupervisorJournal:
         if not isinstance(identity, WorkerLaunchIdentityV1):
             raise TypeError("Worker supervisor epoch requires a launch identity")
         with self._exclusive():
-            current = _latest_for_key(self._load_unlocked(), _supervisor_key(identity))
+            records = self._load_unlocked()
+            current = self._latest_for_key_unlocked(records, _supervisor_key(identity))
             if current is not None and not current.process_settled:
                 raise self._error(
                     "Prior Worker attempt is not durably settled",
@@ -418,6 +410,37 @@ class WorkerSupervisorJournal:
                 "Worker supervisor journal is corrupt",
                 code="worker_supervisor_journal_corrupt",
             ) from exc
+
+    def _last_revision_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...]
+    ) -> int:
+        return len(records)
+
+    def _latest_for_key_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...], key: str
+    ) -> WorkerAttemptRecordV1 | None:
+        return _latest_for_key(records, key)
+
+    def _claims_since_stop_unlocked(
+        self, records: tuple[WorkerAttemptRecordV1, ...], key: str
+    ) -> int:
+        last_stop = max(
+            (
+                record.record_revision
+                for record in records
+                if record.supervisor_key == key and record.phase == "stopped"
+            ),
+            default=0,
+        )
+        return sum(
+            record.supervisor_key == key
+            and record.phase == "claimed"
+            and record.record_revision > last_stop
+            for record in records
+        )
+
+    def _attempt_retired_unlocked(self, attempt_id: str) -> bool:
+        return False
 
     def _error(self, message: str, *, code: str) -> WorkerSupervisorJournalError:
         return WorkerSupervisorJournalError(message, code=code, path=self._path)

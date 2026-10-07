@@ -24,12 +24,12 @@
   exact-head evidence and limits.
 - Worker history V2 is still a staged candidate. Product can durably prepare
   five typed stream bases and verify a retained physical history with exact
-  deletion debt. The opt-in, receipt, Start Gate, and activation journals can
-  read and append through their bases when a valid Product V2 owner index
-  already exists, including after their retired segments are absent. Receipt
-  full-history reads and activation GC inventory still refuse under V2.
-  Product does not yet publish the owner index or execute history pruning;
-  supervisor still needs its V2 route.
+  deletion debt. All five Worker journals can read and append through their
+  typed bases when a valid Product V2 owner index already exists, including
+  after retired segments are absent. Receipt full-history reads and activation
+  GC inventory still refuse under V2. Product does not yet publish the owner
+  index or execute history pruning; Product-wide recovery and retention need
+  their V2 joins before cutover.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
