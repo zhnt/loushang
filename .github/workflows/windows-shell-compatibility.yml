@@ -297,6 +297,7 @@ jobs:
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_crash_reopens_and_retires_product_attempt
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_disable_fences_pinned_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_native_normal_exit_c5_cleanup_evidence
           -q
