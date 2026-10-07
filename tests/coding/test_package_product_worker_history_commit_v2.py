@@ -11,6 +11,12 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.coding import package_product_worker_history_commit_v2 as commit_module
+from loushang.coding import (
+    package_product_worker_history_preflight_v2 as preflight_module,
+)
+from loushang.coding.package_product_worker_history_checkpoint import (
+    read_coding_product_worker_history_checkpoints_under_gc_guard,
+)
 from loushang.coding.package_product_worker_history_commit_v2 import (
     CodingWorkerV2OwnerCommitError,
     commit_coding_product_worker_v2_owner,
@@ -19,10 +25,14 @@ from loushang.coding.package_product_worker_history_commit_v2 import (
 from loushang.coding.package_product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
 )
+from loushang.coding.package_product_worker_history_retire_v2 import (
+    retire_coding_product_worker_v2_history,
+)
 from loushang.coding.package_product_worker_history_segments import _head_name
 from loushang.coding.package_product_worker_history_stage_v2 import (
     CodingWorkerV2PreparationError,
     rollback_coding_worker_v2_preparation,
+    stage_coding_product_worker_v2_preparation,
 )
 from loushang.coding.package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
@@ -34,6 +44,7 @@ from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from tests.coding.test_package_product_worker_history_prepared_v2 import _sources
 from tests.coding.test_package_product_worker_history_read_v2 import _write_sources
 from tests.coding.test_package_product_worker_history_stage_v2 import _rooted
 
@@ -116,7 +127,11 @@ def _product(
 ) -> PosixLocalWheelProductSessionOwner:
     product = object.__new__(PosixLocalWheelProductSessionOwner)
     object.__setattr__(product, "state_root", tmp_path)
-    object.__setattr__(product, "policy", SimpleNamespace(product_id="coding"))
+    object.__setattr__(
+        product,
+        "policy",
+        SimpleNamespace(product_id="coding", project_scope_id="scope"),
+    )
 
     class Registry:
         store_id = "store"
@@ -240,3 +255,53 @@ def test_product_v2_owner_commit_rejects_stale_preflight_before_owner(
             product, first_retained_generations=(1, 1, 1, 1, 2)
         )
     assert not (tmp_path / PRODUCT_OWNER_INDEX_NAME).exists()
+
+
+def test_product_v2_commit_reopens_physical_checkpoint_and_five_v1_streams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _rooted(tmp_path) as rooted:
+        prepared = _write_sources(rooted, stage=False)
+        _locks(rooted)
+    checkpoint = _sources()[0][-1]
+    product = _product(tmp_path, monkeypatch, [])
+    reviewed: list[str] = []
+
+    def review(_product: object, **kwargs: object) -> SimpleNamespace:
+        reviewed.append(str(kwargs["attempt_id"]))
+        return SimpleNamespace(
+            missing_proofs=(),
+            history_stream_snapshots=checkpoint.stream_snapshots,
+            gc_reservation_revision=checkpoint.gc_reservation_revision,
+            worker_backup_references=SimpleNamespace(
+                owner_revision=checkpoint.backup_topology_revision
+            ),
+        )
+
+    monkeypatch.setattr(
+        preflight_module, "_review_coding_product_worker_history_under_guard", review
+    )
+    staged = stage_coding_product_worker_v2_preparation(
+        product, first_retained_generations=(1, 1, 1, 1, 1)
+    )
+    assert staged.index_digest
+    assert (
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 1)
+        )
+        == prepared.index
+    )
+    assert reviewed == ["a" * 32] * 2
+    assert (tmp_path / PRODUCT_OWNER_INDEX_NAME).read_bytes() == (
+        prepared.index.to_bytes()
+    )
+    assert retire_coding_product_worker_v2_history(product)
+    assert read_coding_product_worker_history_checkpoints_under_gc_guard(product) == (
+        checkpoint,
+    )
+    assert (
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=(1, 1, 1, 1, 1)
+        )
+        == prepared.index
+    )

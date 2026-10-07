@@ -46,7 +46,9 @@ from tests.coding.test_package_product_worker_history_stage_v2 import _rooted
 from tests.coding.test_package_product_worker_opt_in_base_v2 import _allow
 
 
-def _write_sources(rooted: RootedFile) -> CodingWorkerPreparedProductCutoverV2:
+def _write_sources(
+    rooted: RootedFile, *, stage: bool = True
+) -> CodingWorkerPreparedProductCutoverV2:
     checkpoints, anchor, histories = _sources()
     prepared = CodingWorkerPreparedProductCutoverV2.from_v1_histories(
         checkpoints=checkpoints,
@@ -72,7 +74,8 @@ def _write_sources(rooted: RootedFile) -> CodingWorkerPreparedProductCutoverV2:
         _head_bytes("worker-history-checkpoints", 0, checkpoint_raw)
     )
     rooted.sibling("worker-history-checkpoint-owner.json").create_new(anchor.to_bytes())
-    stage_coding_worker_v2_preparation(rooted, prepared=prepared)
+    if stage:
+        stage_coding_worker_v2_preparation(rooted, prepared=prepared)
     return prepared
 
 
