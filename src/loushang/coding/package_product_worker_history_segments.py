@@ -451,6 +451,103 @@ def read_coding_worker_segmented_history(
     return history
 
 
+def rollback_coding_worker_unpublished_successor(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> bool:
+    """Remove only an exact empty successor left before manifest publication.
+
+    The ordinary reader keeps rejecting this orphan. The caller must own the
+    stream lock and its Product repair gate before invoking this operation.
+    """
+
+    if (
+        type(stem) is not str
+        or _STEM.fullmatch(stem) is None
+        or type(stream_id) is not str
+        or _STREAM.fullmatch(stream_id) is None
+        or type(max_segment_bytes) is not int
+        or max_segment_bytes < 1
+    ):
+        raise ValueError("Worker successor repair input is invalid")
+    names, complete = rooted.scan_sibling_names(limit=_MAX_DIRECTORY_ENTRIES)
+    if not complete:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_inventory_capacity"
+        )
+    manifest_name = stem + ".segments.json"
+    try:
+        manifest_raw = rooted.sibling(manifest_name).read_bytes(
+            max_bytes=_MAX_MANIFEST_BYTES
+        )
+    except FileNotFoundError:
+        manifest = None
+    else:
+        manifest = CodingWorkerSegmentManifestV1.from_bytes(
+            manifest_raw, stream_id=stream_id
+        )
+    active = 0 if manifest is None else manifest.active_generation
+    if active >= _MAX_GENERATIONS:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_capacity")
+    successor_name = _segment_name(stem, active + 1)
+    successor_head_name = _head_name(stem, active + 1)
+    expected_names = {stem + ".jsonl.lock", successor_name, successor_head_name}
+    if manifest is not None:
+        expected_names.add(manifest_name)
+    expected_names.update(_segment_name(stem, index) for index in range(active + 1))
+    expected_names.update(_head_name(stem, index) for index in range(active + 1))
+    actual = {
+        name
+        for name in names
+        if name.casefold().startswith((stem + ".", "." + stem + "."))
+    }
+    if not actual <= expected_names:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
+    if successor_name not in actual:
+        if successor_head_name in actual:
+            raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
+        return False
+    successor = rooted.sibling(successor_name)
+    try:
+        successor_raw = successor.read_bytes(max_bytes=1)
+    except OSError as exc:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_unpublished_successor_changed"
+        ) from exc
+    if successor_raw != b"":
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_unpublished_successor_changed"
+        )
+    if successor_head_name in actual:
+        head = rooted.sibling(successor_head_name)
+        try:
+            head_raw = head.read_bytes(max_bytes=_MAX_HEAD_BYTES)
+        except OSError as exc:
+            raise CodingWorkerHistorySegmentError(
+                "coding_worker_segment_unpublished_successor_changed"
+            ) from exc
+        if head_raw != _head_bytes(
+            stream_id, active + 1, b""
+        ):
+            raise CodingWorkerHistorySegmentError(
+                "coding_worker_segment_unpublished_successor_changed"
+            )
+        head_stat = head.stat()
+        head.unlink_owned((head_stat.st_dev, head_stat.st_ino))
+    successor_stat = successor.stat()
+    successor.unlink_owned((successor_stat.st_dev, successor_stat.st_ino))
+    read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    return True
+
+
 def read_coding_worker_uncommitted_active_append(
     rooted: RootedFile,
     *,
@@ -623,6 +720,7 @@ __all__ = [
     "read_coding_worker_segmented_history",
     "read_coding_worker_uncommitted_active_append",
     "read_coding_worker_uncommitted_active_tail",
+    "rollback_coding_worker_unpublished_successor",
     "rollback_coding_worker_uncommitted_active_tail",
     "seal_coding_worker_active_segment",
 ]

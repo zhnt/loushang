@@ -17,6 +17,7 @@ from loushang.coding.package_product_worker_history_segments import (
     read_coding_worker_uncommitted_active_append,
     read_coding_worker_uncommitted_active_tail,
     rollback_coding_worker_uncommitted_active_tail,
+    rollback_coding_worker_unpublished_successor,
     seal_coding_worker_active_segment,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
@@ -240,6 +241,52 @@ def test_reopen_after_publication_interruption_has_one_complete_generation(
         assert history.active_generation == 1
         assert history.last_sealed_revision == 1
         assert history.segments == (b'{"journalRevision":1}\n', b"")
+
+
+@pytest.mark.parametrize("pause", ("successor_head", "manifest"))
+def test_seal_retries_exact_empty_successor_before_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pause: str
+) -> None:
+    root = tmp_path / "state"
+    with _bound(root) as rooted:
+        _append(rooted, 0, b'{"journalRevision":1}\n')
+        original_create = RootedFile.create_new
+        original_write = RootedFile.atomic_write
+
+        def pause_head(target: RootedFile, data: bytes) -> tuple[int, int]:
+            if target._name == "worker-start-gates.g00000001.head.json":
+                raise OSError("pause before successor head")
+            return original_create(target, data)
+
+        def pause_manifest(
+            target: RootedFile,
+            data: bytes,
+            *,
+            fsync: bool = True,
+            exclusive: bool = False,
+        ) -> None:
+            if target._name == "worker-start-gates.segments.json":
+                raise OSError("pause before manifest")
+            original_write(target, data, fsync=fsync, exclusive=exclusive)
+
+        with monkeypatch.context() as interrupted:
+            if pause == "successor_head":
+                interrupted.setattr(RootedFile, "create_new", pause_head)
+            else:
+                interrupted.setattr(RootedFile, "atomic_write", pause_manifest)
+            with pytest.raises((CodingWorkerHistorySegmentError, OSError)):
+                _seal(rooted, _read(rooted), 1)
+        with pytest.raises(CodingWorkerHistorySegmentError, match="segment_orphan"):
+            _read(rooted)
+        assert rollback_coding_worker_unpublished_successor(
+            rooted,
+            stem="worker-start-gates",
+            stream_id="worker-start-gates",
+            max_segment_bytes=1024,
+        )
+        assert _read(rooted).active_generation == 0
+        _seal(rooted, _read(rooted), 1)
+        assert _read(rooted).segments == (b'{"journalRevision":1}\n', b"")
 
 
 def test_active_head_refuses_complete_record_truncation_and_missing_witness(

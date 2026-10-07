@@ -2049,6 +2049,14 @@ per-attempt provisioning histories and a bounded inventory; it needs its own
 equivalent terminal-history and anti-reuse proof before general routing. This
 is the first implementation candidate, not a claim that long-term retirement
 or general Worker routing is ready.
+For low-volume Linux histories, the Product now has an explicit five-stream V1
+seal operation under runtime quiescence, the GC write gate, and existing stream
+locks. It returns the minimal first-retained cutoff `(1, 1, 1, 1, 1)` and
+resumes only an exact empty successor left before manifest publication;
+changed orphan bytes, active leases, and staged V2 artifacts refuse. This
+operation publishes no checkpoint or V2 owner and authorizes no deletion. A new
+checkpoint, Product preflight, owner commit, and retirement are separate steps;
+the installed Worker Session through those steps still needs direct evidence.
 
 1. **Author artifact.** A versioned author recipe packages one Worker
    declaration document, a platform-specific executable, and a manifest whose
