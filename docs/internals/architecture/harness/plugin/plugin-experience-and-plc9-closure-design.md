@@ -3397,7 +3397,11 @@ the selected Worker after cutover and prepared GC again. The source already
 contains this bounded commit/retire path, so an older status line saying that
 Product cannot publish or prune V2 history is no longer current. The test does
 not prove Windows V2, restore across retired bytes, every publication crash
-boundary, or general Worker routing.
+boundary, or general Worker routing. The focused Product owner commit and
+retirement files also passed 12/12 with zero skips on this branch; their strict
+JUnit report is `/tmp/plc9-v2-commit-retire-664.xml` and covers stale
+precommit facts, interrupted deletion retry, changed bytes/debt, and an active
+runtime lease refusal.
 
 ## Independent Review Record
 
