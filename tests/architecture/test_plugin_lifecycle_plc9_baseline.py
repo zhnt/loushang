@@ -101,13 +101,11 @@ MANIFEST_ENABLED_FILES = {
     Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
-    Path("src/loushang/harness/resources/plugins/selection.py"),
 }
 SOURCE_ENABLED_FILES = {
     Path("src/loushang/coding/_product_capability_plugin_composition.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
-    Path("src/loushang/harness/resources/plugins/selection.py"),
     Path("src/loushang/harness/resources/plugins/manifest.py"),
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
@@ -399,7 +397,6 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "project_configured_plugin_sources",
         ): 1,
         (PLUGIN_RESOLVER, "PluginResolver.project_package"): 1,
-        (PLUGIN_SELECTION, "PluginSelectionResolver._resolve_preflight"): 1,
         (PLUGIN_AUTHORITY, "_assert_published_lineage"): 2,
     }
 )
@@ -414,7 +411,6 @@ SOURCE_ENABLED_SCOPE_COUNTS = Counter(
             Path("src/loushang/harness/resources/plugins/manifest.py"),
             "_resolved_source",
         ): 2,
-        (PLUGIN_SELECTION, "PluginSelectionResolver._resolve_preflight"): 1,
         (PLUGIN_AUTHORITY, "PluginResolutionAuthority.project_package"): 1,
     }
 )
@@ -992,7 +988,9 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
     assert "def remove_plugin_source(" in manager
     assert "package.manifest.name not in self._disabled_plugins" in authority
     assert "enabled=enabled and resolved_package.manifest.enabled" in resolver
-    assert "not package.source.enabled or not package.manifest.enabled" in selection
+    assert "package.manifest.enabled" not in selection
+    assert "package.source.enabled" not in selection
+    assert "Product selection is authoritative after publication" in selection
     assert "The enablement migration is one-way" in _source(BASELINE)
 
 
