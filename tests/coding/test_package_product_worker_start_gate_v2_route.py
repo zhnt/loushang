@@ -114,10 +114,33 @@ def test_start_gate_v2_current_and_append_after_retired_deletion(
     )
     assert bound.journal_revision == 6
     assert journal.current(new.attempt_id) == bound
+    session_record = _record(7, attempt_id="d" * 32, bound=False)
+    session_intent = journal.append(
+        phase="intent",
+        attempt_id=session_record.attempt_id,
+        worker_identity_fingerprint=session_record.worker_identity_fingerprint,
+        receipt_fingerprint=session_record.receipt_fingerprint,
+        policy_fingerprint=session_record.policy_fingerprint,
+        scope_id="new-session-scope",
+        native_closure_digest=session_record.native_closure_digest,
+    )
+    assert journal.current(session_record.attempt_id) == session_intent
+    session_bound_source = _record(8, attempt_id="d" * 32, bound=True)
+    session_bound = journal.append(
+        phase="bound",
+        attempt_id=session_bound_source.attempt_id,
+        worker_identity_fingerprint=session_bound_source.worker_identity_fingerprint,
+        receipt_fingerprint=session_bound_source.receipt_fingerprint,
+        policy_fingerprint=session_bound_source.policy_fingerprint,
+        scope_id="new-session-scope",
+        native_closure_digest=session_bound_source.native_closure_digest,
+        identity=session_bound_source.identity,
+    )
+    assert journal.current(session_record.attempt_id) == session_bound
     assert not (tmp_path / "worker-start-gates.jsonl").exists()
     with _rooted(tmp_path) as rooted:
         assert (
-            read_coding_worker_v2_retained_history(rooted, stem=stem).last_revision == 6
+            read_coding_worker_v2_retained_history(rooted, stem=stem).last_revision == 8
         )
     journal._product.policy.project_scope_id = "other"
     with pytest.raises(CodingWorkerStartGateJournalError, match="v2_owner_changed"):

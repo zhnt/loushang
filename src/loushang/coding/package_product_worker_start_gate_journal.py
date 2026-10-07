@@ -671,9 +671,7 @@ class CodingWorkerStartGateJournal:
                 )
             retained = read_coding_worker_v2_retained_history(rooted, stem=stem)
             replay = retained.replay
-            if not isinstance(replay, CodingWorkerStartGateReplayV2) or any(
-                record.scope_id != owner.scope_id for record in replay.current_records
-            ):
+            if not isinstance(replay, CodingWorkerStartGateReplayV2):
                 raise CodingWorkerStartGateJournalError(
                     "coding_worker_start_gate_v2_owner_changed"
                 )
