@@ -1749,6 +1749,16 @@ attempt that still has a later Start Gate record. Product-wide closure must
 still prove that excluded gates have no native or recovery references before
 any base is published or old segment removed.
 
+The fifth typed semantic-base slice covers Supervisor. It retains the latest
+non-retired record for each attempt and the last record, epoch, clean-stop
+revision, and retry ordinal for each Supervisor key. A retired attempt must
+have settled in the sealed prefix and cannot reappear in retained history.
+Retained claims and transitions replay from the original global revision;
+the cutover factory reprojects the sealed prefix and checks the resulting
+per-key epoch waterline against the anchored checkpoint chain. This candidate
+still has no base file, V2 reader or writer, Product index publication, or
+source-deletion authority.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

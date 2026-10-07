@@ -45,6 +45,9 @@ from .package_product_worker_receipt_base_v2 import (
 from .package_product_worker_start_gate_base_v2 import (
     CodingWorkerStartGateSemanticBaseV2,
 )
+from .package_product_worker_supervisor_base_v2 import (
+    CodingWorkerSupervisorSemanticBaseV2,
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_STREAM_BYTES = 1024 * 1024
@@ -470,6 +473,87 @@ class CodingWorkerStreamCutoverV2:
         semantic_base.replay_retained(
             history.segments[preview.first_retained_generation :]
         )
+        return cls.from_preview(
+            preview=preview,
+            history=history,
+            semantic_base_digest=sha256(semantic_base.to_bytes()).hexdigest(),
+        )
+
+    @classmethod
+    def from_supervisor_base(
+        cls,
+        *,
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        preview: CodingWorkerStreamRetirementPreviewV2,
+        history: CodingWorkerSegmentedHistoryV1,
+        semantic_base: CodingWorkerSupervisorSemanticBaseV2,
+    ) -> CodingWorkerStreamCutoverV2:
+        """Bind per-key epoch/retry state to the complete checkpoint chain."""
+
+        if (
+            type(checkpoints) is not tuple
+            or not checkpoints
+            or any(
+                type(item) is not CodingWorkerHistoryCheckpointV1
+                for item in checkpoints
+            )
+            or type(preview) is not CodingWorkerStreamRetirementPreviewV2
+            or type(semantic_base) is not CodingWorkerSupervisorSemanticBaseV2
+        ):
+            raise ValueError("Coding Worker V2 Supervisor semantic base differs")
+        checkpoint = checkpoints[-1]
+        if any(
+            item.journal_revision != ordinal
+            or item.scope_id != checkpoint.scope_id
+            or item.store_id != checkpoint.store_id
+            or item.previous_digest
+            != ("" if ordinal == 1 else checkpoints[ordinal - 2].record_digest)
+            for ordinal, item in enumerate(checkpoints, 1)
+        ):
+            raise ValueError("Coding Worker V2 Supervisor checkpoint chain differs")
+        retired_ids = tuple(
+            sorted(
+                {
+                    attempt_id
+                    for item in checkpoints
+                    for attempt_id in item.new_attempt_ids
+                }
+            )
+        )
+        if len(retired_ids) != sum(
+            len(item.new_attempt_ids) for item in checkpoints
+        ) or (
+            preview.stem != "worker-supervisor"
+            or preview.checkpoint_revision != checkpoint.journal_revision
+            or preview.checkpoint_digest != checkpoint.record_digest
+            or preview.source_fingerprint != checkpoint.stream_snapshots[4].fingerprint
+            or semantic_base.scope_id != checkpoint.scope_id
+            or semantic_base.first_retained_generation
+            != preview.first_retained_generation
+            or semantic_base.cutoff_revision + 1 != preview.first_retained_revision
+            or semantic_base.retired_sealed_digest != preview.retired_sealed_digest
+            or semantic_base.retired_attempt_ids != retired_ids
+        ):
+            raise ValueError("Coding Worker V2 Supervisor semantic base differs")
+        projected = CodingWorkerSupervisorSemanticBaseV2.from_v1_history(
+            history=history,
+            scope_id=checkpoint.scope_id,
+            first_retained_generation=preview.first_retained_generation,
+            retired_attempt_ids=retired_ids,
+        )
+        if semantic_base != projected:
+            raise ValueError("Coding Worker V2 Supervisor semantic base differs")
+        replay = semantic_base.replay_retained(
+            history.segments[preview.first_retained_generation :]
+        )
+        if (
+            tuple(
+                (item.supervisor_key, item.last_record.supervisor_epoch)
+                for item in replay.key_states
+            )
+            != checkpoint.supervisor_epoch_high_water
+        ):
+            raise ValueError("Coding Worker V2 Supervisor epoch waterline differs")
         return cls.from_preview(
             preview=preview,
             history=history,
