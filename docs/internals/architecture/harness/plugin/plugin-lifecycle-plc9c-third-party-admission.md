@@ -1661,11 +1661,11 @@ This is the required target protocol, not implemented authority. The first
 code slice proves a read-only retirement preview against complete version-1
 bytes and explicit negative cases. The next slice defines canonical version-2
 stream cutover candidates and a Product index binding all five streams to the
-same checkpoint. These records have no IO or publication path and do not
-validate a typed semantic base. Subsequent slices must carry typed bases
-through every reader and writer, then prove the publication/deletion crash
-matrix on a real Product and Windows equivalent before any source segment is
-physically removed in production.
+same checkpoint. These records have no IO or publication path. The generic
+candidate constructor still accepts an unverified semantic-base digest;
+subsequent slices must carry typed bases through every reader and writer, then
+prove the publication/deletion crash matrix on a real Product and Windows
+equivalent before any source segment is physically removed in production.
 
 The first writer fence is on Linux Product opt-in. Under the Product GC write
 gate, it reads the exact anchored checkpoint chain before accepting a new
@@ -1710,6 +1710,16 @@ or a per-key epoch already recorded by a checkpoint. Existing attempt
 transitions continue through the retained version-1 history. The Supervisor
 reader and epoch allocator still require that complete history; no version-2
 cutover or source deletion is authorized by this writer fence.
+
+The first typed semantic-base slice covers opt-in. It replays a verified sealed
+V1 prefix into the last complete decision per Plugin and every retired
+operation ID, then validates retained records from the original global
+revision, generation, and kill-switch boundary. A canonical base carries the
+retired seal-chain digest; an opt-in cutover factory reprojects the exact V1
+prefix before binding its byte digest to the retirement preview. Changed
+prefix bytes, altered base state, reused operation IDs, and generation rollback
+refuse. This remains a candidate in memory: no base file,
+V2 reader, Product cutover publication, or source deletion exists yet.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

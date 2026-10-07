@@ -10,7 +10,7 @@ import json
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -239,9 +239,22 @@ def _decode_coding_worker_opt_in_history(
 def _validate_opt_in_events(
     events: tuple[CodingWorkerOptInDecisionV1, ...], *, scope_id: str
 ) -> None:
-    seen_operations: set[str] = set()
-    latest: dict[str, CodingWorkerOptInDecisionV1] = {}
-    for revision, event in enumerate(events, 1):
+    _fold_opt_in_events(events, scope_id=scope_id)
+
+
+def _fold_opt_in_events(
+    events: tuple[CodingWorkerOptInDecisionV1, ...],
+    *,
+    scope_id: str,
+    start_revision: int = 1,
+    initial_latest: Mapping[str, CodingWorkerOptInDecisionV1] | None = None,
+    initial_operations: frozenset[str] = frozenset(),
+) -> tuple[dict[str, CodingWorkerOptInDecisionV1], frozenset[str]]:
+    """Validate global revisions and decisions across a V1 or V2 boundary."""
+
+    seen_operations = set(initial_operations)
+    latest = {} if initial_latest is None else dict(initial_latest)
+    for revision, event in enumerate(events, start_revision):
         prior = latest.get(event.plugin_id)
         expected_generation = 1 if prior is None else prior.generation + 1
         expected_kill = 0 if prior is None else prior.kill_switch_generation
@@ -258,6 +271,7 @@ def _validate_opt_in_events(
             raise CodingWorkerOptInJournalError("coding_worker_opt_in_corrupt")
         seen_operations.add(event.operation_id)
         latest[event.plugin_id] = event
+    return latest, frozenset(seen_operations)
 
 
 class CodingWorkerOptInJournal:
