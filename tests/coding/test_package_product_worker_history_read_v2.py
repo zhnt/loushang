@@ -16,6 +16,7 @@ from loushang.coding.package_product_worker_history_prepared_v2 import (
 from loushang.coding.package_product_worker_history_read_v2 import (
     CodingWorkerV2ReadError,
     read_coding_worker_v2_retained_history,
+    verify_coding_worker_v2_precommit_history,
 )
 from loushang.coding.package_product_worker_history_segments import (
     _head_bytes,
@@ -99,6 +100,42 @@ def test_v2_reader_replays_five_streams_and_requires_exact_deletion_ledger(
             rooted, stem="worker-supervisor"
         )
         assert result.last_revision == prepared.streams[4].total_revision
+
+
+def test_precommit_reader_requires_all_five_exact_sources_before_owner(
+    tmp_path: Path,
+) -> None:
+    with _rooted(tmp_path) as rooted:
+        prepared = _write_sources(rooted)
+        for stream in prepared.streams:
+            proof = verify_coding_worker_v2_precommit_history(
+                rooted, stem=stream.stem, prepared=prepared
+            )
+            assert proof.last_revision == stream.total_revision
+        with pytest.raises(CodingWorkerV2ReadError, match="owner_absent"):
+            read_coding_worker_v2_retained_history(rooted, stem="worker-opt-in")
+
+        stem = "worker-activation-state"
+        rooted.sibling(_head_name(stem, 1)).atomic_write(b"{}")
+        with pytest.raises(CodingWorkerV2ReadError, match="active_head_changed"):
+            verify_coding_worker_v2_precommit_history(
+                rooted, stem=stem, prepared=prepared
+            )
+        original = _sources()[2][2].active_raw
+        rooted.sibling(_head_name(stem, 1)).atomic_write(_head_bytes(stem, 1, original))
+        rooted.sibling(DELETION_LEDGER_NAME).create_new(
+            CodingWorkerV2DeletionLedger.from_prepared(prepared).to_bytes()
+        )
+        with pytest.raises(CodingWorkerV2ReadError, match="precommit_deletion_debt"):
+            verify_coding_worker_v2_precommit_history(
+                rooted, stem=stem, prepared=prepared
+            )
+        rooted.sibling(DELETION_LEDGER_NAME).unlink()
+        rooted.sibling(PRODUCT_OWNER_INDEX_NAME).create_new(prepared.index.to_bytes())
+        with pytest.raises(CodingWorkerV2ReadError, match="owner_already_present"):
+            verify_coding_worker_v2_precommit_history(
+                rooted, stem=stem, prepared=prepared
+            )
 
 
 def test_v2_reader_refuses_changed_manifest_and_active_head(

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import TypeAlias
 
 from loushang.harness.journal._rooted_io import RootedFile
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -24,6 +25,9 @@ from .package_product_worker_history_cutover_v2 import (
 )
 from .package_product_worker_history_deletion_v2 import (
     CodingWorkerV2DeletionLedger,
+)
+from .package_product_worker_history_prepared_v2 import (
+    CodingWorkerPreparedProductCutoverV2,
 )
 from .package_product_worker_history_segments import (
     CodingWorkerSealedSegmentV1,
@@ -55,7 +59,7 @@ _MAX_LEDGER_BYTES = 1024 * 1024
 _MAX_HEAD_BYTES = 512
 _MAX_DIRECTORY_ENTRIES = 131072
 
-CodingWorkerV2Replay = (
+CodingWorkerV2Replay: TypeAlias = (
     CodingWorkerOptInReplayV2
     | CodingWorkerReceiptReplayV2
     | CodingWorkerActivationReplayV2
@@ -135,6 +139,34 @@ def read_coding_worker_v2_retained_history(
     prepared = read_coding_worker_v2_preparation(rooted)
     if prepared is None or prepared.index != owner:
         raise CodingWorkerV2ReadError("coding_worker_v2_preparation_unbound")
+    return _read_with_index(rooted, stem=stem, prepared=prepared, allow_ledger=True)
+
+
+def verify_coding_worker_v2_precommit_history(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    prepared: CodingWorkerPreparedProductCutoverV2,
+) -> CodingWorkerV2RetainedHistory:
+    """Run the Product reader before publication; caller owns cutover locks."""
+
+    if type(prepared) is not CodingWorkerPreparedProductCutoverV2:
+        raise ValueError("Coding Worker V2 prepared history is invalid")
+    if _optional(rooted, PRODUCT_OWNER_INDEX_NAME, limit=_MAX_INDEX_BYTES) is not None:
+        raise CodingWorkerV2ReadError("coding_worker_v2_owner_already_present")
+    if read_coding_worker_v2_preparation(rooted) != prepared:
+        raise CodingWorkerV2ReadError("coding_worker_v2_preparation_changed")
+    return _read_with_index(rooted, stem=stem, prepared=prepared, allow_ledger=False)
+
+
+def _read_with_index(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    prepared: CodingWorkerPreparedProductCutoverV2,
+    allow_ledger: bool,
+) -> CodingWorkerV2RetainedHistory:
+    owner = prepared.index
     streams = {item.stem: item for item in prepared.streams}
     if stem not in streams:
         raise ValueError("Coding Worker V2 stream name is invalid")
@@ -154,6 +186,8 @@ def read_coding_worker_v2_retained_history(
     if raw_ledger is None:
         allowed_missing: frozenset[int] = frozenset()
     else:
+        if not allow_ledger:
+            raise CodingWorkerV2ReadError("coding_worker_v2_precommit_deletion_debt")
         ledger = CodingWorkerV2DeletionLedger.from_bytes(raw_ledger)
         if ledger != CodingWorkerV2DeletionLedger.from_prepared(prepared):
             raise CodingWorkerV2ReadError("coding_worker_v2_deletion_ledger_changed")
@@ -258,4 +292,5 @@ __all__ = [
     "CodingWorkerV2Replay",
     "CodingWorkerV2RetainedHistory",
     "read_coding_worker_v2_retained_history",
+    "verify_coding_worker_v2_precommit_history",
 ]

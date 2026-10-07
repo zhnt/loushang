@@ -29,7 +29,9 @@
   after retired segments are absent. Receipt full-history reads and activation
   GC inventory still refuse under V2. Product does not yet publish the owner
   index or execute history pruning; Product-wide recovery and retention need
-  their V2 joins before cutover.
+  their V2 joins before cutover. A precommit physical proof now runs the same
+  five-stream reader against staged bytes before an owner file exists and
+  refuses changed heads or premature deletion debt.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
