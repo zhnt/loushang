@@ -80,6 +80,7 @@ def _known_worker_state_name(name: str) -> bool:
         "worker-native-release-v1",
         "worker-native-release-approvals.jsonl",
         "worker-native-release-approvals.jsonl.lock",
+        "worker-history-checkpoint-owner.json",
     }:
         return True
     if _PAYLOAD_STAGE.fullmatch(name) or _PAYLOAD_REPAIR.fullmatch(name):

@@ -1579,8 +1579,20 @@ The real Linux Product test now forces a one-record checkpoint segment cap.
 An injected interruption immediately after the sealed manifest publication
 reopens the prior complete record with an empty successor and permits Package
 GC. A subsequent append without a committed successor head refuses Package GC;
-the exact repair commits that one record and GC passes again. Bootstrap and
-other crash boundaries still require their own evidence.
+the exact repair commits that one record and GC passes again. Other crash
+boundaries still require their own evidence.
+The Product now creates a separate scope- and Store-bound checkpoint owner
+anchor before the first journal file. It records the last committed checkpoint
+revision and digest. After each active head is committed, the publisher updates
+that anchor; a reader or Package GC refuses a missing, changed, ahead, or
+lagging anchor. A later Product writer can replay the complete checkpoint chain
+and advance a lagging anchor before returning an idempotent publication. The
+real Linux Product test injects failure after the head commit and before the
+anchor update: GC refuses, then the same publication settles the anchor and
+GC passes. The anchored first-creation case injects failure before the empty
+head is written: GC refuses, while a later Product publication verifies the
+zero-revision anchor and empty first file, creates the missing head, and
+continues. The unanchored version of that state remains refused.
 If source history advances after an interrupted append, the exact repair
 refuses to turn stale bytes into a committed checkpoint. A separate Product
 rollback now accepts an active head that proves its old byte prefix, strictly
@@ -1597,11 +1609,9 @@ previously committed prefix. The complete non-live Worker candidate file on
 the current branch passed 35 cases with 12 expected host-runtime skips after
 this recovery work; that result does not supply history-pruning or Windows
 production evidence.
-The first-checkpoint bootstrap boundary also has an explicit negative: an
-empty created journal without its active head refuses both replay and tail
-rollback. It remains a visible initialization debt because no durable fact
-currently distinguishes an interrupted first creation from lost prior
-checkpoint history; automatic head creation would erase that distinction.
+The anchor does not authorize pruning or make removed journal history
+reconstructible. Source-history retirement, writer-enforced anti-reuse, and
+the Windows equivalent remain separate gates.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

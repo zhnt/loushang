@@ -19,6 +19,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
+from .package_product_worker_history_checkpoint_anchor import (
+    CodingWorkerCheckpointAnchorV1,
+    read_coding_worker_checkpoint_anchor,
+    write_coding_worker_checkpoint_anchor,
+)
 from .package_product_worker_history_retention import (
     CodingWorkerHistoryRetentionReviewV1,
     _review_coding_product_worker_history_under_guard,
@@ -438,6 +443,108 @@ def _read_records(
     return tuple(records), history
 
 
+def _read_records_or_repair_empty_bootstrap(
+    rooted: RootedFile, *, scope_id: str, store_id: str
+) -> tuple[tuple[CodingWorkerHistoryCheckpointV1, ...], CodingWorkerSegmentedHistoryV1]:
+    """Finish only an anchored, empty first generation lacking its first head."""
+
+    try:
+        return _read_records(rooted, scope_id=scope_id, store_id=store_id)
+    except CodingWorkerHistorySegmentError as exc:
+        if exc.code != "coding_worker_segment_head_missing":
+            raise
+        anchor = read_coding_worker_checkpoint_anchor(
+            rooted, scope_id=scope_id, store_id=store_id
+        )
+        if anchor is None or anchor.latest_revision != 0:
+            raise
+        try:
+            raw = rooted.sibling(f"{_STEM}.jsonl").read_bytes(max_bytes=1)
+        except FileNotFoundError:
+            raise exc from None
+        if raw != b"":
+            raise exc
+        try:
+            rooted.sibling(f"{_STEM}.segments.json").stat()
+        except FileNotFoundError:
+            # The first history read already rejected orphan generations.
+            initialize_coding_worker_active_head(
+                rooted, stem=_STEM, stream_id=_STEM
+            )
+            return _read_records(rooted, scope_id=scope_id, store_id=store_id)
+        raise exc
+
+
+def _anchor_for_records(
+    rooted: RootedFile,
+    *,
+    scope_id: str,
+    store_id: str,
+    records: tuple[CodingWorkerHistoryCheckpointV1, ...],
+    settle_lag: bool,
+) -> CodingWorkerCheckpointAnchorV1 | None:
+    anchor = read_coding_worker_checkpoint_anchor(
+        rooted, scope_id=scope_id, store_id=store_id
+    )
+    if anchor is None:
+        try:
+            rooted.stat()
+        except FileNotFoundError:
+            if records:
+                raise CodingWorkerHistoryCheckpointError(
+                    "coding_worker_checkpoint_anchor_missing"
+                ) from None
+            return None
+        raise CodingWorkerHistoryCheckpointError(
+            "coding_worker_checkpoint_anchor_missing"
+        )
+    if (
+        anchor.latest_revision > len(records)
+        or (
+            anchor.latest_revision > 0
+            and records[anchor.latest_revision - 1].record_digest
+            != anchor.latest_digest
+        )
+    ):
+        raise CodingWorkerHistoryCheckpointError(
+            "coding_worker_checkpoint_anchor_changed"
+        )
+    if anchor.latest_revision < len(records):
+        if not settle_lag:
+            raise CodingWorkerHistoryCheckpointError(
+                "coding_worker_checkpoint_anchor_lagging"
+            )
+        latest = records[-1]
+        updated = CodingWorkerCheckpointAnchorV1.create(
+            scope_id=scope_id,
+            store_id=store_id,
+            latest_revision=latest.journal_revision,
+            latest_digest=latest.record_digest,
+        )
+        write_coding_worker_checkpoint_anchor(
+            rooted, expected=anchor, current=updated
+        )
+        anchor = updated
+    return anchor
+
+
+def _advance_anchor(
+    rooted: RootedFile,
+    *,
+    prior: CodingWorkerCheckpointAnchorV1,
+    checkpoint: CodingWorkerHistoryCheckpointV1,
+) -> None:
+    updated = CodingWorkerCheckpointAnchorV1.create(
+        scope_id=prior.scope_id,
+        store_id=prior.store_id,
+        latest_revision=checkpoint.journal_revision,
+        latest_digest=checkpoint.record_digest,
+    )
+    write_coding_worker_checkpoint_anchor(
+        rooted, expected=prior, current=updated
+    )
+
+
 def _candidate_for_review(
     product: PosixLocalWheelProductSessionOwner,
     *,
@@ -536,6 +643,13 @@ def read_coding_product_worker_history_checkpoints_under_gc_guard(
             scope_id=product.policy.project_scope_id,
             store_id=product.epoch_runtime.registry.store_id,
         )
+        _anchor_for_records(
+            rooted,
+            scope_id=product.policy.project_scope_id,
+            store_id=product.epoch_runtime.registry.store_id,
+            records=records,
+            settle_lag=False,
+        )
         if records:
             current = capture_coding_worker_history_streams_under_gc_guard(product)
             if not verify_coding_worker_history_stream_extensions_under_gc_guard(
@@ -581,11 +695,28 @@ def publish_coding_product_worker_history_checkpoint(
                     "coding_worker_checkpoint_closure_unproven"
                 )
             with _bound_checkpoint(product) as rooted:
-                records, history = _read_records(
+                records, history = _read_records_or_repair_empty_bootstrap(
                     rooted,
                     scope_id=product.policy.project_scope_id,
                     store_id=registry.store_id,
                 )
+                anchor = _anchor_for_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                    records=records,
+                    settle_lag=True,
+                )
+                if anchor is None:
+                    anchor = CodingWorkerCheckpointAnchorV1.create(
+                        scope_id=product.policy.project_scope_id,
+                        store_id=registry.store_id,
+                        latest_revision=0,
+                        latest_digest="",
+                    )
+                    write_coding_worker_checkpoint_anchor(
+                        rooted, expected=None, current=anchor
+                    )
                 if records:
                     prior = records[-1]
                     if (
@@ -661,6 +792,7 @@ def publish_coding_product_worker_history_checkpoint(
                     previous_raw=previous_raw,
                     appended_line=line,
                 )
+                _advance_anchor(rooted, prior=anchor, checkpoint=candidate)
                 return candidate
 
 
@@ -704,6 +836,17 @@ def repair_coding_product_worker_history_checkpoint_append(
                     store_id=registry.store_id,
                     history=pending.committed_history,
                 )
+                anchor = _anchor_for_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                    records=records,
+                    settle_lag=True,
+                )
+                if anchor is None:
+                    raise CodingWorkerHistoryCheckpointError(
+                        "coding_worker_checkpoint_anchor_missing"
+                    )
                 candidate = _candidate_for_review(
                     product,
                     attempt_id=attempt_id,
@@ -722,6 +865,7 @@ def repair_coding_product_worker_history_checkpoint_append(
                     previous_raw=history.active_raw,
                     appended_line=pending.appended_line,
                 )
+                _advance_anchor(rooted, prior=anchor, checkpoint=candidate)
                 repaired, _ = _read_records(
                     rooted,
                     scope_id=product.policy.project_scope_id,
@@ -760,6 +904,17 @@ def rollback_coding_product_worker_history_checkpoint_tail(
                     store_id=registry.store_id,
                     history=history,
                 )
+                anchor = _anchor_for_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                    records=records,
+                    settle_lag=True,
+                )
+                if anchor is None:
+                    raise CodingWorkerHistoryCheckpointError(
+                        "coding_worker_checkpoint_anchor_missing"
+                    )
                 if records:
                     current = capture_coding_worker_history_streams_under_gc_guard(
                         product

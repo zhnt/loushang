@@ -9,8 +9,18 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.package_product_worker_history_checkpoint import (
+    CodingWorkerHistoryCheckpointError,
     CodingWorkerHistoryCheckpointV1,
+    _anchor_for_records,
     _read_records,
+    _read_records_or_repair_empty_bootstrap,
+)
+from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+    ANCHOR_NAME,
+    CodingWorkerCheckpointAnchorError,
+    CodingWorkerCheckpointAnchorV1,
+    read_coding_worker_checkpoint_anchor,
+    write_coding_worker_checkpoint_anchor,
 )
 from loushang.coding.package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
@@ -135,6 +145,46 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     rooted, scope_id="project", store_id="store"
                 )
                 assert records == (checkpoint,)
+                with pytest.raises(CodingWorkerHistoryCheckpointError) as missing:
+                    _anchor_for_records(
+                        rooted,
+                        scope_id="project",
+                        store_id="store",
+                        records=records,
+                        settle_lag=False,
+                    )
+                assert missing.value.code == "coding_worker_checkpoint_anchor_missing"
+                anchor = CodingWorkerCheckpointAnchorV1.create(
+                    scope_id="project",
+                    store_id="store",
+                    latest_revision=0,
+                    latest_digest="",
+                )
+                write_coding_worker_checkpoint_anchor(
+                    rooted, expected=None, current=anchor
+                )
+                with pytest.raises(CodingWorkerHistoryCheckpointError) as lagging:
+                    _anchor_for_records(
+                        rooted,
+                        scope_id="project",
+                        store_id="store",
+                        records=records,
+                        settle_lag=False,
+                    )
+                assert lagging.value.code == "coding_worker_checkpoint_anchor_lagging"
+                settled = _anchor_for_records(
+                    rooted,
+                    scope_id="project",
+                    store_id="store",
+                    records=records,
+                    settle_lag=True,
+                )
+                assert settled is not None
+                assert settled.latest_revision == 1
+                assert settled.latest_digest == checkpoint.record_digest
+                assert read_coding_worker_checkpoint_anchor(
+                    rooted, scope_id="project", store_id="store"
+                ) == settled
                 rooted.append_bytes(b"{}\n")
                 with pytest.raises(
                     CodingWorkerHistorySegmentError,
@@ -148,7 +198,7 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")
-def test_worker_checkpoint_bootstrap_without_head_refuses_recovery(
+def test_worker_checkpoint_bootstrap_requires_anchor_before_head_recovery(
     tmp_path: Path,
 ) -> None:
     tmp_path.chmod(0o700)
@@ -176,6 +226,59 @@ def test_worker_checkpoint_bootstrap_without_head_refuses_recovery(
                         max_segment_bytes=32 * 1024 * 1024,
                     )
                 assert rooted.read_bytes(max_bytes=1) == b""
+                anchor = CodingWorkerCheckpointAnchorV1.create(
+                    scope_id="project",
+                    store_id="store",
+                    latest_revision=0,
+                    latest_digest="",
+                )
+                write_coding_worker_checkpoint_anchor(
+                    rooted, expected=None, current=anchor
+                )
+                records, history = _read_records_or_repair_empty_bootstrap(
+                    rooted, scope_id="project", store_id="store"
+                )
+                assert records == ()
+                assert history.active_raw == b""
+                assert _read_records(
+                    rooted, scope_id="project", store_id="store"
+                )[0] == ()
+        finally:
+            io.cleanup()
+    finally:
+        os.close(root_fd)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")
+def test_worker_checkpoint_anchor_rejects_changed_tip_bytes(tmp_path: Path) -> None:
+    tmp_path.chmod(0o700)
+    root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        io = RootedFileIO(tmp_path, root_fd)
+        try:
+            with io.bind(
+                tmp_path / "worker-history-checkpoints.jsonl", durable=True
+            ) as rooted:
+                anchor = CodingWorkerCheckpointAnchorV1.create(
+                    scope_id="project",
+                    store_id="store",
+                    latest_revision=0,
+                    latest_digest="",
+                )
+                write_coding_worker_checkpoint_anchor(
+                    rooted, expected=None, current=anchor
+                )
+                changed = anchor.to_bytes().replace(
+                    b'"latestRevision":0', b'"latestRevision":1'
+                )
+                rooted.sibling(ANCHOR_NAME).atomic_write(changed)
+                with pytest.raises(
+                    CodingWorkerCheckpointAnchorError,
+                    match="coding_worker_checkpoint_anchor_corrupt",
+                ):
+                    read_coding_worker_checkpoint_anchor(
+                        rooted, scope_id="project", store_id="store"
+                    )
         finally:
             io.cleanup()
     finally:

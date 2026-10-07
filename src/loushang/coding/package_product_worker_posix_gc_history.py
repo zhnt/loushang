@@ -100,6 +100,7 @@ class CodingPosixWorkerGcHistoryAuthority:
 
             if any(
                 name.startswith("worker-history-checkpoints.")
+                or name == "worker-history-checkpoint-owner.json"
                 for name in observed_names
             ):
                 read_coding_product_worker_history_checkpoints_under_gc_guard(product)

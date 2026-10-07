@@ -1530,6 +1530,17 @@ remain in block 5.
 | 4. Executable topology | Explicit Linux installed-Worker query and negative canaries pass, including ordinary Python SDK Sessions; default routing remains closed. Windows public Session direct, hosted, and both crash/reopen paths passed 4/4 in native CI run `37502903364` on head `8c3d6b87`; normal/partial-stage GC and crash GC passed separately 1/1 each, with verified zero-skip reports. The complete run passed. Local receipt-history commits still need an exact-head rerun. | Durable history retention, general third-party admission, current-head native Windows evidence and platform closure. |
 | 5. Storage and B workspace | Sole Desired State selection and Product GC/private-data paths have focused evidence; Windows writeback code exists. | Native Windows production and recovery evidence plus final integrated regression. |
 
+The 2026-10-07 Linux Worker continuation adds a Product-owned, digest-chained
+history checkpoint candidate and a separate scope- and Store-bound committed
+tip anchor. Real Product tests cover first-head interruption and recovery,
+one-record rotation, append-before-head refusal and repair, stale-source tail
+rollback, and head-before-anchor refusal followed by idempotent settlement.
+The full non-live Worker candidate file passed 35 cases with 12 selected
+host-runtime skips; exact import boundaries passed 165 cases. These results
+strengthen block 4's recovery evidence but do not retire source histories,
+enforce old-ID tombstones in writers, open general third-party Worker routing,
+or replace the remaining native Windows and final integrated gates.
+
 The post-development Astra architecture and integrity reviews found two
 recoverable P1 defects. Ordinary explicit Linux Worker Sessions now renew a
 bounded Capability owner admission only after rereading the same selected

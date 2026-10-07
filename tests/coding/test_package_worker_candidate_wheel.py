@@ -5571,6 +5571,25 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             product, attempt_id=attempt_id
         )
         assert checkpoint_review.missing_proofs == ()
+
+        def fail_initial_checkpoint_head(
+            *_args: object, **_kwargs: object
+        ) -> None:
+            raise OSError("injected checkpoint first-head pause")
+
+        with monkeypatch.context() as interrupted_initial_head:
+            interrupted_initial_head.setattr(
+                checkpoint_module,
+                "initialize_coding_worker_active_head",
+                fail_initial_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint first-head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with pytest.raises(PackageProductGcExecutionError) as bootstrap_gc:
+            gc.prepare()
+        assert bootstrap_gc.value.code == "plugin_package_gc_worker_history_unsettled"
         checkpoint = publish_coding_product_worker_history_checkpoint(
             product, attempt_id=attempt_id
         )
@@ -5717,6 +5736,45 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             assert read_coding_product_worker_history_checkpoints_under_gc_guard(
                 product
             ) == (checkpoint, repaired, fresh)
+        gc.prepare()
+        latest_opt_in = opt_in_owner.current(_PLUGIN)
+        assert latest_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-anchor-revoke",
+            expected_generation=latest_opt_in.generation,
+        )
+
+        def fail_anchor_commit(*_args: object, **_kwargs: object) -> None:
+            raise OSError("injected checkpoint anchor pause")
+
+        with monkeypatch.context() as interrupted_anchor:
+            interrupted_anchor.setattr(
+                checkpoint_module,
+                "write_coding_worker_checkpoint_anchor",
+                fail_anchor_commit,
+            )
+            with pytest.raises(OSError, match="checkpoint anchor pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with product.gc_gate.read_guard():
+            with pytest.raises(CodingWorkerHistoryCheckpointError) as lagging_anchor:
+                read_coding_product_worker_history_checkpoints_under_gc_guard(
+                    product
+                )
+        assert lagging_anchor.value.code == "coding_worker_checkpoint_anchor_lagging"
+        with pytest.raises(PackageProductGcExecutionError) as anchor_gc:
+            gc.prepare()
+        assert anchor_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        anchored = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert anchored.journal_revision == fresh.journal_revision + 1
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh, anchored)
         gc.prepare()
     finally:
         reopened.close()
