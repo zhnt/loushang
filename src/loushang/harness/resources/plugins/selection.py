@@ -1786,12 +1786,8 @@ class PluginSelectionResolver:
             _verify_package(package)
             binding = bindings_by_id[plugin_id]
             _verify_binding(package, binding)
-            if not package.source.enabled or not package.manifest.enabled:
-                raise PluginSelectionError(
-                    f"Selected Plugin is disabled: {plugin_id}",
-                    code="selected_plugin_disabled",
-                    path=package.root,
-                )
+            # Product selection is authoritative after publication; manifest
+            # defaults and Source availability cannot veto the selected revision.
             trust = trust_by_id[plugin_id]
             if (
                 trust.package_source_identity != binding.source_identity
