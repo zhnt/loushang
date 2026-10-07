@@ -14,6 +14,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .package_product_worker_history_segments import (
+    CodingWorkerSegmentedHistoryV1,
     read_coding_worker_segmented_history,
 )
 
@@ -209,10 +210,10 @@ class CodingWorkerHistoryStreamSnapshotV1:
         )
 
 
-def capture_coding_worker_history_streams_under_gc_guard(
+def read_coding_worker_histories_under_gc_guard(
     product: PosixLocalWheelProductSessionOwner,
-) -> tuple[CodingWorkerHistoryStreamSnapshotV1, ...]:
-    """Capture all five strict streams while Product GC admission is held."""
+) -> tuple[CodingWorkerSegmentedHistoryV1, ...]:
+    """Read all five strict V1 streams under Product GC admission."""
 
     if (
         type(product) is not PosixLocalWheelProductSessionOwner
@@ -223,7 +224,7 @@ def capture_coding_worker_history_streams_under_gc_guard(
     with product.pinned_state_root_gc_read() as root_fd:
         file_io = RootedFileIO(product.state_root, root_fd)
         try:
-            snapshots: list[CodingWorkerHistoryStreamSnapshotV1] = []
+            histories: list[CodingWorkerSegmentedHistoryV1] = []
             for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
                 with file_io.bind(
                     product.state_root / f"{stem}.jsonl", durable=False
@@ -234,17 +235,29 @@ def capture_coding_worker_history_streams_under_gc_guard(
                         stream_id=stem,
                         max_segment_bytes=_MAX_SEGMENT_BYTES,
                     )
-                snapshots.append(
-                    CodingWorkerHistoryStreamSnapshotV1.capture(
-                        stem=stem,
-                        active_generation=history.active_generation,
-                        last_sealed_revision=history.last_sealed_revision,
-                        segments=history.segments,
-                    )
-                )
-            return tuple(snapshots)
+                histories.append(history)
+            return tuple(histories)
         finally:
             file_io.cleanup()
+
+
+def capture_coding_worker_history_streams_under_gc_guard(
+    product: PosixLocalWheelProductSessionOwner,
+) -> tuple[CodingWorkerHistoryStreamSnapshotV1, ...]:
+    """Capture all five strict streams while Product GC admission is held."""
+
+    histories = read_coding_worker_histories_under_gc_guard(product)
+    return tuple(
+        CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=stem,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        for stem, history in zip(
+            CODING_WORKER_HISTORY_STREAM_STEMS, histories, strict=True
+        )
+    )
 
 
 def verify_coding_worker_history_stream_extensions_under_gc_guard(
@@ -258,10 +271,8 @@ def verify_coding_worker_history_stream_extensions_under_gc_guard(
     if (
         type(product) is not PosixLocalWheelProductSessionOwner
         or product.policy.product_id != "coding"
-        or tuple(item.stem for item in previous)
-        != CODING_WORKER_HISTORY_STREAM_STEMS
-        or tuple(item.stem for item in current)
-        != CODING_WORKER_HISTORY_STREAM_STEMS
+        or tuple(item.stem for item in previous) != CODING_WORKER_HISTORY_STREAM_STEMS
+        or tuple(item.stem for item in current) != CODING_WORKER_HISTORY_STREAM_STEMS
     ):
         raise ValueError("Coding Worker stream extension requires its Product")
     product.assert_root_gc_authority_current()
@@ -278,9 +289,7 @@ def verify_coding_worker_history_stream_extensions_under_gc_guard(
                         stream_id=now.stem,
                         max_segment_bytes=_MAX_SEGMENT_BYTES,
                     )
-                if not old.is_exact_prefix_of(
-                    now, current_segments=history.segments
-                ):
+                if not old.is_exact_prefix_of(now, current_segments=history.segments):
                     return False
             return True
         finally:
@@ -291,5 +300,6 @@ __all__ = [
     "CODING_WORKER_HISTORY_STREAM_STEMS",
     "CodingWorkerHistoryStreamSnapshotV1",
     "capture_coding_worker_history_streams_under_gc_guard",
+    "read_coding_worker_histories_under_gc_guard",
     "verify_coding_worker_history_stream_extensions_under_gc_guard",
 ]

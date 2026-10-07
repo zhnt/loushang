@@ -1769,6 +1769,15 @@ publication must prove Product-wide reference closure, use the typed
 preparation, and recheck the same sources under runtime quiescence and the GC
 write gate before switching authority.
 
+The Linux Product now has a read-only V2 preflight using the same runtime
+quiescence then GC write-gate order as checkpoint publication. It reopens the
+anchored checkpoint, reviews every checkpointed attempt for current native,
+payload, backup, lease, and GC references, requires the current five-stream
+snapshot and topology revisions to match that checkpoint, then reads all five
+rooted V1 histories for typed preparation. This preflight writes no V2 files
+and does not make a cutover index authoritative. The host-runtime integration
+path and durable publication crash matrix remain to be verified.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later
