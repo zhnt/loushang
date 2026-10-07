@@ -1659,11 +1659,13 @@ high-water marks before accepting a new operation, attempt, receipt, or epoch.
 
 This is the required target protocol, not implemented authority. The first
 code slice proves a read-only retirement preview against complete version-1
-bytes and explicit negative cases. A later slice must define and verify the
-version-2 manifest; subsequent slices must carry the typed bases through every
-reader and writer, then prove the publication/deletion crash matrix on a real
-Product and Windows equivalent
-before any source segment is physically removed in production.
+bytes and explicit negative cases. The next slice defines canonical version-2
+stream cutover candidates and a Product index binding all five streams to the
+same checkpoint. These records have no IO or publication path and do not
+validate a typed semantic base. Subsequent slices must carry typed bases
+through every reader and writer, then prove the publication/deletion crash
+matrix on a real Product and Windows equivalent before any source segment is
+physically removed in production.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

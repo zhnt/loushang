@@ -69,6 +69,7 @@ class CodingWorkerStreamRetirementPreviewV2:
             or type(self.retired_generations) is not tuple
             or self.retired_generations != tuple(range(self.first_retained_generation))
             or type(self.retained_generations) is not tuple
+            or not self.retained_generations
             or self.retained_generations
             != tuple(
                 range(
