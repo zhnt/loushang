@@ -1759,6 +1759,16 @@ per-key epoch waterline against the anchored checkpoint chain. This candidate
 still has no base file, V2 reader or writer, Product index publication, or
 source-deletion authority.
 
+A read-only five-stream preparation now takes one anchored checkpoint chain
+and exact V1 histories, projects and replays every typed base, then binds the
+five individually validated stream digests into one Product index candidate.
+It refuses a missing stream, changed source, stale anchor, or repeated
+checkpoint identity.
+The older generic index constructor remains a byte-format primitive; Product
+publication must prove Product-wide reference closure, use the typed
+preparation, and recheck the same sources under runtime quiescence and the GC
+write gate before switching authority.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later
