@@ -112,11 +112,9 @@ class CodingPosixWorkerGcHistoryAuthority:
                 raise ValueError("Linux Worker GC inventory changed")
             for name in observed_names:
                 lowered = name.casefold()
-                if (
-                    lowered.startswith(("worker-", ".worker-"))
-                    and name != PRODUCT_OWNER_INDEX_NAME
-                    and not _known_worker_state_name(name)
-                ):
+                if lowered.startswith(
+                    ("worker-", ".worker-")
+                ) and not _known_worker_state_name(name):
                     raise ValueError("Linux Worker GC reference owner is unrecognized")
                 if any(
                     lowered.startswith(stem) or lowered.startswith("." + stem)

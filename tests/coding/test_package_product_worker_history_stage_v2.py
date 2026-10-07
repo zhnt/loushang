@@ -262,7 +262,7 @@ def test_product_gc_blocks_staged_v2_artifacts(
     with _rooted(tmp_path) as rooted:
         stage_coding_worker_v2_preparation(rooted, prepared=prepared)
     assert all(_known_worker_state_name(name) for name in PREPARATION_STATE_NAMES)
-    assert not _known_worker_state_name(PRODUCT_OWNER_INDEX_NAME)
+    assert _known_worker_state_name(PRODUCT_OWNER_INDEX_NAME)
     product = object.__new__(PosixLocalWheelProductSessionOwner)
     object.__setattr__(product, "state_root", tmp_path)
     object.__setattr__(product, "policy", SimpleNamespace(product_id="coding"))

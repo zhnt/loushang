@@ -1,11 +1,11 @@
-"""Exact Linux Product Worker stream bytes for a later retention checkpoint."""
+"""Authenticated Linux Product Worker snapshots for retention checkpoints."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
 
-from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -15,6 +15,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 
 from .package_product_worker_history_segments import (
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
+    _segment_name,
     read_coding_worker_segmented_history,
 )
 
@@ -26,6 +28,7 @@ CODING_WORKER_HISTORY_STREAM_STEMS = (
     "worker-supervisor",
 )
 _MAX_SEGMENT_BYTES = 32 * 1024 * 1024
+_MAX_MANIFEST_BYTES = 1024 * 1024
 
 
 def _stream_fingerprint(
@@ -241,11 +244,129 @@ def read_coding_worker_histories_under_gc_guard(
             file_io.cleanup()
 
 
+def _v2_owner_exists(rooted: RootedFile) -> bool:
+    try:
+        rooted.stat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _read_v2_snapshot(
+    rooted: RootedFile, *, stem: str
+) -> tuple[CodingWorkerHistoryStreamSnapshotV1, bytes]:
+    """Reconstruct a full snapshot only after V2 proves deleted generations."""
+
+    from .package_product_worker_history_read_v2 import (
+        read_coding_worker_v2_retained_history,
+    )
+
+    rooted.sibling(stem + ".jsonl.lock").acquire_lock(
+        exclusive=False, suffix="", create=False
+    )
+    retained = read_coding_worker_v2_retained_history(rooted, stem=stem)
+    manifest = CodingWorkerSegmentManifestV1.from_bytes(
+        rooted.sibling(stem + ".segments.json").read_bytes(
+            max_bytes=_MAX_MANIFEST_BYTES
+        ),
+        stream_id=stem,
+    )
+    active = rooted.sibling(_segment_name(stem, manifest.active_generation)).read_bytes(
+        max_bytes=_MAX_SEGMENT_BYTES
+    )
+    if manifest.active_generation != retained.active_generation:
+        raise ValueError("Coding Worker V2 snapshot generation changed")
+    counts = (*(seal.byte_count for seal in manifest.sealed), len(active))
+    digests = (*(seal.digest for seal in manifest.sealed), sha256(active).hexdigest())
+    snapshot = CodingWorkerHistoryStreamSnapshotV1(
+        stem=stem,
+        active_generation=manifest.active_generation,
+        last_sealed_revision=manifest.last_sealed_revision,
+        total_revision=retained.last_revision,
+        segment_byte_counts=counts,
+        segment_digests=digests,
+        fingerprint=_stream_fingerprint(
+            stem=stem,
+            active_generation=manifest.active_generation,
+            last_sealed_revision=manifest.last_sealed_revision,
+            total_revision=retained.last_revision,
+            counts=counts,
+            digests=digests,
+        ),
+    )
+    return snapshot, active
+
+
+def _read_v2_product_snapshots(
+    product: PosixLocalWheelProductSessionOwner,
+) -> tuple[tuple[CodingWorkerHistoryStreamSnapshotV1, bytes], ...] | None:
+    from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
+
+    product.assert_root_gc_authority_current()
+    with product.pinned_state_root_gc_read() as root_fd:
+        file_io = RootedFileIO(product.state_root, root_fd)
+        try:
+            with file_io.bind(
+                product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+            ) as rooted:
+                if not _v2_owner_exists(rooted):
+                    return None
+            snapshots: list[tuple[CodingWorkerHistoryStreamSnapshotV1, bytes]] = []
+            for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
+                with file_io.bind(
+                    product.state_root / f"{stem}.jsonl", durable=False
+                ) as rooted:
+                    snapshots.append(_read_v2_snapshot(rooted, stem=stem))
+            return tuple(snapshots)
+        finally:
+            file_io.cleanup()
+
+
+def _is_v2_authenticated_prefix(
+    old: CodingWorkerHistoryStreamSnapshotV1,
+    now: CodingWorkerHistoryStreamSnapshotV1,
+    *,
+    active: bytes,
+) -> bool:
+    if (
+        old.stem != now.stem
+        or old.active_generation > now.active_generation
+        or old.total_revision > now.total_revision
+        or old.last_sealed_revision > now.last_sealed_revision
+    ):
+        return False
+    for generation in range(old.active_generation):
+        if (
+            old.segment_byte_counts[generation] != now.segment_byte_counts[generation]
+            or old.segment_digests[generation] != now.segment_digests[generation]
+        ):
+            return False
+    generation = old.active_generation
+    count = old.segment_byte_counts[generation]
+    if generation < now.active_generation:
+        return (
+            count == now.segment_byte_counts[generation]
+            and old.segment_digests[generation] == now.segment_digests[generation]
+        )
+    return (
+        count <= len(active)
+        and sha256(active[:count]).hexdigest() == (old.segment_digests[generation])
+    )
+
+
 def capture_coding_worker_history_streams_under_gc_guard(
     product: PosixLocalWheelProductSessionOwner,
 ) -> tuple[CodingWorkerHistoryStreamSnapshotV1, ...]:
     """Capture all five strict streams while Product GC admission is held."""
 
+    if (
+        type(product) is not PosixLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+    ):
+        raise ValueError("Coding Worker history streams require their Product")
+    v2_snapshots = _read_v2_product_snapshots(product)
+    if v2_snapshots is not None:
+        return tuple(snapshot for snapshot, _active in v2_snapshots)
     histories = read_coding_worker_histories_under_gc_guard(product)
     return tuple(
         CodingWorkerHistoryStreamSnapshotV1.capture(
@@ -275,6 +396,14 @@ def verify_coding_worker_history_stream_extensions_under_gc_guard(
         or tuple(item.stem for item in current) != CODING_WORKER_HISTORY_STREAM_STEMS
     ):
         raise ValueError("Coding Worker stream extension requires its Product")
+    v2_snapshots = _read_v2_product_snapshots(product)
+    if v2_snapshots is not None:
+        return all(
+            snapshot == now and _is_v2_authenticated_prefix(old, now, active=active)
+            for old, now, (snapshot, active) in zip(
+                previous, current, v2_snapshots, strict=True
+            )
+        )
     product.assert_root_gc_authority_current()
     with product.pinned_state_root_gc_read() as root_fd:
         file_io = RootedFileIO(product.state_root, root_fd)
