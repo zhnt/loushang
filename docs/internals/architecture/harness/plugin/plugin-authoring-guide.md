@@ -333,9 +333,41 @@ loushang-worker-native --workspace PATH candidate-enable \
 The install result reports Product admission for that exact Wheel and returns
 `alreadyInstalled: true` when a retry finds the same installed revision. The
 enable result reports the Desired State operation. Neither proves Session use.
-Per-install opt-in and an approved native release are still separate Product
-decisions before a query or Python SDK Session can use the Worker. A successful
-build or capture alone does not make the Worker usable.
+
+The Product operator must separately review and approve the trusted Loushang
+native Hosting release Wheel. `RELEASE_WHEEL` below is that controlled runtime
+artifact, **not** `reviewworker`'s candidate Wheel. Use the `reviewId` from
+`nativeReleaseReview` and the current `generation` from `status`; a fresh
+workspace begins at generation `0`:
+
+```text
+loushang-worker-native --workspace PATH status
+loushang-worker-native --workspace PATH review --wheel RELEASE_WHEEL
+loushang-worker-native --workspace PATH approve \
+  --wheel RELEASE_WHEEL --review-id REVIEW_ID \
+  --operation-id approve-native-release-1 --expected-generation 0
+loushang-worker-native --workspace PATH install --wheel RELEASE_WHEEL
+loushang-worker-native --workspace PATH status
+```
+
+`install` returns the installed `nativeClosure`; a review or approval alone
+does not install the native profile. After the selected candidate and native
+closure are current, the operator records the separate per-install decision
+and checks its exact identity alignment:
+
+```text
+loushang-worker-native --workspace PATH candidate-allow \
+  --plugin-id reviewworker --operation-id allow-reviewworker-1 \
+  --expected-generation 0
+loushang-worker-native --workspace PATH candidate-status \
+  --plugin-id reviewworker
+```
+
+Use the current opt-in generation if this Plugin has an earlier decision.
+`identity_match_in_read` is only a read-only alignment observation; neither it
+nor a successful build, capture, approval, or install proves Session use. An
+actual query through the explicit Product Session path below supplies that
+evidence for the selected Wheel.
 
 For an installed Linux candidate, capture the new Wheel under its new versioned
 filename, revoke the current per-install opt-in, then update the exact old
