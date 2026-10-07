@@ -1664,8 +1664,8 @@ stream cutover candidates and a Product index binding all five streams to the
 same checkpoint. Those record classes have no publication path. The generic
 candidate constructor still accepts an unverified semantic-base digest;
 the later staging path writes candidate bytes but grants no authority.
-Subsequent slices must carry typed bases through every reader and writer, then
-prove the publication/deletion crash matrix on a real Product and Windows
+Subsequent slices must carry typed bases through Product readers and writers,
+then prove the publication/deletion crash matrix on a real Product and Windows
 equivalent before any source segment is physically removed in production.
 
 The first writer fence is on Linux Product opt-in. Under the Product GC write
@@ -1719,8 +1719,8 @@ revision, generation, and kill-switch boundary. A canonical base carries the
 retired seal-chain digest; an opt-in cutover factory reprojects the exact V1
 prefix before binding its byte digest to the retirement preview. Changed
 prefix bytes, altered base state, reused operation IDs, and generation rollback
-refuse. Its bytes may be durably staged as a candidate; no V2 reader, Product
-cutover publication, or source deletion exists yet.
+refuse. Its bytes may be durably staged as a candidate; no Product-routed V2
+reader, Product cutover publication, or source deletion exists yet.
 
 The second typed semantic-base slice covers activation receipts. It projects
 the sealed V1 prefix into the last issued sequence and every retired receipt
@@ -1729,8 +1729,8 @@ refusing gaps and fingerprint reuse. Its cutover factory reprojects the prefix
 and binds the canonical base digest to the checkpoint and exact seal chain.
 This does not prove that an old receipt is unreferenced by C5, native recovery,
 backup, or Package GC; the Product-wide closure must still prove those joins
-before publication. Staged receipt-base bytes have no V2 reader or deletion
-authority.
+before publication. Staged receipt-base bytes have no Product-routed V2
+reader or deletion authority.
 
 The third typed semantic-base slice covers C5 activation state. It stores the
 exact last CAS record at the sealed boundary and every attempt ID already
@@ -1738,8 +1738,9 @@ settled and compacted out of that state. Retained full-state records resume
 the existing immutable-identity and phase-transition validator from this
 boundary; removed attempts may never reappear under the same or a different
 key. The C5 cutover factory reprojects the sealed V1 prefix before binding the
-base digest to the checkpoint. A staged base remains inert until a V2 reader,
-Product owner index, and deletion protocol are complete.
+base digest to the checkpoint. A staged base remains inert until a
+Product-routed V2 reader, Product owner index, and deletion protocol are
+complete.
 
 The fourth typed semantic-base slice covers Start Gates. It retains the latest
 intent or bound record for each attempt outside the anchored checkpoint
@@ -1758,8 +1759,8 @@ have settled in the sealed prefix and cannot reappear in retained history.
 Retained claims and transitions replay from the original global revision;
 the cutover factory reprojects the sealed prefix and checks the resulting
 per-key epoch waterline against the anchored checkpoint chain. This candidate
-may now have durably staged bytes, but has no V2 reader or writer, Product
-index publication, or source-deletion authority.
+may now have durably staged bytes, but has no Product-routed V2 reader or
+writer, Product index publication, or source-deletion authority.
 
 A read-only five-stream preparation now takes one anchored checkpoint chain
 and exact V1 histories, projects and replays every typed base, then binds the
@@ -1789,6 +1790,16 @@ inode identity while no Product owner index exists. Package GC refuses to
 delete a Package root while preparation artifacts remain. Staging does not
 commit the Product owner index, switch any V1 reader or writer, or remove
 source history; those steps still need their own crash and recovery proof.
+
+A strict V2 physical reader candidate now verifies the Product owner index
+against staged typed artifacts, the anchored checkpoint chain, the immutable
+cutover prefix, the V1 generation manifest, exact sealed bytes and heads, and
+semantic replay of retained segments. It permits a retired segment or head to
+be absent only when an exact deletion ledger is bound to that owner index.
+The reader also follows later active appends and rotations while retaining the
+cutover prefix check. The ledger has a canonical type but no Product-owned
+publication or deletion executor. Product readers and writers still select V1;
+no old segment may yet be removed in production.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

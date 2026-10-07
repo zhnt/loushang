@@ -41,7 +41,10 @@ from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
     capture_coding_worker_history_streams_under_gc_guard,
 )
-from .package_product_worker_history_v2_names import PREPARATION_STATE_NAMES
+from .package_product_worker_history_v2_names import (
+    DELETION_LEDGER_NAME,
+    PREPARATION_STATE_NAMES,
+)
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
@@ -77,7 +80,7 @@ _PAYLOAD_REPAIR = re.compile(
 
 
 def _known_worker_state_name(name: str) -> bool:
-    if name in PREPARATION_STATE_NAMES or name in {
+    if name in (*PREPARATION_STATE_NAMES, DELETION_LEDGER_NAME) or name in {
         "worker-native-release-v1",
         "worker-native-release-approvals.jsonl",
         "worker-native-release-approvals.jsonl.lock",

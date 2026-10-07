@@ -8,6 +8,7 @@ from .package_product_worker_history_stream_snapshot import (
 
 PREPARATION_INTENT_NAME = "worker-history-v2-preparation.json"
 PRODUCT_OWNER_INDEX_NAME = "worker-history-v2-owner.json"
+DELETION_LEDGER_NAME = "worker-history-v2-deletion.json"
 PREPARED_INDEX_NAME = "worker-history-v2-index.candidate.json"
 
 
@@ -40,6 +41,7 @@ __all__ = [
     "PREPARATION_STATE_NAMES",
     "PREPARED_INDEX_NAME",
     "PRODUCT_OWNER_INDEX_NAME",
+    "DELETION_LEDGER_NAME",
     "semantic_base_name",
     "stream_cutover_name",
 ]

@@ -31,7 +31,10 @@ from .package_product_worker_history_retention import (
     _PAYLOAD_REPAIR,
     _known_worker_state_name,
 )
-from .package_product_worker_history_v2_names import PREPARATION_STATE_NAMES
+from .package_product_worker_history_v2_names import (
+    DELETION_LEDGER_NAME,
+    PREPARATION_STATE_NAMES,
+)
 from .package_product_worker_opt_in import CodingWorkerOptInJournal
 from .package_product_worker_payload import (
     _read_complete_repair_intent,
@@ -99,7 +102,10 @@ class CodingPosixWorkerGcHistoryAuthority:
                 ):
                     raise ValueError("Linux Worker GC history name is invalid")
 
-            if any(name in PREPARATION_STATE_NAMES for name in observed_names):
+            if any(
+                name in (*PREPARATION_STATE_NAMES, DELETION_LEDGER_NAME)
+                for name in observed_names
+            ):
                 raise ValueError("Linux Worker GC V2 preparation remains open")
 
             if any(
