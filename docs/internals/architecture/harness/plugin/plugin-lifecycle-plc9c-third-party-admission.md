@@ -1694,6 +1694,14 @@ the next global journal revision above both retained records and the checkpoint
 waterline. The existing V1 replay and Product admission checks remain in
 effect; the gate reader still requires complete version-1 history.
 
+The Linux Product C5 activation-state CAS writer is the fourth writer join.
+It verifies the checkpoint's exact C5 byte prefix and derives its CAS revision
+above the checkpoint waterline. A new attempt ID already recorded in an
+anchored checkpoint is refused, while a still-retained attempt may continue
+through a later state revision. The Product binds the writer to its scope and
+store identity under the GC write gate. The C5 reader still requires complete
+version-1 history; this fence grants no cutover or pruning authority.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

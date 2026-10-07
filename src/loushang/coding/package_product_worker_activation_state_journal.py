@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from loushang.harness.journal import (
     JournalCodecError,
@@ -38,6 +40,14 @@ from .package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
 
 _STEM = "worker-activation-state"
 _MAX_REVISIONS = _DEFAULT_MAX_REVISIONS
@@ -46,6 +56,23 @@ _MAX_BYTES = _DEFAULT_MAX_BYTES
 
 class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
     """Keep every CAS revision across immutable Product-owned generations."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        scope_id: str | None = None,
+        store_id: str | None = None,
+    ) -> None:
+        super().__init__(path)
+        if (scope_id is None) != (store_id is None) or any(
+            type(value) is not str or not value or len(value) > 128
+            for value in (scope_id, store_id)
+            if value is not None
+        ):
+            raise ValueError("Coding Worker C5 checkpoint owner is invalid")
+        self._checkpoint_scope_id = scope_id
+        self._checkpoint_store_id = store_id
 
     def _acquire_journal_lock(self, rooted: RootedFile) -> None:
         created = rooted.acquire_lock(
@@ -107,9 +134,15 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
             raise WorkerActivationStateJournalError("worker_activation_state_capacity")
         with self._bound_journal() as rooted:
             records, history = self._load_segments(rooted)
-            current_revision = 0 if not records else records[-1].journal_revision
+            checkpoints = self._checkpoint_writer_fence(rooted)
+            checkpoint_revision = self._assert_checkpoint_source(checkpoints, history)
+            current_revision = max(
+                0 if not records else records[-1].journal_revision,
+                checkpoint_revision,
+            )
             if current_revision != expected_revision:
                 return False
+            self._assert_checkpoint_attempts_fresh(checkpoints, records, record)
             try:
                 validate_coding_worker_activation_attempt_history((*records, record))
             except ValueError as exc:
@@ -164,6 +197,98 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                 appended_line=line,
             )
             return True
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            ANCHOR_NAME,
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        if self._checkpoint_scope_id is None or self._checkpoint_store_id is None:
+            for name in (
+                ANCHOR_NAME,
+                "worker-history-checkpoints.jsonl",
+                "worker-history-checkpoints.jsonl.lock",
+                "worker-history-checkpoints.head.json",
+                "worker-history-checkpoints.segments.json",
+            ):
+                try:
+                    rooted.sibling(name).stat()
+                except FileNotFoundError:
+                    continue
+                raise WorkerActivationStateJournalError(
+                    "worker_activation_state_checkpoint_owner_required"
+                ) from None
+            return ()
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._checkpoint_scope_id,
+                store_id=self._checkpoint_store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise WorkerActivationStateJournalError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> int:
+        if not checkpoints:
+            return 0
+        prior = checkpoints[-1].stream_snapshots[2]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=_STEM,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise WorkerActivationStateJournalError(
+                "worker_activation_state_checkpoint_source_changed"
+            )
+        return prior.total_revision
+
+    @staticmethod
+    def _assert_checkpoint_attempts_fresh(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        records: tuple[_StateRecord, ...],
+        candidate: _StateRecord,
+    ) -> None:
+        if not checkpoints:
+            return
+        prior = (
+            {}
+            if not records
+            else cast(dict[str, dict[str, object]], records[-1].document["attempts"])
+        )
+        retained_ids = {cast(str, attempt["attemptId"]) for attempt in prior.values()}
+        candidate_attempts = cast(
+            dict[str, dict[str, object]], candidate.document["attempts"]
+        )
+        retired_ids = {
+            attempt_id
+            for checkpoint in checkpoints
+            for attempt_id in checkpoint.new_attempt_ids
+        }
+        if any(
+            cast(str, attempt["attemptId"]) in retired_ids
+            for attempt in candidate_attempts.values()
+            if cast(str, attempt["attemptId"]) not in retained_ids
+        ):
+            raise WorkerActivationStateJournalError(
+                "worker_activation_state_attempt_retired"
+            )
 
     def _load_segments(
         self, rooted: RootedFile

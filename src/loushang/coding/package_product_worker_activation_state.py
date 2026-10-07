@@ -37,7 +37,9 @@ class CodingProductWorkerActivationStateStore:
             raise ValueError("Coding Worker candidate owner is required")
         self._product = product
         self._journal = CodingProductWorkerActivationStateJournal(
-            product.state_root / "worker-activation-state.jsonl"
+            product.state_root / "worker-activation-state.jsonl",
+            scope_id=product.policy.project_scope_id,
+            store_id=product.epoch_runtime.registry.store_id,
         )
 
     @property
