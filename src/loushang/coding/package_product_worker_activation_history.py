@@ -95,19 +95,36 @@ def validate_coding_worker_activation_attempt_history(
 ) -> None:
     """Reject compacted ID reuse and changed identities across C5 revisions."""
 
-    seen_attempt_ids: dict[str, str] = {}
-    removed_keys: set[str] = set()
-    previous: dict[str, dict[str, object]] = {}
+    _fold_coding_worker_activation_attempt_history(records)
+
+
+def _fold_coding_worker_activation_attempt_history(
+    records: tuple[_StateRecord, ...],
+    *,
+    previous_record: _StateRecord | None = None,
+    retired_attempt_ids: frozenset[str] = frozenset(),
+) -> frozenset[str]:
+    """Continue identity and phase checks from a complete V1 or typed V2 base."""
+
+    previous = (
+        {}
+        if previous_record is None
+        else cast(dict[str, dict[str, object]], previous_record.document["attempts"])
+    )
+    seen_attempt_ids: dict[str, str] = {
+        cast(str, attempt["attemptId"]): key for key, attempt in previous.items()
+    }
+    retired = set(retired_attempt_ids)
     for record in records:
         current = cast(dict[str, dict[str, object]], record.document["attempts"])
         for key in previous.keys() - current.keys():
             if previous[key]["phase"] != "settled":
                 raise ValueError("Unsettled activation attempt was removed")
-            removed_keys.add(key)
+            retired.add(cast(str, previous[key]["attemptId"]))
         for key, attempt in current.items():
             attempt_id = cast(str, attempt["attemptId"])
             prior_key = seen_attempt_ids.get(attempt_id)
-            if key in removed_keys or (prior_key is not None and prior_key != key):
+            if attempt_id in retired or (prior_key is not None and prior_key != key):
                 raise ValueError("Activation attempt identity was reused")
             seen_attempt_ids[attempt_id] = key
             prior_attempt = previous.get(key)
@@ -128,6 +145,7 @@ def validate_coding_worker_activation_attempt_history(
                 ):
                     raise ValueError("Activation attempt phase regressed")
         previous = current
+    return frozenset(retired)
 
 
 def decode_coding_worker_activation_history(

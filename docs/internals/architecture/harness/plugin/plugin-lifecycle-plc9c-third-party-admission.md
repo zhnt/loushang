@@ -1730,6 +1730,15 @@ This does not prove that an old receipt is unreferenced by C5, native recovery,
 backup, or Package GC; the Product-wide closure must still prove those joins
 before publication. No receipt base file, V2 reader, or deletion path exists.
 
+The third typed semantic-base slice covers C5 activation state. It stores the
+exact last CAS record at the sealed boundary and every attempt ID already
+settled and compacted out of that state. Retained full-state records resume
+the existing immutable-identity and phase-transition validator from this
+boundary; removed attempts may never reappear under the same or a different
+key. The C5 cutover factory reprojects the sealed V1 prefix before binding the
+base digest to the checkpoint. This still has no base file, V2 reader,
+publication, or deletion authority.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

@@ -16,6 +16,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
 
+from .package_product_worker_activation_base_v2 import (
+    CodingWorkerActivationSemanticBaseV2,
+)
 from .package_product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
 )
@@ -343,6 +346,45 @@ class CodingWorkerStreamCutoverV2:
         )
         if semantic_base != projected:
             raise ValueError("Coding Worker V2 receipt semantic base differs")
+        return cls.from_preview(
+            preview=preview,
+            history=history,
+            semantic_base_digest=sha256(semantic_base.to_bytes()).hexdigest(),
+        )
+
+    @classmethod
+    def from_activation_base(
+        cls,
+        *,
+        checkpoint: CodingWorkerHistoryCheckpointV1,
+        preview: CodingWorkerStreamRetirementPreviewV2,
+        history: CodingWorkerSegmentedHistoryV1,
+        semantic_base: CodingWorkerActivationSemanticBaseV2,
+    ) -> CodingWorkerStreamCutoverV2:
+        """Bind an exact C5 snapshot and retired IDs to its sealed prefix."""
+
+        if (
+            type(checkpoint) is not CodingWorkerHistoryCheckpointV1
+            or type(preview) is not CodingWorkerStreamRetirementPreviewV2
+            or type(semantic_base) is not CodingWorkerActivationSemanticBaseV2
+            or preview.stem != "worker-activation-state"
+            or preview.checkpoint_revision != checkpoint.journal_revision
+            or preview.checkpoint_digest != checkpoint.record_digest
+            or preview.source_fingerprint != checkpoint.stream_snapshots[2].fingerprint
+            or semantic_base.scope_id != checkpoint.scope_id
+            or semantic_base.first_retained_generation
+            != preview.first_retained_generation
+            or semantic_base.cutoff_revision + 1 != preview.first_retained_revision
+            or semantic_base.retired_sealed_digest != preview.retired_sealed_digest
+        ):
+            raise ValueError("Coding Worker V2 C5 semantic base differs")
+        projected = CodingWorkerActivationSemanticBaseV2.from_v1_history(
+            history=history,
+            scope_id=checkpoint.scope_id,
+            first_retained_generation=preview.first_retained_generation,
+        )
+        if semantic_base != projected:
+            raise ValueError("Coding Worker V2 C5 semantic base differs")
         return cls.from_preview(
             preview=preview,
             history=history,
