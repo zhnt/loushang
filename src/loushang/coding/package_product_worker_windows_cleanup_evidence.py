@@ -207,7 +207,7 @@ class CodingWindowsWorkerCleanupEvidenceAuthority:
             or runtime.orphan_leases
             or runtime.native_job_absent is not True
             or not (
-                attempt.clean_exit_settled
+                (attempt.clean_exit_settled or attempt.fenced_exit_settled)
                 if self._mode == "normal"
                 else (
                     attempt.supervisor_process_settled is True

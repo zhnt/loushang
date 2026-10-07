@@ -152,6 +152,25 @@ def test_windows_c5_cleanup_review_requires_exact_settled_product_join(
 ) -> None:
     authority, review, _witness = _settled_review(tmp_path)
     assert authority._review_matches(review)
+    assert review.runtime.attempt is not None
+    fenced_attempt = replace(
+        review.runtime.attempt,
+        supervisor_phase="process_settled",
+        supervisor_revision=3,
+    )
+    assert not fenced_attempt.clean_exit_settled
+    assert fenced_attempt.fenced_exit_settled
+    fenced_review = replace(review, runtime=replace(review.runtime, attempt=fenced_attempt))
+    assert authority._review_matches(fenced_review)
+    assert not authority._review_matches(
+        replace(
+            fenced_review,
+            runtime=replace(
+                fenced_review.runtime,
+                attempt=replace(fenced_attempt, supervisor_process_settled=False),
+            ),
+        )
+    )
     assert not authority._review_matches(
         replace(review, runtime=replace(review.runtime, native_job_absent=None))
     )

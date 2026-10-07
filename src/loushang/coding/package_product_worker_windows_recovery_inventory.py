@@ -94,6 +94,22 @@ class CodingWindowsWorkerRecoveryAttemptV1:
     def clean_exit_settled(self) -> bool:
         """Require a launched Worker with complete native and process cleanup."""
 
+        return (
+            self.supervisor_phase == "stopped" and self._retained_native_exit_settled
+        )
+
+    @property
+    def fenced_exit_settled(self) -> bool:
+        """Require the same cleanup after a fenced process was physically reaped."""
+
+        return (
+            self.supervisor_phase == "process_settled"
+            and self._retained_native_exit_settled
+        )
+
+    @property
+    def _retained_native_exit_settled(self) -> bool:
+
         phases = self.native_phase_history
         witnesses = self.native_witness_present_history
         ordered = (
@@ -114,7 +130,6 @@ class CodingWindowsWorkerRecoveryAttemptV1:
         if (
             self.native_phase != "settled"
             or self.native_witness_state != "SETTLED"
-            or self.supervisor_phase != "stopped"
             or self.supervisor_process_settled is not True
             or phases is None
             or witnesses is None

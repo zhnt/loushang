@@ -3180,6 +3180,15 @@ original inventory CAS, committed selection, and current opt-in. Product
 with that transition evidence. A different operation ID is refused. The full
 cross-process update-to-physical-GC case passed 1/1 in 368 seconds on
 2026-10-07; the final exact-head CI gate remains pending.
+The Windows Session run on `8abde84b` passed native provisioning release
+after Product disable, then exposed a second C5 boundary: its cleanup review
+recognized only normal `stopped` Supervisor history, while the revoked facet
+correctly leaves a fenced attempt that Hosting physically reaps and records as
+`process_settled`. The review now accepts that fenced phase only with the same
+complete native settlement history, retained payload and launch identity,
+absent Job, retired activation, and no orphan leases. Focused portable cleanup
+and recovery cases passed 24/24; a non-skipped native Windows Session report
+for this change remains required.
 The dedicated Windows Worker Session CI job originally required four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. It now requires a fifth native Product-rooted C5
