@@ -91,9 +91,11 @@ from loushang.coding.package_product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
 from loushang.coding.package_product_worker_history_checkpoint import (
+    CodingWorkerHistoryCheckpointError,
     publish_coding_product_worker_history_checkpoint,
     read_coding_product_worker_history_checkpoints_under_gc_guard,
     repair_coding_product_worker_history_checkpoint_append,
+    rollback_coding_product_worker_history_checkpoint_tail,
 )
 from loushang.coding.package_product_worker_history_retention import (
     review_coding_product_worker_history_retention,
@@ -5672,6 +5674,49 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             assert read_coding_product_worker_history_checkpoints_under_gc_guard(
                 product
             ) == (checkpoint, repaired)
+        gc.prepare()
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-tail-revoke",
+            expected_generation=current_opt_in.generation,
+        )
+        with monkeypatch.context() as interrupted_tail:
+            interrupted_tail.setattr(
+                checkpoint_module,
+                "commit_coding_worker_active_segment",
+                fail_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        advanced_opt_in = opt_in_owner.current(_PLUGIN)
+        assert advanced_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-after-tail-revoke",
+            expected_generation=advanced_opt_in.generation,
+        )
+        with pytest.raises(CodingWorkerHistoryCheckpointError) as stale_repair:
+            repair_coding_product_worker_history_checkpoint_append(
+                product, attempt_id=attempt_id
+            )
+        assert stale_repair.value.code == "coding_worker_checkpoint_repair_mismatch"
+        assert rollback_coding_product_worker_history_checkpoint_tail(product) == (
+            checkpoint,
+            repaired,
+        )
+        gc.prepare()
+        fresh = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert fresh.journal_revision == repaired.journal_revision + 1
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh)
         gc.prepare()
     finally:
         reopened.close()

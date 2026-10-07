@@ -30,6 +30,8 @@ from .package_product_worker_history_segments import (
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     read_coding_worker_uncommitted_active_append,
+    read_coding_worker_uncommitted_active_tail,
+    rollback_coding_worker_uncommitted_active_tail,
     seal_coding_worker_active_segment,
 )
 from .package_product_worker_history_stream_snapshot import (
@@ -732,10 +734,67 @@ def repair_coding_product_worker_history_checkpoint_append(
                 return candidate
 
 
+def rollback_coding_product_worker_history_checkpoint_tail(
+    product: PosixLocalWheelProductSessionOwner,
+) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+    """Discard only bytes after the last committed checkpoint head."""
+
+    if (
+        type(product) is not PosixLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+    ):
+        raise ValueError("Coding Worker checkpoint rollback requires its Product")
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
+        with product.gc_gate.guard(require_write=True):
+            with _bound_checkpoint(product) as rooted:
+                history, _tail = read_coding_worker_uncommitted_active_tail(
+                    rooted,
+                    stem=_STEM,
+                    stream_id=_STEM,
+                    max_segment_bytes=_MAX_SEGMENT_BYTES,
+                )
+                records, _ = _read_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                    history=history,
+                )
+                if records:
+                    current = capture_coding_worker_history_streams_under_gc_guard(
+                        product
+                    )
+                    if not verify_coding_worker_history_stream_extensions_under_gc_guard(
+                        product,
+                        previous=records[-1].stream_snapshots,
+                        current=current,
+                    ):
+                        raise CodingWorkerHistoryCheckpointError(
+                            "coding_worker_checkpoint_source_rewritten"
+                        )
+                rollback_coding_worker_uncommitted_active_tail(
+                    rooted,
+                    stem=_STEM,
+                    stream_id=_STEM,
+                    max_segment_bytes=_MAX_SEGMENT_BYTES,
+                )
+                reopened, _ = _read_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                )
+                if reopened != records:
+                    raise CodingWorkerHistoryCheckpointError(
+                        "coding_worker_checkpoint_rollback_changed"
+                    )
+                return reopened
+
+
 __all__ = [
     "CodingWorkerHistoryCheckpointError",
     "CodingWorkerHistoryCheckpointV1",
     "publish_coding_product_worker_history_checkpoint",
     "read_coding_product_worker_history_checkpoints_under_gc_guard",
     "repair_coding_product_worker_history_checkpoint_append",
+    "rollback_coding_product_worker_history_checkpoint_tail",
 ]

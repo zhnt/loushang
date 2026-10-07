@@ -292,6 +292,7 @@ def _read_coding_worker_segmented_history(
     stream_id: str,
     max_segment_bytes: int,
     allow_uncommitted_append: bool,
+    require_complete_append: bool,
 ) -> tuple[CodingWorkerSegmentedHistoryV1, bytes]:
     """Read exact sealed bytes and the current active segment under one lock."""
 
@@ -403,8 +404,13 @@ def _read_coding_worker_segmented_history(
                         or head
                         != _head_bytes(stream_id, generation, raw[:committed_count])
                         or (committed_count > 0 and raw[committed_count - 1] != 10)
-                        or not raw.endswith(b"\n")
-                        or raw[committed_count:].count(b"\n") != 1
+                        or (
+                            require_complete_append
+                            and (
+                                not raw.endswith(b"\n")
+                                or raw[committed_count:].count(b"\n") != 1
+                            )
+                        )
                     ):
                         raise CodingWorkerHistorySegmentError(
                             "coding_worker_segment_head_changed"
@@ -440,6 +446,7 @@ def read_coding_worker_segmented_history(
         stream_id=stream_id,
         max_segment_bytes=max_segment_bytes,
         allow_uncommitted_append=False,
+        require_complete_append=False,
     )
     return history
 
@@ -459,10 +466,66 @@ def read_coding_worker_uncommitted_active_append(
         stream_id=stream_id,
         max_segment_bytes=max_segment_bytes,
         allow_uncommitted_append=True,
+        require_complete_append=True,
     )
     if not appended_line:
         raise CodingWorkerHistorySegmentError("coding_worker_segment_repair_absent")
     return CodingWorkerUncommittedActiveAppendV1(history, appended_line)
+
+
+def read_coding_worker_uncommitted_active_tail(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> tuple[CodingWorkerSegmentedHistoryV1, bytes]:
+    """Inspect a head-anchored tail, including a partial crash append."""
+
+    history, tail = _read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+        allow_uncommitted_append=True,
+        require_complete_append=False,
+    )
+    if not tail:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_repair_absent")
+    return history, tail
+
+
+def rollback_coding_worker_uncommitted_active_tail(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> CodingWorkerSegmentedHistoryV1:
+    """Discard only a noncommitted active tail after its exact old head."""
+
+    history, tail = read_coding_worker_uncommitted_active_tail(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    name = _segment_name(stem, history.active_generation)
+    rooted.sibling(name).truncate_exact_prefix(
+        expected=history.active_raw + tail,
+        keep_bytes=len(history.active_raw),
+    )
+    reopened = read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    if reopened != history:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_rollback_changed"
+        )
+    return reopened
 
 
 def seal_coding_worker_active_segment(
@@ -559,5 +622,7 @@ __all__ = [
     "initialize_coding_worker_active_head",
     "read_coding_worker_segmented_history",
     "read_coding_worker_uncommitted_active_append",
+    "read_coding_worker_uncommitted_active_tail",
+    "rollback_coding_worker_uncommitted_active_tail",
     "seal_coding_worker_active_segment",
 ]

@@ -1581,6 +1581,16 @@ reopens the prior complete record with an empty successor and permits Package
 GC. A subsequent append without a committed successor head refuses Package GC;
 the exact repair commits that one record and GC passes again. Bootstrap and
 other crash boundaries still require their own evidence.
+If source history advances after an interrupted append, the exact repair
+refuses to turn stale bytes into a committed checkpoint. A separate Product
+rollback now accepts an active head that proves its old byte prefix, strictly
+replays the committed checkpoint chain, and durably truncates only the
+uncommitted tail under runtime quiescence and the GC write gate. A focused
+journal regression covers a partial tail and changed-byte refusal. The real
+Product case advances opt-in history after an interrupted successor append,
+refuses stale repair, rolls back the tail, and publishes a fresh checkpoint;
+Package GC passes after the rollback and again after publication. This
+rollback does not delete a committed checkpoint or any Worker source history.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

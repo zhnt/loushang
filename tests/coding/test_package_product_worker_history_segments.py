@@ -15,6 +15,8 @@ from loushang.coding.package_product_worker_history_segments import (
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     read_coding_worker_uncommitted_active_append,
+    read_coding_worker_uncommitted_active_tail,
+    rollback_coding_worker_uncommitted_active_tail,
     seal_coding_worker_active_segment,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
@@ -299,3 +301,42 @@ def test_uncommitted_append_and_empty_successor_head_loss_refuse_reopen(
         with pytest.raises(CodingWorkerHistorySegmentError) as missing:
             _read(rooted)
         assert missing.value.code == "coding_worker_segment_head_missing"
+
+
+def test_head_anchored_rollback_discards_partial_tail_only(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    committed = b'{"journalRevision":1}\n'
+    with _bound(root) as rooted:
+        _append(rooted, 0, committed)
+        rooted.append_bytes(b'{"journalRevision":2')
+        with pytest.raises(CodingWorkerHistorySegmentError) as blocked:
+            _read(rooted)
+        assert blocked.value.code == "coding_worker_segment_head_changed"
+        history, tail = read_coding_worker_uncommitted_active_tail(
+            rooted,
+            stem="worker-start-gates",
+            stream_id="worker-start-gates",
+            max_segment_bytes=1024,
+        )
+        assert history.active_raw == committed
+        assert tail == b'{"journalRevision":2'
+        with pytest.raises(OSError, match="source changed"):
+            rooted.truncate_exact_prefix(
+                expected=committed + b'{"journalRevision":9',
+                keep_bytes=len(committed),
+            )
+        assert rollback_coding_worker_uncommitted_active_tail(
+            rooted,
+            stem="worker-start-gates",
+            stream_id="worker-start-gates",
+            max_segment_bytes=1024,
+        ) == history
+        assert _read(rooted) == history
+        with pytest.raises(CodingWorkerHistorySegmentError) as absent:
+            rollback_coding_worker_uncommitted_active_tail(
+                rooted,
+                stem="worker-start-gates",
+                stream_id="worker-start-gates",
+                max_segment_bytes=1024,
+            )
+        assert absent.value.code == "coding_worker_segment_repair_absent"
