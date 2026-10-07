@@ -3374,6 +3374,19 @@ CI job includes the case and requires six non-skipped results; a native report
 is still pending. Portable owner checks passed 4/4, while this case skipped on
 Linux. The new C5 Host and crash writeback paths also await that native gate.
 
+CI run `37610885162` on `5321eff8` completed successfully on 2026-10-07.
+Its downloaded Windows Worker Session JUnit report passed the strict repository
+verifier with six tests, zero skips, failures, or errors: native C5 reopen and
+complete-record-loss refusal, Direct and Hosted selected Product Sessions,
+their two crash/reopen/retirement variants, and normal-exit C5 cleanup evidence.
+The same run completed the full Coding job with 4,231 passes, 63 skips, and
+40 deselections; the two Windows GC jobs and Linux 2,049-query sustained
+Product job each passed their independently verified native or Product report.
+This supplies native evidence for the Windows production Host C5 writeback
+on that head. The later Product-selection preflight change and documentation
+updates require a new exact-head CI run before final PR acceptance. Explicit
+Windows candidate gates and general Worker routing remain separately closed.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
