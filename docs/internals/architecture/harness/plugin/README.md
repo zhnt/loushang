@@ -22,6 +22,12 @@
   Coding offline package regression passed. The
   [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
   exact-head evidence and limits.
+- Worker history V2 is still a staged candidate. Product can durably prepare
+  five typed stream bases and verify a retained physical history with exact
+  deletion debt. The opt-in journal can read and append through that base when
+  a valid Product V2 owner index already exists, including after its retired
+  segment is absent. Product does not yet publish that owner index or execute
+  history pruning; the other four stream owners still need their V2 routes.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.

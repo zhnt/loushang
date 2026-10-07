@@ -37,6 +37,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
@@ -45,12 +46,14 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CodingWorkerHistoryStreamSnapshotV1,
 )
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 from .package_product_worker_policy import CodingWorkerOptInV1
 
 if TYPE_CHECKING:
     from .package_product_worker_history_checkpoint import (
         CodingWorkerHistoryCheckpointV1,
     )
+    from .package_product_worker_opt_in_base_v2 import CodingWorkerOptInReplayV2
 
 _OPAQUE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?\Z")
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
@@ -324,6 +327,9 @@ class CodingWorkerOptInJournal:
 
         self._require_plugin_id(plugin_id)
         with self._gc_gate.guard(), self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                _events, _history, replay = self._load_v2_state(rooted)
+                return self._latest(replay.latest_decisions, plugin_id)
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
 
@@ -335,6 +341,9 @@ class CodingWorkerOptInJournal:
             self._gc_gate.read_guard(),
             self._bound_journal(create_lock=False) as rooted,
         ):
+            if self._v2_owner_exists(rooted):
+                _events, _history, replay = self._load_v2_state(rooted)
+                return self._latest(replay.latest_decisions, plugin_id)
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
 
@@ -348,6 +357,10 @@ class CodingWorkerOptInJournal:
         """Read while the Product reviewer already holds its GC snapshot."""
 
         with self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_full_history_unavailable"
+                )
             events, _history = self._load_history(rooted)
             return events
 
@@ -376,9 +389,18 @@ class CodingWorkerOptInJournal:
             raise ValueError("Coding Worker opt-in command is invalid")
         with self._gc_gate.guard(require_write=True), self._bound_journal() as rooted:
             checkpoints = self._checkpoint_writer_fence(rooted)
-            events, history = self._load_history(rooted)
-            self._assert_checkpoint_source(checkpoints, history)
-            self._assert_checkpoint_high_water(checkpoints, events)
+            if self._v2_owner_exists(rooted):
+                events, history, v2_replay = self._load_v2_state(rooted)
+                revision = v2_replay.last_revision
+                self._assert_checkpoint_high_water(
+                    checkpoints, events, initial_latest=v2_replay.latest_decisions
+                )
+            else:
+                events, history = self._load_history(rooted)
+                v2_replay = None
+                revision = len(events)
+                self._assert_checkpoint_source(checkpoints, history)
+                self._assert_checkpoint_high_water(checkpoints, events)
             replay = next(
                 (event for event in events if event.operation_id == operation_id), None
             )
@@ -396,11 +418,14 @@ class CodingWorkerOptInJournal:
             if any(
                 operation_id in record.new_opt_in_operation_ids
                 for record in checkpoints
-            ):
+            ) or (v2_replay is not None and operation_id in v2_replay.operation_ids):
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_operation_retired"
                 )
-            previous = self._latest(events, plugin_id)
+            previous = self._latest(
+                events if v2_replay is None else v2_replay.latest_decisions,
+                plugin_id,
+            )
             generation = 0 if previous is None else previous.generation
             if generation != expected_generation:
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_stale")
@@ -419,7 +444,7 @@ class CodingWorkerOptInJournal:
                     "coding_worker_opt_in_generation_invalid"
                 )
             decision = CodingWorkerOptInDecisionV1.create(
-                journal_revision=len(events) + 1,
+                journal_revision=revision + 1,
                 scope_id=self._scope_id,
                 plugin_id=plugin_id,
                 operation_id=operation_id,
@@ -432,7 +457,7 @@ class CodingWorkerOptInJournal:
             if len(line) > _MAX_SEGMENT_BYTES:
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_capacity")
             if (
-                len(events) - history.last_sealed_revision >= _MAX_EVENTS
+                revision - history.last_sealed_revision >= _MAX_EVENTS
                 or len(history.active_raw) + len(line) > _MAX_SEGMENT_BYTES
             ):
                 try:
@@ -441,7 +466,7 @@ class CodingWorkerOptInJournal:
                         stem=_STEM,
                         stream_id=_STEM,
                         history=history,
-                        last_revision=len(events),
+                        last_revision=revision,
                     )
                 except CodingWorkerHistorySegmentError as exc:
                     raise CodingWorkerOptInJournalError(exc.code) from exc
@@ -539,11 +564,15 @@ class CodingWorkerOptInJournal:
     def _assert_checkpoint_high_water(
         checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
         events: tuple[CodingWorkerOptInDecisionV1, ...],
+        *,
+        initial_latest: tuple[CodingWorkerOptInDecisionV1, ...] = (),
     ) -> None:
         if not checkpoints:
             return
         latest_checkpoint = checkpoints[-1]
-        latest: dict[str, CodingWorkerOptInDecisionV1] = {}
+        latest: dict[str, CodingWorkerOptInDecisionV1] = {
+            item.plugin_id: item for item in initial_latest
+        }
         for event in events:
             latest[event.plugin_id] = event
         for (
@@ -586,7 +615,17 @@ class CodingWorkerOptInJournal:
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
                 with file_io.bind(self._path, durable=True) as rooted:
-                    if create_lock:
+                    v2_owner = self._v2_owner_exists(rooted)
+                    if v2_owner:
+                        try:
+                            rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                exclusive=create_lock, suffix="", create=False
+                            )
+                        except FileNotFoundError as exc:
+                            raise CodingWorkerOptInJournalError(
+                                "coding_worker_opt_in_lock_missing"
+                            ) from exc
+                    elif create_lock:
                         try:
                             rooted.stat()
                         except FileNotFoundError:
@@ -652,6 +691,79 @@ class CodingWorkerOptInJournal:
     def _load(self, rooted: RootedFile) -> tuple[CodingWorkerOptInDecisionV1, ...]:
         events, _history = self._load_history(rooted)
         return events
+
+    @staticmethod
+    def _v2_owner_exists(rooted: RootedFile) -> bool:
+        try:
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _load_v2_state(
+        self, rooted: RootedFile
+    ) -> tuple[
+        tuple[CodingWorkerOptInDecisionV1, ...],
+        CodingWorkerSegmentedHistoryV1,
+        CodingWorkerOptInReplayV2,
+    ]:
+        """Use the committed Product base and retained bytes after V2 ownership."""
+
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+        from .package_product_worker_opt_in_base_v2 import (
+            CodingWorkerOptInReplayV2,
+            _parse_opt_in_segment,
+        )
+
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if owner.scope_id != self._scope_id or owner.store_id != self._store_id:
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_owner_changed"
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=_STEM)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerOptInReplayV2) or any(
+                item.scope_id != self._scope_id for item in replay.latest_decisions
+            ):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_owner_changed"
+                )
+            manifest_raw = rooted.sibling(_STEM + ".segments.json").read_bytes(
+                max_bytes=1024 * 1024
+            )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                manifest_raw, stream_id=_STEM
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_manifest_changed"
+                )
+            history = CodingWorkerSegmentedHistoryV1(
+                manifest=manifest,
+                segments=(b"",) * retained.first_retained_generation
+                + retained.segments,
+            )
+            events = tuple(
+                event
+                for raw in retained.segments
+                for event in _parse_opt_in_segment(raw)
+            )
+            return events, history, replay
+        except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+            raise CodingWorkerOptInJournalError(exc.code) from exc
+        except (OSError, ValueError) as exc:
+            raise CodingWorkerOptInJournalError(
+                "coding_worker_opt_in_v2_corrupt"
+            ) from exc
 
     def _load_history(
         self, rooted: RootedFile
