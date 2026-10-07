@@ -35,6 +35,7 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
+    capture_coding_worker_history_streams_under_gc_guard,
     verify_coding_worker_history_stream_extensions_under_gc_guard,
 )
 
@@ -533,6 +534,16 @@ def read_coding_product_worker_history_checkpoints_under_gc_guard(
             scope_id=product.policy.project_scope_id,
             store_id=product.epoch_runtime.registry.store_id,
         )
+        if records:
+            current = capture_coding_worker_history_streams_under_gc_guard(product)
+            if not verify_coding_worker_history_stream_extensions_under_gc_guard(
+                product,
+                previous=records[-1].stream_snapshots,
+                current=current,
+            ):
+                raise CodingWorkerHistoryCheckpointError(
+                    "coding_worker_checkpoint_source_rewritten"
+                )
         return records
 
 

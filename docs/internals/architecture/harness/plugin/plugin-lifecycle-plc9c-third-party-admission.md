@@ -1555,6 +1555,10 @@ prove unchanged historical bytes. Subsequent publication and repair now reopen
 all five strict streams and verify each prior segment digest against the exact
 current byte prefix, including the former active segment after append or
 rotation. A higher revision cannot conceal rewritten old records.
+The Product checkpoint reader applies the same prefix proof to the latest
+published snapshot before Package GC accepts a present checkpoint journal;
+newly appended source records remain valid while a rewritten checkpointed
+prefix refuses.
 The candidate checkpoint journal now appends a digest-chained Product record
 containing the five stream snapshots, new opt-in operation IDs, new attempt IDs,
 new receipt fingerprints, current opt-in and Supervisor high-water marks, the
