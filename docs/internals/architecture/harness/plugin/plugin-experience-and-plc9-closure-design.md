@@ -2392,11 +2392,14 @@ cutover paths; it does not establish general old-workspace migration or
 default-route promotion.
 The new v1 data-Wheel author manifest uses exact fields and rejects an
 `enabled` field at Package candidate admission; it cannot introduce a second
-enablement writer through that route. The remaining live `source.enabled` and
-`manifest.enabled` vetoes belong to legacy resolution and generic preflight.
-For admitted B Product paths, removing those peer vetoes still depends on
-proof that every selection uses the sole Desired State writer. The accepted
-pre-B compatibility boundary removes old-workspace migration from this gate;
+enablement writer through that route. Generic preflight now treats an exact
+Product selection of a published revision as authoritative: neither its
+`manifest.enabled` default nor its `source.enabled` availability can veto it.
+This applies to every trusted Host caller of generic preflight, not only B
+Product callers. Revocation must change Product selection, Source trust, or
+Approval; Source availability still governs acquisition and update. Legacy
+resolution retains its separate compatibility behavior. The accepted pre-B
+compatibility boundary removes old-workspace migration from this gate;
 legacy-route removal remains tied to the separate default-route decision.
 For the already Product-selected Coding data path, the selected-root capture
 now projects effective enablement from Product Desired State. It preserves the
@@ -2407,9 +2410,11 @@ Desired State is disabled, then becomes usable in a new Product-backed Session
 after management enable. The same old field remains false in an adopted Skill
 that a real Session loads, and in an adopted Theme that a new Session renders
 only after Product management enable. The stable-manifest control cases also
-passed; generic preflight still rejects a disabled Plugin without a Product
-selection. These three Resource paths are bounded sole-Desired evidence, not
-a removal of legacy or generic peer vetoes for all workspaces.
+passed. Generic preflight requires an exact Product selection and refuses a
+published Plugin that is absent from it; a disabled manifest or Source flag
+alone no longer vetoes a selected published revision. These three Resource
+paths are bounded sole-Desired evidence, not a removal of legacy routes for
+all workspaces.
 The Product composition boundary also compares the projected name, version,
 metadata, manifest digest, and contribution index with the freshly verified
 selected manifest before preflight; only effective enablement may differ from
