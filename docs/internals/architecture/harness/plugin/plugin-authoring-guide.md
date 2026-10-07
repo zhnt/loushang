@@ -253,6 +253,9 @@ amd64, it must be an accepted PE executable. The current profile contains one
 read-only `capability.query` Provider with no requested authorities. An
 optional, repeatable `--dependency dependency==1` writes up to three distinct
 exact pins into Wheel metadata in canonical order.
+The [standalone Linux query Worker example](../../../../../examples/plugins/coding_worker_query/README.md)
+contains author-facing source plus compile, Wheel build, and disposable Product
+smoke commands. It uses no test fixture import.
 
 ```text
 loushang-plugin build-coding-worker-candidate build/query-worker \
