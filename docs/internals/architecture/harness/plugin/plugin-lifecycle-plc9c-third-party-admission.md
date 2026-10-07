@@ -1667,6 +1667,18 @@ through every reader and writer, then prove the publication/deletion crash
 matrix on a real Product and Windows equivalent before any source segment is
 physically removed in production.
 
+The first writer fence is on Linux Product opt-in. Under the Product GC write
+gate, it reads the exact anchored checkpoint chain before accepting a new
+operation. An operation ID already recorded by a checkpoint but absent from
+retained opt-in events is refused; a still-retained exact replay keeps its
+existing idempotent result. The writer verifies that the checkpoint's exact
+opt-in source bytes remain a prefix and refuses a state below the latest
+checkpoint's per-Plugin generation or kill-switch high-water mark. It reads
+only the committed prefix of a strictly recognized uncommitted checkpoint tail
+so the existing rollback and stale-repair flow remains available, and
+the Product passes its store identity when constructing this writer. This is
+one of five required writer joins and does not make V2 cutover authoritative.
+
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
 durably creates an empty generation-zero file with its new lock; a later

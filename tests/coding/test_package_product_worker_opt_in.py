@@ -2,22 +2,200 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from hashlib import sha256
 
 import pytest
 
 import loushang.coding.package_product_worker_opt_in as opt_in_module
+from loushang.coding.package_product_worker_history_checkpoint import (
+    CodingWorkerHistoryCheckpointV1,
+)
+from loushang.coding.package_product_worker_history_checkpoint_anchor import (
+    CodingWorkerCheckpointAnchorV1,
+    write_coding_worker_checkpoint_anchor,
+)
+from loushang.coding.package_product_worker_history_segments import (
+    _head_bytes,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
+)
+from loushang.coding.package_product_worker_history_stream_snapshot import (
+    CODING_WORKER_HISTORY_STREAM_STEMS,
+    CodingWorkerHistoryStreamSnapshotV1,
+)
 from loushang.coding.package_product_worker_opt_in import (
+    CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
     CodingWorkerOptInJournalError,
+    _opt_in_line,
 )
 from loushang.coding.package_product_worker_policy import CodingWorkerOptInV1
-from loushang.harness.journal._rooted_io import RootedFile
+from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationError,
     PluginPackageGcReservationJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
+
+
+def test_worker_opt_in_writer_fences_anchored_checkpoint_ids(tmp_path) -> None:
+    root = tmp_path / "product-state"
+    root.mkdir(mode=0o700)
+    scope_id = "workspace:" + "a" * 64
+    gate = PluginPackageGcReservationJournal(root / "gc-reservations.jsonl")
+    journal = CodingWorkerOptInJournal(
+        root / "worker-opt-in.jsonl",
+        scope_id=scope_id,
+        gc_gate=gate,
+        store_id="store",
+    )
+    opt_in = CodingWorkerOptInV1(
+        plugin_id="example.worker",
+        contribution_id="query-provider",
+        owner_id="coding.lsp",
+        artifact_digest=sha256(b"wheel").hexdigest(),
+        native_platform="linux-x86_64",
+        owner_selection_generation=1,
+        kill_switch_generation=0,
+        require_worker=True,
+    )
+    allowed = journal.change(
+        plugin_id=opt_in.plugin_id,
+        operation_id="allow-1",
+        expected_generation=0,
+        action="allow",
+        opt_in=opt_in,
+    )
+    snapshots = tuple(
+        CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=stem,
+            active_generation=0,
+            last_sealed_revision=0,
+            segments=(journal.path.read_bytes() if stem == "worker-opt-in" else b"",),
+        )
+        for stem in CODING_WORKER_HISTORY_STREAM_STEMS
+    )
+    checkpoint = CodingWorkerHistoryCheckpointV1.create(
+        journal_revision=1,
+        scope_id=scope_id,
+        store_id="store",
+        attempt_id="a" * 32,
+        receipt_fingerprint="b" * 64,
+        previous_digest="",
+        gc_reservation_revision=0,
+        backup_topology_revision="coding-product-backup-types:" + "c" * 64,
+        stream_snapshots=snapshots,
+        new_opt_in_operation_ids=("allow-1", "retired-op"),
+        new_attempt_ids=("a" * 32,),
+        new_receipt_fingerprints=("b" * 64,),
+        opt_in_generation_high_water=(
+            (opt_in.plugin_id, 1, 0, "allow", allowed.decision_digest),
+        ),
+        supervisor_epoch_high_water=(),
+    )
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    io = RootedFileIO(root, root_fd)
+    try:
+        with io.bind(root / "worker-history-checkpoints.jsonl", durable=True) as rooted:
+            assert rooted.acquire_lock(
+                exclusive=True,
+                suffix=".lock",
+                initialize_empty_target_if_new=True,
+            )
+            initialize_coding_worker_active_head(
+                rooted,
+                stem="worker-history-checkpoints",
+                stream_id="worker-history-checkpoints",
+            )
+            line = canonical_json_bytes(checkpoint.to_dict()) + b"\n"
+            rooted.append_bytes(line)
+            commit_coding_worker_active_segment(
+                rooted,
+                stem="worker-history-checkpoints",
+                stream_id="worker-history-checkpoints",
+                generation=0,
+                previous_raw=b"",
+                appended_line=line,
+            )
+            anchor = CodingWorkerCheckpointAnchorV1.create(
+                scope_id=scope_id,
+                store_id="store",
+                latest_revision=1,
+                latest_digest=checkpoint.record_digest,
+            )
+            write_coding_worker_checkpoint_anchor(rooted, expected=None, current=anchor)
+    finally:
+        io.cleanup()
+        os.close(root_fd)
+
+    before = journal.path.read_bytes()
+    with pytest.raises(CodingWorkerOptInJournalError) as retired:
+        journal.change(
+            plugin_id=opt_in.plugin_id,
+            operation_id="retired-op",
+            expected_generation=1,
+            action="revoke",
+            opt_in=None,
+        )
+    assert retired.value.code == "coding_worker_opt_in_operation_retired"
+    assert journal.path.read_bytes() == before
+
+    ownerless = CodingWorkerOptInJournal(journal.path, scope_id=scope_id, gc_gate=gate)
+    with pytest.raises(CodingWorkerOptInJournalError) as missing_owner:
+        ownerless.change(
+            plugin_id=opt_in.plugin_id,
+            operation_id="revoke-ownerless",
+            expected_generation=1,
+            action="revoke",
+            opt_in=None,
+        )
+    assert missing_owner.value.code == "coding_worker_opt_in_checkpoint_owner_required"
+    assert journal.path.read_bytes() == before
+
+    head_path = root / "worker-opt-in.head.json"
+    original_head = head_path.read_bytes()
+    forked = CodingWorkerOptInDecisionV1.create(
+        journal_revision=1,
+        scope_id=scope_id,
+        plugin_id=opt_in.plugin_id,
+        operation_id="allow-fork",
+        generation=1,
+        kill_switch_generation=0,
+        action="allow",
+        opt_in=opt_in,
+    )
+    forked_raw = _opt_in_line(forked)
+    journal.path.write_bytes(forked_raw)
+    head_path.write_bytes(_head_bytes("worker-opt-in", 0, forked_raw))
+    try:
+        with pytest.raises(CodingWorkerOptInJournalError) as rewritten:
+            journal.change(
+                plugin_id=opt_in.plugin_id,
+                operation_id="revoke-after-fork",
+                expected_generation=1,
+                action="revoke",
+                opt_in=None,
+            )
+        assert rewritten.value.code == "coding_worker_opt_in_checkpoint_source_changed"
+    finally:
+        journal.path.write_bytes(before)
+        head_path.write_bytes(original_head)
+
+    # A head-anchored but uncommitted checkpoint append has no tombstone power.
+    with (root / "worker-history-checkpoints.jsonl").open("ab") as handle:
+        handle.write(b'{"pending":true}\n')
+    revoked = journal.change(
+        plugin_id=opt_in.plugin_id,
+        operation_id="revoke-new",
+        expected_generation=1,
+        action="revoke",
+        opt_in=None,
+    )
+    assert revoked.generation == 2
 
 
 def test_worker_opt_in_decision_reopens_and_revocation_fences_old_generation(

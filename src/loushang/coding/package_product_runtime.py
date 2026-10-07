@@ -190,6 +190,7 @@ def open_coding_package_product_state(
         state_root / "worker-opt-in.jsonl",
         scope_id=lifecycle.scope_id,
         gc_gate=gate,
+        store_id=epoch_runtime.registry.store_id,
     )
     private_data_confirmation = PluginPrivateDataConfirmationJournal(
         state_root / "private-data-confirmations.jsonl"

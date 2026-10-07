@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -42,7 +42,15 @@ from .package_product_worker_history_segments import (
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
 from .package_product_worker_policy import CodingWorkerOptInV1
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
 
 _OPAQUE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?\Z")
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
@@ -261,6 +269,7 @@ class CodingWorkerOptInJournal:
         *,
         scope_id: str,
         gc_gate: PluginPackageGcReservationJournal,
+        store_id: str | None = None,
     ) -> None:
         if not isinstance(path, Path) or not path.is_absolute():
             raise ValueError("Coding Worker opt-in journal path is invalid")
@@ -272,11 +281,16 @@ class CodingWorkerOptInJournal:
             raise ValueError("Coding Worker opt-in scope is invalid")
         if not isinstance(gc_gate, PluginPackageGcReservationJournal):
             raise TypeError("Product GC gate is required")
+        if store_id is not None and (
+            type(store_id) is not str or not store_id or len(store_id) > 128
+        ):
+            raise ValueError("Coding Worker opt-in store is invalid")
         if path != gc_gate.path.parent / "worker-opt-in.jsonl":
             raise ValueError("Coding Worker opt-in journal is outside Product state")
         self._path = path
         self._scope_id = scope_id
         self._gc_gate = gc_gate
+        self._store_id = store_id
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
 
     @property
@@ -347,7 +361,10 @@ class CodingWorkerOptInJournal:
         ):
             raise ValueError("Coding Worker opt-in command is invalid")
         with self._gc_gate.guard(require_write=True), self._bound_journal() as rooted:
+            checkpoints = self._checkpoint_writer_fence(rooted)
             events, history = self._load_history(rooted)
+            self._assert_checkpoint_source(checkpoints, history)
+            self._assert_checkpoint_high_water(checkpoints, events)
             replay = next(
                 (event for event in events if event.operation_id == operation_id), None
             )
@@ -362,6 +379,13 @@ class CodingWorkerOptInJournal:
                         "coding_worker_opt_in_operation_conflict"
                     )
                 return replay
+            if any(
+                operation_id in record.new_opt_in_operation_ids
+                for record in checkpoints
+            ):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_operation_retired"
+                )
             previous = self._latest(events, plugin_id)
             generation = 0 if previous is None else previous.generation
             if generation != expected_generation:
@@ -436,6 +460,98 @@ class CodingWorkerOptInJournal:
                 appended_line=line,
             )
             return decision
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        """Refuse a missing Product owner once checkpoint state is present."""
+
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            ANCHOR_NAME,
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        if self._store_id is None:
+            for name in (
+                ANCHOR_NAME,
+                "worker-history-checkpoints.jsonl",
+                "worker-history-checkpoints.jsonl.lock",
+                "worker-history-checkpoints.head.json",
+                "worker-history-checkpoints.segments.json",
+            ):
+                try:
+                    rooted.sibling(name).stat()
+                except FileNotFoundError:
+                    continue
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_checkpoint_owner_required"
+                ) from None
+            return ()
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted, scope_id=self._scope_id, store_id=self._store_id
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerOptInJournalError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> None:
+        if not checkpoints:
+            return
+        prior = checkpoints[-1].stream_snapshots[0]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=_STEM,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerOptInJournalError(
+                "coding_worker_opt_in_checkpoint_source_changed"
+            )
+
+    @staticmethod
+    def _assert_checkpoint_high_water(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        events: tuple[CodingWorkerOptInDecisionV1, ...],
+    ) -> None:
+        if not checkpoints:
+            return
+        latest_checkpoint = checkpoints[-1]
+        latest: dict[str, CodingWorkerOptInDecisionV1] = {}
+        for event in events:
+            latest[event.plugin_id] = event
+        for (
+            plugin_id,
+            generation,
+            kill_generation,
+            action,
+            digest,
+        ) in latest_checkpoint.opt_in_generation_high_water:
+            current = latest.get(plugin_id)
+            if (
+                current is None
+                or current.generation < generation
+                or current.kill_switch_generation < kill_generation
+                or (
+                    current.generation == generation
+                    and (current.action != action or current.decision_digest != digest)
+                )
+            ):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_checkpoint_high_water_changed"
+                )
 
     @contextmanager
     def _bound_journal(self, *, create_lock: bool = True) -> Iterator[RootedFile]:

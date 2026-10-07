@@ -663,6 +663,45 @@ def read_coding_product_worker_history_checkpoints_under_gc_guard(
         return records
 
 
+def read_coding_worker_checkpoint_writer_fence(
+    rooted: RootedFile, *, scope_id: str, store_id: str
+) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+    """Read the anchored tip while the Product GC write gate excludes publishers.
+
+    The caller owns a pinned Product state root and the GC write gate. This
+    check never repairs an anchor or grants history-retirement authority.
+    """
+
+    checkpoint_rooted = rooted.sibling(f"{_STEM}.jsonl")
+    try:
+        records, _history = _read_records(
+            checkpoint_rooted, scope_id=scope_id, store_id=store_id
+        )
+    except CodingWorkerHistorySegmentError as exc:
+        if exc.code != "coding_worker_segment_head_changed":
+            raise
+        committed, _tail = read_coding_worker_uncommitted_active_tail(
+            checkpoint_rooted,
+            stem=_STEM,
+            stream_id=_STEM,
+            max_segment_bytes=_MAX_SEGMENT_BYTES,
+        )
+        records, _history = _read_records(
+            checkpoint_rooted,
+            scope_id=scope_id,
+            store_id=store_id,
+            history=committed,
+        )
+    _anchor_for_records(
+        checkpoint_rooted,
+        scope_id=scope_id,
+        store_id=store_id,
+        records=records,
+        settle_lag=False,
+    )
+    return records
+
+
 def publish_coding_product_worker_history_checkpoint(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerHistoryCheckpointV1:
@@ -950,6 +989,7 @@ __all__ = [
     "CodingWorkerHistoryCheckpointV1",
     "publish_coding_product_worker_history_checkpoint",
     "read_coding_product_worker_history_checkpoints_under_gc_guard",
+    "read_coding_worker_checkpoint_writer_fence",
     "repair_coding_product_worker_history_checkpoint_append",
     "rollback_coding_product_worker_history_checkpoint_tail",
 ]
