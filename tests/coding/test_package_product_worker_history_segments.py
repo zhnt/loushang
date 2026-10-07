@@ -340,3 +340,45 @@ def test_head_anchored_rollback_discards_partial_tail_only(tmp_path: Path) -> No
                 max_segment_bytes=1024,
             )
         assert absent.value.code == "coding_worker_segment_repair_absent"
+
+
+@pytest.mark.parametrize("truncate_before_error", [True, False])
+def test_rollback_interruption_reopens_without_publishing_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    truncate_before_error: bool,
+) -> None:
+    root = tmp_path / "state"
+    committed = b'{"journalRevision":1}\n'
+    with _bound(root) as rooted:
+        _append(rooted, 0, committed)
+        rooted.append_bytes(b'{"journalRevision":2')
+        original_truncate = os.ftruncate
+
+        def interrupt_truncate(fd: int, length: int) -> None:
+            if truncate_before_error:
+                original_truncate(fd, length)
+            raise OSError("injected rollback interruption")
+
+        with monkeypatch.context() as interrupted:
+            interrupted.setattr(os, "ftruncate", interrupt_truncate)
+            with pytest.raises(OSError, match="rollback interruption"):
+                rollback_coding_worker_uncommitted_active_tail(
+                    rooted,
+                    stem="worker-start-gates",
+                    stream_id="worker-start-gates",
+                    max_segment_bytes=1024,
+                )
+        if truncate_before_error:
+            assert _read(rooted).active_raw == committed
+        else:
+            with pytest.raises(CodingWorkerHistorySegmentError) as pending:
+                _read(rooted)
+            assert pending.value.code == "coding_worker_segment_head_changed"
+            assert rollback_coding_worker_uncommitted_active_tail(
+                rooted,
+                stem="worker-start-gates",
+                stream_id="worker-start-gates",
+                max_segment_bytes=1024,
+            ).active_raw == committed
+        assert _read(rooted).active_raw == committed

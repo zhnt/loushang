@@ -16,6 +16,7 @@ from loushang.coding.package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
+    rollback_coding_worker_uncommitted_active_tail,
 )
 from loushang.coding.package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
@@ -140,6 +141,41 @@ def test_worker_checkpoint_reopens_complete_record_and_refuses_uncommitted_appen
                     match="coding_worker_segment_head_changed",
                 ):
                     _read_records(rooted, scope_id="project", store_id="store")
+        finally:
+            io.cleanup()
+    finally:
+        os.close(root_fd)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted Product journal")
+def test_worker_checkpoint_bootstrap_without_head_refuses_recovery(
+    tmp_path: Path,
+) -> None:
+    tmp_path.chmod(0o700)
+    root_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        io = RootedFileIO(tmp_path, root_fd)
+        try:
+            with io.bind(
+                tmp_path / "worker-history-checkpoints.jsonl", durable=True
+            ) as rooted:
+                rooted.create_new(b"")
+                with pytest.raises(
+                    CodingWorkerHistorySegmentError,
+                    match="coding_worker_segment_head_missing",
+                ):
+                    _read_records(rooted, scope_id="project", store_id="store")
+                with pytest.raises(
+                    CodingWorkerHistorySegmentError,
+                    match="coding_worker_segment_head_missing",
+                ):
+                    rollback_coding_worker_uncommitted_active_tail(
+                        rooted,
+                        stem="worker-history-checkpoints",
+                        stream_id="worker-history-checkpoints",
+                        max_segment_bytes=32 * 1024 * 1024,
+                    )
+                assert rooted.read_bytes(max_bytes=1) == b""
         finally:
             io.cleanup()
     finally:

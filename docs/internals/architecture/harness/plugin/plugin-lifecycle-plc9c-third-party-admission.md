@@ -1591,6 +1591,17 @@ Product case advances opt-in history after an interrupted successor append,
 refuses stale repair, rolls back the tail, and publishes a fresh checkpoint;
 Package GC passes after the rollback and again after publication. This
 rollback does not delete a committed checkpoint or any Worker source history.
+Fault injection immediately before and immediately after native truncation
+reopens as either an unchanged uncommitted tail that can be retried or the exact
+previously committed prefix. The complete non-live Worker candidate file on
+the current branch passed 35 cases with 12 expected host-runtime skips after
+this recovery work; that result does not supply history-pruning or Windows
+production evidence.
+The first-checkpoint bootstrap boundary also has an explicit negative: an
+empty created journal without its active head refuses both replay and tail
+rollback. It remains a visible initialization debt because no durable fact
+currently distinguishes an interrupted first creation from lost prior
+checkpoint history; automatic head creation would erase that distinction.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
