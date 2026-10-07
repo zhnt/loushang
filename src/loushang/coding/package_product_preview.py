@@ -172,6 +172,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
             self.epoch_runtime.control_root / "product-state/worker-opt-in.jsonl",
             scope_id=self.policy.project_scope_id,
             gc_gate=self.gc_gate,
+            store_id=self.epoch_runtime.registry.store_id,
         ).current_read_only(plugin_id)
         self.epoch_runtime.assert_current()
         return decision

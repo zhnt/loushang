@@ -371,9 +371,11 @@ def _review_coding_product_worker_history_under_guard(
 
     gc_reservations = coding_worker_gc_revision_refs(gc_snapshot)
     product.assert_root_gc_authority_current()
+    with product.pinned_state_root_gc_read() as root_fd:
+        v2_owner_present = PRODUCT_OWNER_INDEX_NAME in os.listdir(root_fd)
     gated = _review_offline(product, attempt_id=attempt_id)
     gate = gated.gate_record
-    receipts = read_coding_product_worker_receipt_records(product)
+    receipts = read_coding_product_worker_receipt_records(product, retained_only=True)
     receipt = (
         None
         if gate is None
@@ -393,16 +395,14 @@ def _review_coding_product_worker_history_under_guard(
             receipt.receipt.policy.plugin_id
         )
     )
-    opt_in_history = CodingWorkerOptInJournal(
+    opt_in_projection = CodingWorkerOptInJournal(
         product.state_root / "worker-opt-in.jsonl",
         scope_id=product.policy.project_scope_id,
         gc_gate=product.gc_gate,
-    )._history_under_gc_guard()
-    latest_opt_in_by_plugin: dict[str, CodingWorkerOptInDecisionV1] = {}
-    for decision in opt_in_history:
-        latest_opt_in_by_plugin[decision.plugin_id] = decision
+        store_id=product.epoch_runtime.registry.store_id,
+    ).retention_projection_under_gc_guard()
     decisions_by_digest: dict[str, list[CodingWorkerOptInDecisionV1]] = {}
-    for decision in opt_in_history:
+    for decision in opt_in_projection.reference_decisions:
         decisions_by_digest.setdefault(decision.decision_digest, []).append(decision)
     unverified_opt_in: list[tuple[str, str]] = []
     for retained_receipt in receipts:
@@ -591,9 +591,18 @@ def _review_coding_product_worker_history_under_guard(
     history_stream_snapshots = capture_coding_worker_history_streams_under_gc_guard(
         product
     )
+    receipt_history_revision = (
+        next(
+            snapshot.total_revision
+            for snapshot in history_stream_snapshots
+            if snapshot.stem == "worker-activation-receipts"
+        )
+        if v2_owner_present
+        else len(receipts)
+    )
     expected_stream_revisions = {
-        "worker-opt-in": len(opt_in_history),
-        "worker-activation-receipts": len(receipts),
+        "worker-opt-in": opt_in_projection.revision,
+        "worker-activation-receipts": receipt_history_revision,
         "worker-activation-state": (
             0
             if activation_state is None
@@ -616,10 +625,8 @@ def _review_coding_product_worker_history_under_guard(
         current_opt_in=opt_in,
         historical_opt_in_verified=historical_opt_in_verified,
         group_status=gated.group_status,
-        opt_in_history_revision=len(opt_in_history),
-        retained_opt_in_operation_ids=tuple(
-            item.operation_id for item in opt_in_history
-        ),
+        opt_in_history_revision=opt_in_projection.revision,
+        retained_opt_in_operation_ids=opt_in_projection.operation_ids,
         opt_in_generation_high_water=tuple(
             sorted(
                 (
@@ -629,7 +636,7 @@ def _review_coding_product_worker_history_under_guard(
                     item.action,
                     item.decision_digest,
                 )
-                for item in latest_opt_in_by_plugin.values()
+                for item in opt_in_projection.latest_decisions
             )
         ),
         start_gate_history_revision=max(
@@ -639,7 +646,7 @@ def _review_coding_product_worker_history_under_guard(
             (item.record_revision for item in supervisor_by_id.values()),
             default=0,
         ),
-        receipt_history_revision=len(receipts),
+        receipt_history_revision=receipt_history_revision,
         retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
         retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),
         retained_receipt_fingerprints=tuple(

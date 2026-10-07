@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import stat
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from secrets import token_hex
@@ -32,6 +34,20 @@ from loushang.harness.config.agent import SettingsManager
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
 _MAX_SOURCE_BYTES = 1024 * 1024
+
+
+@contextmanager
+def _temporary_home(path: Path) -> Iterator[None]:
+    previous = os.environ.get("LOUSHANG_HOME")
+    path.mkdir(mode=0o700)
+    os.environ["LOUSHANG_HOME"] = str(path)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("LOUSHANG_HOME", None)
+        else:
+            os.environ["LOUSHANG_HOME"] = previous
 
 
 class _OfflineToolAdapter:
@@ -208,7 +224,10 @@ def smoke_extension_source(
             raise ValueError("source changed while being captured")
     except (OSError, ValueError) as exc:
         return _failure(report, "source_load", "source_capture_refused", str(exc))
-    with TemporaryDirectory(prefix="loushang-extension-smoke-") as scratch:
+    with (
+        TemporaryDirectory(prefix="loushang-extension-smoke-") as scratch,
+        _temporary_home(Path(scratch) / "home"),
+    ):
         workspace = Path(scratch) / "workspace"
         extensions = workspace / ".loushang" / "extensions"
         extensions.mkdir(mode=0o700, parents=True)

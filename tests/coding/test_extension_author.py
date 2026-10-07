@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,14 @@ from loushang.coding.extension_author import main
 
 
 def test_extension_author_init_and_real_offline_tool_smoke(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    parent_home = tmp_path / "parent-home"
+    parent_home.mkdir()
+    (parent_home / "sentinel").write_text("unchanged", encoding="utf-8")
+    monkeypatch.setenv("LOUSHANG_HOME", str(parent_home))
     source = tmp_path / ".loushang" / "extensions" / "hello.py"
     assert main(["init", str(source)]) == 0
     scaffold = json.loads(capsys.readouterr().out)
@@ -26,6 +33,8 @@ def test_extension_author_init_and_real_offline_tool_smoke(
     assert report["toolUse"] == "passed"
     assert report["modelTransport"] == "offline"
     assert report["executionTrust"] == "trusted_in_process"
+    assert os.environ["LOUSHANG_HOME"] == str(parent_home)
+    assert sorted(path.name for path in parent_home.iterdir()) == ["sentinel"]
     with pytest.raises(SystemExit):
         main(["init", str(source)])
     assert "api.register_tool(direct_tool(hello_echo))" in source.read_text(

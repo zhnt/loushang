@@ -277,6 +277,16 @@ def _fold_opt_in_events(
     return latest, frozenset(seen_operations)
 
 
+@dataclass(frozen=True, slots=True)
+class CodingWorkerOptInRetentionProjectionV1:
+    """Decisions still needed to join retained receipts after V2 cutover."""
+
+    reference_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
+    latest_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
+    operation_ids: tuple[str, ...]
+    revision: int
+
+
 class CodingWorkerOptInJournal:
     """Product-private CAS journal serialized with Desired State and GC."""
 
@@ -363,6 +373,52 @@ class CodingWorkerOptInJournal:
                 )
             events, _history = self._load_history(rooted)
             return events
+
+    def retention_projection_under_gc_guard(
+        self,
+    ) -> CodingWorkerOptInRetentionProjectionV1:
+        """Join retained decisions while the Product reviewer owns the GC gate.
+
+        The V2 semantic base keeps each plugin's decision at cutover. Combined
+        with retained events, that proves later receipts even after revocation.
+        Older decisions that were superseded before cutover have no retained
+        receipt authority and are intentionally unavailable here.
+        """
+
+        with self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                from .package_product_worker_history_stage_v2 import (
+                    read_coding_worker_v2_preparation,
+                )
+                from .package_product_worker_opt_in_base_v2 import (
+                    CodingWorkerOptInSemanticBaseV2,
+                )
+
+                events, _history, replay = self._load_v2_state(rooted)
+                prepared = read_coding_worker_v2_preparation(rooted)
+                if prepared is None:
+                    raise CodingWorkerOptInJournalError(
+                        "coding_worker_opt_in_v2_preparation_absent"
+                    )
+                base = prepared.semantic_bases[0]
+                if not isinstance(base, CodingWorkerOptInSemanticBaseV2):
+                    raise CodingWorkerOptInJournalError(
+                        "coding_worker_opt_in_v2_base_changed"
+                    )
+                return CodingWorkerOptInRetentionProjectionV1(
+                    reference_decisions=(*base.latest_decisions, *events),
+                    latest_decisions=replay.latest_decisions,
+                    operation_ids=tuple(sorted(replay.operation_ids)),
+                    revision=replay.last_revision,
+                )
+            events, _history = self._load_history(rooted)
+            latest, _operations = _fold_opt_in_events(events, scope_id=self._scope_id)
+            return CodingWorkerOptInRetentionProjectionV1(
+                reference_decisions=events,
+                latest_decisions=tuple(latest[key] for key in sorted(latest)),
+                operation_ids=tuple(item.operation_id for item in events),
+                revision=len(events),
+            )
 
     def change(
         self,
@@ -840,4 +896,5 @@ __all__ = [
     "CodingWorkerOptInDecisionV1",
     "CodingWorkerOptInJournal",
     "CodingWorkerOptInJournalError",
+    "CodingWorkerOptInRetentionProjectionV1",
 ]

@@ -5483,7 +5483,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             orphaned_receipt_history.setattr(
                 history_retention_module,
                 "read_coding_product_worker_receipt_records",
-                lambda _product: (*retained_receipts, orphan_record),
+                lambda _product, **_kwargs: (*retained_receipts, orphan_record),
             )
             unbound_elsewhere = review_coding_product_worker_history_retention(
                 product, attempt_id=attempt_id
@@ -5495,11 +5495,19 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             assert "history_stream_revision_changed" in unbound_elsewhere.missing_proofs
             assert "global_opt_in_reference_unverified" in unbound_elsewhere.missing_proofs
             assert not unbound_elsewhere.receipt_references_verified
+        retained_projection = CodingWorkerOptInJournal(
+            product.state_root / "worker-opt-in.jsonl",
+            scope_id=product.policy.project_scope_id,
+            gc_gate=product.gc_gate,
+            store_id=product.epoch_runtime.registry.store_id,
+        ).retention_projection_under_gc_guard()
         with monkeypatch.context() as missing_opt_in_history:
             missing_opt_in_history.setattr(
                 CodingWorkerOptInJournal,
-                "_history_under_gc_guard",
-                lambda _journal: (),
+                "retention_projection_under_gc_guard",
+                lambda _journal: replace(
+                    retained_projection, reference_decisions=()
+                ),
             )
             unbound_opt_in = review_coding_product_worker_history_retention(
                 product, attempt_id=attempt_id
@@ -5819,6 +5827,53 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             )
             == committed
         )
+        after_cutover = opt_in_owner.current(_PLUGIN)
+        assert after_cutover is not None
+        opt_in_owner.allow(
+            plugin_id=_PLUGIN,
+            operation_id="worker-post-v2-allow",
+            expected_generation=after_cutover.generation,
+            require_worker=False,
+        )
+        post_cutover_manager = asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "catalog-transcripts",
+                cwd=str(workspace),
+                session_id="worker-post-v2",
+                defer_materialization=False,
+            )
+        )
+        post_cutover_session = create_agent_session(
+            session_manager=post_cutover_manager,
+            model=Model(
+                id="post-v2-worker",
+                name="Post V2 Worker",
+                provider="test",
+                endpoint="test",
+                capabilities=Capabilities(
+                    input=("text",), context_window=128_000, max_tokens=4_096
+                ),
+            ),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=tmp_path / "global-settings.json",
+                    project_settings_path=workspace / ".loushang" / "settings.json",
+                )
+            ),
+            worker_candidate_plugin_id=_PLUGIN,
+        )
+
+        async def exercise_post_cutover_worker() -> None:
+            try:
+                await post_cutover_session.prepare_model_call_runtime()
+                assert await post_cutover_session.query_worker_symbol("review") == (
+                    "Review symbol"
+                )
+            finally:
+                await post_cutover_session.dispose()
+
+        asyncio.run(exercise_post_cutover_worker())
+        gc.prepare()
     finally:
         reopened.close()
 

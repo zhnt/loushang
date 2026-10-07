@@ -435,15 +435,21 @@ def _format_coding_plugin_support_status(document: dict[str, object]) -> str:
         admission = item.get("productAdmission")
         selection = item.get("productSelection")
         use = item.get("productUse")
+        reasons = item.get("reasonCodes")
         if any(
             not isinstance(value, str) or not value.isprintable()
             for value in (plugin_id, desired, admission, selection, use)
+        ) or not isinstance(reasons, list) or any(
+            not isinstance(code, str) or not code.isprintable() for code in reasons
         ):
             raise ValueError("Plugin support Installation is invalid")
-        lines.append(
+        line = (
             f"{plugin_id}: {desired}; admission={admission}; "
             f"selection={selection}; use={use}"
         )
+        if reasons:
+            line += "; reasons=" + ", ".join(reasons)
+        lines.append(line)
     if len(lines) == 1:
         lines.append("No installations")
     if gaps:

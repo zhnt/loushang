@@ -386,8 +386,10 @@ worker_candidate_plugin_id="reviewworker")`, then
 `await runtime.create_session(cwd=...)` and query the returned Session in the
 same way. The hosted transcript owner materializes that new Session before
 issuing its Product receipt. The Product still checks the selected installed
-revision, native approval, current receipt, and per-install opt-in. These
-entrypoints do not enable Worker routing for other Sessions or on Windows.
+revision, native approval, current receipt, and per-install opt-in. On Windows,
+passing `worker_candidate_plugin_id` explicitly selects the Windows Worker
+candidate for that Session; the current-head native production gate remains
+pending. Other Sessions and the default route remain unchanged.
 
 For an already persisted Coding Session in that workspace, the explicit Linux
 query Consumer can use the selected Worker after native release approval,

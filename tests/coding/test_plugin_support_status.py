@@ -3,6 +3,9 @@ from __future__ import annotations
 import pytest
 
 from loushang.coding.plugin_support_status import project_coding_plugin_support_status
+from loushang.coding.ui.product_binding import (
+    _format_coding_plugin_support_status,
+)
 
 
 def _owner_documents() -> tuple[dict[str, object], dict[str, object]]:
@@ -64,6 +67,9 @@ def test_support_status_refuses_to_promote_stale_or_blocked_preview() -> None:
     assert installation["productAdmission"] == "not_checked"
     assert installation["productSelection"] == "blocked"
     assert installation["reasonCodes"] == ["duplicate_owner_contribution_identity"]
+    assert "reasons=duplicate_owner_contribution_identity" in (
+        _format_coding_plugin_support_status(blocked)
+    )
 
 
 def test_support_status_refuses_foreign_product_scope() -> None:

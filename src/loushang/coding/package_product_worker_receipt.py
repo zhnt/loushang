@@ -1201,6 +1201,7 @@ def open_coding_selected_worker_receipt_owner(
         product_owner.state_root / "worker-opt-in.jsonl",
         scope_id=product_owner.policy.project_scope_id,
         gc_gate=product_owner.gc_gate,
+        store_id=product_owner.epoch_runtime.registry.store_id,
     )
     discovery = CodingWorkerTranscriptDiscoveryReader(
         directory=transcript_directory,

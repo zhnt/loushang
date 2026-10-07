@@ -145,14 +145,18 @@ class CodingPosixWorkerGcHistoryAuthority:
             gates = CodingWorkerStartGateJournal(product).attempts()
             supervisor = open_coding_product_worker_supervisor_journal(product)
             attempts = supervisor.attempts()
-            receipts = read_coding_product_worker_receipt_records(product)
-            opt_in_decisions = CodingWorkerOptInJournal(
+            receipts = read_coding_product_worker_receipt_records(
+                product, retained_only=True
+            )
+            opt_in_projection = CodingWorkerOptInJournal(
                 product.state_root / "worker-opt-in.jsonl",
                 scope_id=product.policy.project_scope_id,
                 gc_gate=product.gc_gate,
-            )._history_under_gc_guard()
+                store_id=product.epoch_runtime.registry.store_id,
+            ).retention_projection_under_gc_guard()
             opt_in_by_digest = {
-                decision.decision_digest: decision for decision in opt_in_decisions
+                decision.decision_digest: decision
+                for decision in opt_in_projection.reference_decisions
             }
             if any(
                 (decision := opt_in_by_digest.get(record.opt_in_decision_digest))
