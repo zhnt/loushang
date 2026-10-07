@@ -5613,6 +5613,31 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             operation_id="checkpoint-interrupted-revoke",
             expected_generation=latest_opt_in.generation,
         )
+        monkeypatch.setattr(checkpoint_module, "_MAX_ACTIVE_RECORDS", 1)
+        original_seal = checkpoint_module.seal_coding_worker_active_segment
+
+        def interrupt_after_checkpoint_seal(
+            *_args: object, **kwargs: object
+        ) -> None:
+            original_seal(*_args, **kwargs)
+            raise OSError("injected checkpoint seal pause")
+
+        with monkeypatch.context() as interrupted_seal:
+            interrupted_seal.setattr(
+                checkpoint_module,
+                "seal_coding_worker_active_segment",
+                interrupt_after_checkpoint_seal,
+            )
+            with pytest.raises(OSError, match="checkpoint seal pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        assert (product.state_root / "worker-history-checkpoints.segments.json").exists()
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint,)
+        gc.prepare()
 
         def fail_checkpoint_head(*_args: object, **_kwargs: object) -> None:
             raise OSError("injected checkpoint head pause")

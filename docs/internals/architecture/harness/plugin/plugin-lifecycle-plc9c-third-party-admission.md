@@ -1575,6 +1575,12 @@ history, an absent or changed head, and multiple or partial appended records
 still refuse repair. The checkpoint grants no journal deletion, ID-reuse
 bypass, default routing, or general third-party Worker admission. Recovery
 across all publication boundaries still needs Product-level evidence.
+The real Linux Product test now forces a one-record checkpoint segment cap.
+An injected interruption immediately after the sealed manifest publication
+reopens the prior complete record with an empty successor and permits Package
+GC. A subsequent append without a committed successor head refuses Package GC;
+the exact repair commits that one record and GC passes again. Bootstrap and
+other crash boundaries still require their own evidence.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
