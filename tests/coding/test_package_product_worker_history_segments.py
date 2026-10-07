@@ -14,6 +14,7 @@ from loushang.coding.package_product_worker_history_segments import (
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
+    read_coding_worker_uncommitted_active_append,
     seal_coding_worker_active_segment,
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
@@ -270,6 +271,24 @@ def test_uncommitted_append_and_empty_successor_head_loss_refuse_reopen(
         with pytest.raises(CodingWorkerHistorySegmentError) as uncommitted:
             _read(rooted)
         assert uncommitted.value.code == "coding_worker_segment_head_changed"
+        pending = read_coding_worker_uncommitted_active_append(
+            rooted,
+            stem="worker-start-gates",
+            stream_id="worker-start-gates",
+            max_segment_bytes=1024,
+        )
+        assert pending.committed_history.active_raw == b""
+        assert pending.appended_line == b'{"journalRevision":1}\n'
+
+        rooted.append_bytes(b'{"journalRevision":2}\n')
+        with pytest.raises(CodingWorkerHistorySegmentError) as multiple:
+            read_coding_worker_uncommitted_active_append(
+                rooted,
+                stem="worker-start-gates",
+                stream_id="worker-start-gates",
+                max_segment_bytes=1024,
+            )
+        assert multiple.value.code == "coding_worker_segment_head_changed"
 
     root2 = tmp_path / "sealed"
     with _bound(root2) as rooted:

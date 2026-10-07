@@ -1558,10 +1558,13 @@ reopen; an append without its committed active head is refused. Package GC
 strictly replays a present checkpoint journal but still proves its own retained
 Worker histories. A real Product fault injection now proves that an appended
 record without its committed active head is refused on reopen and by Package
-GC; it does not yet provide an automated repair path for that interruption.
-The checkpoint grants no journal deletion, ID-reuse bypass, default routing,
-or general third-party Worker admission. Repair after interruption and the
-remaining publication boundaries still need Product-level tests.
+GC. A bounded repair now replays the committed prefix and accepts exactly one
+complete appended record only when the current Product closure derives the
+same bytes under runtime quiescence and the GC write gate. Changed source
+history, an absent or changed head, and multiple or partial appended records
+still refuse repair. The checkpoint grants no journal deletion, ID-reuse
+bypass, default routing, or general third-party Worker admission. Recovery
+across all publication boundaries still needs Product-level evidence.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer

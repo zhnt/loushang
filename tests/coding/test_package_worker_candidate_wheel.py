@@ -93,6 +93,7 @@ from loushang.coding.package_product_worker_discovery import (
 from loushang.coding.package_product_worker_history_checkpoint import (
     publish_coding_product_worker_history_checkpoint,
     read_coding_product_worker_history_checkpoints_under_gc_guard,
+    repair_coding_product_worker_history_checkpoint_append,
 )
 from loushang.coding.package_product_worker_history_retention import (
     review_coding_product_worker_history_retention,
@@ -5637,6 +5638,16 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         with pytest.raises(PackageProductGcExecutionError) as interrupted_gc:
             gc.prepare()
         assert interrupted_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        repaired = repair_coding_product_worker_history_checkpoint_append(
+            product, attempt_id=attempt_id
+        )
+        assert repaired.journal_revision == checkpoint.journal_revision + 1
+        assert repaired.previous_digest == checkpoint.record_digest
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired)
+        gc.prepare()
     finally:
         reopened.close()
 

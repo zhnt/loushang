@@ -20,6 +20,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 
 from .package_product_worker_history_retention import (
+    CodingWorkerHistoryRetentionReviewV1,
     _review_coding_product_worker_history_under_guard,
 )
 from .package_product_worker_history_segments import (
@@ -28,6 +29,7 @@ from .package_product_worker_history_segments import (
     commit_coding_worker_active_segment,
     initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
+    read_coding_worker_uncommitted_active_append,
     seal_coding_worker_active_segment,
 )
 from .package_product_worker_history_stream_snapshot import (
@@ -306,11 +308,16 @@ class CodingWorkerHistoryCheckpointV1:
 
 
 def _read_records(
-    rooted: RootedFile, *, scope_id: str, store_id: str
+    rooted: RootedFile,
+    *,
+    scope_id: str,
+    store_id: str,
+    history: CodingWorkerSegmentedHistoryV1 | None = None,
 ) -> tuple[tuple[CodingWorkerHistoryCheckpointV1, ...], CodingWorkerSegmentedHistoryV1]:
-    history = read_coding_worker_segmented_history(
-        rooted, stem=_STEM, stream_id=_STEM, max_segment_bytes=_MAX_SEGMENT_BYTES
-    )
+    if history is None:
+        history = read_coding_worker_segmented_history(
+            rooted, stem=_STEM, stream_id=_STEM, max_segment_bytes=_MAX_SEGMENT_BYTES
+        )
     if history.manifest is not None and any(
         segment.count(b"\n") != seal.last_revision - seal.first_revision + 1
         for segment, seal in zip(
@@ -427,6 +434,48 @@ def _read_records(
     return tuple(records), history
 
 
+def _candidate_for_review(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    attempt_id: str,
+    review: CodingWorkerHistoryRetentionReviewV1,
+    records: tuple[CodingWorkerHistoryCheckpointV1, ...],
+) -> CodingWorkerHistoryCheckpointV1:
+    if review.receipt_record is None or review.worker_backup_references is None:
+        raise CodingWorkerHistoryCheckpointError(
+            "coding_worker_checkpoint_closure_unproven"
+        )
+    seen_operations = {
+        item for record in records for item in record.new_opt_in_operation_ids
+    }
+    seen_attempts = {item for record in records for item in record.new_attempt_ids}
+    seen_receipts = {
+        item for record in records for item in record.new_receipt_fingerprints
+    }
+    return CodingWorkerHistoryCheckpointV1.create(
+        journal_revision=len(records) + 1,
+        scope_id=product.policy.project_scope_id,
+        store_id=product.epoch_runtime.registry.store_id,
+        attempt_id=attempt_id,
+        receipt_fingerprint=review.receipt_record.receipt.fingerprint,
+        previous_digest="" if not records else records[-1].record_digest,
+        gc_reservation_revision=review.gc_reservation_revision,
+        backup_topology_revision=review.worker_backup_references.owner_revision,
+        stream_snapshots=review.history_stream_snapshots,
+        new_opt_in_operation_ids=tuple(
+            sorted(set(review.retained_opt_in_operation_ids) - seen_operations)
+        ),
+        new_attempt_ids=tuple(
+            sorted(set(review.retained_start_gate_attempt_ids) - seen_attempts)
+        ),
+        new_receipt_fingerprints=tuple(
+            sorted(set(review.retained_receipt_fingerprints) - seen_receipts)
+        ),
+        opt_in_generation_high_water=review.opt_in_generation_high_water,
+        supervisor_epoch_high_water=review.supervisor_epoch_high_water,
+    )
+
+
 @contextmanager
 def _bound_checkpoint(
     product: PosixLocalWheelProductSessionOwner,
@@ -515,19 +564,6 @@ def publish_coding_product_worker_history_checkpoint(
                     scope_id=product.policy.project_scope_id,
                     store_id=registry.store_id,
                 )
-                seen_operations = {
-                    item
-                    for record in records
-                    for item in record.new_opt_in_operation_ids
-                }
-                seen_attempts = {
-                    item for record in records for item in record.new_attempt_ids
-                }
-                seen_receipts = {
-                    item
-                    for record in records
-                    for item in record.new_receipt_fingerprints
-                }
                 if records:
                     prior = records[-1]
                     if (
@@ -545,33 +581,11 @@ def publish_coding_product_worker_history_checkpoint(
                         == review.supervisor_epoch_high_water
                     ):
                         return prior
-                candidate = CodingWorkerHistoryCheckpointV1.create(
-                    journal_revision=len(records) + 1,
-                    scope_id=product.policy.project_scope_id,
-                    store_id=registry.store_id,
+                candidate = _candidate_for_review(
+                    product,
                     attempt_id=attempt_id,
-                    receipt_fingerprint=review.receipt_record.receipt.fingerprint,
-                    previous_digest="" if not records else records[-1].record_digest,
-                    gc_reservation_revision=review.gc_reservation_revision,
-                    backup_topology_revision=review.worker_backup_references.owner_revision,
-                    stream_snapshots=review.history_stream_snapshots,
-                    new_opt_in_operation_ids=tuple(
-                        sorted(
-                            set(review.retained_opt_in_operation_ids) - seen_operations
-                        )
-                    ),
-                    new_attempt_ids=tuple(
-                        sorted(
-                            set(review.retained_start_gate_attempt_ids) - seen_attempts
-                        )
-                    ),
-                    new_receipt_fingerprints=tuple(
-                        sorted(
-                            set(review.retained_receipt_fingerprints) - seen_receipts
-                        )
-                    ),
-                    opt_in_generation_high_water=review.opt_in_generation_high_water,
-                    supervisor_epoch_high_water=review.supervisor_epoch_high_water,
+                    review=review,
+                    records=records,
                 )
                 line = canonical_json_bytes(candidate.to_dict()) + b"\n"
                 if len(line) > _MAX_RECORD_BYTES:
@@ -628,9 +642,80 @@ def publish_coding_product_worker_history_checkpoint(
                 return candidate
 
 
+def repair_coding_product_worker_history_checkpoint_append(
+    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+) -> CodingWorkerHistoryCheckpointV1:
+    """Commit one complete interrupted append only if its Product inputs still match."""
+
+    if (
+        type(product) is not PosixLocalWheelProductSessionOwner
+        or product.policy.product_id != "coding"
+        or type(attempt_id) is not str
+        or _ATTEMPT.fullmatch(attempt_id) is None
+    ):
+        raise ValueError("Coding Worker checkpoint repair requires one exact attempt")
+    registry = product.epoch_runtime.registry
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as quiescence:
+        with product.gc_gate.guard(require_write=True):
+            review = _review_coding_product_worker_history_under_guard(
+                product,
+                attempt_id=attempt_id,
+                active_runtime_lease_ids=quiescence.active_runtime_lease_ids,
+                gc_snapshot=product.gc_gate.snapshot(),
+            )
+            if review.missing_proofs:
+                raise CodingWorkerHistoryCheckpointError(
+                    "coding_worker_checkpoint_closure_unproven"
+                )
+            with _bound_checkpoint(product) as rooted:
+                pending = read_coding_worker_uncommitted_active_append(
+                    rooted,
+                    stem=_STEM,
+                    stream_id=_STEM,
+                    max_segment_bytes=_MAX_SEGMENT_BYTES,
+                )
+                records, history = _read_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                    history=pending.committed_history,
+                )
+                candidate = _candidate_for_review(
+                    product,
+                    attempt_id=attempt_id,
+                    review=review,
+                    records=records,
+                )
+                if pending.appended_line != canonical_json_bytes(candidate.to_dict()) + b"\n":
+                    raise CodingWorkerHistoryCheckpointError(
+                        "coding_worker_checkpoint_repair_mismatch"
+                    )
+                commit_coding_worker_active_segment(
+                    rooted,
+                    stem=_STEM,
+                    stream_id=_STEM,
+                    generation=history.active_generation,
+                    previous_raw=history.active_raw,
+                    appended_line=pending.appended_line,
+                )
+                repaired, _ = _read_records(
+                    rooted,
+                    scope_id=product.policy.project_scope_id,
+                    store_id=registry.store_id,
+                )
+                if repaired != (*records, candidate):
+                    raise CodingWorkerHistoryCheckpointError(
+                        "coding_worker_checkpoint_repair_mismatch"
+                    )
+                return candidate
+
+
 __all__ = [
     "CodingWorkerHistoryCheckpointError",
     "CodingWorkerHistoryCheckpointV1",
     "publish_coding_product_worker_history_checkpoint",
     "read_coding_product_worker_history_checkpoints_under_gc_guard",
+    "repair_coding_product_worker_history_checkpoint_append",
 ]
