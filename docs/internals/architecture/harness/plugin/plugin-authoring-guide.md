@@ -358,9 +358,11 @@ loushang-worker-native --workspace PATH candidate-allow \
 The update refuses an allowed opt-in, a changed old selection, or a stale
 inventory revision. It uses the Product lifecycle update transaction and reports
 `productUse: not_checked`; the new revision needs a fresh allow decision and an
-actual Session query for use evidence. A repeated update after the selected
-revision changes is refused; inspect `candidate-status` and the selected
-inventory before retrying with a new operation. Old Session receipts are fenced
+actual Session query for use evidence. Repeating the exact successful operation
+ID, old and new digests, and expected inventory revision returns
+`alreadyUpdated: true` while that committed selection is still current. A
+different operation ID or later inventory change is refused; inspect
+`candidate-status` before attempting another update. Old Session receipts are fenced
 by the changed selected revision. The former Wheel remains subject to separate
 retirement and Package GC checks.
 

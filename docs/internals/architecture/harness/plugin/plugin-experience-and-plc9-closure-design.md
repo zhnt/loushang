@@ -3171,6 +3171,15 @@ the explicit offline Package GC command to delete both v1 and v2 candidates,
 and checks that both physical roots are absent. That extended native case
 passed 1/1 in 315 seconds on 2026-10-07. This does not establish the Windows
 update/GC combination or general third-party self-service.
+The same Linux operator flow now accepts an exact retry of the already
+committed `candidate-update` operation while its selected revision and
+inventory remain current. It derives the Product management command from the
+retained Package lifecycle request and checks both artifact digests, the
+original inventory CAS, committed selection, and current opt-in. Product
+`restart_required` still represents a committed update and is accepted only
+with that transition evidence. A different operation ID is refused. The full
+cross-process update-to-physical-GC case passed 1/1 in 368 seconds on
+2026-10-07; the final exact-head CI gate remains pending.
 The dedicated Windows Worker Session CI job originally required four JUnit
 cases: Direct and Hosted clean first-Session use, plus their two parameterized
 crash/reopen/retirement cases. It now requires a fifth native Product-rooted C5

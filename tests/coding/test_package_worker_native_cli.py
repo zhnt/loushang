@@ -1129,10 +1129,16 @@ def test_worker_native_operator_cli_reopens_product_across_processes(
     assert candidate_update["fromArtifactDigest"] == candidate_binding["artifactDigest"]
     assert candidate_update["artifactDigest"] == update_digest
     assert candidate_update["lifecycle"] == "installed"
+    assert candidate_update["alreadyUpdated"] is False
     enabled_inventory_revision = candidate_update["inventoryRevision"]
     assert isinstance(enabled_inventory_revision, int)
-    update_replay, _ = run(*update_args)
-    assert update_replay.returncode == 1
+    update_replay, update_replay_output = run(*update_args)
+    assert update_replay.returncode == 0, update_replay.stderr
+    assert update_replay_output["candidateUpdate"]["alreadyUpdated"] is True
+    wrong_update_replay, _ = run(
+        *update_args[:-3], "candidate-cli-update-other", *update_args[-2:]
+    )
+    assert wrong_update_replay.returncode == 1
     after_update_without_allow, _ = run(
         "query",
         "--plugin-id",

@@ -80,11 +80,19 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
 from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+from loushang.harness.plugin_management.updates import PluginUpdateOperationEventV2
+from loushang.harness.resources.packages.plugin_lifecycle.journal import (
+    PackageLifecycleJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleRequestV2,
     canonical_json_bytes,
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
+)
+from loushang.harness.resources.packages.product_handoff import (
+    package_product_command_identity,
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWorkerAdmissionV1,
@@ -395,6 +403,61 @@ def _execute(
             None if selected is None else selected.selection.package_revision
         )
         if args.action == "candidate-update":
+            lifecycle_request = PackageLifecycleJournal(
+                product.state_root / "lifecycle.jsonl"
+            ).request(args.operation_id)
+            prior_update = None
+            if (
+                isinstance(lifecycle_request, PackageLifecycleRequestV2)
+                and lifecycle_request.action == "update"
+                and lifecycle_request.requested_plugin_id == args.plugin_id
+                and lifecycle_request.canonical_source_identity
+                == binding.source_identity
+            ):
+                command_id, _ = package_product_command_identity(
+                    args.operation_id, lifecycle_request.request_fingerprint
+                )
+                prior_update = product.management.operation(command_id)
+            if (
+                isinstance(prior_update, PluginUpdateOperationEventV2)
+                and selected is not None
+                and selected_revision is not None
+                and prior_update.status == "terminal"
+                and prior_update.result is not None
+                and prior_update.result.disposition
+                in {"succeeded", "restart_required"}
+                and prior_update.result.transition is not None
+                and prior_update.command.installation_key == selected.installation_key
+                and prior_update.command.expected_inventory_revision
+                == args.expected_inventory_revision
+                and prior_update.command.expected_package_revision.package_content_digest
+                == args.from_artifact_digest
+                and prior_update.command.staged_package_revision.package_source_identity
+                == binding.source_identity
+                and prior_update.command.staged_package_revision.package_content_digest
+                == args.artifact_digest
+                and prior_update.result.transition.committed_state == selected
+                and prior_update.result.transition.inventory_revision
+                == snapshot.inventory_revision
+            ):
+                current_opt_in = CodingWorkerProductOptInOwner(product).current(
+                    args.plugin_id
+                )
+                if current_opt_in is not None and current_opt_in.action == "allow":
+                    raise ValueError("Coding Worker candidate opt-in must be revoked")
+                return {
+                    "candidateUpdate": {
+                        "pluginId": args.plugin_id,
+                        "fromArtifactDigest": args.from_artifact_digest,
+                        "artifactDigest": args.artifact_digest,
+                        "lifecycle": "installed",
+                        "inventoryRevision": snapshot.inventory_revision,
+                        "alreadyUpdated": True,
+                    },
+                    "productAdmission": "installed",
+                    "productSelection": "not_checked",
+                    "productUse": "not_checked",
+                }
             if (
                 snapshot.inventory_revision != args.expected_inventory_revision
                 or selected is None
@@ -466,6 +529,7 @@ def _execute(
                         "artifactDigest": args.artifact_digest,
                         "lifecycle": routed.record.lifecycle,
                         "inventoryRevision": updated_snapshot.inventory_revision,
+                        "alreadyUpdated": False,
                     },
                     "productAdmission": "installed",
                     "productSelection": "not_checked",
