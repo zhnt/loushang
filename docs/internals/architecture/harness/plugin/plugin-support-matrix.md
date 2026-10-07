@@ -27,9 +27,13 @@ The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
 The explicit `loushang-worker-windows-candidate` offline inspect and crash
-recovery command is implemented behind `--windows-candidate`. Its native
-end-to-end report is pending; this candidate command does not open ordinary
-Windows Session routing or general third-party Worker admission.
+recovery command is implemented behind `--windows-candidate`. The hosted
+crash/reopen Product case calls `inspect` and `recover-crash`, verifies refusal
+at injected partial-settlement boundaries, then completes recovery through the
+command. It passed in the non-skipped native 6/6 Windows Session report on
+`5321eff8`; the newer head still awaits its own Session report. This candidate
+command does not open unflagged Windows Session routing or general third-party
+Worker admission.
 
 `loushang-worker-native candidate-status` reads the retained per-install Worker
 opt-in decision and observes an exact selected Worker candidate through the
