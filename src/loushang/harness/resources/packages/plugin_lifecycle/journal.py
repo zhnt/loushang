@@ -17,15 +17,33 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecycleJournalRecordV1,
     PackageLifecyclePhase,
+    PackageLifecyclePinnedAdoptionRecordV1,
+    PackageLifecyclePinnedAdoptionRequestV1,
+    PackageLifecycleRebindRecordV1,
+    PackageLifecycleRebindRequestV1,
     PackageLifecycleRequestV1,
+    PackageLifecycleRequestV2,
+    PackageLifecycleRestartRecordV1,
+    PackageLifecycleRestartRequestV1,
+    PackageLifecycleStagingAdoptionRecordV1,
+    PackageLifecycleStagingAdoptionRequestV1,
     PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
+)
+
+PackageLifecycleRecord = (
+    PackageLifecycleJournalRecordV1
+    | PackageLifecycleRebindRecordV1
+    | PackageLifecyclePinnedAdoptionRecordV1
+    | PackageLifecycleStagingAdoptionRecordV1
+    | PackageLifecycleRestartRecordV1
 )
 
 
@@ -38,14 +56,36 @@ class PackageLifecycleJournalError(RuntimeError):
         self.path = path
 
 
-def _encode_record(record: PackageLifecycleJournalRecordV1) -> dict[str, object]:
-    if not isinstance(record, PackageLifecycleJournalRecordV1):
+def _encode_record(record: PackageLifecycleRecord) -> dict[str, object]:
+    if not isinstance(
+        record,
+        (
+            PackageLifecycleJournalRecordV1,
+            PackageLifecycleRebindRecordV1,
+            PackageLifecyclePinnedAdoptionRecordV1,
+            PackageLifecycleStagingAdoptionRecordV1,
+            PackageLifecycleRestartRecordV1,
+        ),
+    ):
         raise TypeError("Package lifecycle journal record is required")
     return record.to_dict()
 
 
-def _decode_record(value: object) -> PackageLifecycleJournalRecordV1:
+def _decode_record(value: object) -> PackageLifecycleRecord:
     try:
+        if isinstance(value, dict) and value.get("recordKind") == "staging_adoption":
+            return PackageLifecycleStagingAdoptionRecordV1.from_dict(value)
+        if isinstance(value, dict) and value.get("recordKind") in {
+            "pinned_adoption", "pinned_adoption_supersession",
+        }:
+            return PackageLifecyclePinnedAdoptionRecordV1.from_dict(value)
+        if isinstance(value, dict) and value.get("recordKind") in {
+            "rebind",
+            "rebind_supersession",
+        }:
+            return PackageLifecycleRebindRecordV1.from_dict(value)
+        if isinstance(value, dict) and value.get("recordKind") == "restart":
+            return PackageLifecycleRestartRecordV1.from_dict(value)
         return PackageLifecycleJournalRecordV1.from_dict(value)
     except (TypeError, ValueError) as exc:
         raise JournalCodecError(
@@ -73,6 +113,7 @@ _PHASE_SEQUENCE: tuple[PackageLifecyclePhase, ...] = (
     "set_published",
     "committed",
 )
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 class PackageLifecycleJournal:
@@ -238,9 +279,7 @@ class PackageLifecycleJournal:
             status = replace(
                 current,
                 phase=next_phase,
-                disposition=(
-                    "committed" if next_phase == "committed" else "active"
-                ),
+                disposition=("committed" if next_phase == "committed" else "active"),
                 journal_revision=revision,
             )
             self._append_unlocked(
@@ -276,9 +315,10 @@ class PackageLifecycleJournal:
             if current.failure == failure:
                 if current.attempt_epoch != expected_attempt_epoch:
                     raise self._stale_attempt()
-                if current.request_fingerprint != requests[
-                    failure.operation_id
-                ].request_fingerprint:
+                if (
+                    current.request_fingerprint
+                    != requests[failure.operation_id].request_fingerprint
+                ):
                     raise self._error(
                         "Package operation request fingerprint changed",
                         code="package_operation_identity_conflict",
@@ -353,7 +393,12 @@ class PackageLifecycleJournal:
         expected_phase: PackageLifecyclePhase,
         expected_journal_revision: int,
         expected_attempt_epoch: int,
+        expected_attempt_revision: int | None = None,
     ) -> PackageLifecycleStatusV1:
+        if expected_attempt_revision is not None and (
+            type(expected_attempt_revision) is not int or expected_attempt_revision < 0
+        ):
+            raise ValueError("Package expected attempt revision is invalid")
         with self._exclusive():
             records = self._load_unlocked()
             requests, statuses = _project_state(records)
@@ -373,6 +418,11 @@ class PackageLifecycleJournal:
                 expected_journal_revision=expected_journal_revision,
                 expected_attempt_epoch=expected_attempt_epoch,
             )
+            if (
+                expected_attempt_revision is not None
+                and current.attempt_revision != expected_attempt_revision
+            ):
+                raise self._stale_attempt()
             revision = len(records) + 1
             failure = PackageLifecycleFailureV1.for_operation(
                 "package_operation_interrupted",
@@ -422,6 +472,16 @@ class PackageLifecycleJournal:
                 )
             if current.attempt_epoch != expected_attempt_epoch:
                 raise self._stale_attempt()
+            if any(
+                isinstance(record, PackageLifecycleRebindRecordV1)
+                and record.status.operation_id == operation_id
+                and record.status == current
+                for record in reversed(records)
+            ):
+                raise self._error(
+                    "Package rebind has no authorized execution route",
+                    code="package_rebind_execution_not_available",
+                )
             revision = len(records) + 1
             status = replace(
                 current,
@@ -441,6 +501,647 @@ class PackageLifecycleJournal:
                 )
             )
             return status
+
+    def record_pinned_adoption(
+        self, decision: PackageLifecyclePinnedAdoptionRequestV1
+    ) -> PackageLifecyclePinnedAdoptionRecordV1:
+        """Select an inert same-attempt admission proposal under exact pin CAS."""
+
+        return self._record_pinned_adoption(decision, supersedes=None)
+
+    def supersede_pinned_adoption(
+        self,
+        decision: PackageLifecyclePinnedAdoptionRequestV1,
+        *,
+        supersedes_decision_id: str,
+        expected_prior_record_revision: int,
+    ) -> PackageLifecyclePinnedAdoptionRecordV1:
+        """Replace one still-selected proposal after Product proves lease exit."""
+
+        if (
+            not isinstance(supersedes_decision_id, str)
+            or len(supersedes_decision_id) != 64
+            or type(expected_prior_record_revision) is not int
+            or expected_prior_record_revision < 1
+        ):
+            raise ValueError("Prior pinned adoption identity is invalid")
+        return self._record_pinned_adoption(
+            decision,
+            supersedes=(supersedes_decision_id, expected_prior_record_revision),
+        )
+
+    def _record_pinned_adoption(
+        self,
+        decision: PackageLifecyclePinnedAdoptionRequestV1,
+        *,
+        supersedes: tuple[str, int] | None,
+    ) -> PackageLifecyclePinnedAdoptionRecordV1:
+        if not isinstance(decision, PackageLifecyclePinnedAdoptionRequestV1):
+            raise TypeError("Pinned adoption decision is required")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, decision.operation_id)
+            prior = next(
+                (
+                    record for record in reversed(records)
+                    if isinstance(record, PackageLifecyclePinnedAdoptionRecordV1)
+                    and record.status.operation_id == decision.operation_id
+                ),
+                None,
+            )
+            if prior is not None and prior.status == current:
+                if supersedes is None and prior.decision == decision:
+                    return prior
+                if (
+                    supersedes is not None
+                    and prior.record_kind == "pinned_adoption_supersession"
+                    and prior.supersedes_decision_id == supersedes[0]
+                    and prior.prior_attempt_revision == supersedes[1]
+                    and prior.decision == decision
+                ):
+                    return prior
+            if (
+                current.phase != "transaction_pinned"
+                or current.disposition != "active"
+                or current.journal_revision != decision.expected_journal_revision
+                or current.attempt_epoch != decision.expected_attempt_epoch
+                or current.attempt_revision != decision.expected_attempt_revision
+                or current.request_fingerprint != decision.request_fingerprint
+                or (supersedes is None and prior is not None and prior.status == current)
+                or (
+                    supersedes is not None
+                    and (
+                        prior is None
+                        or prior.status != current
+                        or prior.record_revision != supersedes[1]
+                        or prior.decision.decision_id != supersedes[0]
+                        or prior.decision.new_runtime_admission_request_id
+                        == decision.new_runtime_admission_request_id
+                    )
+                )
+            ):
+                raise self._error(
+                    "Pinned admission adoption changed selected attempt",
+                    code="package_pinned_adoption_attempt_conflict",
+                )
+            original = requests[decision.operation_id]
+            if (
+                not isinstance(original, PackageLifecycleRequestV2)
+                or original.runtime_admission_request_id
+                == decision.new_runtime_admission_request_id
+            ):
+                raise self._error(
+                    "Pinned adoption requires a distinct original admission",
+                    code="package_pinned_adoption_not_permitted",
+                )
+            revision = len(records) + 1
+            record = PackageLifecyclePinnedAdoptionRecordV1(
+                record_revision=revision,
+                prior_operation_revision=current.journal_revision,
+                prior_attempt_revision=current.attempt_revision,
+                request=original,
+                status=replace(current, attempt_revision=revision),
+                decision=decision,
+                record_kind=(
+                    "pinned_adoption" if supersedes is None
+                    else "pinned_adoption_supersession"
+                ),
+                supersedes_decision_id=(None if supersedes is None else supersedes[0]),
+            )
+            self._append_unlocked(record)
+            return record
+
+    def latest_pinned_adoption(
+        self, operation_id: str
+    ) -> PackageLifecyclePinnedAdoptionRecordV1 | None:
+        """Read the selected proposal without creating locks or repairing tails."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path, "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return next(
+            (
+                record for record in reversed(records)
+                if isinstance(record, PackageLifecyclePinnedAdoptionRecordV1)
+                and record.status.operation_id == operation_id
+            ),
+            None,
+        )
+
+    def read_pinned_adoption_history(
+        self, operation_id: str
+    ) -> tuple[PackageLifecyclePinnedAdoptionRecordV1, ...]:
+        """Read every selected proposal for strict Product lease lineage."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path, "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record for record in records
+            if isinstance(record, PackageLifecyclePinnedAdoptionRecordV1)
+            and record.status.operation_id == operation_id
+        )
+
+    def record_staging_adoption(
+        self, decision: PackageLifecycleStagingAdoptionRequestV1
+    ) -> PackageLifecycleStagingAdoptionRecordV1:
+        """Select an inert admission for one unchanged staging checkpoint."""
+
+        if not isinstance(decision, PackageLifecycleStagingAdoptionRequestV1):
+            raise TypeError("Staging adoption decision is required")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, decision.operation_id)
+            selected = next(
+                (
+                    record
+                    for record in reversed(records)
+                    if isinstance(
+                        record,
+                        PackageLifecycleStagingAdoptionRecordV1
+                        | PackageLifecyclePinnedAdoptionRecordV1,
+                    )
+                    and record.status.operation_id == decision.operation_id
+                ),
+                None,
+            )
+            if (
+                current.phase == "set_published"
+                and selected is not None
+                and selected.status.phase != "set_published"
+            ):
+                # A prior pin/staging selection already produced the published
+                # set. Its active proposal ended when the phase advanced.
+                selected = None
+            if (
+                isinstance(selected, PackageLifecycleStagingAdoptionRecordV1)
+                and selected.status == current
+                and selected.decision == decision
+            ):
+                return selected
+            prior_decision = None if selected is None else selected.decision
+            if (
+                current.phase not in {"transaction_pinned", "set_published"}
+                or current.disposition != "active"
+                or current.journal_revision != decision.expected_journal_revision
+                or current.attempt_epoch != decision.expected_attempt_epoch
+                or current.attempt_revision != decision.expected_attempt_revision
+                or current.request_fingerprint != decision.request_fingerprint
+                or (selected is not None and selected.status != current)
+                or decision.previous_selected_decision_id
+                != (
+                    None if prior_decision is None else prior_decision.decision_id
+                )
+                or (
+                    prior_decision is not None
+                    and prior_decision.new_runtime_admission_request_id
+                    == decision.new_runtime_admission_request_id
+                )
+            ):
+                raise self._error(
+                    "Staging adoption changed selected checkpoint attempt",
+                    code="package_staging_adoption_attempt_conflict",
+                )
+            original = requests[decision.operation_id]
+            if (
+                not isinstance(original, PackageLifecycleRequestV2)
+                or original.runtime_admission_request_id
+                == decision.new_runtime_admission_request_id
+            ):
+                raise self._error(
+                    "Staging adoption requires a distinct original admission",
+                    code="package_staging_adoption_not_permitted",
+                )
+            revision = len(records) + 1
+            record = PackageLifecycleStagingAdoptionRecordV1(
+                record_revision=revision,
+                prior_operation_revision=current.journal_revision,
+                prior_attempt_revision=current.attempt_revision,
+                request=original,
+                status=replace(current, attempt_revision=revision),
+                decision=decision,
+            )
+            self._append_unlocked(record)
+            return record
+
+    def latest_staging_adoption(
+        self, operation_id: str
+    ) -> PackageLifecycleStagingAdoptionRecordV1 | None:
+        """Read the newest staged selection without repair or lock creation."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path, "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return next(
+            (
+                record for record in reversed(records)
+                if isinstance(record, PackageLifecycleStagingAdoptionRecordV1)
+                and record.status.operation_id == operation_id
+            ),
+            None,
+        )
+
+    def read_staging_adoption_history(
+        self, operation_id: str
+    ) -> tuple[PackageLifecycleStagingAdoptionRecordV1, ...]:
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path, "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record for record in records
+            if isinstance(record, PackageLifecycleStagingAdoptionRecordV1)
+            and record.status.operation_id == operation_id
+        )
+
+    def record_rebind(
+        self, decision: PackageLifecycleRebindRequestV1
+    ) -> PackageLifecycleRebindRecordV1:
+        """Persist a reviewed rebind CAS; this does not resume or execute A2."""
+
+        if not isinstance(decision, PackageLifecycleRebindRequestV1):
+            raise TypeError("Package rebind decision is required")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, decision.operation_id)
+            previous = next(
+                (
+                    record
+                    for record in reversed(records)
+                    if isinstance(record, PackageLifecycleRebindRecordV1)
+                    and record.status.operation_id == decision.operation_id
+                ),
+                None,
+            )
+            if previous is not None and previous.status == current:
+                if previous.decision == decision:
+                    return previous
+                raise self._error(
+                    "Package rebind decision is already fixed for this attempt",
+                    code="package_rebind_attempt_conflict",
+                )
+            if current.attempt_revision != decision.expected_attempt_revision:
+                raise self._error(
+                    "Package rebind attempt changed",
+                    code="package_rebind_attempt_conflict",
+                )
+            original = requests[decision.operation_id]
+            if (
+                not isinstance(original, PackageLifecycleRequestV2)
+                or current.request_fingerprint != decision.request_fingerprint
+                or current.attempt_epoch != decision.expected_attempt_epoch
+                or current.disposition != "retryable_failure"
+                or current.failure is None
+                or current.failure.operator_action != "retry"
+                or current.classification is None
+                or current.classification.decision != "plugin_bound"
+                or original.runtime_admission_request_id
+                == decision.new_runtime_admission_request_id
+            ):
+                raise self._error(
+                    "Package operation cannot record a runtime rebind",
+                    code="package_rebind_not_permitted",
+                )
+            if not _restart_refs_match(records, current, decision):
+                raise self._error(
+                    "Package rebind changed cleanup-bound restart evidence",
+                    code="package_rebind_restart_evidence_changed",
+                )
+            revision = len(records) + 1
+            record = PackageLifecycleRebindRecordV1(
+                record_revision=revision,
+                prior_operation_revision=current.journal_revision,
+                prior_attempt_revision=current.attempt_revision,
+                request=original,
+                status=replace(current, attempt_revision=revision),
+                decision=decision,
+            )
+            self._append_unlocked(record)
+            return record
+
+    def latest_rebind(self, operation_id: str) -> PackageLifecycleRebindRecordV1 | None:
+        """Read the latest exact rebind decision without creating owner state."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return next(
+            (
+                record
+                for record in reversed(records)
+                if isinstance(record, PackageLifecycleRebindRecordV1)
+                and record.status.operation_id == operation_id
+            ),
+            None,
+        )
+
+    def restart_after_cleanup(
+        self, restart: PackageLifecycleRestartRequestV1
+    ) -> PackageLifecycleRestartRecordV1:
+        """Reset a failed phase under exact CAS after Product proves cleanup.
+
+        This journal primitive does not verify the supplied Source, cleanup, or
+        lease proof references and grants no Product execution authority.
+        """
+
+        if not isinstance(restart, PackageLifecycleRestartRequestV1):
+            raise TypeError("Package restart request is required")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, restart.operation_id)
+            previous = next(
+                (
+                    record
+                    for record in reversed(records)
+                    if isinstance(record, PackageLifecycleRestartRecordV1)
+                    and record.status.operation_id == restart.operation_id
+                ),
+                None,
+            )
+            if previous is not None and previous.status == current:
+                if previous.restart == restart:
+                    return previous
+                raise self._error(
+                    "Package restart is already fixed for this attempt",
+                    code="package_restart_attempt_conflict",
+                )
+            original = requests[restart.operation_id]
+            if (
+                not isinstance(original, PackageLifecycleRequestV2)
+                or current.request_fingerprint != restart.request_fingerprint
+                or current.phase != restart.expected_phase
+                or current.journal_revision != restart.expected_journal_revision
+                or current.attempt_epoch != restart.expected_attempt_epoch
+                or current.attempt_revision != restart.expected_attempt_revision
+                or current.disposition != "retryable_failure"
+                or current.failure is None
+                or current.failure.operator_action != "retry"
+                or current.classification is None
+                or current.classification.decision != "plugin_bound"
+                or any(
+                    isinstance(record, PackageLifecycleRebindRecordV1)
+                    and record.status == current
+                    for record in records
+                )
+            ):
+                raise self._error(
+                    "Package failed attempt cannot restart after cleanup",
+                    code="package_restart_attempt_conflict",
+                )
+            revision = len(records) + 1
+            status = replace(
+                current,
+                phase="classified",
+                attempt_revision=revision,
+                failure=PackageLifecycleFailureV1.for_operation(
+                    "package_operation_interrupted",
+                    stage="classified",
+                    operation_id=restart.operation_id,
+                    evidence_ref=restart.restart_id,
+                ),
+            )
+            record = PackageLifecycleRestartRecordV1(
+                record_revision=revision,
+                prior_operation_revision=current.journal_revision,
+                prior_attempt_revision=current.attempt_revision,
+                request=original,
+                status=status,
+                restart=restart,
+            )
+            self._append_unlocked(record)
+            return record
+
+    def latest_restart(
+        self, operation_id: str
+    ) -> PackageLifecycleRestartRecordV1 | None:
+        """Read the latest cleanup-bound restart without mutating owner state."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return next(
+            (
+                record
+                for record in reversed(records)
+                if isinstance(record, PackageLifecycleRestartRecordV1)
+                and record.status.operation_id == operation_id
+            ),
+            None,
+        )
+
+    def read_rebind_history(
+        self, operation_id: str
+    ) -> tuple[PackageLifecycleRebindRecordV1, ...]:
+        """Read the exact accepted decision chain without owner mutation."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record
+            for record in records
+            if isinstance(record, PackageLifecycleRebindRecordV1)
+            and record.status.operation_id == operation_id
+        )
+
+    def supersede_rebind(
+        self,
+        decision: PackageLifecycleRebindRequestV1,
+        *,
+        supersedes_decision_id: str,
+        expected_prior_rebind_record_revision: int,
+    ) -> PackageLifecycleRebindRecordV1:
+        """Persist a reviewed replacement of one still-pending decision.
+
+        Product must first prove the old proposed lease exited and bind the new
+        admitted lease. The journal enforces only exact decision lineage/CAS.
+        """
+
+        if not isinstance(decision, PackageLifecycleRebindRequestV1):
+            raise TypeError("Package rebind supersession decision is required")
+        if (
+            type(expected_prior_rebind_record_revision) is not int
+            or expected_prior_rebind_record_revision < 1
+        ):
+            raise ValueError("Prior Package rebind revision is invalid")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, decision.operation_id)
+            prior = next(
+                (
+                    record
+                    for record in reversed(records)
+                    if isinstance(record, PackageLifecycleRebindRecordV1)
+                    and record.status.operation_id == decision.operation_id
+                ),
+                None,
+            )
+            if (
+                prior is not None
+                and prior.record_kind == "rebind_supersession"
+                and prior.supersedes_decision_id == supersedes_decision_id
+                and prior.prior_attempt_revision
+                == expected_prior_rebind_record_revision
+                and prior.decision == decision
+            ):
+                return prior
+            if (
+                prior is None
+                or prior.status != current
+                or prior.record_revision != expected_prior_rebind_record_revision
+                or prior.decision.decision_id != supersedes_decision_id
+                or prior.decision.new_runtime_admission_request_id
+                == decision.new_runtime_admission_request_id
+            ):
+                raise self._error(
+                    "Package rebind supersession changed pending decision",
+                    code="package_rebind_supersession_conflict",
+                )
+            original = requests[decision.operation_id]
+            if not isinstance(original, PackageLifecycleRequestV2):
+                raise self._error(
+                    "Package rebind requires an original runtime request",
+                    code="package_rebind_not_permitted",
+                )
+            if not _restart_refs_match(records, current, decision):
+                raise self._error(
+                    "Package rebind changed cleanup-bound restart evidence",
+                    code="package_rebind_restart_evidence_changed",
+                )
+            revision = len(records) + 1
+            record = PackageLifecycleRebindRecordV1(
+                record_revision=revision,
+                prior_operation_revision=current.journal_revision,
+                prior_attempt_revision=current.attempt_revision,
+                request=original,
+                status=replace(current, attempt_revision=revision),
+                decision=decision,
+                record_kind="rebind_supersession",
+                supersedes_decision_id=supersedes_decision_id,
+            )
+            try:
+                _validate_rebind_record(current, record)
+            except ValueError as exc:
+                raise self._error(
+                    "Package rebind supersession changed failed attempt",
+                    code="package_rebind_supersession_conflict",
+                ) from exc
+            self._append_unlocked(record)
+            return record
+
+    def resume_rebind(
+        self,
+        decision: PackageLifecycleRebindRequestV1,
+        *,
+        expected_rebind_record_revision: int,
+    ) -> PackageLifecycleStatusV1:
+        """Claim the next attempt only from one exact durable rebind decision.
+
+        Product must recheck admission and all referenced owner evidence before
+        calling this journal primitive. This method grants no route authority.
+        """
+
+        if not isinstance(decision, PackageLifecycleRebindRequestV1):
+            raise TypeError("Package rebind decision is required")
+        if (
+            type(expected_rebind_record_revision) is not int
+            or expected_rebind_record_revision < 1
+        ):
+            raise ValueError("Package rebind record revision is invalid")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, decision.operation_id)
+            rebind = next(
+                (
+                    record
+                    for record in reversed(records)
+                    if isinstance(record, PackageLifecycleRebindRecordV1)
+                    and record.status.operation_id == decision.operation_id
+                ),
+                None,
+            )
+            if (
+                rebind is None
+                or rebind.record_revision != expected_rebind_record_revision
+                or rebind.decision != decision
+                or requests[decision.operation_id] != rebind.request
+            ):
+                raise self._error(
+                    "Package rebind decision changed before resume",
+                    code="package_rebind_decision_conflict",
+                )
+            if (
+                current.attempt_epoch == decision.expected_attempt_epoch + 1
+                and current.request_fingerprint == decision.request_fingerprint
+            ):
+                return current
+            if current != rebind.status:
+                raise self._error(
+                    "Package rebind attempt changed before resume",
+                    code="package_rebind_attempt_conflict",
+                )
+            revision = len(records) + 1
+            resumed = replace(
+                current,
+                disposition="active",
+                attempt_epoch=current.attempt_epoch + 1,
+                attempt_revision=revision,
+                failure=None,
+            )
+            self._append_unlocked(
+                PackageLifecycleJournalRecordV1(
+                    record_kind="attempt",
+                    record_revision=revision,
+                    prior_operation_revision=current.journal_revision,
+                    prior_attempt_revision=current.attempt_revision,
+                    request=rebind.request,
+                    status=resumed,
+                )
+            )
+            return resumed
 
     def cancel(
         self,
@@ -503,9 +1204,50 @@ class PackageLifecycleJournal:
             requests, _statuses = _project_state(self._load_unlocked())
             return requests.get(operation_id)
 
-    def records(self) -> tuple[PackageLifecycleJournalRecordV1, ...]:
+    def records(self) -> tuple[PackageLifecycleRecord, ...]:
         with self._exclusive():
             return self._load_unlocked()
+
+    def read_operations(
+        self,
+    ) -> tuple[tuple[PackageLifecycleRequestV1, PackageLifecycleStatusV1], ...]:
+        """Project all operations from strict, non-mutating owner reads."""
+
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            requests, statuses = _project_state(
+                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            )
+        return tuple(
+            (request, statuses[operation_id])
+            for operation_id, request in sorted(requests.items())
+        )
+
+    def read_operation(
+        self, operation_id: str
+    ) -> tuple[PackageLifecycleRequestV1, PackageLifecycleStatusV1] | None:
+        """Read exact A2 request/status without creating or repairing journals."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation id is required")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            requests, statuses = _project_state(
+                self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+            )
+        request = requests.get(operation_id)
+        status = statuses.get(operation_id)
+        if request is None or status is None:
+            return None
+        return request, status
 
     def _require_active_cas(
         self,
@@ -583,7 +1325,7 @@ class PackageLifecycleJournal:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
         )
 
-    def _append_unlocked(self, record: PackageLifecycleJournalRecordV1) -> None:
+    def _append_unlocked(self, record: PackageLifecycleRecord) -> None:
         append_jsonl_record(
             self._path,
             record,
@@ -592,18 +1334,18 @@ class PackageLifecycleJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_unlocked(self) -> tuple[PackageLifecycleJournalRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageLifecycleRecord, ...]:
         if not self._path.exists():
             return ()
         try:
-            snapshot: JsonlSnapshot[None, PackageLifecycleJournalRecordV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PACKAGE_LIFECYCLE_JOURNAL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[None, PackageLifecycleRecord] = load_jsonl(
+                self._path,
+                record_codec=PACKAGE_LIFECYCLE_JOURNAL_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=load_policy or self._load_policy,
             )
             records = snapshot.records
             _assert_no_duplicate_json_keys(self._path)
@@ -625,7 +1367,7 @@ class PackageLifecycleJournal:
 
 
 def _project_records(
-    records: tuple[PackageLifecycleJournalRecordV1, ...],
+    records: tuple[PackageLifecycleRecord, ...],
 ) -> dict[str, PackageLifecycleStatusV1]:
     _requests, statuses = _project_state(records)
     return statuses
@@ -650,13 +1392,17 @@ def _unique_json_object(
 
 
 def _project_state(
-    records: tuple[PackageLifecycleJournalRecordV1, ...],
+    records: tuple[PackageLifecycleRecord, ...],
 ) -> tuple[
     dict[str, PackageLifecycleRequestV1],
     dict[str, PackageLifecycleStatusV1],
 ]:
     requests: dict[str, PackageLifecycleRequestV1] = {}
     statuses: dict[str, PackageLifecycleStatusV1] = {}
+    pending_rebinds: dict[str, PackageLifecycleRebindRecordV1] = {}
+    pending_pinned_adoptions: dict[str, PackageLifecyclePinnedAdoptionRecordV1] = {}
+    pending_staging_adoptions: dict[str, PackageLifecycleStagingAdoptionRecordV1] = {}
+    latest_restarts: dict[str, PackageLifecycleRestartRecordV1] = {}
     for record in records:
         operation_id = record.status.operation_id
         current = statuses.get(operation_id)
@@ -673,15 +1419,91 @@ def _project_state(
             raise ValueError("Package journal attempt CAS predecessor is invalid")
         if current.terminal:
             raise ValueError("Terminal Package journal operation has later records")
-        if record.record_kind == "operation":
+        if isinstance(record, PackageLifecycleStagingAdoptionRecordV1):
+            prior_staging = pending_staging_adoptions.get(operation_id)
+            prior_pinned = pending_pinned_adoptions.get(operation_id)
+            prior_decision = (
+                prior_staging.decision
+                if prior_staging is not None
+                else prior_pinned.decision
+                if prior_pinned is not None
+                else None
+            )
+            if record.decision.previous_selected_decision_id != (
+                None if prior_decision is None else prior_decision.decision_id
+            ) or (
+                prior_decision is not None
+                and prior_decision.new_runtime_admission_request_id
+                == record.decision.new_runtime_admission_request_id
+            ):
+                raise ValueError("Staging adoption changed selected lineage")
+            _validate_staging_adoption_record(current, record)
+            pending_pinned_adoptions.pop(operation_id, None)
+            pending_staging_adoptions[operation_id] = record
+        elif isinstance(record, PackageLifecyclePinnedAdoptionRecordV1):
+            if operation_id in pending_staging_adoptions:
+                raise ValueError("Pinned adoption resumed after staging selection")
+            prior = pending_pinned_adoptions.get(operation_id)
+            if record.record_kind == "pinned_adoption":
+                if prior is not None:
+                    raise ValueError("Pinned adoption changed before Product execution")
+            elif (
+                prior is None
+                or record.supersedes_decision_id != prior.decision.decision_id
+                or record.decision.new_runtime_admission_request_id
+                == prior.decision.new_runtime_admission_request_id
+            ):
+                raise ValueError("Pinned adoption supersession changed lineage")
+            _validate_pinned_adoption_record(current, record)
+            pending_pinned_adoptions[operation_id] = record
+        elif isinstance(record, PackageLifecycleRebindRecordV1):
+            if operation_id in pending_staging_adoptions:
+                raise ValueError("Package rebind changed staged selection")
+            restart = latest_restarts.get(operation_id)
+            if restart is not None and (
+                restart.status.attempt_epoch == current.attempt_epoch
+                and not _decision_matches_restart(record.decision, restart)
+            ):
+                raise ValueError("Package rebind changed restart evidence")
+            pending = pending_rebinds.get(operation_id)
+            if record.record_kind == "rebind":
+                if pending is not None:
+                    raise ValueError("Package rebind decision changed before resume")
+            elif (
+                pending is None
+                or record.supersedes_decision_id != pending.decision.decision_id
+                or record.decision.new_runtime_admission_request_id
+                == pending.decision.new_runtime_admission_request_id
+            ):
+                raise ValueError("Package rebind supersession changed lineage")
+            _validate_rebind_record(current, record)
+            pending_rebinds[operation_id] = record
+        elif isinstance(record, PackageLifecycleRestartRecordV1):
+            if operation_id in pending_rebinds:
+                raise ValueError("Package restart changed a pending rebind")
+            _validate_restart_record(current, record)
+            latest_restarts[operation_id] = record
+        elif record.record_kind == "operation":
+            if operation_id in pending_pinned_adoptions:
+                pending_pinned_adoptions.pop(operation_id)
+            pending_staging_adoptions.pop(operation_id, None)
             _validate_operation_record(current, record.status)
         else:
+            if operation_id in pending_staging_adoptions:
+                raise ValueError("Package attempt changed staged selection")
+            pending = pending_rebinds.pop(operation_id, None)
+            if pending is not None and (
+                record.status.attempt_epoch
+                != pending.decision.expected_attempt_epoch + 1
+                or record.status.disposition != "active"
+            ):
+                raise ValueError("Package rebind resumed an unexpected attempt")
             _validate_attempt_record(current, record.status)
         statuses[operation_id] = record.status
     return requests, statuses
 
 
-def _validate_accept_record(record: PackageLifecycleJournalRecordV1) -> None:
+def _validate_accept_record(record: PackageLifecycleRecord) -> None:
     status = record.status
     if (
         record.record_kind != "operation"
@@ -753,6 +1575,119 @@ def _validate_attempt_record(
     raise ValueError("Unsupported PLC9B1 attempt transition")
 
 
+def _validate_rebind_record(
+    current: PackageLifecycleStatusV1,
+    record: PackageLifecycleRebindRecordV1,
+) -> None:
+    if (
+        current.disposition != "retryable_failure"
+        or current.failure is None
+        or current.failure.operator_action != "retry"
+        or current.classification is None
+        or current.classification.decision != "plugin_bound"
+        or record.decision.expected_attempt_epoch != current.attempt_epoch
+        or record.decision.expected_attempt_revision != current.attempt_revision
+        or record.status != replace(current, attempt_revision=record.record_revision)
+    ):
+        raise ValueError("Package rebind changed the failed attempt")
+
+
+def _validate_pinned_adoption_record(
+    current: PackageLifecycleStatusV1,
+    record: PackageLifecyclePinnedAdoptionRecordV1,
+) -> None:
+    decision = record.decision
+    if (
+        current.phase != "transaction_pinned"
+        or current.disposition != "active"
+        or decision.expected_journal_revision != current.journal_revision
+        or decision.expected_attempt_epoch != current.attempt_epoch
+        or decision.expected_attempt_revision != current.attempt_revision
+        or record.status != replace(current, attempt_revision=record.record_revision)
+    ):
+        raise ValueError("Pinned adoption changed the verified attempt")
+
+
+def _validate_staging_adoption_record(
+    current: PackageLifecycleStatusV1,
+    record: PackageLifecycleStagingAdoptionRecordV1,
+) -> None:
+    decision = record.decision
+    if (
+        current.phase not in {"transaction_pinned", "set_published"}
+        or current.disposition != "active"
+        or decision.expected_journal_revision != current.journal_revision
+        or decision.expected_attempt_epoch != current.attempt_epoch
+        or decision.expected_attempt_revision != current.attempt_revision
+        or record.status != replace(current, attempt_revision=record.record_revision)
+    ):
+        raise ValueError("Staging adoption changed the checkpoint attempt")
+
+
+def _validate_restart_record(
+    current: PackageLifecycleStatusV1,
+    record: PackageLifecycleRestartRecordV1,
+) -> None:
+    restart = record.restart
+    if (
+        current.disposition != "retryable_failure"
+        or current.failure is None
+        or current.failure.operator_action != "retry"
+        or current.classification is None
+        or current.classification.decision != "plugin_bound"
+        or current.phase != restart.expected_phase
+        or current.journal_revision != restart.expected_journal_revision
+        or current.attempt_epoch != restart.expected_attempt_epoch
+        or current.attempt_revision != restart.expected_attempt_revision
+        or record.status
+        != replace(
+            current,
+            phase="classified",
+            attempt_revision=record.record_revision,
+            failure=PackageLifecycleFailureV1.for_operation(
+                "package_operation_interrupted",
+                stage="classified",
+                operation_id=restart.operation_id,
+                evidence_ref=restart.restart_id,
+            ),
+        )
+    ):
+        raise ValueError("Package restart changed the failed attempt")
+
+
+def _decision_matches_restart(
+    decision: PackageLifecycleRebindRequestV1,
+    restart: PackageLifecycleRestartRecordV1,
+) -> bool:
+    return (
+        decision.operation_id == restart.restart.operation_id
+        and decision.request_fingerprint == restart.restart.request_fingerprint
+        and decision.source_proof_ref == restart.restart.source_proof_ref
+        and decision.cleanup_evidence_ref == restart.restart.cleanup_evidence_ref
+    )
+
+
+def _restart_refs_match(
+    records: tuple[PackageLifecycleRecord, ...],
+    current: PackageLifecycleStatusV1,
+    decision: PackageLifecycleRebindRequestV1,
+) -> bool:
+    restart = next(
+        (
+            record
+            for record in reversed(records)
+            if isinstance(record, PackageLifecycleRestartRecordV1)
+            and record.status.operation_id == current.operation_id
+        ),
+        None,
+    )
+    return (
+        restart is None
+        or restart.status.attempt_epoch != current.attempt_epoch
+        or _decision_matches_restart(decision, restart)
+    )
+
+
 def _next_phase(phase: PackageLifecyclePhase) -> PackageLifecyclePhase | None:
     try:
         index = _PHASE_SEQUENCE.index(phase)
@@ -764,7 +1699,7 @@ def _next_phase(phase: PackageLifecyclePhase) -> PackageLifecyclePhase | None:
 
 
 def _last_operation_record(
-    records: tuple[PackageLifecycleJournalRecordV1, ...],
+    records: tuple[PackageLifecycleRecord, ...],
     operation_id: str,
 ) -> PackageLifecycleJournalRecordV1:
     for record in reversed(records):

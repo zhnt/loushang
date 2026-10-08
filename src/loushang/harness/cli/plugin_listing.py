@@ -6,6 +6,10 @@ import json
 from collections.abc import Mapping, Sequence
 
 from loushang.harness.cli.plugin_management import PluginManagementCliBinding
+from loushang.harness.plugin_management import (
+    PluginManagementInstallationViewV1,
+    PluginManagementProjectionV1,
+)
 
 
 class PluginListingError(RuntimeError):
@@ -19,15 +23,22 @@ def list_plugin_records(
         raise PluginListingError("plugin management query is not available.")
     try:
         projection = management.query(correlation_id="cli:list-plugins")
-        return [_project_cli_record(item) for item in projection.installations]
+        return [
+            _project_cli_record(item, projection=projection)
+            for item in projection.installations
+        ]
     except Exception as error:
         raise PluginListingError(str(error)) from error
 
 
-def _project_cli_record(view: object) -> dict[str, object]:
-    key = getattr(view, "installation_key")
-    source = getattr(view, "source")
-    package = getattr(view, "selected_package_revision")
+def _project_cli_record(
+    view: PluginManagementInstallationViewV1,
+    *,
+    projection: PluginManagementProjectionV1,
+) -> dict[str, object]:
+    key = view.installation_key
+    source = view.source
+    package = view.selected_package_revision
     source_kind = "unknown" if source is None else source.source_kind
     source_location = (
         package.package_source_identity
@@ -43,12 +54,19 @@ def _project_cli_record(view: object) -> dict[str, object]:
         if source is None
         else source.plugin_version
     )
-    desired_state = getattr(view, "desired_state")
+    desired_state = view.desired_state
     enabled = {
         "installed_enabled": True,
         "installed_disabled": False,
         "absent": False,
     }.get(desired_state)
+    management = view.to_dict()
+    management["ownerRevisions"] = projection.owner_revisions.to_dict()
+    management["skew"] = [
+        item.to_dict()
+        for item in projection.skew
+        if item.installation_key == key
+    ]
     return {
         "name": key.plugin_id,
         "version": plugin_version or "",
@@ -57,8 +75,9 @@ def _project_cli_record(view: object) -> dict[str, object]:
         "kind": source_kind,
         "enabled": enabled,
         "desiredState": desired_state,
-        "convergence": getattr(view, "convergence"),
-        "migrationStatus": getattr(view, "enablement_migration_phase"),
+        "convergence": view.convergence,
+        "migrationStatus": view.enablement_migration_phase,
+        "management": management,
     }
 
 

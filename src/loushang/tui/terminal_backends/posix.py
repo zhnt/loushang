@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import importlib
 import os
 import select
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 PosixModeModuleLoader = Callable[[], tuple[Any, Any] | None]
@@ -18,9 +20,67 @@ def _load_mode_modules() -> tuple[Any, Any] | None:
         return None
 
 
+class PosixTerminalInputReader:
+    """Exclusive, cancellable byte reader with transferable UTF-8 state.
+
+    Borrows a terminal descriptor configured for one-byte reads. The caller
+    owns the terminal lease and must cancel and join the previous read before
+    handing this object to another loop/thread. No loop-bound object is retained.
+    """
+
+    def __init__(self, fd: int) -> None:
+        self.fd = fd
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._read_lock = Lock()
+
+    @property
+    def has_pending(self) -> bool:
+        """Inspect incomplete UTF-8 only from the current exclusive owner."""
+        return bool(self._decoder.getstate()[0])
+
+    def at_input_boundary(self) -> bool:
+        """Observe an empty byte queue between joined reads, without draining it.
+
+        This is a read-time admission boundary, not a physical keystroke clock.
+        A later arriving byte belongs to the next admission interval.
+        """
+        if not self._read_lock.acquire(blocking=False):
+            raise RuntimeError("cannot inspect boundary while terminal read is active")
+        try:
+            return not self.has_pending and not select.select([self.fd], [], [], 0)[0]
+        finally:
+            self._read_lock.release()
+
+    async def read_chunk(self) -> str:
+        if not self._read_lock.acquire(blocking=False):
+            raise RuntimeError("terminal input reader is already active")
+        try:
+            while True:
+                readable, _, _ = select.select([self.fd], [], [], 0)
+                if not readable:
+                    await asyncio.sleep(0.01)
+                    continue
+                # VMIN=1 permits a bounded available-byte batch. Keep batches
+                # small so continuous input cannot starve stop/control checks.
+                chunk = os.read(self.fd, 64)
+                if not chunk:
+                    text = self._decoder.decode(b"", final=True)
+                    self._decoder.reset()
+                    return text
+                text = self._decoder.decode(chunk, final=False)
+                if text:
+                    return text
+        finally:
+            # Cancellation retains partial bytes but releases active ownership.
+            self._read_lock.release()
+
+
 @dataclass(frozen=True, slots=True)
 class PosixTerminalInput:
     """Read UTF-8 input from a POSIX terminal file descriptor."""
+
+    def open_reader(self, stdin: Any) -> PosixTerminalInputReader:
+        return PosixTerminalInputReader(stdin.fileno())
 
     async def read_chunk(self, stdin: Any) -> str:
         fd = stdin.fileno()
@@ -163,6 +223,7 @@ __all__ = [
     "POSIX_TERMINAL_INPUT",
     "POSIX_TERMINAL_MODE",
     "PosixTerminalInput",
+    "PosixTerminalInputReader",
     "PosixTerminalMode",
     "PosixTerminalModeLease",
 ]

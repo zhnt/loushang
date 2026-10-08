@@ -18,6 +18,7 @@ from loushang.agent.types import AgentToolResult, TextPart
 from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.protocol import artifact_cleanup_diagnostic
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 CommandOutputCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
@@ -290,6 +291,9 @@ def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
     for key in ("stdout_blob", "stderr_blob", "artifact_retention_error"):
         if details.get(key) is not None:
             result[key] = details[key]
+    cleanup = artifact_cleanup_diagnostic(details)
+    if cleanup is not None:
+        result["artifact_cleanup_error"] = cleanup
     return result
 
 

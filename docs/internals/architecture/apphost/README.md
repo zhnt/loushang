@@ -14,6 +14,8 @@
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
 [G17 Explicit Hosted Session Workflow](hosted-session-workflow-g17.md) ·
+[lmux Managed Contract M0](lmux-contract-m0.md) ·
+[ARD-004 A/A Stability Gate vs Interactive Metric Scale (accepted)](decisions/accepted/ARD-004-aa-stability-gate-vs-interactive-metric-scale.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -47,6 +49,15 @@ AppHost is a sibling Architecture Scope and initially remains in the main
 and a later packaging decision.
 
 ## Current
+
+The accepted [lmux M0 contract](lmux-contract-m0.md) adds an optional Linux
+managed-deployment Target and shared-client/view boundaries. Pure identity,
+handoff-state, stop-evidence and layout values, a Linux private-file owner and
+SQLite name reservations and clean-instance lifecycle coordination are implemented
+in `apphost.managed`; native service
+control, managed discovery/connection coordination, Session writer
+admission and the installed `lmux` entry remain unactivated. This does not
+change the existing foreground or explicit G16 lifecycle.
 
 A0.1 supplies immutable standard-library contracts and exact validation for:
 

@@ -53,6 +53,7 @@ from loushang.harness.session.model_call import (
 )
 from loushang.harness.session.request_evidence import (
     RESOURCE_EVIDENCE_COMPONENT,
+    RESOURCE_EVIDENCE_METADATA_KEY,
     RESOURCE_EVIDENCE_SCHEMA_ID,
     PreparedResourceEvidence,
     RequestEvidenceIntegrityError,
@@ -133,7 +134,9 @@ def _skill_evidence_payload() -> dict[str, JSONValue]:
     }
 
 
-async def _transcript_session() -> AgentTranscriptSession:
+async def _transcript_session(
+    *, message_metadata: Mapping[str, JSONValue] | None = None
+) -> AgentTranscriptSession:
     transcript = await AgentTranscriptUnitOfWork.create(
         MemoryConversationStore(record_id=lambda record: record.record_id),
         ConversationKey("test", "session-model-call"),
@@ -145,7 +148,8 @@ async def _transcript_session() -> AgentTranscriptSession:
     )
     session = AgentTranscriptSession(transcript=transcript)
     await session.append_message(
-        UserMessage(role="user", content="hello", timestamp=1.0)
+        UserMessage(role="user", content="hello", timestamp=1.0),
+        metadata=message_metadata,
     )
     return session
 
@@ -614,6 +618,78 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
     asyncio.run(scenario())
 
 
+def test_anchored_resource_evidence_resume_skips_snapshot_rebuild() -> None:
+    async def scenario() -> None:
+        evidence = PreparedResourceEvidence(
+            model_visible_text="hello",
+            skills=(_skill_evidence_payload(),),
+        )
+        session = await _transcript_session(
+            message_metadata={
+                RESOURCE_EVIDENCE_METADATA_KEY: evidence.to_message_metadata()
+            }
+        )
+        runtime_evidence = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=lambda _snapshot_id: pytest.fail(
+                "anchored evidence should not rebuild historical snapshots"
+            ),
+        )
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            request_evidence_provider=runtime_evidence.project_model_input,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-anchored-resource-evidence"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        resumed = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=lambda _snapshot_id: pytest.fail(
+                "anchored evidence should not rebuild historical snapshots"
+            ),
+        )
+        component = resumed.project_model_input(
+            ModelCallPreparation(
+                purpose="continuation",
+                sequence=2,
+                model=_model(api=adapter.api),
+                context=Context(
+                    system_prompt="durable system prompt",
+                    messages=[session.get_context_message_bindings()[0][1]],
+                ),
+                options=CallOptions(),
+            )
+        )
+        assert component is not None
+        assert component["messages"][0]["modelVisibleText"] == "hello"
+        assert any(
+            entry.kind == "model.input.prepared"
+            for entry in session.get_active_entries()
+        )
+        resumed.close()
+        runtime_evidence.close()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
@@ -672,6 +748,16 @@ def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
             ),
             options=CallOptions(),
         )
+        snapshot_id = next(
+            entry.payload.snapshot_id
+            for entry in session.get_active_entries()
+            if entry.kind == "model.input.prepared"
+        )
+        assert session.rebuild_model_input(snapshot_id).logical_input[
+            RESOURCE_EVIDENCE_COMPONENT
+        ] == component
+        with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
+            resumed.audit_snapshot_resource_evidence(snapshot_id)
         with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
             resumed.project_model_input(preparation)
 

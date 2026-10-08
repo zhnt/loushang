@@ -27,6 +27,7 @@ from loushang.harness.cli import (
     report_agent_resource_settings_errors,
     run_agent_cli_application,
 )
+from loushang.harness.cli.application import _settle_runtime_disposal
 from loushang.harness.host.product_host import ProductHostLifecycle
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.tools.workspace import WorkspaceToolRuntimeSettings
@@ -135,6 +136,7 @@ def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None
             output_guard=lambda enabled: (
                 calls.append(("guard", enabled)) or _null_context()
             ),
+            dispose_runtime=lambda value: calls.append(("dispose_runtime", value)),
         )
     )
 
@@ -170,9 +172,82 @@ def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None
         "configure",
         "operations",
         "host",
+        ("dispose_runtime", runtime),
     ]
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == ""
+
+
+def test_application_releases_runtime_after_pre_session_exit(tmp_path) -> None:
+    runtime = object()
+    released: list[object] = []
+    application = CliApplicationRuntime(
+        CliApplicationPorts[
+            _Args,
+            str,
+            object,
+            object,
+        ](
+            parse_args=lambda *_args: CliParseResult(_Args()),
+            initialize_args=lambda _args: None,
+            launch_plan=lambda _args: CliLaunchPlan(),
+            args_cwd=lambda args: args.cwd,
+            early_operation=lambda _context: None,
+            validated_operation=lambda _context: None,
+            prepare_state=lambda _context: CliPhaseResult.continue_with("state"),
+            startup_context=lambda _context, _state: _null_context(),
+            build_runtime=lambda _context, _state: runtime,
+            runtime_operation=lambda _context: None,
+            pre_session_bootstrap=lambda _context: CliPhaseResult.exit(3),
+            resolve_session=lambda _context: (_ for _ in ()).throw(
+                AssertionError("Session resolution must not run")
+            ),
+            collect_extension_flags=lambda _session: {},
+            configure_session=lambda _context: None,
+            session_operations=lambda _context: None,
+            run_host=lambda _context: 0,
+            output_guard=lambda _enabled: _null_context(),
+            dispose_runtime=lambda value: released.append(value),
+        )
+    )
+
+    assert (
+        asyncio.run(
+            application.run(
+                (), stdin=StringIO(), stdout=StringIO(), stderr=StringIO(), cwd=tmp_path
+            )
+        )
+        == 3
+    )
+    assert released == [runtime]
+
+
+def test_cli_runtime_cleanup_settles_before_propagating_cancellation() -> None:
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+        finished: list[bool] = []
+
+        async def dispose(_runtime: object) -> None:
+            started.set()
+            await release.wait()
+            finished.append(True)
+
+        task = asyncio.create_task(_settle_runtime_disposal(dispose, object()))
+        await started.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        release.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("CLI cancellation must propagate after cleanup")
+        assert finished == [True]
+
+    asyncio.run(scenario())
 
 
 def test_application_pre_session_bootstrap_bypasses_default_resolution(
@@ -582,6 +657,7 @@ class _HelpArgs:
 
 def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
     captured: list[_HelpArgs] = []
+    released: list[object] = []
     flag = SimpleNamespace(name="research-mode")
     session = SimpleNamespace(
         extension_runner=SimpleNamespace(get_flags=lambda: [flag])
@@ -607,6 +683,7 @@ def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
             state_ports=state_ports,
             build_runtime=lambda args, *_rest: captured.append(args) or "runtime",
             resolve_session=lambda *_args: session,
+            dispose_runtime=lambda runtime: released.append(runtime),
         )
     )
 
@@ -617,6 +694,7 @@ def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
             no_session=True,
         )
     ]
+    assert released == ["runtime"]
 
 
 def test_agent_application_binding_runs_non_coding_product(tmp_path) -> None:

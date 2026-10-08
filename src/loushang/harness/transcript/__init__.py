@@ -138,6 +138,7 @@ if TYPE_CHECKING:
         AgentTranscriptLifecycleContext,
         AgentTranscriptLifecycleSession,
         AgentTranscriptRuntimeBinding,
+        TranscriptDeletionOwner,
         delete_agent_transcript_jsonl,
     )
     from loushang.harness.transcript.maintenance import (
@@ -512,6 +513,7 @@ _EXPORT_MODULES = {
     "create_agent_transcript_repository": "loushang.harness.transcript.jsonl_file",
     "decode_agent_transcript_bytes": "loushang.harness.transcript.jsonl_file",
     "delete_agent_transcript_jsonl": "loushang.harness.transcript.lifecycle",
+    "TranscriptDeletionOwner": "loushang.harness.transcript.lifecycle",
     "build_context_usage_snapshot": "loushang.harness.transcript.context_usage",
     "build_threshold_compaction_decision": "loushang.harness.transcript.maintenance",
     "calculate_context_tokens": "loushang.harness.transcript.context_usage",

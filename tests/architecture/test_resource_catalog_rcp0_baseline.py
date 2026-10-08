@@ -141,6 +141,12 @@ EXPECTED_CALL_SITES = {
 }
 
 EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
+    # The read-only Product preview lists Catalog-selected Skill identities;
+    # it does not read Skill bodies or activate the previewed composition.
+    (
+        Path("src/loushang/coding/package_product_preview.py"),
+        "CodingFencedProductReadOnlyPreviewOwner.preview_current_data_resources",
+    ),
     # The Catalog bootstrap projects immutable Skill summaries for the
     # compatibility Bundle; it does not discover or load Skill bodies.
     (

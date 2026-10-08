@@ -688,9 +688,12 @@ def test_G17_LAUNCH_expired_budget_cannot_publish_new_ordinary_phases(tmp_path):
             with pytest.raises(AppServiceError):
                 await owner.close()
             assert entered.is_set() and "drain" not in owner._phases
-            deadline = owner._deadline
             release.set()
             await asyncio.wait_for(owner._phases["client"], 1)
+            # Force the clock fence after the held phase settles. On Windows,
+            # its completion can race the tiny real-time foreground budget.
+            owner._deadline = asyncio.get_running_loop().time() - 1
+            deadline = owner._deadline
             with pytest.raises(AppServiceError) as error:
                 await owner.close()
             assert error.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE

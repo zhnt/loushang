@@ -52,6 +52,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restor
     _write_new_file,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_regular_file_at,
     supports_windows_rooted_io,
     windows_flush_directory,
     windows_listdir_at,
@@ -72,6 +73,9 @@ DEFAULT_PACKAGE_WINDOWS_LEGACY_RUNTIME_STARTUP_TIMEOUT_SECONDS = 10.0
 DEFAULT_PACKAGE_WINDOWS_LEGACY_RUNTIME_TERMINATION_GRACE_SECONDS = 3.0
 
 _ACTIVE_MARKER_NAME = "active-runtime.json"
+_STARTING_MARKER_NAME = "starting-runtime.json"
+_SETTLING_MARKER_NAME = "settling-runtime.json"
+_SETTLED_RECEIPT_NAME = "settled-runtime.json"
 _LOCK_NAME = ".legacy-runtime.lock"
 _READY_NAME = "ready.txt"
 _RUNTIME_PREFIX = "runtime-"
@@ -88,6 +92,7 @@ _SAFE_PROFILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.]{0,63}\Z")
 
 _ERROR_ALREADY_EXISTS = 183
 _ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_PARAMETER = 87
 _ERROR_FILE_NOT_FOUND = 2
 _ERROR_PATH_NOT_FOUND = 3
 _ERROR_INSUFFICIENT_BUFFER = 122
@@ -115,7 +120,9 @@ _CREATE_UNICODE_ENVIRONMENT = 0x00000400
 _CREATE_SUSPENDED = 0x00000004
 _CREATE_NO_WINDOW = 0x08000000
 _PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = 0x00020009
+_PROC_THREAD_ATTRIBUTE_JOB_LIST = 0x0002000D
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
 _JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _SE_FILE_OBJECT = 1
@@ -209,6 +216,18 @@ if os.name == "nt":
             ("SchedulingClass", _wintypes.DWORD),
         ]
 
+    class _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_int64),
+            ("TotalKernelTime", ctypes.c_int64),
+            ("ThisPeriodTotalUserTime", ctypes.c_int64),
+            ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+            ("TotalPageFaultCount", _wintypes.DWORD),
+            ("TotalProcesses", _wintypes.DWORD),
+            ("ActiveProcesses", _wintypes.DWORD),
+            ("TotalTerminatedProcesses", _wintypes.DWORD),
+        ]
+
     class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
         _fields_ = [
             ("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
@@ -247,6 +266,10 @@ class _ProcessIdentity:
     def __post_init__(self) -> None:
         if self.pid < 1 or self.creation_time < 1:
             raise ValueError("Windows process identity is invalid")
+
+
+class _UnsettledUnboundProcessError(OSError):
+    """A child with failed Job-membership proof could not be proven dead."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,6 +356,236 @@ class _ActivationMarker:
             restore_namespace_id=_string(value["restoreNamespaceId"]),
             sandbox_profile_digest=_string(value["sandboxProfileDigest"]),
             marker_version=_positive_int(value["markerVersion"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _ActivationStartIntentV1:
+    """Pre-effect reservation for one exact Windows activation attempt."""
+
+    request_id: str
+    materialization_receipt_id: str
+    store_id: str
+    legacy_runtime_version: str
+    restore_namespace_id: str
+    current_b_root_identity: str
+    sandbox_profile_digest: str
+    profile_name: str
+    job_name: str
+    intent_id: str
+    intent_version: int = 1
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.request_id,
+            self.materialization_receipt_id,
+            self.restore_namespace_id,
+            self.current_b_root_identity,
+            self.sandbox_profile_digest,
+            self.intent_id,
+        ):
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            ):
+                raise ValueError("Windows activation start identity is invalid")
+        if (
+            not isinstance(self.store_id, str)
+            or not _SAFE_ID.fullmatch(self.store_id)
+            or not isinstance(self.legacy_runtime_version, str)
+            or not self.legacy_runtime_version
+            or len(self.legacy_runtime_version) > 128
+            or self.profile_name != f"Loushang.PLC9B.{self.request_id[:32]}"
+            or self.job_name != f"Local\\Loushang.PLC9B.{self.request_id[:32]}"
+            or type(self.intent_version) is not int
+            or self.intent_version != 1
+            or self.intent_id
+            != sha256(canonical_json_bytes(self._identity())).hexdigest()
+        ):
+            raise ValueError("Windows activation start intent changed")
+
+    @classmethod
+    def create(
+        cls,
+        request: PackageOfflineRestoreRequestV1,
+        materialization: PackageOfflineRestoreMaterializationReceiptV1,
+        *,
+        sandbox_profile_digest: str,
+        profile_name: str,
+        job_name: str,
+    ) -> _ActivationStartIntentV1:
+        identity = {
+            "requestId": request.request_id,
+            "materializationReceiptId": materialization.materialization_receipt_id,
+            "storeId": request.store_id,
+            "legacyRuntimeVersion": request.legacy_runtime_version,
+            "restoreNamespaceId": request.restore_namespace_id,
+            "currentBRootIdentity": request.current_root_identity,
+            "sandboxProfileDigest": sandbox_profile_digest,
+            "profileName": profile_name,
+            "jobName": job_name,
+            "intentVersion": 1,
+        }
+        return cls(
+            request_id=request.request_id,
+            materialization_receipt_id=materialization.materialization_receipt_id,
+            store_id=request.store_id,
+            legacy_runtime_version=request.legacy_runtime_version,
+            restore_namespace_id=request.restore_namespace_id,
+            current_b_root_identity=request.current_root_identity,
+            sandbox_profile_digest=sandbox_profile_digest,
+            profile_name=profile_name,
+            job_name=job_name,
+            intent_id=sha256(canonical_json_bytes(identity)).hexdigest(),
+        )
+
+    def matches_marker(self, marker: _ActivationMarker) -> bool:
+        return (
+            self.request_id == marker.receipt.request_id
+            and self.materialization_receipt_id
+            == marker.receipt.materialization_receipt_id
+            and self.store_id == marker.receipt.store_id
+            and self.legacy_runtime_version == marker.receipt.legacy_runtime_version
+            and self.restore_namespace_id == marker.restore_namespace_id
+            and self.current_b_root_identity == marker.current_b_root_identity
+            and self.sandbox_profile_digest == marker.sandbox_profile_digest
+            and self.profile_name == marker.profile_name
+            and self.job_name == marker.job_name
+        )
+
+    def _identity(self) -> dict[str, object]:
+        return {
+            "requestId": self.request_id,
+            "materializationReceiptId": self.materialization_receipt_id,
+            "storeId": self.store_id,
+            "legacyRuntimeVersion": self.legacy_runtime_version,
+            "restoreNamespaceId": self.restore_namespace_id,
+            "currentBRootIdentity": self.current_b_root_identity,
+            "sandboxProfileDigest": self.sandbox_profile_digest,
+            "profileName": self.profile_name,
+            "jobName": self.job_name,
+            "intentVersion": self.intent_version,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity(), "intentId": self.intent_id}
+
+    @classmethod
+    def from_dict(cls, value: object) -> _ActivationStartIntentV1:
+        if not isinstance(value, dict) or set(value) != {
+            "requestId",
+            "materializationReceiptId",
+            "storeId",
+            "legacyRuntimeVersion",
+            "restoreNamespaceId",
+            "currentBRootIdentity",
+            "sandboxProfileDigest",
+            "profileName",
+            "jobName",
+            "intentVersion",
+            "intentId",
+        }:
+            raise ValueError("Windows activation start intent schema changed")
+        return cls(
+            request_id=_string(value["requestId"]),
+            materialization_receipt_id=_string(value["materializationReceiptId"]),
+            store_id=_string(value["storeId"]),
+            legacy_runtime_version=_string(value["legacyRuntimeVersion"]),
+            restore_namespace_id=_string(value["restoreNamespaceId"]),
+            current_b_root_identity=_string(value["currentBRootIdentity"]),
+            sandbox_profile_digest=_string(value["sandboxProfileDigest"]),
+            profile_name=_string(value["profileName"]),
+            job_name=_string(value["jobName"]),
+            intent_version=_positive_int(value["intentVersion"]),
+            intent_id=_string(value["intentId"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageWindowsLegacyRuntimeSettlementReceiptV1:
+    """Durable evidence for one exact Windows legacy-runtime settlement."""
+
+    activation_receipt_id: str
+    runtime_instance_id: str
+    store_id: str
+    intent_id: str
+    settlement_id: str
+    receipt_version: int = 1
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.activation_receipt_id,
+            self.runtime_instance_id,
+            self.intent_id,
+            self.settlement_id,
+        ):
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            ):
+                raise ValueError(
+                    "Windows legacy-runtime settlement identity is invalid"
+                )
+        if not isinstance(self.store_id, str) or not _SAFE_ID.fullmatch(self.store_id):
+            raise ValueError("Windows legacy-runtime settlement store is invalid")
+        if (
+            type(self.receipt_version) is not int
+            or self.receipt_version != 1
+            or self.settlement_id
+            != sha256(canonical_json_bytes(self._identity())).hexdigest()
+        ):
+            raise ValueError("Windows legacy-runtime settlement receipt changed")
+
+    @classmethod
+    def create(
+        cls, marker: _ActivationMarker
+    ) -> PackageWindowsLegacyRuntimeSettlementReceiptV1:
+        intent_id = sha256(canonical_json_bytes(marker.to_dict())).hexdigest()
+        identity = {
+            "activationReceiptId": marker.receipt.activation_receipt_id,
+            "intentId": intent_id,
+            "receiptVersion": 1,
+            "runtimeInstanceId": marker.receipt.runtime_instance_id,
+            "storeId": marker.receipt.store_id,
+        }
+        return cls(
+            activation_receipt_id=marker.receipt.activation_receipt_id,
+            runtime_instance_id=marker.receipt.runtime_instance_id,
+            store_id=marker.receipt.store_id,
+            intent_id=intent_id,
+            settlement_id=sha256(canonical_json_bytes(identity)).hexdigest(),
+        )
+
+    def _identity(self) -> dict[str, object]:
+        return {
+            "activationReceiptId": self.activation_receipt_id,
+            "intentId": self.intent_id,
+            "receiptVersion": self.receipt_version,
+            "runtimeInstanceId": self.runtime_instance_id,
+            "storeId": self.store_id,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._identity(), "settlementId": self.settlement_id}
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageWindowsLegacyRuntimeSettlementReceiptV1:
+        if not isinstance(value, dict) or set(value) != {
+            "activationReceiptId",
+            "intentId",
+            "receiptVersion",
+            "runtimeInstanceId",
+            "settlementId",
+            "storeId",
+        }:
+            raise ValueError("Windows legacy-runtime settlement receipt schema changed")
+        return cls(
+            activation_receipt_id=_string(value["activationReceiptId"]),
+            intent_id=_string(value["intentId"]),
+            receipt_version=_positive_int(value["receiptVersion"]),
+            runtime_instance_id=_string(value["runtimeInstanceId"]),
+            settlement_id=_string(value["settlementId"]),
+            store_id=_string(value["storeId"]),
         )
 
 
@@ -449,8 +702,30 @@ class PackageWindowsLegacyRuntimeActivationOwner:
             store_id=self._store_id,
             legacy_runtime_version=self._legacy_runtime_version,
         )
+        profile_name = f"Loushang.PLC9B.{request.request_id[:32]}"
+        job_name = f"Local\\Loushang.PLC9B.{request.request_id[:32]}"
+        start_intent = _ActivationStartIntentV1.create(
+            request,
+            materialization,
+            sandbox_profile_digest=self._profile_digest,
+            profile_name=profile_name,
+            job_name=job_name,
+        )
         with self._exclusive_activation_root() as activation_root:
+            if (
+                self._read_settlement_intent(activation_root) is not None
+                or self._read_settlement_receipt(activation_root) is not None
+            ):
+                raise _activation_error(
+                    "Windows legacy-runtime settlement prevents another activation"
+                )
+            start = self._read_start_intent(activation_root)
             marker = self._read_marker(activation_root)
+            if start is not None and (
+                start != start_intent
+                or (marker is not None and not start.matches_marker(marker))
+            ):
+                raise _activation_error("Windows legacy-runtime start intent changed")
             if marker is not None:
                 if (
                     not marker.receipt.matches(request, materialization)
@@ -459,44 +734,60 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     raise _activation_error("Another legacy runtime owns activation")
                 replay_process = _open_bound_process(marker.process)
                 try:
-                    job = self._open_job(marker.job_name)
-                    _assert_isolated_process(
-                        replay_process,
-                        expected_sid=marker.profile_sid,
-                        job=job,
-                        restored_root=self._restored_path_from_marker(marker),
-                        current_b_root=self._current_b_root,
-                    )
+                    with self._observed_settlement_job(marker.job_name) as job:
+                        if job is None:
+                            raise OSError("Windows legacy-runtime Job is missing")
+                        _assert_isolated_process(
+                            replay_process,
+                            expected_sid=marker.profile_sid,
+                            job=job,
+                            restored_root=self._restored_path_from_marker(marker),
+                            current_b_root=self._current_b_root,
+                        )
                     self._open_bound_payload(request, materialization)
                     activation_root.assert_visible()
                     return marker.receipt
                 finally:
                     _close_handle(replay_process)
+            if start is not None:
+                raise _activation_error(
+                    "Incomplete Windows legacy-runtime start requires cleanup"
+                )
 
             opened = self._open_bound_payload(request, materialization, keep_open=True)
             assert opened is not None
             restore_root, current_b_root, namespace_fd, payload_fd = opened
-            profile_name = f"Loushang.PLC9B.{request.request_id[:32]}"
-            job_name = f"Local\\Loushang.PLC9B.{request.request_id[:32]}"
             runtime_name = f"{_RUNTIME_PREFIX}{request.request_id}"
             runtime_fd: int | None = None
             profile_sid: int | None = None
             profile_sid_string: str | None = None
+            profile_created = False
             process: int | None = None
             marker_written = False
+            start_written = False
             grants: list[tuple[Path, bool]] = []
             completed = False
+            unbound_process_unsettled = False
             try:
+                _write_new_file(
+                    activation_root.descriptor,
+                    _STARTING_MARKER_NAME,
+                    canonical_json_bytes(start_intent.to_dict()),
+                )
+                start_written = True
+                windows_flush_directory(activation_root.descriptor)
                 runtime_fd = _open_directory_at(
                     activation_root.descriptor, runtime_name, create_new=True
                 )
-                profile_sid = _create_or_open_profile(profile_name)
+                profile_sid = _create_new_profile(profile_name)
+                profile_created = True
                 sid_string = _sid_string(profile_sid)
                 profile_sid_string = sid_string
-                grants = _grant_runtime_authority(
+                _grant_runtime_authority(
                     sid=profile_sid,
                     restored_path=self._restored_path(request),
                     runtime_path=self._activation_root / runtime_name,
+                    attempted=grants,
                 )
                 ready_path = self._activation_root / runtime_name / _READY_NAME
                 job = self._create_job(job_name)
@@ -511,6 +802,7 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     ),
                     appcontainer_sid=profile_sid,
                     job=job,
+                    termination_grace=self._termination_grace,
                 )
                 _assert_isolated_process(
                     process,
@@ -568,6 +860,9 @@ class PackageWindowsLegacyRuntimeActivationOwner:
             except PackageOfflineRestoreError:
                 raise
             except Exception as exc:
+                unbound_process_unsettled = isinstance(
+                    exc, _UnsettledUnboundProcessError
+                )
                 raise _activation_error(
                     "Windows legacy runtime activation failed closed",
                     evidence_ref=materialization.materialization_receipt_id,
@@ -577,53 +872,357 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     _close_handle(process)
                 if profile_sid is not None:
                     _free_sid(profile_sid)
-                if not completed:
+                cleanup_error: Exception | None = None
+                try:
+                    if not completed:
+                        if runtime_fd is not None:
+                            os.close(runtime_fd)
+                            runtime_fd = None
+                        if unbound_process_unsettled:
+                            job = self._jobs.pop(job_name, None)
+                            if job is not None:
+                                _close_handle(job)
+                            cleanup_error = _UnsettledUnboundProcessError(
+                                "Windows unbound process remains unproven"
+                            )
+                        else:
+                            cleanup_error = self._rollback_start(
+                                activation_root,
+                                runtime_name=runtime_name,
+                                job_name=job_name,
+                                profile_name=profile_name,
+                                profile_sid=profile_sid_string,
+                                profile_created=profile_created,
+                                grants=grants,
+                                marker_written=marker_written,
+                                start_intent=(start_intent if start_written else None),
+                            )
+                finally:
                     if runtime_fd is not None:
                         os.close(runtime_fd)
-                        runtime_fd = None
-                    cleanup_error = self._rollback_start(
-                        activation_root,
-                        runtime_name=runtime_name,
-                        job_name=job_name,
-                        profile_name=profile_name,
-                        profile_sid=profile_sid_string,
-                        grants=grants,
-                        marker_written=marker_written,
-                    )
-                    if cleanup_error is not None:
-                        raise PackageOfflineRestoreError(
-                            "Windows legacy runtime activation cleanup failed",
-                            code="package_offline_restore_cleanup_failed",
-                            evidence_ref=materialization.materialization_receipt_id,
-                        ) from cleanup_error
-                if runtime_fd is not None:
-                    os.close(runtime_fd)
-                os.close(payload_fd)
-                os.close(namespace_fd)
-                current_b_root.close()
-                restore_root.close()
+                    os.close(payload_fd)
+                    os.close(namespace_fd)
+                    current_b_root.close()
+                    restore_root.close()
+                if cleanup_error is not None:
+                    raise PackageOfflineRestoreError(
+                        "Windows legacy runtime activation cleanup failed",
+                        code="package_offline_restore_cleanup_failed",
+                        evidence_ref=materialization.materialization_receipt_id,
+                    ) from cleanup_error
+
+    def review_incomplete_start(
+        self,
+        request: PackageOfflineRestoreRequestV1,
+        materialization: PackageOfflineRestoreMaterializationReceiptV1,
+    ) -> _ActivationStartIntentV1:
+        """Read one exact pre-marker debt without creating or repairing state."""
+
+        _validate_activation_inputs(
+            request,
+            materialization,
+            store_id=self._store_id,
+            legacy_runtime_version=self._legacy_runtime_version,
+        )
+        expected = _ActivationStartIntentV1.create(
+            request,
+            materialization,
+            sandbox_profile_digest=self._profile_digest,
+            profile_name=f"Loushang.PLC9B.{request.request_id[:32]}",
+            job_name=f"Local\\Loushang.PLC9B.{request.request_id[:32]}",
+        )
+        try:
+            with self._exclusive_activation_root(create_lock=False) as root:
+                current = self._read_start_intent(root)
+                if (
+                    current != expected
+                    or self._read_marker(root) is not None
+                    or self._read_settlement_intent(root) is not None
+                    or self._read_settlement_receipt(root) is not None
+                ):
+                    raise OSError("Windows activation has no exact pre-marker debt")
+                self._open_bound_payload(request, materialization)
+                root.assert_visible()
+                return expected
+        except Exception as exc:
+            raise PackageOfflineRestoreError(
+                "Windows legacy-runtime start debt could not be proven",
+                code="package_offline_restore_cleanup_failed",
+                evidence_ref=request.request_id,
+            ) from exc
 
     def deactivate(self, receipt: PackageLegacyRuntimeActivationReceiptV1) -> None:
+        self._deactivate(receipt)
+
+    def deactivate_required(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> None:
+        """Require an active marker, then durably settle its exact runtime."""
+
+        self._validate_settlement_input(receipt)
+        try:
+            with self._exclusive_activation_root() as root:
+                marker = self._read_marker(root)
+                if marker is None or marker.receipt != receipt:
+                    raise OSError("Matching active Windows runtime is required")
+                self._require_start_intent(root, marker)
+                self._assert_settlement_owner(marker)
+                intent = self._read_settlement_intent(root)
+                if intent is None:
+                    if self._read_settlement_receipt(root) is not None:
+                        raise OSError("Windows settlement receipt has no intent")
+                    _write_new_file(
+                        root.descriptor,
+                        _SETTLING_MARKER_NAME,
+                        canonical_json_bytes(marker.to_dict()),
+                    )
+                    windows_flush_directory(root.descriptor)
+                elif intent != marker:
+                    raise OSError(
+                        "Active Windows runtime differs from settlement intent"
+                    )
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+        self.settle_required(receipt)
+
+    def settle_required(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> PackageWindowsLegacyRuntimeSettlementReceiptV1:
+        """Durably settle one activation and retry an interrupted exact intent."""
+
+        self._validate_settlement_input(receipt)
+        try:
+            with self._exclusive_activation_root() as root:
+                intent = self._read_settlement_intent(root)
+                settled = self._read_settlement_receipt(root)
+                if intent is None:
+                    if settled is not None:
+                        raise OSError("Windows settlement receipt has no intent")
+                    marker = self._read_marker(root)
+                    if marker is None or marker.receipt != receipt:
+                        raise OSError("Matching active Windows runtime is required")
+                    self._require_start_intent(root, marker)
+                    self._assert_settlement_owner(marker)
+                    _write_new_file(
+                        root.descriptor,
+                        _SETTLING_MARKER_NAME,
+                        canonical_json_bytes(marker.to_dict()),
+                    )
+                    windows_flush_directory(root.descriptor)
+                    intent = marker
+                if intent.receipt != receipt:
+                    raise OSError("Windows settlement intent changed")
+                self._require_start_intent(root, intent)
+                self._assert_settlement_owner(intent)
+                expected = PackageWindowsLegacyRuntimeSettlementReceiptV1.create(intent)
+                marker = self._read_marker(root)
+                if settled is not None:
+                    if settled != expected or marker is not None:
+                        raise OSError("Windows settlement receipt changed")
+                    self._assert_settlement_absent(intent)
+                    root.assert_visible()
+                    return settled
+                if marker is not None and marker != intent:
+                    raise OSError(
+                        "Active Windows runtime differs from settlement intent"
+                    )
+                self._terminate_settlement_job(intent)
+                self._assert_settlement_absent(intent)
+                self._cleanup_authority(intent, root)
+                self._assert_settlement_absent(intent)
+                if marker is not None:
+                    marker_bytes, marker_identity = _read_regular_file(
+                        root.descriptor,
+                        _ACTIVE_MARKER_NAME,
+                        maximum_bytes=_MAX_MARKER_BYTES,
+                    )
+                    if (
+                        marker_bytes != canonical_json_bytes(intent.to_dict())
+                        or _native_identity(
+                            windows_stat_at(root.descriptor, _ACTIVE_MARKER_NAME)
+                        )
+                        != marker_identity
+                    ):
+                        raise OSError(
+                            "Windows runtime marker changed during settlement"
+                        )
+                    windows_unlink_at(root.descriptor, _ACTIVE_MARKER_NAME)
+                    windows_flush_directory(root.descriptor)
+                _write_new_file(
+                    root.descriptor,
+                    _SETTLED_RECEIPT_NAME,
+                    canonical_json_bytes(expected.to_dict()),
+                )
+                windows_flush_directory(root.descriptor)
+                if self._read_settlement_receipt(root) != expected:
+                    raise OSError("Windows settlement receipt changed")
+                root.assert_visible()
+                return expected
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+
+    def read_settlement(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> PackageWindowsLegacyRuntimeSettlementReceiptV1:
+        """Reopen exact settlement without creating missing lock state."""
+
+        self._validate_settlement_input(receipt)
+        try:
+            with self._exclusive_activation_root(create_lock=False) as root:
+                intent = self._read_settlement_intent(root)
+                settled = self._read_settlement_receipt(root)
+                if (
+                    intent is None
+                    or intent.receipt != receipt
+                    or settled is None
+                    or settled
+                    != PackageWindowsLegacyRuntimeSettlementReceiptV1.create(intent)
+                    or self._read_marker(root) is not None
+                ):
+                    raise OSError("Windows legacy-runtime settlement is incomplete")
+                self._assert_settlement_owner(intent)
+                self._require_start_intent(root, intent)
+                self._assert_settlement_absent(intent)
+                root.assert_visible()
+                return settled
+        except Exception as exc:
+            raise self._settlement_error(receipt) from exc
+
+    def _validate_settlement_input(
+        self, receipt: PackageLegacyRuntimeActivationReceiptV1
+    ) -> None:
         if not isinstance(receipt, PackageLegacyRuntimeActivationReceiptV1):
             raise TypeError("Legacy runtime activation receipt is required")
+        if (
+            receipt.store_id != self._store_id
+            or receipt.legacy_runtime_version != self._legacy_runtime_version
+        ):
+            raise self._settlement_error(receipt)
+
+    @staticmethod
+    def _settlement_error(
+        receipt: PackageLegacyRuntimeActivationReceiptV1,
+    ) -> PackageOfflineRestoreError:
+        return PackageOfflineRestoreError(
+            "Windows legacy-runtime settlement could not be proven",
+            code="package_offline_restore_cleanup_failed",
+            evidence_ref=receipt.activation_receipt_id,
+        )
+
+    def _assert_settlement_owner(self, marker: _ActivationMarker) -> None:
+        if (
+            marker.receipt.store_id != self._store_id
+            or marker.receipt.legacy_runtime_version != self._legacy_runtime_version
+            or marker.sandbox_profile_digest != self._profile_digest
+        ):
+            raise OSError("Windows settlement owner or profile changed")
+        current_b_root = _PinnedWindowsRoot.open(
+            self._current_b_root, expected_identities=self._current_b_identities
+        )
+        try:
+            if (
+                _directory_identity(current_b_root.descriptor)
+                != marker.current_b_root_identity
+            ):
+                raise OSError("Windows settlement B root changed")
+            current_b_root.assert_visible()
+        finally:
+            current_b_root.close()
+
+    def _terminate_settlement_job(self, marker: _ActivationMarker) -> None:
+        with self._observed_settlement_job(marker.job_name) as job:
+            if job is None or _job_active_processes(job) == 0:
+                return
+            process = _open_bound_process(marker.process)
+            try:
+                _assert_isolated_process(
+                    process,
+                    expected_sid=marker.profile_sid,
+                    job=job,
+                    restored_root=self._restored_path_from_marker(marker),
+                    current_b_root=self._current_b_root,
+                )
+                _terminate_job(job, process, self._termination_grace)
+            finally:
+                _close_handle(process)
+
+    def _assert_settlement_absent(self, marker: _ActivationMarker) -> None:
+        self._assert_settlement_owner(marker)
+        with self._observed_settlement_job(marker.job_name) as job:
+            if job is not None and _job_active_processes(job) != 0:
+                raise OSError("Windows legacy-runtime Job remains active")
+        if _bound_process_is_active(marker.process):
+            raise OSError("Windows legacy-runtime process remains active")
+
+    @contextmanager
+    def _observed_settlement_job(self, name: str) -> Iterator[int | None]:
+        owned = self._jobs.get(name)
+        if owned is not None:
+            yield owned
+            return
+        try:
+            observed = _open_job(name)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == _ERROR_FILE_NOT_FOUND:
+                yield None
+                return
+            raise
+        try:
+            yield observed
+        finally:
+            _close_handle(observed)
+
+    def _deactivate(
+        self,
+        receipt: PackageLegacyRuntimeActivationReceiptV1,
+    ) -> None:
+        if not isinstance(receipt, PackageLegacyRuntimeActivationReceiptV1):
+            raise TypeError("Legacy runtime activation receipt is required")
+        if (
+            receipt.store_id != self._store_id
+            or receipt.legacy_runtime_version != self._legacy_runtime_version
+        ):
+            raise PackageOfflineRestoreError(
+                "Windows legacy-runtime cleanup owner changed",
+                code="package_offline_restore_cleanup_failed",
+                evidence_ref=receipt.activation_receipt_id,
+            )
         try:
             with self._exclusive_activation_root() as activation_root:
                 marker = self._read_marker(activation_root)
                 if marker is None:
+                    if (
+                        self._read_start_intent(activation_root) is not None
+                        and self._read_settlement_receipt(activation_root) is None
+                    ):
+                        raise OSError("Windows legacy-runtime start debt is unresolved")
+                    job_name = f"Local\\Loushang.PLC9B.{receipt.request_id[:32]}"
+                    owned_job = self._jobs.get(job_name)
+                    if owned_job is not None:
+                        if _job_active_processes(owned_job) != 0:
+                            raise OSError("Windows legacy-runtime Job remains active")
+                        self._jobs.pop(job_name)
+                        _close_handle(owned_job)
                     return
                 if marker.receipt != receipt:
                     raise OSError("Windows runtime cleanup receipt changed")
+                start = self._read_start_intent(activation_root)
+                if start is not None and not start.matches_marker(marker):
+                    raise OSError("Windows runtime start intent changed")
+                self._assert_settlement_owner(marker)
                 process = _open_bound_process(marker.process)
-                job = self._open_job(marker.job_name)
                 try:
-                    _assert_isolated_process(
-                        process,
-                        expected_sid=marker.profile_sid,
-                        job=job,
-                        restored_root=self._restored_path_from_marker(marker),
-                        current_b_root=self._current_b_root,
-                    )
-                    _terminate_job(job, process, self._termination_grace)
+                    with self._observed_settlement_job(marker.job_name) as job:
+                        if job is None:
+                            raise OSError("Windows legacy-runtime Job is missing")
+                        _assert_isolated_process(
+                            process,
+                            expected_sid=marker.profile_sid,
+                            job=job,
+                            restored_root=self._restored_path_from_marker(marker),
+                            current_b_root=self._current_b_root,
+                        )
+                        _terminate_job(job, process, self._termination_grace)
                 finally:
                     _close_handle(process)
                 marker_bytes, marker_identity = _read_regular_file(
@@ -642,6 +1241,8 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     raise OSError("Windows runtime marker identity changed")
                 windows_unlink_at(activation_root.descriptor, _ACTIVE_MARKER_NAME)
                 self._cleanup_authority(marker, activation_root)
+                if start is not None:
+                    self._clear_start_intent(activation_root, start)
                 windows_flush_directory(activation_root.descriptor)
         except Exception as exc:
             if isinstance(exc, PackageOfflineRestoreError) and exc.code == (
@@ -740,24 +1341,45 @@ class PackageWindowsLegacyRuntimeActivationOwner:
         return self._restore_root / request.restore_namespace_id / _PAYLOAD_NAME
 
     @contextmanager
-    def _exclusive_activation_root(self) -> Iterator[_PinnedWindowsRoot]:
+    def _exclusive_activation_root(
+        self, *, create_lock: bool = True
+    ) -> Iterator[_PinnedWindowsRoot]:
         with self._thread_lock:
             root = _PinnedWindowsRoot.open(
                 self._activation_root, expected_identities=self._activation_identities
             )
             lock_fd: int | None = None
             try:
-                lock_path = self._activation_root / _LOCK_NAME
-                lock_fd = os.open(
-                    lock_path,
-                    os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0),
-                    0o600,
-                )
-                if os.fstat(lock_fd).st_nlink != 1:
+                created = False
+                try:
+                    lock_fd = open_windows_regular_file_at(
+                        root.descriptor, _LOCK_NAME, create_new=False, write=True
+                    )
+                except FileNotFoundError:
+                    if not create_lock:
+                        raise
+                    try:
+                        lock_fd = open_windows_regular_file_at(
+                            root.descriptor, _LOCK_NAME, create_new=True, write=True
+                        )
+                        created = True
+                        os.write(lock_fd, b"0")
+                        os.fsync(lock_fd)
+                        windows_flush_directory(root.descriptor)
+                    except FileExistsError:
+                        lock_fd = open_windows_regular_file_at(
+                            root.descriptor, _LOCK_NAME, create_new=False, write=True
+                        )
+                if not created:
+                    deadline = time.monotonic() + 5.0
+                    while (
+                        os.fstat(lock_fd).st_size == 0 and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.001)
+                lock_stat = os.fstat(lock_fd)
+                if lock_stat.st_nlink != 1 or lock_stat.st_size != 1:
                     raise OSError("Windows activation lock is untrusted")
-                if os.fstat(lock_fd).st_size == 0:
-                    os.write(lock_fd, b"0")
-                    os.fsync(lock_fd)
+                os.lseek(lock_fd, 0, os.SEEK_SET)
                 _msvcrt.locking(lock_fd, _msvcrt.LK_LOCK, 1)
                 root.assert_visible()
                 yield root
@@ -782,16 +1404,77 @@ class PackageWindowsLegacyRuntimeActivationOwner:
             raise OSError("Windows runtime marker is not canonical")
         return marker
 
+    def _read_start_intent(
+        self, root: _PinnedWindowsRoot
+    ) -> _ActivationStartIntentV1 | None:
+        if _STARTING_MARKER_NAME not in windows_listdir_at(root.descriptor):
+            return None
+        payload, _identity = _read_regular_file(
+            root.descriptor, _STARTING_MARKER_NAME, maximum_bytes=_MAX_MARKER_BYTES
+        )
+        intent = _ActivationStartIntentV1.from_dict(
+            _strict_json_object(payload, name="Windows runtime start intent")
+        )
+        if payload != canonical_json_bytes(intent.to_dict()):
+            raise OSError("Windows runtime start intent is not canonical")
+        return intent
+
+    def _require_start_intent(
+        self, root: _PinnedWindowsRoot, marker: _ActivationMarker
+    ) -> _ActivationStartIntentV1:
+        intent = self._read_start_intent(root)
+        if intent is None or not intent.matches_marker(marker):
+            raise OSError("Windows runtime start intent is missing or changed")
+        return intent
+
+    def _clear_start_intent(
+        self, root: _PinnedWindowsRoot, expected: _ActivationStartIntentV1
+    ) -> None:
+        payload, identity = _read_regular_file(
+            root.descriptor, _STARTING_MARKER_NAME, maximum_bytes=_MAX_MARKER_BYTES
+        )
+        if (
+            payload != canonical_json_bytes(expected.to_dict())
+            or self._read_start_intent(root) != expected
+            or _native_identity(windows_stat_at(root.descriptor, _STARTING_MARKER_NAME))
+            != identity
+        ):
+            raise OSError("Windows runtime start intent changed during cleanup")
+        windows_unlink_at(root.descriptor, _STARTING_MARKER_NAME)
+        windows_flush_directory(root.descriptor)
+
+    def _read_settlement_intent(
+        self, root: _PinnedWindowsRoot
+    ) -> _ActivationMarker | None:
+        if _SETTLING_MARKER_NAME not in windows_listdir_at(root.descriptor):
+            return None
+        payload, _identity = _read_regular_file(
+            root.descriptor, _SETTLING_MARKER_NAME, maximum_bytes=_MAX_MARKER_BYTES
+        )
+        marker = _ActivationMarker.from_dict(
+            _strict_json_object(payload, name="Windows runtime settlement intent")
+        )
+        if payload != canonical_json_bytes(marker.to_dict()):
+            raise OSError("Windows settlement intent is not canonical")
+        return marker
+
+    def _read_settlement_receipt(
+        self, root: _PinnedWindowsRoot
+    ) -> PackageWindowsLegacyRuntimeSettlementReceiptV1 | None:
+        if _SETTLED_RECEIPT_NAME not in windows_listdir_at(root.descriptor):
+            return None
+        payload, _identity = _read_regular_file(
+            root.descriptor, _SETTLED_RECEIPT_NAME, maximum_bytes=_MAX_MARKER_BYTES
+        )
+        receipt = PackageWindowsLegacyRuntimeSettlementReceiptV1.from_dict(
+            _strict_json_object(payload, name="Windows runtime settlement receipt")
+        )
+        if payload != canonical_json_bytes(receipt.to_dict()):
+            raise OSError("Windows settlement receipt is not canonical")
+        return receipt
+
     def _create_job(self, name: str) -> int:
         job = _create_or_open_job(name)
-        self._jobs[name] = job
-        return job
-
-    def _open_job(self, name: str) -> int:
-        current = self._jobs.get(name)
-        if current is not None:
-            return current
-        job = _open_job(name)
         self._jobs[name] = job
         return job
 
@@ -803,15 +1486,20 @@ class PackageWindowsLegacyRuntimeActivationOwner:
         job_name: str,
         profile_name: str,
         profile_sid: str | None,
+        profile_created: bool,
         grants: Sequence[tuple[Path, bool]],
         marker_written: bool,
+        start_intent: _ActivationStartIntentV1 | None,
     ) -> Exception | None:
         try:
             job = self._jobs.pop(job_name, None)
             if job is not None:
-                with suppress(OSError):
-                    _terminate_job(job, None, self._termination_grace)
-                _close_handle(job)
+                try:
+                    if _job_active_processes(job) != 0:
+                        _terminate_job(job, None, self._termination_grace)
+                    _await_empty_job(job, self._termination_grace)
+                finally:
+                    _close_handle(job)
             if marker_written and _ACTIVE_MARKER_NAME in windows_listdir_at(
                 activation_root.descriptor
             ):
@@ -820,7 +1508,10 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                 for path, recursive in reversed(grants):
                     _revoke_path(path, profile_sid, recursive=recursive)
             _remove_runtime_dir(activation_root.descriptor, runtime_name)
-            _delete_profile(profile_name)
+            if profile_created:
+                _delete_profile(profile_name)
+            if start_intent is not None:
+                self._clear_start_intent(activation_root, start_intent)
             return None
         except Exception as exc:
             return exc
@@ -831,11 +1522,17 @@ class PackageWindowsLegacyRuntimeActivationOwner:
         activation_root: _PinnedWindowsRoot,
     ) -> None:
         runtime_name = f"{_RUNTIME_PREFIX}{marker.receipt.request_id}"
+        runtime_path = self._activation_root / runtime_name
+        runtime_present = runtime_name in windows_listdir_at(activation_root.descriptor)
         grants = _authority_paths(
             restored_path=self._restored_path_from_marker(marker),
-            runtime_path=self._activation_root / runtime_name,
+            runtime_path=runtime_path,
         )
         for path, recursive in reversed(grants):
+            # A prior settlement attempt may have removed this private runtime
+            # directory before its terminal receipt was published.
+            if path == runtime_path and not runtime_present:
+                continue
             _revoke_path(path, marker.profile_sid, recursive=recursive)
         _remove_runtime_dir(activation_root.descriptor, runtime_name)
         _delete_profile(marker.profile_name)
@@ -970,19 +1667,7 @@ def _runtime_environment(
     return environment
 
 
-def _profile_name_sid(profile: str) -> int:
-    pointer = ctypes.c_void_p()
-    result = _userenv().DeriveAppContainerSidFromAppContainerName(
-        profile, ctypes.byref(pointer)
-    )
-    if result != 0:
-        raise OSError(result, "Could not derive Windows AppContainer SID")
-    if pointer.value is None:
-        raise OSError("Windows AppContainer SID is unavailable")
-    return int(pointer.value)
-
-
-def _create_or_open_profile(profile: str) -> int:
+def _create_new_profile(profile: str) -> int:
     if not _SAFE_PROFILE.fullmatch(profile):
         raise ValueError("Windows AppContainer profile name is invalid")
     pointer = ctypes.c_void_p()
@@ -996,10 +1681,12 @@ def _create_or_open_profile(profile: str) -> int:
     )
     if result == 0:
         if pointer.value is None:
+            with suppress(OSError):
+                _delete_profile(profile)
             raise OSError("Windows AppContainer SID is unavailable")
         return int(pointer.value)
     if result & 0xFFFFFFFF == 0x80070000 | _ERROR_ALREADY_EXISTS:
-        return _profile_name_sid(profile)
+        raise OSError("Windows AppContainer profile name is already owned")
     raise OSError(result, "Could not create Windows AppContainer profile")
 
 
@@ -1017,35 +1704,27 @@ def _grant_runtime_authority(
     sid: int,
     restored_path: Path,
     runtime_path: Path,
-) -> list[tuple[Path, bool]]:
-    grants = _authority_paths(restored_path=restored_path, runtime_path=runtime_path)
-    completed: list[tuple[Path, bool]] = []
-    try:
-        for path, recursive in grants:
-            permissions = (
-                _GENERIC_ALL
-                if path == runtime_path
-                else (
-                    _GENERIC_READ | _GENERIC_EXECUTE
-                    if recursive
-                    else _FILE_TRAVERSE_READ
-                )
+    attempted: list[tuple[Path, bool]],
+) -> None:
+    for path, recursive in _authority_paths(
+        restored_path=restored_path, runtime_path=runtime_path
+    ):
+        permissions = (
+            _GENERIC_ALL
+            if path == runtime_path
+            else (
+                _GENERIC_READ | _GENERIC_EXECUTE if recursive else _FILE_TRAVERSE_READ
             )
-            _mutate_path_acl(
-                path,
-                sid,
-                access_mode=_GRANT_ACCESS,
-                permissions=permissions,
-                recursive=recursive,
-            )
-            completed.append((path, recursive))
-        return completed
-    except Exception:
-        sid_text = _sid_string(sid)
-        for path, recursive in reversed(completed):
-            with suppress(Exception):
-                _revoke_path(path, sid_text, recursive=recursive)
-        raise
+        )
+        # Record before the native write: it may publish the ACL and still fail.
+        attempted.append((path, recursive))
+        _mutate_path_acl(
+            path,
+            sid,
+            access_mode=_GRANT_ACCESS,
+            permissions=permissions,
+            recursive=recursive,
+        )
 
 
 def _authority_paths(
@@ -1141,6 +1820,9 @@ def _create_or_open_job(name: str) -> int:
     handle = _kernel32().CreateJobObjectW(None, name)
     if not handle:
         raise ctypes.WinError(ctypes.get_last_error())
+    if ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+        _close_handle(int(handle))
+        raise OSError("Windows legacy-runtime Job name is already owned")
     limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
     limits.BasicLimitInformation.LimitFlags = (
         _JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
@@ -1165,6 +1847,27 @@ def _open_job(name: str) -> int:
     return int(handle)
 
 
+def _job_active_processes(job: int) -> int:
+    accounting = _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
+    if not _kernel32().QueryInformationJobObject(
+        job,
+        _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+        ctypes.byref(accounting),
+        ctypes.sizeof(accounting),
+        None,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return int(accounting.ActiveProcesses)
+
+
+def _await_empty_job(job: int, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while _job_active_processes(job) != 0:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Windows legacy-runtime Job did not settle")
+        time.sleep(0.01)
+
+
 def _launch_appcontainer_process(
     command: Sequence[str],
     *,
@@ -1172,15 +1875,16 @@ def _launch_appcontainer_process(
     environment: Mapping[str, str],
     appcontainer_sid: int,
     job: int,
+    termination_grace: float,
 ) -> tuple[int, _ProcessIdentity]:
     size = ctypes.c_size_t()
-    _kernel32().InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+    _kernel32().InitializeProcThreadAttributeList(None, 2, 0, ctypes.byref(size))
     if ctypes.get_last_error() != _ERROR_INSUFFICIENT_BUFFER:
         raise ctypes.WinError(ctypes.get_last_error())
     buffer = ctypes.create_string_buffer(size.value)
     attribute_list = ctypes.cast(buffer, ctypes.c_void_p)
     if not _kernel32().InitializeProcThreadAttributeList(
-        attribute_list, 1, 0, ctypes.byref(size)
+        attribute_list, 2, 0, ctypes.byref(size)
     ):
         raise ctypes.WinError(ctypes.get_last_error())
     security = _SECURITY_CAPABILITIES()
@@ -1188,6 +1892,8 @@ def _launch_appcontainer_process(
     security.Capabilities = None
     security.CapabilityCount = 0
     security.Reserved = 0
+    # Attribute values must remain alive through process creation.
+    job_list = (_wintypes.HANDLE * 1)(job)
     process_info = _PROCESS_INFORMATION()
     try:
         if not _kernel32().UpdateProcThreadAttribute(
@@ -1196,6 +1902,16 @@ def _launch_appcontainer_process(
             _PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
             ctypes.byref(security),
             ctypes.sizeof(security),
+            None,
+            None,
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not _kernel32().UpdateProcThreadAttribute(
+            attribute_list,
+            0,
+            _PROC_THREAD_ATTRIBUTE_JOB_LIST,
+            ctypes.byref(job_list),
+            ctypes.sizeof(job_list),
             None,
             None,
         ):
@@ -1213,8 +1929,9 @@ def _launch_appcontainer_process(
             )
             + "\x00\x00"
         )
-        if not _advapi32().CreateProcessAsUserW(
-            None,
+        # Security capabilities create the AppContainer token during process
+        # creation; there is no preexisting primary token to pass as a user.
+        if not _kernel32().CreateProcessW(
             command[0],
             command_line,
             None,
@@ -1231,16 +1948,34 @@ def _launch_appcontainer_process(
         ):
             raise ctypes.WinError(ctypes.get_last_error())
         process = int(process_info.hProcess)
+        assigned_to_job = False
         try:
-            if not _kernel32().AssignProcessToJobObject(job, process_info.hProcess):
-                raise ctypes.WinError(ctypes.get_last_error())
+            in_job = _wintypes.BOOL()
+            if (
+                not _kernel32().IsProcessInJob(
+                    process_info.hProcess, job, ctypes.byref(in_job)
+                )
+                or not in_job.value
+            ):
+                raise OSError("Windows process was not assigned to its creation Job")
+            assigned_to_job = True
             identity = _process_identity(process, int(process_info.dwProcessId))
             if _kernel32().ResumeThread(process_info.hThread) == 0xFFFFFFFF:
                 raise ctypes.WinError(ctypes.get_last_error())
             return process, identity
-        except Exception:
-            _kernel32().TerminateProcess(process_info.hProcess, 1)
-            _close_handle(process)
+        except Exception as exc:
+            try:
+                if not assigned_to_job:
+                    _kernel32().TerminateProcess(process_info.hProcess, 1)
+                    result = _kernel32().WaitForSingleObject(
+                        process_info.hProcess, int(termination_grace * 1000)
+                    )
+                    if result != _WAIT_OBJECT_0:
+                        raise _UnsettledUnboundProcessError(
+                            "Windows unbound process escaped cleanup"
+                        ) from exc
+            finally:
+                _close_handle(process)
             raise
         finally:
             _close_handle(int(process_info.hThread))
@@ -1345,6 +2080,25 @@ def _open_bound_process(identity: _ProcessIdentity) -> int:
         _close_handle(process)
         raise OSError("Windows legacy runtime process identity changed")
     return process
+
+
+def _bound_process_is_active(identity: _ProcessIdentity) -> bool:
+    handle = _kernel32().OpenProcess(
+        _PROCESS_QUERY_LIMITED_INFORMATION | _SYNCHRONIZE,
+        False,
+        identity.pid,
+    )
+    if not handle:
+        if ctypes.get_last_error() == _ERROR_INVALID_PARAMETER:
+            return False
+        raise ctypes.WinError(ctypes.get_last_error())
+    process = int(handle)
+    try:
+        return _process_identity(process, identity.pid) == identity and _process_active(
+            process
+        )
+    finally:
+        _close_handle(process)
 
 
 def _process_identity(process: int, pid: int) -> _ProcessIdentity:
@@ -1552,6 +2306,14 @@ def _kernel32() -> Any:
             _wintypes.DWORD,
         ]
         dll.SetInformationJobObject.restype = _wintypes.BOOL
+        dll.QueryInformationJobObject.argtypes = [
+            handle,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            _wintypes.DWORD,
+            ctypes.c_void_p,
+        ]
+        dll.QueryInformationJobObject.restype = _wintypes.BOOL
         dll.InitializeProcThreadAttributeList.argtypes = [
             ctypes.c_void_p,
             _wintypes.DWORD,
@@ -1583,8 +2345,6 @@ def _kernel32() -> Any:
             ctypes.POINTER(_PROCESS_INFORMATION),
         ]
         dll.CreateProcessW.restype = _wintypes.BOOL
-        dll.AssignProcessToJobObject.argtypes = [handle, handle]
-        dll.AssignProcessToJobObject.restype = _wintypes.BOOL
         dll.ResumeThread.argtypes = [handle]
         dll.ResumeThread.restype = _wintypes.DWORD
         dll.TerminateProcess.argtypes = [handle, _wintypes.UINT]
@@ -1680,20 +2440,6 @@ def _advapi32() -> Any:
             ctypes.POINTER(_wintypes.DWORD),
         ]
         dll.GetTokenInformation.restype = _wintypes.BOOL
-        dll.CreateProcessAsUserW.argtypes = [
-            handle,
-            _wintypes.LPCWSTR,
-            _wintypes.LPWSTR,
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            _wintypes.BOOL,
-            _wintypes.DWORD,
-            ctypes.c_void_p,
-            _wintypes.LPCWSTR,
-            ctypes.POINTER(_STARTUPINFOEXW),
-            ctypes.POINTER(_PROCESS_INFORMATION),
-        ]
-        dll.CreateProcessAsUserW.restype = _wintypes.BOOL
         dll.DuplicateToken.argtypes = [handle, ctypes.c_int, ctypes.POINTER(handle)]
         dll.DuplicateToken.restype = _wintypes.BOOL
         dll.ImpersonateLoggedOnUser.argtypes = [handle]
@@ -1730,11 +2476,6 @@ def _userenv() -> Any:
         dll.CreateAppContainerProfile.restype = ctypes.c_long
         dll.DeleteAppContainerProfile.argtypes = [_wintypes.LPCWSTR]
         dll.DeleteAppContainerProfile.restype = ctypes.c_long
-        dll.DeriveAppContainerSidFromAppContainerName.argtypes = [
-            _wintypes.LPCWSTR,
-            ctypes.POINTER(ctypes.c_void_p),
-        ]
-        dll.DeriveAppContainerSidFromAppContainerName.restype = ctypes.c_long
         _USERENV_DLL = dll
     return _USERENV_DLL
 

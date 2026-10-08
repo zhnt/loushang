@@ -14,7 +14,7 @@ INVENTORY = Path(
 CANARY = Path("src/loushang/coding/apphost_canary.py")
 CONTROL = Path("src/loushang/coding/_apphost_canary_control.py")
 CLI_ADAPTER = Path("src/loushang/coding/cli/apphost.py")
-CLI_ROOT = Path("src/loushang/coding/cli/__main__.py")
+CLI_ROOT = Path("src/loushang/coding/cli/application.py")
 MACHINE_RESOURCES = Path("src/loushang/harness/machine_resources/control_plane.py")
 
 
@@ -51,8 +51,9 @@ def test_inventory_v3_records_one_explicit_canary_and_current_omission(
 ) -> None:
     del _case
     inventory = json.loads(_read(INVENTORY))
-    # G14 v4, G16 v5 and G17 v6 add commands; the G10 v3 canary stays exact.
-    assert inventory["inventoryVersion"] == 6
+    # G14 v4, G16 v5, G17 v6, LMUX v7, PLC9B v8, and PLC9D v9 add commands;
+    # the G10 v3 canary and default-entry omissions stay exact.
+    assert inventory["inventoryVersion"] == 9
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert rows["coding.apphost.canary"] == {
@@ -73,6 +74,17 @@ def test_inventory_v3_records_one_explicit_canary_and_current_omission(
     scripts = tomllib.loads(_read(Path("pyproject.toml")))["project"]["scripts"]
     assert scripts["loushang"] == "loushang.coding.cli.__main__:main"
     assert scripts["loushang-tui"] == "loushang.coding.ui.cli:main"
+    assert rows["coding.lmux.command"] == {
+        "disposition": "explicit-managed-linux-preview",
+        "entrypointId": "coding.lmux.command",
+        "importsComposition": False,
+        "omissionOwner": None,
+        "packagingBinding": "project.scripts.lmux",
+        "source": "src/loushang/coding/cli/lmux.py",
+        "supportStatus": "installed-preview",
+        "surface": "mux",
+    }
+    assert scripts["lmux"] == "loushang.coding.cli.lmux:main"
 
 
 @pytest.mark.parametrize(
@@ -130,11 +142,26 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
     ):
         for path in package.rglob("*.py"):
             imports = _imports(path)
-            if path == Path("src/loushang/apphost/launcher.py"):
-                assert {name for name in imports if name.startswith("loushang.hosting")} == {
-                    "loushang.hosting.contracts",
-                }
-                imports = imports - {"loushang.hosting.contracts"}
+            accepted_hosting = {
+                Path("src/loushang/apphost/launcher.py"): {"loushang.hosting.contracts"},
+                Path("src/loushang/apphost/managed/handoff.py"): {"loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_handoff"},
+                Path("src/loushang/apphost/managed/lifecycle.py"): {"loushang.hosting.errors", "loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/bootstrap.py"): {"loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/starter.py"): {
+                    "loushang.hosting.contracts", "loushang.hosting.service_process",
+                },
+                Path("src/loushang/apphost/managed/stopper.py"): {
+                    "loushang.hosting.service", "loushang.hosting.service_group",
+                },
+                Path("src/loushang/apphost/managed/defaults.py"): {
+                    "loushang.hosting.errors", "loushang.hosting.machine_identity",
+                },
+                Path("src/loushang/apphost/managed/connection.py"): {"loushang.hosting.service"},
+                Path("src/loushang/apphost/managed/mux_management.py"): {"loushang.hosting.service"},
+            }.get(path)
+            if accepted_hosting is not None:
+                assert {name for name in imports if name.startswith("loushang.hosting")} == accepted_hosting
+                imports = imports - accepted_hosting
             assert not any(
                 name == prefix or name.startswith(f"{prefix}.")
                 for prefix in forbidden

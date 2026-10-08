@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +16,7 @@ from loushang.harness.approval.plugin_execution import (
 )
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentHost,
+    CapabilityComponentHostError,
 )
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
@@ -41,6 +42,7 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerPolicy,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
@@ -90,6 +92,67 @@ from loushang.harness.resources.plugins.types import (
 _AUTHOR_GUIDE = Path(
     "docs/internals/architecture/harness/plugin/plugin-authoring-guide.md"
 )
+
+
+def test_in_process_component_host_refuses_selected_worker_provider(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, returned_facet="query")
+    original = fixture.resolved.admission.candidate
+    definition = original.definition
+    worker_spec = CapabilityWorkerProviderBindingSpec(
+        plugin_id=original.binding_spec.plugin_id,
+        contribution_id=original.binding_spec.contribution_id,
+        capability_id=definition.capability_id,
+        owner_id=definition.owner_id,
+        package_content_digest=fixture.package.content_digest,
+        dependency_lock_digest=fixture.package.dependency_lock.digest,
+        manifest_digest="4" * 64,
+        reservation_fingerprint="5" * 64,
+        declaration_fingerprint=original.declaration_fingerprint,
+        worker_configuration_fingerprint="6" * 64,
+        executable_digest="7" * 64,
+        executable_size=128,
+        declared_required=False,
+        native_platform="linux-x86_64",
+    )
+    candidate = replace(original, binding_spec=worker_spec)
+    owner = CapabilityProviderOwnerAuthority(
+        replace(
+            _authority(definition, revocation_epoch=3).policy,
+            allowed_execution_models=("local_worker",),
+        )
+    )
+    eligibility = owner.grant_eligibility(candidate, issued_at=100, expires_at=400)
+    admission = owner.admit(
+        candidate, eligibility=eligibility, issued_at=120, expires_at=350
+    )
+    resolved_set = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id="coding",
+            roots=(definition.capability_id,),
+            choices=(
+                ProductCapabilityProviderChoice(
+                    capability_id=definition.capability_id,
+                    provider_id=candidate.provider.provider_id,
+                    candidate_fingerprint=admission.candidate_fingerprint,
+                ),
+            ),
+            policy_revision="coding-plugin-policy-1",
+        ),
+        definitions=(definition,),
+        admissions=(admission,),
+        owner_snapshots=(owner.snapshot(),),
+        evaluated_at=150,
+    )
+    host = _host(_journal(tmp_path), fixture)
+    with pytest.raises(CapabilityComponentHostError) as refused:
+        host.activation_subject(
+            resolved_set.entries[0],
+            owner_snapshot=owner.snapshot(),
+            trust_snapshot=fixture.trust_snapshot,
+        )
+    assert refused.value.code == "capability_provider_worker_host_required"
 
 
 def test_author_guide_provider_runs_through_component_host(tmp_path: Path) -> None:
@@ -758,9 +821,7 @@ def _author_guide_fixture(
             ),
         ),
         selected_plugin_ids=(plugin_id,),
-        selected_contributions=(
-            PluginContributionRef(plugin_id, contribution_id),
-        ),
+        selected_contributions=(PluginContributionRef(plugin_id, contribution_id),),
         source_trust_snapshots=(trust_snapshot,),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=(
@@ -1065,14 +1126,11 @@ def _host(
 ) -> CapabilityComponentHost:
     return CapabilityComponentHost(
         decision_journal=journal,
-        import_realm=PluginImportRealm(
-            import_realm_id_factory=lambda: import_realm_id
-        ),
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: import_realm_id),
         host_boot_id=host_boot_id,
         clock=lambda: 150,
         owner_snapshot_reader=(
-            owner_snapshot_reader
-            or (lambda _capability_id: fixture.owner_snapshot)
+            owner_snapshot_reader or (lambda _capability_id: fixture.owner_snapshot)
         ),
         trust_snapshot_reader=(
             lambda _plugin_id, _source_identity: fixture.trust_snapshot
@@ -1112,7 +1170,7 @@ def _provider_source(
     *,
     disposer_fails_once: bool = False,
 ) -> str:
-    return f'''\
+    return f"""\
 import os
 import json
 from pathlib import Path
@@ -1152,4 +1210,4 @@ async def dispose_provider(_value):
         and MARKER.read_text(encoding="utf-8").splitlines().count("dispose") == 1
     ):
         raise RuntimeError("synthetic transient disposal failure")
-'''
+"""

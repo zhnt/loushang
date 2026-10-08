@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -19,7 +22,10 @@ from loushang.harness.resources.plugins.manifest import (
 )
 from loushang.plugin import (
     CapabilityProviderSpec,
+    PluginPackageArtifact,
     PluginPackageSpec,
+    build_coding_data_prompt_wheel,
+    build_coding_data_skill_wheel,
     capability_provider,
     capability_requirement,
     package,
@@ -27,6 +33,9 @@ from loushang.plugin import (
     skill_action,
     skill_action_effect,
     validate_package,
+    write_coding_data_prompt_wheel,
+    write_coding_data_skill_wheel,
+    write_package_tree,
 )
 from loushang.plugin.__main__ import main as plugin_cli_main
 
@@ -44,6 +53,7 @@ def test_public_sdk_exports_only_data_authoring_and_inert_validation() -> None:
         "plugin_definition",
         "resource",
         "validate_package",
+        "write_package_tree",
     }.issubset(plugin_sdk.__all__)
     assert not {
         "Approval",
@@ -53,6 +63,317 @@ def test_public_sdk_exports_only_data_authoring_and_inert_validation() -> None:
         "RegistrationScope",
         "Sandbox",
     }.intersection(plugin_sdk.__all__)
+
+
+def test_package_writer_creates_new_tree_and_runs_inert_validation(
+    tmp_path: Path,
+) -> None:
+    spec = package(
+        id="org.example.review",
+        version="1",
+        contributions=(
+            resource.skill(contribution_id="review-skill", locator="skills/review"),
+        ),
+    )
+    root = tmp_path / "new-plugin"
+    result = write_package_tree(
+        root,
+        spec,
+        content_files={
+            "skills/review/SKILL.md": b"# Review\n",
+        },
+    )
+
+    assert result.valid
+    assert result.plugin_id == "org.example.review"
+    assert (root / "plugin.json").read_bytes() == spec.read("plugin.json")
+    assert (root / "skills/review/SKILL.md").read_bytes() == b"# Review\n"
+    with pytest.raises(FileExistsError):
+        write_package_tree(root, spec)
+    assert (root / "skills/review/SKILL.md").read_bytes() == b"# Review\n"
+
+
+def test_generic_validation_does_not_claim_product_admission_or_use(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    spec = package(
+        id="org.example.review",
+        version="1",
+        contributions=(
+            resource.skill(contribution_id="review-skill", locator="skills/review"),
+        ),
+    )
+    root = tmp_path / "generic-plugin"
+    write_package_tree(
+        root, spec, content_files={"skills/review/SKILL.md": b"# Review\n"}
+    )
+    assert plugin_cli_main(["validate", str(root)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["valid"] is True
+    assert report["pluginId"] == "org.example.review"
+    assert report["productAdmission"] == "not_checked"
+    assert report["productSelection"] == "not_checked"
+    assert report["productUse"] == "not_checked"
+
+
+def test_package_writer_rejects_escape_and_collisions_before_creating_tree(
+    tmp_path: Path,
+) -> None:
+    spec = package(
+        id="org.example.review",
+        version="1",
+        contributions=(
+            resource.skill(contribution_id="review-skill", locator="skills/review"),
+        ),
+    )
+    root = tmp_path / "new-plugin"
+    with pytest.raises(ValueError, match="canonical contained relative path"):
+        write_package_tree(root, spec, content_files={"../escape": b"bad"})
+    with pytest.raises(ValueError, match="repeats file"):
+        write_package_tree(root, spec, content_files={"plugin.json": b"bad"})
+    with pytest.raises(ValueError, match="file and directory paths conflict"):
+        write_package_tree(
+            root,
+            spec,
+            content_files={
+                "skills": b"bad",
+                "skills/review/SKILL.md": b"# Review\n",
+            },
+        )
+    with pytest.raises(ValueError, match="canonical contained relative path"):
+        write_package_tree(
+            root,
+            PluginPackageSpec(
+                plugin_id="org.example.review",
+                version="1",
+                artifacts=(PluginPackageArtifact("/escape", b"bad"),),
+            ),
+        )
+    assert not root.exists()
+    assert not (tmp_path / "escape").exists()
+
+
+def test_public_coding_data_skill_recipe_is_deterministic_and_product_shaped(
+    tmp_path: Path,
+) -> None:
+    arguments = {
+        "plugin_id": "reviewpack",
+        "version": "1",
+        "contribution_id": "review-skill",
+        "skill_name": "review",
+        "skill_document": b"---\nname: review\ndescription: Review files\n---\n# Review\n",
+    }
+    wheel = build_coding_data_skill_wheel(**arguments)
+    assert wheel == build_coding_data_skill_wheel(**arguments)
+    with ZipFile(BytesIO(wheel)) as archive:
+        assert set(archive.namelist()) == {
+            "reviewpack/plugin.json",
+            "reviewpack/declarations/resources.json",
+            "reviewpack/skills/review/SKILL.md",
+            "reviewpack-1.dist-info/METADATA",
+            "reviewpack-1.dist-info/WHEEL",
+            "reviewpack-1.dist-info/RECORD",
+        }
+    path = write_coding_data_skill_wheel(tmp_path, **arguments)
+    assert path.read_bytes() == wheel
+    with pytest.raises(FileExistsError):
+        write_coding_data_skill_wheel(tmp_path, **arguments)
+    assert path.read_bytes() == wheel
+
+
+def test_public_coding_data_prompt_recipe_is_deterministic_and_product_shaped(
+    tmp_path: Path,
+) -> None:
+    arguments = {
+        "plugin_id": "promptpack",
+        "version": "1",
+        "contribution_id": "review-prompt",
+        "prompt_name": "review",
+        "prompt_document": b"# Review\nCheck the change carefully.\n",
+    }
+    wheel = build_coding_data_prompt_wheel(**arguments)
+    assert wheel == build_coding_data_prompt_wheel(**arguments)
+    with ZipFile(BytesIO(wheel)) as archive:
+        assert set(archive.namelist()) == {
+            "promptpack/plugin.json",
+            "promptpack/declarations/resources.json",
+            "promptpack/prompts/review.md",
+            "promptpack-1.dist-info/METADATA",
+            "promptpack-1.dist-info/WHEEL",
+            "promptpack-1.dist-info/RECORD",
+        }
+    path = write_coding_data_prompt_wheel(tmp_path, **arguments)
+    assert path.read_bytes() == wheel
+    with pytest.raises(FileExistsError):
+        write_coding_data_prompt_wheel(tmp_path, **arguments)
+
+
+def test_coding_data_skill_recipe_rejects_generic_sdk_identity_and_oversize() -> None:
+    arguments = {
+        "plugin_id": "reviewpack",
+        "version": "1",
+        "contribution_id": "review-skill",
+        "skill_name": "review",
+        "skill_document": b"# Review\n",
+    }
+    with pytest.raises(ValueError, match="simple lowercase ASCII"):
+        build_coding_data_skill_wheel(
+            **{**arguments, "plugin_id": "org.example.review"}
+        )
+    with pytest.raises(ValueError, match="filename exceeds Product limit"):
+        build_coding_data_skill_wheel(**{**arguments, "plugin_id": "a" * 170})
+    with pytest.raises(ValueError, match="extracted tree"):
+        build_coding_data_skill_wheel(
+            **{**arguments, "skill_document": b"x" * (1024 * 1024)}
+        )
+
+
+def test_coding_data_skill_cli_builds_new_artifact_from_skill_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill_root = tmp_path / "skills" / "review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review files\n---\n# Review\n",
+        encoding="utf-8",
+    )
+    args = [
+        "build-coding-skill",
+        str(skill_root / "SKILL.md"),
+        "--plugin-id",
+        "reviewpack",
+        "--version",
+        "1",
+        "--output-dir",
+        str(tmp_path / "dist"),
+    ]
+    assert plugin_cli_main(args) == 0
+    report = json.loads(capsys.readouterr().out)
+    wheel = tmp_path / "dist" / "reviewpack-1-py3-none-any.whl"
+    assert report == {
+        "artifactPath": str(wheel),
+        "profile": "coding-data-skill-v1",
+        "productAdmission": "not_checked",
+        "productSelection": "not_checked",
+        "productUse": "not_checked",
+        "sha256": sha256(wheel.read_bytes()).hexdigest(),
+    }
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main(args)
+    assert wheel.read_bytes() == build_coding_data_skill_wheel(
+        plugin_id="reviewpack",
+        version="1",
+        contribution_id="review-skill",
+        skill_name="review",
+        skill_document=(skill_root / "SKILL.md").read_bytes(),
+    )
+    linked_skill = skill_root / "LINK.md"
+    try:
+        linked_skill.symlink_to(skill_root / "SKILL.md")
+    except OSError:
+        pytest.skip("Symlinks are unavailable on this host")
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main(
+            [
+                "build-coding-skill",
+                str(linked_skill),
+                "--plugin-id",
+                "reviewpack",
+                "--version",
+                "2",
+                "--output-dir",
+                str(tmp_path / "dist"),
+            ]
+        )
+    assert not (tmp_path / "dist" / "reviewpack-2-py3-none-any.whl").exists()
+
+
+def test_coding_data_prompt_cli_builds_new_artifact(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prompt = tmp_path / "prompts" / "review.md"
+    prompt.parent.mkdir()
+    prompt.write_text("# Review\nCheck the change carefully.\n", encoding="utf-8")
+    args = [
+        "build-coding-prompt",
+        str(prompt),
+        "--plugin-id",
+        "promptpack",
+        "--version",
+        "1",
+        "--output-dir",
+        str(tmp_path / "dist"),
+    ]
+    assert plugin_cli_main(args) == 0
+    report = json.loads(capsys.readouterr().out)
+    wheel = tmp_path / "dist" / "promptpack-1-py3-none-any.whl"
+    assert report == {
+        "artifactPath": str(wheel),
+        "profile": "coding-data-prompt-v1",
+        "productAdmission": "not_checked",
+        "productSelection": "not_checked",
+        "productUse": "not_checked",
+        "sha256": sha256(wheel.read_bytes()).hexdigest(),
+    }
+    assert wheel.read_bytes() == build_coding_data_prompt_wheel(
+        plugin_id="promptpack",
+        version="1",
+        contribution_id="review-prompt",
+        prompt_name="review",
+        prompt_document=prompt.read_bytes(),
+    )
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main(args)
+
+
+@pytest.mark.parametrize(
+    ("kind", "relative_source", "build_command"),
+    [
+        ("skill", "skills/review/SKILL.md", "build-coding-skill"),
+        ("prompt", "prompts/review.md", "build-coding-prompt"),
+    ],
+)
+def test_coding_data_scaffold_produces_buildable_source_without_replacement(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    kind: str,
+    relative_source: str,
+    build_command: str,
+) -> None:
+    root = tmp_path / "reviewpack"
+    assert plugin_cli_main(
+        [
+            f"init-coding-{kind}",
+            str(root),
+            "--resource-name",
+            "review",
+        ]
+    ) == 0
+    report = json.loads(capsys.readouterr().out)
+    source = root / relative_source
+    assert report["sourcePath"] == str(source)
+    assert report["profile"] == f"coding-data-{kind}-v1"
+    assert report["productAdmission"] == "not_checked"
+    assert report["productSelection"] == "not_checked"
+    assert report["productUse"] == "not_checked"
+    assert report["buildCommand"][:2] == ["loushang-plugin", build_command]
+    assert report["smokeCommand"][:2] == [
+        "loushang-coding-plugin-smoke",
+        str(root / "dist" / "reviewpack-1-py3-none-any.whl"),
+    ]
+    assert source.is_file()
+    assert "review" in source.read_text(encoding="utf-8")
+    assert plugin_cli_main(report["buildCommand"][1:]) == 0
+    built = json.loads(capsys.readouterr().out)
+    assert Path(built["artifactPath"]).is_file()
+    assert report["smokeCommand"][1] == built["artifactPath"]
+    original = source.read_bytes()
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main([f"init-coding-{kind}", str(root)])
+    assert source.read_bytes() == original
+    with pytest.raises(SystemExit, match="2"):
+        plugin_cli_main([f"init-coding-{kind}", str(tmp_path / "invalid"), "--resource-name", "BAD"])
+    assert not (tmp_path / "invalid").exists()
 
 
 def test_public_capability_helpers_are_frozen_and_use_canonical_requirement() -> None:

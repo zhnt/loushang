@@ -61,14 +61,55 @@
   launch, bounded supervisor, and default-dark read-only Capability adapter.
   The accepted
   [PLC9C5 C5.0 baseline](plugin-lifecycle-plc9c5-c50-baseline.md) and
-  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) plan
-  receipt/lifecycle, Linux native, Windows mechanics/rejection, and final Linux
-  Coding Product-convergence slices while retaining every production
-  activation guard.
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) now record the
+  implemented C5.1 receipt/lifecycle, C5.2 Linux native, C5.3 Windows
+  mechanics/rejection, C5.4 Linux Coding Product canary, and C5.5b/c Windows
+  LPAC containment and Coding Product canary. Both canaries are explicit and
+  default-dark; Current remains the default and unlisted routes remain closed.
+  [PLC9D1](plugin-lifecycle-plc9d1-contract.md) is a local candidate for an
+  internal, read-only Package GC/cleanup-debt projection. It does not reserve
+  or delete an artifact. [PLC9D2](plugin-lifecycle-plc9d2-contract.md) adds a
+  dark, opt-in durable reservation and reference-writer fence; it has no
+  Product/Store deletion route and does not close PLC9D.
+  [PLC9D3a](plugin-lifecycle-plc9d3a-contract.md) adds a Product-bound writer
+  seal, exact Store deletion primitive, and durable handoff crosswalk. It has
+  no executable Product GC command or durable deletion result/debt receipt.
+  [PLC9D3b](plugin-lifecycle-plc9d3b-contract.md) closes the Store re-publication
+  counterexample with a durable exact-ref tombstone; it does not authorize GC.
+  [PLC9D3c](plugin-lifecycle-plc9d3c-contract.md) adds read-only exact root
+  resolution across a durable precommit claim, Product handoff, committed set,
+  and Store settlement; unresolved claims remain conservative blockers.
+  [PLC9D3d](plugin-lifecycle-plc9d3d-contract.md) fences the committed-set
+  owner against a new alias of a root ref after GC starts.
+  [PLC9D3e](plugin-lifecycle-plc9d3e-contract.md) records typed Store success
+  or retryable debt with exact settlement matching. [PLC9D3f--D3j]
+  (plugin-lifecycle-plc9d3f-contract.md) add an internal POSIX-tested executor
+  and explicit offline Product root-GC command. [PLC9D3k--D3l]
+  (plugin-lifecycle-plc9d3k-contract.md) add private-data confirmation seams
+  and durable evidence; [PLC9D3m](plugin-lifecycle-plc9d3m-contract.md)
+  projects the pre-B workspace-snapshot status. Production private-data and
+  backup owner bindings, default management/RPC selection, Windows GC, and
+  public Coding dependency admission remain open. The POSIX configured
+  Product now proves shared-dependency Store reuse and GC after every holder
+  root has a verified deletion result.
+- Coding legacy-workspace migration foundation classifies pre-B inputs,
+  verifies first-B snapshot members and old Installation intent, reacquires
+  exact local Source bytes, and prepares an inert adoption review. It does not
+  authorize adoption or install a legacy Plugin through Product. The offline
+  cutover command remains limited to fresh workspaces; operator approval,
+  Product installation, and settings migration remain separate delivery work.
+- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
+  internal/offline POSIX root-GC execution, durable private-data confirmation
+  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
+  remains open.
+- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
+  only; Current remains the default; no general third-party Worker
+  authoring/admission surface is published.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
-  Skill catalog convergence, and later public SDK stabilization.
+  Skill catalog convergence, the stable public SDK, and remaining PLC9
+  platform closure.
 - Authority: the canonical target
   [Plugin Architecture V2](architecture.md),
   [Capability Composition Lifecycle Authority Plan](../composition-lifecycle-authority-plan.md),

@@ -22,6 +22,7 @@ from loushang.appserver.stdio import InheritedStdioTransportV1
 from loushang.harness.tools.core import ToolDefinition
 
 from ..hosted_bootstrap import CodingHostedLaunchV1, create_coding_hosted_attempt
+from ..hosted_session import CodingHostedProductRuntimeFactoryForSession
 
 
 class CodingHostedCommandV1:
@@ -41,6 +42,9 @@ class CodingHostedCommandV1:
         connection_timeout: float = 10.0,
         settlement_timeout: float = 60.0,
         session_discovery: bool = False,
+        package_product_runtime_factory_for_session: (
+            CodingHostedProductRuntimeFactoryForSession | None
+        ) = None,
     ) -> None:
         if type(session_discovery) is not bool:
             raise TypeError("invalid discovery activation")
@@ -56,6 +60,9 @@ class CodingHostedCommandV1:
             stream_fn=stream_fn,
             tools=tools,
             session_discovery=session_discovery,
+            package_product_runtime_factory_for_session=(
+                package_product_runtime_factory_for_session
+            ),
         )
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
         self._transport: InheritedStdioTransportV1 | None = None

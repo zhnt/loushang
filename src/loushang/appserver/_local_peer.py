@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
-from typing import Protocol
+from typing import Protocol, cast
 
 from .client import AppClientV1, SessionDiscoveryClientV1
 from .connection import AppServerConnectionV1
 from .execution.client import ExecutionClientV1
 from .framing import AppByteTransportV1, AppConnectionClosedError
 from .local_auth import LocalAuthenticationV1, authenticate_local_server
+from .managed_mux import ManagedMuxCreationClientV1
+from .managed_mux_close import ManagedMuxCloseClientV1
 from .protocol import AppErrorCodeV1, AppServiceError
 from .protocol.connection_profile import AppConnectionProfileV1
 
@@ -36,6 +38,16 @@ class OwnedLocalDiscoveryScopeV1(OwnedLocalClientScopeV1, Protocol):
 class OwnedLocalExecutionScopeV1(OwnedLocalDiscoveryScopeV1, Protocol):
     @property
     def execution_client(self) -> ExecutionClientV1 | None: ...
+
+
+class OwnedLocalManagedMuxScopeV1(OwnedLocalExecutionScopeV1, Protocol):
+    @property
+    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None: ...
+
+
+class OwnedLocalManagedMuxCloseScopeV1(OwnedLocalManagedMuxScopeV1, Protocol):
+    @property
+    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None: ...
 
 
 def _observe(task: asyncio.Task[None]) -> None:
@@ -66,6 +78,8 @@ class _LocalPeer:
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.LOCAL,
         discovery_scope_factory: Callable[[], OwnedLocalDiscoveryScopeV1] | None = None,
         execution_scope_factory: Callable[[], OwnedLocalExecutionScopeV1] | None = None,
+        managed_mux_scope_factory: Callable[[], OwnedLocalManagedMuxScopeV1] | None = None,
+        mux_closure: bool = False,
     ) -> None:
         self.mode: bytes | None = None
         self.task: asyncio.Task[None] | None = None
@@ -75,6 +89,8 @@ class _LocalPeer:
         self._auth_timeout, self._timeout = auth_timeout, close_timeout
         self._profile, self._discovery_factory = profile, discovery_scope_factory
         self._execution_factory = execution_scope_factory
+        self._managed_mux_factory = managed_mux_scope_factory
+        self._mux_closure = mux_closure
         self._published = asyncio.get_running_loop().create_future()
         self._scope: OwnedLocalClientScopeV1 | None = None
         self._connection: AppServerConnectionV1 | None = None
@@ -128,7 +144,27 @@ class _LocalPeer:
             if mode == LOCAL_APP_MODE:
                 discovery = None
                 execution = None
-                if self._execution_factory is not None:
+                managed_mux = None
+                managed_mux_close = None
+                if self._managed_mux_factory is not None:
+                    managed_scope = self._managed_mux_factory()
+                    self._scope = managed_scope
+                    managed_mux = managed_scope.managed_mux_client
+                    if managed_mux is None:
+                        raise AppConnectionClosedError()
+                    if self._mux_closure:
+                        managed_mux_close = cast(OwnedLocalManagedMuxCloseScopeV1, managed_scope).managed_mux_close_client
+                        if managed_mux_close is None:
+                            raise AppConnectionClosedError()
+                    if self._execution_factory is not None:
+                        execution = managed_scope.execution_client
+                        if execution is None:
+                            raise AppConnectionClosedError()
+                    if self._discovery_factory is not None:
+                        discovery = managed_scope.discovery_client
+                        if discovery is None:
+                            raise AppConnectionClosedError()
+                elif self._execution_factory is not None:
                     execution_scope = self._execution_factory()
                     self._scope = execution_scope
                     execution = execution_scope.execution_client
@@ -150,6 +186,8 @@ class _LocalPeer:
                     self._scope, frames, profile=self._profile,
                     phase_timeout=self._timeout, discovery=discovery,
                     execution=execution,
+                    managed_mux=managed_mux,
+                    managed_mux_close=managed_mux_close,
                 )
                 await self._connection.serve()
             else:

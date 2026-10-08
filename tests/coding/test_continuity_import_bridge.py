@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import os
 import stat
@@ -88,6 +89,26 @@ def _source() -> ContinuityProviderSourceDescriptor:
     )
 
 
+@pytest.fixture
+def staged_payloads(monkeypatch: pytest.MonkeyPatch):
+    """Observe owned handles without replacing the OS identity checks."""
+    captured = []
+    original = continuity_module._write_private_continuity_payload
+
+    def capture(root, payload):
+        staged = original(root, payload)
+        captured.append(staged)
+        return staged
+
+    monkeypatch.setattr(continuity_module, "_write_private_continuity_payload", capture)
+    yield captured
+    for staged in captured:
+        for descriptor in (staged.root_descriptor, staged.file_descriptor):
+            with pytest.raises(OSError) as caught:
+                os.fstat(descriptor)
+            assert caught.value.errno == errno.EBADF
+
+
 @pytest.mark.parametrize(
     ("media_type", "suffix"),
     (
@@ -100,6 +121,7 @@ def test_coding_portable_activation_bridge_uses_private_bounded_temporary_copy(
     tmp_path: Path,
     media_type: str,
     suffix: str,
+    staged_payloads,
 ) -> None:
     runtime = _Runtime()
     bridge = CodingContinuityActivationBridge(
@@ -373,6 +395,7 @@ def test_coding_portable_activation_bridge_rejects_writable_path_ancestor(
 @requires_secure_staging
 def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
     tmp_path: Path,
+    staged_payloads,
 ) -> None:
     class _FailingRuntime(_Runtime):
         async def prepare_restore_session_operation(
@@ -411,6 +434,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
 def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    staged_payloads,
 ) -> None:
     started = threading.Event()
     release = threading.Event()
@@ -471,6 +495,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
 @requires_secure_staging
 def test_coding_portable_activation_bridge_cleans_up_when_prepare_is_cancelled(
     tmp_path: Path,
+    staged_payloads,
 ) -> None:
     class _BlockingRuntime(_Runtime):
         def __init__(self) -> None:
@@ -527,6 +552,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_prepare_is_cancelled(
 @requires_secure_staging
 def test_coding_portable_activation_bridge_rejects_replaced_temporary_file(
     tmp_path: Path,
+    staged_payloads,
 ) -> None:
     replacement = b"replacement"
 
@@ -544,8 +570,15 @@ def test_coding_portable_activation_bridge_rejects_replaced_temporary_file(
                 missing_cwd=missing_cwd,
             )
             path = Path(session_id)
+            staged = staged_payloads[0]
+            original_identity = os.fstat(staged.file_descriptor)
+            assert os.path.samestat(original_identity, path.stat())
+            assert not os.get_inheritable(staged.file_descriptor)
             path.unlink()
             path.write_bytes(replacement)
+            # The actual old inode stays pinned, even after its name is gone.
+            assert os.path.samestat(original_identity, os.fstat(staged.file_descriptor))
+            assert not os.path.samestat(original_identity, path.stat())
             return prepared
 
     runtime = _ReplacingRuntime()
@@ -570,6 +603,172 @@ def test_coding_portable_activation_bridge_rejects_replaced_temporary_file(
             )
         )
 
-    assert runtime.prepared.aborted
+    assert runtime.prepared.abort_count == 1
     assert runtime.observed_path is not None
     assert runtime.observed_path.read_bytes() == replacement
+
+
+@requires_secure_staging
+def test_coding_portable_activation_bridge_releases_handles_when_source_is_missing(
+    tmp_path: Path,
+    staged_payloads,
+) -> None:
+    class _UnlinkingRuntime(_Runtime):
+        async def prepare_restore_session_operation(self, session_id, **kwargs):
+            prepared = await super().prepare_restore_session_operation(
+                session_id, **kwargs
+            )
+            staged = staged_payloads[0]
+            assert os.path.samestat(
+                os.fstat(staged.file_descriptor), Path(session_id).stat()
+            )
+            Path(session_id).unlink()
+            return prepared
+
+    runtime = _UnlinkingRuntime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,
+        temporary_root=tmp_path / "continuity",  # type: ignore[arg-type]
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n", media_type=CONTINUITY_JSONL_MEDIA_TYPE
+    )
+    lease = asyncio.run(
+        bridge.prepare(
+            ContinuityTarget(provider_id="cloud.sessions", opaque_id="remote-1"),
+            payload,
+            _source(),
+        )
+    )
+    assert runtime.prepared.abort_count == 0
+    asyncio.run(lease.abort())
+    assert runtime.prepared.abort_count == 1
+
+
+@requires_secure_staging
+@pytest.mark.parametrize("replace", [False, True])
+def test_coding_continuity_write_failure_preserves_unowned_files_and_closes_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replace: bool,
+) -> None:
+    root = tmp_path / "continuity"
+    fault = OSError("injected write failure")
+    closed = []
+    close = os.close
+    staged_paths = []
+
+    def broken_write(descriptor, data):
+        (path,) = root.iterdir()
+        staged_paths.append(path)
+        assert os.path.samestat(os.fstat(descriptor), path.stat())
+        if replace:
+            path.unlink()
+            path.write_bytes(b"replacement")
+            assert not os.path.samestat(os.fstat(descriptor), path.stat())
+        raise fault
+
+    def record_close(descriptor):
+        closed.append((descriptor, os.fstat(descriptor).st_mode))
+        close(descriptor)
+
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n", media_type=CONTINUITY_JSONL_MEDIA_TYPE
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            continuity_module, "_write_continuity_payload_bytes", broken_write
+        )
+        patch.setattr(continuity_module.os, "close", record_close)
+        with pytest.raises(OSError) as caught:
+            continuity_module._write_private_continuity_payload(root, payload)
+    assert caught.value is fault
+    assert len(closed) == 2
+    assert sum(stat.S_ISREG(mode) for _, mode in closed) == 1
+    assert sum(stat.S_ISDIR(mode) for _, mode in closed) == 1
+    for descriptor, _ in closed:
+        with pytest.raises(OSError) as caught_close:
+            os.fstat(descriptor)
+        assert caught_close.value.errno == errno.EBADF
+    if replace:
+        assert staged_paths[0].read_bytes() == b"replacement"
+    else:
+        assert list(root.iterdir()) == []
+
+
+@requires_secure_staging
+def test_coding_continuity_name_exhaustion_does_not_unlink_existing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "continuity"
+    root.mkdir(mode=0o700)
+    existing = root / "continuity-collision.jsonl"
+    existing.write_bytes(b"not owned")
+    monkeypatch.setattr(continuity_module.secrets, "token_hex", lambda _: "collision")
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n", media_type=CONTINUITY_JSONL_MEDIA_TYPE
+    )
+    with pytest.raises(FileExistsError, match="namespace is exhausted"):
+        continuity_module._write_private_continuity_payload(root, payload)
+    assert existing.read_bytes() == b"not owned"
+
+
+@requires_secure_staging
+def test_coding_portable_activation_bridge_joins_cancelled_cleanup_before_releasing_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_payloads,
+) -> None:
+    entered, release = threading.Event(), threading.Event()
+    original = continuity_module._remove_private_continuity_payload
+    cleanup_completed = []
+
+    def delayed_remove(staged):
+        entered.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release continuity cleanup")
+        original(staged)
+        cleanup_completed.append(True)
+
+    monkeypatch.setattr(
+        continuity_module, "_remove_private_continuity_payload", delayed_remove
+    )
+    runtime = _Runtime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,
+        temporary_root=tmp_path / "continuity",  # type: ignore[arg-type]
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n", media_type=CONTINUITY_JSONL_MEDIA_TYPE
+    )
+
+    async def scenario():
+        task = asyncio.create_task(
+            bridge.prepare(
+                ContinuityTarget(provider_id="cloud.sessions", opaque_id="remote-1"),
+                payload,
+                _source(),
+            )
+        )
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            for _ in range(2):
+                task.cancel()
+                await asyncio.sleep(0)  # Deliver cancellation while the worker is held.
+                assert not task.done()
+                staged = staged_payloads[0]
+                assert os.path.samestat(
+                    os.fstat(staged.file_descriptor), staged.path.stat()
+                )
+                assert stat.S_ISDIR(os.fstat(staged.root_descriptor).st_mode)
+                assert cleanup_completed == [] and runtime.prepared.abort_count == 0
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cleanup_completed == [True]
+        assert runtime.prepared.abort_count == 1
+
+    asyncio.run(scenario())
+    assert list((tmp_path / "continuity").iterdir()) == []

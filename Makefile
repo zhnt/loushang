@@ -120,6 +120,7 @@ HARNESS_TEST_PATHS := \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
+	tests/architecture/test_resource_catalog_rcp5_contract.py \
 	tests/architecture/test_composition_lifecycle_authority_cla0.py \
 	tests/architecture/test_plugin_lifecycle_plc9_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9a1_contract.py \
@@ -208,7 +209,6 @@ APPHOST_TEST_PATHS := \
 	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
-	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
@@ -287,6 +287,7 @@ APPHOST_LINT_SUPPORT := \
 	tests/coding/_local_product_child.py \
 	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
+	src/loushang/coding/cli/application.py \
 	src/loushang/harness/machine_resources/control_plane.py \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
@@ -322,6 +323,16 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_g18_provenance.py \
+	tests/dev/test_g18_recovery.py \
+	tests/dev/test_g18_slot.py \
+	tests/dev/test_g18_bytecode.py \
+	tests/dev/test_g18_checkpoint.py \
+	tests/dev/test_g18_comparison.py \
+	tests/dev/test_measure_g18_startup.py \
+	tests/dev/test_measure_g18_native.py \
+	tests/dev/test_interactive_startup_probe.py \
+	tests/dev/test_interactive_campaign.py \
 	tests/dev/test_hosted_fixture_stdin.py \
 	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
@@ -550,6 +561,14 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_provenance.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_recovery.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_slot.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_bytecode.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_checkpoint.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_comparison.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_startup.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_native.py tests/coding/_g18_native_probe.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
@@ -558,6 +577,8 @@ lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_windows_api.py tests/coding/_hosted_windows_observer.py tests/coding/_hosted_windows_witness.py tests/coding/test_hosted_windows_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_interactive_startup_probe.py tests/coding/_interactive_model_child.py tests/coding/_interactive_seed.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_interactive_campaign.py
 
 typecheck-appservice:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)

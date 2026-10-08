@@ -118,6 +118,13 @@ def test_absent_child_handle_is_negative_evidence_without_cleanup() -> None:
     assert not api.closed
 
 
+def test_unsupported_child_object_is_negative_evidence_without_cleanup() -> None:
+    api = _Kernel()
+    api.duplicate_error = 50  # ERROR_NOT_SUPPORTED for that remote object type.
+    assert not api.probe().matches(api.child_process, api.expected, api.expected)
+    assert not api.closed
+
+
 @pytest.mark.parametrize("fault", ["process", "reference", "duplicate", "compare", "close"])
 def test_probe_failure_cannot_be_reported_as_successful_isolation(fault: str) -> None:
     api = _Kernel()

@@ -99,8 +99,19 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
             "gpt-5.5",
             "gpt-5.6-sol",
             "gpt-5.4-mini",
+            "gpt-6-sol",
+            "gpt-6-astra",
+            "gpt-6.1-sol",
+            "gpt-6-luna",
         },
-        ("openai", "coding-responses"): {"gpt-5.5", "gpt-5.6-sol"},
+        ("openai", "coding-responses"): {
+            "gpt-5.5",
+            "gpt-5.6-sol",
+            "gpt-6-sol",
+            "gpt-6-astra",
+            "gpt-6.1-sol",
+            "gpt-6-luna",
+        },
         ("stepfun", "openai-completions"): {"step-3.7-flash"},
         ("tencent-hunyuan", "openai-responses"): {"hy3"},
         ("volcano-ark", "openai-completions-cn-beijing"): {
@@ -217,6 +228,35 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     assert coding_sol.pricing is None
     assert claude.pricing is not None
     assert claude.pricing.output == 15
+
+
+def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
+    registry = _load_curated_registry()
+    expected_prices = {
+        "gpt-6-sol": (2, 10, 0.2),
+        "gpt-6-astra": (10, 50, 1),
+        "gpt-6.1-sol": (2, 10, 0.1),
+        "gpt-6-luna": (0.1, 0.5, 0.01),
+    }
+
+    for model_id, (input_price, output_price, cache_price) in expected_prices.items():
+        api = registry.get_model("openai", "openai-responses", model_id)
+        coding = registry.get_model("openai", "coding-responses", model_id)
+
+        assert api.capabilities.context_window == 1050000
+        assert api.capabilities.max_tokens == 128000
+        assert api.defaults["reasoningEffort"] == "medium"
+        assert api.supports_tool_use is True
+        assert api.supports_temperature is False
+        assert api.pricing is not None
+        assert (api.pricing.input, api.pricing.output, api.pricing.cache_read) == (
+            input_price,
+            output_price,
+            cache_price,
+        )
+        assert coding.capabilities.context_window == 1050000
+        assert coding.pricing is None
+        assert coding.adapter.max_output_tokens is False
 
 
 def test_curated_catalog_keeps_corrected_base_pricing() -> None:

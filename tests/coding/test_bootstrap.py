@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 
 import pytest
@@ -208,7 +210,7 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     from loushang.coding.session_manager import SessionManager
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
 
     session = create_agent_session(
@@ -222,15 +224,78 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     assert session.get_model_selection().model_id == "faux-model"
 
 
+def test_explicit_worker_route_requires_materialized_transcript_before_product_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import (
+        create_agent_session,
+        create_agent_session_runtime,
+    )
+    from loushang.coding.package_product_worker_ordinary_bootstrap import (
+        CodingWorkerOrdinaryBootstrapError,
+    )
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(tmp_path))
+    )
+    assert not manager.is_persisted()
+
+    def forbidden_selection(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Unmaterialized Worker route selected Product")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "_select_direct_coding_product_factory", forbidden_selection
+    )
+    with pytest.raises(
+        CodingWorkerOrdinaryBootstrapError,
+        match="coding_worker_ordinary_transcript_not_materialized",
+    ):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            worker_candidate_plugin_id="review.worker",
+        )
+    prepared_manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "prepared-sessions",
+            cwd=str(tmp_path),
+            defer_materialization=False,
+        )
+    )
+    assert prepared_manager.is_persisted()
+    assert prepared_manager.get_session_file() is not None
+    assert prepared_manager.get_session_file().is_file()
+    with pytest.raises(
+        CodingWorkerOrdinaryBootstrapError,
+        match="coding_worker_ordinary_runtime_selection_invalid",
+    ):
+        create_agent_session_runtime(
+            session_dir=tmp_path / "runtime-sessions",
+            persist=False,
+            worker_candidate_plugin_id="review.worker",
+        )
+
+
+@pytest.mark.parametrize("resource_policy_id", ("read-only", "standard"))
 def test_create_agent_session_activates_and_reuses_package_product_runtime(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    resource_policy_id: str,
 ) -> None:
     from typing import Any, cast
 
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.product_plan import CODING_PRODUCT_ID
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.resources.packages.product_runtime import (
+    from loushang.harness.package_product.product_runtime import (
         PackageProductRuntimeBindingV1,
     )
 
@@ -268,10 +333,22 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
                 mode="enforced",
             )
 
+    def forbid_default_materializer(_manager: object) -> None:
+        raise AssertionError("Product runtime constructed a legacy materializer")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", forbid_default_materializer
+    )
     session = create_agent_session(
         session_manager=manager,
         model=_model(),
         package_product_runtime_factory=cast(Any, Factory()),
+        composition_set="coding-minimal",
+        resource_catalog_source_policy=(
+            CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            if resource_policy_id == "read-only"
+            else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+        ),
     )
     try:
         assert lifecycle.active
@@ -283,8 +360,252 @@ def test_create_agent_session_activates_and_reuses_package_product_runtime(
         assert session.package_product_lifecycle_mode == "enforced"
         assert session._package_controller.product_lifecycle is lifecycle
         assert session._package_controller.product_inventory is inventory
+        assert session._package_controller.get_package_materializer() is None
     finally:
         asyncio.run(session.dispose())
+
+
+def test_product_base_missing_selected_manifest_cannot_fall_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeBindingV1,
+    )
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    events: list[str] = []
+
+    class Lifecycle:
+        binding_id = "owner:coding-package"
+        active = False
+
+        def activate(self) -> None:
+            self.active = True
+
+    class Inventory:
+        binding_id = "owner:coding-package"
+
+    class Factory:
+        def create(self, _request):
+            events.append("product_factory")
+            return PackageProductRuntimeBindingV1(
+                product_id="coding",
+                lifecycle=Lifecycle(),  # type: ignore[arg-type]
+                inventory=Inventory(),  # type: ignore[arg-type]
+                mode="enforced",
+                on_dispose=lambda: events.append("product_dispose"),
+            )
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Product startup reached the legacy Plugin path")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "prepare_managed_coding_base_plugin_assembly", reject_legacy
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+    with pytest.raises(PackageProductRuntimeActivationError) as failure:
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+            composition_set="coding-standard",
+        )
+    assert failure.value.code == "package_product_manifest_reader_unavailable"
+    assert events == ["product_factory", "product_dispose"]
+
+
+def test_package_product_runtime_rejects_incompatible_resource_policy_before_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    calls = {"legacy_assembly": 0, "factory": 0, "released": 0}
+
+    def legacy_assembly(*_args: object, **_kwargs: object) -> None:
+        calls["legacy_assembly"] += 1
+        raise AssertionError("legacy Plugin assembly was reached")
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            calls["factory"] += 1
+            raise AssertionError("Product factory was reached before exclusion")
+
+        def dispose_unbound_runtime(self) -> None:
+            calls["released"] += 1
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "prepare_managed_coding_base_plugin_assembly",
+        legacy_assembly,
+    )
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
+        )
+    assert calls == {"legacy_assembly": 0, "factory": 0, "released": 1}
+
+
+@pytest.mark.parametrize("entrypoint", ("result", "from_services"))
+def test_package_product_runtime_releases_unbound_lease_on_entry_preflight_error(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    from typing import Any, cast
+
+    import loushang.coding.bootstrap as coding_bootstrap
+
+    releases: list[str] = []
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory was reached before preflight")
+
+        def dispose_unbound_runtime(self) -> None:
+            releases.append("released")
+
+    def fail_preflight() -> None:
+        raise RuntimeError("preflight failed")
+
+    if entrypoint == "result":
+        monkeypatch.setattr(coding_bootstrap, "create_services", fail_preflight)
+        with pytest.raises(RuntimeError, match="preflight failed"):
+            coding_bootstrap.create_agent_session_result(
+                session_manager=cast(Any, object()),
+                package_product_runtime_factory=cast(Any, Factory()),
+            )
+    else:
+        agent_services = SimpleNamespace(
+            extension_runner=SimpleNamespace(get_flag_values=fail_preflight),
+            services=object(),
+        )
+        with pytest.raises(RuntimeError, match="preflight failed"):
+            coding_bootstrap.create_agent_session_from_services(
+                agent_services=cast(Any, agent_services),
+                session_manager=cast(Any, object()),
+                package_product_runtime_factory=cast(Any, Factory()),
+            )
+    assert releases == ["released"]
+
+
+def test_package_product_runtime_rejects_supplied_peer_materializer(
+    tmp_path: Path,
+) -> None:
+    from typing import Any, cast
+
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory saw a peer materializer")
+
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            composition_set="coding-minimal",
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
+            package_materializer=cast(Any, object()),
+            package_product_runtime_factory=cast(Any, Factory()),
+        )
+
+
+@pytest.mark.parametrize("configured_input", ("package_roots", "plugin_sources"))
+def test_package_product_runtime_rejects_configured_legacy_sources_before_effects(
+    tmp_path: Path,
+    configured_input: str,
+) -> None:
+    from loushang.coding._resource_catalog_shadow import (
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.source import PackageSourceConfig
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
+    )
+    configured_value = (
+        (PackageSourceConfig(source=str(tmp_path / "package")),)
+        if configured_input == "package_sources"
+        else (str(tmp_path / "package"),)
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(**{configured_input: configured_value})  # type: ignore[arg-type]
+        )
+    )
+
+    class Factory:
+        def create(self, _request: object) -> None:
+            raise AssertionError("Product factory was reached before exclusion")
+
+    with pytest.raises(RuntimeError, match="cannot coexist with legacy Plugin inputs"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=services,
+            composition_set="coding-minimal",
+            resource_catalog_source_policy=(
+                CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+            ),
+            package_product_runtime_factory=Factory(),  # type: ignore[arg-type]
+        )
 
 
 def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
@@ -301,7 +622,7 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     manager = asyncio.run(
         SessionManager.new(
             session_dir=tmp_path,
-            cwd="/tmp/project",
+            cwd=str(tmp_path),
             persist=False,
         )
     )
@@ -526,6 +847,7 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     from loushang.coding.lsp import LspServerDefinition
     from loushang.coding.session_manager import SessionManager
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     executable_dir = tmp_path / "bin"
     executable_dir.mkdir()
     executable = executable_dir / "pyright-langserver"
@@ -534,7 +856,7 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     project = tmp_path / "project"
     project.mkdir()
     captured_definitions: list[LspServerDefinition] = []
-    prepare = coding_bootstrap.prepare_coding_capability_plugin_composition
+    prepare = coding_bootstrap.prepare_coding_builtin_product_composition
 
     def capture_definitions(request, **kwargs):
         captured_definitions.extend(
@@ -544,7 +866,7 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_capability_plugin_composition",
+        "prepare_coding_builtin_product_composition",
         capture_definitions,
     )
     services = create_services(
@@ -623,6 +945,7 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
     asyncio.run(session.dispose())
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_lsp_preparation_failure_closes_the_prepared_base_revision(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -691,6 +1014,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
         )
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_base_assembly_failure_releases_ephemeral_startup_lease_and_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -756,6 +1080,189 @@ def test_base_assembly_failure_releases_ephemeral_startup_lease_and_root(
         )
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_default_base_materializer_is_not_constructed_after_package_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceJournal,
+        PackageEpochFenceRequestV1,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+        PackagePosixEpochCutoverError,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = plugin_lifecycle_module.resolve_coding_plugin_lifecycle_state_layout(
+        workspace
+    )
+    lifecycle = plugin_lifecycle_module.build_coding_plugin_lifecycle(layout)
+    lifecycle.release_owned_process_startup_lease()
+    epoch = resolve_coding_package_epoch_layout(layout)
+    PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl").publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=epoch.store_id,
+            prior_fence=None,
+            legacy_root_identity="a" * 64,
+            fenced_root_identity="b" * 64,
+            namespace_id="c" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="d" * 64,
+            snapshot_receipt_id="e" * 64,
+            root_switch_receipt_id="f" * 64,
+        )
+    )
+    default_base_materializers: list[Path] = []
+    original_materializer = coding_bootstrap.PackageMaterializer
+
+    def materializer_spy(**kwargs):
+        if Path(kwargs["install_root"]) == layout.package_install_root:
+            default_base_materializers.append(Path(kwargs["install_root"]))
+        return original_materializer(**kwargs)
+
+    monkeypatch.setattr(coding_bootstrap, "PackageMaterializer", materializer_spy)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+    )
+    with pytest.raises(PackagePosixEpochCutoverError) as refused:
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+    assert refused.value.code == "package_epoch_cutover_identity_changed"
+    assert default_base_materializers == []
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product runtime owner"
+)
+def test_standalone_runtime_fenced_default_refuses_without_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceError,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced standalone startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+
+    async def scenario() -> None:
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            services=create_services(settings_manager=SettingsManager(ControlConfig())),
+            persist=False,
+        )
+        try:
+            with pytest.raises(PackageEpochFenceError, match="cannot be decoded"):
+                await runtime.create_session(cwd=str(workspace))
+            assert selected == []
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product runtime owner"
+)
+def test_direct_session_fenced_default_refuses_without_legacy_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceError,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced direct startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    with pytest.raises(PackageEpochFenceError, match="cannot be decoded"):
+        create_agent_session(session_manager=manager, model=_model())
+    assert selected == []
+
+
 def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -791,7 +1298,7 @@ def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(
                 )
             ),
         )
-        assert assembly_counts == {"selection": 1, "compilation": 1}
+        assert assembly_counts == {"selection": 0, "compilation": 1}
         assert session._tool_exec_service is None
         assert session._composition.tool_controller.tool_registry is registry
         inputs = session._capability_composition_inputs
@@ -1110,7 +1617,7 @@ def test_base_owner_commit_failure_restores_catalog_and_every_owner_generation(
     asyncio.run(session.dispose())
 
 
-def test_lsp_and_base_share_one_compilation_and_three_owner_generations(
+def test_lsp_and_base_publish_three_owner_generations_from_product_compilation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1143,7 +1650,7 @@ def test_lsp_and_base_share_one_compilation_and_three_owner_generations(
             ),
         ),
     )
-    assert assembly_counts == {"selection": 1, "compilation": 1}
+    assert assembly_counts == {"selection": 1, "compilation": 2}
     lsp_assembly = session._coding_lsp_plugin_assembly
     inputs = session._capability_composition_inputs
     assert lsp_assembly is not None
@@ -1429,13 +1936,16 @@ def test_create_agent_session_services_builds_cwd_bound_services(tmp_path) -> No
     assert services.diagnostics == ()
 
 
-def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) -> None:
+def test_create_agent_session_from_services_uses_cwd_bound_services(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from loushang.coding import (
         create_agent_session_from_services,
         create_agent_session_services,
     )
     from loushang.coding.session_manager import SessionManager
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     project_root = tmp_path / "project"
     project_root.mkdir()
     agent_services = create_agent_session_services(
@@ -1501,7 +2011,7 @@ def test_create_agent_session_services_loads_extension_flags_and_values(
 
 
 def test_create_agent_session_from_services_applies_extension_flag_values(
-    tmp_path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from loushang.coding import (
         create_agent_session_from_services,
@@ -1509,6 +2019,7 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
     )
     from loushang.coding.session_manager import SessionManager
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     project_root = tmp_path / "project"
     extensions_dir = project_root / "extensions"
     extensions_dir.mkdir(parents=True)
@@ -1903,6 +2414,7 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     asyncio.run(scenario())
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_minimal_composition_rejects_child_exact_tools_without_selected_owners(
     tmp_path: Path,
 ) -> None:
@@ -2136,7 +2648,7 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
     )
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     registry = ToolRegistry()
 
@@ -2365,6 +2877,7 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     }
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_rejects_unverified_package_roots(
     tmp_path,
 ) -> None:
@@ -2414,6 +2927,7 @@ def test_create_agent_session_rejects_unverified_package_roots(
     assert "unverified_package_sources" in captured.value.reasons
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
@@ -2477,6 +2991,7 @@ def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> N
     assert "Fresh global prompt" in session.agent.system_prompt
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_rejects_unverified_package_sources_with_filters(
     tmp_path,
 ) -> None:
@@ -2538,6 +3053,7 @@ def test_create_agent_session_rejects_unverified_package_sources_with_filters(
     assert captured.value.reasons == ("unverified_package_sources",)
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_manifest_only_plugin_source_with_legacy_resources_fails_closed(
     tmp_path,
 ) -> None:
@@ -2611,6 +3127,7 @@ def test_manifest_only_plugin_source_with_legacy_resources_fails_closed(
     assert records[0].details == {"reasons": ["undeclared_plugin_resources"]}
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_non_resource_code_plugin_does_not_acquire_resource_authority(
     tmp_path,
 ) -> None:
@@ -2683,7 +3200,8 @@ def test_non_resource_code_plugin_does_not_acquire_resource_authority(
             "standard"
         ]
         assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
-        assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
+        # The built-in themes/__init__.py is a Python package marker, not a Theme.
+        assert session.resource_bundle.themes == []
         assert (
             services.diagnostics_service.get_diagnostics(
                 code="coding_resource_catalog_unsupported"
@@ -2694,7 +3212,8 @@ def test_non_resource_code_plugin_does_not_acquire_resource_authority(
         asyncio.run(session.dispose())
 
 
-def test_create_agent_session_materializes_git_package_sources_by_default(
+@pytest.mark.usefixtures("legacy_coding_route")
+def test_legacy_create_agent_session_materializes_git_package_sources(
     tmp_path,
 ) -> None:
     import asyncio
@@ -2733,6 +3252,7 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     )
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_rejects_configured_remote_legacy_package_sources(
     tmp_path,
 ) -> None:
@@ -2796,6 +3316,7 @@ def test_create_agent_session_rejects_configured_remote_legacy_package_sources(
     assert captured.value.reasons == ("unverified_package_sources",)
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
     import json
 
@@ -3300,8 +3821,6 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 def test_create_agent_session_passes_resource_loader_into_agent_session(
     tmp_path,
 ) -> None:
-    from pathlib import Path
-
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
@@ -3320,7 +3839,7 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     loader = _RecordingLoader()
     services = create_services(resource_loader=loader)
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
 
     session = create_agent_session(
@@ -3333,7 +3852,7 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     assert isinstance(session._resource_loader, CatalogSessionResourceLoaderView)
     assert session._resource_loader.input_loader is loader
     # /tmp is a symlink to /private/tmp on macOS; assert the resolved form.
-    assert loader.discover_calls == [str(Path("/tmp/project").resolve())]
+    assert loader.discover_calls == [str(tmp_path.resolve())]
 
 
 def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> None:
@@ -3423,7 +3942,7 @@ def test_create_agent_session_projects_application_messages_to_model_input(
     from loushang.harness.transcript import ApplicationMessage
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -3459,7 +3978,7 @@ def test_create_agent_session_convert_to_llm_blocks_images_when_configured(
         ),
     )
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -4016,7 +4535,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(
     )
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     asyncio.run(
         manager.append_message(
@@ -4186,6 +4705,7 @@ def test_create_agent_session_ignores_legacy_loader_discovery_diagnostics(
     assert diagnostics == []
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_records_startup_package_root_diagnostics(
     tmp_path,
 ) -> None:
@@ -4277,6 +4797,7 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
     assert isinstance(diagnostics[0].details["coding_module_file"], str)
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_fails_closed_and_records_lockfile_diagnostics(
     tmp_path,
 ) -> None:
@@ -4320,6 +4841,7 @@ def test_create_agent_session_fails_closed_and_records_lockfile_diagnostics(
     assert diagnostics[0].source_path == lockfile
 
 
+@pytest.mark.usefixtures("legacy_coding_route")
 def test_create_agent_session_records_invalid_plugin_source_and_continues(
     tmp_path,
 ) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -14,7 +15,19 @@ from loushang.harness.journal import (
     append_jsonl_record,
     decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
+)
+from loushang.harness.plugin_management.gc_writer_epoch import (
+    PluginGcWriterEpochError,
+    PluginGcWriterEpochRecords,
+    PluginGcWriterEpochSealV1,
+    gc_writer_epoch_codec,
+    split_gc_writer_epoch_records,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
@@ -96,8 +109,8 @@ class PluginDesiredStateLedger:
     """Durable, inert desired-selection and staged-cutover authority for PLC2.
 
     This ledger owns only management intent and Instance Revision identity. It
-    has no live Plugin, Product Session, Graph, registration, or package-GC
-    dependency.
+    has no live Plugin, Product Session, Graph, registration, or executable-GC
+    authority. An optional neutral guard can fence new references during GC.
     """
 
     def __init__(
@@ -105,24 +118,76 @@ class PluginDesiredStateLedger:
         path: str | Path,
         *,
         instance_id_factory: PluginInstanceIdFactory | None = None,
+        gc_gate: PluginPackageGcReferenceGatePort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._path = Path(path)
         self._instance_id_factory = instance_id_factory or _new_instance_id
+        self._gc_gate = gc_gate
         self._unlocked_durability = replace(
             DURABLE_LOCKED_JOURNAL,
             locking=False,
         )
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:
         return self._path
 
-    def snapshot(self) -> PluginDesiredStateSnapshotV1:
-        with journal_file_lock(
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return self._gc_gate
+
+    def seal_gc_writer_epoch(self) -> None:
+        """Exclude older and unbound writers before executable GC is enabled."""
+
+        if self._gc_gate is None:
+            raise PluginLifecycleError(
+                "GC writer epoch requires a reservation gate",
+                code="plugin_package_gc_writer_epoch_unsupported",
+                path=self._path,
+            )
+        with ExitStack() as locks:
+            locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
+            records = self._load_epoch_records_unlocked()
+            _replay(records.records, path=self._path)
+            if not records.sealed:
+                append_jsonl_record(
+                    self._path,
+                    PluginGcWriterEpochSealV1.create(
+                        journal_kind="desired",
+                        owner_path=self._path,
+                        gate=self._gc_gate,
+                    ),
+                    record_codec=gc_writer_epoch_codec(
+                        PLUGIN_DESIRED_STATE_JOURNAL_CODEC
+                    ),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                )
+
+    def gc_writer_epoch_sealed(self) -> bool:
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
+        ):
+            return self._load_epoch_records_unlocked().sealed
+
+    def snapshot(self) -> PluginDesiredStateSnapshotV1:
+        with journal_file_read_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed)
@@ -135,19 +200,40 @@ class PluginDesiredStateLedger:
     ]:
         """Capture the snapshot and its exact transition history under one lock."""
 
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed), replayed.transitions
 
+    def capture_read_only(
+        self,
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]:
+        """Capture selection and provenance without creating or repairing state."""
+
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            replayed = self._load_and_replay_unlocked(
+                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False)
+            )
+        return _snapshot(replayed), replayed.transitions
+
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             return self._load_and_replay_unlocked().transitions
 
@@ -157,11 +243,15 @@ class PluginDesiredStateLedger:
     ) -> PluginDesiredStateTransitionV1:
         if not isinstance(mutation, PluginDesiredStateMutationV1):
             raise TypeError("Plugin desired-state mutation is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             repeated = self._repeat_result(replayed, mutation)
             if repeated is not None:
@@ -208,6 +298,12 @@ class PluginDesiredStateLedger:
                     code="invalid_plugin_lifecycle_transition",
                     path=self._path,
                 ) from exc
+            if committed.selection.package_revision in reserved:
+                raise PluginLifecycleError(
+                    "Plugin Package Revision is reserved for GC",
+                    code="plugin_package_gc_reserved",
+                    path=self._path,
+                )
             if fresh_instance_id is not None:
                 owner = replayed.instance_owners.get(fresh_instance_id)
                 if owner is not None:
@@ -239,11 +335,15 @@ class PluginDesiredStateLedger:
     ) -> PluginDesiredStateUpdateTransitionV2:
         if not isinstance(mutation, PluginDesiredStateUpdateMutationV1):
             raise TypeError("Plugin desired-state update mutation is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             repeated = self._repeat_result(replayed, mutation)
             if repeated is not None:
@@ -279,6 +379,12 @@ class PluginDesiredStateLedger:
                     code="invalid_plugin_lifecycle_transition",
                     path=self._path,
                 ) from exc
+            if committed.selection.package_revision in reserved:
+                raise PluginLifecycleError(
+                    "Plugin Package Revision is reserved for GC",
+                    code="plugin_package_gc_reserved",
+                    path=self._path,
+                )
 
             transition = PluginDesiredStateUpdateTransitionV2(
                 inventory_revision=head + 1,
@@ -295,19 +401,41 @@ class PluginDesiredStateLedger:
             )
             return transition
 
-    def _load_and_replay_unlocked(self) -> _ReplayedLedger:
+    def _load_and_replay_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> _ReplayedLedger:
+        return _replay(
+            self._load_epoch_records_unlocked(load_policy=load_policy).records,
+            path=self._path,
+        )
+
+    def _load_epoch_records_unlocked(
+        self,
+        *,
+        load_policy: JournalLoadPolicy | None = None,
+    ) -> PluginGcWriterEpochRecords[PluginDesiredStateJournalTransition]:
         if not self._path.exists():
-            return _empty_replay()
+            return PluginGcWriterEpochRecords(records=(), sealed=False)
         try:
-            snapshot: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[
+                None, PluginDesiredStateJournalTransition | PluginGcWriterEpochSealV1
+            ] = load_jsonl(
+                self._path,
+                record_codec=gc_writer_epoch_codec(PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=load_policy or self._load_policy,
             )
+            return split_gc_writer_epoch_records(
+                snapshot.records,
+                journal_kind="desired",
+                owner_path=self._path,
+                gate=self._gc_gate,
+            )
+        except PluginGcWriterEpochError as exc:
+            raise PluginLifecycleError(
+                str(exc), code=exc.code, path=self._path
+            ) from exc
         except JournalFileError as exc:
             code = (
                 exc.code
@@ -323,7 +451,6 @@ class PluginDesiredStateLedger:
                 code=code,
                 path=self._path,
             ) from exc
-        return _replay(snapshot.records, path=self._path)
 
     def _repeat_result(
         self,
@@ -663,22 +790,50 @@ def decode_plugin_desired_state_snapshot(
     raw: str,
     *,
     path: str | Path,
+    gc_gate: PluginPackageGcReferenceGatePort | None = None,
 ) -> PluginDesiredStateSnapshotV1:
     """Project an already-authorized desired-state journal snapshot."""
 
+    snapshot, _transitions = decode_plugin_desired_state_capture(
+        raw, path=path, gc_gate=gc_gate
+    )
+    return snapshot
+
+
+def decode_plugin_desired_state_capture(
+    raw: str,
+    *,
+    path: str | Path,
+    gc_gate: PluginPackageGcReferenceGatePort | None = None,
+) -> tuple[
+    PluginDesiredStateSnapshotV1,
+    tuple[PluginDesiredStateJournalTransition, ...],
+]:
+    """Project one already-authorized journal and its exact transition history."""
+
     target = Path(path)
     try:
-        decoded: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
-            decode_jsonl(
-                raw,
-                target=target,
-                record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
-                # Compatibility projection is read-only.  The owner repairs
-                # an incomplete crash tail on its next load; meanwhile only
-                # newline-terminated committed records are visible here.
-                load_policy=JournalLoadPolicy(partial_tail="skip"),
+        decoded: JsonlSnapshot[
+            None, PluginDesiredStateJournalTransition | PluginGcWriterEpochSealV1
+        ] = decode_jsonl(
+            raw,
+            target=target,
+            record_codec=gc_writer_epoch_codec(PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
+            # Compatibility projection is read-only.  The owner repairs
+            # an incomplete crash tail on its next load; meanwhile only
+            # newline-terminated committed records are visible here.
+            load_policy=JournalLoadPolicy(partial_tail="skip"),
+        )
+        records: PluginGcWriterEpochRecords[PluginDesiredStateJournalTransition] = (
+            split_gc_writer_epoch_records(
+                decoded.records,
+                journal_kind="desired",
+                owner_path=target,
+                gate=gc_gate,
             )
         )
+    except PluginGcWriterEpochError as exc:
+        raise PluginLifecycleError(str(exc), code=exc.code, path=target) from exc
     except JournalFileError as exc:
         code = (
             exc.code
@@ -694,7 +849,8 @@ def decode_plugin_desired_state_snapshot(
             code=code,
             path=target,
         ) from exc
-    return _snapshot(_replay(decoded.records, path=target))
+    replayed = _replay(records.records, path=target)
+    return _snapshot(replayed), replayed.transitions
 
 
 def _new_instance_id() -> str:
@@ -714,5 +870,6 @@ __all__ = [
     "PluginDesiredStateSnapshotV1",
     "PluginInstanceIdFactory",
     "PluginLifecycleError",
+    "decode_plugin_desired_state_capture",
     "decode_plugin_desired_state_snapshot",
 ]

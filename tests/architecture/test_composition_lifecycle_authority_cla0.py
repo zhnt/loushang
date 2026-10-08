@@ -5,8 +5,22 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_source_caches() -> Iterator[None]:
+    """Release derived indexes before the module's full source AST cache."""
+    try:
+        yield
+    finally:
+        _tracked_call_sites.cache_clear()
+        _source_trees.cache_clear()
+
 
 BASELINE_PATH = Path(
     "docs/internals/architecture/harness/"
@@ -96,6 +110,10 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
     (
         Path("src/loushang/coding/bootstrap.py"),
         "<lambda>",
+    ),
+    (
+        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        "query_coding_product_worker",
     ),
     (
         Path("src/loushang/coding/runtime_capability_admission.py"),
@@ -598,6 +616,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     assert statuses == {
         ("coding.arch", 1): "production-mounted",
         ("coding.lsp", 1): "production-mounted",
+        ("coding.worker.query", 1): "production-mounted",
         ("harness.model_input", 1): "production-mounted",
         ("harness.resources", 1): "production-mounted",
         ("harness.resources", 2): "source-complete",

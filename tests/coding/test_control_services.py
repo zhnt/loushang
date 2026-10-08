@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
-from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
@@ -146,7 +145,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     )
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -156,7 +155,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     assert (
         session.agent.system_prompt
         == f"Be precise.\n\n{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
-        f"{_runtime_footer(str(Path('/tmp/project').resolve()))}"
+        f"{_runtime_footer(str(tmp_path.resolve()))}"
     )
     assert session.agent.thinking_level == "high"
 
@@ -266,21 +265,30 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, services=services, persist=False
     )
-    first = asyncio.run(runtime.create_session(cwd=str(project_a)))
 
-    services.settings_manager.set_default_model(
-        ModelSelection(endpoint_id="responses", provider="faux", model_id="beta")
-    )
-    services.settings_manager.update_settings(thinking_level="minimal")
-    second = asyncio.run(runtime.create_session(cwd=str(project_b)))
+    async def scenario() -> None:
+        try:
+            first = await runtime.create_session(cwd=str(project_a))
 
-    assert first.get_model_selection() == ModelSelection(
-        endpoint_id="anthropic-messages", provider="faux", model_id="alpha"
-    )
-    assert second.get_model_selection() == ModelSelection(
-        endpoint_id="responses", provider="faux", model_id="beta"
-    )
-    assert second.agent.thinking_level == "minimal"
+            services.settings_manager.set_default_model(
+                ModelSelection(
+                    endpoint_id="responses", provider="faux", model_id="beta"
+                )
+            )
+            services.settings_manager.update_settings(thinking_level="minimal")
+            second = await runtime.create_session(cwd=str(project_b))
+
+            assert first.get_model_selection() == ModelSelection(
+                endpoint_id="anthropic-messages", provider="faux", model_id="alpha"
+            )
+            assert second.get_model_selection() == ModelSelection(
+                endpoint_id="responses", provider="faux", model_id="beta"
+            )
+            assert second.agent.thinking_level == "minimal"
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_create_services_can_use_preloaded_persistent_settings_manager(
@@ -369,7 +377,7 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
     )
 
     manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
     )
     asyncio.run(manager.append_model_change("faux", "beta", endpoint_id="responses"))
 

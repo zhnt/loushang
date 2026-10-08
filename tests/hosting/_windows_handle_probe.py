@@ -53,8 +53,10 @@ class WindowsHandleIdentityProbe:
     def matches(self, process: int, remote: int, expected: int) -> bool:
         """Compare a live child's handle with an already-owned parent object.
 
-        Only an absent child handle is negative evidence. Invalid reference or
-        process handles, access denial and cleanup failure must fail the test.
+        An absent child handle or an unsupported remote object is negative
+        evidence: neither can be the expected duplicable pipe/file object.
+        Invalid reference or process handles, access denial and cleanup failure
+        must fail the test.
         Duplicate into the parent; never close or inject a handle in the child.
         """
         if not self._process_id(wintypes.HANDLE(process)):
@@ -68,7 +70,7 @@ class WindowsHandleIdentityProbe:
             ctypes.byref(duplicate), 0, False, 0x2,  # DUPLICATE_SAME_ACCESS only
         ):
             error = self._last_error()
-            if error == 6:  # ERROR_INVALID_HANDLE, with process/reference validated
+            if error in (6, 50):  # INVALID_HANDLE or remote object NOT_SUPPORTED
                 return False
             raise OSError(error, "DuplicateHandle")
         try:

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 from loushang.appserver.protocol import TranscriptRecordV1
 
+from ..conversation.request_presentation import ConversationRequestPresentation
+
 
 @dataclass(slots=True)
 class HarnessWindowState:
@@ -20,6 +22,8 @@ class HarnessWindowState:
     unread: bool = False
     draft: str = ""
     draft_revision: int = field(default=0, kw_only=True)
+    request_id: int = field(default=0, kw_only=True)
+    request_presentation: ConversationRequestPresentation | None = field(default=None, kw_only=True)
     assistant_draft: str = ""
     pending_interaction_id: str | None = None
     pending_interaction_text: str | None = None

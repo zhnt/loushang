@@ -9,7 +9,7 @@ import pytest
 from loushang.agent import synthetic_model_transport
 from loushang.ai.types import TextPart
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
-from loushang.appserver.local_record import LocalConnectionDirectoryV1
+from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -58,6 +58,87 @@ def test_G16_PRODUCT_launch_rejects_shared_storage_and_does_not_create_files(tmp
             replace(launch, connection_root=root)
     assert not tuple(tmp_path.iterdir())
     assert str(tmp_path) not in repr(launch)
+
+
+def test_local_command_keeps_product_runtime_selection_lazy_and_trusted(tmp_path):
+    async def scenario():
+        called = []
+
+        def select(manager):
+            called.append(manager)
+            raise AssertionError("construction must not select a Session runtime")
+
+        command = CodingLocalCommandV1(
+            _local_launch(tmp_path.resolve()),
+            package_product_runtime_factory_for_session=select,
+        )
+        factory = command._attempt._request.foreground.session_factory
+        assert factory._package_product_runtime_factory_for_session is select
+        assert called == []
+        await command.close()
+        assert not tuple(tmp_path.iterdir())
+
+    asyncio.run(scenario())
+
+
+def test_local_command_product_selection_failure_never_uses_legacy_materializer(
+    tmp_path, monkeypatch
+):
+    import loushang.coding.bootstrap as coding_bootstrap
+
+    legacy_calls = []
+    selected = []
+
+    def reject_legacy(*_args, **_kwargs):
+        legacy_calls.append("materializer")
+        raise AssertionError("Product selection fell back to legacy startup")
+
+    def select(manager):
+        selected.append(manager.get_header().conversation_id)
+        return None
+
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+
+    async def scenario():
+        root = tmp_path.resolve()
+        monkeypatch.setenv("LOUSHANG_HOME", str(root / "platform"))
+        monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(root / "runtime"))
+        launch = _local_launch(root)
+        command = CodingLocalCommandV1(
+            launch,
+            model=_model(),
+            stream_fn=scripted_stream,
+            tools=[],
+            package_product_runtime_factory_for_session=select,
+        )
+        connection = LocalAppClientConnectionV1(
+            LocalConnectionDirectoryV1(launch.connection_root), launch.endpoint
+        )
+        try:
+            await command.start()
+            await connection.start()
+            client = connection.client
+            mux = await client.create_mux(MuxCreateV1("dev"))
+            selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
+            await client.attach_mux(MuxAttachV1(selector))
+            scope = launch.application.scopes[0]
+            with pytest.raises(AppServiceError):
+                await client.open_member(
+                    MuxMemberOpenV1(
+                        selector,
+                        SessionOpenSpecV1(
+                            "coding", "continuity-dev", scope.scope,
+                            scope.fingerprint, "dev",
+                        ),
+                    )
+                )
+            assert len(selected) == 1
+            assert legacy_calls == []
+        finally:
+            await connection.close()
+            await command.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
 
 
 @pytest.mark.parametrize("discovery_enabled", [False, True])
@@ -112,7 +193,16 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
         old_key = None
         try:
             mark("first_start")
-            await command.start()
+            if discovery_enabled:
+                await command.prepare()
+                assert not command._local.accepting
+                assert not command._local._scopes_enabled
+                assert not command._local._server._server.is_serving()
+                with pytest.raises(LocalRecordError):
+                    directory.read(launch.endpoint)
+                await command.activate()
+            else:
+                await command.start()
             mark("first_ready_construct_and_interact")
             old_key = directory.read(launch.endpoint).key
             for connection, scope, name in zip(
@@ -126,6 +216,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                 mux = await client.create_mux(MuxCreateV1(name))
                 selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
                 await client.attach_mux(MuxAttachV1(selector))
+                mark(f"open_member_{name}_start")
                 mux = await client.open_member(
                     MuxMemberOpenV1(
                         selector,
@@ -138,9 +229,11 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                         ),
                     )
                 )
+                mark(f"open_member_{name}_ready")
                 attachment = await client.attach_mux(MuxAttachV1(selector))
                 identities.append((mux, attachment))
                 if name == "review":
+                    mark("review_turn_start")
                     await client.start_turn(
                         TurnTextV1(
                             attachment.attachment_id,
@@ -149,6 +242,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                             "hello",
                         )
                     )
+                    mark("review_turn_done")
             mux, attachment = identities[0]
             turn = asyncio.create_task(
                 first.client.start_turn(
@@ -161,12 +255,13 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                 )
             )
             # This case tests disconnect during execution, not a cold-start SLO.
-            # Model entry remains bounded by this generation's 30-second watchdog.
+            # Model entry remains bounded by this generation's watchdog.
             entered = asyncio.create_task(hold_entered.wait())
             try:
                 done, _ = await asyncio.wait(
                     (entered, turn), return_when=asyncio.FIRST_COMPLETED
                 )
+                mark("hold_turn_entered")
                 if turn in done:
                     await turn  # Preserve a preflight failure instead of timing out.
                     pytest.fail("held turn completed before disconnect")
@@ -269,10 +364,13 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
 
     async def scenario():
         try:
-            facts = await asyncio.wait_for(first_generation(), 30)
+            # This generation opens two fresh Product B Sessions. CLI terminal
+            # tests separately bound cold-start readiness; keep the local
+            # disconnect and reattachment deadlines above at five seconds.
+            facts = await asyncio.wait_for(first_generation(), 45)
             # A new application's recovery does not inherit the previous
             # generation's elapsed test time. No operation retry renews a budget.
-            await asyncio.wait_for(recovery_generation(*facts), 30)
+            await asyncio.wait_for(recovery_generation(*facts), 45)
         except BaseException as error:
             mark("failed")
             error.add_note(f"G16 lifecycle phase timings (seconds): {timings}")

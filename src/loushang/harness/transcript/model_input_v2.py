@@ -1277,6 +1277,11 @@ class ModelInputV2Resolver:
         self._resolved_nodes: set[tuple[str, int]] = set()
         self._decoded_bytes = 0
 
+    def position_of(self, record_id: str) -> int | None:
+        """Locate a record in this resolver's selected ancestry."""
+
+        return self._positions.get(record_id)
+
     def rebuild_snapshot(
         self,
         snapshot_record: AgentTranscriptRecord,

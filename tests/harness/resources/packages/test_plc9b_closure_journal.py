@@ -198,6 +198,50 @@ def test_resolution_journal_appends_selection_then_exact_plan_and_replays(
     assert reopened.plan(operation_id=OPERATION_ID, attempt_epoch=1) == plan
 
 
+def test_verified_plan_read_is_strict_and_does_not_repair_or_create(
+    tmp_path: Path,
+) -> None:
+    journal = PackageClosureResolutionJournal(tmp_path / "closure.jsonl")
+    lock = journal.path.with_name(f"{journal.path.name}.lock")
+    assert journal.read_plan(operation_id=OPERATION_ID, attempt_epoch=1) is None
+    assert journal.read_attempt_evidence(operation_id=OPERATION_ID, attempt_epoch=1) == ()
+    assert not journal.path.exists()
+    assert not lock.exists()
+
+    journal.bind_basis(_basis())
+    journal.append_selection(_request(), _selection())
+    assert tuple(
+        record.evidence_kind
+        for record in journal.read_attempt_evidence(
+            operation_id=OPERATION_ID, attempt_epoch=1
+        )
+    ) == ("resolution_basis", "selection")
+    assert journal.read_plan(operation_id=OPERATION_ID, attempt_epoch=1) is None
+    plan = journal.append_plan(
+        request_fingerprint=REQUEST_FINGERPRINT, plan=_plan()
+    )
+    reopened = PackageClosureResolutionJournal(journal.path)
+    assert reopened.read_plan(operation_id=OPERATION_ID, attempt_epoch=1) == plan
+    evidence = reopened.read_attempt_evidence(
+        operation_id=OPERATION_ID, attempt_epoch=1
+    )
+    assert tuple(record.evidence_kind for record in evidence) == (
+        "resolution_basis",
+        "selection",
+        "verified_plan",
+    )
+    assert reopened.read_plan(operation_id=OPERATION_ID, attempt_epoch=2) is None
+    assert reopened.read_attempt_evidence(operation_id=OPERATION_ID, attempt_epoch=2) == ()
+
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    before = journal.path.read_bytes()
+    with pytest.raises(PackageClosureResolutionJournalError) as corrupt:
+        reopened.read_plan(operation_id=OPERATION_ID, attempt_epoch=1)
+    assert corrupt.value.code == "package_closure_resolution_journal_corrupt"
+    assert journal.path.read_bytes() == before
+
+
 def test_resolution_journal_rejects_changed_selection_and_post_plan_append(
     tmp_path: Path,
 ) -> None:

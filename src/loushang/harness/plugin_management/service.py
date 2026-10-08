@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -11,8 +14,14 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
@@ -28,6 +37,9 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
     PluginManagementOperationResultV1,
+)
+from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
@@ -140,15 +152,18 @@ class PluginManagementService:
         operation_journal_path: str | Path,
         retirement_intents: PluginRetirementIntentLedgerPort | None = None,
         retirement_sets: PluginRetirementSetLedgerPort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         self._desired_state = desired_state
         self._path = Path(operation_journal_path)
         self._retirement_intents = retirement_intents or PluginRetirementIntentLedger(
-            self._path.with_name(f"{self._path.name}.retirement-intents")
+            self._path.with_name(f"{self._path.name}.retirement-intents"),
+            load_policy=load_policy,
         )
         self._retirement_sets = retirement_sets or PluginRetirementSetLedger(
             self._path.with_name(f"{self._path.name}.retirement-sets"),
             retirement_intents=self._retirement_intents,
+            load_policy=load_policy,
         )
         journal_paths = {
             self._path.resolve(),
@@ -165,11 +180,15 @@ class PluginManagementService:
             DURABLE_LOCKED_JOURNAL,
             locking=False,
         )
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def operation_journal_path(self) -> Path:
         return self._path
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return getattr(self._desired_state, "gc_gate", None)
 
     @property
     def retirement_intent_journal_path(self) -> Path:
@@ -187,11 +206,17 @@ class PluginManagementService:
             command, (PluginManagementCommandV1, PluginManagementUpdateCommandV2)
         ):
             raise TypeError("Plugin management command is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            locks.enter_context(
+                gc_reference_guard(getattr(self._desired_state, "gc_gate", None))
+            )
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             existing = self._existing_operation(replayed, command)
             if existing is not None:
@@ -223,14 +248,31 @@ class PluginManagementService:
                 journal_revision=accepted.journal_revision,
             )
 
-    def recover(self) -> tuple[PluginManagementOperationEvent, ...]:
+    def recover(
+        self, *, before_replay: Callable[[], None] | None = None
+    ) -> tuple[PluginManagementOperationEvent, ...]:
         """Recover accepted/running operations in original acceptance order."""
 
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        if before_replay is not None:
+            before_replay()
+        with ExitStack() as locks:
+            gate = getattr(self._desired_state, "gc_gate", None)
+            if before_replay is not None and isinstance(
+                gate, PluginPackageGcReservationJournal
+            ):
+                locks.enter_context(gate.guard(before_load=before_replay))
+            else:
+                locks.enter_context(gc_reference_guard(gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                    create=before_replay is None,
+                )
+            )
+            if before_replay is not None:
+                before_replay()
             replayed = self._load_and_replay_unlocked()
             pending = tuple(
                 sorted(
@@ -247,6 +289,8 @@ class PluginManagementService:
             recovered: list[PluginManagementOperationEvent] = []
             journal_revision = len(replayed.events)
             for event in pending:
+                if before_replay is not None:
+                    before_replay()
                 terminal = self._execute_unlocked(
                     event.command,
                     latest=event,
@@ -257,10 +301,11 @@ class PluginManagementService:
             return tuple(recovered)
 
     def operations(self) -> tuple[PluginManagementOperationEvent, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return tuple(
@@ -278,10 +323,11 @@ class PluginManagementService:
     ) -> PluginManagementOperationEvent | None:
         if not isinstance(operation_id, str) or not operation_id:
             raise ValueError("Plugin management operation id must be non-empty")
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             replayed = self._load_and_replay_unlocked()
         return replayed.latest_by_operation.get(operation_id)
@@ -389,9 +435,7 @@ class PluginManagementService:
 
         mutation, preparation_error = self._prepare_update_mutation(command, fence)
         if preparation_error is not None:
-            result = PluginUpdateOperationResultV2.failed(
-                error_code=preparation_error
-            )
+            result = PluginUpdateOperationResultV2.failed(error_code=preparation_error)
         else:
             if mutation is None:
                 raise AssertionError("Prepared Plugin update mutation is missing")
@@ -526,8 +570,7 @@ class PluginManagementService:
         key: PluginInstallationKeyV1,
     ) -> None:
         if any(
-            event.status != "terminal"
-            and _installation_key(event.command) == key
+            event.status != "terminal" and _installation_key(event.command) == key
             for event in replayed.latest_by_operation.values()
         ):
             raise PluginManagementError(
@@ -540,14 +583,12 @@ class PluginManagementService:
         if not self._path.exists():
             return _empty_replay()
         try:
-            snapshot: JsonlSnapshot[None, PluginManagementOperationEvent] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[None, PluginManagementOperationEvent] = load_jsonl(
+                self._path,
+                record_codec=PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
             )
         except JournalFileError as exc:
             code = (
@@ -584,12 +625,10 @@ class PluginManagementService:
         }
         retirement_snapshot = self._retirement_intents.snapshot()
         retirement_by_operation = {
-            intent.source_operation_id: intent
-            for intent in retirement_snapshot.intents
+            intent.source_operation_id: intent for intent in retirement_snapshot.intents
         }
         retirement_by_id = {
-            intent.retirement_id: intent
-            for intent in retirement_snapshot.intents
+            intent.retirement_id: intent for intent in retirement_snapshot.intents
         }
         for operation_id, intent in retirement_by_operation.items():
             if desired_by_operation.get(operation_id) != intent.source_transition:
@@ -621,9 +660,7 @@ class PluginManagementService:
             expected_retirement = (
                 None if desired is None else retirement_intent_for_transition(desired)
             )
-            actual_retirement = retirement_by_operation.get(
-                event.command.operation_id
-            )
+            actual_retirement = retirement_by_operation.get(event.command.operation_id)
             if committed and actual_retirement != expected_retirement:
                 raise _retirement_corrupt(
                     self._retirement_intents.path,
@@ -637,8 +674,7 @@ class PluginManagementService:
 
         retirement_set_snapshot = self._retirement_sets.snapshot()
         retirement_sets = {
-            item.intent.retirement_id: item
-            for item in retirement_set_snapshot.sets
+            item.intent.retirement_id: item for item in retirement_set_snapshot.sets
         }
         for retirement_id, retirement_set in retirement_sets.items():
             if retirement_by_id.get(retirement_id) != retirement_set.intent:
@@ -722,6 +758,57 @@ def _replay(
     return replayed
 
 
+def decode_plugin_management_operation_capture(
+    raw: str, *, path: Path
+) -> tuple[PluginManagementOperationEvent, ...]:
+    """Replay captured operation bytes without opening or repairing their source."""
+
+    if not isinstance(raw, str) or not isinstance(path, Path):
+        raise TypeError("Plugin management operation capture requires text and path")
+    if raw and not raw.endswith("\n"):
+        raise PluginManagementError(
+            "Plugin management operation capture is incomplete",
+            code="plugin_management_journal_corrupt",
+            path=path,
+        )
+    try:
+        for line in raw.splitlines():
+            if line.strip():
+                json.loads(line, object_pairs_hook=_unique_operation_json_object)
+        snapshot: JsonlSnapshot[None, PluginManagementOperationEvent] = decode_jsonl(
+            raw,
+            target=path,
+            record_codec=PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+    except (JournalFileError, ValueError) as exc:
+        raise PluginManagementError(
+            "Plugin management operation capture cannot be decoded",
+            code="plugin_management_journal_corrupt",
+            path=path,
+        ) from exc
+    replayed = _replay(snapshot.records, path=path)
+    return tuple(
+        sorted(
+            replayed.latest_by_operation.values(),
+            key=lambda event: replayed.accepted_journal_revision[
+                event.command.operation_id
+            ],
+        )
+    )
+
+
+def _unique_operation_json_object(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Plugin management operation capture has duplicate keys")
+        result[key] = value
+    return result
+
+
 def _corrupt(path: Path, message: str) -> PluginManagementError:
     return PluginManagementError(
         message,
@@ -758,6 +845,7 @@ __all__ = [
     "PluginDesiredStateLedgerPort",
     "PluginManagementError",
     "PluginManagementService",
+    "decode_plugin_management_operation_capture",
     "PluginRetirementIntentLedgerPort",
     "PluginRetirementSetLedgerPort",
 ]

@@ -17,6 +17,7 @@ from loushang.harness.capabilities._activation_host_lifecycle import (
     DurableActivationHostLifecycle,
 )
 from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderBindingSpec,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
 )
@@ -131,6 +132,11 @@ class CapabilityComponentHost:
         admission = resolved.admission
         candidate = admission.candidate
         spec = resolved.binding_spec
+        if not isinstance(spec, CapabilityProviderBindingSpec):
+            _raise_host(
+                "capability_provider_worker_host_required",
+                "Worker Provider requires the Worker Component Host.",
+            )
         return ContributionActivationApprovalSubject(
             candidate_fingerprint=admission.candidate_fingerprint,
             admission_fingerprint=admission.fingerprint,
@@ -146,9 +152,7 @@ class CapabilityComponentHost:
             scope_id=candidate.scope_id,
             instance_revision_ref=candidate.instance_revision_ref,
             source_trust_class=trust_snapshot.source_trust_class,
-            source_trust_policy_revision=(
-                trust_snapshot.source_trust_policy_revision
-            ),
+            source_trust_policy_revision=(trust_snapshot.source_trust_policy_revision),
             product_policy_revision=candidate.product_policy_revision,
             owner_policy_revision=owner_snapshot.policy_revision,
             revocation_epoch=owner_snapshot.revocation_epoch,
@@ -200,9 +204,7 @@ class CapabilityComponentHost:
             reservation=reservation,
             import_realm=self._import_realm,
             lifecycle=self._lifecycle,
-            distribution_evidence_resolver=(
-                self._distribution_evidence_resolver
-            ),
+            distribution_evidence_resolver=(self._distribution_evidence_resolver),
             validate_current_authorities=lambda: self._validate_current_authorities(
                 resolved,
                 owner_snapshot=owner_snapshot,
@@ -336,9 +338,7 @@ class _PreparedComponentAttempt:
             if inspect.isawaitable(value):
                 value = await value
             if not isinstance(value, CapabilityBundleValue):
-                raise TypeError(
-                    "Component factory must return a CapabilityBundleValue"
-                )
+                raise TypeError("Component factory must return a CapabilityBundleValue")
             self.disposer = disposer
             self.pending_disposal_value = value
             if set(value.facet_ids) != set(self.resolved.admission.effective_facets):
@@ -404,6 +404,11 @@ class _PreparedComponentAttempt:
         self,
     ) -> tuple[CapabilityProviderFactory, CapabilityProviderDisposer | None]:
         spec = self.resolved.binding_spec
+        if not isinstance(spec, CapabilityProviderBindingSpec):
+            _raise_host(
+                "capability_provider_worker_host_required",
+                "Worker Provider requires the Worker Component Host.",
+            )
         factory_module = self._load_module(spec.factory, suffix="factory")
         factory = factory_module.resolve(spec.factory.symbol)
         if not callable(factory):
@@ -511,8 +516,7 @@ def _validate_current_authorities(
     if (
         not trust_snapshot.trusted
         or trust_snapshot.plugin_id != resolved.binding_spec.plugin_id
-        or trust_snapshot.package_source_identity
-        != candidate.package_source_identity
+        or trust_snapshot.package_source_identity != candidate.package_source_identity
         or trust_snapshot.source_trust_class != candidate.source_trust_class
         or trust_snapshot.source_trust_policy_revision
         != candidate.source_trust_policy_revision

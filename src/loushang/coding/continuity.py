@@ -958,6 +958,7 @@ class _PrivateContinuityPayload:
     file_identity: tuple[int, int]
     root_identity: tuple[int, int]
     root_descriptor: int
+    file_descriptor: int  # Pin the inode until identity-checked cleanup finishes.
 
 
 def _write_private_continuity_payload(
@@ -1012,21 +1013,28 @@ def _write_private_continuity_payload_at(
         _write_continuity_payload_bytes(descriptor, payload.data)
         status = os.fstat(descriptor)
         file_identity = (status.st_dev, status.st_ino)
-        os.close(descriptor)
-        descriptor = -1
         return _PrivateContinuityPayload(
             path=root / name,
             file_identity=file_identity,
             root_identity=root_identity,
             root_descriptor=root_descriptor,
+            file_descriptor=descriptor,
         )
     except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        if name:
-            with suppress(OSError):
-                os.unlink(name, dir_fd=root_descriptor)
-        os.close(root_descriptor)
+        try:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    current = os.stat(
+                        name, dir_fd=root_descriptor, follow_symlinks=False
+                    )
+                    if os.path.samestat(os.fstat(descriptor), current):
+                        os.unlink(name, dir_fd=root_descriptor)
+        finally:
+            try:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            finally:
+                os.close(root_descriptor)
         raise
 
 
@@ -1117,7 +1125,10 @@ def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> Non
             raise OSError("Coding continuity temporary file identity changed")
         os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
     finally:
-        os.close(staged.root_descriptor)
+        try:
+            os.close(staged.file_descriptor)
+        finally:
+            os.close(staged.root_descriptor)
 
 
 async def _remove_private_continuity_payload_atomic(

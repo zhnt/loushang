@@ -104,6 +104,48 @@ def _owned_attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAtta
     )
 
 
+@pytest.mark.parametrize(("text", "running", "key", "kind"), [
+    ("prompt", False, "enter", "prompt"),
+    ("prompt", True, "enter", "steer"),
+    ("prompt", True, "alt+enter", "follow_up"),
+    ("/local", True, "enter", "local"),
+    ("/exit", False, "enter", "exit"),
+])
+def test_deferred_input_returns_intent_without_presenting_or_consuming(text, running, key, kind):
+    app = _ConversationApp()
+    if running:
+        app.state.begin_run(started_at=1.0)
+    app.composer.set_text(text)
+    router = ConversationInputRouter(app=app, should_exit=lambda value: value == "/exit",
+        is_local_command=lambda value: value == "/local", submission_presentation="deferred")
+    result = router.handle(InputEvent(kind="key", key=key))
+    assert result.kind == kind
+    assert app.composer.value == text
+    assert app.state.running is running
+    assert not app.state.records and not app.state.pending_steers and not app.state.pending_followups
+
+
+def test_deferred_input_refuses_attachment_transfer_and_remote_queue_edits(tmp_path):
+    app = _ConversationApp()
+    router = ConversationInputRouter(app=app, should_exit=lambda _: False,
+                                    submission_presentation="deferred")
+    attachment = _owned_attachment(tmp_path)
+    router.draft_store.add(attachment)
+    app.composer.set_text(attachment.marker)
+    with pytest.raises(ValueError, match="deferred input requires an empty attachment store"):
+        router.handle(InputEvent(kind="key", key="enter"))
+    assert len(router.draft_store) == 1 and attachment.path.exists()
+    app.state.pending_steers.append("remote steer")
+    app.state.pending_followups.append("remote followup")
+    for key in ("alt+up", "escape"):
+        assert router.handle(InputEvent(kind="key", key=key)).kind == "ignored"
+    assert app.state.pending_steers == ["remote steer"]
+    assert app.state.pending_followups == ["remote followup"]
+    assert app.composer.value == attachment.marker
+    router.dispose()
+    assert not attachment.path.exists()
+
+
 def test_conversation_input_results_are_discriminated_and_payload_valid() -> None:
     from loushang.harnesstui.conversation.input import (
         ConversationAbortResult,

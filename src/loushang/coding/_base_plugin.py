@@ -6,6 +6,7 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loushang.coding._base_plugin_owners import (
     CodingBaseCommandOwner,
@@ -25,6 +26,9 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
@@ -38,9 +42,13 @@ from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentPr
 from loushang.harness.plugin_management import (
     plugin_enablement_legacy_input_fingerprint,
 )
+from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
+)
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.revisions import PluginRevisionError
@@ -74,6 +82,11 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 
+if TYPE_CHECKING:
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+
 _PLUGIN_ID = "coding.base"
 _SOURCE_TRUST_CLASS = "host-equivalent-local"
 _SOURCE_TRUST_POLICY_REVISION = "coding-base-source-trust-v1"
@@ -82,6 +95,7 @@ _OWNER_SPECS: tuple[tuple[str, OwnerContributionKind, str], ...] = (
     ("commands.session", "command_pack", "harness.session.standard"),
     ("resources.prompt", "resource_item", "loushang.resource.prompt"),
     ("resources.skill", "resource_item", "loushang.resource.skill"),
+    ("resources.theme", "resource_item", "loushang.resource.theme"),
     ("tools.workspace", "tool_pack", "harness.workspace.core"),
 )
 
@@ -551,18 +565,47 @@ def build_coding_base_plugin_owners(
         raise TypeError("Coding base owners require base assembly")
     if not isinstance(plugin_assembly, ProductPluginCompositionAssembly):
         raise TypeError("Coding base owners require Product Plugin assembly")
+    return _build_coding_base_owners_from_admissions(
+        plan=assembly.plan_seed.plan,
+        product_composition=plugin_assembly.product_composition,
+        owner_bindings=plugin_assembly.contribution_request.owner_bindings,
+        scope_id=assembly.scope_id,
+        tool_contribution_id=assembly.tool_contribution_id,
+        clock=clock,
+        tool_options=tool_options,
+    )
+
+
+def _build_coding_base_owners_from_admissions(
+    *,
+    plan: PluginSelectionPlanV2,
+    product_composition: ProductCompositionCompilation,
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+    scope_id: str,
+    tool_contribution_id: str | None,
+    clock: Callable[[], int],
+    tool_options: ToolsOptions,
+) -> CodingBasePluginOwners:
+    """Bind owner adapters to one exact Product compilation and its authorities."""
+
+    if not isinstance(plan, PluginSelectionPlanV2):
+        raise TypeError("Coding base owner plan is invalid")
+    if not isinstance(product_composition, ProductCompositionCompilation):
+        raise TypeError("Coding base owner Product composition is invalid")
+    if plan.context.scope_id != scope_id:
+        raise ValueError("Coding base owner scope changed Product selection")
     if not callable(clock):
         raise TypeError("Coding base owner clock is invalid")
     if not isinstance(tool_options, ToolsOptions):
         raise TypeError("Coding base Tool options are invalid")
     admissions = {
         (item.owner_id, item.contribution_kind, item.contribution_id): item
-        for item in plugin_assembly.product_composition.catalog_admissions
+        for item in product_composition.catalog_admissions
         if item.plugin_id == _PLUGIN_ID
     }
     tool_admission = (
-        admissions.get(("tools.workspace", "tool_pack", assembly.tool_contribution_id))
-        if assembly.tool_contribution_id is not None
+        admissions.get(("tools.workspace", "tool_pack", tool_contribution_id))
+        if tool_contribution_id is not None
         else None
     )
     command_admission = admissions.get(
@@ -570,25 +613,29 @@ def build_coding_base_plugin_owners(
     )
     selected_contribution_ids = {
         item.contribution_id
-        for item in assembly.plan_seed.plan.selected_contributions
+        for item in plan.selected_contributions
         if item.plugin_id == _PLUGIN_ID
     }
     command_selected = "coding.standard" in selected_contribution_ids
-    expected_admissions = int(assembly.tool_contribution_id is not None) + int(
+    expected_admissions = int(tool_contribution_id is not None) + int(
         command_selected
     )
     if (
         len(admissions) != expected_admissions
         or (command_selected and command_admission is None)
         or (not command_selected and command_admission is not None)
-        or (assembly.tool_contribution_id is not None and tool_admission is None)
+        or (tool_contribution_id is not None and tool_admission is None)
     ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
     authorities = {
         item.owner_key: item.authority
-        for item in plugin_assembly.contribution_request.owner_bindings
+        for item in owner_bindings
     }
-    context = plugin_assembly.product_composition.authority_context
+    context = product_composition.authority_context
+    if tuple(item.authority.snapshot() for item in owner_bindings) != (
+        context.owner_snapshots
+    ):
+        raise ValueError("Coding base owner authority changed Product compilation")
 
     def read_owner(
         owner_id: str,
@@ -632,7 +679,7 @@ def build_coding_base_plugin_owners(
                 admission=tool_admission,
                 authority_gate=gate,
                 options=tool_options,
-                scope_id=assembly.scope_id,
+                scope_id=scope_id,
             )
             if tool_admission is not None
             else None
@@ -641,7 +688,7 @@ def build_coding_base_plugin_owners(
             CodingBaseCommandOwner(
                 admission=command_admission,
                 authority_gate=gate,
-                scope_id=assembly.scope_id,
+                scope_id=scope_id,
             )
             if command_admission is not None
             else None
@@ -662,7 +709,141 @@ def _build_selection_plan(
     include_command_contribution: bool,
     instance_revision_ref: PluginInstanceRevisionRef | None = None,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
-    contributions = package.contribution_index.items
+    return _build_selection_plan_from_evidence(
+        contributions=package.contribution_index.items,
+        source_trust_snapshot=PluginSourceTrustSnapshotV1(
+            plugin_id=_PLUGIN_ID,
+            package_source_identity=binding.source_identity,
+            source_trust_class=_SOURCE_TRUST_CLASS,
+            source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+            trusted=True,
+        ),
+        instance_revision_ref=(
+            instance_revision_ref
+            or PluginInstanceRevisionRef(
+                instance_id=f"{_PLUGIN_ID}@{scope_id}",
+                plugin_id=_PLUGIN_ID,
+                revision=1,
+            )
+        ),
+        policy_revision_base=(
+            f"coding-base-plc6-v1:{composition_set.set_id}:"
+            f"{composition_set.fingerprint}"
+        ),
+        scope_id=scope_id,
+        host_environment=host_environment,
+        include_tool_contribution=include_tool_contribution,
+        include_tool_claim_prompt=include_tool_claim_prompt,
+        include_skill_contribution=include_skill_contribution,
+        include_command_contribution=include_command_contribution,
+    )
+
+
+def prepare_coding_base_product_plan(
+    selected: PackageProductSelectedPluginManifestV1,
+    composition_set: CodingCompositionSetPlan,
+    *,
+    installation_key: PluginInstallationKeyV1,
+    session_id: str,
+    host_environment: HostEnvironment,
+    include_tool_contribution: bool = True,
+    include_tool_claim_prompt: bool = True,
+    include_skill_contribution: bool = True,
+    include_command_contribution: bool = True,
+) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
+    """Build an inert Coding plan from one Product-selected data-only root."""
+
+    from loushang.harness.package_product.product_local_wheel_runtime import (
+        PackageProductSelectedPluginManifestV1,
+    )
+
+    if not isinstance(selected, PackageProductSelectedPluginManifestV1):
+        raise TypeError("Coding base requires Product-selected Plugin evidence")
+    if not isinstance(composition_set, CodingCompositionSetPlan):
+        raise TypeError("Coding base requires a composition-set plan")
+    if not isinstance(host_environment, HostEnvironment):
+        raise TypeError("Coding base requires a host environment")
+    if not isinstance(installation_key, PluginInstallationKeyV1):
+        raise TypeError("Coding base requires an exact Product installation key")
+    manifest = selected.verified_manifest()
+    source_trust_snapshot = selected.source_trust_snapshot
+    if not isinstance(source_trust_snapshot, PluginSourceTrustSnapshotV1):
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base has no Product source trust decision",
+            code="coding_base_product_source_untrusted",
+        )
+    _validate_base_request(composition_set)
+    if (
+        manifest.name != _PLUGIN_ID
+        or selected.snapshot.installation_key != installation_key
+        or selected.snapshot.installation_key.product_id != CODING_PRODUCT_ID
+        or selected.snapshot.instance_revision_ref.plugin_id != _PLUGIN_ID
+        or source_trust_snapshot.plugin_id != _PLUGIN_ID
+        or source_trust_snapshot.package_source_identity
+        != selected.snapshot.package_revision.package_source_identity
+        or source_trust_snapshot.source_trust_class != _SOURCE_TRUST_CLASS
+        or not source_trust_snapshot.trusted
+        or any(
+            item.contribution_execution_model != "data_only"
+            for item in manifest.contribution_index.items
+        )
+    ):
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base Product evidence is not admissible",
+            code="coding_base_product_selection_mismatch",
+        )
+    contributions = tuple(
+        reservation
+        for reservation, _ in selected.verified_data_only_declarations()
+    )
+    scope_id = f"session:{_normalized(session_id, name='Coding Session id')}"
+    plan, tool_id, tool_names = _build_selection_plan_from_evidence(
+        contributions=contributions,
+        source_trust_snapshot=source_trust_snapshot,
+        instance_revision_ref=selected.snapshot.instance_revision_ref,
+        policy_revision_base=(
+            f"coding-base-plc9b-v1:{composition_set.set_id}:"
+            f"{composition_set.fingerprint}:"
+            f"{selected.snapshot.committed_record.committed_set.set_id}"
+        ),
+        scope_id=scope_id,
+        host_environment=host_environment,
+        include_tool_contribution=include_tool_contribution,
+        include_tool_claim_prompt=include_tool_claim_prompt,
+        include_skill_contribution=include_skill_contribution,
+        include_command_contribution=include_command_contribution,
+    )
+    expected_ids = {
+        contribution_id
+        for contribution_id in (
+            tool_id,
+            "prompt-standard" if include_tool_claim_prompt else None,
+            "skill-standard" if include_skill_contribution else None,
+            "coding.standard" if include_command_contribution else None,
+        )
+        if contribution_id is not None
+    }
+    if {item.contribution_id for item in plan.selected_contributions} != expected_ids:
+        raise CodingBasePluginAssemblyError(
+            "Selected Coding base Product contributions are incomplete",
+            code="coding_base_product_selection_mismatch",
+        )
+    return plan, tool_id, tool_names
+
+
+def _build_selection_plan_from_evidence(
+    *,
+    contributions: tuple[PluginContributionReservation, ...],
+    source_trust_snapshot: PluginSourceTrustSnapshotV1,
+    instance_revision_ref: PluginInstanceRevisionRef,
+    policy_revision_base: str,
+    scope_id: str,
+    host_environment: HostEnvironment,
+    include_tool_contribution: bool,
+    include_tool_claim_prompt: bool,
+    include_skill_contribution: bool,
+    include_command_contribution: bool,
+) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     tool_contribution_id = (
         "coding.builtin.windows"
         if host_environment.os_family == "windows"
@@ -689,9 +870,7 @@ def _build_selection_plan(
         if include_tool_contribution
         else ()
     )
-    policy_revision = (
-        f"coding-base-plc6-v1:{composition_set.set_id}:{composition_set.fingerprint}"
-    )
+    policy_revision = policy_revision_base
     if not all(
         (
             include_tool_contribution,
@@ -712,26 +891,11 @@ def _build_selection_plan(
             product_id=CODING_PRODUCT_ID,
             scope_id=scope_id,
             policy_revision=policy_revision,
-            instance_revision_refs=(
-                instance_revision_ref
-                or PluginInstanceRevisionRef(
-                    instance_id=f"{_PLUGIN_ID}@{scope_id}",
-                    plugin_id=_PLUGIN_ID,
-                    revision=1,
-                ),
-            ),
+            instance_revision_refs=(instance_revision_ref,),
         ),
         selected_plugin_ids=(_PLUGIN_ID,),
         selected_contributions=selected_contributions,
-        source_trust_snapshots=(
-            PluginSourceTrustSnapshotV1(
-                plugin_id=_PLUGIN_ID,
-                package_source_identity=binding.source_identity,
-                source_trust_class=_SOURCE_TRUST_CLASS,
-                source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-                trusted=True,
-            ),
-        ),
+        source_trust_snapshots=(source_trust_snapshot,),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=tuple(
                 PluginEffectiveConfigurationEntry(
@@ -831,6 +995,7 @@ def _owner_bindings(
     include_prompt: bool,
     include_skill: bool,
     include_command: bool,
+    include_theme: bool = False,
 ) -> tuple[ProductContributionOwnerBinding, ...]:
     selected_specs = tuple(
         spec
@@ -838,6 +1003,7 @@ def _owner_bindings(
         if (include_tools or spec[0] != "tools.workspace")
         and (include_prompt or spec[0] != "resources.prompt")
         and (include_skill or spec[0] != "resources.skill")
+        and (include_theme or spec[0] != "resources.theme")
         and (include_command or spec[0] != "commands.session")
     )
     return tuple(
@@ -909,6 +1075,7 @@ __all__ = [
     "build_coding_base_plugin_owners",
     "coding_base_plugin_root",
     "prepare_coding_base_plugin_assembly",
+    "prepare_coding_base_product_plan",
     "prepare_managed_coding_base_plugin_assembly",
     "prepare_coding_base_resource_plan_seed",
     "prepare_coding_base_plugin_session",

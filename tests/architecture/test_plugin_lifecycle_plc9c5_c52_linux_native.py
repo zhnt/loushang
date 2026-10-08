@@ -200,14 +200,18 @@ def test_c52_private_imports_are_exact_lazy_and_one_way() -> None:
         assert forbidden not in bridge
 
 
-def test_c52_bridge_has_one_explicit_product_consumer_and_adapter_stays_blind() -> None:
+def test_c52_bridge_has_bounded_explicit_product_consumers_and_adapter_stays_blind() -> None:
     factory = "_bind_posix_static_contained_product_worker_profile"
     consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
         if path != BRIDGE and factory in _read(path)
     }
-    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
+    assert consumers == {
+        Path("src/loushang/coding/_product_worker_canary.py"),
+        Path("src/loushang/coding/package_product_worker_operator_query.py"),
+        Path("src/loushang/coding/package_product_worker_pending_host.py"),
+    }
     adapter = _read(HOSTING_ADAPTER)
     assert "ProductWorkerNativeProfilePort" in adapter
     for forbidden in (

@@ -13,6 +13,9 @@ from loushang.coding._base_plugin import (
     build_coding_base_plugin_owners,
 )
 from loushang.coding._base_plugin_owners import CodingBaseToolRegistrationSlot
+from loushang.coding._base_product_composition import (
+    CodingBaseProductSessionAssembly,
+)
 from loushang.coding._capability_plugin_composition import (
     CodingCapabilityPluginCompositionAssembly,
     CodingCapabilityPluginCompositionError,
@@ -44,6 +47,11 @@ from loushang.coding.lsp.commands import (
 )
 from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
+from loushang.coding.package_product_runtime import CodingProductWorkspaceWitnessV1
+from loushang.coding.package_product_worker_session_composition import (
+    CodingProductWorkerOrdinarySessionBinding,
+    validate_coding_product_worker_ordinary_session_inputs,
+)
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -77,6 +85,13 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeActivationError,
+    PackageProductRuntimeBindingV1,
+)
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.product_contract import (
@@ -119,6 +134,7 @@ from loushang.harness.transcript import (
     CompactionResult,
 )
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 # project_runtime_event_to_session_event remains an external migration label.
@@ -199,6 +215,7 @@ class AgentSession(AgentProductSession):
         api_registry: APIRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
+        output_capture_factory: ExecCaptureFactory | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: StagedResourceCompositionCandidate | None = None,
@@ -216,9 +233,21 @@ class AgentSession(AgentProductSession):
         coding_base_plugin_session_assembly: (
             CodingBasePluginSessionAssembly | None
         ) = None,
+        coding_base_product_session_assembly: (
+            CodingBaseProductSessionAssembly | None
+        ) = None,
+        coding_base_product_runtime_binding: (
+            PackageProductRuntimeBindingV1 | None
+        ) = None,
+        coding_product_workspace_witness: (
+            CodingProductWorkspaceWitnessV1 | None
+        ) = None,
         coding_plugin_clock: Callable[[], int] | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        coding_product_worker_ordinary_binding: (
+            CodingProductWorkerOrdinarySessionBinding | None
+        ) = None,
         initial_resource_catalog_bootstrap: Any | None = None,
         resource_catalog_refresh_bootstrap_factory: Any | None = None,
         resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None,
@@ -228,20 +257,17 @@ class AgentSession(AgentProductSession):
             and coding_lsp_plugin_assembly is not None
         ):
             raise ValueError("Coding Capability Plugin assembly was supplied twice")
-        capability_plugin_assembly = (
-            coding_capability_plugin_assembly
-            or (
-                (
-                    coding_lsp_plugin_assembly.capability_assembly
-                    if isinstance(
-                        coding_lsp_plugin_assembly,
-                        CodingLspPluginOptInAssembly,
-                    )
-                    else coding_lsp_plugin_assembly
+        capability_plugin_assembly = coding_capability_plugin_assembly or (
+            (
+                coding_lsp_plugin_assembly.capability_assembly
+                if isinstance(
+                    coding_lsp_plugin_assembly,
+                    CodingLspPluginOptInAssembly,
                 )
-                if coding_lsp_plugin_assembly is not None
-                else None
+                else coding_lsp_plugin_assembly
             )
+            if coding_lsp_plugin_assembly is not None
+            else None
         )
         if capability_plugin_assembly is not None and not isinstance(
             capability_plugin_assembly,
@@ -258,6 +284,107 @@ class AgentSession(AgentProductSession):
             CodingBasePluginSessionAssembly,
         ):
             raise TypeError("Coding base Plugin Session assembly is invalid")
+        if coding_base_product_session_assembly is not None and not isinstance(
+            coding_base_product_session_assembly,
+            CodingBaseProductSessionAssembly,
+        ):
+            raise TypeError("Coding base Product Session assembly is invalid")
+        if coding_base_product_session_assembly is not None and any(
+            (
+                coding_base_plugin_assembly,
+                coding_base_plugin_session_assembly,
+            )
+        ):
+            raise ValueError("Coding base Product cannot mix Plugin session routes")
+        if coding_product_worker_ordinary_binding is not None:
+            if (
+                not isinstance(
+                    coding_product_worker_ordinary_binding,
+                    CodingProductWorkerOrdinarySessionBinding,
+                )
+                or coding_base_product_session_assembly is None
+                or coding_product_worker_ordinary_binding.ordinary
+                is not coding_base_product_session_assembly.session_inputs
+                or workspace_capability_binding
+                is not coding_base_product_session_assembly.workspace_binding
+                or coding_product_worker_ordinary_binding.workspace_binding
+                is not workspace_capability_binding
+            ):
+                raise ValueError("Coding Product Worker ordinary Session changed")
+            validate_coding_product_worker_ordinary_session_inputs(
+                ordinary=coding_product_worker_ordinary_binding.ordinary,
+                combined=coding_product_worker_ordinary_binding.combined,
+                workspace_binding=workspace_capability_binding,
+            )
+        if (
+            coding_base_product_session_assembly is not None
+            and capability_plugin_assembly is not None
+            and (
+                capability_plugin_assembly.session_inputs
+                is not coding_base_product_session_assembly.session_inputs
+                or capability_plugin_assembly.selection.plan
+                != coding_base_product_session_assembly.compilation.plan
+                or capability_plugin_assembly.plugin_assembly.product_composition
+                is not coding_base_product_session_assembly.compilation.product_composition
+            )
+        ):
+            raise ValueError("Coding Product Session composition changed")
+        if (
+            coding_base_product_session_assembly is not None
+            and capability_plugin_assembly is not None
+        ):
+            compilation = coding_base_product_session_assembly.compilation
+            selected = (
+                compilation.selected_manifest,
+                *compilation.selected_capability_manifests,
+                *compilation.selected_external_data_manifests,
+            )
+            packages = capability_plugin_assembly.runtime.packages
+            if tuple(package.manifest.name for package in packages) != tuple(
+                sorted(item.manifest.name for item in selected)
+            ) or {
+                package.manifest.name: package.content_digest for package in packages
+            } != {
+                item.manifest.name: item.snapshot.root_ref.artifact_digest
+                for item in selected
+            }:
+                raise ValueError("Coding Product Session packages changed")
+        if coding_base_product_session_assembly is not None:
+            if package_materializer is not None:
+                raise ValueError("Coding base Product cannot use a peer materializer")
+            if initial_resource_catalog_bootstrap is None:
+                raise ValueError("Coding base Product requires Catalog bootstrap")
+            if (
+                workspace_capability_binding
+                is not coding_base_product_session_assembly.workspace_binding
+            ):
+                raise ValueError("Coding base Product workspace binding changed")
+            if coding_base_product_runtime_binding is None:
+                raise ValueError("Coding base Product requires runtime binding")
+            if (
+                coding_base_product_session_assembly.compilation.plan.context.scope_id
+                != f"session:{session_manager.get_header().conversation_id}"
+            ):
+                raise ValueError("Coding base Product Session identity changed")
+        if coding_base_product_runtime_binding is not None and (
+            coding_base_product_session_assembly is None
+            or not isinstance(
+                coding_base_product_runtime_binding, PackageProductRuntimeBindingV1
+            )
+            or coding_base_product_runtime_binding.product_id
+            != coding_base_product_session_assembly.compilation.plan.context.product_id
+        ):
+            raise ValueError("Coding base Product runtime binding is invalid")
+        if coding_product_workspace_witness is not None and (
+            not isinstance(
+                coding_product_workspace_witness, CodingProductWorkspaceWitnessV1
+            )
+            or coding_product_workspace_witness.session_id
+            != session_manager.get_header().conversation_id
+        ):
+            raise ValueError("Coding Product workspace witness changed Session")
+        if coding_product_workspace_witness is not None:
+            coding_product_workspace_witness.assert_current()
         if coding_base_plugin_assembly is not None and (
             capability_plugin_assembly is None
             and coding_base_plugin_session_assembly is None
@@ -287,11 +414,17 @@ class AgentSession(AgentProductSession):
         ):
             raise TypeError("Coding Arch Plugin selected an invalid Tool owner")
         self._coding_lsp_plugin_assembly = (
-            capability_plugin_assembly
-            if lsp_tool_owner is not None
-            else None
+            capability_plugin_assembly if lsp_tool_owner is not None else None
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
+        self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
+        self.coding_product_workspace_witness = coding_product_workspace_witness
+        product_base = (
+            coding_base_product_session_assembly.compilation
+            if coding_base_product_session_assembly is not None
+            else None
+        )
+        self._coding_base_product_compilation = product_base
         self._coding_base_owner_retirement_receipts: tuple[
             OwnerGenerationRetirementReceipt,
             ...,
@@ -338,9 +471,16 @@ class AgentSession(AgentProductSession):
                 else None
             )
         )
-        if coding_base_plugin_assembly is not None:
-            if plugin_assembly is None or coding_plugin_clock is None:
-                raise ValueError("Coding base Plugin owner inputs are unavailable")
+        if coding_base_plugin_assembly is not None or product_base is not None:
+            if coding_plugin_clock is None or (
+                product_base is None and plugin_assembly is None
+            ):
+                raise ValueError("Coding base owner inputs are unavailable")
+            if product_base is not None:
+                base_host_environment = product_base.host_environment
+            else:
+                assert coding_base_plugin_assembly is not None
+                base_host_environment = coding_base_plugin_assembly.host_environment
             if command_generations is None:
                 command_generations = SessionCommandGenerationRegistry()
             get_external_tool_policy = getattr(
@@ -354,26 +494,35 @@ class AgentSession(AgentProductSession):
                 "get_shell_command_prefix",
                 None,
             )
-            base_owners = build_coding_base_plugin_owners(
-                coding_base_plugin_assembly,
-                plugin_assembly,
-                clock=coding_plugin_clock,
-                tool_options=ToolsOptions(
-                    diagnostics_service=diagnostics_service,
-                    external_tool_policy=(
-                        get_external_tool_policy()
-                        if callable(get_external_tool_policy)
-                        else None
-                    ),
-                    host_environment=coding_base_plugin_assembly.host_environment,
-                    shell_path=(get_shell_path() if callable(get_shell_path) else None),
-                    command_prefix=(
-                        get_shell_command_prefix()
-                        if callable(get_shell_command_prefix)
-                        else None
-                    ),
+            tool_options = ToolsOptions(
+                diagnostics_service=diagnostics_service,
+                external_tool_policy=(
+                    get_external_tool_policy()
+                    if callable(get_external_tool_policy)
+                    else None
+                ),
+                host_environment=base_host_environment,
+                shell_path=(get_shell_path() if callable(get_shell_path) else None),
+                command_prefix=(
+                    get_shell_command_prefix()
+                    if callable(get_shell_command_prefix)
+                    else None
                 ),
             )
+            if product_base is not None:
+                base_owners = product_base.build_owners(
+                    clock=coding_plugin_clock,
+                    tool_options=tool_options,
+                )
+            else:
+                assert coding_base_plugin_assembly is not None
+                assert plugin_assembly is not None
+                base_owners = build_coding_base_plugin_owners(
+                    coding_base_plugin_assembly,
+                    plugin_assembly,
+                    clock=coding_plugin_clock,
+                    tool_options=tool_options,
+                )
             if base_owners.tool is not None:
                 base_tool_registration_slot = CodingBaseToolRegistrationSlot()
                 owner_bindings = (base_owners.tool.bind(base_tool_registration_slot),)
@@ -412,12 +561,16 @@ class AgentSession(AgentProductSession):
         elif resolution is not None:
             resolved_capability_runtime.select_final_profile(resolution.profile)
         host_environment = (
-            coding_base_plugin_assembly.host_environment
+            product_base.host_environment
+            if product_base is not None
+            else coding_base_plugin_assembly.host_environment
             if coding_base_plugin_assembly is not None
             else LocalHostEnvironmentProbe().detect()
         )
         selected_base_tool_names = (
-            set(coding_base_plugin_assembly.tool_names)
+            set(product_base.tool_names)
+            if product_base is not None
+            else set(coding_base_plugin_assembly.tool_names)
             if coding_base_plugin_assembly is not None
             else set(coding_default_active_tool_names(host_environment))
         )
@@ -491,9 +644,13 @@ class AgentSession(AgentProductSession):
                 session_start_event=session_start_event,
                 api_registry=api_registry,
                 exec_service=exec_service,
+                output_capture_factory=output_capture_factory,
                 tool_exec_service=(
                     None
-                    if coding_base_plugin_session_assembly is not None
+                    if (
+                        coding_base_plugin_session_assembly is not None
+                        or coding_base_product_session_assembly is not None
+                    )
                     else (
                         exec_service
                         if (
@@ -508,12 +665,20 @@ class AgentSession(AgentProductSession):
                 tool_policy_evaluator=tool_policy_evaluator,
                 workspace_capability_binding=workspace_capability_binding,
                 capability_composition_inputs=(
-                    capability_plugin_assembly.session_inputs
-                    if capability_plugin_assembly is not None
+                    coding_product_worker_ordinary_binding.combined
+                    if coding_product_worker_ordinary_binding is not None
                     else (
-                        coding_base_plugin_session_assembly.session_inputs
-                        if coding_base_plugin_session_assembly is not None
-                        else None
+                        capability_plugin_assembly.session_inputs
+                        if capability_plugin_assembly is not None
+                        else (
+                            coding_base_plugin_session_assembly.session_inputs
+                            if coding_base_plugin_session_assembly is not None
+                            else (
+                                coding_base_product_session_assembly.session_inputs
+                                if coding_base_product_session_assembly is not None
+                                else None
+                            )
+                        )
                     )
                 ),
                 capability_component_host=(
@@ -653,6 +818,16 @@ class AgentSession(AgentProductSession):
             commands.append(lsp_session_command_descriptor())
         return commands
 
+    async def query_worker_symbol(self, symbol: str) -> str:
+        """Use the explicitly selected, read-only Coding Worker query facet."""
+
+        from loushang.coding.package_product_worker_query_consumer import (
+            bind_coding_worker_query_consumer,
+        )
+
+        await self.prepare_model_call_runtime()
+        return await bind_coding_worker_query_consumer(self).query(symbol=symbol)
+
     async def execute_command_async(
         self,
         invocation_name: str,
@@ -723,6 +898,60 @@ class AgentSession(AgentProductSession):
         super()._prepare_resource_refresh()
 
     async def prepare_model_call_runtime(self) -> None:
+        product_runtime = self._coding_base_product_runtime_binding
+        product_compilation = self._coding_base_product_compilation
+        if product_runtime is not None and product_compilation is not None:
+            try:
+                product_runtime.assert_selected_plugin_manifest_current(
+                    product_compilation.selected_manifest
+                )
+            except (
+                PackageProductRuntimeActivationError,
+                PackageProductRuntimeReadError,
+            ) as exc:
+                self._record_runtime_diagnostic(
+                    DiagnosticDraft(
+                        code="coding_base_product_restart_required",
+                        message=(
+                            "coding.base Product selection changed; the active "
+                            "Session must restart."
+                        ),
+                        details={"causeCode": exc.code},
+                    ),
+                    source="session",
+                    level="error",
+                )
+                raise CodingBasePluginAssemblyError(
+                    "Active Coding Session requires restart after Product selection change",
+                    code="coding_base_product_restart_required",
+                ) from exc
+            for selected in product_compilation.selected_capability_manifests:
+                try:
+                    product_runtime.assert_selected_plugin_manifest_current(selected)
+                except (
+                    PackageProductRuntimeActivationError,
+                    PackageProductRuntimeReadError,
+                ) as exc:
+                    self._record_runtime_diagnostic(
+                        DiagnosticDraft(
+                            code="coding_capability_product_restart_required",
+                            message=(
+                                f"{selected.manifest.name} Product selection changed; "
+                                "the active Session must restart."
+                            ),
+                            details={
+                                "pluginId": selected.manifest.name,
+                                "causeCode": exc.code,
+                            },
+                        ),
+                        source="session",
+                        level="error",
+                    )
+                    raise CodingCapabilityPluginCompositionError(
+                        "Active Coding Session requires restart after Product "
+                        "Capability selection change",
+                        code="coding_capability_product_restart_required",
+                    ) from exc
         capability_plugins = self._coding_capability_plugin_assembly
         runtime_claim_id = (
             "coding-session-runtime:"

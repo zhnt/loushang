@@ -17,6 +17,7 @@ from loushang.harness.cli.package_lifecycle import (
 )
 from loushang.harness.host.rpc.commands.packages import RpcPackageCommands
 from loushang.harness.host.rpc.output import RpcOutput
+from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
 )
@@ -25,6 +26,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
     PackageLifecycleIngressRequestV1,
+    PackageLifecycleIngressRequestV2,
     PackageLifecycleJournal,
     PackageLifecycleOwner,
     PackageLifecycleStatusV1,
@@ -50,10 +52,15 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleEvidenceV1,
+    PackageProductLifecycleMode,
+    PackageProductLifecycleRetryIntentV1,
     PackageProductUpdateCheckRequestV1,
     PackageProductUpdateCheckV1,
     PackageProductUpdateManifestReceiptV1,
     PackageProductUpdateTargetV1,
+)
+from loushang.harness.resources.packages.product_epoch_guard import (
+    PackageProductFileEpochTransactionGuard,
 )
 from loushang.harness.resources.packages.product_inventory import (
     PackageProductUpdateManifestError,
@@ -61,6 +68,7 @@ from loushang.harness.resources.packages.product_inventory import (
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
+    PackageProductRouteContractError,
     PackageProductRouteRequestV1,
 )
 from loushang.harness.resources.packages.session import SessionPackageController
@@ -93,8 +101,11 @@ _ENTRYPOINTS: tuple[PackageProductEntrypoint, ...] = (
 @dataclass
 class _Recovery:
     events: list[str]
+    guard: _EpochGuard | None = None
 
     def recover(self) -> None:
+        if self.guard is not None:
+            assert self.guard.entered == 1
         self.events.append("recovered")
 
 
@@ -178,6 +189,14 @@ class _Transaction:
     def owner_binding_id(self) -> str:
         return self.owner.binding_id
 
+    def finalize_committed(
+        self,
+        _request: PackageProductRouteRequestV1,
+        *,
+        current: PackageLifecycleStatusV1,
+    ) -> None:
+        assert (current.phase, current.disposition) == ("committed", "committed")
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
@@ -227,13 +246,21 @@ class _EpochGuard:
 
 
 @dataclass
+class _AdmittedRecovery:
+    guard: _EpochGuard
+    receipts: list[object] = field(default_factory=list)
+
+    def recover(self, receipt: object) -> None:
+        assert self.guard.entered == 1
+        self.receipts.append(receipt)
+
+
+@dataclass
 class _Inventory:
     binding_id: str
     sources: tuple[str, ...] = ()
     manifests: PackageProductUpdateManifestJournal | None = None
-    bound_targets: dict[str, tuple[str, tuple[str, ...]]] = field(
-        default_factory=dict
-    )
+    bound_targets: dict[str, tuple[str, tuple[str, ...]]] = field(default_factory=dict)
     check_requests: list[PackageProductUpdateCheckRequestV1] = field(
         default_factory=list
     )
@@ -372,6 +399,374 @@ def _activation(
     return activation, transaction
 
 
+def test_internal_product_mutation_holds_admitted_epoch_guard(tmp_path: Path) -> None:
+    guard = _EpochGuard()
+    activation, _transaction = _activation(tmp_path, transaction_guard=guard)
+    activation.activate()
+
+    def mutate(receipt: object) -> str:
+        assert guard.entered == 1
+        assert receipt == activation._receipt
+        return "prepared"
+
+    assert activation.execute_guarded_mutation(mutate) == "prepared"
+    assert guard.entered == 0
+    assert activation.active
+
+    def fail(_receipt: object) -> None:
+        assert guard.entered == 1
+        raise RuntimeError("mutation failed")
+
+    with pytest.raises(RuntimeError, match="mutation failed"):
+        activation.execute_guarded_mutation(fail)
+    assert guard.entered == 0
+    assert not activation.active
+
+
+def test_admitted_recovery_runs_under_epoch_guard_before_activation(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "admitted-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    guard = _EpochGuard()
+    recovery = _AdmittedRecovery(guard)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        admitted_recoveries=(recovery,),
+    )
+
+    receipt = activation.activate()
+    assert recovery.receipts == [receipt]
+    assert guard.entered == 0
+    assert activation.active
+
+
+def test_pre_admission_recovery_runs_under_epoch_guard(tmp_path: Path) -> None:
+    events: list[str] = []
+    guard = _EpochGuard()
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events, guard=guard),
+        transaction_guard=guard,
+    )
+
+    activation.activate()
+    assert events == ["recovered"]
+    assert guard.entered == 0
+
+
+def test_exact_handoff_recovery_admits_one_operation_without_general_route(
+    tmp_path: Path,
+) -> None:
+    guard = _EpochGuard()
+    events: list[str] = []
+
+    class ExactPre(_Recovery):
+        def recover_exact(self, operation_id: str) -> tuple[str, ...]:
+            assert guard.entered == 1
+            events.append("pre:" + operation_id)
+            return ("handoff:target",)
+
+    class ExactPost(_AdmittedRecovery):
+        def recover_exact(self, receipt: object, operation_id: str) -> tuple[str, ...]:
+            assert guard.entered == 1
+            self.receipts.append(receipt)
+            events.append("post:" + operation_id)
+            return (operation_id,)
+
+        def terminal_state(self, operation_id: str) -> str:
+            assert guard.entered == 1
+            assert operation_id == "operation:target"
+            return "settled"
+
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "exact-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        recoveries=(ExactPre(events, guard),),
+        admitted_recoveries=(ExactPost(guard),),
+    )
+    result = activation.recover_handoff_exact("operation:target")
+    assert result.operation_id == "operation:target"
+    assert result.changed
+    assert result.retained_handoff_ids == ("handoff:target",)
+    assert result.committed_operation_ids == ("operation:target",)
+    assert result.terminal_state == "settled"
+    assert events == ["pre:operation:target", "post:operation:target"]
+    assert guard.entered == 0
+    assert not activation.active
+    with pytest.raises(PackageProductActivationError) as consumed:
+        activation.activate()
+    assert consumed.value.code == "package_product_exact_recovery_consumed"
+
+
+def test_exact_handoff_recovery_refuses_unbound_owners_before_epoch_effects(
+    tmp_path: Path,
+) -> None:
+    guard = _EpochGuard()
+    activation, _transaction = _activation(tmp_path, transaction_guard=guard)
+    with pytest.raises(PackageProductActivationError) as unavailable:
+        activation.recover_handoff_exact("operation:target")
+    assert unavailable.value.code == "package_product_exact_recovery_unavailable"
+    assert guard.entered == 0
+    assert not activation.active
+    activation.activate()
+    assert activation.active
+
+
+def test_startup_recovery_holds_file_epoch_guard(tmp_path: Path) -> None:
+    lock_path = tmp_path / "recovery-coordination"
+    events: list[str] = []
+
+    class FileGuardRecovery(_Recovery):
+        def recover(self) -> None:
+            with pytest.raises(JournalLockUnavailable):
+                with journal_file_lock(lock_path, "exclusive", blocking=False):
+                    pytest.fail("cutover entered during Product startup recovery")
+            super().recover()
+
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "recovery-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=PackageProductFileEpochTransactionGuard(
+            store_id=request.store_id, coordination_lock=lock_path
+        ),
+        recoveries=(FileGuardRecovery(events),),
+    )
+
+    activation.activate()
+    assert events == ["recovered"]
+    with journal_file_lock(lock_path, "exclusive", blocking=False):
+        pass
+
+
+def test_epoch_guard_refusal_prevents_pre_admission_recovery(tmp_path: Path) -> None:
+    events: list[str] = []
+
+    def refuse() -> None:
+        raise RuntimeError("epoch cutover holds exclusive lock")
+
+    guard = _EpochGuard(on_enter=refuse)
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events),
+        transaction_guard=guard,
+    )
+
+    with pytest.raises(RuntimeError, match="epoch cutover"):
+        activation.activate()
+    assert events == []
+    assert not activation.active
+
+
+def test_epoch_guard_release_failure_does_not_publish_activation(
+    tmp_path: Path,
+) -> None:
+    class ReleaseFailureGuard(_EpochGuard):
+        @contextmanager
+        def shared_runtime(self, *, store_id: str):
+            with _EpochGuard.shared_runtime(self, store_id=store_id):
+                yield
+            raise RuntimeError("epoch guard release failed")
+
+    events: list[str] = []
+    guard = ReleaseFailureGuard()
+    activation, _transaction = _activation(
+        tmp_path,
+        recovery=_Recovery(events),
+        transaction_guard=guard,
+    )
+
+    with pytest.raises(RuntimeError, match="release failed"):
+        activation.activate()
+    assert events == ["recovered"]
+    assert not activation.active
+
+
+def test_stale_epoch_refuses_before_pre_admission_recovery(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "stale-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, leases = _epoch_admission(tmp_path)
+    foreign = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:foreign",
+        runtime_epoch=request.runtime_epoch,
+        store_root_identity=request.store_root_identity,
+        registration_receipt_id="8" * 64,
+    )
+    leases.snapshot_value = PackageEpochLeaseSnapshotV1.create(
+        store_id=request.store_id,
+        owner_revision=2,
+        active_leases=(foreign,),
+    )
+    events: list[str] = []
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=_EpochGuard(),
+        recoveries=(_Recovery(events),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_runtime_epoch_unsupported"
+    assert events == []
+    assert not activation.active
+
+
+def test_recovery_cannot_publish_a_changed_lease_snapshot(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "changing-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, leases = _epoch_admission(tmp_path)
+
+    class ChangedLeaseRecovery:
+        def recover(self) -> None:
+            foreign = PackageEpochRuntimeLeaseV1.create(
+                runtime_id="runtime:foreign",
+                runtime_epoch=request.runtime_epoch,
+                store_root_identity=request.store_root_identity,
+                registration_receipt_id="8" * 64,
+            )
+            leases.snapshot_value = PackageEpochLeaseSnapshotV1.create(
+                store_id=request.store_id,
+                owner_revision=2,
+                active_leases=(*leases.snapshot_value.active_leases, foreign),
+            )
+
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=_EpochGuard(),
+        recoveries=(ChangedLeaseRecovery(),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_runtime_epoch_unsupported"
+    assert not activation.active
+
+
+def test_admitted_recovery_failure_keeps_product_inactive(tmp_path: Path) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "failed-admitted-recovery.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    admission, request, _leases = _epoch_admission(tmp_path)
+    guard = _EpochGuard()
+
+    class FailingRecovery:
+        def recover(self, receipt: object) -> None:
+            assert guard.entered == 1
+            raise PackageProductActivationError(
+                "Package recovery failed", code="package_product_recovery_incomplete"
+            )
+
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=_Transaction(owner),
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=guard,
+        admitted_recoveries=(FailingRecovery(),),
+    )
+
+    with pytest.raises(PackageProductActivationError) as raised:
+        activation.activate()
+    assert raised.value.code == "package_product_recovery_incomplete"
+    assert guard.entered == 0
+    assert not activation.active
+
+
+def test_product_transaction_holds_file_epoch_guard_through_effects(
+    tmp_path: Path,
+) -> None:
+    owner = PackageLifecycleOwner(
+        journal=PackageLifecycleJournal(tmp_path / "file-guard-lifecycle.jsonl"),
+        classification_authority=_ClassificationAuthority("plugin_bound"),
+        enabled=True,
+    )
+    lock_path = tmp_path / "file-guard-coordination"
+
+    class ProbeTransaction(_Transaction):
+        def execute(
+            self,
+            request: PackageProductRouteRequestV1,
+            *,
+            current: PackageLifecycleStatusV1,
+        ) -> PackageLifecycleStatusV1:
+            with pytest.raises(JournalLockUnavailable):
+                with journal_file_lock(lock_path, "exclusive", blocking=False):
+                    pytest.fail("cutover entered during Product transaction")
+            return super().execute(request, current=current)
+
+    admission, request, _leases = _epoch_admission(tmp_path)
+    transaction = ProbeTransaction(owner)
+    activation = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=transaction,
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=request,
+        transaction_guard=PackageProductFileEpochTransactionGuard(
+            store_id=request.store_id, coordination_lock=lock_path
+        ),
+    )
+
+    activation.activate()
+    outcome = activation.route(_intent(), entrypoint="cli")
+    assert outcome.handled
+    assert transaction.calls == ["cli"]
+    with journal_file_lock(lock_path, "exclusive", blocking=False):
+        pass
+
+
 def _intent(operation_id: str = "operation:test") -> PackageProductLifecycleIntentV1:
     return PackageProductLifecycleIntentV1(
         operation_id=operation_id,
@@ -379,6 +774,136 @@ def _intent(operation_id: str = "operation:test") -> PackageProductLifecycleInte
         source="https://user:secret@example.test/acme.whl?token=hidden",
         scope="project",
     )
+
+
+def test_activated_product_retry_routes_original_intent_under_epoch_guard(
+    tmp_path: Path,
+) -> None:
+    activation, transaction = _activation(tmp_path)
+    intent = _intent()
+    owner = transaction.owner
+    receipt = activation.activate()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _IngressFactory().create(intent),
+        runtime_admission_request_id=receipt.request.admission_request_id,
+    )
+    classified = owner.submit(ingress)
+    owner.interrupt(
+        classified.operation_id,
+        expected_phase=classified.phase,
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    outcome = activation.retry(
+        PackageProductLifecycleRetryIntentV1(
+            intent=intent,
+            request_fingerprint=classified.request_fingerprint,
+            expected_attempt_epoch=classified.attempt_epoch,
+        ),
+        entrypoint="cli",
+    )
+
+    assert outcome.handled
+    assert outcome.record is not None
+    assert outcome.record.lifecycle == "installed"
+    assert outcome.evidence.disposition == "committed"
+    assert transaction.calls == ["cli"]
+    assert (
+        owner.status(intent.operation_id).attempt_epoch == classified.attempt_epoch + 1
+    )
+
+
+def test_new_runtime_admission_cannot_retry_old_a2_attempt_without_rebind(
+    tmp_path: Path,
+) -> None:
+    activation, transaction = _activation(tmp_path)
+    intent = _intent()
+    owner = transaction.owner
+    original_receipt = activation.activate()
+    classified = owner.submit(
+        PackageLifecycleIngressRequestV2.bind_runtime_admission(
+            _IngressFactory().create(intent),
+            runtime_admission_request_id=(
+                original_receipt.request.admission_request_id
+            ),
+        )
+    )
+    interrupted = owner.interrupt(
+        classified.operation_id,
+        expected_phase=classified.phase,
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    fences = PackageEpochFenceJournal(tmp_path / "epoch.jsonl")
+    fence = fences.current("package-store:test")
+    assert fence is not None
+    new_lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:new",
+        runtime_epoch=fence.epoch,
+        store_root_identity=fence.fenced_root_identity,
+        registration_receipt_id="9" * 64,
+    )
+    leases = _LeaseAuthority(
+        PackageEpochLeaseSnapshotV1.create(
+            store_id=fence.store_id,
+            owner_revision=2,
+            active_leases=(new_lease,),
+        )
+    )
+    admission = PackageEpochRuntimeAdmissionOwner(fences=fences, leases=leases)
+    new_request = PackageEpochRuntimeAdmissionRequestV1.create(
+        fence=fence,
+        runtime_id=new_lease.runtime_id,
+        runtime_version="1.0.0",
+        runtime_protocol_epoch=1,
+        runtime_epoch=new_lease.runtime_epoch,
+        store_root_identity=new_lease.store_root_identity,
+        lease_id=new_lease.lease_id,
+    )
+    restarted = compose_package_product_lifecycle(
+        product_id="coding",
+        owner=owner,
+        transaction=transaction,
+        ingress_factory=_IngressFactory(),
+        runtime_admission=admission,
+        admission_request=new_request,
+        transaction_guard=_EpochGuard(),
+    )
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as refused:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=intent,
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch,
+            ),
+            entrypoint="cli",
+        )
+    assert refused.value.code == "package_retry_rebind_required"
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as changed_source:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=replace(intent, source="https://example.test/other.whl"),
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch,
+            ),
+            entrypoint="cli",
+        )
+    assert changed_source.value.code == "package_product_route_contract_invalid"
+    restarted.activate()
+    with pytest.raises(PackageProductRouteContractError) as stale_attempt:
+        restarted.retry(
+            PackageProductLifecycleRetryIntentV1(
+                intent=intent,
+                request_fingerprint=classified.request_fingerprint,
+                expected_attempt_epoch=classified.attempt_epoch + 1,
+            ),
+            entrypoint="cli",
+        )
+    assert stale_attempt.value.code == "package_product_route_contract_invalid"
+    assert owner.status(intent.operation_id) == interrupted
+    assert transaction.calls == []
 
 
 @pytest.mark.parametrize(
@@ -442,9 +967,10 @@ def test_all_product_entrypoints_share_one_request_identity_and_exact_replay(
     )
     accepted = transaction.owner.journal.request("operation:test")
     assert accepted is not None
-    assert accepted.resolution_environment_fingerprint == sha256(
-        b"environment"
-    ).hexdigest()
+    assert (
+        accepted.resolution_environment_fingerprint
+        == sha256(b"environment").hexdigest()
+    )
     assert accepted.runtime_admission_request_id is not None
     record = outcomes[0].record
     assert record is not None
@@ -530,8 +1056,13 @@ def test_epoch_change_after_initial_admission_is_refused_inside_transaction_guar
     )
     transaction = _Transaction(owner)
     admission, request, leases = _epoch_admission(tmp_path)
+    guard_entries = 0
 
     def replace_lease() -> None:
+        nonlocal guard_entries
+        guard_entries += 1
+        if guard_entries != 2:
+            return
         foreign = PackageEpochRuntimeLeaseV1.create(
             runtime_id="runtime:cutover",
             runtime_epoch=request.runtime_epoch,
@@ -772,6 +1303,7 @@ def _operations(
     *,
     inventory_sources: tuple[str, ...] = (),
     inventory: _Inventory | None = None,
+    mode: PackageProductLifecycleMode = "enforced",
 ) -> PackageOperationsRuntime:
     def mutation(source: str, scope: str) -> PackageSourceSettingsMutation:
         raise AssertionError(f"settings mutation must not run: {scope}:{source}")
@@ -787,7 +1319,7 @@ def _operations(
             if inventory is not None
             else _Inventory(activation.binding_id, inventory_sources)
         ),
-        product_lifecycle_mode="enforced",
+        product_lifecycle_mode=mode,
     )
 
 
@@ -838,13 +1370,13 @@ def test_plugin_remove_and_uninstall_never_reach_legacy_delete(
     assert transaction.calls == ["operations"]
 
 
-def test_operations_preserves_only_explicit_non_plugin_behavior(tmp_path: Path) -> None:
+def test_dark_operations_preserve_explicit_non_plugin_behavior(tmp_path: Path) -> None:
     activation, _transaction = _activation(tmp_path, decision="non_plugin")
     activation.activate()
     materializer = _Materializer(tmp_path)
 
     record = asyncio.run(
-        _operations(materializer, activation).materialize(
+        _operations(materializer, activation, mode="dark").materialize(
             "https://example.test/legacy.git",
             operation_id="operation:legacy",
         )
@@ -852,6 +1384,226 @@ def test_operations_preserves_only_explicit_non_plugin_behavior(tmp_path: Path) 
 
     assert record.name == "legacy"
     assert materializer.materialize_calls == ["https://example.test/legacy.git"]
+
+
+def test_enforced_non_plugin_cannot_fall_to_supplied_materializer(
+    tmp_path: Path,
+) -> None:
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+    materializer = _Materializer(tmp_path)
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        asyncio.run(
+            _operations(materializer, activation).materialize(
+                "https://example.test/non-plugin.whl",
+                operation_id="operation:enforced-non-plugin",
+            )
+        )
+    assert materializer.materialize_calls == []
+
+
+def test_enforced_startup_non_plugin_cannot_fall_to_supplied_materializer(
+    tmp_path: Path,
+) -> None:
+    source = "https://example.test/non-plugin.whl"
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+    materializer_calls: list[str] = []
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    class Materializer:
+        def materialize_remote_source_sync(self, value: str) -> object:
+            materializer_calls.append(value)
+            raise AssertionError("enforced startup reached the old materializer")
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=Materializer(),  # type: ignore[arg-type]
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).resolve_configured_sources_sync()
+    assert materializer_calls == []
+
+
+def test_enforced_startup_routes_configured_local_wheel_through_product(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "loushang.harness.resources.packages.source_resolver.package_offline_enabled",
+        lambda: True,
+    )
+    source = str(tmp_path / "acme-1.0-py3-none-any.whl")
+    activation, transaction = _activation(tmp_path)
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    resolved = PackageSourceResolver(
+        settings_manager=Settings(),
+        materializer=None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    ).resolve_configured_sources_sync()
+
+    assert len(resolved.records) == 1
+    assert resolved.records[0].lifecycle == "installed"
+    assert transaction.calls == ["startup"]
+
+
+def test_enforced_startup_stops_after_first_durable_refusal(tmp_path: Path) -> None:
+    sources = (
+        "https://example.test/first.whl",
+        "https://example.test/second.whl",
+    )
+    activation, transaction = _activation(tmp_path, decision="indeterminate")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": list(sources)}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    result = PackageSourceResolver(
+        settings_manager=Settings(),
+        materializer=None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    ).resolve_configured_sources_sync()
+
+    assert result.failed_sources == (sources[0],)
+    assert result.records == ()
+    assert transaction.calls == []
+
+
+def test_enforced_startup_local_non_plugin_cannot_be_silently_skipped(
+    tmp_path: Path,
+) -> None:
+    source = str(tmp_path / "unowned-1.0-py3-none-any.whl")
+    activation, transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=None,
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).resolve_configured_sources_sync()
+    assert transaction.calls == []
+
+
+def test_enforced_preparation_cannot_enter_legacy_source_resolver(
+    tmp_path: Path,
+) -> None:
+    source = "https://example.test/non-plugin.whl"
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    def forbidden_materializer() -> object:
+        raise AssertionError("enforced preparation queried the old materializer")
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=object(),  # type: ignore[arg-type]
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).prepare_configured_remote_records()
+
+    controller = SessionPackageController(
+        get_session_id=lambda: "session:test",
+        get_cwd=lambda: str(tmp_path),
+        get_settings_manager=Settings,  # type: ignore[arg-type]
+        get_package_materializer=forbidden_materializer,  # type: ignore[arg-type]
+        get_resource_loader=lambda: None,
+        get_diagnostics_service=lambda: None,
+        refresh_resources=lambda: None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    )
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        asyncio.run(controller.prepare_configured_remote_package_records())
+
+
+@pytest.mark.parametrize("action", ("remove", "uninstall", "uninstall_sync"))
+def test_materializer_free_product_refuses_non_plugin_before_legacy_effects(
+    tmp_path: Path,
+    action: str,
+) -> None:
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    def forbidden_effect(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("non-Plugin route reached a legacy effect")
+
+    operations = PackageOperationsRuntime(
+        get_materializer=lambda: None,
+        add_source=forbidden_effect,  # type: ignore[arg-type]
+        remove_source=forbidden_effect,  # type: ignore[arg-type]
+        refresh_resources=forbidden_effect,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    )
+    source = "https://example.test/non-plugin.whl"
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        if action == "remove":
+            operations.remove(source, operation_id=f"operation:{action}")
+        elif action == "uninstall":
+            asyncio.run(
+                operations.uninstall(
+                    source, scope="project", operation_id=f"operation:{action}"
+                )
+            )
+        else:
+            operations.uninstall_sync(
+                source, scope="project", operation_id=f"operation:{action}"
+            )
 
 
 @pytest.mark.parametrize("transport", ("cli", "rpc"))
@@ -904,7 +1656,7 @@ def test_non_plugin_global_scope_reaches_global_legacy_settings(
         get_diagnostics_service=lambda: None,
         refresh_resources=lambda: None,
         product_lifecycle=activation,
-        product_lifecycle_mode="enforced",
+        product_lifecycle_mode="dark",
     )
 
     if transport == "cli":
@@ -1199,10 +1951,7 @@ def test_product_update_manifest_rejects_permissive_or_symlink_storage(
     try:
         with pytest.raises(PackageProductUpdateManifestError) as permissive:
             journal.records()
-        assert (
-            permissive.value.code
-            == "package_product_update_manifest_storage_unsafe"
-        )
+        assert permissive.value.code == "package_product_update_manifest_storage_unsafe"
     finally:
         path.chmod(0o600)
 
@@ -1307,19 +2056,18 @@ def test_cli_and_rpc_preserve_real_product_check_correlation(
     cli_request, first_rpc, second_rpc = inventory.check_requests
     assert cli_request.entrypoint == "cli"
     assert len(cli_request.operation_id) == 32
-    assert first_rpc == second_rpc == PackageProductUpdateCheckRequestV1(
-        operation_id=sha256(
-            b"rpc:check_package_updates:request:check"
-        ).hexdigest(),
-        entrypoint="rpc",
-        scope="user",
+    assert (
+        first_rpc
+        == second_rpc
+        == PackageProductUpdateCheckRequestV1(
+            operation_id=sha256(b"rpc:check_package_updates:request:check").hexdigest(),
+            entrypoint="rpc",
+            scope="user",
+        )
     )
     assert cli_request.scope == "user"
     assert cli_result.outputs[0]["records"][0]["source"].startswith("sha256:")
-    assert all(
-        json.loads(line)["success"]
-        for line in stdout.getvalue().splitlines()
-    )
+    assert all(json.loads(line)["success"] for line in stdout.getvalue().splitlines())
 
 
 def test_product_update_check_redacts_inventory_failure_detail(tmp_path: Path) -> None:
@@ -1517,7 +2265,10 @@ def test_cli_preserves_scope_for_every_typed_single_source_action() -> None:
     ]
 
 
-def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) -> None:
+@pytest.mark.parametrize("without_materializer", (False, True))
+def test_startup_routes_missing_plugin_before_sync_materializer(
+    tmp_path: Path, without_materializer: bool
+) -> None:
     source = "https://example.test/acme.whl"
     activation, transaction = _activation(tmp_path)
     activation.activate()
@@ -1534,14 +2285,14 @@ def test_startup_routes_missing_plugin_before_sync_materializer(tmp_path: Path) 
 
     class Materializer:
         def get_record(self, _source: str) -> None:
-            return None
+            raise AssertionError("Product startup consulted a legacy record")
 
         def materialize_remote_source_sync(self, value: str) -> object:
             raise AssertionError(f"legacy startup materializer used for {value}")
 
     result = PackageSourceResolver(
         settings_manager=Settings(),
-        materializer=Materializer(),  # type: ignore[arg-type]
+        materializer=(None if without_materializer else Materializer()),  # type: ignore[arg-type]
         session_id="session:test",
         product_lifecycle=activation,
         product_lifecycle_mode="enforced",

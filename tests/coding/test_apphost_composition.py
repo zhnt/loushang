@@ -560,7 +560,7 @@ def test_g9_omitted_owner_remains_current(_case: str) -> None:
         assert hosting.calls == 0
 
     _run(scenario())
-    for path in _CURRENT_ROOTS.values():
+    for path in (*_CURRENT_ROOTS.values(), Path("src/loushang/coding/cli/application.py")):
         assert "apphost_composition" not in path.read_text(encoding="utf-8")
 
 
@@ -964,7 +964,7 @@ def test_g9_restart_retains_durable_kill_switch_generation(_case: str) -> None:
 def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     inventory = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 6
+    assert inventory["inventoryVersion"] == 9
     assert inventory["decision"] == "RETAIN"
     entries = {entry["entrypointId"]: entry for entry in inventory["entries"]}
     assert set(entries) == {
@@ -977,7 +977,14 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "coding.cli",
         "coding.hosted.command",
         "coding.hosted-tui.command",
+        "coding.lmux.command",
         "coding.mux.command",
+        "coding.package-cutover.command",
+        "coding.package-gc.command",
+        "coding.package-repair.command",
+        "coding.plugin-author-smoke.command",
+        "coding.plugin-private-data.command",
+        "coding.worker-native.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -1027,7 +1034,38 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         ),
         "coding.hosted.command": ("hosted", "installed", "explicit-foreground-stdio"),
         "coding.hosted-tui.command": ("hosted", "installed", "explicit-owned-foreground-tui"),
+        "coding.lmux.command": ("mux", "installed-preview", "explicit-managed-linux-preview"),
         "coding.mux.command": ("mux", "installed", "explicit-detachable-local"),
+        "coding.package-cutover.command": (
+            "cli",
+            "installed",
+            "explicit-offline-posix-product-cutover",
+        ),
+        "coding.package-gc.command": (
+            "cli",
+            "installed",
+            "explicit-offline-posix-product-gc",
+        ),
+        "coding.package-repair.command": (
+            "cli",
+            "installed",
+            "explicit-offline-posix-product-repair",
+        ),
+        "coding.plugin-author-smoke.command": (
+            "cli",
+            "installed",
+            "explicit-offline-posix-plugin-author-smoke",
+        ),
+        "coding.plugin-private-data.command": (
+            "cli",
+            "installed",
+            "explicit-offline-linux-product-private-data",
+        ),
+        "coding.worker-native.command": (
+            "cli",
+            "installed",
+            "explicit-linux-worker-native-candidate",
+        ),
         "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
         "harnesstui.named-mux": (
             "mux",
@@ -1039,10 +1077,17 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
 
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["scripts"] == {
+        "lmux": "loushang.coding.cli.lmux:main",
         "loushang": "loushang.coding.cli.__main__:main",
         "loushang-hosted": "loushang.coding.cli.hosted:main",
         "loushang-hosted-tui": "loushang.coding.cli.hosted_client:main",
         "loushang-mux": "loushang.coding.cli.mux:main",
+        "loushang-package-cutover": "loushang.coding.cli.package_cutover:main",
+        "loushang-package-gc": "loushang.coding.cli.package_gc:main",
+        "loushang-package-repair": "loushang.coding.cli.package_repair:main",
+        "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
+        "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
+        "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -1051,10 +1096,17 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         for row in entries.values()
         if row["packagingBinding"] is not None
     } == {
+        "project.scripts.lmux",
         "project.scripts.loushang",
         "project.scripts.loushang-hosted",
         "project.scripts.loushang-hosted-tui",
         "project.scripts.loushang-mux",
+        "project.scripts.loushang-package-cutover",
+        "project.scripts.loushang-package-gc",
+        "project.scripts.loushang-package-repair",
+        "project.scripts.loushang-coding-plugin-smoke",
+        "project.scripts.loushang-plugin-private-data",
+        "project.scripts.loushang-worker-native",
         "project.scripts.loushang-plugin",
         "project.scripts.loushang-tui",
     }

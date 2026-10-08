@@ -134,6 +134,7 @@ def test_G13_NO_AUTHORITY_EXPANSION_has_no_transport_process_or_path_discovery()
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),
@@ -190,7 +191,10 @@ def test_G13_NEW_OWNERS_remain_independently_reviewable() -> None:
         "coding-continuity": (CODING_CONTINUITY,),
     }
     limits = {
-        "appservice-continuity": 1_250,
+        # lmux vs a3dbec60: versioned create/close receipt codec +113,
+        # original recovery owner settlement/permission +142. Keep the original
+        # margin and scan every continuity*.py; no renamed-file exclusion.
+        "appservice-continuity": 1_250 + 113 + 142,
         # G17's reviewed borrowed discovery getter and recovery passthrough
         # add seven lines to this exact file, not another lifecycle owner.
         "apphost-continuity": 675,

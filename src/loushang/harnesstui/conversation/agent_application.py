@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Generic, Protocol, TextIO, TypeVar, cast
 
 from loushang.harness.approval import ApprovalOutcome
@@ -40,6 +40,7 @@ from loushang.harnesstui.conversation.application_host import (
 from loushang.harnesstui.conversation.control import ConversationActionHost
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
 from loushang.harnesstui.conversation.input_policy import (
+    ConversationCapabilities,
     ConversationInputCapabilities,
 )
 from loushang.harnesstui.conversation.intents import (
@@ -170,6 +171,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     stdout: TextIO
     now: Callable[[], float]
     completion_provider: object | None = None
+    capability_provider: Callable[[], ConversationCapabilities] | None = field(default=None, kw_only=True)
     bind_presenter: Callable[[SurfaceT], Cleanup] = _ignore_surface
     bind_transition: Callable[[SurfaceT], Cleanup] = _ignore_surface
     resume_command_prefix: tuple[str, ...] = ()
@@ -288,6 +290,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 active_window_state=self.app.state,
             ),
             completion_provider=self.completion_provider,
+            capability_provider=self.capability_provider,
             bind_presenter=bind_presenters,
             bind_transition=bind_transitions,
             on_history_installed=lambda history: _trace_installed_history(

@@ -1,5 +1,6 @@
 """Product-neutral contracts for bounded local child execution."""
 
+from ._win32_process import observe_windows_worker_job_absent
 from .contracts import (
     HOSTING_CONTRACT_VERSION,
     ChildSessionHostingPort,
@@ -22,7 +23,12 @@ from .contracts import (
     ProcessStdoutMode,
     ProcessStreamSpec,
 )
-from .errors import HostingError, HostingFailureCategory, InvalidHostingRequestError
+from .errors import (
+    HostingError,
+    HostingFailureCategory,
+    HostingStartSettledError,
+    InvalidHostingRequestError,
+)
 from .runtime import create_child_session_host, create_process_host
 
 __all__ = [
@@ -34,6 +40,7 @@ __all__ = [
     "HostingComponent",
     "HostingError",
     "HostingFailureCategory",
+    "HostingStartSettledError",
     "HostingLifecycleTransition",
     "HostingObservation",
     "HostingObservationSink",
@@ -51,4 +58,5 @@ __all__ = [
     "ProcessStreamSpec",
     "create_child_session_host",
     "create_process_host",
+    "observe_windows_worker_job_absent",
 ]

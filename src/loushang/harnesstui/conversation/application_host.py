@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Protocol, TextIO
 
@@ -11,6 +12,7 @@ from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
 )
 from loushang.harnesstui.conversation.input_policy import (
+    ConversationCapabilities,
     ConversationInputCapabilities,
 )
 from loushang.harnesstui.conversation.plain_app import PlainConversationApp
@@ -123,6 +125,7 @@ class PreparedScreenConversationRun:
     history_records: tuple[DisplayRecord, ...] = ()
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
     completion_provider: object | None = None
+    capability_provider: Callable[[], ConversationCapabilities] | None = field(default=None, kw_only=True)
     bind_presenter: CleanupBinder = _bind_no_cleanup
     bind_transition: CleanupBinder = _bind_no_cleanup
     on_history_installed: Callable[[InstalledConversationHistory], None] = (
@@ -147,7 +150,7 @@ async def run_prepared_screen_conversation(
     try:
         unbind_transition = run.bind_transition()
         listener = run.event_listener_factory()
-        with run.interaction_context:
+        with run.interaction_context, _capability_projection(run):
             unsubscribe = _no_cleanup
             try:
                 run.on_start()
@@ -179,6 +182,18 @@ async def run_prepared_screen_conversation(
                 run.surface.clear_approval_surfaces()
             finally:
                 unbind_presenter()
+
+
+@contextmanager
+def _capability_projection(run: PreparedScreenConversationRun) -> Iterator[None]:
+    """Borrow an explicit Product projection for exactly this screen run."""
+    previous = run.app.capability_provider, run.app.state.capabilities
+    try:
+        if run.capability_provider is not None:
+            run.app.capability_provider = run.capability_provider
+        yield
+    finally:
+        run.app.capability_provider, run.app.state.capabilities = previous
 
 
 def _install_screen_state(run: PreparedScreenConversationRun) -> None:

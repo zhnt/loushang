@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.plugin_management import (
+    PluginBackupRetentionRecordV1,
+    PluginBackupRetentionSnapshotV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
@@ -334,6 +336,57 @@ def test_query_filter_does_not_cross_product_or_scope(tmp_path: Path) -> None:
     assert projection.installations == ()
 
 
+def test_backup_status_requires_separate_owner_evidence(tmp_path: Path) -> None:
+    desired, service = _management(tmp_path)
+    service.submit(_command(action="install", revision=0, package=_package()))
+    owner = _BackupOwner(
+        PluginBackupRetentionSnapshotV1(
+            owner_revision="backup-journal:4",
+            records=(
+                PluginBackupRetentionRecordV1(
+                    installation_key=_key(),
+                    status="expired",
+                    expiry_receipt_id="backup-expiry:4",
+                ),
+            ),
+        )
+    )
+    projection = PluginManagementReadModelProjector(
+        desired_state=desired,
+        operations=service,
+        backup_retention=owner,
+    ).snapshot(_query(correlation_id="backup-owner-evidence"))
+
+    assert projection.owner_revisions.backup_retention == "backup-journal:4"
+    assert "backup_retention" not in projection.owner_revisions.unsupported_dimensions
+    [view] = projection.installations
+    assert view.backup_retention is not None
+    assert view.backup_retention.status == "expired"
+    assert view.backup_retention.expiry_receipt_id == "backup-expiry:4"
+    assert "backup_retention" not in view.unknown_dimensions
+    assert projection.to_dict()["installations"][0]["backupRetention"]["status"] == "expired"
+
+    owner.value = PluginBackupRetentionSnapshotV1(
+        owner_revision="backup-journal:5", records=()
+    )
+    missing = PluginManagementReadModelProjector(
+        desired_state=desired,
+        operations=service,
+        backup_retention=owner,
+    ).snapshot(_query(correlation_id="backup-owner-missing"))
+    assert missing.installations[0].backup_retention is None
+    assert "backup_retention" in missing.installations[0].unknown_dimensions
+
+
+def test_backup_expiry_cannot_be_claimed_without_owner_receipt() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="expiry receipt"):
+        PluginBackupRetentionRecordV1(
+            installation_key=_key(), status="expired", expiry_receipt_id=None
+        )
+
+
 @dataclass(frozen=True)
 class _SourceOwner:
     value: PluginManagementSourceSnapshotV1
@@ -363,6 +416,14 @@ class _PackageOwner:
     value: PluginPackageLifecycleSnapshotV1
 
     def snapshot(self) -> PluginPackageLifecycleSnapshotV1:
+        return self.value
+
+
+@dataclass
+class _BackupOwner:
+    value: PluginBackupRetentionSnapshotV1
+
+    def snapshot(self) -> PluginBackupRetentionSnapshotV1:
         return self.value
 
 

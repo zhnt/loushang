@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from loushang.harness.resources.plugins._strict_json import (
@@ -14,6 +15,7 @@ from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationCodecError,
 )
 from loushang.harness.resources.plugins.engine import inspect_plugin_engine_contract
+from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.resources.plugins.safe_files import (
     CapturedRegularFile,
     ContainedFileCaptureError,
@@ -33,6 +35,20 @@ class PluginManifestError(ValueError):
         super().__init__(message)
         self.code = code
         self.path = path
+
+
+@dataclass(frozen=True, slots=True)
+class InertPluginFileManifest:
+    """Parsed Plugin metadata over a verified files-only tree, with no host path."""
+
+    root_relative_path: PurePosixPath
+    package_root_relative_path: PurePosixPath
+    name: str
+    version: str
+    enabled: bool
+    metadata: Mapping[str, object]
+    contribution_index: PluginContributionIndex
+    manifest_digest: str
 
 
 class PluginManifestParser:
@@ -173,6 +189,111 @@ class PluginManifestParser:
             contribution_index=contribution_index,
         )
 
+    def parse_file_set(
+        self,
+        files: Mapping[str, bytes],
+        *,
+        manifest_logical_path: str,
+    ) -> InertPluginFileManifest:
+        """Parse one policy-chosen Plugin manifest from captured logical bytes.
+
+        This only validates inert metadata and declared file membership. The
+        caller must independently verify the complete tree and Product selection.
+        """
+
+        if not isinstance(files, Mapping) or not files or len(files) > 64:
+            raise ValueError("Plugin file set is invalid")
+        members: dict[str, bytes] = {}
+        for path, body in files.items():
+            try:
+                canonical_path = canonical_plugin_relative_path(path).as_posix()
+            except ValueError as exc:
+                raise PluginManifestError(
+                    "Plugin file set contains an invalid logical path",
+                    code="invalid_plugin_manifest",
+                    path=Path("plugin.json"),
+                ) from exc
+            if not isinstance(body, bytes):
+                raise TypeError("Plugin file set members must be bytes")
+            members[canonical_path] = body
+        try:
+            manifest_path = canonical_plugin_relative_path(
+                manifest_logical_path
+            ).as_posix()
+        except ValueError as exc:
+            raise PluginManifestError(
+                "Plugin manifest logical path is invalid",
+                code="invalid_plugin_manifest",
+                path=Path("plugin.json"),
+            ) from exc
+        if PurePosixPath(manifest_path).name != "plugin.json" or manifest_path not in members:
+            raise PluginManifestError(
+                "Selected Plugin manifest is absent from the file set",
+                code="invalid_plugin_manifest",
+                path=Path(manifest_path),
+            )
+        encoded = members[manifest_path]
+        if len(encoded) > 1_048_576:
+            raise PluginManifestError(
+                "Plugin manifest exceeds the parser budget",
+                code="invalid_plugin_manifest",
+                path=Path(manifest_path),
+            )
+        diagnostic_path = Path(manifest_path)
+        try:
+            payload = StrictPluginJsonCodec.decode_bytes(encoded)
+        except PluginJsonCodecError as exc:
+            raise PluginManifestError(
+                f"Invalid plugin manifest JSON: {manifest_path}: {exc}",
+                code=exc.code,
+                path=diagnostic_path,
+            ) from exc
+        if not isinstance(payload, dict):
+            raise PluginManifestError(
+                "Plugin manifest must be a JSON object",
+                code="invalid_plugin_manifest",
+                path=diagnostic_path,
+            )
+        _require_engine_contract(payload, path=diagnostic_path)
+        root = PurePosixPath(manifest_path).parent
+        root_prefix = "" if root == PurePosixPath(".") else f"{root.as_posix()}/"
+        package_relative = _file_set_package_root(
+            payload, manifest_path=diagnostic_path, root_prefix=root_prefix, members=members
+        )
+        name = _manifest_string(payload, "name", diagnostic_path, default=None)
+        version = _manifest_string(payload, "version", diagnostic_path, default=None)
+        if name is None or version is None:
+            raise PluginManifestError(
+                "Selected Plugin manifest requires name and version",
+                code="invalid_plugin_manifest",
+                path=diagnostic_path,
+            )
+        index = _decode_contribution_index(payload, manifest_path=diagnostic_path)
+        for reservation in index.items:
+            declared_paths = [reservation.declaration_source.relative_path.as_posix()]
+            if reservation.worker_configuration is not None:
+                declared_paths.append(reservation.worker_configuration.entrypoint)
+            for declared_path in declared_paths:
+                if f"{root_prefix}{declared_path}" not in members:
+                    raise PluginManifestError(
+                        "Plugin contribution entrypoint is absent from the verified file set",
+                        code="invalid_plugin_contribution_entrypoint",
+                        path=Path(f"{root_prefix}{declared_path}"),
+                    )
+        _require_engine_contract(
+            payload, path=diagnostic_path, contribution_index=index
+        )
+        return InertPluginFileManifest(
+            root_relative_path=root,
+            package_root_relative_path=package_relative,
+            name=name,
+            version=version,
+            enabled=_enabled_value(payload, diagnostic_path),
+            metadata=_canonical_metadata(payload, name=name, version=version),
+            contribution_index=index,
+            manifest_digest=sha256(encoded).hexdigest(),
+        )
+
     def revalidate(self, package: ResolvedPluginPackage) -> ResolvedPluginPackage:
         """Fail closed when a resolved local package changed before mounting."""
 
@@ -284,23 +405,7 @@ def _package_root(
     manifest_path: Path,
     payload: Mapping[str, object],
 ) -> tuple[Path, Path]:
-    camel_present = "packageRoot" in payload
-    snake_present = "package_root" in payload
-    if (
-        camel_present
-        and snake_present
-        and payload["packageRoot"] != payload["package_root"]
-    ):
-        raise PluginManifestError(
-            f"Plugin packageRoot aliases must have the same value: {manifest_path}",
-            code="invalid_plugin_manifest",
-            path=manifest_path,
-        )
-    value = (
-        payload["packageRoot"]
-        if camel_present
-        else payload.get("package_root", ".")
-    )
+    value = _package_root_value(payload, manifest_path=manifest_path)
     if value in (None, ""):
         return root, Path(".")
     if not isinstance(value, str):
@@ -339,6 +444,58 @@ def _package_root(
             path=manifest_path,
         )
     return resolved, resolved.relative_to(root)
+
+
+def _file_set_package_root(
+    payload: Mapping[str, object],
+    *,
+    manifest_path: Path,
+    root_prefix: str,
+    members: Mapping[str, bytes],
+) -> PurePosixPath:
+    value = _package_root_value(payload, manifest_path=manifest_path)
+    if value in (None, "", "."):
+        return PurePosixPath(".")
+    if not isinstance(value, str):
+        raise PluginManifestError(
+            "Plugin packageRoot must be a string",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
+    try:
+        relative = canonical_plugin_relative_path(value)
+    except ValueError as exc:
+        raise PluginManifestError(
+            "Plugin packageRoot must stay inside the package root",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        ) from exc
+    prefix = f"{root_prefix}{relative.as_posix()}/"
+    if not any(path.startswith(prefix) for path in members):
+        raise PluginManifestError(
+            "Plugin packageRoot must be an existing directory",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
+    return relative
+
+
+def _package_root_value(
+    payload: Mapping[str, object], *, manifest_path: Path
+) -> object:
+    camel_present = "packageRoot" in payload
+    snake_present = "package_root" in payload
+    if (
+        camel_present
+        and snake_present
+        and payload["packageRoot"] != payload["package_root"]
+    ):
+        raise PluginManifestError(
+            "Plugin packageRoot aliases must have the same value",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
+    return payload["packageRoot"] if camel_present else payload.get("package_root", ".")
 
 
 def _enabled_value(
@@ -420,23 +577,7 @@ def _contribution_index(
     root: Path,
     manifest_path: Path,
 ) -> PluginContributionIndex:
-    value = payload.get("contributionIndex")
-    if value is None:
-        return PluginContributionIndex()
-    try:
-        index = PluginContributionIndex.from_dict(value)
-    except PluginDeclarationCodecError as exc:
-        raise PluginManifestError(
-            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
-            code=exc.code,
-            path=manifest_path,
-        ) from exc
-    except (TypeError, ValueError) as exc:
-        raise PluginManifestError(
-            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
-            code="invalid_plugin_contribution_index",
-            path=manifest_path,
-        ) from exc
+    index = _decode_contribution_index(payload, manifest_path=manifest_path)
     for reservation in index.items:
         relative_paths = [Path(reservation.declaration_source.relative_path)]
         if reservation.worker_configuration is not None:
@@ -464,6 +605,29 @@ def _contribution_index(
     return index
 
 
+def _decode_contribution_index(
+    payload: Mapping[str, object], *, manifest_path: Path
+) -> PluginContributionIndex:
+    value = payload.get("contributionIndex")
+    if value is None:
+        return PluginContributionIndex()
+    try:
+        index = PluginContributionIndex.from_dict(value)
+    except PluginDeclarationCodecError as exc:
+        raise PluginManifestError(
+            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
+            code=exc.code,
+            path=manifest_path,
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise PluginManifestError(
+            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
+            code="invalid_plugin_contribution_index",
+            path=manifest_path,
+        ) from exc
+    return index
+
+
 def _path_uses_symlink(root: Path, relative: Path) -> bool:
     current = root
     for part in relative.parts:
@@ -485,4 +649,4 @@ def _freeze_value(value: object) -> object:
     return value
 
 
-__all__ = ["PluginManifestError", "PluginManifestParser"]
+__all__ = ["InertPluginFileManifest", "PluginManifestError", "PluginManifestParser"]

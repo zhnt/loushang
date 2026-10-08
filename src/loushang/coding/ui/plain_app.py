@@ -49,6 +49,7 @@ def build_plain_coding_tui_app(
         runtime=runtime,
         session=session,
         verbose=verbose,
+        plugin_workspace=cwd,
     )
 
     def current_hotkeys() -> str:

@@ -37,7 +37,8 @@ def _imports(path: Path) -> set[str]:
 
 def test_h6_2_native_profiles_are_private_closed_and_product_neutral() -> None:
     native = _read(NATIVE)
-    public = "\n".join(_read(path) for path in PUBLIC)
+    exported = "\n".join(_read(path) for path in PUBLIC[:2])
+    runtime = _read(PUBLIC[2])
 
     assert "__all__: list[str] = []" in native
     for private_name in (
@@ -47,7 +48,12 @@ def test_h6_2_native_profiles_are_private_closed_and_product_neutral() -> None:
         "_PosixStaticLaunchMaterial",
     ):
         assert private_name in native
-        assert private_name not in public
+        assert private_name not in exported
+        if private_name != "_PosixStaticLaunchCaptureBackend":
+            assert private_name not in runtime
+    assert "enable_posix_static_capture: bool = False" in runtime
+    assert "if enable_posix_static_capture:" in runtime
+    assert "from ._posix_launch_preparation import _PosixStaticLaunchCaptureBackend" in runtime
     for profile in (
         "posix-static-elf-v1",
         "posix-static-contained-elf-v1",
@@ -90,7 +96,14 @@ def test_h6_2_native_spawn_has_one_exact_manifest_and_conservative_fence() -> No
     assert process.index("effect.begin_effect()") < process.index(
         "process = await self._spawn_once("
     )
-    assert "settled_without_process" not in process
+    # The async spawn cannot prove whether a child was created. The gated v2
+    # spawn may settle only after killing and observing its unattached group.
+    assert process.count("effect.settled_without_process(") == 1
+    assert process.index("self._settle_gated_unattached(child._process)") < (
+        process.index("raise effect.settled_without_process(primary)")
+    )
+    assert "raw.wait(timeout=_FAILED_ATTACHMENT_SETTLEMENT_SECONDS)" in process
+    assert "_kill_process_group(raw.pid, 0)" in process
     assert "every such failure remains fenced" in process
     assert "class _ManagedSpawnSettledWithoutProcess" in core
     assert "effect.accepts_settled(failure)" in core

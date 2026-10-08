@@ -85,6 +85,31 @@ def test_descriptor_relative_journal_apis_reject_non_child_names() -> None:
                 pass
 
 
+def test_descriptor_relative_lock_exposes_its_pinned_handle(tmp_path: Path) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock_at
+
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        pytest.skip("requires POSIX descriptor-relative opens")
+    root = tmp_path / "root"
+    root.mkdir()
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with journal_file_lock_at(
+            descriptor, "decision.lock", "exclusive", create=True
+        ) as locked:
+            assert locked.write(b"\1") == 1
+            locked.flush()
+            os.fsync(locked.fileno())
+        with journal_file_lock_at(descriptor, "decision.lock", "shared") as locked:
+            assert locked.read(1) == b"\1"
+    finally:
+        os.close(descriptor)
+
+
 def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         JournalLoadPolicy,
@@ -213,6 +238,40 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
         durability=PROCESS_LOCAL_JOURNAL,
     ).records == (record,)
     assert not path.with_name("events.jsonl.lock").exists()
+
+
+def test_text_journal_writers_preserve_configured_newline_bytes(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalFormatProfile,
+        append_jsonl_record,
+        append_jsonl_records,
+        write_jsonl,
+    )
+
+    for newline in ("\n", "\r\n"):
+        path = tmp_path / f"records-{len(newline)}.jsonl"
+        format_profile = JournalFormatProfile(newline=newline)
+        options = {
+            "record_codec": _RecordCodec(),
+            "format_profile": format_profile,
+            "durability": PROCESS_LOCAL_JOURNAL,
+        }
+        append_jsonl_record(path, _Record("one", "alpha"), **options)
+        assert path.read_bytes() == ('{"recordId": "one", "text": "alpha"}' + newline).encode()
+
+        append_jsonl_records(path, [_Record("two", "beta")], **options)
+        assert path.read_bytes() == (
+            '{"recordId": "one", "text": "alpha"}'
+            + newline
+            + '{"recordId": "two", "text": "beta"}'
+            + newline
+        ).encode()
+
+        write_jsonl(path, [_Record("three", "gamma")], **options)
+        assert path.read_bytes() == ('{"recordId": "three", "text": "gamma"}' + newline).encode()
 
 
 def test_decoder_accepts_jsonl_cr_lf_framing() -> None:
@@ -536,6 +595,23 @@ def test_existing_journal_lock_rejects_final_symlink(tmp_path: Path) -> None:
     assert external.read_bytes() == b"sentinel"
 
 
+def test_read_lock_skips_only_a_completely_absent_journal(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_read_lock
+
+    path = tmp_path / "missing" / "state.jsonl"
+    with journal_file_read_lock(path, "exclusive", create_lock=False):
+        assert not path.parent.exists()
+
+    path.parent.mkdir()
+    path.write_bytes(b"state\n")
+    with pytest.raises(FileNotFoundError):
+        with journal_file_read_lock(path, "exclusive", create_lock=False):
+            pytest.fail("an existing journal needs its existing lock")
+    assert not path.with_name("state.jsonl.lock").exists()
+
+
 def test_existing_journal_lock_rejects_fifo_without_blocking(tmp_path: Path) -> None:
     import os
 
@@ -551,3 +627,65 @@ def test_existing_journal_lock_rejects_fifo_without_blocking(tmp_path: Path) -> 
     with pytest.raises(OSError):
         with journal_file_lock(path, "exclusive", create=False):
             pytest.fail("a FIFO lock must never be acquired")
+
+
+def test_journal_lock_creates_private_ancestors_under_group_writable_umask(
+    tmp_path: Path,
+) -> None:
+    """Ancestors must be 0o700 even when the process umask is permissive.
+
+    ``Path.mkdir(mode=0o700, parents=True)`` applies that mode to the leaf only,
+    so intermediate levels used to inherit 0o777 & ~umask. Under umask 0o002
+    that produced group-writable 0o775 ancestors, which private-directory
+    admission rejects as unsafe -- a Product could create a tree and then fail
+    against it.
+    """
+
+    import os
+    import stat
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    if os.name != "posix":
+        pytest.skip("POSIX directory permission regression")
+
+    target = tmp_path / "one" / "two" / "three" / "state.jsonl"
+    previous = os.umask(0o002)
+    try:
+        with journal_file_lock(target, "exclusive"):
+            pass
+    finally:
+        os.umask(previous)
+
+    created = [tmp_path / "one", tmp_path / "one" / "two", target.parent]
+    for directory in created:
+        assert directory.is_dir(), directory
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700, directory
+        assert not stat.S_IMODE(directory.stat().st_mode) & 0o022, directory
+
+
+def test_journal_lock_never_rewrites_existing_group_writable_ancestor(
+    tmp_path: Path,
+) -> None:
+    """An existing directory is not this call's to tighten."""
+
+    import os
+    import stat
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    if os.name != "posix":
+        pytest.skip("POSIX directory permission regression")
+
+    existing = tmp_path / "shared"
+    existing.mkdir()
+    os.chmod(existing, 0o2775)
+
+    with journal_file_lock(existing / "state.jsonl", "exclusive"):
+        pass
+
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o2775

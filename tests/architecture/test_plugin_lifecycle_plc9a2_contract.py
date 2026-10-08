@@ -14,7 +14,7 @@ ACTIVATION = Path("src/loushang/harness/resources/packages/product_activation.py
 PRODUCT_CONTRACT = Path("src/loushang/harness/resources/packages/product_contract.py")
 PRODUCT_INVENTORY = Path("src/loushang/harness/resources/packages/product_inventory.py")
 PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
-PRODUCT_RUNTIME = Path("src/loushang/harness/resources/packages/product_runtime.py")
+PRODUCT_RUNTIME = Path("src/loushang/harness/package_product/product_runtime.py")
 KERNEL_RECORDS = Path(
     "src/loushang/harness/resources/packages/plugin_lifecycle/records.py"
 )
@@ -101,7 +101,7 @@ def test_plc9a2_contract_is_indexed_and_inventory_names_every_new_owner() -> Non
         "PackageProductRuntimeBindingV1",
     ):
         assert owner in inventory
-    assert "UI/management-SDK transport bindings" in inventory
+    assert "wider UI management conformance" in inventory
 
 
 def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
@@ -144,7 +144,6 @@ def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
         PRODUCT_CONTRACT, "PackageProductLifecycleRecordV1.to_dict"
     )
     assert "for recovery in self._recoveries" in source
-    assert source.count("self._admit()") == 3
 
 
 def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
@@ -152,7 +151,20 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     inventory = _source(PRODUCT_INVENTORY)
     records = _source(KERNEL_RECORDS)
 
+    activate = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation.activate",
+    )
+    exact = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation.recover_handoff_exact",
+    )
     route = _function_source(ACTIVATION, "PackageProductLifecycleActivation.route")
+    retry = _function_source(ACTIVATION, "PackageProductLifecycleActivation.retry")
+    admitted = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation._route_with_admission",
+    )
     query = _function_source(
         ACTIVATION,
         "PackageProductLifecycleActivation.execute_guarded_query",
@@ -162,9 +174,29 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
         "PackageProductLifecycleActivation._route_guarded",
     )
     assert (
-        route.index("with guard:")
-        < route.index("self._admit()")
-        < route.index("self._route_guarded(")
+        activate.index("with self._transaction_guard.shared_runtime(")
+        < activate.index("preflight = self._admit()")
+        < activate.index("for recovery in self._recoveries")
+        < activate.index("receipt = self._admit()")
+        < activate.index("self._receipt = receipt")
+    )
+    assert (
+        exact.index("self._exact_recovery_used = True")
+        < exact.index("with self._transaction_guard.shared_runtime(")
+        < exact.index("preflight = self._admit()")
+        < exact.index("retained_ids = preliminary(operation_id)")
+        < exact.index("receipt = self._admit()")
+        < exact.index("committed_ids = committed(receipt, operation_id)")
+        < exact.index("state = terminal_state(operation_id)")
+        < exact.index("if self._admit() != preflight:")
+    )
+    assert "self._receipt =" not in exact
+    assert "self._route_with_admission(" in route
+    assert "self._route_with_admission(" in retry
+    assert (
+        admitted.index("with guard:")
+        < admitted.index("self._admit()")
+        < admitted.index("self._route_guarded(")
     )
     assert (
         query.index("with guard:")
@@ -174,6 +206,9 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     assert "receipt.request.admission_request_id" in guarded
     assert guarded.index("bind_runtime_admission(") < guarded.index(
         "self._router.route("
+    )
+    assert guarded.index("bind_runtime_admission(") < guarded.index(
+        "self._router.retry("
     )
     assert "runtime_admission_request_id=(" in guarded
     assert "resolution_environment_fingerprint=sha256" not in guarded

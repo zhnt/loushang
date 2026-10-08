@@ -19,7 +19,7 @@ from secrets import token_hex
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.apphost import (
     AdmissionIdentityV1,
@@ -260,22 +260,39 @@ def _session_factory(
             stream_fn=None,
             tools=[],
         )
+    model = Model(
+        id="no-network",
+        name="No network",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            input=("text",), context_window=128000, max_tokens=4096
+        ),
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "faux": Provider(
+                id="faux",
+                endpoints={
+                    "anthropic-messages": Endpoint(
+                        id="anthropic-messages",
+                        provider="faux",
+                        api="anthropic-messages",
+                        models={model.id: model},
+                    )
+                },
+            )
+        }
+    )
     return CodingRealHostedSessionFactoryV1(
         services_factory=lambda cwd: create_services(
+            ai_model_registry=registry,
             settings_manager=SettingsManager(
                 global_settings_path=root / "settings.json",
                 project_settings_path=cwd / ".loushang/settings.json",
             )
         ),
-        model=Model(
-            id="no-network",
-            name="No network",
-            provider="faux",
-            endpoint="anthropic-messages",
-            capabilities=Capabilities(
-                input=("text",), context_window=128000, max_tokens=4096
-            ),
-        ),
+        model=model,
         stream_fn=deterministic_stream,
         tools=[],
     )

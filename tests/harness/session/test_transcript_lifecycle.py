@@ -290,6 +290,7 @@ def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) 
         def __init__(self, cwd: str, session_file: Path | None) -> None:
             self.cwd = cwd
             self.session_file = session_file
+            self.runtime_disposed = False
 
         @classmethod
         async def new(
@@ -325,6 +326,7 @@ def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) 
 
         async def dispose_runtime_profile(self) -> None:
             self.actions.append(("dispose", self.session_file))
+            self.runtime_disposed = True
 
         def get_cwd(self) -> str:
             return self.cwd

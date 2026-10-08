@@ -278,7 +278,7 @@ class WindowsConsoleMode:
                     _windows_console_input_mode(
                         original_mode,
                         vt_input=False,
-                        preserve_native_selection=preserve_native_selection,
+                        preserve_native_selection=True,
                     )
                 )
                 if not kernel32.SetConsoleMode(handle, fallback):
@@ -405,8 +405,10 @@ def _read_logical_character(
     if char in {"\x00", "\xe0"}:
         extended = console.getwch()
         return _EXTENDED_KEY_SEQUENCES.get(extended, char + extended)
-    if recover_plain_alt and char.lower() == "v" and (
-        pending_alt_modifier or _windows_alt_pressed()
+    if (
+        recover_plain_alt
+        and char.lower() == "v"
+        and (pending_alt_modifier or _windows_alt_pressed())
     ):
         # Some Windows VT hosts preserve the physical Alt key state but expose
         # Alt+V through getwch() as an unmodified printable character.
@@ -468,10 +470,7 @@ def _windows_pending_alt_modifier() -> bool:
             continue
         if key.wVirtualKeyCode in {_VK_MENU, _VK_LMENU, _VK_RMENU}:
             return True
-        return bool(
-            key.wVirtualKeyCode == _VK_V
-            and key.dwControlKeyState & alt_mask
-        )
+        return bool(key.wVirtualKeyCode == _VK_V and key.dwControlKeyState & alt_mask)
     return False
 
 

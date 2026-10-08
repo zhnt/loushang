@@ -12,6 +12,8 @@ def project_tool_details_for_protocol(details: object | None) -> dict[str, Any]:
     _copy_alias(projected, details, "full_output_path", "fullOutputPath")
     _copy_alias(projected, details, "stdout_blob", "stdoutBlob")
     _copy_alias(projected, details, "stderr_blob", "stderrBlob")
+    artifact_cleanup_diagnostic(details)
+    _copy_alias(projected, details, "artifact_cleanup_error", "artifactCleanupError")
     _copy_alias(
         projected,
         details,
@@ -63,7 +65,20 @@ def normalize_bash_result_from_protocol(
         value = result.get(snake_key, result.get(protocol_key))
         if value is not None:
             normalized[snake_key] = value
+    cleanup = artifact_cleanup_diagnostic(result)
+    if cleanup is not None:
+        normalized["artifact_cleanup_error"] = cleanup
     return normalized
+
+
+def artifact_cleanup_diagnostic(details: Mapping[str, object]) -> str | None:
+    """Read the closed diagnostic without hiding invalid or conflicting aliases."""
+    values = [details[key] for key in ("artifact_cleanup_error", "artifactCleanupError") if key in details]
+    if any(value not in (None, "temporary_cleanup_pending") for value in values):
+        raise ValueError("invalid artifact cleanup diagnostic")
+    if len(values) == 2 and values[0] != values[1]:
+        raise ValueError("conflicting artifact cleanup diagnostics")
+    return "temporary_cleanup_pending" if values and values[0] is not None else None
 
 
 def _copy_alias(
@@ -97,6 +112,7 @@ def _int_or_none(value: object) -> int | None:
 
 
 __all__ = [
+    "artifact_cleanup_diagnostic",
     "normalize_bash_result_from_protocol",
     "project_tool_details_for_protocol",
     "tool_artifact_paths_for_protocol",

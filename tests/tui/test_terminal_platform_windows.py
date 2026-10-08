@@ -52,7 +52,7 @@ def test_windows_console_input_mode_preserves_quick_edit_for_native_selection() 
     assert kernel32.set_modes == [expected_mode, initial_mode]
 
 
-def test_windows_console_input_mode_disables_quick_edit_when_vt_is_rejected() -> (
+def test_windows_console_input_mode_restores_quick_edit_when_vt_is_rejected() -> (
     None
 ):
     initial_mode = ENABLE_QUICK_EDIT_MODE | 0x0004
@@ -64,7 +64,7 @@ def test_windows_console_input_mode_disables_quick_edit_when_vt_is_rejected() ->
     vt_mode = (
         initial_mode | ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT
     ) & ~ENABLE_QUICK_EDIT_MODE
-    quick_edit_mode = (initial_mode | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
+    quick_edit_mode = initial_mode | ENABLE_EXTENDED_FLAGS
     assert kernel32.set_modes == [vt_mode, quick_edit_mode]
     assert adapter.mode_configured() is True
     assert adapter.vt_input_active() is False
@@ -90,7 +90,9 @@ def test_windows_console_ctrl_c_is_input_until_original_mode_is_restored(
     assert adapter.mode_configured()
     for mode in kernel32.set_modes:
         assert not mode & ENABLE_PROCESSED_INPUT
-        assert bool(mode & ENABLE_QUICK_EDIT_MODE) is preserve_selection
+    assert bool(kernel32.set_modes[-1] & ENABLE_QUICK_EDIT_MODE) is (
+        preserve_selection or reject_vt
+    )
     adapter.disable_vt_input()
     assert kernel32.set_modes[-1] == initial_mode
 

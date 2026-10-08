@@ -25,8 +25,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     DependencyClosureLockV2,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetGcTombstoneV1,
     PackageCommittedSetJournal,
     PackageCommittedSetJournalError,
+    PackageCommittedSetRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournalError,
@@ -132,6 +134,128 @@ class PackageStagingSetExecutionResult:
             raise ValueError("Committed Package set operation changed")
 
 
+class PackageStagingCheckpointError(RuntimeError):
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class PackageStagingCheckpointV1:
+    """Momentary owner proof of staged nodes, with no execution authority."""
+
+    status: PackageLifecycleStatusV1
+    plan_fingerprint: str
+    pin_receipt_id: str
+    root_target: PackagePluginRootTargetV1
+    receipts: tuple[PackageArtifactStagingReceiptV1, ...]
+    missing_node_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.status, PackageLifecycleStatusV1)
+            or self.status.disposition != "active"
+            or self.status.phase != "transaction_pinned"
+            or not isinstance(self.root_target, PackagePluginRootTargetV1)
+            or self.root_target.operation_id != self.status.operation_id
+            or self.root_target.request_fingerprint
+            != self.status.request_fingerprint
+        ):
+            raise ValueError("Package staging checkpoint identity changed")
+        if any(
+            len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            for value in (self.plan_fingerprint, self.pin_receipt_id)
+        ):
+            raise ValueError("Package staging checkpoint proof identity is invalid")
+        if self.receipts != tuple(
+            sorted(self.receipts, key=lambda receipt: receipt.node_id)
+        ) or any(
+            not isinstance(receipt, PackageArtifactStagingReceiptV1)
+            or receipt.operation_id != self.status.operation_id
+            for receipt in self.receipts
+        ):
+            raise ValueError("Package staging checkpoint receipts changed")
+        receipt_nodes = tuple(receipt.node_id for receipt in self.receipts)
+        if (
+            len(set(receipt_nodes)) != len(receipt_nodes)
+            or self.missing_node_ids != tuple(sorted(set(self.missing_node_ids)))
+            or set(receipt_nodes) & set(self.missing_node_ids)
+        ):
+            raise ValueError("Package staging checkpoint nodes are not canonical")
+
+    @property
+    def checkpoint_id(self) -> str:
+        # Selection records advance the attempt CAS without changing staged
+        # bytes. Keep the checkpoint identity stable across that selection;
+        # callers bind the exact attempt revision separately in their CAS.
+        status_identity = self.status.to_dict()
+        status_identity.pop("attemptRevision")
+        return sha256(
+            canonical_json_bytes(
+                {
+                    "missingNodeIds": list(self.missing_node_ids),
+                    "pinReceiptId": self.pin_receipt_id,
+                    "planFingerprint": self.plan_fingerprint,
+                    "receiptIds": [receipt.receipt_id for receipt in self.receipts],
+                    "rootTarget": self.root_target.to_dict(),
+                    "status": status_identity,
+                }
+            )
+        ).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class PackagePublishedSetCheckpointV1:
+    """Read-only proof of a complete, retained set awaiting commit handoff."""
+
+    status: PackageLifecycleStatusV1
+    plan_fingerprint: str
+    pin_receipt_id: str
+    root_target: PackagePluginRootTargetV1
+    receipts: tuple[PackageArtifactStagingReceiptV1, ...]
+    committed_set: CommittedPackageSetRefV1
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.status, PackageLifecycleStatusV1)
+            or self.status.disposition != "active"
+            or self.status.phase != "set_published"
+            or not isinstance(self.root_target, PackagePluginRootTargetV1)
+            or self.root_target.operation_id != self.status.operation_id
+            or self.root_target.request_fingerprint != self.status.request_fingerprint
+            or not isinstance(self.committed_set, CommittedPackageSetRefV1)
+            or self.committed_set.operation_id != self.status.operation_id
+            or self.committed_set.request_fingerprint != self.status.request_fingerprint
+            or self.receipts != tuple(sorted(self.receipts, key=lambda item: item.node_id))
+            or len({item.node_id for item in self.receipts}) != len(self.receipts)
+        ):
+            raise ValueError("Published Package set checkpoint identity changed")
+        if any(
+            len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            for value in (self.plan_fingerprint, self.pin_receipt_id)
+        ):
+            raise ValueError("Published Package set proof identity is invalid")
+
+    @property
+    def checkpoint_id(self) -> str:
+        # Selecting an admission changes only the attempt CAS. The published
+        # set and its physical evidence must keep the same checkpoint identity.
+        status_identity = self.status.to_dict()
+        status_identity.pop("attemptRevision")
+        return sha256(
+            canonical_json_bytes(
+                {
+                    "committedSet": self.committed_set.to_dict(),
+                    "pinReceiptId": self.pin_receipt_id,
+                    "planFingerprint": self.plan_fingerprint,
+                    "receiptIds": [receipt.receipt_id for receipt in self.receipts],
+                    "rootTarget": self.root_target.to_dict(),
+                    "status": status_identity,
+                }
+            )
+        ).hexdigest()
+
+
 class PackageStagingSetLifecycleOwner:
     """Stage exact pinned nodes, record one complete set, then advance phase CAS."""
 
@@ -175,6 +299,222 @@ class PackageStagingSetLifecycleOwner:
         self._root_staging = root_staging
         self._staging_journal = staging_journal
         self._committed_sets = committed_sets
+
+    def inspect_checkpoint(self, operation_id: str) -> PackageStagingCheckpointV1:
+        """Verify a pinned-stage prefix against strict journals and physical Store."""
+
+        checkpoint = self._inspect_checkpoint(operation_id, phase="transaction_pinned")
+        assert isinstance(checkpoint, PackageStagingCheckpointV1)
+        return checkpoint
+
+    def inspect_published_checkpoint(
+        self, operation_id: str
+    ) -> PackagePublishedSetCheckpointV1:
+        """Verify a published set and its retained physical Store without repair."""
+
+        checkpoint = self._inspect_checkpoint(operation_id, phase="set_published")
+        assert isinstance(checkpoint, PackagePublishedSetCheckpointV1)
+        return checkpoint
+
+    def _inspect_checkpoint(
+        self, operation_id: str, *, phase: str
+    ) -> PackageStagingCheckpointV1 | PackagePublishedSetCheckpointV1:
+
+        original = self._kernel.journal.read_operation(operation_id)
+        if original is None:
+            raise PackageStagingCheckpointError(
+                "Package staging operation is absent",
+                code="package_staging_checkpoint_missing",
+            )
+        request, status = original
+        if (
+            status.disposition != "active"
+            or status.phase != phase
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+        ):
+            raise PackageStagingCheckpointError(
+                "Package staging checkpoint phase is unavailable",
+                code="package_staging_checkpoint_phase_changed",
+            )
+        plan = self._plan(operation_id, status.attempt_epoch)
+        if plan is None:
+            raise PackageStagingCheckpointError(
+                "Verified Package closure plan is absent",
+                code="package_staging_checkpoint_plan_changed",
+            )
+        pin_records = self._pin_journal.read_operation_records(operation_id)
+        if len(pin_records) != 1:
+            raise PackageStagingCheckpointError(
+                "Package staging checkpoint has ambiguous pin history",
+                code="package_staging_checkpoint_pin_changed",
+            )
+        pin = self._current_pin(status, plan, read_only=True)
+        if pin is None:
+            raise PackageStagingCheckpointError(
+                "Package transaction pin is not acquired",
+                code="package_staging_checkpoint_pin_changed",
+            )
+        target = self._root_targets.issue_target(request, status.classification)
+        if not self._target_matches(target, request, status):
+            raise PackageStagingCheckpointError(
+                "Package root target changed",
+                code="package_staging_checkpoint_target_changed",
+            )
+        set_events = self._committed_sets.read_events()
+        published = tuple(
+            event
+            for event in set_events
+            if isinstance(event, PackageCommittedSetRecordV1)
+            and event.operation_id == operation_id
+        )
+        if (phase == "transaction_pinned" and published) or (
+            phase == "set_published" and len(published) != 1
+        ):
+            raise PackageStagingCheckpointError(
+                "Package committed set does not match checkpoint phase",
+                code="package_staging_checkpoint_set_changed",
+            )
+        if phase == "set_published" and any(
+            isinstance(event, PackageCommittedSetGcTombstoneV1)
+            and event.set_id == published[0].committed_set.set_id
+            for event in set_events
+        ):
+            raise PackageStagingCheckpointError(
+                "Published Package set was retired",
+                code="package_staging_checkpoint_set_changed",
+            )
+        receipts = tuple(
+            sorted(
+                self._staging_journal.read_operation_receipts(operation_id),
+                key=lambda receipt: receipt.node_id,
+            )
+        )
+        plan_nodes = {node.node_id for node in plan.nodes}
+        staged_nodes = {receipt.node_id for receipt in receipts}
+        if len(staged_nodes) != len(receipts) or not staged_nodes <= plan_nodes:
+            raise PackageStagingCheckpointError(
+                "Package staging receipts changed closure nodes",
+                code="package_staging_checkpoint_receipts_changed",
+            )
+        if phase == "set_published" and staged_nodes != plan_nodes:
+            raise PackageStagingCheckpointError(
+                "Published Package set has incomplete staging receipts",
+                code="package_staging_checkpoint_receipts_changed",
+            )
+        read_dependencies = getattr(
+            self._dependency_staging, "read_operation_settlements", None
+        )
+        read_root = getattr(self._root_staging, "read_operation_settlements", None)
+        if not callable(read_dependencies) or not callable(read_root):
+            raise PackageStagingCheckpointError(
+                "Package staging Store account is unavailable",
+                code="package_staging_checkpoint_store_unverified",
+            )
+
+        def store_receipt_ids() -> tuple[str, ...]:
+            return tuple(
+                sorted(
+                    record.receipt.receipt_id
+                    for record in (
+                        *read_dependencies(operation_id),
+                        *read_root(operation_id),
+                    )
+                )
+            )
+
+        settled_ids = store_receipt_ids()
+        receipt_ids = tuple(sorted(receipt.receipt_id for receipt in receipts))
+        if settled_ids != receipt_ids:
+            raise PackageStagingCheckpointError(
+                "Package Store and staging journal have different settled nodes",
+                code="package_staging_checkpoint_store_unmatched",
+            )
+        for receipt in receipts:
+            if (
+                receipt.staging_request.attempt_epoch != status.attempt_epoch
+                or not self._receipt_covers_current_plan(
+                    receipt, plan=plan, pin=pin, target=target
+                )
+            ):
+                raise PackageStagingCheckpointError(
+                    "Package staging receipt changed verified plan",
+                    code="package_staging_checkpoint_receipts_changed",
+                )
+            validate = getattr(
+                self._root_staging
+                if receipt.staging_request.plan_node.role == "root"
+                else self._dependency_staging,
+                "read_validate_root_receipt"
+                if receipt.staging_request.plan_node.role == "root"
+                else "read_validate_dependency_receipt",
+                None,
+            )
+            if not callable(validate) or validate(receipt) != receipt:
+                raise PackageStagingCheckpointError(
+                    "Package staging Store validation is unavailable",
+                    code="package_staging_checkpoint_store_unverified",
+                )
+        if (
+            self._kernel.journal.read_operation(operation_id) != original
+            or self._plan(operation_id, status.attempt_epoch) != plan
+            or self._pin_journal.read_operation_records(operation_id) != pin_records
+            or self._current_pin(status, plan, read_only=True) != pin
+            or tuple(
+                sorted(
+                    self._staging_journal.read_operation_receipts(operation_id),
+                    key=lambda receipt: receipt.node_id,
+                )
+            )
+            != receipts
+            or self._committed_sets.read_events() != set_events
+            or store_receipt_ids() != settled_ids
+        ):
+            raise PackageStagingCheckpointError(
+                "Package staging checkpoint changed while read",
+                code="package_staging_checkpoint_changed",
+            )
+        if phase == "set_published":
+            committed = published[0]
+            assert status.classification is not None
+            expected_lock = DependencyClosureLockV2.create(
+                plan,
+                stable_refs={receipt.node_id: receipt.stable_ref for receipt in receipts},
+            )
+            expected_set = CommittedPackageSetRefV1.create(
+                expected_lock,
+                request_fingerprint=status.request_fingerprint,
+                product_id=target.product_id,
+                scope_id=target.scope_id,
+                installation_id=target.installation_id,
+                plugin_id=target.plugin_id,
+                classification_fingerprint=status.classification.evidence_ref,
+                commit_revision=committed.record_revision,
+            )
+            if (
+                committed.closure_lock != expected_lock
+                or committed.committed_set != expected_set
+            ):
+                raise PackageStagingCheckpointError(
+                    "Published Package set changed verified closure",
+                    code="package_staging_checkpoint_set_changed",
+                )
+            return PackagePublishedSetCheckpointV1(
+                status=status,
+                plan_fingerprint=plan.fingerprint,
+                pin_receipt_id=pin.receipt_id,
+                root_target=target,
+                receipts=receipts,
+                committed_set=committed.committed_set,
+            )
+        return PackageStagingCheckpointV1(
+            status=status,
+            plan_fingerprint=plan.fingerprint,
+            pin_receipt_id=pin.receipt_id,
+            root_target=target,
+            receipts=receipts,
+            missing_node_ids=tuple(sorted(plan_nodes - staged_nodes)),
+        )
 
     def stage_and_publish(
         self,
@@ -360,6 +700,35 @@ class PackageStagingSetLifecycleOwner:
             target=target,
             receipts=canonical,
         )
+
+    def stage_missing_and_publish(
+        self,
+        candidate: VerifiedPackageClosureCandidate,
+        *,
+        expected_checkpoint_id: str,
+        expected_missing_node_ids: tuple[str, ...],
+    ) -> PackageStagingSetExecutionResult:
+        """Recheck a selected physical prefix before filling missing nodes."""
+
+        if not isinstance(candidate, VerifiedPackageClosureCandidate):
+            raise TypeError("Verified Package closure candidate is required")
+        try:
+            checkpoint = self.inspect_checkpoint(candidate.plan.operation_id)
+        except BaseException:
+            candidate.suspend_for_recovery()
+            raise
+        if (
+            not expected_missing_node_ids
+            or checkpoint.checkpoint_id != expected_checkpoint_id
+            or checkpoint.missing_node_ids != expected_missing_node_ids
+            or candidate.plan.fingerprint != checkpoint.plan_fingerprint
+        ):
+            candidate.suspend_for_recovery()
+            raise PackageStagingCheckpointError(
+                "Selected Package staging prefix changed before materialization",
+                code="package_staging_checkpoint_changed",
+            )
+        return self.stage_and_publish(candidate)
 
     def resume(
         self,
@@ -803,9 +1172,15 @@ class PackageStagingSetLifecycleOwner:
         self,
         status: PackageLifecycleStatusV1,
         plan: VerifiedClosurePlanV2,
+        *,
+        read_only: bool = False,
     ) -> PackageTransactionPinReceiptV1 | None:
         try:
-            receipt = self._pin_journal.current_for_operation(status.operation_id)
+            if read_only:
+                records = self._pin_journal.read_operation_records(status.operation_id)
+                receipt = records[-1].receipt if records else None
+            else:
+                receipt = self._pin_journal.current_for_operation(status.operation_id)
         except PackageTransactionPinJournalError:
             return None
         if (
@@ -984,6 +1359,7 @@ def _local_refusal(
 
 __all__ = [
     "PackagePluginRootTargetAuthorityPort",
+    "PackagePublishedSetCheckpointV1",
     "PackageStagingClosurePlanEvidencePort",
     "PackageStagingSetExecutionResult",
     "PackageStagingSetLifecycleOwner",

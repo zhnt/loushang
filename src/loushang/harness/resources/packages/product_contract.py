@@ -14,6 +14,7 @@ from hashlib import sha256
 from typing import Literal, Protocol, TypeVar
 
 PACKAGE_PRODUCT_INTENT_VERSION = 1
+PACKAGE_PRODUCT_RETRY_INTENT_VERSION = 1
 PACKAGE_PRODUCT_EVIDENCE_VERSION = 1
 PACKAGE_PRODUCT_OUTCOME_VERSION = 1
 PACKAGE_PRODUCT_RECORD_VERSION = 1
@@ -104,6 +105,7 @@ PACKAGE_PRODUCT_LIFECYCLE_FAILURE_CODES = frozenset(
         "package_retention_handoff_interrupted",
         "package_retention_handoff_stale",
         "package_route_unavailable",
+        "package_plugin_contribution_rejected",
         "package_runtime_epoch_unsupported",
         "package_source_provenance_changed",
         "package_source_unauthorized",
@@ -151,6 +153,29 @@ class PackageProductLifecycleIntentV1:
         )
         if self.intent_version != PACKAGE_PRODUCT_INTENT_VERSION:
             raise ValueError("Unsupported Package Product intent")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLifecycleRetryIntentV1:
+    """Original Product intent plus exact A2 attempt evidence for one retry."""
+
+    intent: PackageProductLifecycleIntentV1 = field(repr=False)
+    request_fingerprint: str
+    expected_attempt_epoch: int
+    retry_version: int = PACKAGE_PRODUCT_RETRY_INTENT_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.intent, PackageProductLifecycleIntentV1):
+            raise TypeError("Package Product retry requires the original intent")
+        if (
+            not isinstance(self.request_fingerprint, str)
+            or re.fullmatch(r"[0-9a-f]{64}", self.request_fingerprint) is None
+        ):
+            raise ValueError("Package Product retry fingerprint is invalid")
+        if type(self.expected_attempt_epoch) is not int or self.expected_attempt_epoch < 1:
+            raise ValueError("Package Product retry attempt epoch is invalid")
+        if self.retry_version != PACKAGE_PRODUCT_RETRY_INTENT_VERSION:
+            raise ValueError("Unsupported Package Product retry intent")
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,6 +411,13 @@ class PackageProductLifecycleOperationPort(Protocol):
         entrypoint: PackageProductEntrypoint,
     ) -> PackageProductLifecycleOutcomeV1: ...
 
+    def retry(
+        self,
+        request: PackageProductLifecycleRetryIntentV1,
+        *,
+        entrypoint: PackageProductEntrypoint,
+    ) -> PackageProductLifecycleOutcomeV1: ...
+
     async def execute_guarded_query(self, query: Callable[[], Awaitable[T]]) -> T: ...
 
 
@@ -598,6 +630,7 @@ class PackageProductLifecycleInventoryPort(Protocol):
 __all__ = [
     "PACKAGE_PRODUCT_EVIDENCE_VERSION",
     "PACKAGE_PRODUCT_INTENT_VERSION",
+    "PACKAGE_PRODUCT_RETRY_INTENT_VERSION",
     "PACKAGE_PRODUCT_OUTCOME_VERSION",
     "PACKAGE_PRODUCT_RECORD_VERSION",
     "PACKAGE_PRODUCT_UPDATE_CHECK_VERSION",
@@ -610,6 +643,7 @@ __all__ = [
     "PackageProductLifecycleDisposition",
     "PackageProductLifecycleEvidenceV1",
     "PackageProductLifecycleIntentV1",
+    "PackageProductLifecycleRetryIntentV1",
     "PackageProductLifecycleInventoryPort",
     "PackageProductLifecycleMode",
     "PackageProductLifecycleOperationPort",

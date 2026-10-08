@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -167,6 +168,60 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertIn("coding_ui", self.selected("tests/coding/test_ui_status_line.py"))
 
+    def test_cli_application_move_keeps_lint_and_catalog_guard_ownership(self):
+        inventories = selector.make_paths()
+        application = "src/loushang/coding/cli/application.py"
+        catalog_guard = "tests/architecture/test_resource_catalog_rcp5_contract.py"
+        self.assertIn(application, inventories["APPHOST_LINT_SUPPORT"])
+        self.assertIn(catalog_guard, inventories["HARNESS_TEST_PATHS"])
+        self.assertTrue({"coding", "apphost"} <= self.selected(application))
+        self.assertIn("harness", self.selected(catalog_guard))
+        self.assertNotIn("ai", self.selected(catalog_guard))
+
+    def test_g18_collector_has_selection_and_actual_test_lint_ownership(self):
+        makefile = (ROOT / "Makefile").read_text()
+        lint = makefile.split("\nlint-appservice:\n", 1)[1].split("\ntypecheck-appservice:", 1)[0]
+        for script, test in (
+            ("scripts/dev/_g18_provenance.py", "tests/dev/test_g18_provenance.py"),
+            ("scripts/dev/_g18_recovery.py", "tests/dev/test_g18_recovery.py"),
+            ("scripts/dev/_g18_slot.py", "tests/dev/test_g18_slot.py"),
+            ("scripts/dev/_g18_bytecode.py", "tests/dev/test_g18_bytecode.py"),
+            ("scripts/dev/_g18_checkpoint.py", "tests/dev/test_g18_checkpoint.py"),
+            ("scripts/dev/_g18_comparison.py", "tests/dev/test_g18_comparison.py"),
+            ("scripts/dev/measure_g18_startup.py", "tests/dev/test_measure_g18_startup.py"),
+            ("scripts/dev/measure_g18_native.py", "tests/dev/test_measure_g18_native.py"),
+            ("tests/coding/_interactive_startup_probe.py", "tests/dev/test_interactive_startup_probe.py"),
+            ("scripts/dev/_interactive_campaign.py", "tests/dev/test_interactive_campaign.py"),
+        ):
+            with self.subTest(script=script, test=test):
+                for path in (script, test):
+                    expected = {"docs", "appservice", "host_runtime"}
+                    if path == "tests/coding/_interactive_startup_probe.py":
+                        expected.add("coding")
+                    self.assertEqual(self.selected(path), expected)
+                self.assertIn(test, selector.make_paths()["APPSERVICE_TEST_PATHS"])
+                self.assertIn(f"ruff check {script}", lint)
+        for evidence in (
+            "startup-performance-g18-linux-aa-baseline.json",
+            "startup-performance-g18-linux-native-warm-aa-baseline.json",
+            "startup-performance-g18-linux-absent-aa-failure.json",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertEqual(
+                    self.selected(f"docs/internals/architecture/harness/{evidence}"),
+                    {"docs", "appservice", "host_runtime"},
+                )
+        self.assertIn("$(APPSERVICE_TEST_PATHS)", lint)
+        self.assertIn("$(PYTEST_RUNNER) $(APPSERVICE_TEST_PATHS)", makefile)
+        # No broad tests/dev exception: unknown tools still get full validation.
+        self.assertEqual(self.selected("tests/dev/test_unknown_tool.py"),
+                         set(selector.select([], full=True)["checks"]))
+
+    def test_coding_facade_checks_all_entry_consumers_additively(self):
+        self.assertTrue({"coding", "architecture", "host_runtime", "coding_ui",
+                         "tui_native", "apphost", "appservice", "install"}
+                        <= self.selected("src/loushang/coding/__init__.py"))
+
     def test_g17_evidence_and_hosting_providers_select_native_application_consumers(self):
         paths = (
             "tests/coding/_hosted_darwin_observer.py",
@@ -202,6 +257,55 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertTrue({"harness", "hosting", "windows_shell"} <= actual)
 
+    def test_coding_package_windows_paths_select_native_windows_gate(self):
+        for path in (
+            "src/loushang/coding/package_pre_b_snapshot.py",
+            "src/loushang/coding/package_installation_private_data.py",
+            "src/loushang/coding/package_legacy_windows_receipt.py",
+            "src/loushang/coding/package_external_worker_wheel.py",
+            "src/loushang/coding/cli/package_cutover.py",
+            "tests/coding/test_package_windows_pre_b_snapshot.py",
+            "tests/coding/test_package_cutover_cli.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
+    def test_windows_product_private_owner_changes_select_native_gate(self):
+        for path in (
+            "src/loushang/coding/package_private_data_windows_preview.py",
+            "src/loushang/coding/package_private_data_windows_backup.py",
+            "src/loushang/coding/package_private_data_windows_backup_expiry_owner.py",
+            "src/loushang/coding/package_private_data_windows_backup_expiry_recovery.py",
+            "src/loushang/coding/package_private_data_backup_records.py",
+            "src/loushang/foundation/windows_private_acl.py",
+            "src/loushang/harness/package_product/product_local_wheel_runtime.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
+    def test_coding_worker_product_changes_select_native_platform_gates(self):
+        for path in (
+            "src/loushang/coding/package_product_worker_payload.py",
+            "src/loushang/coding/package_product_worker_windows_provisioning.py",
+            "src/loushang/coding/package_product_worker_windows_provisioning_journal.py",
+            "src/loushang/coding/cli/package_worker_native.py",
+            "src/loushang/plugin/_coding_local_worker_wheel.py",
+            "tests/coding/test_package_product_worker_discovery.py",
+            "tests/coding/test_package_product_worker_opt_in.py",
+            "tests/coding/test_package_worker_candidate_wheel.py",
+            "tests/coding/test_package_worker_native_cli.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["hosting"])
+                self.assertTrue(plan["workflows"]["hosting"])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
     def test_markdown_test_fixtures_are_not_ordinary_documentation(self):
         self.assertIn("tui_playback", self.selected("tests/tui/fixtures/table.md"))
 
@@ -236,6 +340,19 @@ class ScopeTests(unittest.TestCase):
 
     def test_empty_changes_do_not_start_product_checks(self):
         self.assertEqual(self.selected(), {"docs"})
+
+    def test_workflow_plan_omits_diagnostic_reasons(self):
+        plan = selector.select(["src/loushang/coding/lsp/client.py"])
+
+        compact = selector.workflow_plan(plan)
+
+        self.assertEqual(
+            set(compact), {"version", "paths", "checks", "workflows"}
+        )
+        self.assertEqual(compact["paths"], plan["paths"])
+        self.assertEqual(compact["checks"], plan["checks"])
+        self.assertEqual(compact["workflows"], plan["workflows"])
+        self.assertNotIn("reasons", compact)
 
     def test_schedule_and_manual_dispatch_are_full(self):
         for event in ("schedule", "workflow_dispatch"):
@@ -306,6 +423,43 @@ class GateTests(unittest.TestCase):
 
 
 class SuiteSelectionTests(unittest.TestCase):
+    def assert_non_overlapping_test_paths(self, paths):
+        roots = [Path(path.split("::", 1)[0]) for path in paths]
+        for index, left in enumerate(roots):
+            for right in roots[index + 1:]:
+                self.assertFalse(
+                    left.is_relative_to(right) or right.is_relative_to(left),
+                    f"overlapping pytest collection paths: {left}, {right}",
+                )
+
+    def test_apphost_inventory_collects_the_whole_package_without_overlap(self):
+        paths = selector.make_paths()["APPHOST_TEST_PATHS"]
+        self.assertEqual(paths.count("tests/apphost"), 1)
+        self.assert_non_overlapping_test_paths(paths)
+
+    def test_collection_overlap_guard_uses_path_boundaries_in_both_orders(self):
+        parent = "tests/apphost"
+        child = "tests/apphost/test_launcher.py"
+        for paths in ((parent, child), (child, parent)):
+            with self.subTest(paths=paths), self.assertRaises(AssertionError):
+                self.assert_non_overlapping_test_paths(paths)
+        self.assert_non_overlapping_test_paths(
+            (parent, "tests/apphost_extra/test_launcher.py")
+        )
+
+    def test_apphost_directory_keeps_launcher_and_sibling_consumer_routing(self):
+        service_paths = selector.make_paths()["APPSERVICE_TEST_PATHS"]
+        self.assertIn("tests/apphost/test_launcher.py", service_paths)
+        paths = sorted((ROOT / "tests/apphost").glob("test_*.py"))
+        self.assertTrue(paths)
+        for path in paths:
+            relative = path.relative_to(ROOT).as_posix()
+            checks = selector.select([relative])["checks"]
+            with self.subTest(path=relative):
+                self.assertTrue(checks["apphost"])
+                if relative in service_paths:
+                    self.assertTrue(checks["appservice"])
+
     def test_coding_backend_excludes_the_separately_owned_ui_inventory(self):
         (command,) = runner.commands("coding")
         self.assertIn("--ignore=tests/coding/test_screen_coding_tui_app.py", command)
@@ -328,6 +482,31 @@ class SuiteSelectionTests(unittest.TestCase):
         self.assertNotIn("tests/harness", command)
         self.assertNotIn("--skip-host-runtime", command)
         self.assertIn("requires_host_runtime and not live", command)
+
+    def test_scoped_host_runtime_can_have_no_marked_cases(self):
+        plan = selector.select(["src/loushang/tui/terminal_session.py"])
+        self.assertTrue(plan["checks"]["host_runtime"])
+        with patch.object(
+            runner.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=5),
+        ) as run:
+            runner.run("host_runtime", plan=plan)
+        run.assert_called_once()
+        self.assertEqual(
+            run.call_args.kwargs["env"]["PYTHONPATH"].split(os.pathsep)[0],
+            str(ROOT / "src"),
+        )
+
+    def test_full_host_runtime_keeps_empty_collection_as_failure(self):
+        plan = selector.select([], full=True)
+        with patch.object(
+            runner.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=5),
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                runner.run("host_runtime", plan=plan)
 
     def test_harnesstui_split_preserves_the_original_test_inventory(self):
         variables = selector.make_paths()

@@ -115,6 +115,22 @@ def _see(driver, text, *, after=0):
     )
 
 
+def _completed_reply_seen(output):
+    plain = strip_control_sequences(output)
+    reply = plain.rfind("真实跨进程回复")
+    # A text delta is not turn settlement. The member's idle projection must
+    # follow the reply, not come from the initial, pre-submission screen.
+    return reply >= 0 and plain.rfind("*1 |") > reply
+
+
+def test_completed_reply_requires_idle_after_reply_not_initial_idle():
+    initial = "dev | *1 | /help /detach\n"
+    streaming = initial + "真实跨进程回复\nG14\ndev | *1~ | /help /detach"
+    assert not _completed_reply_seen(initial)
+    assert not _completed_reply_seen(streaming)
+    assert _completed_reply_seen(streaming + "\ndev | \x1b[32m*1\x1b[0m | /help")
+
+
 def test_G16_PRODUCT_TERMINAL_two_muxes_approval_detach_reattach_and_interrupt(
     tmp_path,
     record_testsuite_property,
@@ -211,8 +227,11 @@ def test_G16_PRODUCT_TERMINAL_process_death_recovers_history_not_execution(
         with _terminal(root, environment, "dev") as driver:
             driver.write(f"/new {scope} Durable\r")
             _see(driver, "*1")
+            checkpoint = len(driver.raw_output)
             driver.write("persisted-before-process-death\r")
-            _see(driver, "真实跨进程回复")
+            driver.read_until(
+                lambda output: _completed_reply_seen(output[checkpoint:]), timeout=30
+            )
             driver.write("hold\r")
             _see(driver, "waiting")
             before_instance, before_identities = _identities(root)

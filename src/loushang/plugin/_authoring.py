@@ -57,6 +57,10 @@ class CapabilityProviderSpec:
     factory: str
     disposer: str | None
 
+    def __post_init__(self) -> None:
+        if type(self.capability) is not str:
+            raise TypeError("Capability Provider owner reference must be a string")
+
     def _apply(self, builder: PluginDeclarationBuilder) -> PluginDeclaration:
         return builder.add_capability_provider(
             contribution_id=self.contribution_id,
@@ -98,6 +102,8 @@ class ResourceItemSpec:
     actions: tuple[ManagedSkillActionDeclaration, ...] = ()
 
     def __post_init__(self) -> None:
+        if type(self.owner_namespace) is not str:
+            raise TypeError("Resource owner reference must be a string")
         actions = tuple(self.actions)
         if any(not isinstance(item, ManagedSkillActionDeclaration) for item in actions):
             raise TypeError(
@@ -242,6 +248,44 @@ def capability_provider(
 
 class _ResourceAuthoring:
     __slots__ = ()
+
+    @staticmethod
+    def theme(
+        *,
+        contribution_id: str,
+        locator: str,
+    ) -> ResourceItemSpec:
+        """Declare one v1 JSON Theme for a Product with a Theme consumer."""
+
+        return ResourceItemSpec(
+            contribution_id=contribution_id,
+            locator=locator,
+            locator_kind="file",
+            media_type="application/json",
+            owner_namespace="resources.theme",
+            resource_kind="theme",
+            schema_id="loushang.resource.theme",
+            schema_version=1,
+        )
+
+    @staticmethod
+    def prompt(
+        *,
+        contribution_id: str,
+        locator: str,
+    ) -> ResourceItemSpec:
+        """Declare one Markdown Prompt file for a Product that admits it."""
+
+        return ResourceItemSpec(
+            contribution_id=contribution_id,
+            locator=locator,
+            locator_kind="file",
+            media_type="text/markdown",
+            owner_namespace="resources.prompt",
+            resource_kind="prompt",
+            schema_id="loushang.resource.prompt",
+            schema_version=1,
+        )
 
     @staticmethod
     def skill(

@@ -20,7 +20,11 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_PREPARED_KIND,
 )
 from loushang.harness.transcript.model_input import rebuild_model_input
+from loushang.harness.transcript.model_input_components import (
+    ModelInputLogicalComponentReader,
+)
 from loushang.harness.transcript.model_input_types import (
+    ModelInputIntegrityError,
     canonical_model_input_json,
     hash_model_input_json,
 )
@@ -179,6 +183,46 @@ def test_v2_node_bundles_and_snapshot_round_trip_through_payload_version_two() -
         )
         == snapshot
     )
+
+
+def test_logical_component_lookup_validates_v2_root_reference() -> None:
+    bundles, snapshot = _v2_graph()
+    factory = AgentTranscriptRecordFactory(
+        id_factory=iter(("values", "sequences", "roots", "snapshot-record")).__next__
+    )
+    parent_id = None
+    records = []
+    for bundle in bundles:
+        record = factory.create(
+            MODEL_INPUT_COMPONENT_KIND,
+            bundle,
+            parent_id=parent_id,
+            payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+        )
+        records.append(record)
+        parent_id = record.record_id
+    snapshot_record = factory.create(
+        MODEL_INPUT_PREPARED_KIND,
+        snapshot,
+        parent_id=parent_id,
+        payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+    )
+    records.append(snapshot_record)
+    assert ModelInputLogicalComponentReader(records).read(
+        snapshot_record, "resource_evidence"
+    ) is None
+
+    corrupt = replace(
+        snapshot_record,
+        payload=replace(
+            snapshot,
+            logical_root=replace(snapshot.logical_root, content_hash="0" * 64),
+        ),
+    )
+    with pytest.raises(ModelInputIntegrityError, match="identity changed"):
+        ModelInputLogicalComponentReader([*records[:-1], corrupt]).read(
+            corrupt, "resource_evidence"
+        )
 
 
 def test_v2_snapshot_rebuilds_from_parent_linked_bundle_ancestors() -> None:

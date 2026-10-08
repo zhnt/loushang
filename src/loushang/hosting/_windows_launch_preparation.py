@@ -52,6 +52,11 @@ from .contracts import (
     ProcessStdoutMode,
 )
 from .errors import HostingError, HostingFailureCategory
+from .windows_backend_material import (
+    WINDOWS_LPAC_PLATFORM_IMPORTS,
+    WindowsBackendMaterialExpectationV1,
+    verify_windows_backend_material_expectation,
+)
 
 _PROFILE_ID = "windows-restricted-direct-import-pe-v1"
 _RESTRICTION_ID = "restricted-token:disable-max-privilege-v1"
@@ -67,9 +72,7 @@ _IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
 _MAX_IMPORTS = 256
 _MAX_IMPORT_NAME_BYTES = 260
 _LPAC_PROFILE_ID = "windows-lpac-contained-pe-v1"
-_LPAC_PLATFORM_IMPORTS = frozenset(
-    {"ADVAPI32.DLL", "KERNEL32.DLL", "USERENV.DLL", "WS2_32.DLL"}
-)
+_LPAC_PLATFORM_IMPORTS = frozenset(WINDOWS_LPAC_PLATFORM_IMPORTS)
 _MAX_LPAC_RUNTIME_ENTRIES = 64
 _MAX_LPAC_RUNTIME_BYTES = 64 * 1024 * 1024
 _MAX_LPAC_ATTEMPT_ID = 96
@@ -123,6 +126,7 @@ class _WindowsLaunchApi(Protocol):
         self,
         *,
         on_acquired: Callable[[int], None],
+        name: str | None = None,
     ) -> int: ...
 
     def managed_job_is_kill_on_close(self, job: int) -> bool: ...
@@ -820,6 +824,7 @@ class _WindowsLpacProvisionSpec:
     attempt_id: str
     operation_nonce: str
     lifecycle_fingerprint: str
+    owner_private_ancestors: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, ProcessLaunchRequest):
@@ -892,6 +897,8 @@ class _WindowsLpacProvisionSpec:
             raise ValueError("Windows LPAC attempt identity is invalid")
         _require_sha256(self.operation_nonce)
         _require_sha256(self.lifecycle_fingerprint)
+        if type(self.owner_private_ancestors) is not bool:
+            raise ValueError("Windows LPAC private ancestor policy is invalid")
         object.__setattr__(self, "runtime_entries", entries)
 
 
@@ -945,6 +952,7 @@ def _build_windows_lpac_provision_spec(
     attempt_id: str,
     operation_nonce: str,
     lifecycle_fingerprint: str,
+    owner_private_ancestors: bool = False,
     _api: _WindowsLpacApi | None = None,
 ) -> _WindowsLpacProvisionSpec:
     if request.effective_environment:
@@ -968,6 +976,7 @@ def _build_windows_lpac_provision_spec(
             attempt_id=attempt_id,
             operation_nonce=operation_nonce,
             lifecycle_fingerprint=lifecycle_fingerprint,
+            owner_private_ancestors=owner_private_ancestors,
         )
         executable = next(
             entry for entry in entries if entry.relative_path == executable_relative
@@ -977,6 +986,7 @@ def _build_windows_lpac_provision_spec(
             Path(request.argv[0]),
             expected_digest=executable.sha256,
             expected_imports=spec.platform_imports,
+            allow_import_subset=True,
         )
         return spec
     except HostingError:
@@ -1126,6 +1136,9 @@ class _WindowsLpacProvisioner:
         if witness.state == "GRANTS_REVOKED":
             return witness
         with self._lock:
+            # The recovered spec is only a prior snapshot. Do not revoke an
+            # ACL at a path now occupied by a different payload tree.
+            _verify_lpac_runtime(self._api, spec)
             identity = self._derive_checked_identity(spec, witness)
             try:
                 targets = _lpac_grant_targets(spec)
@@ -1453,6 +1466,7 @@ def _verify_lpac_runtime(
         Path(spec.request.argv[0]),
         expected_digest=executable.sha256,
         expected_imports=spec.platform_imports,
+        allow_import_subset=True,
     )
 
 
@@ -1460,6 +1474,10 @@ def _lpac_grant_targets(
     spec: _WindowsLpacProvisionSpec,
 ) -> tuple[tuple[str, int, bool], ...]:
     ancestors = tuple(reversed(_ancestor_directory_paths(spec.runtime_root)))
+    if spec.owner_private_ancestors:
+        # Product's state and control roots keep exact owner-only ACLs. Granting
+        # this attempt SID on any ancestor would invalidate their custody.
+        ancestors = ()
     return tuple((path, _FILE_TRAVERSE_READ, False) for path in ancestors) + (
         (spec.runtime_root, _LPAC_RUNTIME_ACCESS, True),
     )
@@ -1578,6 +1596,7 @@ def _lpac_spec_fingerprint(spec: _WindowsLpacProvisionSpec) -> str:
             for entry in spec.runtime_entries
         ],
         "imports": spec.platform_imports,
+        "ownerPrivateAncestors": spec.owner_private_ancestors,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -1658,6 +1677,8 @@ class _WindowsLpacLaunchCaptureSpec(_LaunchCaptureSpec):
 
     provision: _WindowsLpacProvisionSpec
     witness: _WindowsLpacProvisionWitness
+    backend_material_expectation: WindowsBackendMaterialExpectationV1 | None = None
+    job_name: str | None = None
 
     def __post_init__(self) -> None:
         super(_WindowsLpacLaunchCaptureSpec, self).__post_init__()
@@ -1667,6 +1688,19 @@ class _WindowsLpacLaunchCaptureSpec(_LaunchCaptureSpec):
             raise TypeError("Windows LPAC launch provision spec is invalid")
         if type(self.witness) is not _WindowsLpacProvisionWitness:
             raise TypeError("Windows LPAC launch witness is invalid")
+        if (
+            self.backend_material_expectation is not None
+            and type(self.backend_material_expectation)
+            is not WindowsBackendMaterialExpectationV1
+        ):
+            raise TypeError("Windows LPAC backend material expectation is invalid")
+        if self.job_name is not None and (
+            type(self.job_name) is not str
+            or not self.job_name.startswith("Global\\LoushangWorker-")
+            or len(self.job_name) != len("Global\\LoushangWorker-") + 64
+            or any(char not in "0123456789abcdef" for char in self.job_name[-64:])
+        ):
+            raise ValueError("Windows Worker Job name is invalid")
         if self.witness.state != "VERIFIED":
             raise ValueError("Windows LPAC launch requires a verified witness")
         if (
@@ -1685,6 +1719,7 @@ class _WindowsLpacLaunchCaptureSpec(_LaunchCaptureSpec):
             self.provision,
             self.witness,
             self.request.effective_environment,
+            job_name=self.job_name,
         )
         if self.execution_closure != expected_closure:
             raise ValueError("Windows LPAC execution closure is inconsistent")
@@ -1695,6 +1730,8 @@ def _build_windows_lpac_launch_capture_spec(
     *,
     provision: _WindowsLpacProvisionSpec,
     witness: _WindowsLpacProvisionWitness,
+    backend_material_expectation: WindowsBackendMaterialExpectationV1 | None = None,
+    job_name: str | None = None,
     _api: _WindowsLpacApi | None = None,
 ) -> _WindowsLpacLaunchCaptureSpec:
     if request != provision.request or request.effective_environment:
@@ -1737,9 +1774,12 @@ def _build_windows_lpac_launch_capture_spec(
                     provision,
                     verified,
                     environment,
+                    job_name=job_name,
                 ),
                 provision=provision,
                 witness=verified,
+                backend_material_expectation=backend_material_expectation,
+                job_name=job_name,
             )
         finally:
             api.free_sid(profile.sid)
@@ -1784,6 +1824,16 @@ class _WindowsLpacLaunchCaptureBackend:
                 HostingFailureCategory.PLATFORM_UNSUPPORTED,
                 "Windows LPAC launch platform identity changed",
             )
+        if spec.backend_material_expectation is not None:
+            try:
+                verify_windows_backend_material_expectation(
+                    spec.backend_material_expectation
+                )
+            except (OSError, ValueError) as exc:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_REJECTED,
+                    "Windows LPAC backend material changed before capture",
+                ) from exc
         material = _WindowsLpacLaunchMaterial(
             api=self._api,
             spec=spec,
@@ -1877,9 +1927,15 @@ class _WindowsLpacLaunchMaterial:
                 )
             profile = self._api.derive_lpac_profile(_lpac_profile_name(provision))
             self._profile = profile
-            self._api.create_managed_job(
-                on_acquired=lambda handle: self._adopt_handle("_job_handle", handle)
-            )
+            def adopt_job(handle: int) -> None:
+                self._adopt_handle("_job_handle", handle)
+
+            if self._spec.job_name is None:
+                self._api.create_managed_job(on_acquired=adopt_job)
+            else:
+                self._api.create_managed_job(
+                    on_acquired=adopt_job, name=self._spec.job_name
+                )
             self._stderr_handle = self._api.create_managed_stderr()
             self._verify_owned()
         except BaseException:
@@ -2108,6 +2164,8 @@ def _lpac_execution_closure(
     provision: _WindowsLpacProvisionSpec,
     witness: _WindowsLpacProvisionWitness,
     environment: tuple[tuple[str, str], ...],
+    *,
+    job_name: str | None = None,
 ) -> tuple[str, ...]:
     return (
         f"runtime:sha256:{_lpac_runtime_fingerprint(provision)}",
@@ -2121,7 +2179,7 @@ def _lpac_execution_closure(
         "attributes:security-capabilities,aap-policy,job-list,handle-list",
         f"environment:sha256:{_fingerprint(json.dumps(environment, separators=(',', ':')))}",
         f"platform:{provision.platform_identity}",
-    )
+    ) + (() if job_name is None else (f"job-name:sha256:{_fingerprint(job_name)}",))
 
 
 def _lpac_runtime_fingerprint(spec: _WindowsLpacProvisionSpec) -> str:
@@ -2152,6 +2210,7 @@ def _verify_pe_image(
     *,
     expected_digest: str,
     expected_imports: tuple[str, ...],
+    allow_import_subset: bool = False,
 ) -> None:
     body = path.read_bytes()
     if (
@@ -2235,10 +2294,18 @@ def _verify_pe_image(
             HostingFailureCategory.PREPARATION_FAILED,
             "Windows PE import table has no in-range terminator",
         )
-    if tuple(sorted(imports)) != expected_imports:
+    actual_imports = tuple(sorted(imports))
+    if (
+        not actual_imports
+        or (
+            not set(actual_imports) <= set(expected_imports)
+            if allow_import_subset
+            else actual_imports != expected_imports
+        )
+    ):
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
-            "Windows PE platform-image import closure changed",
+            f"Windows PE platform-image import closure changed: {actual_imports}",
         )
 
 

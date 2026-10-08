@@ -18,7 +18,12 @@ from loushang.harness.worker.capability_query import (
     CapabilityWorkerAdapterError,
     CapabilityWorkerAuthorityV1,
     CapabilityWorkerBindingV1,
+    CapabilityWorkerFacetGrantV1,
     bind_capability_query_worker_adapter,
+)
+from loushang.harness.worker.facet_proxy import (
+    CapabilityWorkerFacetProxyError,
+    CapabilityWorkerReadOnlyFacetProxy,
 )
 from loushang.harness.worker.journal import WorkerSupervisorJournal
 from loushang.harness.worker.protocol import (
@@ -118,7 +123,7 @@ def _identity(runtime: WorkerRuntimeBindingV1) -> WorkerLaunchIdentityV1:
         contribution_id="review-provider",
         owner_id="coding.lsp",
         product_id="coding",
-        scope_id="session-one",
+        scope_id="workspace:" + "a" * 64,
         owner_generation=3,
         declaration_fingerprint="b" * 64,
         worker_configuration_fingerprint=runtime.worker_configuration_fingerprint,
@@ -195,7 +200,7 @@ def _domain_binding() -> CapabilityWorkerBindingV1:
         plugin_id="review-pack",
         contribution_id="review-provider",
         product_id="coding",
-        scope_id="session-one",
+        scope_id="workspace:" + "a" * 64,
         owner_id="coding.lsp",
         allowed_capability_ids=("coding.hover", "coding.symbols"),
         authority=_authority(),
@@ -259,6 +264,300 @@ def test_capability_adapter_requires_domain_admission_and_returns_typed_read_onl
         assert not hasattr(adapter, "publish")
         assert not hasattr(adapter, "retire")
         await supervisor.fence(code="test_complete")
+
+    asyncio.run(scenario())
+
+
+def test_capability_adapter_invokes_only_owner_granted_described_facet(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        supervisor, transport, process = await _healthy_supervisor(tmp_path)
+        current = [_authority()]
+        adapter = _adapter(supervisor, current)
+        admission = adapter.admit()
+        describe = asyncio.create_task(adapter.describe())
+        await transport.wait_for_writes(2)
+        description_query = transport.message(1)
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=description_query.fields["correlationId"],
+                payload={
+                    "capabilities": [
+                        {
+                            "capabilityId": "coding.hover",
+                            "descriptorVersion": 1,
+                            "facetIds": ["hover"],
+                        }
+                    ],
+                    "responseVersion": 1,
+                },
+            )
+        )
+        await describe
+        grant = CapabilityWorkerFacetGrantV1(
+            capability_id="coding.hover",
+            facet_id="hover",
+            binding_fingerprint=adapter._binding.fingerprint,
+            authority_fingerprint=current[0].fingerprint,
+            owner_policy_revision=current[0].owner_policy_revision,
+        )
+
+        def decode(value: object) -> str:
+            if type(value) is not dict or set(value) != {"text"}:
+                raise ValueError("invalid hover result")
+            text = value["text"]
+            if not isinstance(text, str):
+                raise ValueError("invalid hover text")
+            return text
+
+        call = asyncio.create_task(
+            adapter.invoke_read_only_facet(
+                grant=grant,
+                request={"symbol": "review"},
+                decode_result=decode,
+            )
+        )
+        await transport.wait_for_writes(3)
+        invocation = transport.message(2)
+        assert invocation.to_dict()["payload"] == {
+            "admissionFingerprint": admission.fingerprint,
+            "capabilityId": "coding.hover",
+            "facetGrantFingerprint": grant.fingerprint,
+            "facetId": "hover",
+            "operation": "invokeReadOnlyFacet",
+            "queryVersion": 1,
+            "request": {"symbol": "review"},
+        }
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=invocation.fields["correlationId"],
+                payload={"responseVersion": 1, "value": {"text": "Review symbol"}},
+            )
+        )
+        assert await call == "Review symbol"
+
+        foreign = CapabilityWorkerFacetGrantV1(
+            capability_id="coding.hover",
+            facet_id="documentation",
+            binding_fingerprint=grant.binding_fingerprint,
+            authority_fingerprint=grant.authority_fingerprint,
+            owner_policy_revision=grant.owner_policy_revision,
+        )
+        with pytest.raises(CapabilityWorkerAdapterError) as caught:
+            await adapter.invoke_read_only_facet(
+                grant=foreign,
+                request={"symbol": "review"},
+                decode_result=decode,
+            )
+        assert caught.value.code == "worker_capability_facet_grant_invalid"
+        assert len(transport.writes) == 3
+        with pytest.raises(CapabilityWorkerAdapterError) as oversized:
+            await adapter.invoke_read_only_facet(
+                grant=grant,
+                request={"symbol": "x" * 20_000},
+                decode_result=decode,
+            )
+        assert oversized.value.code == "worker_capability_facet_request_invalid"
+        assert len(transport.writes) == 3
+        assert supervisor.status.state == "fenced"
+        assert process.terminated is True
+
+    asyncio.run(scenario())
+
+
+def test_capability_facet_proxy_drops_in_flight_result_after_retirement(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        supervisor, transport, _process = await _healthy_supervisor(tmp_path)
+        current = [_authority()]
+        adapter = _adapter(supervisor, current)
+        admission = adapter.admit()
+        describe = asyncio.create_task(adapter.describe())
+        await transport.wait_for_writes(2)
+        description_query = transport.message(1)
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=description_query.fields["correlationId"],
+                payload={
+                    "capabilities": [
+                        {
+                            "capabilityId": "coding.hover",
+                            "descriptorVersion": 1,
+                            "facetIds": ["hover"],
+                        }
+                    ],
+                    "responseVersion": 1,
+                },
+            )
+        )
+        await describe
+        grant = CapabilityWorkerFacetGrantV1(
+            capability_id="coding.hover",
+            facet_id="hover",
+            binding_fingerprint=adapter.binding.fingerprint,
+            authority_fingerprint=current[0].fingerprint,
+            owner_policy_revision=current[0].owner_policy_revision,
+        )
+        facet = CapabilityWorkerReadOnlyFacetProxy(
+            adapter=adapter,
+            admission=admission,
+            capability_id="coding.hover",
+            facet_id="hover",
+            owner_generation=3,
+            graph_generation=1,
+            issue_grant=lambda: (grant, lambda value: value),
+        )
+        facet.publish(admission=admission, owner_generation=3)
+        call = asyncio.create_task(facet.invoke({"symbol": "review"}))
+        await transport.wait_for_writes(3)
+        invocation = transport.message(2)
+        facet.retire()
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=invocation.fields["correlationId"],
+                payload={"responseVersion": 1, "value": {"text": "Review symbol"}},
+            )
+        )
+        with pytest.raises(CapabilityWorkerFacetProxyError) as retired:
+            await call
+        assert retired.value.code == "worker_capability_facet_proxy_retired_during_call"
+        with pytest.raises(CapabilityWorkerFacetProxyError) as later:
+            await facet.invoke({"symbol": "again"})
+        assert later.value.code == "worker_capability_facet_proxy_not_visible"
+        assert len(transport.writes) == 3
+        await supervisor.fence(code="test_complete")
+
+    asyncio.run(scenario())
+
+
+def test_capability_adapter_fences_invalid_live_facet_result(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        supervisor, transport, process = await _healthy_supervisor(tmp_path)
+        current = [_authority()]
+        adapter = _adapter(supervisor, current)
+        adapter.admit()
+        describe = asyncio.create_task(adapter.describe())
+        await transport.wait_for_writes(2)
+        description_query = transport.message(1)
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=description_query.fields["correlationId"],
+                payload={
+                    "capabilities": [
+                        {
+                            "capabilityId": "coding.hover",
+                            "descriptorVersion": 1,
+                            "facetIds": ["hover"],
+                        }
+                    ],
+                    "responseVersion": 1,
+                },
+            )
+        )
+        await describe
+        grant = CapabilityWorkerFacetGrantV1(
+            capability_id="coding.hover",
+            facet_id="hover",
+            binding_fingerprint=adapter._binding.fingerprint,
+            authority_fingerprint=current[0].fingerprint,
+            owner_policy_revision=current[0].owner_policy_revision,
+        )
+        call = asyncio.create_task(
+            adapter.invoke_read_only_facet(
+                grant=grant,
+                request={"symbol": "review"},
+                decode_result=lambda value: value["text"],
+            )
+        )
+        await transport.wait_for_writes(3)
+        invocation = transport.message(2)
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=invocation.fields["correlationId"],
+                payload={"responseVersion": 1, "value": {"wrong": True}},
+            )
+        )
+        with pytest.raises(CapabilityWorkerAdapterError) as caught:
+            await call
+        assert caught.value.code == "worker_capability_facet_result_invalid"
+        assert supervisor.status.state == "fenced"
+        assert process.terminated is True
+
+    asyncio.run(scenario())
+
+
+def test_capability_adapter_discards_facet_result_after_owner_revocation(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        supervisor, transport, process = await _healthy_supervisor(tmp_path)
+        current = [_authority()]
+        adapter = _adapter(supervisor, current)
+        adapter.admit()
+        describe = asyncio.create_task(adapter.describe())
+        await transport.wait_for_writes(2)
+        description_query = transport.message(1)
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=description_query.fields["correlationId"],
+                payload={
+                    "capabilities": [
+                        {
+                            "capabilityId": "coding.hover",
+                            "descriptorVersion": 1,
+                            "facetIds": ["hover"],
+                        }
+                    ],
+                    "responseVersion": 1,
+                },
+            )
+        )
+        await describe
+        grant = CapabilityWorkerFacetGrantV1(
+            capability_id="coding.hover",
+            facet_id="hover",
+            binding_fingerprint=adapter._binding.fingerprint,
+            authority_fingerprint=current[0].fingerprint,
+            owner_policy_revision=current[0].owner_policy_revision,
+        )
+        call = asyncio.create_task(
+            adapter.invoke_read_only_facet(
+                grant=grant,
+                request={"symbol": "review"},
+                decode_result=lambda value: value["text"],
+            )
+        )
+        await transport.wait_for_writes(3)
+        invocation = transport.message(2)
+        current[0] = CapabilityWorkerAuthorityV1(
+            plugin_revision_digest="a" * 64,
+            declaration_fingerprint="b" * 64,
+            owner_generation=3,
+            product_policy_revision="policy-1",
+            owner_policy_revision="owner-2",
+            revocation_epoch=3,
+        )
+        transport.feed(
+            WorkerProtocolMessage.create(
+                "result",
+                correlationId=invocation.fields["correlationId"],
+                payload={"responseVersion": 1, "value": {"text": "stale result"}},
+            )
+        )
+        with pytest.raises(CapabilityWorkerAdapterError) as caught:
+            await call
+        assert caught.value.code == "worker_capability_authority_stale"
+        assert supervisor.status.state == "fenced"
+        assert process.terminated is True
 
     asyncio.run(scenario())
 
@@ -405,7 +704,7 @@ def test_capability_binding_and_descriptors_enforce_collection_bounds() -> None:
             plugin_id="review-pack",
             contribution_id="review-provider",
             product_id="coding",
-            scope_id="session-one",
+            scope_id="workspace:" + "a" * 64,
             owner_id="coding.lsp",
             allowed_capability_ids=tuple(
                 f"coding.capability-{ordinal:03d}" for ordinal in range(129)

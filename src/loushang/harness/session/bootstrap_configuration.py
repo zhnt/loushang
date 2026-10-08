@@ -55,6 +55,12 @@ SourceIdentityCheck = Callable[[str], StartupCheckResult]
 CatalogBootstrapProjectionPreparer = Callable[[ResourceLoader, Path], ResourceBundle]
 
 
+class PackageProductStartupSourceError(RuntimeError):
+    """A configured Source was durably refused by the Product startup route."""
+
+    code = "package_product_startup_source_failed"
+
+
 @dataclass(frozen=True, slots=True)
 class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     """Concrete shared services for one standard Agent session activation."""
@@ -64,7 +70,7 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     model_registry: ModelCatalog
     resource_loader: ResourceLoader
     diagnostics_service: DiagnosticsService
-    package_materializer: PackageMaterializer
+    package_materializer: PackageMaterializer | None
     skill_activation_runtime: SkillActivationRuntime
     session_id: str
     cwd: str
@@ -106,6 +112,13 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
         ):
             raise ValueError(
                 "Legacy authority cannot receive a Catalog projection preparer"
+            )
+        if self.package_materializer is None and (
+            self.package_product_lifecycle is None
+            or self.package_product_lifecycle_mode != "enforced"
+        ):
+            raise ValueError(
+                "Session without a materializer requires enforced Product activation"
             )
 
 
@@ -166,11 +179,12 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
     ) -> None:
         del selection
         request = context.request
-        record_package_lockfile_diagnostics(
-            request.package_materializer.get_lockfile_diagnostics(),
-            diagnostics_service=request.diagnostics_service,
-            session_id=request.session_id,
-        )
+        if request.package_materializer is not None:
+            record_package_lockfile_diagnostics(
+                request.package_materializer.get_lockfile_diagnostics(),
+                diagnostics_service=request.diagnostics_service,
+                session_id=request.session_id,
+            )
         run_standard_startup_checks(
             request.diagnostics_service,
             cwd=request.cwd,
@@ -186,7 +200,7 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
     ) -> None:
         del selection
         request = context.request
-        PackageSourceResolver(
+        resolved = PackageSourceResolver(
             settings_manager=request.settings_manager,
             materializer=request.package_materializer,
             diagnostics_service=request.diagnostics_service,
@@ -197,6 +211,10 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
             missing_source_action="install",
             phase="startup",
         )
+        if request.package_product_lifecycle_mode == "enforced" and resolved.failed_sources:
+            raise PackageProductStartupSourceError(
+                "Package Product startup source was refused"
+            )
 
     def _resource_roots(
         self,
@@ -212,6 +230,9 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
             diagnostics_service=request.diagnostics_service,
             session_id=request.session_id,
             selected_plugin_packages=request.selected_plugin_packages,
+            include_configured_package_sources=(
+                request.package_product_lifecycle_mode != "enforced"
+            ),
         )
 
     def _resources(
@@ -318,6 +339,7 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
 
 
 __all__ = [
+    "PackageProductStartupSourceError",
     "StandardAgentSessionConfigurationRequest",
     "StandardAgentSessionConfigurationResult",
     "StandardAgentSessionConfigurationRuntime",

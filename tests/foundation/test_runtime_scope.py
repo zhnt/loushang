@@ -433,8 +433,10 @@ def test_sweep_reclaims_an_interrupted_quarantine_entry(tmp_path: Path) -> None:
     assert not quarantined.exists()
 
 
+@pytest.mark.parametrize("limiting_quota", ("runs", "bytes"))
 def test_sweep_uses_quota_only_for_runs_with_provably_inactive_leases(
     tmp_path: Path,
+    limiting_quota: str,
 ) -> None:
     oldest = _inactive_run(
         tmp_path,
@@ -452,18 +454,32 @@ def test_sweep_uses_quota_only_for_runs_with_provably_inactive_leases(
         modified_at=5.0,
         leased=False,
     )
+    # Usage includes directory metadata, whose size depends on the filesystem.
+    # Measure these flat fixtures independently instead of assuming a whole run
+    # fits in 1024 bytes. Exercise each quota with the other one non-limiting.
+    oldest_size = sum(entry.lstat().st_size for entry in (oldest, *oldest.iterdir()))
+    retained_size = sum(
+        entry.lstat().st_size for entry in (retained, *retained.iterdir())
+    )
 
     report = sweep_runtime_runs(
         _scope(tmp_path, "d" * 32),
         policy=RuntimeSweepPolicy(
             stale_after_seconds=10_000,
-            max_inactive_runs=1,
-            max_inactive_bytes=1024,
+            max_inactive_runs=1 if limiting_quota == "runs" else 2,
+            max_inactive_bytes=(
+                oldest_size + retained_size
+                if limiting_quota == "runs"
+                else retained_size
+            ),
         ),
         now=lambda: 100.0,
     )
 
     assert report.removed == 1
+    assert report.removed_bytes == oldest_size
+    assert report.skipped == 1
+    assert report.failed == 0
     assert not oldest.exists()
     assert retained.exists()
     assert legacy.exists()

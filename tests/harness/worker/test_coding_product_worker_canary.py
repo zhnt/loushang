@@ -256,8 +256,12 @@ class _Lease:
     def __init__(self, endpoint: _Endpoint, process: _Process) -> None:
         self.endpoint = endpoint
         self.process = process
+        self._closed = False
 
     async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         await self.endpoint.close()
         await self.process.terminate()
 
@@ -840,6 +844,13 @@ class _FakeWindowsNativeProfile:
 
     async def close(self) -> None:
         self.closed = True
+
+
+def test_product_rejects_non_product_start_gate(tmp_path: Path) -> None:
+    context = _Context(tmp_path, required=False)
+    with pytest.raises(CodingProductWorkerCanaryError) as caught:
+        context.bind(start_gate=object())
+    assert caught.value.code == "coding_worker_start_gate_binding_mismatch"
 
 
 def test_product_closes_bound_native_profile_when_start_decision_rejects(

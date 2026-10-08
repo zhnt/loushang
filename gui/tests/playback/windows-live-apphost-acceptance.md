@@ -1,14 +1,14 @@
 # Windows live AppHost desktop acceptance
 
-Date: 2026-09-22. Status: **events and reconnect desktop slice passed; controlled
-composer automation passed, visible control acceptance pending**.
+Updated: 2026-10-08. Status: **real AppHost reconnect, controlled composer and
+normal desktop exit passed after integration with `main`**.
 
 This record is narrower than the B1 fixture checklist in
 [windows-acceptance.md](windows-acceptance.md). It covers one visible Windows
 launch against an isolated, real AppHost and the cleanup observed after a normal
 window close, plus the native connection behavior under a rotated local listener
-and connection record. It does not accept mutations, Windows display scaling or
-the complete fixture workflow.
+and connection record. It does not cover approval or attachment mutations,
+Windows display scaling, or the complete fixture workflow.
 
 ## Launch
 
@@ -23,7 +23,8 @@ The launcher created separate `gui-desktop-acceptance` and
 connection-record root and GUI mux name only as native process arguments. The
 model transport is a deterministic process-local synthetic stream. It emits one
 fixed assistant response for presentation acceptance and performs no network or
-provider call.
+provider call. The launcher registers this synthetic model in its isolated
+Session model catalog so the model selector and active identity agree.
 
 ## Observed window
 
@@ -44,6 +45,13 @@ following in the running native window:
 
 The native mux selector is deliberately not exposed to the WebView, so the UI
 shows the Coding Session label rather than `gui-desktop-acceptance`.
+
+On 2026-10-08, after merging the latest `main` into the GUI lane, Windows
+accessibility inspection of the running native window observed `Connected`,
+`Live AppHost · controlled`, the `faux · no-network` model choice, and a completed
+execution. The transcript contained a user prompt and the deterministic assistant
+reply. This inspection did not obtain a screenshot or exercise Send/Interrupt
+through automation; the user prompt was entered while the window was open.
 
 ## Exit lifecycle evidence
 
@@ -86,8 +94,8 @@ controller generation and member identity in native Rust. Send and Interrupt
 are serialized through the same authenticated connection that owns the
 attachment. Automated real-AppHost integration verifies that a desktop submit
 reaches the real Coding `AgentSession` and its deterministic response streams
-back. The original human-observed run above remains read-only evidence; a new
-visible run is still required before marking the composer interaction accepted.
+back. The 2026-10-08 visible run confirms a user prompt and reply in the live
+transcript. Interrupt interaction still needs a visible run.
 
 ## New Session control
 
@@ -122,7 +130,7 @@ transcript/execution rejection.
 - Native interaction at Windows 125% and 150% display scaling.
 - Normal/maximized/restore and sidebar-drag interaction coverage beyond the
   single observed wide window.
-- Visible Send/Interrupt interaction against the deterministic AppHost launcher.
+- Visible Interrupt interaction against the deterministic AppHost launcher.
 - Initial model/reasoning selection and first-message submission as part of the
   New Session creation flow.
 - Accepted live contracts for Workspace, Changes, Tasks, Subagents, approvals

@@ -4,12 +4,16 @@ This package is intentionally absent from the public Plugin authoring surface.
 """
 
 from loushang.harness.plugin_management.application import (
+    PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION,
     PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION,
     PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION,
     PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION,
     PLUGIN_MANAGEMENT_PROJECTION_VERSION,
     PLUGIN_MANAGEMENT_QUERY_VERSION,
     PLUGIN_MANAGEMENT_SOURCE_SNAPSHOT_VERSION,
+    PluginBackupRetentionProjectionSourcePort,
+    PluginBackupRetentionRecordV1,
+    PluginBackupRetentionSnapshotV1,
     PluginManagementApplicationCommandV1,
     PluginManagementApplicationPorts,
     PluginManagementApplicationResultV1,
@@ -49,6 +53,7 @@ from loushang.harness.plugin_management.enablement_migration import (
     PLUGIN_ENABLEMENT_MIGRATION_REQUEST_VERSION,
     PluginEnablementCompatibilityProjectionV1,
     PluginEnablementCompatibilityProjector,
+    PluginEnablementFinalizationAuthorityPort,
     PluginEnablementFinalizationEvidenceV1,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationDisposition,
@@ -88,6 +93,7 @@ from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
     PluginDesiredStateSnapshotV1,
     PluginLifecycleError,
+    decode_plugin_desired_state_capture,
     decode_plugin_desired_state_snapshot,
 )
 from loushang.harness.plugin_management.operations import (
@@ -97,6 +103,12 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
     PluginManagementOperationResultV1,
+)
+from loushang.harness.plugin_management.package_gc import (
+    PLUGIN_PACKAGE_GC_OPERATOR_PROJECTION_VERSION,
+    PluginPackageGcOperatorProjectionV1,
+    PluginPackageGcOperatorRowV1,
+    PluginPackageGcReadModel,
 )
 from loushang.harness.plugin_management.package_lifecycle import (
     PLUGIN_PACKAGE_GC_CANDIDATE_VERSION,
@@ -129,6 +141,21 @@ from loushang.harness.plugin_management.package_records import (
     PluginPackagePinReleaseV1,
     PluginPackagePinV1,
     PluginPackageRecoveryBarrierV1,
+)
+from loushang.harness.plugin_management.private_data_confirmation import (
+    PRIVATE_DATA_CONFIRMATION_RECORD_VERSION,
+    PluginPrivateDataConfirmationJournal,
+    PluginPrivateDataConfirmationRecordV1,
+)
+from loushang.harness.plugin_management.private_data_deletion import (
+    PRIVATE_DATA_DELETION_VERSION,
+    PluginPrivateDataConfirmationAuthorityPort,
+    PluginPrivateDataDeletionConfirmationV1,
+    PluginPrivateDataDeletionCoordinator,
+    PluginPrivateDataDeletionOwnerPort,
+    PluginPrivateDataDeletionPlanV1,
+    PluginPrivateDataDeletionReceiptLookupPort,
+    PluginPrivateDataDeletionReceiptV1,
 )
 from loushang.harness.plugin_management.records import (
     PLUGIN_DESIRED_SELECTION_VERSION,
@@ -199,6 +226,21 @@ from loushang.harness.plugin_management.updates import (
 )
 
 __all__ = [
+    "PRIVATE_DATA_CONFIRMATION_RECORD_VERSION",
+    "PluginPrivateDataConfirmationJournal",
+    "PluginPrivateDataConfirmationRecordV1",
+    "PRIVATE_DATA_DELETION_VERSION",
+    "PluginPrivateDataConfirmationAuthorityPort",
+    "PluginPrivateDataDeletionConfirmationV1",
+    "PluginPrivateDataDeletionCoordinator",
+    "PluginPrivateDataDeletionOwnerPort",
+    "PluginPrivateDataDeletionPlanV1",
+    "PluginPrivateDataDeletionReceiptLookupPort",
+    "PluginPrivateDataDeletionReceiptV1",
+    "PLUGIN_BACKUP_RETENTION_SNAPSHOT_VERSION",
+    "PluginBackupRetentionProjectionSourcePort",
+    "PluginBackupRetentionRecordV1",
+    "PluginBackupRetentionSnapshotV1",
     "PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION",
     "PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION",
     "PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION",
@@ -237,6 +279,7 @@ __all__ = [
     "PLUGIN_MIGRATION_FENCE_VERSION",
     "PLUGIN_PACKAGE_REVISION_REF_VERSION",
     "PLUGIN_PACKAGE_GC_CANDIDATE_VERSION",
+    "PLUGIN_PACKAGE_GC_OPERATOR_PROJECTION_VERSION",
     "PLUGIN_PACKAGE_LIFECYCLE_EVENT_VERSION",
     "PLUGIN_PACKAGE_PIN_RELEASE_VERSION",
     "PLUGIN_PACKAGE_PIN_VERSION",
@@ -254,6 +297,7 @@ __all__ = [
     "PluginDesiredStateLedger",
     "PluginDesiredSelectionV1",
     "PluginDesiredStateSnapshotV1",
+    "decode_plugin_desired_state_capture",
     "decode_plugin_desired_state_snapshot",
     "PluginDesiredStateMutationV1",
     "PluginDesiredStateTransitionV1",
@@ -290,6 +334,7 @@ __all__ = [
     "PluginEnablementCompatibilityProjectionV1",
     "PluginEnablementCompatibilityProjector",
     "PluginEnablementFinalizationEvidenceV1",
+    "PluginEnablementFinalizationAuthorityPort",
     "PluginEnablementMigrationCoordinator",
     "PluginEnablementMigrationDisposition",
     "PluginEnablementMigrationError",
@@ -329,6 +374,9 @@ __all__ = [
     "PluginMigrationFenceV1",
     "PluginPackageRevisionRefV1",
     "PluginPackageGcCandidateV1",
+    "PluginPackageGcOperatorProjectionV1",
+    "PluginPackageGcOperatorRowV1",
+    "PluginPackageGcReadModel",
     "PluginPackageLifecycleError",
     "PluginPackageLifecycleEventV1",
     "PluginPackageLifecycleLedger",

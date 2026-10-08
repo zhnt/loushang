@@ -22,9 +22,13 @@ from loushang.appserver.protocol import (
 from loushang.harness.approval import DenyApprovalResolver, InteractiveApprovalResolver
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
+from loushang.harness.package_product.product_runtime import (
+    PackageProductRuntimeFactoryPort,
+)
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -32,10 +36,17 @@ from .appservice_adapter import (
 )
 from .bootstrap import BootstrapServices, create_agent_session
 from .hosted_catalog import CodingHostedCandidateBindingV1, CodingHostedCatalogError
+from .package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+)
 from .session.agent_session import AgentSession
+from .session_manager import SessionManager
 
 _TEXT_LIMIT = 16_384
 _MAX_INTERACTIONS = 16
+CodingHostedProductRuntimeFactoryForSession = Callable[
+    [SessionManager], PackageProductRuntimeFactoryPort
+]
 
 
 class CodingRealHostedSessionV1:
@@ -132,7 +143,8 @@ class CodingRealHostedSessionV1:
                 delta = update.get("delta")
                 if isinstance(delta, str):
                     return CodingHostedEventProjectionV1(
-                        SessionEventKindV1.ASSISTANT_DELTA, _bounded(delta),
+                        SessionEventKindV1.ASSISTANT_DELTA,
+                        _bounded(delta),
                         truncated=len(delta) > _TEXT_LIMIT,
                     )
         if payload.get("hosted_presentation") is True and kind in {
@@ -231,11 +243,36 @@ class CodingRealHostedSessionFactoryV1:
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
         tools: list[ToolDefinition] | None = None,
+        output_capture_factory: ExecCaptureFactory | None = None,
+        package_product_runtime_factory_for_session: (
+            CodingHostedProductRuntimeFactoryForSession | None
+        ) = None,
     ) -> None:
         self._services_factory = services_factory
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._output_capture_factory = output_capture_factory
+        self._package_product_runtime_factory_for_session = (
+            package_product_runtime_factory_for_session
+        )
+        self._product_owner_selection = CodingFencedProductApplicationSelection()
+        self._closing = False
+        self._closed = False
+
+    def _default_product_factory_for_session(
+        self, manager: SessionManager, services: BootstrapServices
+    ) -> PackageProductRuntimeFactoryPort | None:
+        return self._product_owner_selection.factory_for_session(
+            manager, settings_manager=services.settings_manager
+        )
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closing = True
+        self._product_owner_selection.close()
+        self._closed = True
 
     async def create_session(
         self,
@@ -243,6 +280,8 @@ class CodingRealHostedSessionFactoryV1:
         binding_key: SessionBindingKeyV1,
         opaque_session_binding: object,
     ) -> CodingRealHostedSessionV1:
+        if self._closing:
+            raise CodingHostedCatalogError()
         if type(opaque_session_binding) is not CodingHostedCandidateBindingV1:
             raise CodingHostedCatalogError()
         identity = opaque_session_binding.record.identity
@@ -255,6 +294,17 @@ class CodingRealHostedSessionFactoryV1:
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
             services = self._services_factory(opaque_session_binding.record.scope.cwd)
             policy = workspace_tool_runtime_settings(services.settings_manager)
+            runtime_factory = None
+            if self._package_product_runtime_factory_for_session is not None:
+                runtime_factory = self._package_product_runtime_factory_for_session(
+                    manager
+                )
+                if runtime_factory is None:
+                    raise TypeError("Package Product runtime factory is required")
+            else:
+                runtime_factory = self._default_product_factory_for_session(
+                    manager, services
+                )
             session = create_agent_session(
                 session_manager=manager,
                 model=self._model,
@@ -263,6 +313,8 @@ class CodingRealHostedSessionFactoryV1:
                 tools=self._tools,
                 approval_resolver=approval,
                 tool_policy_evaluator=policy.policy_engine,
+                output_capture_factory=self._output_capture_factory,
+                package_product_runtime_factory=runtime_factory,
             )
             opaque_session_binding.retain_constructed_owner(session.dispose)
             binding = CodingRealHostedSessionV1(session, identity, approval)
@@ -312,4 +364,8 @@ def _observe_close(task: asyncio.Task[None]) -> None:
         task.exception()
 
 
-__all__ = ["CodingRealHostedSessionFactoryV1", "CodingRealHostedSessionV1"]
+__all__ = [
+    "CodingHostedProductRuntimeFactoryForSession",
+    "CodingRealHostedSessionFactoryV1",
+    "CodingRealHostedSessionV1",
+]

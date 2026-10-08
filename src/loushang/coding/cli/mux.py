@@ -70,6 +70,9 @@ class _ClientCommand:
                 return
             client = self._connection.client
             if self._action == "attach":
+                from loushang.harnesstui.conversation.theme import (
+                    terminal_transcript_theme,
+                )
                 from loushang.harnesstui.mux.shell import HostedMuxShellV1
                 from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
 
@@ -82,6 +85,7 @@ class _ClientCommand:
                         for item in self._connection.scopes
                     ),
                     discovery_client=self._connection.discovery_client,
+                    transcript_theme=terminal_transcript_theme(),
                 )
                 status = await run_hosted_mux_shell(
                     self._shell, stdin=sys.stdin, stdout=self._output

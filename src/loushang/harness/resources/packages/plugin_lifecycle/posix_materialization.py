@@ -13,7 +13,7 @@ import os
 import stat
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager, suppress
 from hashlib import sha256
 from pathlib import Path
@@ -31,9 +31,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
+    PackageStoreGcResultV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreGcTombstoneV1,
     PackageStoreSettlementJournal,
     PackageStoreSettlementJournalError,
+    PackageStoreSettlementRecordV1,
+    dependency_content_store_revision,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
@@ -93,6 +99,66 @@ class PosixPackageDependencyMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
 
+    def read_validate_dependency_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.read_validate_receipt(receipt)
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return self._store.read_operation_settlements(operation_id)
+
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Apply a caller-authorized exact dependency Store deletion."""
+
+        return self._store.delete_settlement(settlement)
+
+
+class PosixPackageDependencyReadOnlyStore:
+    """Store-verified dependency bytes for Product-owned execution proof."""
+
+    read_only = True
+
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
+    ) -> None:
+        self._store = _PosixRoleStore(
+            root,
+            role="dependency",
+            store_identity=store_identity,
+            settlement_journal=settlement_journal,
+            transfer=None,
+            commit_probe=None,
+            receipt_probe=None,
+            read_only=True,
+        )
+
+    def read_dependency_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes, read_only=True
+        )
+
+    def read_dependency_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        return self._store.read_settlement_files(settlement, members, read_only=True)
+
 
 class PosixPackagePluginRootMaterializationStore:
     """Designated-Plugin-root adapter over one configured revision Store root."""
@@ -141,6 +207,46 @@ class PosixPackagePluginRootMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
 
+    def read_validate_root_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.read_validate_receipt(receipt)
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        return self._store.read_operation_settlements(operation_id)
+
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read one verified member without exposing a Store pathname."""
+
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes
+        )
+
+    def read_root_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        """Verify one settlement and read its members under the same owner lock."""
+
+        return self._store.read_settlement_files(settlement, members)
+
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Delete only an exact root settlement through this Store owner."""
+
+        return self._store.delete_settlement(settlement)
+
     def authorize_adoption(
         self,
         *,
@@ -159,6 +265,48 @@ class PosixPackagePluginRootMaterializationStore:
         return self._store.authorizes_root_identity(current_root_identity)
 
 
+class PosixPackagePluginRootReadOnlyStore:
+    """Store-verified root reads for inert Product explanation and preview."""
+
+    read_only = True
+
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
+    ) -> None:
+        self._store = _PosixRoleStore(
+            root,
+            role="root",
+            store_identity=store_identity,
+            settlement_journal=settlement_journal,
+            transfer=None,
+            commit_probe=None,
+            receipt_probe=None,
+            read_only=True,
+        )
+
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes, read_only=True
+        )
+
+    def read_root_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+    ) -> tuple[bytes, ...]:
+        return self._store.read_settlement_files(settlement, members, read_only=True)
+
+
 class _PosixRoleStore:
     def __init__(
         self,
@@ -170,6 +318,7 @@ class _PosixRoleStore:
         transfer: PackageVerifiedTreeTransferOwner | None,
         commit_probe: Callable[[], None] | None,
         receipt_probe: Callable[[], None] | None,
+        read_only: bool = False,
     ) -> None:
         if os.name != "posix" or not _supports_posix_rooted_io():
             raise PackagePhysicalStagingError(
@@ -215,11 +364,19 @@ class _PosixRoleStore:
         finally:
             provisioned.close()
         try:
-            self._settlement_journal.validate_store_root(
+            validate_store_root = (
+                self._settlement_journal.read_validate_store_root
+                if read_only
+                else self._settlement_journal.validate_store_root
+            )
+            validate_store_root(
                 store_role=self._role,
                 store_identity=self._store_identity,
                 root_identities=self._root_identities,
             )
+            if not read_only:
+                with self._settlement_journal.owner_lock():
+                    pass
         except PackageStoreSettlementJournalError:
             raise _root_untrusted() from None
 
@@ -237,10 +394,30 @@ class _PosixRoleStore:
         self,
         receipt: PackageArtifactStagingReceiptV1,
     ) -> PackageArtifactStagingReceiptV1:
+        return self._validate_receipt(receipt, read_only=False)
+
+    def read_validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        """Validate an exact settled tree without repairing owner journals."""
+
+        return self._validate_receipt(receipt, read_only=True)
+
+    def _validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+        *,
+        read_only: bool,
+    ) -> PackageArtifactStagingReceiptV1:
         if not isinstance(receipt, PackageArtifactStagingReceiptV1):
             raise TypeError("Package artifact staging receipt is required")
         self._lock.acquire()
-        durable_owner_lock = self._settlement_journal.owner_lock()
+        durable_owner_lock = (
+            self._settlement_journal.read_owner_lock()
+            if read_only
+            else self._settlement_journal.owner_lock()
+        )
         try:
             durable_owner_lock.__enter__()
         except Exception:
@@ -252,7 +429,9 @@ class _PosixRoleStore:
                 expected_identities=self._root_identities,
             )
             try:
-                return self._validate_receipt_at_root(root, receipt)
+                return self._validate_receipt_at_root(
+                    root, receipt, read_only=read_only
+                )
             finally:
                 root.close()
         except PackagePhysicalStagingError:
@@ -264,6 +443,325 @@ class _PosixRoleStore:
         finally:
             try:
                 durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
+    def read_operation_settlements(
+        self, operation_id: str
+    ) -> tuple[PackageStoreSettlementRecordV1, ...]:
+        """Account for all Store settlements of one Package operation."""
+
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("Package operation identity is required")
+        self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.read_owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+        try:
+            root = _PinnedPosixRoot.open(
+                self._root, expected_identities=self._root_identities
+            )
+            try:
+                events = self._settlement_journal.read_events()
+                records = tuple(
+                    event
+                    for event in events
+                    if isinstance(event, PackageStoreSettlementRecordV1)
+                    and event.receipt.operation_id == operation_id
+                )
+                if any(
+                    record.store_role != self._role
+                    or record.store_identity != self._store_identity
+                    or tuple(item.to_native() for item in record.root_identities)
+                    != root.identities
+                    for record in records
+                ):
+                    raise _root_untrusted()
+                settled_refs = {record.receipt.stable_ref.ref_id for record in records}
+                if any(
+                    isinstance(event, PackageStoreGcTombstoneV1)
+                    and event.stable_ref_id in settled_refs
+                    for event in events
+                ):
+                    raise _collision()
+                return records
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
+    def read_settlement_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+        read_only: bool = False,
+    ) -> bytes:
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        if not isinstance(logical_path, str):
+            raise TypeError("Package Store logical path is required")
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("Package Store read budget is invalid")
+        entry = next(
+            (
+                item
+                for item in settlement.manifest.entries
+                if item.logical_path == logical_path
+            ),
+            None,
+        )
+        if entry is None or entry.byte_count > max_bytes:
+            raise _collision()
+        try:
+            owner_lock = (
+                self._settlement_journal.read_owner_lock()
+                if read_only
+                else self._settlement_journal.owner_lock()
+            )
+            with self._lock, owner_lock:
+                root = _PinnedPosixRoot.open(
+                    self._root, expected_identities=self._root_identities
+                )
+                try:
+                    events = (
+                        self._settlement_journal.read_events()
+                        if read_only
+                        else self._settlement_journal.capture_events()
+                    )
+                    tombstoned = any(
+                        isinstance(event, PackageStoreGcTombstoneV1)
+                        and event.stable_ref_id == settlement.receipt.stable_ref.ref_id
+                        for event in events
+                    )
+                    if (
+                        tuple(
+                            identity.to_native()
+                            for identity in settlement.root_identities
+                        )
+                        != root.identities
+                        or not _settlement_record_present(events, settlement)
+                        or tombstoned
+                    ):
+                        raise _collision()
+                    return _read_existing_tree_file(root, settlement, entry)
+                finally:
+                    root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except (OSError, PackageStoreSettlementJournalError):
+            raise _root_untrusted() from None
+
+    def read_settlement_files(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        members: tuple[tuple[str, int], ...],
+        *,
+        read_only: bool = False,
+    ) -> tuple[bytes, ...]:
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        if (
+            not isinstance(members, tuple)
+            or not 1 <= len(members) <= 64
+            or any(
+                not isinstance(member, tuple)
+                or len(member) != 2
+                or not isinstance(member[0], str)
+                or type(member[1]) is not int
+                or member[1] < 0
+                for member in members
+            )
+        ):
+            raise ValueError("Package Store read set is invalid")
+        by_path = {entry.logical_path: entry for entry in settlement.manifest.entries}
+        if len({path for path, _ in members}) != len(members) or any(
+            path not in by_path or by_path[path].byte_count > budget
+            for path, budget in members
+        ):
+            raise _collision()
+        try:
+            owner_lock = (
+                self._settlement_journal.read_owner_lock()
+                if read_only
+                else self._settlement_journal.owner_lock()
+            )
+            with self._lock, owner_lock:
+                root = _PinnedPosixRoot.open(
+                    self._root, expected_identities=self._root_identities
+                )
+                try:
+                    events = (
+                        self._settlement_journal.read_events()
+                        if read_only
+                        else self._settlement_journal.capture_events()
+                    )
+                    tombstoned = any(
+                        isinstance(event, PackageStoreGcTombstoneV1)
+                        and event.stable_ref_id == settlement.receipt.stable_ref.ref_id
+                        for event in events
+                    )
+                    if (
+                        tuple(
+                            identity.to_native()
+                            for identity in settlement.root_identities
+                        )
+                        != root.identities
+                        or not _settlement_record_present(events, settlement)
+                        or tombstoned
+                    ):
+                        raise _collision()
+                    return tuple(
+                        _read_existing_tree_file(root, settlement, by_path[path])
+                        for path, _ in members
+                    )
+                finally:
+                    root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except (OSError, PackageStoreSettlementJournalError):
+            raise _root_untrusted() from None
+
+    def delete_settlement(
+        self, settlement: PackageStoreSettlementRecordV1
+    ) -> PackageStoreGcResultV1:
+        """Delete only the exact recorded tree; support a partial-delete retry."""
+
+        if (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        self._lock.acquire()
+        owner_lock = self._settlement_journal.owner_lock()
+        owner_locked = False
+        try:
+            owner_lock.__enter__()
+            owner_locked = True
+            root = _PinnedPosixRoot.open(
+                self._root, expected_identities=self._root_identities
+            )
+            try:
+                if tuple(
+                    identity.to_native() for identity in settlement.root_identities
+                ) != root.identities or not _settlement_record_present(
+                    self._settlement_journal.records(), settlement
+                ):
+                    raise _collision()
+                self._settlement_journal.tombstone(settlement)
+                try:
+                    tree_fd = _open_directory(
+                        settlement.final_name, dir_fd=root.descriptor
+                    )
+                except FileNotFoundError:
+                    root.validate_visible()
+                    return PackageStoreGcResultV1.create(
+                        settlement, disposition="already_absent"
+                    )
+                try:
+                    if (
+                        _identity(os.fstat(tree_fd))
+                        != settlement.tree_identity.to_native()
+                    ):
+                        raise _collision()
+                    directories = {
+                        tuple(
+                            item.logical_path.split("/")
+                        ): item.native_identity.to_native()
+                        for item in settlement.directory_identities
+                    }
+                    files = {
+                        tuple(
+                            item.logical_path.split("/")
+                        ): item.native_identity.to_native()
+                        for item in settlement.file_identities
+                    }
+                    expected = {
+                        item.logical_path: item for item in settlement.manifest.entries
+                    }
+                    observed, present_directories, present_files = _collect_tree(
+                        tree_fd,
+                        expected,
+                        directory_identities=directories,
+                        file_identities=files,
+                        allow_partial=True,
+                    )
+                    if any(
+                        observed[path]
+                        != (expected[path].byte_count, expected[path].content_digest)
+                        for path in observed
+                    ):
+                        raise _collision()
+                    for parts in sorted(present_files, reverse=True):
+                        parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                        try:
+                            current = os.stat(
+                                parts[-1], dir_fd=parent_fd, follow_symlinks=False
+                            )
+                            if (
+                                not stat.S_ISREG(current.st_mode)
+                                or _identity(current) != present_files[parts]
+                            ):
+                                raise _collision()
+                            os.unlink(parts[-1], dir_fd=parent_fd)
+                        finally:
+                            os.close(parent_fd)
+                    for parts in sorted(
+                        present_directories,
+                        key=lambda value: (len(value), value),
+                        reverse=True,
+                    ):
+                        parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                        try:
+                            current = os.stat(
+                                parts[-1], dir_fd=parent_fd, follow_symlinks=False
+                            )
+                            if (
+                                not stat.S_ISDIR(current.st_mode)
+                                or _identity(current) != present_directories[parts]
+                            ):
+                                raise _collision()
+                            os.rmdir(parts[-1], dir_fd=parent_fd)
+                        finally:
+                            os.close(parent_fd)
+                    os.fsync(tree_fd)
+                finally:
+                    os.close(tree_fd)
+                root.validate_visible()
+                os.rmdir(settlement.final_name, dir_fd=root.descriptor)
+                os.fsync(root.descriptor)
+                root.validate_visible()
+                return PackageStoreGcResultV1.create(settlement, disposition="deleted")
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                if owner_locked:
+                    owner_lock.__exit__(None, None, None)
             finally:
                 self._lock.release()
 
@@ -300,15 +798,27 @@ class _PosixRoleStore:
         self,
         root: _PinnedPosixRoot,
         receipt: PackageArtifactStagingReceiptV1,
+        *,
+        read_only: bool = False,
     ) -> PackageArtifactStagingReceiptV1:
         stable_ref = receipt.stable_ref
         if (
             stable_ref.store_identity != self._store_identity
-            or (self._role == "dependency" and not isinstance(stable_ref, VerifiedArtifactRefV1))
-            or (self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1))
+            or (
+                self._role == "dependency"
+                and not isinstance(stable_ref, VerifiedArtifactRefV1)
+            )
+            or (
+                self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1)
+            )
         ):
             raise _collision()
-        settlements = self._settlement_journal.settlements_for_receipt(
+        settlements_read = (
+            self._settlement_journal.read_settlements_for_receipt
+            if read_only
+            else self._settlement_journal.settlements_for_receipt
+        )
+        settlements = settlements_read(
             store_role=self._role,
             store_identity=self._store_identity,
             root_identities=root.identities,
@@ -322,7 +832,12 @@ class _PosixRoleStore:
             authority.final_name,
             authority.manifest,
         )
-        if not self._settlement_journal.authorizes(
+        authorizes_read = (
+            self._settlement_journal.read_authorizes
+            if read_only
+            else self._settlement_journal.authorizes
+        )
+        if not authorizes_read(
             store_role=self._role,
             store_identity=self._store_identity,
             root_identities=root.identities,
@@ -527,6 +1042,7 @@ class _PosixVerifiedTreeSink:
         self._next_entry = 0
         self._active_file: _PosixFileSink | _ReuseFileSink | None = None
         self._reuse = False
+        self._reuse_alias = False
         self._authorized = False
         self._renamed = False
         self._finished = False
@@ -545,6 +1061,8 @@ class _PosixVerifiedTreeSink:
     def _prepare(self) -> None:
         try:
             self._root.validate_visible()
+            if self._settlement_journal.is_tombstoned(self._stable_ref.ref_id):
+                raise _collision()
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):
@@ -555,7 +1073,7 @@ class _PosixVerifiedTreeSink:
                         self._manifest,
                     )
                 )
-                if not self._settlement_journal.authorizes(
+                exact = self._settlement_journal.authorizes(
                     store_role=self._role,
                     store_identity=self._store_identity,
                     root_identities=self._root.identities,
@@ -566,12 +1084,29 @@ class _PosixVerifiedTreeSink:
                     staging_name=self._staging_name,
                     manifest=self._manifest,
                     receipt=self._receipt,
-                ):
+                )
+                alias = (
+                    self._role == "dependency"
+                    and not exact
+                    and self._settlement_journal.authorizes_dependency_reuse(
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    )
+                )
+                if not exact and not alias:
                     raise PackagePhysicalStagingError(
                         "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
                     )
                 self._reuse = True
+                self._reuse_alias = alias
                 return
             os.mkdir(
                 self._staging_name,
@@ -707,7 +1242,7 @@ class _PosixVerifiedTreeSink:
                         self._manifest,
                     )
                 )
-                if not self._settlement_journal.authorizes(
+                exact = self._settlement_journal.authorizes(
                     store_role=self._role,
                     store_identity=self._store_identity,
                     root_identities=self._root.identities,
@@ -718,7 +1253,33 @@ class _PosixVerifiedTreeSink:
                     staging_name=self._staging_name,
                     manifest=self._manifest,
                     receipt=self._receipt,
-                ):
+                )
+                if self._reuse_alias and not exact:
+                    if not self._settlement_journal.authorizes_dependency_reuse(
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    ):
+                        raise _collision()
+                    self._settlement_journal.authorize(
+                        store_role=self._role,
+                        store_identity=self._store_identity,
+                        root_identities=self._root.identities,
+                        tree_identity=tree_identity,
+                        directory_identities=directory_identities,
+                        file_identities=file_identities,
+                        final_name=self._final_name,
+                        staging_name=self._staging_name,
+                        manifest=self._manifest,
+                        receipt=self._receipt,
+                    )
+                elif not exact:
                     raise PackagePhysicalStagingError(
                         "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
@@ -1066,7 +1627,11 @@ def _stable_ref(
 ) -> VerifiedArtifactRefV1 | PluginRevisionRefV1:
     values = {
         "store_identity": store_identity,
-        "store_revision": f"tree:{manifest.manifest_id}",
+        "store_revision": (
+            dependency_content_store_revision(manifest)
+            if role == "dependency"
+            else f"tree:{manifest.manifest_id}"
+        ),
         "distribution": manifest.distribution,
         "version": manifest.version,
         "artifact_digest": manifest.artifact_digest,
@@ -1129,6 +1694,92 @@ def _validate_existing_tree(
     return tree_identity, observed_directories, observed_files
 
 
+def _read_existing_tree_file(
+    root: _PinnedPosixRoot,
+    settlement: PackageStoreSettlementRecordV1,
+    entry: PackageVerifiedTreeEntryV1,
+) -> bytes:
+    directories = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.directory_identities
+    }
+    files = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.file_identities
+    }
+    tree_identity = settlement.tree_identity.to_native()
+    _validate_existing_tree(
+        root,
+        settlement.final_name,
+        settlement.manifest,
+        expected_tree_identity=tree_identity,
+        directory_identities=directories,
+        file_identities=files,
+    )
+    try:
+        tree_fd = _open_directory(settlement.final_name, dir_fd=root.descriptor)
+        try:
+            if _identity(os.fstat(tree_fd)) != tree_identity:
+                raise OSError("Published Package tree identity changed")
+            parts = tuple(entry.logical_path.split("/"))
+            parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+            try:
+                expected_parent = (
+                    directories.get(parts[:-1]) if len(parts) > 1 else tree_identity
+                )
+                if _identity(os.fstat(parent_fd)) != expected_parent:
+                    raise OSError("Published Package directory identity changed")
+                file_fd = os.open(
+                    parts[-1],
+                    os.O_RDONLY
+                    | os.O_NONBLOCK
+                    | os.O_NOFOLLOW
+                    | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=parent_fd,
+                )
+                try:
+                    metadata = os.fstat(file_fd)
+                    if (
+                        not stat.S_ISREG(metadata.st_mode)
+                        or metadata.st_nlink != 1
+                        or _identity(metadata) != files.get(parts)
+                        or metadata.st_size != entry.byte_count
+                    ):
+                        raise OSError("Published Package file identity changed")
+                    data = bytearray()
+                    while chunk := os.read(
+                        file_fd, min(64 * 1024, entry.byte_count + 1 - len(data))
+                    ):
+                        data.extend(chunk)
+                        if len(data) > entry.byte_count:
+                            raise OSError(
+                                "Published Package file exceeds verified size"
+                            )
+                    if (
+                        _identity(os.fstat(file_fd)) != files[parts]
+                        or len(data) != entry.byte_count
+                        or sha256(data).hexdigest() != entry.content_digest
+                    ):
+                        raise OSError("Published Package file content changed")
+                finally:
+                    os.close(file_fd)
+            finally:
+                os.close(parent_fd)
+        finally:
+            os.close(tree_fd)
+        root.validate_visible()
+        visible = os.stat(
+            settlement.final_name,
+            dir_fd=root.descriptor,
+            follow_symlinks=False,
+        )
+        if _identity(visible) != tree_identity:
+            raise OSError("Published Package tree visibility changed")
+        return bytes(data)
+    except Exception:
+        raise _collision() from None
+
+
 def _validate_owned_tree(
     tree_fd: int,
     expected_tree_identity: _Identity,
@@ -1184,6 +1835,7 @@ def _collect_tree(
     *,
     directory_identities: dict[tuple[str, ...], _Identity] | None,
     file_identities: dict[tuple[str, ...], _Identity] | None,
+    allow_partial: bool = False,
 ) -> tuple[
     dict[str, tuple[int, str]],
     dict[tuple[str, ...], _Identity],
@@ -1240,9 +1892,8 @@ def _collect_tree(
                     if entry is None or metadata.st_nlink != 1:
                         raise OSError("Published Package tree has an unexpected file")
                     identity = _identity(metadata)
-                    if (
-                        file_identities is not None
-                        and identity != file_identities.get(parts)
+                    if file_identities is not None and identity != file_identities.get(
+                        parts
                     ):
                         raise OSError("Published Package file identity changed")
                     descriptor = _open_regular_file(
@@ -1273,15 +1924,21 @@ def _collect_tree(
                     observed_files[parts] = identity
                 else:
                     raise OSError("Published Package tree entry type changed")
-        if not saw_entry and prefix:
+        if not saw_entry and prefix and not allow_partial:
             raise OSError("Published Package tree contains an empty directory")
 
     visit(root_fd, ())
-    if directory_identities is not None and set(observed_directories) != set(
-        directory_identities
+    if (
+        not allow_partial
+        and directory_identities is not None
+        and set(observed_directories) != set(directory_identities)
     ):
         raise OSError("Published Package directory set changed")
-    if file_identities is not None and set(observed_files) != set(file_identities):
+    if (
+        not allow_partial
+        and file_identities is not None
+        and set(observed_files) != set(file_identities)
+    ):
         raise OSError("Published Package file set changed")
     return observed, observed_directories, observed_files
 
@@ -1394,6 +2051,19 @@ def _root_untrusted() -> PackagePhysicalStagingError:
     )
 
 
+def _settlement_record_present(
+    events: Iterable[object], settlement: PackageStoreSettlementRecordV1
+) -> bool:
+    """Compare a full record only after its authenticated identity matches."""
+
+    return any(
+        isinstance(event, PackageStoreSettlementRecordV1)
+        and event.settlement_id == settlement.settlement_id
+        and event == settlement
+        for event in events
+    )
+
+
 def _collision() -> PackagePhysicalStagingError:
     return PackagePhysicalStagingError(
         "Package Store settlement evidence does not authorize this tree",
@@ -1405,4 +2075,5 @@ __all__ = [
     "PackagePhysicalStagingError",
     "PosixPackageDependencyMaterializationStore",
     "PosixPackagePluginRootMaterializationStore",
+    "PosixPackagePluginRootReadOnlyStore",
 ]

@@ -14,6 +14,7 @@ from loushang.coding.presentation.tui.plain import (
 )
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
+from loushang.coding.ui.plugin_theme import apply_coding_plugin_theme_to_screen
 from loushang.coding.ui.product_binding import (
     ScreenCodingDebugBinding,
     build_coding_ui_controller,
@@ -33,6 +34,7 @@ from loushang.harnesstui.conversation.agent_application import (
     handle_agent_screen_approval,
 )
 from loushang.harnesstui.conversation.application_host import (
+    ActionHostScreenRunner,
     run_prepared_plain_conversation,
     run_prepared_screen_conversation,
 )
@@ -60,6 +62,8 @@ async def run_coding_tui(
     stderr: TextIO,
     verbose: bool = False,
     screen_run_profile: ConversationScreenRunProfile = CODING_SCREEN_RUN_PROFILE,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     return await run_tui_launch_shell(
         stdin=stdin,
@@ -75,6 +79,8 @@ async def run_coding_tui(
                 stderr=stderr,
                 verbose=verbose,
                 screen_run_profile=screen_run_profile,
+                startup_app=startup_app,
+                prepared_screen_runner=prepared_screen_runner,
             ),
             run_plain=partial(
                 _run_plain_tui,
@@ -100,6 +106,8 @@ async def _run_screen_interactive_tui(
     stderr: TextIO,
     verbose: bool,
     screen_run_profile: ConversationScreenRunProfile,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     current = current_agent_runtime_session(runtime, session)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
@@ -128,6 +136,8 @@ async def _run_screen_interactive_tui(
             screen_run_profile=screen_run_profile,
             continuity_reference=continuity_reference,
             startup_snapshot=snapshot,
+            startup_app=startup_app,
+            prepared_screen_runner=prepared_screen_runner,
         )
     finally:
         continuity_reference.release()
@@ -144,22 +154,32 @@ async def _run_bound_screen_interactive_tui(
     screen_run_profile: ConversationScreenRunProfile,
     continuity_reference: Any,
     startup_snapshot: Any,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     snapshot = startup_snapshot
-    app = ScreenCodingTuiApp(
+    app = startup_app or ScreenCodingTuiApp(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
         branch=snapshot.branch,
         session_label=snapshot.session_label,
         now=time.monotonic,
     )
+    current = current_agent_runtime_session(runtime, session)
+    apply_coding_plugin_theme_to_screen(app, current)
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
+    if startup_app is not None:
+        app.state.model_label = snapshot.model_label
+        app.state.cwd = snapshot.cwd
+        app.state.branch = snapshot.branch
+        app.state.session_label = snapshot.session_label
     controller = build_coding_ui_controller(
         runtime=runtime,
         session=session,
         verbose=verbose,
+        plugin_workspace=snapshot.cwd,
     )
 
     def current_session():
@@ -209,6 +229,22 @@ async def _run_bound_screen_interactive_tui(
             exc=error,
         )
 
+    capability_session: object | None = None
+    capability_generation = 0
+
+    def current_capabilities():
+        from .screen_input import project_coding_capabilities
+
+        nonlocal capability_session, capability_generation
+        active = current_session()
+        if active is not capability_session:
+            capability_session = active
+            capability_generation += 1
+        return project_coding_capabilities(
+            ("coding", str(id(app)), str(capability_generation)), controller.get_operations,
+            clipboard_declared=screen_run_profile is CODING_SCREEN_RUN_PROFILE,
+        )
+
     prepared = AgentScreenConversationApplicationBinding(
         session=session,
         app=app,
@@ -225,6 +261,7 @@ async def _run_bound_screen_interactive_tui(
         stdout=stdout,
         now=time.monotonic,
         completion_provider=completion_provider,
+        capability_provider=current_capabilities,
         resume_command_prefix=("loushang", "--resume"),
         session_provider=lambda: current_agent_runtime_session(runtime, session),
         get_operations=controller.get_operations,
@@ -240,7 +277,7 @@ async def _run_bound_screen_interactive_tui(
         prepared,
         stdin=stdin,
         stdout=stdout,
-        screen_runner=run_action_host_conversation_screen,
+        screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
     )
 
 

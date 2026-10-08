@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from loushang.harnesstui.conversation.agent_binding import _standard_tool_title
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolCallView,
@@ -178,6 +179,30 @@ def test_neutral_projector_combines_call_snapshot_and_result_view() -> None:
         command="bash pytest tests/tui -q",
         expanded_body="one\ntwo\nthree\nfour",
     )
+
+
+def test_spawn_agent_transcript_shows_name_and_returned_path() -> None:
+    projector = ToolTranscriptProjector()
+    snapshot = projector.remember_call(
+        ToolCallView(
+            tool_call_id="spawn-1",
+            tool_name="spawn_agent",
+            args={"name": "pipeline_review", "agent_type": "reviewer"},
+        )
+    )
+    block = projector.project_result(
+        ToolResultView(
+            tool_call_id="spawn-1",
+            tool_name="spawn_agent",
+            status="ok",
+            details={"path": "/root/pipeline_review"},
+        ),
+        snapshot,
+    )
+    assert block.title == "spawn_agent pipeline_review"
+    assert block.detail == "created: /root/pipeline_review"
+    assert tool_block_to_record(block).output == "created: /root/pipeline_review"
+    assert _standard_tool_title(snapshot) == "spawn_agent pipeline_review"
 
 
 def test_neutral_projector_defaults_do_not_assume_product_policy() -> None:

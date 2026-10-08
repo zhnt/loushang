@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from secrets import token_hex
 from typing import Literal, cast
 
+from loushang.hosting import HostingStartSettledError
+
 from .contracts import ManagedWorkerLaunchRequestV1, WorkerLaunchIdentityV1
+from .hosting_adapter import HostingManagedWorkerSessionAdapter
 from .journal import (
     WorkerAttemptPhase,
     WorkerAttemptRecordV1,
@@ -370,6 +373,10 @@ class WorkerSupervisor:
             raise
         except BaseException as exc:
             await self._terminal_failure("worker_launch_failed", fenced=False)
+            if type(session_port) is HostingManagedWorkerSessionAdapter and isinstance(
+                exc.__cause__, HostingStartSettledError
+            ):
+                await self._record_process_settlement()
             raise self._error(
                 "Managed Worker launch failed",
                 code="worker_launch_failed",
@@ -617,6 +624,42 @@ class WorkerSupervisor:
         _require_failure_code(code)
         await self._terminal_failure(code, fenced=True)
 
+    async def settle_failed_process(self) -> None:
+        """Record a failed attempt only after its owned process is reaped."""
+
+        async with self._lock:
+            record = self._record
+            if record is None or self._state not in {"failed", "fenced"}:
+                raise self._error(
+                    "Worker process settlement requires a failed attempt",
+                    code="worker_process_settlement_unavailable",
+                )
+            if record.process_settled:
+                return
+            session = self._session
+            if session is None:
+                raise self._error(
+                    "Worker process settlement has no owned session",
+                    code="worker_process_settlement_unavailable",
+                )
+        try:
+            await session.process.close()
+            await session.process.wait()
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:
+            raise self._error(
+                "Worker process settlement is still unverified",
+                code="worker_process_settlement_unavailable",
+            ) from exc
+        await self._record_process_settlement()
+        async with self._lock:
+            if self._record is None or not self._record.process_settled:
+                raise self._error(
+                    "Worker process settlement was not committed",
+                    code="worker_process_settlement_unavailable",
+                )
+
     async def _read_loop(self) -> None:
         try:
             while True:
@@ -792,8 +835,28 @@ class WorkerSupervisor:
             self._shutdown_waiter = None
             session = self._session
         if session is not None:
-            with suppress(BaseException):
+            try:
                 await session.terminate()
+                await session.process.wait()
+                await session.close()
+            except BaseException:
+                return
+            await self._record_process_settlement()
+
+    async def _record_process_settlement(self) -> None:
+        async with self._lock:
+            record = self._record
+            if record is not None and record.phase in {"failed", "fenced"}:
+                # Missing durable settlement keeps restart and cleanup closed.
+                with suppress(Exception):
+                    self._record = self._journal.transition(
+                        self._identity.attempt_id,
+                        expected_phase=record.phase,
+                        next_phase="process_settled",
+                        expected_record_revision=record.record_revision,
+                        expected_supervisor_epoch=self._identity.supervisor_epoch,
+                        failure_code=record.failure_code,
+                    )
 
     def _validate_ready(self, message: WorkerProtocolMessage) -> None:
         expected = {

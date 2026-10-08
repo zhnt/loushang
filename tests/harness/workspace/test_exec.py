@@ -342,15 +342,27 @@ def test_exec_service_incrementally_decodes_split_utf8_sequence(tmp_path: Path) 
 
 
 def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) -> None:
+    ready = tmp_path / "child-ready"
     child_script = (
-        "import sys, time; "
+        "import pathlib, sys; "
         "sys.stdout.write('\\n'); sys.stdout.flush(); "
-        "time.sleep(0.2); "
+        f"pathlib.Path({str(ready)!r}).touch(); "
+        "sys.stdin.buffer.read(); "
         "sys.stdout.write('formatted\\n'); sys.stdout.flush()"
     )
-    root_script = (
-        "import subprocess, sys; "
-        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    root_script = "\n".join(
+        (
+            "import os, pathlib, subprocess, sys, time",
+            f"ready = pathlib.Path({str(ready)!r})",
+            f"child = subprocess.Popen([sys.executable, '-c', {child_script!r}], stdin=subprocess.PIPE)",
+            "deadline = time.monotonic() + 3",
+            "while not ready.exists() and time.monotonic() < deadline:",
+            "    time.sleep(0.01)",
+            "if not ready.exists():",
+            "    raise RuntimeError('child did not start')",
+            # Closing the root process closes the only writer to child stdin.
+            "os._exit(0)",
+        )
     )
 
     async def scenario() -> None:
@@ -361,9 +373,10 @@ def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) ->
                     cwd=str(tmp_path),
                 )
             ),
-            timeout=2,
+            timeout=5,
         )
 
+        assert result.exit_code == 0
         assert result.stdout.splitlines() == ["", "formatted"]
         assert result.stdio_complete is True
         assert result.stdio_drain_reason is None
@@ -533,7 +546,14 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
 def test_exec_service_discards_unretained_output_artifacts(
     tmp_path: Path,
     capture_full_output: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from loushang.harness.workspace.exec import service as service_module
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("disabled output retention created a temporary file")
+
+    monkeypatch.setattr(service_module.tempfile, "mkstemp", forbidden)
     artifact_dir = tmp_path / "artifacts"
     artifact_dir.mkdir()
 

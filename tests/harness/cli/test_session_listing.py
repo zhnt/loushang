@@ -86,12 +86,13 @@ def test_listing_runtime_reports_missing_catalog_capability() -> None:
 
 def test_listing_projects_session_provenance_for_json_and_tsv() -> None:
     runtime = _Runtime()
+    session_file = Path("/tmp/session-1.jsonl")
     record = _Record(
         discovery=SessionDiscoveryMetadata(
             locator=SessionLocator(
                 source_id="sessions.cwd_compatibility",
                 conversation_id="session-1",
-                session_file=Path("/tmp/session-1.jsonl"),
+                session_file=session_file,
                 revision="revision-1",
             ),
             mode="compatibility",
@@ -107,7 +108,7 @@ def test_listing_projects_session_provenance_for_json_and_tsv() -> None:
         "locator": {
             "sourceId": "sessions.cwd_compatibility",
             "conversationId": "session-1",
-            "sessionFile": "/tmp/session-1.jsonl",
+            "sessionFile": str(session_file.resolve()),
             "revision": "revision-1",
         },
         "mode": "compatibility",

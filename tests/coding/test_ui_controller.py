@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
+
+from loushang.harness.host.types import HostActionResult
 
 
 class _Session:
@@ -184,6 +189,320 @@ def test_controller_dispatches_prompt_intent_to_session_prompt() -> None:
 
     assert result.error_message is None
     assert session.prompts == ["hello"]
+
+
+def test_controller_plugins_preview_is_local_and_never_prompts_agent() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    reads: list[str] = []
+
+    def preview() -> dict[str, object]:
+        reads.append("current")
+        return {
+            "snapshotStatus": "partial_evidence",
+            "disposition": "blocked",
+            "compiledPluginIds": ["coding.base"],
+            "catalogResources": [
+                {"resourceKind": "skill", "name": "review", "sourceKind": "external_package"}
+            ],
+            "catalogDiagnosticCodes": ["duplicate_resource_name"],
+            "evidenceGaps": ["session_catalog_generation"],
+            "blockingOwner": "resource-catalog",
+            "blockingCode": "duplicate_owner_contribution_identity",
+        }
+
+    controller = build_coding_ui_controller(session=session, plugin_preview=preview)
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/plugins")))
+
+    assert reads == ["current"]
+    assert session.prompts == []
+    assert "partial" in (result.status_message or "")
+    assert "coding.base" in (result.status_message or "")
+    assert "duplicate_owner_contribution_identity" in (result.status_message or "")
+
+
+def test_controller_plugin_management_follows_current_session_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.ui.product_binding as binding_module
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = _Session()
+    second = _Session()
+    first.session_manager = SimpleNamespace(get_cwd=lambda: str(first_root))
+    second.session_manager = SimpleNamespace(get_cwd=lambda: str(second_root))
+    runtime = SimpleNamespace(current_session=first)
+    runtime.get_current_session = lambda: runtime.current_session
+    writes: list[Path] = []
+    reads: list[Path] = []
+
+    def command(workspace: Path, _text: str) -> HostActionResult:
+        writes.append(Path(workspace))
+        return HostActionResult(status_message="changed")
+
+    def read_client(workspace: Path):
+        reads.append(Path(workspace))
+        return SimpleNamespace(preview_current=lambda **_kwargs: {
+            "snapshotStatus": "complete",
+            "disposition": "admitted",
+            "compiledPluginIds": ["coding.base"],
+            "catalogResources": [],
+            "catalogDiagnosticCodes": [],
+            "evidenceGaps": [],
+            "blockingOwner": None,
+            "blockingCode": None,
+        })
+
+    monkeypatch.setattr(
+        binding_module, "execute_coding_plugin_management_ui_command", command
+    )
+    monkeypatch.setattr(
+        binding_module, "open_coding_plugin_management_read_client", read_client
+    )
+    monkeypatch.setattr(
+        binding_module, "_format_coding_plugin_preview", lambda _document: "preview"
+    )
+    controller = build_coding_ui_controller(
+        session=first, runtime=runtime, plugin_workspace=first_root
+    )
+    assert asyncio.run(controller.dispatch(PromptIntent(text="/plugins"))).error_message is None
+    assert asyncio.run(controller.dispatch(
+        PromptIntent(text="/plugins disable example")
+    )).error_message is None
+    runtime.current_session = second
+    assert asyncio.run(controller.dispatch(PromptIntent(text="/plugins"))).error_message is None
+    assert asyncio.run(controller.dispatch(
+        PromptIntent(text="/plugins disable example")
+    )).error_message is None
+    assert reads == [first_root, second_root]
+    assert writes == [first_root, second_root]
+
+
+def test_controller_plugins_reports_selected_command_name_conflict() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    session.list_commands = lambda: [
+        SimpleNamespace(name="plugins", source="plugin", description="Other command")
+    ]
+    controller = build_coding_ui_controller(
+        session=session,
+        plugin_preview=lambda: {"snapshotStatus": "complete"},
+    )
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/plugins")))
+    assert result.error_message == (
+        "/plugins conflicts with a selected Session command."
+    )
+    assert session.prompts == []
+
+
+def test_controller_plugins_preview_unavailable_is_local() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    controller = build_coding_ui_controller(session=session)
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/plugins")))
+
+    assert result.error_message == "Plugin preview is unavailable."
+    assert session.prompts == []
+
+    invalid = asyncio.run(controller.dispatch(PromptIntent(text="/plugins install")))
+    assert invalid.error_message == (
+        "Usage: /plugins [list | explain OPERATION_ID | enable ID | disable ID | remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
+    )
+    assert session.prompts == []
+
+    attached = asyncio.run(
+        controller.dispatch(PromptIntent(text="/plugins", images=(object(),)))
+    )
+    assert attached.error_message == "/plugins does not accept attachments."
+    assert session.prompts == []
+
+
+def test_controller_plugins_list_uses_management_read_without_model_prompt() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    controller = build_coding_ui_controller(
+        session=session,
+        plugin_management_snapshot=lambda: {
+            "projectionVersion": 1,
+            "ownerRevisions": {"desiredState": 7},
+            "installations": [
+                {
+                    "installationKey": {"pluginId": "reviewpack"},
+                    "desiredState": "installed_enabled",
+                    "convergence": "unknown",
+                    "unknownDimensions": ["instance"],
+                    "backupRetention": {
+                        "installationKey": {"pluginId": "reviewpack"},
+                        "status": "retained",
+                        "expiryReceiptId": None,
+                    },
+                    "operations": [
+                        {"operationId": "tui-plugin-desired:pending", "status": "running"}
+                    ],
+                }
+            ],
+            "skew": [],
+        },
+    )
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/plugins list")))
+
+    assert result.error_message is None
+    assert "reviewpack: installed_enabled" in (result.status_message or "")
+    assert "Desired State revision 7" in (result.status_message or "")
+    assert "unknown" in (result.status_message or "")
+    assert "backup: retained" in (result.status_message or "")
+    assert "tui-plugin-desired:pending" in (result.status_message or "")
+    assert session.prompts == []
+
+
+def test_controller_plugins_list_refuses_foreign_backup_retention() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    controller = build_coding_ui_controller(
+        session=session,
+        plugin_management_snapshot=lambda: {
+            "projectionVersion": 1,
+            "ownerRevisions": {"desiredState": 1},
+            "installations": [
+                {
+                    "installationKey": {"pluginId": "reviewpack"},
+                    "desiredState": "installed_enabled",
+                    "convergence": "converged",
+                    "unknownDimensions": [],
+                    "backupRetention": {
+                        "installationKey": {"pluginId": "another-plugin"},
+                        "status": "retained",
+                        "expiryReceiptId": None,
+                    },
+                    "operations": [],
+                }
+            ],
+            "skew": [],
+        },
+    )
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/plugins list")))
+
+    assert result.error_message == "Plugin preview is unavailable."
+    assert session.prompts == []
+
+
+def test_controller_plugins_command_is_local_and_rejects_attachments() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harness.host.types import HostActionResult
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    submitted: list[str] = []
+
+    def command(text: str) -> HostActionResult:
+        submitted.append(text)
+        return HostActionResult(status_message="Plugin disabled; new Session required.")
+
+    controller = build_coding_ui_controller(session=session, plugin_command=command)
+    result = asyncio.run(
+        controller.dispatch(PromptIntent(text="/plugins disable reviewpack"))
+    )
+
+    assert result.status_message == "Plugin disabled; new Session required."
+    assert submitted == ["/plugins disable reviewpack"]
+    assert session.prompts == []
+
+    attached = asyncio.run(
+        controller.dispatch(
+            PromptIntent(text="/plugins disable reviewpack", images=(object(),))
+        )
+    )
+    assert attached.error_message == "/plugins does not accept attachments."
+    assert submitted == ["/plugins disable reviewpack"]
+    assert session.prompts == []
+
+
+def test_controller_package_repair_runs_locally_without_model_prompt() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harness.host.types import HostActionResult
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    submitted: list[str] = []
+
+    def command(text: str) -> HostActionResult:
+        submitted.append(text)
+        return HostActionResult(status_message="Package repair committed")
+
+    controller = build_coding_ui_controller(
+        session=session, plugin_package_repair_command=command
+    )
+    result = asyncio.run(controller.dispatch(PromptIntent(
+        text="/plugins repair-package repair-retryable package:one"
+    )))
+    assert result.status_message == "Package repair committed"
+    assert submitted == ["/plugins repair-package repair-retryable package:one"]
+    assert session.prompts == []
+
+
+def test_controller_plugins_explain_reads_owner_evidence_without_model_prompt() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    session = _Session()
+    explained: list[str] = []
+
+    def explanation(operation_id: str) -> dict[str, object]:
+        explained.append(operation_id)
+        return {
+            "operationId": operation_id,
+            "explanationVersion": 1,
+            "snapshotStatus": "partial_evidence",
+            "package": {
+                "operationId": operation_id,
+                "status": "observed",
+                "phase": "committed",
+                "disposition": "committed",
+                "failureCode": None,
+                "operatorAction": None,
+            },
+            "managementStatus": "observed",
+            "managementDisposition": "succeeded",
+            "handoffEvidence": "settled",
+            "joinStatus": "same_identity",
+            "evidenceGaps": ["product_selection", "session_capture"],
+        }
+
+    controller = build_coding_ui_controller(
+        session=session, plugin_operation_explanation=explanation
+    )
+    result = asyncio.run(
+        controller.dispatch(PromptIntent(text="/plugins explain package:install-1"))
+    )
+    assert result.error_message is None
+    assert "Package: committed / committed" in (result.status_message or "")
+    assert "Handoff: settled" in (result.status_message or "")
+    assert "partial evidence" in (result.status_message or "")
+    assert explained == ["package:install-1"]
+    assert session.prompts == []
+
+    attached = asyncio.run(controller.dispatch(PromptIntent(
+        text="/plugins explain package:install-1", images=(object(),)
+    )))
+    assert attached.error_message == "/plugins does not accept attachments."
+    assert explained == ["package:install-1"]
 
 
 def test_controller_dispatches_catalog_session_command_without_prompting_agent() -> None:

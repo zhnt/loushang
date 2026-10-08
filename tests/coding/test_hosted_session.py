@@ -38,8 +38,11 @@ def _private_session_home(tmp_path, monkeypatch):
     home = tmp_path / "user-home"
     home.mkdir()
     for key, path in {
-        "HOME": home, "USERPROFILE": home, "LOUSHANG_HOME": tmp_path / "platform",
-        "LOUSHANG_RUNTIME_DIR": tmp_path / "runtime", "LOUSHANG_TMPDIR": tmp_path / "scratch",
+        "HOME": home,
+        "USERPROFILE": home,
+        "LOUSHANG_HOME": tmp_path / "platform",
+        "LOUSHANG_RUNTIME_DIR": tmp_path / "runtime",
+        "LOUSHANG_TMPDIR": tmp_path / "scratch",
     }.items():
         monkeypatch.setenv(key, str(path))
 
@@ -166,6 +169,209 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
         finally:
             await hosted.close()
         assert len(tuple((tmp_path / "sessions").glob("*.jsonl"))) == 1
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+def test_hosted_product_runtime_requires_a_session_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+
+    async def scenario() -> None:
+        candidate, claimed, identity, _ = await _construction(tmp_path)
+        selected: list[str] = []
+
+        def select(manager):
+            selected.append(manager.get_header().conversation_id)
+            return None
+
+        def reject_legacy(*_args, **_kwargs):
+            raise AssertionError("Hosted Product selection reached legacy startup")
+
+        monkeypatch.setattr(
+            coding_bootstrap, "_default_package_materializer", reject_legacy
+        )
+        factory = CodingRealHostedSessionFactoryV1(
+            services_factory=lambda cwd: create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=tmp_path / "settings.json",
+                    project_settings_path=cwd / ".loushang" / "settings.json",
+                )
+            ),
+            model=_model(),
+            stream_fn=_stream,
+            tools=[],
+            package_product_runtime_factory_for_session=select,
+        )
+        with pytest.raises(
+            TypeError, match="Package Product runtime factory is required"
+        ):
+            await factory.create_session(
+                binding_key=SessionBindingKeyV1(
+                    identity.product_id, identity.continuity_id, identity.session_id
+                ),
+                opaque_session_binding=claimed.opaque_binding,
+            )
+        assert selected == [identity.session_id]
+        await claimed.close()
+        await candidate.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceError,
+    )
+
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    epoch = resolve_coding_package_epoch_layout(layout)
+    epoch.control_root.mkdir(parents=True, mode=0o700)
+    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    selected: list[str] = []
+
+    def refuse_product(*_args: object, **_kwargs: object) -> None:
+        selected.append("product")
+        raise ValueError("invalid B fence")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("fenced Hosted startup reached legacy materializer")
+
+    monkeypatch.setattr(
+        product_runtime, "open_coding_fenced_product_application_owner", refuse_product
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+
+    async def scenario() -> None:
+        candidate, claimed, identity, factory = await _construction(tmp_path)
+        with pytest.raises(PackageEpochFenceError):
+            await factory.create_session(
+                binding_key=SessionBindingKeyV1(
+                    identity.product_id, identity.continuity_id, identity.session_id
+                ),
+                opaque_session_binding=claimed.opaque_binding,
+            )
+        assert selected == []
+        await claimed.close()
+        await candidate.close()
+        await factory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+
+
+def test_hosted_default_refuses_effective_old_settings_before_plugin_writes(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+
+    settings = tmp_path / "settings.json"
+    old_bytes = b'{"disabled_plugins":["coding.base"]}'
+    settings.write_bytes(old_bytes)
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+
+    async def scenario() -> None:
+        candidate, claimed, identity, factory = await _construction(tmp_path)
+        try:
+            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
+                await factory.create_session(
+                    binding_key=SessionBindingKeyV1(
+                        identity.product_id, identity.continuity_id, identity.session_id
+                    ),
+                    opaque_session_binding=claimed.opaque_binding,
+                )
+        finally:
+            await claimed.close()
+            await candidate.close()
+            await factory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 20))
+    assert settings.read_bytes() == old_bytes
+    assert not lifecycle.root.exists()
+    assert not lifecycle.package_root.exists()
+
+
+def test_hosted_product_runtime_missing_selection_cannot_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.control import ControlConfig
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeBindingV1,
+    )
+
+    events: list[str] = []
+
+    class Lifecycle:
+        binding_id = "owner:coding-package"
+        active = False
+
+        def activate(self) -> None:
+            self.active = True
+
+    class Inventory:
+        binding_id = "owner:coding-package"
+
+    class ProductFactory:
+        def create(self, request):
+            events.append(f"product:{request.session_id}")
+            return PackageProductRuntimeBindingV1(
+                product_id="coding",
+                lifecycle=Lifecycle(),  # type: ignore[arg-type]
+                inventory=Inventory(),  # type: ignore[arg-type]
+                mode="enforced",
+                on_dispose=lambda: events.append("product_dispose"),
+            )
+
+    def reject_legacy(*_args, **_kwargs):
+        raise AssertionError("Hosted Product startup reached legacy Plugin path")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "_default_package_materializer", reject_legacy
+    )
+    monkeypatch.setattr(
+        coding_bootstrap, "prepare_managed_coding_base_plugin_assembly", reject_legacy
+    )
+
+    async def scenario() -> None:
+        candidate, claimed, identity, _ = await _construction(tmp_path)
+        factory = CodingRealHostedSessionFactoryV1(
+            services_factory=lambda _cwd: create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+            model=_model(),
+            stream_fn=_stream,
+            tools=[],
+            package_product_runtime_factory_for_session=lambda _manager: (
+                ProductFactory()
+            ),
+        )
+        with pytest.raises(PackageProductRuntimeActivationError) as failure:
+            await factory.create_session(
+                binding_key=SessionBindingKeyV1(
+                    identity.product_id, identity.continuity_id, identity.session_id
+                ),
+                opaque_session_binding=claimed.opaque_binding,
+            )
+        assert failure.value.code == "package_product_manifest_reader_unavailable"
+        assert events == [f"product:{identity.session_id}", "product_dispose"]
+        await claimed.close()
+        await candidate.close()
 
     asyncio.run(asyncio.wait_for(scenario(), 20))
 

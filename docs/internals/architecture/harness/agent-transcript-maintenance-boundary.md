@@ -103,6 +103,38 @@ The resolved runtime capability configuration remains authoritative per field.
 Product compaction settings use `None` to inherit capability values, while
 concrete live settings override only their corresponding fields.
 
+## Linux transcript deletion ownership
+
+Linux callers of `delete_agent_transcript_jsonl` and the base
+`ProductTranscriptSession.delete_session` must supply `maintenance_owner`.
+The narrow `TranscriptDeletionOwner` protocol delegates to the application's
+existing owned `AgentTranscriptSessionFactory.delete_transcript`; it does not
+construct a temporary factory or decide authority by looking for lock files.
+
+```python
+deleted = await delete_agent_transcript_jsonl(
+    session_file,
+    current_session_file=current_session_file,
+    maintenance_owner=application_transcript_factory,
+)
+```
+
+Here `application_transcript_factory` is the caller's already retained owned
+factory. The application keeps it through completion and shutdown, including
+any pending preparation or cleanup error. The facade neither closes that
+factory nor converts an unknown commit or cleanup failure into success.
+
+This is an intentional Linux low-level API compatibility change: without an
+owner the call raises before accessing the path, even if the file does not
+exist. The ordinary Linux Coding application runtime uses its original owned
+factory for deletion. Its bound SessionManager rejects a different owner.
+Non-Linux unowned behavior is unchanged; that is not a claim of shared Linux
+writer protection on those platforms.
+
+Owned deletion removes the transcript under its admitted writer authority.
+It leaves attachments recoverable for explicit maintenance; successful
+transcript deletion does not mean all associated storage has been reclaimed.
+
 ## Verification
 
 - Harness tests cover context checkpoint staleness, compaction checkpoint

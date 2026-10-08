@@ -133,7 +133,9 @@ def test_G17_PRODUCT_local_discovery_views_resume_interact_and_detach(
             await command.close(retry_timeout=5)
             directory.close()
 
-    asyncio.run(asyncio.wait_for(scenario(), 30))
+    # The scenario opens two Product B Sessions. Cold-start readiness has a
+    # separate CLI terminal bound; the local interaction deadlines stay below.
+    asyncio.run(asyncio.wait_for(scenario(), 45))
 
 
 def test_G17_PRODUCT_picker_resumes_both_scopes_interacts_and_retains_history(
@@ -222,4 +224,6 @@ def test_G17_PRODUCT_picker_resumes_both_scopes_interacts_and_retains_history(
             await command.close(retry_timeout=5)
             directory.close()
 
-    asyncio.run(asyncio.wait_for(scenario(), 30))
+    # Two Product B Sessions share this lifecycle watchdog; picker interaction
+    # retains its five-second local deadline above.
+    asyncio.run(asyncio.wait_for(scenario(), 45))

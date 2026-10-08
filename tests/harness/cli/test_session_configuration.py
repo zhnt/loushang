@@ -80,3 +80,30 @@ def test_agent_session_configuration_contains_model_parse_errors() -> None:
 
     assert result == 1
     assert stderr.getvalue() == "Error: invalid model\n"
+
+
+def test_session_name_is_applied_when_setter_is_async() -> None:
+    class _AsyncSession:
+        def __init__(self) -> None:
+            self.name: str | None = None
+
+        async def set_session_name(self, name: str) -> None:
+            self.name = name
+
+    session = _AsyncSession()
+
+    result = asyncio.run(
+        configure_agent_cli_session(
+            session,
+            session_name="Research",
+            extension_flag_values={},
+            model_selection=None,
+            thinking_level=None,
+            apply_model_selection=None,
+            model_result_warning=None,
+            stderr=StringIO(),
+        )
+    )
+
+    assert result is None
+    assert session.name == "Research"

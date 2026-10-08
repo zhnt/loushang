@@ -6,7 +6,10 @@ import pytest
 
 import loushang.harness.transcript.summarization as summary_module
 from loushang.ai import CallOptions, Context, PreparedRequestLimits
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.context import NormalizedContext
+from loushang.ai.model import Capabilities, Model, OpenAIResponsesConfig
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -128,6 +131,67 @@ def test_default_summary_completer_traces_selected_invocation_mode(
             },
         }
     ]
+
+
+@pytest.mark.parametrize("supports_output_limit", [False, True])
+def test_compaction_output_limit_follows_responses_adapter_capability(
+    supports_output_limit: bool,
+) -> None:
+    model = Model(
+        id="summary-model",
+        provider="openai",
+        endpoint="coding-responses",
+        api="openai-responses",
+        adapter=OpenAIResponsesConfig(max_output_tokens=supports_output_limit),
+        capabilities=Capabilities(context_window=400_000, max_tokens=128_000),
+    )
+    observed_options: list[CallOptions] = []
+
+    async def completer(
+        model: object,
+        context: Context,
+        options: CallOptions | None,
+    ) -> str:
+        del model, context
+        assert options is not None
+        observed_options.append(options)
+        return "summary"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(role="user", content="Previous work", timestamp=0)
+                ],
+                turn_prefix_messages=[],
+                is_split_turn=False,
+                tokens_before=100,
+            ),
+            model=model,
+            compaction_profile=_summary_profile(),
+            turn_prefix_profile=_summary_profile(),
+            completer=completer,
+        )
+    )
+
+    assert result.summary == "summary"
+    assert len(observed_options) == 1
+    assert observed_options[0].max_output_tokens == (
+        8_192 if supports_output_limit else None
+    )
+    prepared = OpenAIResponsesAdapter().prepare_request(
+        ProviderRequest(
+            model=model,
+            context=NormalizedContext(system_prompt=None),
+            options=observed_options[0],
+            base_url="https://provider.test/v1",
+            max_output_tokens=observed_options[0].max_output_tokens,
+        )
+    )
+    assert prepared.payload.get("max_output_tokens") == (
+        8_192 if supports_output_limit else None
+    )
 
 
 def test_compaction_uses_bounded_request_and_explicit_image_placeholder() -> None:

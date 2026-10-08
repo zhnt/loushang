@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
+from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.hosting import (
     ProcessLaunchRequest,
     ProcessStderrMode,
@@ -37,10 +38,12 @@ _POSIX_CONTAINED_PROFILE_ID = "posix-static-contained-elf-v1"
 _POSIX_PLATFORM_IDENTITY = "platform:linux-x86_64-syscall-abi"
 _WINDOWS_LPAC_PROFILE_ID = "windows-lpac-contained-pe-v1"
 _CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v1"
+_GATED_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v2"
 _EXECUTION_CLOSURE_DOMAIN = "loushang.worker.native-execution-closure/v1"
 _WINDOWS_OPERATION_NONCE_DOMAIN = "loushang.worker.windows-lpac-operation/v1"
 _WINDOWS_LIFECYCLE_DOMAIN = "loushang.worker.windows-lpac-lifecycle/v1"
-_WINDOWS_JOURNAL_VERSION = 1
+_WINDOWS_JOURNAL_VERSION = 3
+_WINDOWS_WORKER_JOB_PREFIX = "Global\\LoushangWorker-"
 _WINDOWS_CLEANUP_CONTRACT_VERSION = 2
 _SUPPORTED_MACHINES = frozenset({"amd64", "x86_64"})
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -106,6 +109,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
         launcher_sha256: str,
         containment_profile_sha256: str,
         platform_probe: _PlatformProbe,
+        start_gate_read_fd: int | None = None,
     ) -> None:
         _require_exact_binding(receipt=receipt, worker_request=worker_request)
         policy = receipt.policy
@@ -129,6 +133,10 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
         _require_sha256(containment_profile_sha256, name="containment profile")
         if not callable(platform_probe):
             raise TypeError("Worker native profile requires a platform probe")
+        if start_gate_read_fd is not None and (
+            type(start_gate_read_fd) is not int or start_gate_read_fd < 3
+        ):
+            raise ValueError("Worker native start gate descriptor is invalid")
         if worker_request.runtime.cwd_inode < 1:
             raise WorkerBindingError(
                 "Worker native cwd identity is unavailable",
@@ -159,7 +167,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
                 f"{worker_request.runtime.cwd_inode}"
             ),
             f"containment-profile:sha256:{containment_profile_sha256}",
-            f"invocation:{_CONTAINMENT_ARGUMENT_PROTOCOL}",
+            f"invocation:{_GATED_CONTAINMENT_ARGUMENT_PROTOCOL if start_gate_read_fd is not None else _CONTAINMENT_ARGUMENT_PROTOCOL}",
             _POSIX_PLATFORM_IDENTITY,
         )
         self._receipt = receipt
@@ -169,6 +177,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
         self._launcher_sha256 = launcher_sha256
         self._containment_profile_sha256 = containment_profile_sha256
         self._platform_probe = platform_probe
+        self._start_gate_read_fd = start_gate_read_fd
         self._realized_policy_closure = realized_policy_closure
         self._execution_closure = execution_closure
         self._execution_closure_fingerprint = _closure_fingerprint(execution_closure)
@@ -266,6 +275,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
             cwd_device=self._worker_request.runtime.cwd_device,
             cwd_inode=self._worker_request.runtime.cwd_inode,
             containment_profile_sha256=self._containment_profile_sha256,
+            start_gate_read_fd=self._start_gate_read_fd,
         )
 
     async def verify_current(self) -> None:
@@ -296,6 +306,7 @@ def _bind_posix_static_contained_product_worker_profile(
     launcher_path: str | Path,
     launcher_sha256: str,
     containment_profile_sha256: str,
+    start_gate_read_fd: int | None = None,
     _platform_probe: _PlatformProbe | None = None,
 ) -> ProductWorkerNativeProfilePort:
     """Bind one trusted Linux profile without activating a Product route."""
@@ -308,6 +319,7 @@ def _bind_posix_static_contained_product_worker_profile(
         launcher_sha256=launcher_sha256,
         containment_profile_sha256=containment_profile_sha256,
         platform_probe=_platform_probe or _observe_platform,
+        start_gate_read_fd=start_gate_read_fd,
     )
 
 
@@ -322,6 +334,9 @@ class _WindowsLpacProductWorkerProfilePlan:
     expected_native_policy_closure_fingerprint: str
     operation_nonce: str
     lifecycle_fingerprint: str
+    backend_material_expectation: object | None = None
+    release_profile_sha256: str | None = None
+    owner_private_ancestors: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.worker_request_fingerprint, name="request")
@@ -337,6 +352,10 @@ class _WindowsLpacProductWorkerProfilePlan:
             ("lifecycle", self.lifecycle_fingerprint),
         ):
             _require_sha256(value, name=name)
+        if self.release_profile_sha256 is not None:
+            _require_sha256(self.release_profile_sha256, name="release profile")
+        if type(self.owner_private_ancestors) is not bool:
+            raise ValueError("Worker private ancestor policy is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -425,6 +444,8 @@ class _WindowsLpacProvisionerPort(Protocol):
 _WINDOWS_JOURNAL_FIELDS = frozenset(
     {
         "attemptId",
+        "executableRelativePath",
+        "jobObjectName",
         "journalVersion",
         "lifecycleFingerprint",
         "nativeProfileCatalogRevision",
@@ -438,6 +459,9 @@ _WINDOWS_JOURNAL_FIELDS = frozenset(
         "witness",
         "workerRequestFingerprint",
     }
+)
+_WINDOWS_JOURNAL_IDENTITY_FIELDS = _WINDOWS_JOURNAL_FIELDS - frozenset(
+    {"phase", "stateRevision", "witness"}
 )
 _WINDOWS_WITNESS_FIELDS = frozenset(
     {
@@ -512,23 +536,12 @@ class _WindowsLpacProvisioningJournal:
         worker_request: ManagedWorkerLaunchRequestV1,
         plan: _WindowsLpacProductWorkerProfilePlan,
     ) -> None:
-        self._load = _bind_static_method(store, "load")
-        self._compare_and_swap = _bind_static_method(store, "compare_and_swap")
-        self._lock = threading.RLock()
-        self._callback_lock = threading.RLock()
-        self._callback_active = False
-        self._identity = {
-            "attemptId": worker_request.identity.attempt_id,
-            "journalVersion": _WINDOWS_JOURNAL_VERSION,
-            "lifecycleFingerprint": plan.lifecycle_fingerprint,
-            "nativeProfileCatalogRevision": plan.native_profile_catalog_revision,
-            "nativeProfileId": _WINDOWS_LPAC_PROFILE_ID,
-            "operationNonce": plan.operation_nonce,
-            "ownerGeneration": worker_request.identity.owner_generation,
-            "receiptFingerprint": receipt.fingerprint,
-            "specFingerprint": plan.containment_profile_sha256,
-            "workerRequestFingerprint": worker_request.fingerprint,
-        }
+        self._bind_store(store)
+        self._identity = _windows_lpac_provisioning_identity(
+            receipt=receipt,
+            worker_request=worker_request,
+            plan=plan,
+        )
         loaded = self._call_store(self._load)
         if loaded is None:
             initial = {
@@ -544,6 +557,40 @@ class _WindowsLpacProvisioningJournal:
             self._document = _validate_windows_journal(loaded, self._identity)
             self._persisted = True
             self.resumed = True
+
+    @classmethod
+    def reopen_cleanup(
+        cls,
+        *,
+        store: _WindowsLpacProvisioningStateStore,
+        identity: Mapping[str, object],
+    ) -> _WindowsLpacProvisioningJournal:
+        """Require an existing exact history; never create a reservation."""
+
+        journal = cls.__new__(cls)
+        journal._bind_store(store)
+        journal._identity = _strict_mapping(
+            identity,
+            _WINDOWS_JOURNAL_IDENTITY_FIELDS,
+            name="native provisioning identity",
+        )
+        loaded = journal._call_store(journal._load)
+        if loaded is None:
+            raise WorkerBindingError(
+                "Worker native provisioning state is absent",
+                code="worker_native_provisioning_state_missing",
+            )
+        journal._document = _validate_windows_journal(loaded, journal._identity)
+        journal._persisted = True
+        journal.resumed = True
+        return journal
+
+    def _bind_store(self, store: _WindowsLpacProvisioningStateStore) -> None:
+        self._load = _bind_static_method(store, "load")
+        self._compare_and_swap = _bind_static_method(store, "compare_and_swap")
+        self._lock = threading.RLock()
+        self._callback_lock = threading.RLock()
+        self._callback_active = False
 
     def reserve(self) -> None:
         """Commit the no-native-effect fence immediately before first capture."""
@@ -835,17 +882,25 @@ class _WindowsLpacContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
                 phase="verified",
                 witness=witness,
             )
+            capture_options: dict[str, object] = {
+                "provision": self._spec,
+                "witness": witness,
+            }
+            job_name = _windows_worker_job_name(self._plan.operation_nonce)
+            capture_options["job_name"] = job_name
+            if self._plan.backend_material_expectation is not None:
+                capture_options["backend_material_expectation"] = (
+                    self._plan.backend_material_expectation
+                )
             capture_spec = self._bindings.build_capture_spec(
-                getattr(self._spec, "request", None),
-                provision=self._spec,
-                witness=witness,
+                getattr(self._spec, "request", None), **capture_options
             )
             prepared_request = getattr(capture_spec, "request", None)
             execution_closure = getattr(capture_spec, "execution_closure", None)
             if not isinstance(prepared_request, ProcessLaunchRequest) or not isinstance(
                 execution_closure,
                 tuple,
-            ):
+            ) or getattr(capture_spec, "job_name", None) != job_name:
                 raise WorkerBindingError(
                     "Worker native capture profile is invalid",
                     code="worker_native_capture_profile_invalid",
@@ -1065,6 +1120,9 @@ def _plan_windows_lpac_product_worker_profile(
     native_profile_catalog_revision: str,
     containment_launcher_sha256: str,
     platform_imports: tuple[str, ...],
+    backend_material_expectation: object | None = None,
+    release_profile_sha256: str | None = None,
+    owner_private_ancestors: bool = False,
     _platform_probe: _PlatformProbe | None = None,
     _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
 ) -> _WindowsLpacProductWorkerProfilePlan:
@@ -1073,6 +1131,9 @@ def _plan_windows_lpac_product_worker_profile(
         native_profile_catalog_revision=native_profile_catalog_revision,
         containment_launcher_sha256=containment_launcher_sha256,
         platform_imports=platform_imports,
+        backend_material_expectation=backend_material_expectation,
+        release_profile_sha256=release_profile_sha256,
+        owner_private_ancestors=owner_private_ancestors,
         _platform_probe=_platform_probe,
         _runtime_bindings=_runtime_bindings,
     )
@@ -1085,6 +1146,9 @@ def _build_windows_lpac_product_worker_profile_plan(
     native_profile_catalog_revision: str,
     containment_launcher_sha256: str,
     platform_imports: tuple[str, ...],
+    backend_material_expectation: object | None = None,
+    release_profile_sha256: str | None = None,
+    owner_private_ancestors: bool = False,
     _platform_probe: _PlatformProbe | None = None,
     _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
 ) -> tuple[_WindowsLpacProductWorkerProfilePlan, object]:
@@ -1124,15 +1188,20 @@ def _build_windows_lpac_product_worker_profile_plan(
         attempt_id=worker_request.identity.attempt_id,
         operation_nonce=operation_nonce,
         lifecycle_fingerprint=lifecycle_fingerprint,
+        owner_private_ancestors=owner_private_ancestors,
     )
     containment_profile_sha256 = bindings.spec_fingerprint(spec)
     _require_sha256(containment_profile_sha256, name="containment profile")
+    if release_profile_sha256 is not None:
+        _require_sha256(release_profile_sha256, name="release profile")
     expected = ProductWorkerActivationPolicyV1.native_policy_closure_fingerprint(
         native_profile_catalog_revision=native_profile_catalog_revision,
         native_profile_id=_WINDOWS_LPAC_PROFILE_ID,
         payload_sha256=worker_request.runtime.executable_digest,
         containment_launcher_sha256=containment_launcher_sha256,
-        containment_profile_sha256=containment_profile_sha256,
+        containment_profile_sha256=(
+            release_profile_sha256 or containment_profile_sha256
+        ),
     )
     return (
         _WindowsLpacProductWorkerProfilePlan(
@@ -1143,6 +1212,9 @@ def _build_windows_lpac_product_worker_profile_plan(
             expected_native_policy_closure_fingerprint=expected,
             operation_nonce=operation_nonce,
             lifecycle_fingerprint=lifecycle_fingerprint,
+            backend_material_expectation=backend_material_expectation,
+            release_profile_sha256=release_profile_sha256,
+            owner_private_ancestors=owner_private_ancestors,
         ),
         spec,
     )
@@ -1175,6 +1247,9 @@ def _bind_windows_lpac_contained_product_worker_profile(
         native_profile_catalog_revision=policy.native_profile_catalog_revision,
         containment_launcher_sha256=plan.containment_launcher_sha256,
         platform_imports=platform_imports,
+        backend_material_expectation=plan.backend_material_expectation,
+        release_profile_sha256=plan.release_profile_sha256,
+        owner_private_ancestors=plan.owner_private_ancestors,
         _platform_probe=_platform_probe,
         _runtime_bindings=bindings,
     )
@@ -1265,6 +1340,287 @@ def _windows_lpac_provision_request(
     )
 
 
+def _rebuild_windows_lpac_cleanup_spec(
+    *,
+    identity: Mapping[str, object],
+    runtime_root: Path,
+    platform_imports: tuple[str, ...],
+    owner_private_ancestors: bool = False,
+    _platform_probe: _PlatformProbe | None = None,
+    _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
+) -> object:
+    """Read one retained payload into an opaque, cleanup-only LPAC spec.
+
+    The caller must independently join the Product receipt, launch intent,
+    payload stage, Supervisor, named Job, and Package lease under its locks.
+    A matching spec is only a current observation; it grants no cleanup effect.
+    """
+
+    _require_windows_amd64(_platform_probe or _observe_platform)
+    values = _strict_mapping(
+        identity,
+        _WINDOWS_JOURNAL_IDENTITY_FIELDS,
+        name="native provisioning identity",
+    )
+    if (
+        type(values["journalVersion"]) is not int
+        or values["journalVersion"] != _WINDOWS_JOURNAL_VERSION
+        or values["nativeProfileId"] != _WINDOWS_LPAC_PROFILE_ID
+        or not isinstance(values["attemptId"], str)
+        or _HEX32.fullmatch(values["attemptId"]) is None
+        or type(values["ownerGeneration"]) is not int
+        or values["ownerGeneration"] < 1
+    ):
+        raise WorkerBindingError(
+            "Worker native provisioning identity is invalid",
+            code="worker_native_provisioning_identity_mismatch",
+        )
+    _require_opaque(values["nativeProfileCatalogRevision"], name="profile catalog revision")
+    for key in (
+        "lifecycleFingerprint",
+        "operationNonce",
+        "receiptFingerprint",
+        "specFingerprint",
+        "workerRequestFingerprint",
+    ):
+        _require_sha256(values[key], name="provisioning identity")
+    if values["jobObjectName"] != _windows_worker_job_name(
+        cast(str, values["operationNonce"])
+    ):
+        raise WorkerBindingError(
+            "Worker native Job identity changed",
+            code="worker_native_provisioning_identity_mismatch",
+        )
+    relative = values["executableRelativePath"]
+    if type(relative) is not str or len(relative.encode("utf-8")) > 1024:
+        raise WorkerBindingError(
+            "Worker native executable path is invalid",
+            code="worker_native_provisioning_identity_mismatch",
+        )
+    try:
+        executable_relative = canonical_plugin_relative_path(relative)
+    except ValueError as exc:
+        raise WorkerBindingError(
+            "Worker native executable path is invalid",
+            code="worker_native_provisioning_identity_mismatch",
+        ) from exc
+    if not isinstance(runtime_root, Path) or not runtime_root.is_absolute():
+        raise ValueError("Worker native payload root is invalid")
+    request = ProcessLaunchRequest(
+        argv=(str(runtime_root.joinpath(*executable_relative.parts)),),
+        cwd=str(runtime_root),
+        effective_environment=(),
+        streams=ProcessStreamSpec(
+            stdin=ProcessStdinMode.CLOSED,
+            stdout=ProcessStdoutMode.DISCARD,
+            stderr=ProcessStderrMode.DISCARD,
+        ),
+    )
+    bindings = _runtime_bindings or _load_windows_lpac_bindings()
+    spec = bindings.build_provision_spec(
+        request,
+        runtime_root=str(runtime_root),
+        platform_imports=platform_imports,
+        attempt_id=values["attemptId"],
+        operation_nonce=values["operationNonce"],
+        lifecycle_fingerprint=values["lifecycleFingerprint"],
+        owner_private_ancestors=owner_private_ancestors,
+    )
+    if bindings.spec_fingerprint(spec) != values["specFingerprint"]:
+        raise WorkerBindingError(
+            "Worker native cleanup payload changed",
+            code="worker_native_cleanup_spec_mismatch",
+        )
+    return spec
+
+
+def _recover_windows_lpac_containment_cleanup(
+    *,
+    identity: Mapping[str, object],
+    provision_spec: object,
+    provisioning_state_store: _WindowsLpacProvisioningStateStore,
+    _platform_probe: _PlatformProbe | None = None,
+    _runtime_bindings: _WindowsLpacRuntimeBindings | None = None,
+) -> object:
+    """Settle an existing LPAC effect history using cleanup-only transitions.
+
+    Product must already hold its joined orphan, Job, stage and GC guards.
+    This friend seam cannot authorize launch or create a missing history.
+    """
+
+    _require_windows_amd64(_platform_probe or _observe_platform)
+    bindings = _runtime_bindings or _load_windows_lpac_bindings()
+    if bindings.capture_backend_id != "windows-job-v1":
+        raise WorkerBindingError(
+            "Worker native backend identity changed",
+            code="worker_native_backend_mismatch",
+        )
+    expected_spec = identity.get("specFingerprint")
+    _require_sha256(expected_spec, name="cleanup spec")
+    if bindings.spec_fingerprint(provision_spec) != expected_spec:
+        raise WorkerBindingError(
+            "Worker native cleanup payload changed",
+            code="worker_native_cleanup_spec_mismatch",
+        )
+    journal = _WindowsLpacProvisioningJournal.reopen_cleanup(
+        store=provisioning_state_store,
+        identity=identity,
+    )
+    phase = journal.phase
+    if phase == "reserved":
+        raise WorkerBindingError(
+            "Worker native cleanup has no effect history",
+            code="worker_native_cleanup_history_unverified",
+        )
+    if phase == "settled" and journal.witness_document is None:
+        raise WorkerBindingError(
+            "Worker native cleanup has no settlement witness",
+            code="worker_native_cleanup_history_unverified",
+        )
+    provisioner = cast(_WindowsLpacProvisionerPort, bindings.provisioner_factory())
+    witness_document = journal.witness_document
+    witness = (
+        _restore_windows_lpac_witness(witness_document, bindings=bindings)
+        if witness_document is not None
+        else provisioner.recover_cleanup_witness(provision_spec)
+    )
+    if phase == "settled":
+        if getattr(witness, "state", None) != "SETTLED":
+            raise WorkerBindingError(
+                "Worker native cleanup settlement changed",
+                code="worker_native_cleanup_history_unverified",
+            )
+        return witness
+    state = getattr(witness, "state", None)
+    if state not in {"GRANTS_REVOKED", "PROFILE_DELETED"}:
+        if state != "DEBT":
+            witness = provisioner.mark_debt(provision_spec, witness)
+        journal.advance(
+            expected=_WINDOWS_JOURNAL_PHASES - frozenset({"settled"}),
+            phase="cleaning",
+            witness=witness,
+        )
+
+        def begin_revoke() -> None:
+            journal.advance(
+                expected=frozenset({"cleaning", "debt", "revoke_effect"}),
+                phase="revoke_effect",
+                witness=witness,
+            )
+
+        witness = provisioner.revoke_grants(
+            provision_spec,
+            witness,
+            begin_effect=begin_revoke,
+        )
+        journal.advance(
+            expected=frozenset({"revoke_effect"}),
+            phase="grants_revoked",
+            witness=witness,
+        )
+    if getattr(witness, "state", None) == "GRANTS_REVOKED":
+
+        def begin_delete() -> None:
+            journal.advance(
+                expected=frozenset({"grants_revoked", "delete_effect"}),
+                phase="delete_effect",
+                witness=witness,
+            )
+
+        witness = provisioner.delete_profile(
+            provision_spec,
+            witness,
+            begin_effect=begin_delete,
+        )
+        journal.advance(
+            expected=frozenset({"delete_effect"}),
+            phase="profile_deleted",
+            witness=witness,
+        )
+    if getattr(witness, "state", None) == "PROFILE_DELETED":
+        witness = provisioner.settle(provision_spec, witness)
+        journal.advance(
+            expected=frozenset({"profile_deleted"}),
+            phase="settled",
+            witness=witness,
+        )
+    if getattr(witness, "state", None) != "SETTLED":
+        raise WorkerBindingError(
+            "Worker native containment cleanup is incomplete",
+            code="worker_native_containment_unsettled",
+        )
+    return witness
+
+
+def _restore_windows_lpac_witness(
+    document: Mapping[str, object], *, bindings: _WindowsLpacRuntimeBindings
+) -> object:
+    strict = _strict_mapping(
+        document,
+        _WINDOWS_WITNESS_FIELDS,
+        name="native provisioning witness",
+    )
+    return bindings.witness_factory(
+        state=strict["state"],
+        attempt_id=strict["attemptId"],
+        operation_nonce=strict["operationNonce"],
+        spec_fingerprint=strict["specFingerprint"],
+        profile_fingerprint=strict["profileFingerprint"],
+        sid_fingerprint=strict["sidFingerprint"],
+        private_state_fingerprint=strict["privateStateFingerprint"],
+        grant_digest=strict["grantDigest"],
+        platform_identity=strict["platformIdentity"],
+    )
+
+
+def _windows_lpac_provisioning_identity(
+    *,
+    receipt: ProductWorkerActivationReceiptV1,
+    worker_request: ManagedWorkerLaunchRequestV1,
+    plan: _WindowsLpacProductWorkerProfilePlan,
+) -> dict[str, object]:
+    """Return the exact pathless identity used by the LPAC CAS journal."""
+
+    return {
+        "attemptId": worker_request.identity.attempt_id,
+        "executableRelativePath": _windows_worker_executable_relative_path(
+            worker_request
+        ),
+        "jobObjectName": _windows_worker_job_name(plan.operation_nonce),
+        "journalVersion": _WINDOWS_JOURNAL_VERSION,
+        "lifecycleFingerprint": plan.lifecycle_fingerprint,
+        "nativeProfileCatalogRevision": plan.native_profile_catalog_revision,
+        "nativeProfileId": _WINDOWS_LPAC_PROFILE_ID,
+        "operationNonce": plan.operation_nonce,
+        "ownerGeneration": worker_request.identity.owner_generation,
+        "receiptFingerprint": receipt.fingerprint,
+        "specFingerprint": plan.containment_profile_sha256,
+        "workerRequestFingerprint": worker_request.fingerprint,
+    }
+
+
+def _windows_worker_job_name(operation_nonce: str) -> str:
+    _require_sha256(operation_nonce, name="Windows Worker operation nonce")
+    return _WINDOWS_WORKER_JOB_PREFIX + operation_nonce
+
+
+def _windows_worker_executable_relative_path(
+    worker_request: ManagedWorkerLaunchRequestV1,
+) -> str:
+    try:
+        relative = worker_request.runtime.executable.relative_to(
+            worker_request.runtime.package_root
+        ).as_posix()
+        if canonical_plugin_relative_path(relative).as_posix() != relative:
+            raise ValueError("Worker executable is not a canonical relative path")
+        return relative
+    except ValueError as exc:
+        raise WorkerBindingError(
+            "Worker native executable path is outside its payload",
+            code="worker_native_provisioning_identity_mismatch",
+        ) from exc
+
+
 def _validate_windows_journal(
     value: object,
     identity: Mapping[str, object],
@@ -1274,6 +1630,25 @@ def _validate_windows_journal(
         _WINDOWS_JOURNAL_FIELDS,
         name="native provisioning journal",
     )
+    if (
+        identity.get("journalVersion") != _WINDOWS_JOURNAL_VERSION
+        or identity.get("jobObjectName")
+        != _windows_worker_job_name(cast(str, identity.get("operationNonce")))
+    ):
+        raise WorkerBindingError(
+            "Worker native provisioning identity is invalid",
+            code="worker_native_provisioning_identity_mismatch",
+        )
+    relative = identity.get("executableRelativePath")
+    if (
+        type(relative) is not str
+        or len(relative.encode("utf-8")) > 1024
+        or canonical_plugin_relative_path(relative).as_posix() != relative
+    ):
+        raise WorkerBindingError(
+            "Worker native executable path is invalid",
+            code="worker_native_provisioning_identity_mismatch",
+        )
     for name, expected in identity.items():
         if document.get(name) != expected:
             raise WorkerBindingError(
@@ -1442,6 +1817,7 @@ def _require_exact_binding(
         policy.plugin_id,
         policy.plugin_revision_digest,
         policy.contribution_id,
+        policy.owner_selection_generation,
         policy.declaration_fingerprint,
         policy.worker_configuration_fingerprint,
     )
@@ -1451,6 +1827,7 @@ def _require_exact_binding(
         identity.plugin_id,
         identity.plugin_revision_digest,
         identity.contribution_id,
+        identity.owner_generation,
         identity.declaration_fingerprint,
         identity.worker_configuration_fingerprint,
     )

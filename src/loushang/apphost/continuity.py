@@ -89,6 +89,8 @@ class HostedApplicationContinuityRequestV1:
             raise TypeError("invalid hosted continuity application request")
         if _STABLE_ID.fullmatch(self.application_id) is None:
             raise ValueError("invalid hosted continuity application identity")
+        if self.application.managed_mux is not None and self.application.managed_mux.application_id != self.application_id:
+            raise ValueError("managed Mux application identity mismatch")
         if _OPAQUE_TOKEN.fullmatch(self.owner_epoch) is None:
             raise ValueError("invalid hosted continuity owner epoch")
         if (self.store is None) == (self.continuity_lease is None):
@@ -237,6 +239,14 @@ class HostedApplicationContinuityRuntimeV1:
     @property
     def execution_enabled(self) -> bool:
         return self._application is not None and self._application.execution_enabled
+
+    @property
+    def managed_mux_instance(self) -> str | None:
+        return None if self._application is None else self._application.managed_mux_instance
+
+    @property
+    def managed_mux_close_enabled(self) -> bool:
+        return self._application is not None and self._application.managed_mux_close_enabled
 
     def enable_client_scopes(self) -> None:
         """Opt in only after this recovered runtime is published by its attempt."""
@@ -476,6 +486,7 @@ class HostedApplicationContinuityAttemptV1:
                     resolver=self._request.application.resolver,
                     discovery=self._request.application.discovery,
                     execution=self._request.application.execution,
+                    managed_mux=self._request.application.managed_mux,
                     continuity_lease=self._lease,
                     id_factory=self._request.application.service_id_factory,
                     close_timeout_seconds=(

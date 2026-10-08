@@ -77,10 +77,7 @@ def test_transcript_reader_renders_frozen_snapshot_and_footer() -> None:
     assert "Earlier transcript records were trimmed." in first
     assert first[-3] == "─" * 80
     assert first[-2] == "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump"
-    assert (
-        first[-1]
-        == "Ctrl+O/Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw"
-    )
+    assert first[-1] == "Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw"
     assert any("first" in line for line in first)
     assert all("second" not in line for line in first)
 
@@ -108,7 +105,7 @@ def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom
     assert rendered[-3] == "─" * 40
     assert rendered[-2].startswith("↑/↓ scroll   PgUp/Ctrl+B")
     assert "PgDn/Ctrl" in rendered[-2]
-    assert rendered[-1].startswith("Ctrl+O/Ctrl+T/q/Esc close   / search")
+    assert rendered[-1].startswith("Ctrl+T/q/Esc close   / search")
 
 
 def test_transcript_reader_opens_at_tail_and_scrolls_by_page() -> None:
@@ -190,14 +187,101 @@ def test_transcript_reader_close_keys_return_surface_close() -> None:
         "escape",
         "ctrl+c",
         "ctrl_c",
-        "ctrl+o",
-        "ctrl_o",
         "ctrl+t",
         "ctrl_t",
     ):
         assert reader.handle_input(InputEvent(kind="key", key=key)) == InputIntent(
             kind="surface_close"
         )
+
+
+def test_reader_mouse_selection_can_copy_when_application_owns_mouse() -> None:
+    reader = TranscriptReaderSurface(
+        _Source((AssistantMessageRecord("reader answer"),))
+    )
+    rows = _render_text(reader, width=40, height=8)
+    row = next(index for index, line in enumerate(rows) if "reader answer" in line)
+    column = rows[row].index("reader answer")
+    reader.handle_input(
+        InputEvent(
+            kind="mouse",
+            mouse_action="press",
+            mouse_button=0,
+            mouse_row=row,
+            mouse_column=column,
+        )
+    )
+    reader.handle_input(
+        InputEvent(
+            kind="mouse",
+            mouse_action="drag",
+            mouse_button=0,
+            mouse_row=row,
+            mouse_column=column + 6,
+        )
+    )
+    assert reader.handle_input(
+        InputEvent(
+            kind="mouse",
+            mouse_action="release",
+            mouse_button=0,
+            mouse_row=row,
+            mouse_column=column + 6,
+        )
+    ) == InputIntent(kind="copy_text", text="reader")
+    assert reader.handle_input(InputEvent(kind="key", key="ctrl+c")) == InputIntent(
+        kind="copy_text", text="reader"
+    )
+    reader.handle_input(InputEvent(kind="key", key="esc"))
+    assert reader.selected_text() == ""
+
+
+def test_reader_scroll_invalidates_selection_instead_of_copying_other_rows() -> None:
+    reader = TranscriptReaderSurface(
+        _Source(
+            (AssistantMessageRecord("\n".join(f"LINE{index}" for index in range(25))),)
+        )
+    )
+    rows = _render_text(reader, width=40, height=8)
+    row = next(index for index, line in enumerate(rows) if "LINE" in line)
+    column = rows[row].index("LINE")
+    reader.handle_input(
+        InputEvent(
+            kind="mouse",
+            mouse_action="press",
+            mouse_button=0,
+            mouse_row=row,
+            mouse_column=column,
+        )
+    )
+    reader.handle_input(
+        InputEvent(
+            kind="mouse",
+            mouse_action="release",
+            mouse_button=0,
+            mouse_row=row,
+            mouse_column=column + 4,
+        )
+    )
+    assert reader.selected_text().startswith("LINE")
+    reader.handle_input(InputEvent(kind="key", key="home"))
+    _render_text(reader, width=40, height=8)
+    assert reader.selected_text() == ""
+
+
+def test_reader_global_shortcuts_work_during_search_and_copy_feedback_is_visible() -> (
+    None
+):
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("answer"),)))
+    reader.handle_input(InputEvent(kind="key", key="/"))
+    assert reader.handle_input(InputEvent(kind="key", key="ctrl+o")) == InputIntent(
+        kind="copy_text", text="answer"
+    )
+    reader.copy_status = "Copied to clipboard"
+    assert "Copied to clipboard" in _render_text(reader, width=40, height=8)[-1]
+    assert reader.handle_input(InputEvent(kind="key", key="ctrl+t")) == InputIntent(
+        kind="surface_close"
+    )
 
 
 def test_transcript_reader_uses_expanded_tool_command_and_output() -> None:

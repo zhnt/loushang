@@ -294,27 +294,39 @@ def test_G17_PICKER_loading_controls_and_cancel_resistant_query_remain_owned():
         _text(shell, "kept")
         editor = shell.screen.composer
         _key(shell, "f3")
-        await asyncio.wait_for(entered.wait(), 1)
-        _key(shell, "ctrl+c")
-        async with asyncio.timeout(1):
-            while not any(name == "interrupt" for name, _ in client.calls):
-                await asyncio.sleep(0)
-        window = shell.state.active_window
-        window.pending_interaction_id = "question"
-        window.pending_interaction_text = "Inspect this action"
-        _key(shell, "f2")
-        assert not shell.picker.visible
-        assert "Inspect this action" in _render(shell)
-        assert shell.screen.composer is editor and editor.value == "kept"
-        with pytest.raises(AppServiceError) as debt:
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            shell.state.active_window.running = True
+            _key(shell, "ctrl+c")
+            assert not any(name == "interrupt" for name, _ in client.calls)
+            assert shell.picker.visible
+            _key(shell, "escape")
+            _key(shell, "ctrl+c")
+            async with asyncio.timeout(1):
+                while not any(name == "interrupt" for name, _ in client.calls):
+                    await asyncio.sleep(0)
+            window = shell.state.active_window
+            window.pending_interaction_id = "question"
+            window.pending_interaction_text = "Inspect this action"
+            _key(shell, "f2")
+            assert not shell.picker.visible
+            assert "Inspect this action" in _render(shell)
+            assert shell.screen.composer is editor and editor.value == "kept"
+            with pytest.raises(AppServiceError) as debt:
+                await shell.close()
+            assert debt.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+            deadline = shell._deadline
+            assert cancelled.is_set() and shell.cleanup_pending
+            assert shell.pending_actions == 1
+            assert not any(name == "detach" for name, _ in client.calls)
+        finally:
+            # A failed assertion must not strand the deliberately resistant
+            # query during asyncio.run's cancellation sweep.
+            release.set()
+            for task in tuple(shell._actions._tasks):
+                task.cancel()
+            await _settle(shell)
             await shell.close()
-        assert debt.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
-        deadline = shell._deadline
-        assert cancelled.is_set() and shell.cleanup_pending
-        assert shell.pending_actions == 1
-        assert not any(name == "detach" for name, _ in client.calls)
-        release.set()
-        await _settle(shell)
         assert shell.picker.page is None and not shell.picker.visible
         await shell.close()
         assert shell._deadline == deadline and not shell.cleanup_pending
@@ -354,6 +366,8 @@ def test_G17_PICKER_scope_changes_publish_only_latest_and_saturation_starts_no_q
             assert shell.notice == "action_queue_full"
             assert shell.picker.page is None
             assert len(discovery.requests) == 2
+            _key(shell, "escape")
+            shell.state.active_window.running = True
             _key(shell, "ctrl+c")
             assert shell.pending_actions == 57  # The reserved control remains usable.
         finally:

@@ -433,6 +433,20 @@ class SessionMultiAgentRuntime:
             )
         return notice
 
+    def read_completion_notice(
+        self,
+        *,
+        caller: AgentCaller,
+        ref: AgentRef,
+        round_id: int,
+    ) -> AgentCompletionNotice:
+        """Read a completed round without starting another child turn."""
+
+        self._require_open_runtime()
+        return self.control.read_completion_notice(
+            caller=caller, ref=ref, round_id=round_id
+        )
+
     async def wait_for_input(
         self,
         *,
@@ -805,8 +819,17 @@ def standard_completion_notice_text(notice: AgentCompletionNotice) -> str:
     headline = (
         f"{notice.sender_ref.path} {notice.terminal.status} (round {notice.round_id})."
     )
-    detail = notice.summary or notice.terminal.final_message
-    return f"{headline}\n{detail}" if detail else headline
+    final_message = notice.terminal.final_message
+    if len(final_message) <= 1000:
+        return f"{headline}\n{final_message}" if final_message else headline
+    preview = notice.summary or _summary(final_message, limit=1000)
+    preview = _summary(preview, limit=1000)
+    reference = (
+        f'get_agent_result(path="{notice.sender_ref.path}", '
+        f"incarnation={notice.sender_ref.incarnation}, "
+        f"round_id={notice.round_id})"
+    )
+    return f"{headline}\n[Report truncated] {reference}\n{preview}"
 
 
 BeforeReleaseHook = Callable[

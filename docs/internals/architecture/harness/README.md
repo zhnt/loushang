@@ -14,6 +14,17 @@ planning, work event persistence, or AI provider behavior.
 
 ## Start Here
 
+- [Screen-first Session Startup](screen-first-session-startup-plan.md) defines
+  the separately reviewed embedded startup successor: first frame before Session
+  preparation, same-screen attachment and explicit cleanup ownership. See its
+  [three-view review and validation](screen-first-session-startup-review.md).
+- [G18 Linux-first Startup Performance Plan](startup-performance-plan.md) scopes
+  isolated startup measurement and import/dispatch optimization, with Linux-first
+  delivery and later external macOS/Windows acceptance; it does not change runtime
+  ownership or readiness semantics.
+- [Linux Hosted Two-turn Boundary](linux-hosted-two-turn-boundary.md) records
+  the independent admission/projection diagnostic work and Windows handoff;
+  it is not a startup-performance or cross-platform acceptance claim.
 - [Current Owner Map](current-owner-map.md) is the short, authoritative map of
   implemented owners, dependency direction, Product-owned exclusions, Session
   assembly phases, and public loading boundaries.

@@ -3,8 +3,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from loushang.coding.package_product_runtime import (
+    CodingFencedProductApplicationSelection,
+)
 from loushang.coding.session import AgentSession
-from loushang.coding.session_manager import SessionManager
+from loushang.coding.session_manager import (
+    SessionManager,
+    _bind_owned_session_manager,
+    _create_owned_session_factory,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session import AgentProductSessionRuntime
@@ -41,17 +48,50 @@ class AgentSessionRuntime(
         session_dir: Path,
         session_factory: SessionFactory,
         persist: bool = True,
+        materialize_new_transcript: bool = False,
         current_session: AgentSession | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         auto_refresh_session_index: bool = False,
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
+        owned_transcripts: bool = False,
+        store_state_root: Path | None = None,
+        enroll_legacy_shared_store: bool = False,
+        product_owner_selection: CodingFencedProductApplicationSelection | None = None,
     ) -> None:
+        if type(owned_transcripts) is not bool or type(enroll_legacy_shared_store) is not bool:
+            raise TypeError("invalid owned transcript activation")
+        if type(materialize_new_transcript) is not bool:
+            raise TypeError("Coding transcript materialization must be explicit")
+        if materialize_new_transcript and not persist:
+            raise ValueError("Coding Worker transcript materialization requires persistence")
+        if owned_transcripts and current_session is not None:
+            raise ValueError("owned runtime must construct its own initial Session")
+        if store_state_root is not None and not owned_transcripts:
+            raise ValueError("store admission requires owned transcripts")
+        if enroll_legacy_shared_store and store_state_root is None:
+            raise ValueError("legacy store enrollment requires store admission")
+        if product_owner_selection is not None and not isinstance(
+            product_owner_selection, CodingFencedProductApplicationSelection
+        ):
+            raise TypeError("Coding Product owner selection is invalid")
+        self._owned_transcript_factory = (
+            _create_owned_session_factory(
+                store_state_root=store_state_root,
+                enroll_legacy_shared_store=enroll_legacy_shared_store,
+            ) if owned_transcripts else None
+        )
+        self._product_owner_selection = product_owner_selection
+        transcript_type = (
+            _bind_owned_session_manager(self._owned_transcript_factory)
+            if self._owned_transcript_factory is not None else SessionManager
+        )
         super().__init__(
-            transcript_session_type=SessionManager,
+            transcript_session_type=transcript_type,
             session_dir=session_dir,
             session_factory=session_factory,
             persist=persist,
+            materialize_new_transcript=materialize_new_transcript,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
             copy_file=_copy_session_import,
@@ -75,7 +115,48 @@ class AgentSessionRuntime(
     ) -> None:
         from loushang.coding.continuity import shutdown_coding_continuity
 
+        failure: BaseException | None = None
+        factory = self._owned_transcript_factory
+        product_selection = self._product_owner_selection
+        if product_selection is not None:
+            product_selection.fence()
+        if factory is not None:
+            factory._on_loop()
+            try:
+                factory.fence()
+            except BaseException as error:
+                failure = error
         try:
             await super().dispose_session_runtime(metadata=metadata)
-        finally:
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(f"Session cleanup retained: {type(error).__name__}")
+        if factory is not None:
+            try:
+                await factory.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(f"transcript factory cleanup retained: {type(error).__name__}")
+        try:
             await shutdown_coding_continuity(self)
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            else:
+                failure.add_note(f"continuity cleanup retained: {type(error).__name__}")
+        if product_selection is not None:
+            try:
+                product_selection.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(
+                        f"Product owner cleanup retained: {type(error).__name__}"
+                    )
+        if failure is not None:
+            raise failure
