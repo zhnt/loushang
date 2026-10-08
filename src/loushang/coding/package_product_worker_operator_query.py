@@ -41,10 +41,21 @@ from loushang.harness.worker.capability_query import (
 )
 from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
+from loushang.harness.worker.product_activation import (
+    ProductWorkerActivationCoordinator,
+    ProductWorkerActivationReceiptV1,
+    WorkerCleanupSettlementV1,
+)
 from loushang.harness.worker.supervisor import WorkerSupervisor
 from loushang.hosting.runtime import create_child_session_host
 
+from .package_product_worker_activation_state import (
+    open_coding_product_worker_activation_state_store,
+)
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
+from .package_product_worker_cleanup_evidence import (
+    CodingPosixWorkerCleanupEvidenceAuthority,
+)
 from .package_product_worker_payload import (
     bind_coding_product_worker_launch_request,
     materialize_coding_product_worker_payload,
@@ -128,6 +139,52 @@ async def query_coding_product_worker(
             product_id="coding", session_id=session_id, cwd=str(workspace)
         )
     )
+    receipt: ProductWorkerActivationReceiptV1 | None = None
+    coordinator: ProductWorkerActivationCoordinator | None = None
+    cleanup_evidence: CodingPosixWorkerCleanupEvidenceAuthority | None = None
+    c5_attempt_id: str | None = None
+    c5_owner_generation: int | None = None
+    host_identity: str | None = None
+    boot_identity: str | None = None
+    effect_started = False
+
+    def settle_c5() -> None:
+        if not effect_started:
+            return
+        assert receipt is not None
+        assert coordinator is not None
+        assert cleanup_evidence is not None
+        assert c5_attempt_id is not None
+        assert c5_owner_generation is not None
+        assert host_identity is not None
+        assert boot_identity is not None
+        coordinator.retire_exact(
+            receipt=receipt,
+            attempt_id=c5_attempt_id,
+            owner_generation=c5_owner_generation,
+        )
+        coordinator.record_protocol_terminal(
+            receipt=receipt,
+            attempt_id=c5_attempt_id,
+            owner_generation=c5_owner_generation,
+        )
+        coordinator.record_cleanup_settlement(
+            WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt.fingerprint,
+                attempt_id=c5_attempt_id,
+                owner_generation=c5_owner_generation,
+                host_identity=host_identity,
+                boot_identity=boot_identity,
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ),
+            witness=cleanup_evidence.current_tree_witness(
+                attempt_id=c5_attempt_id
+            ),
+        )
+
+    query_error: BaseException | None = None
     try:
         runtime.activate()
         receipt_owner = open_coding_product_selected_worker_receipt_owner(
@@ -217,6 +274,40 @@ async def query_coding_product_worker(
                     preparation=profile,
                     start_gate=bind_worker_gated_start_release(gate),
                 )
+                cleanup_evidence = CodingPosixWorkerCleanupEvidenceAuthority(product)
+                coordinator = ProductWorkerActivationCoordinator(
+                    authority=receipt_owner,
+                    evidence_authority=cleanup_evidence,
+                    trusted_evidence_authority_id=cleanup_evidence.authority_id,
+                    trusted_evidence_authority_fingerprint=(
+                        cleanup_evidence.authority_fingerprint
+                    ),
+                    state_store=open_coding_product_worker_activation_state_store(
+                        product
+                    ),
+                )
+                if (
+                    coordinator.evaluate(receipt.policy, receipt).get("reason")
+                    != "admitted"
+                ):
+                    raise CodingWorkerOperatorQueryError(
+                        "coding_worker_query_c5_admission_refused"
+                    )
+                host_identity = cleanup_evidence.host_identity
+                boot_identity = cleanup_evidence.boot_identity
+                with coordinator.admission(
+                    policy=receipt.policy,
+                    receipt=receipt,
+                    attempt_id=request.identity.attempt_id,
+                    owner_generation=request.identity.owner_generation,
+                    host_identity=host_identity,
+                    boot_identity=boot_identity,
+                    cleanup_contract_version=profile.cleanup_contract_version,
+                ) as c5_admission:
+                    c5_admission.begin_effect()
+                    c5_attempt_id = request.identity.attempt_id
+                    c5_owner_generation = request.identity.owner_generation
+                    effect_started = True
                 await supervisor.start_session(
                     session_port=adapter,
                     launch_request=request,
@@ -354,6 +445,18 @@ async def query_coding_product_worker(
                     capability_composition_inputs=inputs,
                 )
                 await session.prepare_model_call_runtime()
+                coordinator.publish(
+                    receipt=receipt,
+                    attempt_id=request.identity.attempt_id,
+                    owner_generation=request.identity.owner_generation,
+                    realized_native_policy_closure_fingerprint=(
+                        profile.realized_native_policy_closure_fingerprint
+                    ),
+                    native_profile_catalog_revision=(
+                        profile.native_profile_catalog_revision
+                    ),
+                    native_profile_id=profile.native_profile_id,
+                )
                 result = await bind_coding_worker_query_consumer(session).query(
                     symbol=symbol
                 )
@@ -370,14 +473,40 @@ async def query_coding_product_worker(
                     finally:
                         if supervisor.status.state == "healthy":
                             await supervisor.shutdown()
+                        elif supervisor.status.state not in {
+                            "stopped",
+                            "failed",
+                            "fenced",
+                        }:
+                            await supervisor.fence(
+                                code="coding_worker_query_failed"
+                            )
                 finally:
                     gate.close()
                     try:
                         await profile.close()
                     finally:
-                        await host.close()
+                        try:
+                            await host.close()
+                        finally:
+                            if supervisor.status.state in {"failed", "fenced"}:
+                                await supervisor.settle_failed_process()
+    except BaseException as error:
+        query_error = error
+        raise
     finally:
-        runtime.dispose_runtime()
+        try:
+            try:
+                settle_c5()
+            except BaseException as cleanup_error:
+                if query_error is None:
+                    raise
+                query_error.add_note(
+                    "Coding Worker query C5 cleanup also failed: "
+                    + type(cleanup_error).__name__
+                )
+        finally:
+            runtime.dispose_runtime()
 
 
 __all__ = ["CodingWorkerOperatorQueryError", "query_coding_product_worker"]

@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from hashlib import sha256
+from pathlib import Path
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PackageProductSelectedPluginManifestV1,
@@ -21,9 +22,13 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
 )
+from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.worker._native_profile_bridge import (
     _plan_windows_lpac_product_worker_profile,
@@ -40,6 +45,7 @@ from loushang.hosting.windows_backend_material import (
     WindowsBackendMaterialExpectationV1,
 )
 
+from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryReader
 from .package_product_worker_policy import (
     CodingWorkerOptInV1,
     CodingWorkerPolicySelectionError,
@@ -62,6 +68,7 @@ from .package_product_worker_windows_opt_in_owner import (
 from .package_product_worker_windows_receipt_journal import (
     CodingWindowsWorkerReceiptJournal,
 )
+from .session_manager import SessionManager
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 
@@ -123,10 +130,14 @@ class CodingWindowsWorkerProductReceiptOwner:
     def product_owner(self) -> WindowsLocalWheelProductSessionOwner:
         return self._product
 
+    @property
+    def product_runtime(self) -> PackageProductRuntimeBindingV1:
+        return self._runtime
+
     def issue(self) -> ProductWorkerActivationReceiptV1 | None:
         """Return Current on absent opt-in, otherwise persist exact authority."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             self._runtime.assert_selected_plugin_manifest_current(self._selected)
             decision = self._opt_in.current(
@@ -152,7 +163,7 @@ class CodingWindowsWorkerProductReceiptOwner:
     def serialized_admission(self) -> Iterator[None]:
         """Hold Product selection and GC through the first Worker effect."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_session_runtime_current(self._runtime)
             yield
 
@@ -200,6 +211,46 @@ class CodingWindowsWorkerProductReceiptOwner:
             if policy is None or policy.fingerprint != receipt.policy.fingerprint:
                 return _STALE_WITNESS
             return receipt.authority_witness
+
+    def latch_kill_switch(self, *, expected_generation: int) -> int:
+        """Persist a Windows opt-in revocation before C5 retires its domain."""
+
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise ValueError("Windows Worker kill-switch generation is invalid")
+        with self._product.gc_gate.guard(require_write=True):
+            self._product.assert_root_gc_authority_current()
+            plugin_id = self._selected.snapshot.installation_key.plugin_id
+            decision = self._opt_in.current(plugin_id)
+            if decision is None:
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_absent")
+            if (
+                decision.action == "revoke"
+                and decision.kill_switch_generation == expected_generation + 1
+            ):
+                return decision.kill_switch_generation
+            if (
+                decision.action != "allow"
+                or decision.kill_switch_generation != expected_generation
+            ):
+                raise CodingWorkerReceiptError("coding_worker_kill_switch_stale")
+            operation_id = (
+                "worker-kill-"
+                + sha256(
+                    canonical_json_bytes(
+                        {
+                            "scopeId": self._product.policy.project_scope_id,
+                            "pluginId": plugin_id,
+                            "expectedGeneration": expected_generation,
+                        }
+                    )
+                ).hexdigest()
+            )
+            revoked = self._opt_in.revoke(
+                plugin_id=plugin_id,
+                operation_id=operation_id,
+                expected_generation=decision.generation,
+            )
+            return revoked.kill_switch_generation
 
     def current_backend_capture_expectation(
         self, receipt: ProductWorkerActivationReceiptV1
@@ -253,7 +304,9 @@ class CodingWindowsWorkerProductReceiptOwner:
             PackageProductRuntimeActivationError,
             PackageProductRuntimeReadError,
         ) as exc:
-            raise CodingWorkerReceiptError("coding_worker_selected_payload_stale") from exc
+            raise CodingWorkerReceiptError(
+                "coding_worker_selected_payload_stale"
+            ) from exc
         if selected != self._selected:
             raise CodingWorkerReceiptError("coding_worker_selected_payload_stale")
         return selected
@@ -273,9 +326,7 @@ class CodingWindowsWorkerProductReceiptOwner:
         assert configuration is not None
         root = manifest.root_relative_path.as_posix()
         prefix = "" if root == "." else f"{root}/"
-        body = dict(selected.snapshot.files).get(
-            f"{prefix}{configuration.entrypoint}"
-        )
+        body = dict(selected.snapshot.files).get(f"{prefix}{configuration.entrypoint}")
         if (
             body is None
             or candidate.executable_digest != sha256(body).hexdigest()
@@ -384,7 +435,9 @@ class CodingWindowsWorkerProductReceiptOwner:
                 self._product
             )
             if worker_request.runtime.package_root.parent != self._product.state_root:
-                raise CodingWorkerReceiptError("coding_worker_native_payload_root_changed")
+                raise CodingWorkerReceiptError(
+                    "coding_worker_native_payload_root_changed"
+                )
             plan = _plan_windows_lpac_product_worker_profile(
                 worker_request=worker_request,
                 native_profile_catalog_revision=(
@@ -446,6 +499,61 @@ class CodingWindowsWorkerProductReceiptOwner:
         )
 
 
+def open_coding_windows_product_selected_worker_receipt_owner(
+    *,
+    product_owner: WindowsLocalWheelProductSessionOwner,
+    runtime: PackageProductRuntimeBindingV1,
+    plugin_id: str,
+    transcript_directory: AgentTranscriptDirectoryRuntime,
+    session_manager: SessionManager,
+) -> CodingWindowsWorkerProductReceiptOwner:
+    """Bind an exact selected Windows Worker to its persisted Coding Session."""
+
+    if type(product_owner) is not WindowsLocalWheelProductSessionOwner:
+        raise TypeError("Windows Worker requires a Product owner")
+    if type(runtime) is not PackageProductRuntimeBindingV1:
+        raise TypeError("Windows Worker requires an active Product runtime")
+    if (
+        not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id != plugin_id.strip()
+    ):
+        raise ValueError("Windows Worker Plugin identity is invalid")
+    if not isinstance(transcript_directory, AgentTranscriptDirectoryRuntime):
+        raise TypeError("Windows Worker requires a Transcript directory owner")
+    if not isinstance(session_manager, SessionManager):
+        raise TypeError("Windows Worker requires a Coding Session owner")
+    selected_session_file = session_manager.get_session_file()
+    if (
+        not session_manager.is_persisted()
+        or selected_session_file is None
+        or session_manager.get_header().conversation_id != runtime.session_id
+        or Path(session_manager.get_cwd()).resolve(strict=True)
+        != product_owner.workspace
+        or not (
+            transcript_directory.is_authority_session_file(selected_session_file)
+            or transcript_directory.is_discovery_session_file(selected_session_file)
+        )
+    ):
+        raise ValueError("Windows Worker selected Session owner changed")
+    product_owner.assert_session_runtime_current(runtime)
+    selected = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+    )
+    discovery = CodingWorkerTranscriptDiscoveryReader(
+        directory=transcript_directory,
+        gc_gate=product_owner.gc_gate,
+        session_id=runtime.session_id,
+        selected_session_file=selected_session_file,
+    )
+    return CodingWindowsWorkerProductReceiptOwner(
+        product=product_owner,
+        runtime=runtime,
+        selected=selected,
+        session_discovery_reader=discovery,
+    )
+
+
 def read_coding_windows_product_worker_receipt_record(
     product: WindowsLocalWheelProductSessionOwner, *, receipt_fingerprint: str
 ) -> CodingWorkerReceiptRecordV1 | None:
@@ -479,5 +587,6 @@ def read_coding_windows_product_worker_receipt_record(
 
 __all__ = [
     "CodingWindowsWorkerProductReceiptOwner",
+    "open_coding_windows_product_selected_worker_receipt_owner",
     "read_coding_windows_product_worker_receipt_record",
 ]

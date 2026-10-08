@@ -73,6 +73,66 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+  windows-worker-session:
+    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+
+      - name: Run native Windows Worker public Session cases
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
+          PYTEST_ADDOPTS: >-
+            --tb=short
+            --junitxml=.artifacts/windows-worker-session-native.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/coding/test_package_product_worker_windows_activation_state.py::test_windows_product_c5_state_reopens_and_refuses_complete_record_loss
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_disable_fences_pinned_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_crash_reopens_and_retires_product_attempt
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_native_normal_exit_c5_cleanup_evidence
+          --maxfail=1
+          --durations=20
+          -vv
+
+      - name: Reject empty, skipped, or failing Windows Worker Session report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-worker-session-native.xml
+          --require-tests-count 7
+
+      - name: Upload Windows Worker Session pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-session-pytest-report
+          path: .artifacts/windows-worker-session-native.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+
   windows-worker-gc-normal:
     if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
     runs-on: windows-2022
@@ -234,7 +294,12 @@ jobs:
           tests/coding/test_hosted_session.py::test_hosted_default_refuses_effective_old_settings_before_plugin_writes
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_host_crash_reopens_and_retires_product_attempt
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_crash_reopens_and_retires_product_attempt
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_disable_fences_pinned_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_native_normal_exit_c5_cleanup_evidence
           -q
 
       - name: Reject empty, skipped, or failing PLC9B native report
@@ -366,7 +431,7 @@ jobs:
   selected-checks:
     name: Selected checks
     if: always()
-    needs: [windows-shell, windows-worker, windows-worker-gc-normal, windows-worker-gc-crash]
+    needs: [windows-shell, windows-worker, windows-worker-session, windows-worker-gc-normal, windows-worker-gc-crash]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -376,4 +441,4 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python scripts/ci/verify_gate.py
-          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell","windows-worker-gc-normal":"windows_shell","windows-worker-gc-crash":"windows_shell"}'
+          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell","windows-worker-session":"windows_shell","windows-worker-gc-normal":"windows_shell","windows-worker-gc-crash":"windows_shell"}'

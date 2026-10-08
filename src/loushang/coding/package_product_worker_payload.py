@@ -36,7 +36,6 @@ from loushang.harness.worker.contracts import (
 )
 from loushang.harness.worker.journal import (
     WorkerAttemptRecordV1,
-    WorkerSupervisorJournal,
     WorkerSupervisorJournalError,
 )
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
@@ -108,7 +107,7 @@ class CodingProductWorkerPendingLaunchV1:
 
 def open_coding_product_worker_supervisor_journal(
     product: PosixLocalWheelProductSessionOwner,
-) -> WorkerSupervisorJournal:
+) -> CodingProductWorkerSupervisorJournal:
     """Bind every Coding Worker attempt to this Product's durable state root."""
 
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
@@ -336,7 +335,7 @@ def materialize_coding_product_worker_payload(
     cleanup_plan: CodingWorkerPayloadDebtPlanV1 | None = None
     try:
         _require_private_visible_root(state_root, root_fd)
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             payload = receipt_owner.current_selected_payload(receipt)
             native_material = receipt_owner.current_native_launch_material(receipt)
@@ -408,7 +407,7 @@ def materialize_coding_product_worker_payload(
     finally:
         try:
             if created:
-                with product.gc_gate.guard():
+                with product.gc_gate.guard(require_write=True):
                     _require_visible_stage(stage_name, root_fd, stage_fd)
                     if cleanup_plan is not None:
                         current = _verify_debt(root_fd, attempt_id)
@@ -758,7 +757,7 @@ def repair_coding_product_worker_unmarked_payload_debt(
 
     if not isinstance(expected_review, CodingWorkerUnmarkedPayloadDebtReviewV1):
         raise TypeError("Coding Worker unmarked payload review is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -915,7 +914,7 @@ def repair_coding_product_worker_payload_debt(
 
     if not isinstance(expected_plan, CodingWorkerPayloadDebtPlanV1):
         raise TypeError("Coding Worker payload debt plan is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -1046,7 +1045,7 @@ def repair_coding_product_worker_empty_payload_debt(
 
     if not isinstance(expected_plan, CodingWorkerEmptyPayloadDebtPlanV1):
         raise TypeError("Coding Worker empty payload debt plan is required")
-    with _offline(product):
+    with _offline(product, require_write=True):
         root_fd = os.open(product.state_root, _DIR_FLAGS)
         try:
             _require_private_visible_root(product.state_root, root_fd)
@@ -1633,7 +1632,9 @@ def _remove_empty_stage(root_fd: int, stage_name: str) -> None:
 
 
 @contextmanager
-def _offline(product: PosixLocalWheelProductSessionOwner) -> Iterator[None]:
+def _offline(
+    product: PosixLocalWheelProductSessionOwner, *, require_write: bool = False
+) -> Iterator[None]:
     if not isinstance(product, PosixLocalWheelProductSessionOwner):
         raise TypeError("Coding Worker Product owner is required")
     registry = product.epoch_runtime.registry
@@ -1645,7 +1646,7 @@ def _offline(product: PosixLocalWheelProductSessionOwner) -> Iterator[None]:
                 "coding_worker_payload_runtime_active"
             )
         product.assert_root_gc_authority_current()
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=require_write):
             yield
         product.assert_root_gc_authority_current()
 

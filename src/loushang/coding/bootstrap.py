@@ -166,6 +166,7 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductRuntimeFactory,
+    WindowsLocalWheelProductRuntimeFactory,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductPluginDesiredSelectionV1,
@@ -640,7 +641,7 @@ def _create_agent_session(
         and "coding.base" in requested_plugin_ids
     )
     if worker_candidate_plugin_id is not None and (
-        sys.platform != "linux"
+        sys.platform not in {"linux", "win32"}
         or not isinstance(worker_candidate_plugin_id, str)
         or not worker_candidate_plugin_id
         or worker_candidate_plugin_id != worker_candidate_plugin_id.strip()
@@ -2407,9 +2408,11 @@ def _select_direct_coding_product_factory(
     *,
     services: BootstrapServices | None,
     worker_candidates: bool = False,
+    windows_candidate: bool = False,
 ) -> PackageProductRuntimeFactoryPort | None:
     selection = CodingFencedProductApplicationSelection(
-        worker_candidates=worker_candidates
+        worker_candidates=worker_candidates,
+        windows_candidate=windows_candidate,
     )
     try:
         factory = selection.factory_for_session(
@@ -2476,6 +2479,9 @@ def create_agent_session(
             session_manager,
             services=services,
             worker_candidates=worker_candidate_plugin_id is not None,
+            windows_candidate=(
+                sys.platform == "win32" and worker_candidate_plugin_id is not None
+            ),
         )
     )
     try:
@@ -2733,8 +2739,14 @@ def _build_with_package_product_selection(
     )
     selected_factory: PackageProductRuntimeFactoryPort | None = factory
     if worker_candidates:
-        if not isinstance(factory, PosixLocalWheelProductRuntimeFactory):
-            raise TypeError("Coding Worker requires POSIX Product selection")
+        if not isinstance(
+            factory,
+            (
+                PosixLocalWheelProductRuntimeFactory,
+                WindowsLocalWheelProductRuntimeFactory,
+            ),
+        ):
+            raise TypeError("Coding Worker requires Product selection")
         selected_factory = CodingApplicationWorkerProductRuntimeFactory(
             factory=factory,
             selection=selection,
@@ -2805,7 +2817,10 @@ def _create_agent_session_runtime(
         dict(lsp_baseline_environment) if lsp_baseline_environment is not None else None
     )
     product_owner_selection = CodingFencedProductApplicationSelection(
-        worker_candidates=worker_candidate_plugin_id is not None
+        worker_candidates=worker_candidate_plugin_id is not None,
+        windows_candidate=(
+            sys.platform == "win32" and worker_candidate_plugin_id is not None
+        ),
     )
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),

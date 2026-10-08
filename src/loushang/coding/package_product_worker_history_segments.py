@@ -20,6 +20,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _STREAM = re.compile(r"[a-z][a-z0-9-]{1,63}\Z")
 _STEM = re.compile(r"[a-z][a-z0-9-]{1,63}\Z")
 _MAX_MANIFEST_BYTES = 1024 * 1024
+_MAX_HEAD_BYTES = 512
 _MAX_GENERATIONS = 65536
 _MAX_DIRECTORY_ENTRIES = 131072
 
@@ -172,17 +173,127 @@ class CodingWorkerSegmentedHistoryV1:
         return 0 if self.manifest is None else self.manifest.last_sealed_revision
 
 
+@dataclass(frozen=True, slots=True)
+class CodingWorkerUncommittedActiveAppendV1:
+    committed_history: CodingWorkerSegmentedHistoryV1
+    appended_line: bytes
+
+
 def _segment_name(stem: str, generation: int) -> str:
     return f"{stem}.jsonl" if generation == 0 else f"{stem}.g{generation:08d}.jsonl"
 
 
-def read_coding_worker_segmented_history(
+def _head_name(stem: str, generation: int) -> str:
+    return (
+        f"{stem}.head.json"
+        if generation == 0
+        else f"{stem}.g{generation:08d}.head.json"
+    )
+
+
+def _head_bytes(stream_id: str, generation: int, raw: bytes) -> bytes:
+    return canonical_json_bytes(
+        {
+            "byteCount": len(raw),
+            "digest": sha256(raw).hexdigest(),
+            "generation": generation,
+            "streamId": stream_id,
+            "version": 1,
+        }
+    )
+
+
+def _assert_head(
+    rooted: RootedFile, *, stem: str, stream_id: str, generation: int, raw: bytes
+) -> None:
+    try:
+        head = rooted.sibling(_head_name(stem, generation)).read_bytes(
+            max_bytes=_MAX_HEAD_BYTES
+        )
+    except FileNotFoundError:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_head_missing"
+        ) from None
+    except OSError as exc:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_head_changed"
+        ) from exc
+    if head != _head_bytes(stream_id, generation, raw):
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_head_changed")
+
+
+def initialize_coding_worker_active_head(
+    rooted: RootedFile, *, stem: str, stream_id: str
+) -> None:
+    """Publish the empty first head only after this caller created the lock."""
+
+    if (
+        type(stem) is not str
+        or _STEM.fullmatch(stem) is None
+        or type(stream_id) is not str
+        or _STREAM.fullmatch(stream_id) is None
+    ):
+        raise ValueError("Worker segment head input is invalid")
+    if rooted.sibling(_segment_name(stem, 0)).read_bytes(max_bytes=1) != b"":
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_head_changed")
+    rooted.sibling(_head_name(stem, 0)).create_new(_head_bytes(stream_id, 0, b""))
+
+
+def commit_coding_worker_active_segment(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    generation: int,
+    previous_raw: bytes,
+    appended_line: bytes,
+) -> None:
+    """Commit one durable append after checking its exact previous head."""
+
+    if (
+        type(stem) is not str
+        or _STEM.fullmatch(stem) is None
+        or type(stream_id) is not str
+        or _STREAM.fullmatch(stream_id) is None
+        or type(generation) is not int
+        or not 0 <= generation <= _MAX_GENERATIONS
+        or type(previous_raw) is not bytes
+        or type(appended_line) is not bytes
+        or not appended_line.endswith(b"\n")
+    ):
+        raise ValueError("Worker segment commit input is invalid")
+    _assert_head(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        generation=generation,
+        raw=previous_raw,
+    )
+    committed_raw = previous_raw + appended_line
+    try:
+        current = rooted.sibling(_segment_name(stem, generation)).read_bytes(
+            max_bytes=len(committed_raw)
+        )
+    except OSError as exc:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_active_changed"
+        ) from exc
+    if current != committed_raw:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_active_changed")
+    rooted.sibling(_head_name(stem, generation)).atomic_write(
+        _head_bytes(stream_id, generation, committed_raw)
+    )
+
+
+def _read_coding_worker_segmented_history(
     rooted: RootedFile,
     *,
     stem: str,
     stream_id: str,
     max_segment_bytes: int,
-) -> CodingWorkerSegmentedHistoryV1:
+    allow_uncommitted_append: bool,
+    require_complete_append: bool,
+) -> tuple[CodingWorkerSegmentedHistoryV1, bytes]:
     """Read exact sealed bytes and the current active segment under one lock."""
 
     if (
@@ -218,6 +329,7 @@ def read_coding_worker_segmented_history(
     expected_names = {manifest_name} if manifest is not None else set()
     expected_names.add(stem + ".jsonl.lock")
     expected_names.update(_segment_name(stem, index) for index in range(active + 1))
+    expected_names.update(_head_name(stem, index) for index in range(active + 1))
     actual = {
         name
         for name in names
@@ -226,8 +338,10 @@ def read_coding_worker_segmented_history(
     if not actual <= expected_names:
         raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
     segments = []
+    appended_line = b""
     for generation in range(active + 1):
         name = _segment_name(stem, generation)
+        present = True
         try:
             raw = rooted.sibling(name).read_bytes(max_bytes=max_segment_bytes)
         except FileNotFoundError:
@@ -243,6 +357,7 @@ def read_coding_worker_segmented_history(
                     "coding_worker_segment_initial_missing"
                 ) from None
             raw = b""
+            present = False
         except OSError as exc:
             code = (
                 "coding_worker_sealed_segment_changed"
@@ -259,8 +374,255 @@ def read_coding_worker_segmented_history(
                 raise CodingWorkerHistorySegmentError(
                     "coding_worker_sealed_segment_changed"
                 )
+        if present:
+            if allow_uncommitted_append and generation == active:
+                try:
+                    _assert_head(
+                        rooted,
+                        stem=stem,
+                        stream_id=stream_id,
+                        generation=generation,
+                        raw=raw,
+                    )
+                except CodingWorkerHistorySegmentError as exc:
+                    if exc.code != "coding_worker_segment_head_changed":
+                        raise
+                    try:
+                        head = rooted.sibling(_head_name(stem, generation)).read_bytes(
+                            max_bytes=_MAX_HEAD_BYTES
+                        )
+                        value = json.loads(head)
+                        if type(value) is not dict or type(value.get("byteCount")) is not int:
+                            raise ValueError("Worker active head byte count is invalid")
+                        committed_count = value["byteCount"]
+                    except (OSError, TypeError, ValueError, UnicodeError) as invalid:
+                        raise CodingWorkerHistorySegmentError(
+                            "coding_worker_segment_head_changed"
+                        ) from invalid
+                    if (
+                        not 0 <= committed_count < len(raw)
+                        or head
+                        != _head_bytes(stream_id, generation, raw[:committed_count])
+                        or (committed_count > 0 and raw[committed_count - 1] != 10)
+                        or (
+                            require_complete_append
+                            and (
+                                not raw.endswith(b"\n")
+                                or raw[committed_count:].count(b"\n") != 1
+                            )
+                        )
+                    ):
+                        raise CodingWorkerHistorySegmentError(
+                            "coding_worker_segment_head_changed"
+                        )
+                    appended_line = raw[committed_count:]
+                    raw = raw[:committed_count]
+            else:
+                _assert_head(
+                    rooted,
+                    stem=stem,
+                    stream_id=stream_id,
+                    generation=generation,
+                    raw=raw,
+                )
+        elif _head_name(stem, generation) in names:
+            raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
         segments.append(raw)
-    return CodingWorkerSegmentedHistoryV1(manifest=manifest, segments=tuple(segments))
+    return CodingWorkerSegmentedHistoryV1(manifest=manifest, segments=tuple(segments)), appended_line
+
+
+def read_coding_worker_segmented_history(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> CodingWorkerSegmentedHistoryV1:
+    """Read only fully committed segment bytes under one journal lock."""
+
+    history, _ = _read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+        allow_uncommitted_append=False,
+        require_complete_append=False,
+    )
+    return history
+
+
+def rollback_coding_worker_unpublished_successor(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> bool:
+    """Remove only an exact empty successor left before manifest publication.
+
+    The ordinary reader keeps rejecting this orphan. The caller must own the
+    stream lock and its Product repair gate before invoking this operation.
+    """
+
+    if (
+        type(stem) is not str
+        or _STEM.fullmatch(stem) is None
+        or type(stream_id) is not str
+        or _STREAM.fullmatch(stream_id) is None
+        or type(max_segment_bytes) is not int
+        or max_segment_bytes < 1
+    ):
+        raise ValueError("Worker successor repair input is invalid")
+    names, complete = rooted.scan_sibling_names(limit=_MAX_DIRECTORY_ENTRIES)
+    if not complete:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_inventory_capacity"
+        )
+    manifest_name = stem + ".segments.json"
+    try:
+        manifest_raw = rooted.sibling(manifest_name).read_bytes(
+            max_bytes=_MAX_MANIFEST_BYTES
+        )
+    except FileNotFoundError:
+        manifest = None
+    else:
+        manifest = CodingWorkerSegmentManifestV1.from_bytes(
+            manifest_raw, stream_id=stream_id
+        )
+    active = 0 if manifest is None else manifest.active_generation
+    if active >= _MAX_GENERATIONS:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_capacity")
+    successor_name = _segment_name(stem, active + 1)
+    successor_head_name = _head_name(stem, active + 1)
+    expected_names = {stem + ".jsonl.lock", successor_name, successor_head_name}
+    if manifest is not None:
+        expected_names.add(manifest_name)
+    expected_names.update(_segment_name(stem, index) for index in range(active + 1))
+    expected_names.update(_head_name(stem, index) for index in range(active + 1))
+    actual = {
+        name
+        for name in names
+        if name.casefold().startswith((stem + ".", "." + stem + "."))
+    }
+    if not actual <= expected_names:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
+    if successor_name not in actual:
+        if successor_head_name in actual:
+            raise CodingWorkerHistorySegmentError("coding_worker_segment_orphan")
+        return False
+    successor = rooted.sibling(successor_name)
+    try:
+        successor_raw = successor.read_bytes(max_bytes=1)
+    except OSError as exc:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_unpublished_successor_changed"
+        ) from exc
+    if successor_raw != b"":
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_unpublished_successor_changed"
+        )
+    if successor_head_name in actual:
+        head = rooted.sibling(successor_head_name)
+        try:
+            head_raw = head.read_bytes(max_bytes=_MAX_HEAD_BYTES)
+        except OSError as exc:
+            raise CodingWorkerHistorySegmentError(
+                "coding_worker_segment_unpublished_successor_changed"
+            ) from exc
+        if head_raw != _head_bytes(
+            stream_id, active + 1, b""
+        ):
+            raise CodingWorkerHistorySegmentError(
+                "coding_worker_segment_unpublished_successor_changed"
+            )
+        head_stat = head.stat()
+        head.unlink_owned((head_stat.st_dev, head_stat.st_ino))
+    successor_stat = successor.stat()
+    successor.unlink_owned((successor_stat.st_dev, successor_stat.st_ino))
+    read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    return True
+
+
+def read_coding_worker_uncommitted_active_append(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> CodingWorkerUncommittedActiveAppendV1:
+    """Return one head-anchored append for a separate Product repair decision."""
+
+    history, appended_line = _read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+        allow_uncommitted_append=True,
+        require_complete_append=True,
+    )
+    if not appended_line:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_repair_absent")
+    return CodingWorkerUncommittedActiveAppendV1(history, appended_line)
+
+
+def read_coding_worker_uncommitted_active_tail(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> tuple[CodingWorkerSegmentedHistoryV1, bytes]:
+    """Inspect a head-anchored tail, including a partial crash append."""
+
+    history, tail = _read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+        allow_uncommitted_append=True,
+        require_complete_append=False,
+    )
+    if not tail:
+        raise CodingWorkerHistorySegmentError("coding_worker_segment_repair_absent")
+    return history, tail
+
+
+def rollback_coding_worker_uncommitted_active_tail(
+    rooted: RootedFile,
+    *,
+    stem: str,
+    stream_id: str,
+    max_segment_bytes: int,
+) -> CodingWorkerSegmentedHistoryV1:
+    """Discard only a noncommitted active tail after its exact old head."""
+
+    history, tail = read_coding_worker_uncommitted_active_tail(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    name = _segment_name(stem, history.active_generation)
+    rooted.sibling(name).truncate_exact_prefix(
+        expected=history.active_raw + tail,
+        keep_bytes=len(history.active_raw),
+    )
+    reopened = read_coding_worker_segmented_history(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        max_segment_bytes=max_segment_bytes,
+    )
+    if reopened != history:
+        raise CodingWorkerHistorySegmentError(
+            "coding_worker_segment_rollback_changed"
+        )
+    return reopened
 
 
 def seal_coding_worker_active_segment(
@@ -324,11 +686,21 @@ def seal_coding_worker_active_segment(
         ) from exc
     if current_active != history.active_raw:
         raise CodingWorkerHistorySegmentError("coding_worker_segment_active_changed")
+    _assert_head(
+        rooted,
+        stem=stem,
+        stream_id=stream_id,
+        generation=history.active_generation,
+        raw=history.active_raw,
+    )
     # Publish the empty successor durably before the manifest can name it.
     # Otherwise a later loss of a written active segment is indistinguishable
     # from an interrupted seal that never created the successor.
     try:
         rooted.sibling(_segment_name(stem, manifest.active_generation)).create_new(b"")
+        rooted.sibling(_head_name(stem, manifest.active_generation)).create_new(
+            _head_bytes(stream_id, manifest.active_generation, b"")
+        )
     except OSError as exc:
         raise CodingWorkerHistorySegmentError(
             "coding_worker_segment_active_changed"
@@ -342,6 +714,13 @@ __all__ = [
     "CodingWorkerSealedSegmentV1",
     "CodingWorkerSegmentManifestV1",
     "CodingWorkerSegmentedHistoryV1",
+    "CodingWorkerUncommittedActiveAppendV1",
+    "commit_coding_worker_active_segment",
+    "initialize_coding_worker_active_head",
     "read_coding_worker_segmented_history",
+    "read_coding_worker_uncommitted_active_append",
+    "read_coding_worker_uncommitted_active_tail",
+    "rollback_coding_worker_unpublished_successor",
+    "rollback_coding_worker_uncommitted_active_tail",
     "seal_coding_worker_active_segment",
 ]

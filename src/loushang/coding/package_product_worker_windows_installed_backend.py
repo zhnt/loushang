@@ -104,7 +104,7 @@ def install_coding_windows_worker_backend_release(
         or type(review_id) is not str
     ):
         raise ValueError("Windows Worker backend installation input is invalid")
-    with product.gc_gate.guard():
+    with product.gc_gate.guard(require_write=True):
         product.assert_root_gc_authority_current()
         material = inspect_coding_windows_worker_backend_material(
             product, loushang_wheel=loushang_wheel

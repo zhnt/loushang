@@ -203,6 +203,8 @@ trust 机制完成前，不能从仓库配置引入新的可执行文件或环�
 
 简单的工作区扩展可直接放在 `.loushang/extensions/<name>.py`，实现 `register(api)`；也可用包含 `extension.py` 或 `__init__.py` 的目录。无需构建 Wheel。这是 Coding 进程内运行的可信 Python，没有独立的 Wheel 安装、版本和退役生命周期。旧的 `--extension`/`-e` 参数已移除。
 
+用 `loushang-coding-extension init .loushang/extensions/hello.py` 创建单文件模板，再运行返回的 `smokeCommand`。它在一次性 Product 工作区启动离线 Coding Session 并调用模板工具；扩展 Python 代码仍以当前用户权限在进程内执行，一次性工作区不是代码沙箱。工具需用 `direct_tool(...)` 或带 Action 适配器的 `authorized_tool(...)` 包装后注册。
+
 扩展可以携带相邻的 `loushang-extension.toml` manifest，用来声明身份、权限等级、依赖和预期贡献。使用 `/extensions` 查看已加载扩展、贡献摘要和诊断；使用 `/extensions <id>` 查看单个扩展详情。`/tools` 会在可用时展示 extension tool 的来源信息。
 
 ## 包与插件
@@ -210,6 +212,10 @@ trust 机制完成前，不能从仓库配置引入新的可执行文件或环�
 包与插件可以提供可复用的 coding 资产。常见生命周期命令：
 
 文档型 Skill/Prompt Wheel 可用 `loushang-plugin init-coding-skill ./reviewpack --resource-name review`（Prompt 用 `init-coding-prompt`）创建源码；返回的 `buildCommand` 构建 Wheel，`smokeCommand` 在一次性离线 POSIX Product 工作区执行安装、选择和模型输入消费验证。结果分别报告三个阶段，不会安装到当前工作区。各类型和入口的开放状态见 [插件支持矩阵](../../internals/architecture/harness/plugin/plugin-support-matrix.md)。
+
+Screen Theme 候选可用 `loushang-plugin init-coding-theme ./themepack --resource-name dusk` 创建源码，再运行返回的构建和 smoke 命令。Theme smoke 在一次性 POSIX Product 工作区验证显式选择后的 Screen 样式；Hosted Mux 和全面上线仍需分别评估。
+
+带 fence 的工作区可用 `loushang-coding-plugin-status --workspace PATH` 或 `/plugins status` 查看与本地 SDK `support_status()` 相同的只读阶段。`projected` 只表示当前组合预览，`productUse: not_checked` 表示尚未通过真实 Session 或 Screen 验证使用。
 
 ```bash
 loushang --list-plugins

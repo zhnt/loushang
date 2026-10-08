@@ -41,6 +41,7 @@ from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.component_host import (
+    CapabilityComponentAdmissionStart,
     CapabilityComponentHost,
 )
 from loushang.harness.capabilities.contracts import CapabilityRequirement
@@ -143,6 +144,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
+    SessionCapabilityOwnerAdmissionStart,
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
     SessionCapabilityWorkerComponentRequest,
@@ -1604,28 +1606,57 @@ class AgentProductSession(AgentSessionAdapterMixin):
             binding = self._model_call_capability_binding
             prepared_components: list[PreparedSessionCapabilityComponent] = []
             owner_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...] = ()
+            owner_starts: list[SessionCapabilityOwnerAdmissionStart] = []
+            component_starts: dict[int, CapabilityComponentAdmissionStart] = {}
             resource_consumer_installed = False
             skill_catalog_consumer_installed = False
             try:
                 composition_inputs = self._capability_composition_inputs
                 component_host = self._capability_component_host
                 if composition_inputs is not None:
+                    admissions, owner_bindings = (
+                        validate_session_capability_owner_generation_bindings(
+                            admissions=(
+                                composition_inputs.product_composition.catalog_admissions
+                            ),
+                            bindings=self._capability_owner_generation_bindings,
+                        )
+                    )
+                    for admission, owner_binding in zip(
+                        admissions, owner_bindings, strict=True
+                    ):
+                        owner_starts.append(
+                            owner_binding.authority_gate.begin(admission)
+                        )
+                    for request in composition_inputs.component_requests:
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
+                            continue
+                        assert component_host is not None
+                        component_starts[id(request)] = component_host.begin_admission(
+                            request.resolved,
+                            owner_snapshot=request.owner_snapshot,
+                            trust_snapshot=request.trust_snapshot,
+                            decision_id=request.activation_decision_id,
+                        )
+                    for request in composition_inputs.component_requests:
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
+                            continue
+                        assert component_host is not None
+                        prepared_components.append(
+                            component_host.prepare_component(
+                                request.resolved,
+                                package=request.package,
+                                owner_snapshot=request.owner_snapshot,
+                                trust_snapshot=request.trust_snapshot,
+                                decision_id=request.activation_decision_id,
+                                admission_start=component_starts[id(request)],
+                            )
+                        )
                     for request in composition_inputs.component_requests:
                         if isinstance(request, SessionCapabilityWorkerComponentRequest):
                             prepared_components.append(
                                 await request.prepare_component(
                                     self._capability_graph_runtime.generation + 1
-                                )
-                            )
-                        else:
-                            assert component_host is not None
-                            prepared_components.append(
-                                component_host.prepare_component(
-                                    request.resolved,
-                                    package=request.package,
-                                    owner_snapshot=request.owner_snapshot,
-                                    trust_snapshot=request.trust_snapshot,
-                                    decision_id=request.activation_decision_id,
                                 )
                             )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap
@@ -1725,6 +1756,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             ),
                             bindings=self._capability_owner_generation_bindings,
                             captures=external_captures,
+                            started_admissions=tuple(owner_starts),
                         )
                     except SessionCapabilityOwnerGenerationStagingError as exc:
                         owner_generations = exc.pending_generations
@@ -1883,6 +1915,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             f"{cleanup_error!r}"
                         )
                 raise
+            finally:
+                for component_start in reversed(tuple(component_starts.values())):
+                    component_start.host.abort_admission_start(component_start)
+                for start in reversed(owner_starts):
+                    start.authority_gate.abort(start)
             staged_candidate = self._staged_resource_candidate
             if catalog_bootstrap is not None:
                 if (

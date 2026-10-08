@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -67,9 +67,16 @@ from .package_product_worker_discovery import CodingWorkerTranscriptDiscoveryRea
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 from .package_product_worker_installed_native import (
     CodingProductInstalledWorkerReleaseReader,
     CodingWorkerNativeLaunchMaterialV1,
@@ -84,6 +91,12 @@ from .package_product_worker_policy import (
     derive_coding_selected_worker_policy,
 )
 from .session_manager import SessionManager
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
+    from .package_product_worker_receipt_base_v2 import CodingWorkerReceiptReplayV2
 
 _STALE_WITNESS: ActivationWitness = ("0" * 64, "0" * 64, "stale", 0, 0)
 _MAX_RECEIPTS = 4096
@@ -298,7 +311,7 @@ class CodingWorkerProductReceiptOwner:
     def issue(self) -> ProductWorkerActivationReceiptV1 | None:
         """Return Current on absent opt-in; otherwise issue one durable receipt."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             decision = self._opt_in.current(
                 self._selected.snapshot.installation_key.plugin_id
@@ -309,12 +322,36 @@ class CodingWorkerProductReceiptOwner:
             if policy is None:
                 return None
             with self._bound_journal() as rooted:
-                records, history = _read_receipt_history(
-                    rooted,
-                    path=self._path,
-                    scope_id=self._product.policy.project_scope_id,
-                    load_policy=self._load_policy,
-                )
+                checkpoints = self._checkpoint_writer_fence(rooted)
+                if _v2_owner_exists(rooted):
+                    history, replay = _read_v2_receipt_state(
+                        rooted,
+                        scope_id=self._product.policy.project_scope_id,
+                        store_id=self._product.epoch_runtime.registry.store_id,
+                    )
+                    records = replay.retained_records
+                    last_revision = replay.last_issue_sequence
+                    checkpoint_revision = (
+                        0
+                        if not checkpoints
+                        else checkpoints[-1].stream_snapshots[1].total_revision
+                    )
+                    if checkpoint_revision > last_revision:
+                        raise CodingWorkerReceiptError(
+                            "coding_worker_receipt_checkpoint_source_changed"
+                        )
+                else:
+                    records, history = _read_receipt_history(
+                        rooted,
+                        path=self._path,
+                        scope_id=self._product.policy.project_scope_id,
+                        load_policy=self._load_policy,
+                    )
+                    replay = None
+                    last_revision = 0 if not records else records[-1].journal_revision
+                    checkpoint_revision = self._assert_checkpoint_source(
+                        checkpoints, history
+                    )
                 latest = self._latest(records, policy)
                 if (
                     latest is not None
@@ -322,13 +359,24 @@ class CodingWorkerProductReceiptOwner:
                     and latest.receipt.policy.fingerprint == policy.fingerprint
                 ):
                     return latest.receipt
+                next_revision = max(last_revision, checkpoint_revision) + 1
                 receipt = ProductWorkerActivationReceiptV1(
                     policy=policy,
-                    issue_sequence=len(records) + 1,
+                    issue_sequence=next_revision,
                     issue_nonce=secrets.token_hex(16),
                 )
+                self._assert_checkpoint_fingerprint_fresh(
+                    checkpoints, receipt.fingerprint
+                )
+                if (
+                    replay is not None
+                    and receipt.fingerprint in replay.receipt_fingerprints
+                ):
+                    raise CodingWorkerReceiptError(
+                        "coding_worker_receipt_fingerprint_retired"
+                    )
                 record = CodingWorkerReceiptRecordV1.create(
-                    journal_revision=len(records) + 1,
+                    journal_revision=next_revision,
                     scope_id=self._product.policy.project_scope_id,
                     opt_in_decision_digest=decision.decision_digest,
                     receipt=receipt,
@@ -337,7 +385,7 @@ class CodingWorkerProductReceiptOwner:
                 if len(record_bytes) > _MAX_RECEIPT_SEGMENT_BYTES:
                     raise CodingWorkerReceiptError("coding_worker_receipt_capacity")
                 if (
-                    len(records) - history.last_sealed_revision >= _MAX_RECEIPTS
+                    last_revision - history.last_sealed_revision >= _MAX_RECEIPTS
                     or len(history.active_raw) + len(record_bytes)
                     > _MAX_RECEIPT_SEGMENT_BYTES
                 ):
@@ -347,7 +395,7 @@ class CodingWorkerProductReceiptOwner:
                             stem="worker-activation-receipts",
                             stream_id="worker-activation-receipts",
                             history=history,
-                            last_revision=len(records),
+                            last_revision=last_revision,
                         )
                     except CodingWorkerHistorySegmentError as exc:
                         raise CodingWorkerReceiptError(exc.code) from exc
@@ -355,6 +403,7 @@ class CodingWorkerProductReceiptOwner:
                         "worker-activation-receipts"
                         f".g{history.active_generation + 1:08d}.jsonl"
                     )
+                    generation = history.active_generation + 1
                 else:
                     target = rooted.sibling(
                         self._path.name
@@ -362,6 +411,7 @@ class CodingWorkerProductReceiptOwner:
                         else "worker-activation-receipts"
                         f".g{history.active_generation:08d}.jsonl"
                     )
+                    generation = history.active_generation
                 append_jsonl_record(
                     self._path,
                     record,
@@ -370,13 +420,77 @@ class CodingWorkerProductReceiptOwner:
                     durability=self._durability,
                     bound_file=target,
                 )
+                commit_coding_worker_active_segment(
+                    rooted,
+                    stem="worker-activation-receipts",
+                    stream_id="worker-activation-receipts",
+                    generation=generation,
+                    previous_raw=(
+                        b""
+                        if generation != history.active_generation
+                        else history.active_raw
+                    ),
+                    appended_line=record_bytes,
+                )
                 return receipt
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerReceiptError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> int:
+        if not checkpoints:
+            return 0
+        prior = checkpoints[-1].stream_snapshots[1]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem="worker-activation-receipts",
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerReceiptError(
+                "coding_worker_receipt_checkpoint_source_changed"
+            )
+        return prior.total_revision
+
+    @staticmethod
+    def _assert_checkpoint_fingerprint_fresh(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        fingerprint: str,
+    ) -> None:
+        if any(fingerprint in item.new_receipt_fingerprints for item in checkpoints):
+            raise CodingWorkerReceiptError("coding_worker_receipt_fingerprint_retired")
 
     @contextmanager
     def serialized_admission(self) -> Iterator[None]:
         """Hold the same Product selection gate through Worker first effect."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             yield
 
     def current_witness(
@@ -394,8 +508,12 @@ class CodingWorkerProductReceiptOwner:
             ):
                 return _STALE_WITNESS
             self._product.assert_root_gc_authority_current()
-            with self._bound_journal() as rooted:
-                record = self._latest(self._load(rooted), receipt.policy)
+            record = self._latest(
+                read_coding_product_worker_receipt_records(
+                    self._product, retained_only=True
+                ),
+                receipt.policy,
+            )
             if record is None or record.receipt != receipt:
                 return _STALE_WITNESS
             decision = self._opt_in.current(receipt.policy.plugin_id)
@@ -499,9 +617,7 @@ class CodingWorkerProductReceiptOwner:
 
     def current_runtime_binding(
         self, receipt: ProductWorkerActivationReceiptV1
-    ) -> tuple[
-        CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str
-    ]:
+    ) -> tuple[CodingWorkerSelectedPayloadV1, CodingWorkerNativeLaunchMaterialV1, str]:
         """Capture one coherent selected payload, native release, and owner."""
 
         reader = self._native_closure_reader
@@ -630,7 +746,7 @@ class CodingWorkerProductReceiptOwner:
 
         if type(expected_generation) is not int or expected_generation < 0:
             raise ValueError("Coding Worker kill-switch generation is invalid")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             plugin_id = self._selected.snapshot.installation_key.plugin_id
             decision = self._opt_in.current(plugin_id)
@@ -715,11 +831,27 @@ class CodingWorkerProductReceiptOwner:
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
                 with file_io.bind(self._path, durable=True) as rooted:
-                    rooted.acquire_lock(
-                        exclusive=True,
-                        suffix=".lock",
-                        initialize_empty_target_if_new=True,
-                    )
+                    if _v2_owner_exists(rooted):
+                        try:
+                            rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                exclusive=True, suffix="", create=False
+                            )
+                        except FileNotFoundError as exc:
+                            raise CodingWorkerReceiptError(
+                                "coding_worker_receipt_lock_missing"
+                            ) from exc
+                    else:
+                        created = rooted.acquire_lock(
+                            exclusive=True,
+                            suffix=".lock",
+                            initialize_empty_target_if_new=True,
+                        )
+                        if created:
+                            initialize_coding_worker_active_head(
+                                rooted,
+                                stem="worker-activation-receipts",
+                                stream_id="worker-activation-receipts",
+                            )
                     yield rooted
             finally:
                 file_io.cleanup()
@@ -735,6 +867,13 @@ class CodingWorkerProductReceiptOwner:
             os.close(parent_fd)
 
     def _load(self, rooted: RootedFile) -> tuple[CodingWorkerReceiptRecordV1, ...]:
+        if _v2_owner_exists(rooted):
+            _history, replay = _read_v2_receipt_state(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+            return replay.retained_records
         return _read_receipt_records(
             rooted,
             path=self._path,
@@ -771,6 +910,27 @@ def read_coding_product_worker_receipt_record(
         or any(char not in "0123456789abcdef" for char in receipt_fingerprint)
     ):
         raise ValueError("Coding Worker receipt fingerprint is invalid")
+    return next(
+        (
+            record
+            for record in read_coding_product_worker_receipt_records(
+                product, retained_only=True
+            )
+            if record.receipt.fingerprint == receipt_fingerprint
+        ),
+        None,
+    )
+
+
+def read_coding_product_worker_receipt_records(
+    product: PosixLocalWheelProductSessionOwner,
+    *,
+    retained_only: bool = False,
+) -> tuple[CodingWorkerReceiptRecordV1, ...]:
+    """Read complete V1 history or explicitly retained V2 receipts."""
+
+    if not isinstance(product, PosixLocalWheelProductSessionOwner):
+        raise TypeError("Coding Worker Product owner is required")
     path = product.state_root / "worker-activation-receipts.jsonl"
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     with product.gc_gate.guard():
@@ -791,14 +951,26 @@ def read_coding_product_worker_receipt_record(
             file_io = RootedFileIO(product.state_root, root_fd)
             try:
                 with file_io.bind(path, durable=False) as rooted:
-                    records = _read_receipt_records(
-                        rooted,
-                        path=path,
-                        scope_id=product.policy.project_scope_id,
-                        load_policy=JournalLoadPolicy(
-                            partial_tail="raise", create_lock=False
-                        ),
-                    )
+                    if _v2_owner_exists(rooted):
+                        if not retained_only:
+                            raise CodingWorkerReceiptError(
+                                "coding_worker_receipt_v2_full_history_unavailable"
+                            )
+                        _history, replay = _read_v2_receipt_state(
+                            rooted,
+                            scope_id=product.policy.project_scope_id,
+                            store_id=product.epoch_runtime.registry.store_id,
+                        )
+                        records = replay.retained_records
+                    else:
+                        records = _read_receipt_records(
+                            rooted,
+                            path=path,
+                            scope_id=product.policy.project_scope_id,
+                            load_policy=JournalLoadPolicy(
+                                partial_tail="raise", create_lock=False
+                            ),
+                        )
             finally:
                 file_io.cleanup()
             visible_after = product.state_root.lstat()
@@ -809,16 +981,62 @@ def read_coding_product_worker_receipt_record(
                 raise CodingWorkerReceiptError(
                     "coding_worker_receipt_state_root_changed"
                 )
-            return next(
-                (
-                    record
-                    for record in records
-                    if record.receipt.fingerprint == receipt_fingerprint
-                ),
-                None,
-            )
+            return records
         finally:
             os.close(root_fd)
+
+
+def _v2_owner_exists(rooted: RootedFile) -> bool:
+    try:
+        rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _read_v2_receipt_state(
+    rooted: RootedFile, *, scope_id: str, store_id: str
+) -> tuple[CodingWorkerSegmentedHistoryV1, CodingWorkerReceiptReplayV2]:
+    """Verify the V2 owner and reconstruct only retained receipt generations."""
+
+    from .package_product_worker_history_cutover_v2 import (
+        CodingWorkerProductCutoverIndexV2,
+    )
+    from .package_product_worker_history_read_v2 import (
+        CodingWorkerV2ReadError,
+        read_coding_worker_v2_retained_history,
+    )
+    from .package_product_worker_receipt_base_v2 import CodingWorkerReceiptReplayV2
+
+    stem = "worker-activation-receipts"
+    try:
+        owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+        )
+        if owner.scope_id != scope_id or owner.store_id != store_id:
+            raise CodingWorkerReceiptError("coding_worker_receipt_v2_owner_changed")
+        retained = read_coding_worker_v2_retained_history(rooted, stem=stem)
+        replay = retained.replay
+        if not isinstance(replay, CodingWorkerReceiptReplayV2):
+            raise CodingWorkerReceiptError("coding_worker_receipt_v2_owner_changed")
+        manifest = CodingWorkerSegmentManifestV1.from_bytes(
+            rooted.sibling(stem + ".segments.json").read_bytes(max_bytes=1024 * 1024),
+            stream_id=stem,
+        )
+        if manifest.active_generation != retained.active_generation:
+            raise CodingWorkerReceiptError("coding_worker_receipt_v2_manifest_changed")
+        return (
+            CodingWorkerSegmentedHistoryV1(
+                manifest=manifest,
+                segments=(b"",) * retained.first_retained_generation
+                + retained.segments,
+            ),
+            replay,
+        )
+    except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+        raise CodingWorkerReceiptError(exc.code) from exc
+    except (OSError, ValueError) as exc:
+        raise CodingWorkerReceiptError("coding_worker_receipt_v2_corrupt") from exc
 
 
 def _read_receipt_records(
@@ -983,6 +1201,7 @@ def open_coding_selected_worker_receipt_owner(
         product_owner.state_root / "worker-opt-in.jsonl",
         scope_id=product_owner.policy.project_scope_id,
         gc_gate=product_owner.gc_gate,
+        store_id=product_owner.epoch_runtime.registry.store_id,
     )
     discovery = CodingWorkerTranscriptDiscoveryReader(
         directory=transcript_directory,
@@ -1034,4 +1253,5 @@ __all__ = [
     "open_coding_product_selected_worker_receipt_owner",
     "open_coding_selected_worker_receipt_owner",
     "read_coding_product_worker_receipt_record",
+    "read_coding_product_worker_receipt_records",
 ]

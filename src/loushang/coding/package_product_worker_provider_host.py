@@ -28,9 +28,13 @@ from loushang.harness.worker.product_activation import ProductWorkerActivationRe
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
 from .package_product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
+    _native_platform_for_receipt_owner,
     prepare_coding_selected_worker_provider_candidate,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
 
 
 class CodingWorkerProviderHostError(RuntimeError):
@@ -61,12 +65,15 @@ class CodingPreparedWorkerProvider:
     receipt_fingerprint: str
     worker_admission_fingerprint: str
     _release: _WorkerAttemptRelease = field(repr=False, compare=False)
+    _commit: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
     def commit_after_graph_publication(self) -> None:
         if self.facet.state != "visible":
             raise CodingWorkerProviderHostError(
                 "coding_worker_provider_publication_missing"
             )
+        if self._commit is not None:
+            self._commit()
 
     async def abort_uncommitted(self) -> bool:
         self.facet.retire()
@@ -76,7 +83,9 @@ class CodingPreparedWorkerProvider:
 def prepare_coding_worker_provider_binding(
     *,
     resolved: ResolvedCapabilityProvider,
-    receipt_owner: CodingWorkerProductReceiptOwner,
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ),
     receipt: ProductWorkerActivationReceiptV1,
     capability_authority: CodingProductWorkerCapabilityAuthority,
     adapter: CapabilityQueryWorkerAdapter,
@@ -86,12 +95,17 @@ def prepare_coding_worker_provider_binding(
     release_attempt: Callable[[], Awaitable[None]],
     base_policy_binding: CodingWorkerBaseCompositionPolicyBinding | None = None,
     renewing_provider_owner: CapabilityProviderOwnerAuthority | None = None,
+    on_graph_publication: Callable[[], None] | None = None,
 ) -> CodingPreparedWorkerProvider:
     """Prepare a graph binding only for an exact current Product/owner selection."""
 
     if (
         not isinstance(resolved, ResolvedCapabilityProvider)
-        or not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+        or type(receipt_owner)
+        not in (
+            CodingWorkerProductReceiptOwner,
+            CodingWindowsWorkerProductReceiptOwner,
+        )
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or not isinstance(capability_authority, CodingProductWorkerCapabilityAuthority)
         or not isinstance(adapter, CapabilityQueryWorkerAdapter)
@@ -100,6 +114,7 @@ def prepare_coding_worker_provider_binding(
         or graph_generation < 1
         or not callable(clock)
         or not callable(release_attempt)
+        or (on_graph_publication is not None and not callable(on_graph_publication))
         or (
             renewing_provider_owner is not None
             and not isinstance(renewing_provider_owner, CapabilityProviderOwnerAuthority)
@@ -121,7 +136,8 @@ def prepare_coding_worker_provider_binding(
     if (
         candidate != resolved.admission.candidate
         or candidate.binding_spec != spec
-        or spec.native_platform != "linux-x86_64"
+        or spec.native_platform
+        != _native_platform_for_receipt_owner(receipt_owner)
         or authority.owner_policy_revision != resolved.admission.owner_policy_revision
         or authority.revocation_epoch != resolved.admission.revocation_epoch
         or authority.plugin_revision_digest != receipt.policy.plugin_revision_digest
@@ -258,6 +274,7 @@ def prepare_coding_worker_provider_binding(
         receipt_fingerprint=receipt.fingerprint,
         worker_admission_fingerprint=worker_admission.fingerprint,
         _release=release,
+        _commit=on_graph_publication,
     )
 
 

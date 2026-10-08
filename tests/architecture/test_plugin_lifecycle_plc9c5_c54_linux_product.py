@@ -19,10 +19,31 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_activation_state_journal.py": {
         "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_activation_base_v2.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_activation_history.py": {
+        "loushang.harness.worker.activation_state_journal",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_activation_state_journal.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py": {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_history_retention.py": {
-        "loushang.harness.worker.journal"
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_posix_gc_history.py": {
+        "loushang.harness.worker.gated_start"
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {
         "loushang.harness.worker._native_profile_bridge",
@@ -35,6 +56,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_supervisor_journal.py": {
         "loushang.harness.worker.contracts",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_supervisor_base_v2.py": {
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_start_gate_recovery.py": {
@@ -76,12 +100,20 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.gated_start",
         "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",
     },
     CODING_ROOT / "package_product_worker_pending_host.py": {
         "loushang.harness.worker._native_profile_bridge",
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
+        "loushang.harness.worker.supervisor",
+    },
+    CODING_ROOT / "package_product_worker_windows_pending_host.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.capability_query",
         "loushang.harness.worker.hosting_adapter",
         "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",

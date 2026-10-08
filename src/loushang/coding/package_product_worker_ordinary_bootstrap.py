@@ -16,6 +16,7 @@ from loushang.harness.capabilities.provider_selection import (
 )
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
+    WindowsLocalWheelProductSessionOwner,
 )
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
@@ -39,18 +40,31 @@ from .package_product_worker_query_consumer import (
     coding_worker_query_owner_authority,
 )
 from .package_product_worker_receipt import (
+    CodingWorkerProductReceiptOwner,
     open_coding_product_selected_worker_receipt_owner,
 )
 from .package_product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
     compose_coding_product_worker_with_ordinary_session,
 )
+from .package_product_worker_windows_payload import (
+    plan_coding_windows_product_worker_pending_launch,
+)
+from .package_product_worker_windows_pending_host import (
+    prepare_coding_windows_product_worker_pending_session_inputs,
+)
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+    open_coding_windows_product_selected_worker_receipt_owner,
+)
 from .session_manager import SessionManager
 
 
 def prepare_coding_product_worker_ordinary_binding(
     *,
-    product_owner: PosixLocalWheelProductSessionOwner,
+    product_owner: (
+        PosixLocalWheelProductSessionOwner | WindowsLocalWheelProductSessionOwner
+    ),
     runtime: PackageProductRuntimeBindingV1,
     session_manager: SessionManager,
     plugin_id: str,
@@ -64,7 +78,11 @@ def prepare_coding_product_worker_ordinary_binding(
     """
 
     if (
-        not isinstance(product_owner, PosixLocalWheelProductSessionOwner)
+        type(product_owner)
+        not in (
+            PosixLocalWheelProductSessionOwner,
+            WindowsLocalWheelProductSessionOwner,
+        )
         or not isinstance(runtime, PackageProductRuntimeBindingV1)
         or not isinstance(session_manager, SessionManager)
         or not isinstance(ordinary, CodingBaseProductSessionAssembly)
@@ -89,15 +107,27 @@ def prepare_coding_product_worker_ordinary_binding(
         raise CodingWorkerOrdinaryBootstrapError(
             "coding_worker_ordinary_product_scope_changed"
         )
-    receipt_owner = open_coding_product_selected_worker_receipt_owner(
-        product_owner=product_owner,
-        runtime=runtime,
-        plugin_id=plugin_id,
-        transcript_directory=AgentTranscriptDirectoryRuntime(
-            session_dir=session_manager.get_session_dir()
-        ),
-        session_manager=session_manager,
+    transcript_directory = AgentTranscriptDirectoryRuntime(
+        session_dir=session_manager.get_session_dir()
     )
+    receipt_owner: CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
+        receipt_owner = open_coding_windows_product_selected_worker_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=transcript_directory,
+            session_manager=session_manager,
+        )
+    else:
+        assert type(product_owner) is PosixLocalWheelProductSessionOwner
+        receipt_owner = open_coding_product_selected_worker_receipt_owner(
+            product_owner=product_owner,
+            runtime=runtime,
+            plugin_id=plugin_id,
+            transcript_directory=transcript_directory,
+            session_manager=session_manager,
+        )
     receipt = receipt_owner.issue()
     if receipt is None:
         raise CodingWorkerOrdinaryBootstrapError(
@@ -147,21 +177,40 @@ def prepare_coding_product_worker_ordinary_binding(
         owner_snapshots=(provider_owner.snapshot(),),
         evaluated_at=evaluated_at,
     )
-    pending = plan_coding_product_worker_pending_launch(
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        attempt_id=secrets.token_hex(16),
-    )
-    worker = prepare_coding_product_worker_pending_session_inputs(
-        resolved_providers=resolved,
-        provider_owner=provider_owner,
-        receipt_owner=receipt_owner,
-        receipt=receipt,
-        pending_launch=pending,
-        evaluated_at=evaluated_at,
-        clock=clock,
-        base_policy_binding=base_policy,
-    )
+    if type(product_owner) is WindowsLocalWheelProductSessionOwner:
+        assert type(receipt_owner) is CodingWindowsWorkerProductReceiptOwner
+        pending_windows = plan_coding_windows_product_worker_pending_launch(
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            attempt_id=secrets.token_hex(16),
+        )
+        worker = prepare_coding_windows_product_worker_pending_session_inputs(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            pending_launch=pending_windows,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+        )
+    else:
+        assert type(receipt_owner) is CodingWorkerProductReceiptOwner
+        pending_linux = plan_coding_product_worker_pending_launch(
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            attempt_id=secrets.token_hex(16),
+        )
+        worker = prepare_coding_product_worker_pending_session_inputs(
+            resolved_providers=resolved,
+            provider_owner=provider_owner,
+            receipt_owner=receipt_owner,
+            receipt=receipt,
+            pending_launch=pending_linux,
+            evaluated_at=evaluated_at,
+            clock=clock,
+            base_policy_binding=base_policy,
+        )
     definitions = {
         item.capability_id: item
         for item in (

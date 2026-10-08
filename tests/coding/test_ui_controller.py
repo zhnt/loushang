@@ -317,7 +317,7 @@ def test_controller_plugins_preview_unavailable_is_local() -> None:
 
     invalid = asyncio.run(controller.dispatch(PromptIntent(text="/plugins install")))
     assert invalid.error_message == (
-        "Usage: /plugins [list | explain OPERATION_ID | enable ID | disable ID | remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
+        "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
     )
     assert session.prompts == []
 

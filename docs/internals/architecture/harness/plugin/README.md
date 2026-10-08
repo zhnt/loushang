@@ -22,6 +22,17 @@
   Coding offline package regression passed. The
   [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
   exact-head evidence and limits.
+- Linux Worker history V2 has a bounded Product cutover path. Under Product
+  runtime quiescence and the GC write gate, it prepares five typed stream
+  bases, publishes one exact owner index after physical and reference proof,
+  and retires only the sealed source segments named by durable deletion debt.
+  All five journals read and append through the typed bases after cutover;
+  receipt full-history reads still refuse because retired records cannot be
+  reconstructed. A real installed Product Worker case passed owner commit,
+  physical retirement, a fresh Session query, and Package GC preparation after
+  retirement. This is candidate evidence for that Linux path. Windows V2,
+  backup/restore and wider crash-boundary evidence, general third-party Worker
+  routing, and default activation retain their separate gates.
 - Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
   compatibility for this delivery. Fresh and verifiable B-fenced workspaces
   remain in scope; unfenced pre-B Plugin inputs must refuse without writes.

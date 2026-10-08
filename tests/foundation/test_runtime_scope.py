@@ -269,6 +269,28 @@ def test_sweep_observes_a_real_child_process_lease_and_reclaims_its_crash(
             child.wait(timeout=10)
 
 
+def test_zero_second_sweep_reclaims_inactive_run_with_future_mtime(
+    tmp_path: Path,
+) -> None:
+    run_dir = _inactive_run(
+        tmp_path, run_id="a" * 32, modified_at=200.0
+    )
+    retained = sweep_runtime_runs(
+        _scope(tmp_path, "b" * 32),
+        policy=RuntimeSweepPolicy(stale_after_seconds=1),
+        now=lambda: 100.0,
+    )
+    assert retained.removed == 0
+    assert run_dir.exists()
+    report = sweep_runtime_runs(
+        _scope(tmp_path, "b" * 32),
+        policy=RuntimeSweepPolicy(stale_after_seconds=0),
+        now=lambda: 100.0,
+    )
+    assert report.removed == 1
+    assert not run_dir.exists()
+
+
 def test_sweep_removes_expired_leased_run_but_preserves_unprovable_legacy_run(
     tmp_path: Path,
 ) -> None:

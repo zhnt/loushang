@@ -12,6 +12,7 @@ if __package__ in {None, ""}:
 from _support import assistant_text_message, build_runtime, stream_with_final_message
 
 EXTENSION_SOURCE = """
+from loushang.harness.tools.authoring import direct_tool
 from loushang.harness.tools.core import tool
 
 
@@ -22,7 +23,7 @@ async def manifest_echo(message: str) -> str:
 
 
 def register(api):
-    api.register_tool(manifest_echo)
+    api.register_tool(direct_tool(manifest_echo))
 """
 
 MANIFEST_SOURCE = """

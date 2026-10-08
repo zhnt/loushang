@@ -18,6 +18,7 @@ from _support import (
 )
 
 EXTENSION_SOURCE = """
+from loushang.harness.tools.authoring import direct_tool
 from loushang.harness.tools.core import tool
 
 
@@ -28,7 +29,7 @@ async def echo_extension(message: str) -> str:
 
 
 def register(api):
-    api.register_tool(echo_extension)
+    api.register_tool(direct_tool(echo_extension))
 """
 
 

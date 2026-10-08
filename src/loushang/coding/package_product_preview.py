@@ -21,6 +21,10 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductHostInputs,
     _LocalWheelSelectedManifestReader,
 )
+from loushang.harness.package_product.product_worker_candidate import (
+    WorkerPackageCandidateV1,
+    verify_product_selected_worker_candidate,
+)
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
@@ -80,14 +84,28 @@ from .package_builtin_wheel import (
 from .package_epoch_layout import resolve_coding_package_epoch_layout
 from .package_external_data_wheel import CodingExternalDataWheelCatalog
 from .package_external_dependency_wheel import CodingExternalDependencyWheelCatalog
+from .package_external_worker_wheel import CodingExternalWorkerWheelCatalog
 from .package_legacy_binding_catalog import CodingLegacyLocalBindingCatalog
 from .package_legacy_local_acceptance import (
     reopen_coding_legacy_installed_local_acceptance,
+)
+from .package_product_worker_opt_in import (
+    CodingWorkerOptInDecisionV1,
+    CodingWorkerOptInJournal,
 )
 from .resource_runtime import CodingResourceLoader
 
 CodingDataResourceAdmissionPreviewV1 = PluginCurrentResourceAdmissionV1
 CodingCurrentDataResourcePreviewV1 = PluginCurrentCompositionPreviewV1
+
+
+@dataclass(frozen=True, slots=True)
+class CodingWorkerCandidateReadEvidenceV1:
+    """Selected candidate identity observed without a Worker-use decision."""
+
+    candidate: WorkerPackageCandidateV1
+    artifact_digest: str
+    native_platform: str
 
 
 @dataclass(slots=True)
@@ -97,6 +115,67 @@ class CodingFencedProductReadOnlyPreviewOwner:
     epoch_runtime: PackageProductPosixFencedRuntimeOwner
     policy: PackageProductLocalWheelPolicy
     selected_manifests: _LocalWheelSelectedManifestReader
+    gc_gate: PluginPackageGcReservationJournal
+    worker_candidates: bool = False
+
+    def selected_worker_candidate(self, plugin_id: str) -> WorkerPackageCandidateV1:
+        """Verify inert bytes of one currently selected Worker; grant no execution."""
+
+        return self.selected_worker_candidate_evidence(plugin_id).candidate
+
+    def selected_worker_candidate_evidence(
+        self, plugin_id: str
+    ) -> CodingWorkerCandidateReadEvidenceV1:
+        """Preserve the Product-selected artifact and native profile identity."""
+
+        if not self.worker_candidates:
+            raise PermissionError("Worker candidate read was not selected")
+        self.epoch_runtime.assert_current()
+        selected = self.selected_manifests.capture_selected_manifest_for_plugin(
+            plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+        )
+        matches = tuple(
+            binding
+            for binding in self.policy.bindings
+            if binding.plugin_id == plugin_id
+            and binding.source_trust_class == "local-worker-candidate"
+            and binding.source_identity
+            == selected.snapshot.package_revision.package_source_identity
+            and binding.artifact_digest == selected.snapshot.root_ref.artifact_digest
+            and binding.worker_admission is not None
+        )
+        if len(matches) != 1:
+            raise ValueError("Selected Worker Product binding is unavailable")
+        admission = matches[0].worker_admission
+        assert admission is not None
+        candidate = verify_product_selected_worker_candidate(
+            selected,
+            contribution_id=admission.contribution_id,
+            native_platform=admission.native_platform,
+        )
+        if candidate.owner_id != admission.owner_id:
+            raise ValueError("Selected Worker Product owner changed")
+        self.epoch_runtime.assert_current()
+        return CodingWorkerCandidateReadEvidenceV1(
+            candidate=candidate,
+            artifact_digest=selected.snapshot.root_ref.artifact_digest,
+            native_platform=admission.native_platform,
+        )
+
+    def worker_opt_in_decision(
+        self, plugin_id: str
+    ) -> CodingWorkerOptInDecisionV1 | None:
+        """Read one existing Worker decision without conferring selection or use."""
+
+        self.epoch_runtime.assert_current()
+        decision = CodingWorkerOptInJournal(
+            self.epoch_runtime.control_root / "product-state/worker-opt-in.jsonl",
+            scope_id=self.policy.project_scope_id,
+            gc_gate=self.gc_gate,
+            store_id=self.epoch_runtime.registry.store_id,
+        ).current_read_only(plugin_id)
+        self.epoch_runtime.assert_current()
+        return decision
 
     def preview_current_data_resources(
         self,
@@ -321,6 +400,7 @@ class CodingFencedProductReadOnlyPreviewOwner:
         layout: CodingPluginLifecycleStateLayout,
         *,
         workspace_guard: Callable[[], None] | None = None,
+        worker_candidates: bool = False,
     ) -> CodingFencedProductReadOnlyPreviewOwner:
         if workspace_guard is not None:
             workspace_guard()
@@ -389,6 +469,15 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 scope_id=layout.scope_id,
                 read_only=True,
             ).extend_policy(policy)
+            if worker_candidates:
+                policy = CodingExternalWorkerWheelCatalog(
+                    state_root / "external-worker-wheel-bindings.jsonl",
+                    source_root=source_root,
+                    store_id=epoch.store_id,
+                    namespace_id=switch.namespace_id,
+                    scope_id=layout.scope_id,
+                    read_only=True,
+                ).extend_policy(policy)
             strict = JournalLoadPolicy(partial_tail="raise", create_lock=False)
             gate = PluginPackageGcReservationJournal(
                 state_root / "gc-reservations.jsonl", load_policy=strict
@@ -427,6 +516,8 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 selected_manifests=_LocalWheelSelectedManifestReader(
                     policy=policy, root_reader=root_reader, read_only=True
                 ),
+                gc_gate=gate,
+                worker_candidates=worker_candidates,
             )
         except BaseException:
             runtime.close()
@@ -516,4 +607,5 @@ __all__ = [
     "CodingCurrentDataResourcePreviewV1",
     "CodingDataResourceAdmissionPreviewV1",
     "CodingFencedProductReadOnlyPreviewOwner",
+    "CodingWorkerCandidateReadEvidenceV1",
 ]

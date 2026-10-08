@@ -66,7 +66,7 @@ def retire_coding_windows_product_worker_crash_stage(
     ) as quiescence:
         if quiescence.active_runtime_lease_ids:
             raise ValueError("Windows Worker crash stage has active leases")
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
                 with WindowsPrivateDirectoryAcl() as acl:

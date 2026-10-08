@@ -21,6 +21,7 @@ from typing import Protocol, cast, runtime_checkable
 
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.hosting import (
+    ChildSessionHostingPort,
     ProcessLaunchRequest,
     ProcessStderrMode,
     ProcessStdinMode,
@@ -52,6 +53,15 @@ _MAX_PLATFORM_FACT_BYTES = 256
 
 _PlatformProbe = Callable[[], tuple[str, str, str, str]]
 _NativeCapture = Callable[[object], Awaitable[object]]
+
+
+def _create_windows_lpac_product_worker_session_host() -> ChildSessionHostingPort:
+    """Keep the private Windows Hosting factory behind the Worker friend bridge."""
+    from loushang.hosting._windows_lpac_runtime import (
+        _create_windows_lpac_child_session_host,
+    )
+
+    return _create_windows_lpac_child_session_host(max_sessions=1)
 
 
 @runtime_checkable

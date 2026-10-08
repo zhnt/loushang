@@ -322,6 +322,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.arch.module-cli",
         "coding.bootstrap",
         "coding.cli",
+        "coding.extension-author.command",
         "coding.hosted.command",
         "coding.hosted-tui.command",
         "coding.mux.command",
@@ -331,7 +332,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.package-repair.command",
         "coding.plugin-author-smoke.command",
         "coding.plugin-private-data.command",
+        "coding.plugin-support-status.command",
         "coding.worker-native.command",
+        "coding.worker-windows-candidate.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -368,7 +371,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert rows["coding.hosted.command"]["disposition"] == "explicit-foreground-stdio"
     assert rows["coding.hosted.command"]["importsComposition"] is False
     assert rows["coding.hosted.command"]["omissionOwner"] is None
-    assert rows["coding.hosted-tui.command"]["disposition"] == "explicit-owned-foreground-tui"
+    assert (
+        rows["coding.hosted-tui.command"]["disposition"]
+        == "explicit-owned-foreground-tui"
+    )
     assert rows["coding.hosted-tui.command"]["importsComposition"] is False
     assert rows["coding.hosted-tui.command"]["omissionOwner"] is None
     assert rows["coding.mux.command"]["disposition"] == "explicit-detachable-local"
@@ -396,6 +402,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
             "explicit-offline-linux-product-private-data",
         ),
         ("coding.worker-native.command", "explicit-linux-worker-native-candidate"),
+        (
+            "coding.worker-windows-candidate.command",
+            "explicit-offline-windows-worker-candidate-recovery",
+        ),
     ):
         assert rows[entrypoint_id]["disposition"] == disposition
         assert rows[entrypoint_id]["importsComposition"] is False
@@ -439,6 +449,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.arch.module-cli": ("cli", "supported-module"),
         "coding.bootstrap": ("bootstrap", "supported-library"),
         "coding.cli": ("cli", "installed"),
+        "coding.extension-author.command": ("cli", "installed"),
         "coding.hosted.command": ("hosted", "installed"),
         "coding.hosted-tui.command": ("hosted", "installed"),
         "coding.mux.command": ("mux", "installed"),
@@ -448,7 +459,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.package-repair.command": ("cli", "installed"),
         "coding.plugin-author-smoke.command": ("cli", "installed"),
         "coding.plugin-private-data.command": ("cli", "installed"),
+        "coding.plugin-support-status.command": ("cli", "installed"),
         "coding.worker-native.command": ("cli", "installed"),
+        "coding.worker-windows-candidate.command": ("cli", "installed-preview"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
         "harnesstui.named-mux": ("mux", "client-library"),
@@ -467,8 +480,11 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang-package-gc": "loushang.coding.cli.package_gc:main",
         "loushang-package-repair": "loushang.coding.cli.package_repair:main",
         "loushang-coding-plugin-smoke": "loushang.coding.plugin_author_smoke:main",
+        "loushang-coding-extension": "loushang.coding.extension_author:main",
+        "loushang-coding-plugin-status": "loushang.coding.plugin_support_status:main",
         "loushang-plugin-private-data": "loushang.coding.cli.plugin_private_data:main",
         "loushang-worker-native": "loushang.coding.cli.package_worker_native:main",
+        "loushang-worker-windows-candidate": "loushang.coding.cli.package_worker_windows_candidate:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -487,8 +503,11 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.loushang-package-gc": "coding.package-gc.command",
         "project.scripts.loushang-package-repair": "coding.package-repair.command",
         "project.scripts.loushang-coding-plugin-smoke": "coding.plugin-author-smoke.command",
+        "project.scripts.loushang-coding-extension": "coding.extension-author.command",
+        "project.scripts.loushang-coding-plugin-status": "coding.plugin-support-status.command",
         "project.scripts.loushang-plugin-private-data": "coding.plugin-private-data.command",
         "project.scripts.loushang-worker-native": "coding.worker-native.command",
+        "project.scripts.loushang-worker-windows-candidate": "coding.worker-windows-candidate.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }
@@ -599,21 +618,38 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             for name in imports
         )
         hosting_imports = {
-            name for name in imports
+            name
+            for name in imports
             if name == "loushang.hosting" or name.startswith("loushang.hosting.")
         }
         assert hosting_imports == {
             APPHOST / "launcher.py": {"loushang.hosting.contracts"},
-            APPHOST / "managed/handoff.py": {"loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_handoff"},
-            APPHOST / "managed/lifecycle.py": {"loushang.hosting.errors", "loushang.hosting.service"},
+            APPHOST / "managed/handoff.py": {
+                "loushang.hosting.errors",
+                "loushang.hosting.service",
+                "loushang.hosting.service_handoff",
+            },
+            APPHOST / "managed/lifecycle.py": {
+                "loushang.hosting.errors",
+                "loushang.hosting.service",
+            },
             APPHOST / "managed/bootstrap.py": {"loushang.hosting.service"},
             # Managed startup/continuation compares the original native value;
             # process creation and cleanup remain with their existing owners.
             APPHOST / "managed/mux_management.py": {"loushang.hosting.service"},
-            APPHOST / "managed/starter.py": {"loushang.hosting.contracts", "loushang.hosting.service_process"},
-            APPHOST / "managed/stopper.py": {"loushang.hosting.service", "loushang.hosting.service_group"},
+            APPHOST / "managed/starter.py": {
+                "loushang.hosting.contracts",
+                "loushang.hosting.service_process",
+            },
+            APPHOST / "managed/stopper.py": {
+                "loushang.hosting.service",
+                "loushang.hosting.service_group",
+            },
             APPHOST / "managed/connection.py": {"loushang.hosting.service"},
-            APPHOST / "managed/defaults.py": {"loushang.hosting.errors", "loushang.hosting.machine_identity"},
+            APPHOST / "managed/defaults.py": {
+                "loushang.hosting.errors",
+                "loushang.hosting.machine_identity",
+            },
         }.get(path, set()), str(path)
     for path in APPHOST_CORE:
         source = _read(path)

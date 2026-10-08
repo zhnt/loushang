@@ -183,7 +183,7 @@ def retire_coding_windows_product_worker_complete_stage(
             raise CodingWindowsWorkerStageRetirementError(
                 "coding_worker_stage_retirement_runtime_active"
             )
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             with product.epoch_runtime.borrow_product_state_root_descriptor() as root:
                 with WindowsPrivateDirectoryAcl() as acl:

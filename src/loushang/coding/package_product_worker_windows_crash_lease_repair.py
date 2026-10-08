@@ -176,7 +176,7 @@ def repair_coding_windows_product_worker_crash_orphan_runtime(
     def validate_while_locked(lease: PackageEpochRuntimeLeaseV1) -> Iterator[None]:
         if lease != expected_lease:
             raise ValueError("Windows Worker crash orphan lease changed")
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             with _guard_settled_review(
                 product,
                 attempt_id=expected_review.orphan_review.attempt_id,

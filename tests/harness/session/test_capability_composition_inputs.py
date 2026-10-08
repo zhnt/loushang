@@ -417,6 +417,87 @@ async def _owner_staging_rechecks_expiry_before_live_generation() -> None:
     assert staged is False
 
 
+def test_owner_staging_accepts_one_current_start_after_slow_graph() -> None:
+    asyncio.run(_owner_staging_accepts_one_current_start_after_slow_graph())
+
+
+async def _owner_staging_accepts_one_current_start_after_slow_graph() -> None:
+    admission = _admission(owner_id="product.tools", contribution_id="tools-a")
+    now = [150]
+    policy = ["product-policy-1"]
+    gate = replace(
+        _authority_gate(admission),
+        clock=lambda: now[0],
+        product_policy_revision_reader=lambda _product, _scope: policy[0],
+    )
+    binding = SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=gate,
+        stage=lambda _captures: object(),
+        dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
+        commit=lambda _value: None,
+        rollback_commit=lambda _value: None,
+    )
+    started = gate.begin(admission)
+    now[0] = 201
+    generations = await stage_session_capability_owner_generations(
+        admissions=(admission,),
+        bindings=(binding,),
+        captures=(),
+        started_admissions=(started,),
+    )
+    assert len(generations) == 1
+    with pytest.raises(ValueError, match="already staged"):
+        await stage_session_capability_owner_generations(
+            admissions=(admission,),
+            bindings=(binding,),
+            captures=(),
+            started_admissions=(started,),
+        )
+    commit_session_capability_owner_generations(generations)
+    await dispose_session_capability_owner_generations(generations)
+    with pytest.raises(ValueError, match="start witness"):
+        await stage_session_capability_owner_generations(
+            admissions=(admission,),
+            bindings=(binding,),
+            captures=(),
+            started_admissions=(started,),
+        )
+
+    now[0] = 150
+    second_start = gate.begin(admission)
+    now[0] = 201
+    policy[0] = "changed-policy"
+    with pytest.raises(ValueError, match="Product policy is stale"):
+        await stage_session_capability_owner_generations(
+            admissions=(admission,),
+            bindings=(binding,),
+            captures=(),
+            started_admissions=(second_start,),
+        )
+    gate.abort(second_start)
+
+    policy[0] = "product-policy-1"
+    now[0] = 150
+    third_start = gate.begin(admission)
+    now[0] = 900_150
+    with pytest.raises(ValueError, match="start witness expired"):
+        await stage_session_capability_owner_generations(
+            admissions=(admission,),
+            bindings=(binding,),
+            captures=(),
+            started_admissions=(third_start,),
+        )
+    gate.abort(third_start)
+    with pytest.raises(ValueError, match="admission is not current"):
+        gate.begin(admission)
+
+
 def test_owner_authority_gate_rejects_wrong_current_snapshot_identities() -> None:
     admission = _admission(owner_id="product.tools", contribution_id="tools-a")
     wrong = _admission(owner_id="product.tools.other", contribution_id="tools-b")

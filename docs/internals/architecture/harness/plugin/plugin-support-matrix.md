@@ -10,13 +10,13 @@ does not add a second Plugin registry or change a default route.
 | --- | --- | --- | --- | --- | --- |
 | Native Skill | `.loushang/skills/<name>/SKILL.md` | Native Resource discovery; no Wheel installation | New Coding Session selects the Skill; `/skill:<name>` injects its text into model input | Coding workspace; no package lifecycle | Verify a concrete Session when asserting use |
 | Native Prompt | `.loushang/prompts/<name>.md` | Native Resource discovery; no Wheel installation | New Coding Session expands `/<name>` into model input | Coding workspace; no package lifecycle | Verify a concrete Session when asserting use |
-| Native Extension | `.loushang/extensions/<name>.py` or `<name>/extension.py` | Native Resource/Extension discovery; trusted Python loaded in the Coding process | Can register hooks, tools, commands, flags, and dynamic resources; inspect `/extensions` and prove the requested behavior in a Session | Coding workspace; separate from Wheel Package lifecycle | No general self-service executable Wheel admission follows from this route |
+| Native Extension | `.loushang/extensions/<name>.py` or `<name>/extension.py`; single-file `loushang-coding-extension init` | Native Resource/Extension discovery; trusted Python loaded in the Coding process | Can register hooks, tools, commands, flags, and dynamic resources; `loushang-coding-extension smoke` proves one Tool through an offline Session | Coding workspace; separate from Wheel Package lifecycle | No general self-service executable Wheel admission follows from this route |
 | Native Theme | `.loushang/themes/<name>.json` | Native Catalog discovery | Catalog visibility exists; native file alone does not change Coding Screen colors | Coding workspace | Screen selection/application remains Product controlled |
 | Native Method | `methods/<name>/SKILL.md` | Method loader, separate from Plugin Package | Non-interactive `--method` path; no TUI/RPC Method execution | Coding | No public Method Wheel profile |
 | Data Skill Wheel | `build-coding-skill` | Fenced Coding Product admits the constrained document-only profile | Enabled selected revision appears in a new Session; `/skill:<name>` reaches persisted prepared model input | Linux/POSIX Product path verified; not a default global Plugin selection | Per-workspace install/enable and exact Session proof |
 | Data Prompt Wheel | `build-coding-prompt` | Same constrained data profile | Enabled selected revision expands `/<name>` into persisted prepared model input | Linux/POSIX Product path verified | Per-workspace install/enable and exact Session proof |
-| Screen Theme Wheel | `build-coding-theme` | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
-| Native Worker Wheel | `build-coding-worker-candidate` | Explicit candidate review, Product admission, native release and per-install opt-in | Explicit Linux Python SDK Session query can use the selected Worker; default Coding Session remains Current | Linux x86-64; explicit Windows AMD64 candidate routes have native evidence, ordinary Windows route remains closed | No general third-party self-service admission or default route |
+| Screen Theme Wheel | `init-coding-theme` then `build-coding-theme`; disposable Screen smoke | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
+| Native Worker Wheel | `build-coding-worker-candidate`; Linux disposable `loushang-coding-plugin-smoke --kind worker` checks admission and selection only | Linux operator `candidate-capture`, `candidate-install`, `candidate-enable`, `candidate-update`, `candidate-disable`, and `candidate-remove` stage exact capture, Product installation, version replacement, and Desired State; separate `loushang-package-gc --worker-candidates` deletes exact retired roots after settlement | Explicit Linux Python SDK Session query can use the selected Worker; default Coding Session remains Current | Linux x86-64 including a cross-process update-to-remove-to-physical-GC journey; explicit Windows AMD64 Direct, Hosted, crash/reopen, C5 reopen, normal-exit cleanup, and disable while a Session is pinned passed the seven-case native Session gate on `cd25e160`; unflagged Windows routing remains closed | No general third-party self-service, Windows update/GC combination, or default route |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
 The local Extension row is the simple file-based author path comparable in
@@ -26,6 +26,27 @@ retirement; the two paths have different authority and lifecycle guarantees.
 The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
+The explicit `loushang-worker-windows-candidate` offline inspect and crash
+recovery command is implemented behind `--windows-candidate`. The hosted
+crash/reopen Product case calls `inspect` and `recover-crash`, verifies refusal
+at injected partial-settlement boundaries, then completes recovery through the
+command. The exact code head `cd25e160` passed the seven-case native Windows
+Session gate with no skipped cases. This candidate
+command does not open unflagged Windows Session routing or general third-party
+Worker admission.
+
+`loushang-worker-native candidate-status` reads the retained per-install Worker
+opt-in decision and observes an exact selected Worker candidate through the
+fenced Product's read-only owner. `observed_in_read` is partial selection
+evidence, not an execution grant. The status marks changed Desired State or
+opt-in revisions as `stale_evidence`. `candidateOptInAlignment` compares the
+selected candidate identity with the retained opt-in decision; even
+`identity_match_in_read` does not prove that a native release is current or
+that any Session used the Worker.
+The disposable Worker author smoke proves admission and selected candidate
+bytes for its temporary Linux workspace only; its `nativeRelease` and
+`productUse` remain `not_checked`.
+
 For Skill and Prompt authors, `loushang-plugin init-coding-skill` or
 `init-coding-prompt` creates source and prints a build command. The resulting
 Wheel can be checked with `loushang-coding-plugin-smoke`, which runs install, enable, new
@@ -34,6 +55,14 @@ fenced Coding workspace. Its `productAdmission`, `productSelection`, and
 `productUse` fields report the stage reached. A passing smoke result is evidence
 for that exact Wheel in the temporary workspace, not an admission receipt for
 another workspace or platform. See the [authoring guide](plugin-authoring-guide.md).
+
+For a fenced POSIX workspace, `loushang-coding-plugin-status --workspace PATH`,
+`/plugins status`, and the local read SDK's `support_status()` use the same
+read-only Coding projection. It joins the management owner's Desired State and
+the Product's current composition preview. `observed_in_preview` admission
+and `projected` selection are partial evidence; `productUse` remains
+`not_checked` until an actual Session or Screen consumer proves use. A changed
+Desired State revision reports `stale_evidence` rather than a current selection.
 
 ## Product and platform gates
 

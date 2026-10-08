@@ -39,9 +39,15 @@ Wheel source trees below may also contain `skills/`, `prompts/`, or `themes/`,
 but they are package inputs rather than auto-discovered workspace files.
 
 For a small code extension, place a Python file in `.loushang/extensions/`
-and define `register(api)`. The
+and define `register(api)`. `loushang-coding-extension init
+.loushang/extensions/hello.py` creates a no-replace template and prints its
+`smokeCommand`. The smoke copies that file into a disposable fenced Product
+workspace, starts a real offline Coding Session, and calls its selected Tool.
+The Extension still executes as trusted Python in the current process; the
+disposable workspace is not a code sandbox. Neither command installs a Wheel
+or admits executable Wheels. The
 [runnable tool example](../../../../../examples/coding/extensions/03_custom_tool.py)
-shows the `@tool` and `api.register_tool(...)` pattern. This is a trusted
+shows the `@tool`, `direct_tool(...)`, and `api.register_tool(...)` pattern. This is a trusted
 same-process path. The old raw `--extension`/`-e` CLI arguments are removed;
 use native discovery. A declared executable Extension in a Wheel does not
 inherit this native route's Product admission.
@@ -70,8 +76,17 @@ The result reports `productAdmission`, `productSelection`, and `productUse`
 separately; a failed stage leaves later stages `not_checked`. It currently
 requires the ordinary POSIX Product route and proves only that temporary
 workspace. Install and enable the Wheel separately in the destination
-workspace, then check its own Session. Neither scaffold nor smoke opens the
-Theme or Worker candidate gates.
+workspace, then check its own Session. These Skill/Prompt commands do not open
+the Theme or Worker candidate gates.
+
+For the existing Screen Theme candidate, run `loushang-plugin
+init-coding-theme ./themepack --resource-name dusk`, edit
+`./themepack/themes/dusk.json`, then run its returned `buildCommand` and
+`smokeCommand`. The Theme smoke installs and enables the exact Wheel in a
+disposable fenced Product workspace, selects `theme: plugin:dusk`, and checks
+the Coding Screen Theme consumer against the authored style tokens. This is
+candidate evidence for that Wheel, not general Theme rollout, Hosted Mux
+support, or admission in the destination workspace.
 
 ## Capability Provider
 
@@ -238,6 +253,9 @@ amd64, it must be an accepted PE executable. The current profile contains one
 read-only `capability.query` Provider with no requested authorities. An
 optional, repeatable `--dependency dependency==1` writes up to three distinct
 exact pins into Wheel metadata in canonical order.
+The [standalone Linux query Worker example](../../../../../examples/plugins/coding_worker_query/README.md)
+contains author-facing source plus compile, Wheel build, and disposable Product
+smoke commands. It uses no test fixture import.
 
 ```text
 loushang-plugin build-coding-worker-candidate build/query-worker \
@@ -251,6 +269,20 @@ changed input bytes, oversized sources, invalid native format, and replacing
 an existing output. Its JSON reports
 `profile: "coding-local-worker-candidate-v1"`,
 `productAdmission: "not_checked"`, and `productUse: "not_checked"`.
+On Linux, authors can check Product admission and selection for that exact
+Wheel in a disposable offline workspace:
+
+```text
+loushang-coding-plugin-smoke dist/reviewworker-1-py3-none-manylinux_2_17_x86_64.whl \
+  --kind worker --plugin-id reviewworker \
+  --contribution-id query-provider --owner-id coding
+```
+
+A passing Worker smoke reports `productAdmission: "passed"` and
+`productSelection: "passed"`. It leaves `nativeRelease` and `productUse` as
+`not_checked`: it does not approve a native release, run the executable, or
+authorize the caller's real workspace. A failed Product stage is reported
+without claiming later stages.
 Python authors can use `build_coding_local_worker_candidate_wheel()` for bytes
 or `write_coding_local_worker_candidate_wheel()` for a new file. The Coding
 Product still requires its explicit Worker candidate policy, installation,
@@ -273,10 +305,135 @@ or claim Product use.
 This Worker Wheel recipe is currently a developer candidate, not a self-service
 install flow. `loushang --install-package` admits the supported data Resource
 Wheels; `loushang-worker-native install` installs an approved Hosting native
-release, not the author's Worker Plugin. A Product operator must separately
-admit, install, and enable the Worker candidate through the fenced Product
-owner before the query or Python SDK examples below can run. A successful
-`build-coding-worker-candidate` command alone does not make the Worker usable.
+release, not the author's Worker Plugin. On Linux, a Product operator can
+capture the exact inert Worker candidate through the fenced Product owner:
+
+```text
+loushang-worker-native --workspace PATH candidate-capture \
+  --wheel dist/reviewworker-1-py3-none-manylinux_2_17_x86_64.whl \
+  --contribution-id query-provider --owner-id coding \
+  --native-platform linux-x86_64
+```
+
+The result identifies the captured digest and reports
+`productAdmission: not_checked` and `productUse: not_checked`. On Linux the
+operator can then install that exact candidate disabled, and enable the
+installed revision using the returned inventory revision:
+
+```text
+loushang-worker-native --workspace PATH candidate-install \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id install-reviewworker-1
+loushang-worker-native --workspace PATH candidate-enable \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id enable-reviewworker-1 \
+  --expected-inventory-revision REVISION
+```
+
+The install result reports Product admission for that exact Wheel and returns
+`alreadyInstalled: true` when a retry finds the same installed revision. The
+enable result reports the Desired State operation. Neither proves Session use.
+
+The Product operator must separately review and approve the trusted Loushang
+native Hosting release Wheel. `RELEASE_WHEEL` below is that controlled runtime
+artifact, **not** `reviewworker`'s candidate Wheel. Use the `reviewId` from
+`nativeReleaseReview` and the current `generation` from `status`; a fresh
+workspace begins at generation `0`:
+
+```text
+loushang-worker-native --workspace PATH status
+loushang-worker-native --workspace PATH review --wheel RELEASE_WHEEL
+loushang-worker-native --workspace PATH approve \
+  --wheel RELEASE_WHEEL --review-id REVIEW_ID \
+  --operation-id approve-native-release-1 --expected-generation 0
+loushang-worker-native --workspace PATH install --wheel RELEASE_WHEEL
+loushang-worker-native --workspace PATH status
+```
+
+`install` returns the installed `nativeClosure`; a review or approval alone
+does not install the native profile. After the selected candidate and native
+closure are current, the operator records the separate per-install decision
+and checks its exact identity alignment:
+
+```text
+loushang-worker-native --workspace PATH candidate-allow \
+  --plugin-id reviewworker --operation-id allow-reviewworker-1 \
+  --expected-generation 0
+loushang-worker-native --workspace PATH candidate-status \
+  --plugin-id reviewworker
+```
+
+Use the current opt-in generation if this Plugin has an earlier decision.
+`identity_match_in_read` is only a read-only alignment observation; neither it
+nor a successful build, capture, approval, or install proves Session use. An
+actual query through the explicit Product Session path below supplies that
+evidence for the selected Wheel.
+
+For an installed Linux candidate, capture the new Wheel under its new versioned
+filename, revoke the current per-install opt-in, then update the exact old
+selection. Use the new digest from `candidate-capture` and the current inventory
+revision from the Product operation:
+
+```text
+loushang-worker-native --workspace PATH candidate-revoke \
+  --plugin-id reviewworker --operation-id revoke-before-update \
+  --expected-generation GENERATION
+loushang-worker-native --workspace PATH candidate-update \
+  --plugin-id reviewworker --from-artifact-digest OLD_DIGEST \
+  --artifact-digest NEW_DIGEST --operation-id update-reviewworker-2 \
+  --expected-inventory-revision REVISION
+loushang-worker-native --workspace PATH candidate-allow \
+  --plugin-id reviewworker --operation-id allow-reviewworker-2 \
+  --expected-generation NEXT_GENERATION
+```
+
+The update refuses an allowed opt-in, a changed old selection, or a stale
+inventory revision. It uses the Product lifecycle update transaction and reports
+`productUse: not_checked`; the new revision needs a fresh allow decision and an
+actual Session query for use evidence. Repeating the exact successful operation
+ID, old and new digests, and expected inventory revision returns
+`alreadyUpdated: true` while that committed selection is still current. A
+different operation ID or later inventory change is refused; inspect
+`candidate-status` before attempting another update. Old Session receipts are fenced
+by the changed selected revision. The former Wheel remains subject to separate
+retirement and Package GC checks.
+
+To stop and remove a selected candidate, revoke its per-install opt-in, then
+disable and remove the exact installed revision using the latest inventory
+revision for each Desired State operation:
+
+```text
+loushang-worker-native --workspace PATH candidate-revoke \
+  --plugin-id reviewworker --operation-id revoke-reviewworker-1 \
+  --expected-generation GENERATION
+loushang-worker-native --workspace PATH candidate-disable \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id disable-reviewworker-1 \
+  --expected-inventory-revision REVISION
+loushang-worker-native --workspace PATH candidate-remove \
+  --plugin-id reviewworker --artifact-digest DIGEST \
+  --operation-id remove-reviewworker-1 \
+  --expected-inventory-revision NEXT_REVISION
+```
+
+`candidate-remove` changes Desired State to absent after opt-in revocation.
+It reports `packageRetirement: not_checked`; physical Package GC and any
+pinned Session retirement require separate Product evidence.
+After every pinned Session has been disposed and the Worker attempt history is
+settled, a Linux candidate operator can run the separate offline Package GC
+command and delete each exact candidate returned for this Plugin:
+
+```text
+loushang-package-gc --workspace PATH --worker-candidates prepare
+loushang-package-gc --workspace PATH --worker-candidates list
+loushang-package-gc --workspace PATH --worker-candidates delete \
+  --candidate-id CANDIDATE_ID --attempt-key retire-reviewworker-1
+```
+
+The update-to-remove operator regression deletes both the old and new Wheel
+roots and checks their physical absence. `candidate-remove` itself never claims
+that deletion. An unsettled attempt or retained reference keeps GC closed; the
+operator must use the exact review and repair path for that debt.
 
 On Linux, a Product operator can inspect or change per-install Worker opt-in
 with `loushang-worker-native --workspace PATH candidate-status`,
@@ -286,7 +443,13 @@ can set `--require-worker`. The Product derives the selected candidate and
 requires an approved installed native release. These commands do not change
 default Coding Session routing. `candidate-status` reports
 `ordinarySessionRouting: "python_sdk_explicit_linux"` and
-`defaultSessionRouting: "closed"`.
+`defaultSessionRouting: "closed"`. Its `candidateSelection` is a read-only,
+partial observation of the selected Worker version and executable digest;
+`productUse` remains `not_checked`, and a changed snapshot is reported as
+`stale_evidence`. `candidateOptInAlignment: "identity_match_in_read"` means
+the selected artifact, contribution, owner, and native platform match the
+retained allow decision in this read. It is not a native release or Session-use
+check.
 The ordinary Session opt-in is available through the Python SDK only; Coding
 CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
 
@@ -302,8 +465,10 @@ worker_candidate_plugin_id="reviewworker")`, then
 `await runtime.create_session(cwd=...)` and query the returned Session in the
 same way. The hosted transcript owner materializes that new Session before
 issuing its Product receipt. The Product still checks the selected installed
-revision, native approval, current receipt, and per-install opt-in. These
-entrypoints do not enable Worker routing for other Sessions or on Windows.
+revision, native approval, current receipt, and per-install opt-in. On Windows,
+passing `worker_candidate_plugin_id` explicitly selects the Windows Worker
+candidate for that Session; the current-head native production gate remains
+pending. Other Sessions and the default route remain unchanged.
 
 For an already persisted Coding Session in that workspace, the explicit Linux
 query Consumer can use the selected Worker after native release approval,

@@ -87,11 +87,13 @@ class DurableActivationHostLifecycle:
         reservation: ActivationUseReservationV1,
         *,
         expected_state: PluginActivationUseState,
+        started_at_unix_ms: int | None = None,
     ) -> None:
         try:
             self.journal.validate_activation_use_current(
                 reservation,
                 expected_state=expected_state,
+                started_at_unix_ms=started_at_unix_ms,
             )
         except PluginActivationJournalError as exc:
             raise self.error_factory(

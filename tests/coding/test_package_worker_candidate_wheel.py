@@ -29,7 +29,9 @@ from types import SimpleNamespace
 
 import pytest
 
+import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
+import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
 import loushang.coding.package_product_worker_native_install as native_install_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
@@ -67,6 +69,9 @@ from loushang.coding.package_external_worker_wheel import (
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
+from loushang.coding.package_product_preview import (
+    CodingFencedProductReadOnlyPreviewOwner,
+)
 from loushang.coding.package_product_runtime import (
     admit_coding_external_data_wheel,
     admit_coding_external_worker_wheel,
@@ -79,11 +84,36 @@ from loushang.coding.package_product_worker_capability import (
     CodingProductWorkerCapabilityAuthority,
     CodingWorkerCapabilityBindingError,
 )
+from loushang.coding.package_product_worker_cleanup_evidence import (
+    CodingPosixWorkerCleanupEvidenceAuthority,
+)
 from loushang.coding.package_product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
 )
+from loushang.coding.package_product_worker_history_checkpoint import (
+    CodingWorkerHistoryCheckpointError,
+    publish_coding_product_worker_history_checkpoint,
+    read_coding_product_worker_history_checkpoints_under_gc_guard,
+    repair_coding_product_worker_history_checkpoint_append,
+    rollback_coding_product_worker_history_checkpoint_tail,
+)
+from loushang.coding.package_product_worker_history_commit_v2 import (
+    commit_coding_product_worker_v2_owner,
+)
 from loushang.coding.package_product_worker_history_retention import (
     review_coding_product_worker_history_retention,
+)
+from loushang.coding.package_product_worker_history_retire_v2 import (
+    retire_coding_product_worker_v2_history,
+)
+from loushang.coding.package_product_worker_history_rotate_v2 import (
+    seal_coding_product_worker_v1_history_for_v2,
+)
+from loushang.coding.package_product_worker_history_segments import (
+    CodingWorkerHistorySegmentError,
+)
+from loushang.coding.package_product_worker_history_stage_v2 import (
+    stage_coding_product_worker_v2_preparation,
 )
 from loushang.coding.package_product_worker_installed_native import (
     open_coding_product_installed_worker_release_reader,
@@ -141,6 +171,9 @@ from loushang.coding.package_product_worker_policy import (
     CodingWorkerPolicySelectionError,
     coding_worker_session_scope_id,
     derive_coding_selected_worker_policy,
+)
+from loushang.coding.package_product_worker_posix_gc_history import (
+    CodingPosixWorkerGcHistoryAuthority,
 )
 from loushang.coding.package_product_worker_provider import (
     CodingWorkerBaseCompositionPolicyBinding,
@@ -259,6 +292,7 @@ from loushang.harness.package_product.product_worker_candidate import (
 )
 from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcReservationError,
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_gc_target import (
@@ -267,7 +301,10 @@ from loushang.harness.plugin_management.package_gc_target import (
 from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
-from loushang.harness.plugin_management.records import PluginDesiredStateMutationV1
+from loushang.harness.plugin_management.records import (
+    PluginDesiredStateMutationV1,
+    PluginPackageRevisionRefV1,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
@@ -318,6 +355,9 @@ from loushang.harness.transcript.discovery import (
 from loushang.harness.worker._native_profile_bridge import (
     _bind_posix_static_contained_product_worker_profile,
 )
+from loushang.harness.worker.activation_state_journal import (
+    WorkerActivationStateJournalError,
+)
 from loushang.harness.worker.capability_query import (
     CapabilityQueryWorkerAdapter,
     CapabilityWorkerAuthorityV1,
@@ -348,6 +388,8 @@ from loushang.harness.worker.journal import (
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
+    WorkerCleanupSettlementV1,
+    _AttemptKey,
     _initial_state,
 )
 from loushang.harness.worker.supervisor import WorkerSupervisor, WorkerSupervisorError
@@ -361,6 +403,10 @@ from loushang.plugin._coding_local_worker_wheel import (
     write_coding_local_worker_candidate_wheel,
 )
 from tests.coding.test_package_external_data_wheel import _data_wheel
+from tests.coding.test_package_product_worker_activation_segments import (
+    _next_state,
+    _registered_attempt,
+)
 from tests.harness.worker.test_product_activation import _CleanupEvidenceOwner
 from tests.hosting.test_posix_launch_preparation import _native_host
 
@@ -538,7 +584,12 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     protocol_queries: int = 1,
     direct_entry_only: bool = False,
     hosted_entry_only: bool = False,
+    disable_while_direct_session_open: bool = False,
+    update_while_direct_session_open: bool = False,
 ) -> None:
+    assert not disable_while_direct_session_open or direct_entry_only
+    assert not update_while_direct_session_open or direct_entry_only
+    assert not (disable_while_direct_session_open and update_while_direct_session_open)
     installed_native = native_mode in {
         "installed-release",
         "repaired-release",
@@ -700,6 +751,11 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     )
     try:
         product = explicit.runtime_owner.product_owner
+        approval_reader = CodingWorkerNativeApprovalJournal(product)
+        approval_lock = product.state_root / "worker-native-release-approvals.jsonl.lock"
+        with product.gc_gate.read_snapshot_guard():
+            assert approval_reader.current() is None
+            assert not approval_reader.path.exists() and not approval_lock.exists()
         if native_mode == "test-facts":
             activation_state = open_coding_product_worker_activation_state_store(
                 product
@@ -1195,6 +1251,23 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 assert decision.opt_in.owner_id == _OWNER
                 assert product_opt_in.current(_PLUGIN) == decision
+                if direct_entry_only:
+                    with CodingFencedProductReadOnlyPreviewOwner.open(
+                        lifecycle
+                    ) as read_owner:
+                        assert read_owner.worker_opt_in_decision(_PLUGIN) == decision
+                        with pytest.raises(PermissionError):
+                            read_owner.selected_worker_candidate(_PLUGIN)
+                    with CodingFencedProductReadOnlyPreviewOwner.open(
+                        lifecycle, worker_candidates=True
+                    ) as read_worker_owner:
+                        observed = read_worker_owner.selected_worker_candidate(
+                            _PLUGIN
+                        )
+                        assert observed.plugin_version == _VERSION
+                        assert observed.executable_digest == sha256(
+                            executable.read_bytes()
+                        ).hexdigest()
                 assert execute_native_cli(
                     product,
                     Namespace(action="candidate-status", plugin_id=_PLUGIN),
@@ -1507,7 +1580,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             assert gate_corruption.value.code == (
                                 "coding_worker_sealed_segment_changed"
                                 if native_mode == "installed-release"
-                                else "coding_worker_start_gate_corrupt"
+                                else "coding_worker_segment_head_changed"
                             )
                         finally:
                             gate_journal.path.write_bytes(gate_history)
@@ -3036,6 +3109,16 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                 is None
                             )
                             await session.prepare_model_call_runtime()
+                            prepared_activation = (
+                                review_coding_product_worker_history_retention(
+                                    product, attempt_id=deferred_attempt
+                                ).retained_activation_references
+                            )
+                            assert any(
+                                item.attempt_id == deferred_attempt
+                                and item.phase == "published"
+                                for item in prepared_activation
+                            ), prepared_activation
                             assert await bind_coding_worker_query_consumer(
                                 session
                             ).query(symbol="review") == "Review symbol"
@@ -3051,6 +3134,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     assert not (
                         product.state_root / f"worker-payload-{deferred_attempt}"
                     ).exists()
+                    deferred_activation = review_coding_product_worker_history_retention(
+                        product, attempt_id=deferred_attempt
+                    ).retained_activation_references
+                    assert any(
+                        item.attempt_id == deferred_attempt and item.phase == "settled"
+                        for item in deferred_activation
+                    ), deferred_activation
                     failed_attempt = "e2" * 16
                     failed_pending = plan_coding_product_worker_pending_launch(
                         receipt_owner=receipt_owner,
@@ -3101,6 +3191,13 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     assert not (
                         product.state_root / f"worker-payload-{failed_attempt}"
                     ).exists()
+                    failed_activation = review_coding_product_worker_history_retention(
+                        product, attempt_id=failed_attempt
+                    ).retained_activation_references
+                    assert any(
+                        item.attempt_id == failed_attempt and item.phase == "settled"
+                        for item in failed_activation
+                    ), failed_activation
                     payloads_before_ordinary_bootstrap = tuple(
                         product.state_root.glob("worker-payload-*")
                     )
@@ -3272,21 +3369,33 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                     asyncio.run(exercise_selected_ordinary_worker())
                     if direct_entry_only:
+                        payloads_before_direct = frozenset(
+                            product.state_root.glob("worker-payload-*")
+                        )
+                        gate_attempts_before_direct = {
+                            item.attempt_id
+                            for item in CodingWorkerStartGateJournal(product).attempts()
+                        }
+                        supervisor_journal = (
+                            open_coding_product_worker_supervisor_journal(product)
+                        )
+                        incomplete_before_direct = supervisor_journal.incomplete()
+                        direct_model = Model(
+                            id="direct-worker",
+                            name="Direct Worker",
+                            provider="test",
+                            endpoint="test",
+                            capabilities=Capabilities(
+                                input=("text",),
+                                context_window=128_000,
+                                max_tokens=4_096,
+                            ),
+                        )
                         direct_session = create_agent_session(
                             session_manager=asyncio.run(
                                 SessionManager.load(selected_transcript)
                             ),
-                            model=Model(
-                                id="direct-worker",
-                                name="Direct Worker",
-                                provider="test",
-                                endpoint="test",
-                                capabilities=Capabilities(
-                                    input=("text",),
-                                    context_window=128_000,
-                                    max_tokens=4_096,
-                                ),
-                            ),
+                            model=direct_model,
                             services=create_services(settings_manager=settings),
                             worker_candidate_plugin_id=_PLUGIN,
                         )
@@ -3301,12 +3410,311 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     item.name == "worker-extra"
                                     for item in direct_session.resource_bundle.skills
                                 )
+                                if disable_while_direct_session_open:
+                                    disabled = product.management.submit(
+                                        PluginManagementCommandV1(
+                                            action="disable",
+                                            mutation=PluginDesiredStateMutationV1(
+                                                operation_id=(
+                                                    "worker-public-session-disable"
+                                                ),
+                                                idempotency_key=(
+                                                    "worker-public-session-disable"
+                                                ),
+                                                expected_inventory_revision=(
+                                                    product.desired_state.snapshot().inventory_revision
+                                                ),
+                                                installation_key=(
+                                                    installations[0].installation_key
+                                                ),
+                                                desired_state="installed_disabled",
+                                                package_revision=None,
+                                                actor_id=product.actor_id,
+                                                policy_revision=(
+                                                    product.desired_policy_revision
+                                                ),
+                                            ),
+                                        )
+                                    )
+                                    assert disabled.status == "terminal"
+                                elif update_while_direct_session_open:
+                                    updated_payload = (
+                                        build_coding_local_worker_candidate_wheel(
+                                            plugin_id=_PLUGIN,
+                                            version="2",
+                                            contribution_id=_CONTRIBUTION,
+                                            owner_id=_OWNER,
+                                            native_platform="linux-x86_64",
+                                            wheel_tag=_TAG,
+                                            executable=executable.read_bytes(),
+                                        )
+                                    )
+                                    updated_source = (
+                                        product.policy.source_root
+                                        / f"{_PLUGIN}-2-{_TAG}.whl"
+                                    )
+                                    updated_source.write_bytes(updated_payload)
+                                    updated_binding = replace(
+                                        binding,
+                                        source_identity=str(updated_source),
+                                        requested_package=f"{_PLUGIN}==2",
+                                        artifact_digest=sha256(updated_payload).hexdigest(),
+                                    )
+                                    updated_policy = replace(
+                                        product.policy,
+                                        bindings=tuple(
+                                            sorted(
+                                                (
+                                                    *product.policy.bindings,
+                                                    updated_binding,
+                                                ),
+                                                key=lambda item: item.source_identity,
+                                            )
+                                        ),
+                                    )
+                                    updated_product = replace(
+                                        product, policy=updated_policy
+                                    )
+                                    updated_runtime = updated_product.factory_for_session(
+                                        session_id="worker-public-session-update",
+                                        cwd=workspace,
+                                        runtime_id="worker-public-session-update",
+                                    ).create(
+                                        PackageProductRuntimeRequestV1(
+                                            product_id="coding",
+                                            session_id="worker-public-session-update",
+                                            cwd=str(workspace),
+                                        )
+                                    )
+                                    try:
+                                        updated_runtime.activate()
+                                        updated = updated_runtime.lifecycle.route(
+                                            PackageProductLifecycleIntentV1(
+                                                operation_id=(
+                                                    "worker-public-session-update"
+                                                ),
+                                                action="update",
+                                                source=str(updated_source),
+                                                scope="project",
+                                            ),
+                                            entrypoint="cli",
+                                        )
+                                        assert updated.handled
+                                        assert updated.record is not None
+                                        assert updated.record.lifecycle == "installed"
+                                        selected_updated = (
+                                            updated_runtime.capture_selected_plugin_manifest_for(
+                                                _PLUGIN,
+                                                max_files=16,
+                                                max_total_bytes=16 * 1024 * 1024,
+                                            )
+                                        )
+                                        assert selected_updated.manifest.version == "2"
+                                    finally:
+                                        updated_runtime.dispose_runtime()
+                                else:
+                                    revoked = product_opt_in.revoke(
+                                        plugin_id=_PLUGIN,
+                                        operation_id="worker-public-session-revoke",
+                                        expected_generation=decision.generation,
+                                    )
+                                    assert revoked.action == "revoke"
+                                    assert revoked.kill_switch_generation == (
+                                        decision.kill_switch_generation + 1
+                                    )
+                                with pytest.raises(
+                                    CapabilityWorkerFacetProxyError,
+                                    match="worker_capability_facet_proxy_owner_unavailable",
+                                ):
+                                    await direct_session.query_worker_symbol("review")
                             finally:
                                 await direct_session.dispose()
 
                         asyncio.run(exercise_direct_worker())
+                        assert frozenset(product.state_root.glob("worker-payload-*")) == (
+                            payloads_before_direct
+                        )
+                        assert supervisor_journal.incomplete() == incomplete_before_direct
+                        direct_gate_attempts = tuple(
+                            item
+                            for item in CodingWorkerStartGateJournal(product).attempts()
+                            if item.attempt_id not in gate_attempts_before_direct
+                        )
+                        assert len(direct_gate_attempts) == 1
+                        direct_retention = review_coding_product_worker_history_retention(
+                            product, attempt_id=direct_gate_attempts[0].attempt_id
+                        )
+                        reference = direct_retention.attempt_reference
+                        assert reference is not None
+                        assert direct_retention.receipt_record is not None
+                        assert reference.attempt_id == direct_gate_attempts[0].attempt_id
+                        assert reference.plugin_id == _PLUGIN
+                        assert reference.receipt_fingerprint == (
+                            direct_gate_attempts[0].receipt_fingerprint
+                        )
+                        assert reference.selected_package_revision_digest == (
+                            direct_retention.receipt_record.receipt.policy.plugin_revision_digest
+                        )
+                        assert reference.native_platform == "linux"
+                        assert direct_retention.gc_reservation_revision >= 0
+                        assert direct_retention.start_gate_history_revision >= (
+                            direct_gate_attempts[0].journal_revision
+                        )
+                        assert direct_retention.attempt_record is not None
+                        assert direct_retention.supervisor_history_revision >= (
+                            direct_retention.attempt_record.record_revision
+                        )
+                        assert direct_retention.receipt_record is not None
+                        assert direct_retention.receipt_history_revision >= (
+                            direct_retention.receipt_record.journal_revision
+                        )
+                        assert direct_retention.unbound_supervisor_attempt_ids == ()
+                        assert direct_retention.retained_start_gate_attempt_ids
+                        assert direct_retention.retained_supervisor_attempt_ids
+                        assert direct_retention.retained_receipt_fingerprints
+                        assert direct_retention.supervisor_epoch_high_water
+                        assert direct_retention.opt_in_history_revision >= 1
+                        assert direct_retention.current_opt_in is not None
+                        assert (
+                            direct_retention.current_opt_in.operation_id
+                            in direct_retention.retained_opt_in_operation_ids
+                        )
+                        assert direct_retention.unrecognized_worker_state_names == ()
+                        assert direct_retention.gc_matching_revision_refs == ()
+                        assert direct_retention.worker_backup_references is not None
+                        assert (
+                            direct_retention.worker_backup_references.references == ()
+                        )
+                        assert (
+                            "worker_backup_references_unverified"
+                            not in direct_retention.missing_proofs
+                        )
+                        with monkeypatch.context() as altered_backup_topology:
+                            altered_backup_topology.setattr(
+                                backup_types_module,
+                                "_SUPPORTED_BACKUP_KINDS",
+                                ("arch_private_data", "worker_attempt"),
+                            )
+                            with pytest.raises(
+                                ValueError,
+                                match="backup topology changed",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        backup_topology_path = (
+                            product.state_root / "coding-backup-types.json"
+                        )
+                        hidden_topology_path = (
+                            product.state_root / "coding-backup-types.hidden"
+                        )
+                        backup_topology_path.rename(hidden_topology_path)
+                        try:
+                            with pytest.raises(
+                                ValueError,
+                                match="absent after Worker history",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        finally:
+                            hidden_topology_path.rename(backup_topology_path)
+                        assert direct_retention.unverified_receipt_gate_references == ()
+                        assert direct_retention.attempt_record is not None
+                        assert history_retention_module._receipt_gate_reference_issue(
+                            direct_gate_attempts[0],
+                            direct_retention.receipt_record,
+                            direct_retention.attempt_record,
+                            "present",
+                        ) == "receipt_reference_native_absence_unverified"
+                        mismatched_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
+                            journal_revision=direct_gate_attempts[0].journal_revision,
+                            phase=direct_gate_attempts[0].phase,
+                            attempt_id=direct_gate_attempts[0].attempt_id,
+                            worker_identity_fingerprint=(
+                                direct_gate_attempts[0].worker_identity_fingerprint
+                            ),
+                            receipt_fingerprint="0" * 64,
+                            policy_fingerprint=direct_gate_attempts[0].policy_fingerprint,
+                            scope_id=direct_gate_attempts[0].scope_id,
+                            native_closure_digest=(
+                                direct_gate_attempts[0].native_closure_digest
+                            ),
+                            identity=direct_gate_attempts[0].identity,
+                        )
+                        assert history_retention_module._receipt_gate_reference_issue(
+                            mismatched_gate,
+                            direct_retention.receipt_record,
+                            direct_retention.attempt_record,
+                            "absent",
+                        ) == "receipt_reference_binding_changed"
+                        assert (
+                            replace(
+                                direct_retention, gate_record=mismatched_gate
+                            ).attempt_reference
+                            is None
+                        )
+                        assert (
+                            direct_retention.activation_state_revision is not None
+                            and direct_retention.activation_state_revision >= 1
+                        )
+                        assert any(
+                            item.attempt_id == direct_gate_attempts[0].attempt_id
+                            and item.phase == "settled"
+                            for item in direct_retention.retained_activation_references
+                        )
+                        assert (
+                            "activation_state_absent"
+                            not in direct_retention.missing_proofs
+                        )
+                        activation_path = (
+                            product.state_root / "worker-activation-state.jsonl"
+                        )
+                        hidden_activation_path = (
+                            product.state_root / "worker-activation-state.hidden"
+                        )
+                        activation_path.rename(hidden_activation_path)
+                        try:
+                            with pytest.raises(
+                                WorkerActivationStateJournalError,
+                                match="worker_activation_state_orphan_lock",
+                            ):
+                                review_coding_product_worker_history_retention(
+                                    product,
+                                    attempt_id=direct_gate_attempts[0].attempt_id,
+                                )
+                        finally:
+                            hidden_activation_path.rename(activation_path)
+                        assert (
+                            "receipt_references_unverified"
+                            not in direct_retention.missing_proofs
+                        )
+                        if disable_while_direct_session_open:
+                            with pytest.raises(
+                                PackageProductRuntimeReadError
+                            ) as disabled_new_session:
+                                create_agent_session(
+                                    session_manager=asyncio.run(
+                                        SessionManager.load(selected_transcript)
+                                    ),
+                                    model=direct_model,
+                                    services=create_services(settings_manager=settings),
+                                    worker_candidate_plugin_id=_PLUGIN,
+                                )
+                            assert disabled_new_session.value.code == (
+                                "package_product_root_not_selected"
+                            )
                         return
                     if hosted_entry_only:
+                        payloads_before_hosted = frozenset(
+                            product.state_root.glob("worker-payload-*")
+                        )
+                        supervisor_journal = (
+                            open_coding_product_worker_supervisor_journal(product)
+                        )
+                        incomplete_before_hosted = supervisor_journal.incomplete()
                         hosted_sessions_parent = tmp_path / "hosted-session-files"
                         hosted_sessions_parent.mkdir(mode=0o700)
                         hosted_runtime = create_agent_session_runtime(
@@ -3340,10 +3748,28 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     item.name == "worker-extra"
                                     for item in session.resource_bundle.skills
                                 )
+                                revoked = product_opt_in.revoke(
+                                    plugin_id=_PLUGIN,
+                                    operation_id="worker-hosted-session-revoke",
+                                    expected_generation=decision.generation,
+                                )
+                                assert revoked.action == "revoke"
+                                assert revoked.kill_switch_generation == (
+                                    decision.kill_switch_generation + 1
+                                )
+                                with pytest.raises(
+                                    CapabilityWorkerFacetProxyError,
+                                    match="worker_capability_facet_proxy_owner_unavailable",
+                                ):
+                                    await session.query_worker_symbol("review")
                             finally:
                                 await hosted_runtime.dispose_session_runtime()
 
                         asyncio.run(exercise_hosted_worker())
+                        assert frozenset(product.state_root.glob("worker-payload-*")) == (
+                            payloads_before_hosted
+                        )
+                        assert supervisor_journal.incomplete() == incomplete_before_hosted
                         return
                 if native_mode == "installed-release":
                     settled_start_attempt = "ad" * 16
@@ -4350,9 +4776,16 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 assert retention.attempt_record is not None
                 assert retention.attempt_record.process_settled
                 assert retention.receipt_record is not None
-                assert retention.activation_state_revision is None
+                assert (
+                    retention.activation_state_revision is not None
+                    and retention.activation_state_revision >= 1
+                )
+                assert not any(
+                    item.attempt_id == journaled_plan.attempt_id
+                    for item in retention.retained_activation_references
+                )
                 assert retention.active_activation_references == ()
-                assert "activation_state_absent" in retention.missing_proofs
+                assert "activation_state_absent" not in retention.missing_proofs
                 assert journaled_plan.attempt_id in retention.receipt_gate_references
                 assert (
                     journaled_plan.attempt_id
@@ -4360,7 +4793,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 assert retention.group_status in {"absent", "prior_boot_absent"}
                 assert "payload_stage_retained" in retention.missing_proofs
-                assert "worker_backup_references_unverified" in (
+                assert retention.worker_backup_references is not None
+                assert retention.worker_backup_references.references == ()
+                assert "worker_backup_references_unverified" not in (
                     retention.missing_proofs
                 )
             elif has_journaled_debt:
@@ -4379,6 +4814,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     reopened_product, attempt_id=swapped_attempt
                 )
                 assert retention.gate_record is None
+                assert retention.attempt_reference is None
                 assert retention.activation_state_revision == 2
                 assert retention.active_activation_references == ()
                 assert "start_gate_absent" in retention.missing_proofs
@@ -4862,6 +5298,611 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         "installed-protocol",
         monkeypatch,
         direct_entry_only=True,
+    )
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    reopened = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = reopened.runtime_owner.product_owner
+        gates = CodingWorkerStartGateJournal(product).attempts()
+        assert gates
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        gate = gates[0]
+        receipt = gate.receipt_fingerprint
+        attempt_id = gate.attempt_id
+        cleanup_evidence = CodingPosixWorkerCleanupEvidenceAuthority(product)
+        host_identity = cleanup_evidence.host_identity
+        boot_identity = cleanup_evidence.boot_identity
+        receipt_gates = tuple(
+            item for item in gates if item.receipt_fingerprint == receipt
+        )
+        assert len(receipt_gates) > 1
+        before_c5 = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert not before_c5.receipt_references_verified
+        assert "receipt_references_unverified" in before_c5.missing_proofs
+        with pytest.raises(PackageProductGcExecutionError) as missing_c5:
+            gc.prepare()
+        assert missing_c5.value.code == "plugin_package_gc_worker_history_unsettled"
+        activation_store = open_coding_product_worker_activation_state_store(product)
+        current_state = activation_store.load()
+        assert current_state is not None
+        existing_attempts = dict(current_state["attempts"])
+        existing_attempt_ids = {
+            item["attemptId"] for item in existing_attempts.values()
+        }
+        registered_attempts = dict(existing_attempts)
+        settled_attempts = dict(existing_attempts)
+        for receipt_gate in receipt_gates:
+            referenced_attempt_id = receipt_gate.attempt_id
+            if referenced_attempt_id in existing_attempt_ids:
+                continue
+            key = _AttemptKey(receipt, referenced_attempt_id, 1).encoded
+            c5_attempt = _registered_attempt(
+                receipt=receipt, attempt_id=referenced_attempt_id
+            )
+            c5_attempt["policyFingerprint"] = receipt_gate.policy_fingerprint
+            c5_attempt["hostIdentity"] = host_identity
+            c5_attempt["bootIdentity"] = boot_identity
+            registered_attempts[key] = c5_attempt
+            settled_attempt = dict(c5_attempt)
+            settled_attempt.update(
+                phase="settled",
+                domainRetired=True,
+                protocolTerminal=True,
+                cleanupSettlement=WorkerCleanupSettlementV1(
+                    receipt_fingerprint=receipt,
+                    attempt_id=referenced_attempt_id,
+                    owner_generation=1,
+                    host_identity=host_identity,
+                    boot_identity=boot_identity,
+                    protocol_terminal=True,
+                    domain_retired=True,
+                    tree_settled=True,
+                ).to_dict(),
+            )
+            settled_attempts[key] = settled_attempt
+        assert len(registered_attempts) > len(existing_attempts)
+        registered = _next_state(current_state)
+        registered["attempts"] = registered_attempts
+        settled = _next_state(registered)
+        settled["attempts"] = settled_attempts
+        compacted = _next_state(settled)
+        compacted["attempts"] = {}
+        activation_journal = (
+            activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+                product.state_root / "worker-activation-state.jsonl"
+            )
+        )
+        for revision, state in enumerate(
+            (registered, settled, compacted),
+            start=current_state["stateRevision"],
+        ):
+            assert activation_journal.compare_and_swap(
+                expected_revision=revision, document=state
+            )
+        assert not activation_journal.retained_attempts_read_only()[0].current
+        retention = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        registry = product.epoch_runtime.registry
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            with product.gc_gate.guard(require_write=True):
+                writer_review = (
+                    history_retention_module._review_coding_product_worker_history_under_guard(
+                        product,
+                        attempt_id=attempt_id,
+                        active_runtime_lease_ids=(
+                            quiescence.active_runtime_lease_ids
+                        ),
+                        gc_snapshot=product.gc_gate.snapshot(),
+                    )
+                )
+        assert writer_review == retention
+        assert retention.global_activation_reference_ids_match
+        assert retention.history_stream_revisions_match
+        assert tuple(
+            snapshot.stem for snapshot in retention.history_stream_snapshots
+        ) == (
+            "worker-opt-in",
+            "worker-activation-receipts",
+            "worker-activation-state",
+            "worker-start-gates",
+            "worker-supervisor",
+        )
+        assert all(
+            snapshot.segment_byte_counts[-1] > 0
+            for snapshot in retention.history_stream_snapshots
+        )
+        with pytest.raises(ValueError, match="snapshot is invalid"):
+            replace(
+                retention.history_stream_snapshots[0],
+                segment_digests=("0" * 64,),
+            )
+        assert retention.unverified_activation_references == ()
+        assert retention.global_unverified_activation_references == ()
+        assert retention.global_unverified_opt_in_references == ()
+        assert retention.receipt_references_verified
+        assert retention.historical_opt_in_verified
+        assert "receipt_references_unverified" not in retention.missing_proofs
+        unrelated_gate = gate_journal_module.CodingWorkerStartGateRecordV1.create(
+            journal_revision=max(item.journal_revision for item in gates) + 1,
+            phase="bound",
+            attempt_id="f" * 32,
+            worker_identity_fingerprint=gate.worker_identity_fingerprint,
+            receipt_fingerprint="f" * 64,
+            policy_fingerprint=gate.policy_fingerprint,
+            scope_id=gate.scope_id,
+            native_closure_digest=gate.native_closure_digest,
+            identity=gate.identity,
+        )
+        retained_gates = CodingWorkerStartGateJournal.attempts
+        with monkeypatch.context() as orphaned_other_receipt_gate:
+            orphaned_other_receipt_gate.setattr(
+                CodingWorkerStartGateJournal,
+                "attempts",
+                lambda journal: (*retained_gates(journal), unrelated_gate),
+            )
+            globally_unbound = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert globally_unbound.global_unverified_receipt_gate_references == (
+                ("f" * 32, "receipt_reference_receipt_absent"),
+            )
+            assert "global_receipt_gate_reference_unverified" in (
+                globally_unbound.missing_proofs
+            )
+            assert not globally_unbound.receipt_references_verified
+        retained_receipts = receipt_journal_module.read_coding_product_worker_receipt_records(
+            product
+        )
+        orphan_receipt = replace(
+            retained_receipts[-1].receipt,
+            issue_sequence=len(retained_receipts) + 1,
+            issue_nonce="unmatched-opt-in-history",
+        )
+        orphan_record = receipt_journal_module.CodingWorkerReceiptRecordV1.create(
+            journal_revision=orphan_receipt.issue_sequence,
+            scope_id=product.policy.project_scope_id,
+            opt_in_decision_digest="f" * 64,
+            receipt=orphan_receipt,
+        )
+        with monkeypatch.context() as orphaned_receipt_history:
+            orphaned_receipt_history.setattr(
+                history_retention_module,
+                "read_coding_product_worker_receipt_records",
+                lambda _product, **_kwargs: (*retained_receipts, orphan_record),
+            )
+            unbound_elsewhere = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert unbound_elsewhere.global_unverified_opt_in_references == (
+                (orphan_receipt.fingerprint, "historical_opt_in_unverified"),
+            )
+            assert not unbound_elsewhere.history_stream_revisions_match
+            assert "history_stream_revision_changed" in unbound_elsewhere.missing_proofs
+            assert "global_opt_in_reference_unverified" in unbound_elsewhere.missing_proofs
+            assert not unbound_elsewhere.receipt_references_verified
+        retained_projection = CodingWorkerOptInJournal(
+            product.state_root / "worker-opt-in.jsonl",
+            scope_id=product.policy.project_scope_id,
+            gc_gate=product.gc_gate,
+            store_id=product.epoch_runtime.registry.store_id,
+        ).retention_projection_under_gc_guard()
+        with monkeypatch.context() as missing_opt_in_history:
+            missing_opt_in_history.setattr(
+                CodingWorkerOptInJournal,
+                "retention_projection_under_gc_guard",
+                lambda _journal: replace(
+                    retained_projection, reference_decisions=()
+                ),
+            )
+            unbound_opt_in = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert not unbound_opt_in.historical_opt_in_verified
+            assert "historical_opt_in_unverified" in unbound_opt_in.missing_proofs
+            assert not unbound_opt_in.receipt_references_verified
+        assert cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=retention,
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
+        assert not cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=replace(retention, group_status="present"),
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
+        assert not cleanup_evidence.verify_tree_settlement(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=2,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=retention,
+            evidence_authority_id=cleanup_evidence.authority_id,
+            evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+        )
+        retained_reader = (
+            activation_state_journal_module.CodingProductWorkerActivationStateJournal.retained_attempts_read_only
+        )
+        with monkeypatch.context() as missing_c5_reference:
+            missing_c5_reference.setattr(
+                activation_state_journal_module.CodingProductWorkerActivationStateJournal,
+                "retained_attempts_read_only",
+                lambda journal: tuple(
+                    item
+                    for item in retained_reader(journal)
+                    if item.attempt_id != receipt_gates[-1].attempt_id
+                ),
+            )
+            incomplete = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert not incomplete.global_activation_reference_ids_match
+            assert "global_activation_attempt_ids_unmatched" in incomplete.missing_proofs
+            assert not incomplete.receipt_references_verified
+            assert "receipt_references_unverified" in incomplete.missing_proofs
+        with monkeypatch.context() as changed_native_observation:
+            changed_native_observation.setattr(
+                history_retention_module,
+                "worker_native_group_status_after_restart",
+                lambda _identity: "present",
+            )
+            observed_present = review_coding_product_worker_history_retention(
+                product, attempt_id=attempt_id
+            )
+            assert observed_present.global_unverified_activation_references == tuple(
+                sorted(
+                    (
+                        item.attempt_id,
+                        "activation_reference_native_absence_unverified",
+                    )
+                    for item in retention.retained_activation_references
+                )
+            )
+            assert not observed_present.receipt_references_verified
+        opt_in_owner = CodingWorkerProductOptInOwner(product)
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None and current_opt_in.action == "revoke"
+        checkpoint_review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert checkpoint_review.missing_proofs == ()
+
+        def fail_initial_checkpoint_head(
+            *_args: object, **_kwargs: object
+        ) -> None:
+            raise OSError("injected checkpoint first-head pause")
+
+        with monkeypatch.context() as interrupted_initial_head:
+            interrupted_initial_head.setattr(
+                checkpoint_module,
+                "initialize_coding_worker_active_head",
+                fail_initial_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint first-head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with pytest.raises(PackageProductGcExecutionError) as bootstrap_gc:
+            gc.prepare()
+        assert bootstrap_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        checkpoint = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert checkpoint.attempt_id == attempt_id
+        assert checkpoint.stream_snapshots == checkpoint_review.history_stream_snapshots
+        assert (
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=attempt_id
+            )
+            == checkpoint
+        )
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint,)
+        opt_in_path = product.state_root / "worker-opt-in.jsonl"
+        held_opt_in = product.state_root / "held-worker-opt-in-for-gc.jsonl"
+        opt_in_path.replace(held_opt_in)
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as missing_opt_in:
+                gc.prepare()
+            assert missing_opt_in.value.code == (
+                "plugin_package_gc_worker_history_unsettled"
+            )
+        finally:
+            held_opt_in.replace(opt_in_path)
+        gc.prepare()
+        gate_path = CodingWorkerStartGateJournal(product).path
+        retained_gate = gate_path.read_bytes()
+        gate_path.write_bytes(retained_gate + b"{}\n")
+        try:
+            with pytest.raises(PackageProductGcExecutionError) as changed:
+                gc.prepare()
+            assert changed.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            gate_path.write_bytes(retained_gate)
+        gc.prepare()
+        latest_opt_in = opt_in_owner.current(_PLUGIN)
+        assert latest_opt_in is not None and latest_opt_in.action == "revoke"
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-interrupted-revoke",
+            expected_generation=latest_opt_in.generation,
+        )
+        monkeypatch.setattr(checkpoint_module, "_MAX_ACTIVE_RECORDS", 1)
+        original_seal = checkpoint_module.seal_coding_worker_active_segment
+
+        def interrupt_after_checkpoint_seal(
+            *_args: object, **kwargs: object
+        ) -> None:
+            original_seal(*_args, **kwargs)
+            raise OSError("injected checkpoint seal pause")
+
+        with monkeypatch.context() as interrupted_seal:
+            interrupted_seal.setattr(
+                checkpoint_module,
+                "seal_coding_worker_active_segment",
+                interrupt_after_checkpoint_seal,
+            )
+            with pytest.raises(OSError, match="checkpoint seal pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        assert (product.state_root / "worker-history-checkpoints.segments.json").exists()
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint,)
+        gc.prepare()
+
+        def fail_checkpoint_head(*_args: object, **_kwargs: object) -> None:
+            raise OSError("injected checkpoint head pause")
+
+        with monkeypatch.context() as interrupted_checkpoint:
+            interrupted_checkpoint.setattr(
+                checkpoint_module,
+                "commit_coding_worker_active_segment",
+                fail_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with product.gc_gate.read_guard():
+            with pytest.raises(
+                CodingWorkerHistorySegmentError,
+                match="coding_worker_segment_head_changed",
+            ):
+                read_coding_product_worker_history_checkpoints_under_gc_guard(
+                    product
+                )
+        with pytest.raises(PackageProductGcExecutionError) as interrupted_gc:
+            gc.prepare()
+        assert interrupted_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        repaired = repair_coding_product_worker_history_checkpoint_append(
+            product, attempt_id=attempt_id
+        )
+        assert repaired.journal_revision == checkpoint.journal_revision + 1
+        assert repaired.previous_digest == checkpoint.record_digest
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired)
+        gc.prepare()
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-tail-revoke",
+            expected_generation=current_opt_in.generation,
+        )
+        with monkeypatch.context() as interrupted_tail:
+            interrupted_tail.setattr(
+                checkpoint_module,
+                "commit_coding_worker_active_segment",
+                fail_checkpoint_head,
+            )
+            with pytest.raises(OSError, match="checkpoint head pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        advanced_opt_in = opt_in_owner.current(_PLUGIN)
+        assert advanced_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-after-tail-revoke",
+            expected_generation=advanced_opt_in.generation,
+        )
+        with pytest.raises(CodingWorkerHistoryCheckpointError) as stale_repair:
+            repair_coding_product_worker_history_checkpoint_append(
+                product, attempt_id=attempt_id
+            )
+        assert stale_repair.value.code == "coding_worker_checkpoint_repair_mismatch"
+        assert rollback_coding_product_worker_history_checkpoint_tail(product) == (
+            checkpoint,
+            repaired,
+        )
+        gc.prepare()
+        fresh = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert fresh.journal_revision == repaired.journal_revision + 1
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh)
+        gc.prepare()
+        latest_opt_in = opt_in_owner.current(_PLUGIN)
+        assert latest_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="checkpoint-anchor-revoke",
+            expected_generation=latest_opt_in.generation,
+        )
+
+        def fail_anchor_commit(*_args: object, **_kwargs: object) -> None:
+            raise OSError("injected checkpoint anchor pause")
+
+        with monkeypatch.context() as interrupted_anchor:
+            interrupted_anchor.setattr(
+                checkpoint_module,
+                "write_coding_worker_checkpoint_anchor",
+                fail_anchor_commit,
+            )
+            with pytest.raises(OSError, match="checkpoint anchor pause"):
+                publish_coding_product_worker_history_checkpoint(
+                    product, attempt_id=attempt_id
+                )
+        with product.gc_gate.read_guard():
+            with pytest.raises(CodingWorkerHistoryCheckpointError) as lagging_anchor:
+                read_coding_product_worker_history_checkpoints_under_gc_guard(
+                    product
+                )
+        assert lagging_anchor.value.code == "coding_worker_checkpoint_anchor_lagging"
+        with pytest.raises(PackageProductGcExecutionError) as anchor_gc:
+            gc.prepare()
+        assert anchor_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        anchored = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert anchored.journal_revision == fresh.journal_revision + 1
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh, anchored)
+        gc.prepare()
+        cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+        assert cutoffs == (1, 1, 1, 1, 1)
+        sealed = publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=attempt_id
+        )
+        assert sealed.journal_revision == anchored.journal_revision + 1
+        assert all(
+            snapshot.active_generation >= 1 for snapshot in sealed.stream_snapshots
+        )
+        staged = stage_coding_product_worker_v2_preparation(
+            product, first_retained_generations=cutoffs
+        )
+        assert staged.checkpoint_digest == sealed.record_digest
+        committed = commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=cutoffs
+        )
+        assert committed.checkpoint_digest == sealed.record_digest
+        gc.prepare()
+        assert retire_coding_product_worker_v2_history(product)
+        assert not retire_coding_product_worker_v2_history(product)
+        with product.gc_gate.read_guard():
+            assert read_coding_product_worker_history_checkpoints_under_gc_guard(
+                product
+            ) == (checkpoint, repaired, fresh, anchored, sealed)
+        gc.prepare()
+        assert (
+            commit_coding_product_worker_v2_owner(
+                product, first_retained_generations=cutoffs
+            )
+            == committed
+        )
+        after_cutover = opt_in_owner.current(_PLUGIN)
+        assert after_cutover is not None
+        opt_in_owner.allow(
+            plugin_id=_PLUGIN,
+            operation_id="worker-post-v2-allow",
+            expected_generation=after_cutover.generation,
+            require_worker=False,
+        )
+        post_cutover_manager = asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "catalog-transcripts",
+                cwd=str(workspace),
+                session_id="worker-post-v2",
+                defer_materialization=False,
+            )
+        )
+        post_cutover_session = create_agent_session(
+            session_manager=post_cutover_manager,
+            model=Model(
+                id="post-v2-worker",
+                name="Post V2 Worker",
+                provider="test",
+                endpoint="test",
+                capabilities=Capabilities(
+                    input=("text",), context_window=128_000, max_tokens=4_096
+                ),
+            ),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=tmp_path / "global-settings.json",
+                    project_settings_path=workspace / ".loushang" / "settings.json",
+                )
+            ),
+            worker_candidate_plugin_id=_PLUGIN,
+        )
+
+        async def exercise_post_cutover_worker() -> None:
+            try:
+                await post_cutover_session.prepare_model_call_runtime()
+                assert await post_cutover_session.query_worker_symbol("review") == (
+                    "Review symbol"
+                )
+            finally:
+                await post_cutover_session.dispose()
+
+        asyncio.run(exercise_post_cutover_worker())
+        gc.prepare()
+    finally:
+        reopened.close()
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
+def test_explicit_worker_public_coding_session_disable_fences_pinned_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        disable_while_direct_session_open=True,
+    )
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
+def test_explicit_worker_public_coding_session_update_fences_pinned_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        update_while_direct_session_open=True,
     )
 
 
@@ -5998,7 +7039,7 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
                     try:
                         with pytest.raises(CodingWorkerReceiptError) as changed:
                             receipt_owner.current_witness(receipt)
-                        assert changed.value.code == "coding_worker_receipt_corrupt"
+                        assert changed.value.code == "coding_worker_segment_head_changed"
                     finally:
                         receipt_owner.path.write_bytes(exact_receipt_history)
                 assert receipt_owner.current_witness(receipt) == (
@@ -6407,7 +7448,12 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
                     )
                 finally:
                     update_runtime.dispose_runtime()
-                gc = open_posix_local_wheel_product_root_gc(worker_product)
+                gc = open_posix_local_wheel_product_root_gc(
+                    worker_product,
+                    worker_history_authority=CodingPosixWorkerGcHistoryAuthority(
+                        worker_product
+                    ),
+                )
                 with pytest.raises(PackageProductGcExecutionError) as live_gc:
                     gc.prepare()
                 assert live_gc.value.code == "plugin_package_gc_runtime_active"
@@ -6435,7 +7481,12 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
         finally:
             runtime.dispose_runtime()
         if shape == "valid":
-            gc = open_posix_local_wheel_product_root_gc(worker_product)
+            gc = open_posix_local_wheel_product_root_gc(
+                worker_product,
+                worker_history_authority=CodingPosixWorkerGcHistoryAuthority(
+                    worker_product
+                ),
+            )
             gc.prepare()
             old_candidate = next(
                 item
@@ -6580,6 +7631,257 @@ def test_worker_payload_gc_scan_keeps_original_product_root_during_swap(
         with pytest.raises(PackageProductGcExecutionError) as blocked:
             gc._require_no_worker_payload_debt()
         assert blocked.value.code == "plugin_package_gc_worker_payload_unsettled"
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_package_gc_refuses_unsettled_history_without_payload(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        lifecycle,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        gc = open_posix_local_wheel_product_root_gc(product)
+        gc.prepare()
+        authority = CodingPosixWorkerGcHistoryAuthority(product)
+        with_authority = open_posix_local_wheel_product_root_gc(
+            product, worker_history_authority=authority
+        )
+        entries_before_read = set(os.listdir(product.state_root))
+        authority.require_settled(observed_names=tuple(os.listdir(product.state_root)))
+        assert set(os.listdir(product.state_root)) == entries_before_read
+        unknown_before_attempt = product.state_root / "worker-future-reference.json"
+        unknown_before_attempt.write_bytes(b"unknown owner")
+        with pytest.raises(PackageProductGcExecutionError) as unknown_unbound:
+            gc.prepare()
+        assert unknown_unbound.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(PackageProductGcExecutionError) as unknown_bound:
+            with_authority.prepare()
+        assert unknown_bound.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(ValueError, match="reference owner is unrecognized"):
+            authority.require_settled(
+                observed_names=tuple(os.listdir(product.state_root))
+            )
+        unknown_before_attempt.unlink()
+        repair_before_attempt = (
+            product.state_root / f"worker-empty-repair-{'36' * 16}.json"
+        )
+        repair_before_attempt.write_bytes(b"retained repair")
+        with pytest.raises(PackageProductGcExecutionError) as repair_blocked:
+            with_authority.prepare()
+        assert repair_blocked.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(CodingWorkerPayloadMaterializationError) as bad_repair:
+            authority.require_settled(
+                observed_names=tuple(os.listdir(product.state_root))
+            )
+        assert bad_repair.value.code == "coding_worker_payload_empty_repair_unverified"
+        repair_before_attempt.unlink()
+        attempt_id = "35" * 16
+        identity = WorkerLaunchIdentityV1(
+            plugin_id="workerprobe",
+            plugin_revision_digest="a" * 64,
+            contribution_id="query-provider",
+            owner_id="coding",
+            product_id="coding",
+            scope_id="test-scope",
+            owner_generation=1,
+            declaration_fingerprint="b" * 64,
+            worker_configuration_fingerprint="c" * 64,
+            attempt_id=attempt_id,
+            supervisor_epoch=1,
+            session_nonce="d" * 64,
+        )
+        attempt = open_coding_product_worker_supervisor_journal(product).claim(
+            identity, max_attempts=1
+        )
+        assert not attempt.process_settled
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.unbound_supervisor_attempt_ids == (attempt_id,)
+        assert review.retained_start_gate_attempt_ids == ()
+        assert review.retained_supervisor_attempt_ids == (attempt_id,)
+        assert review.retained_receipt_fingerprints == ()
+        assert review.supervisor_epoch_high_water == ((attempt.supervisor_key, 1),)
+        assert review.supervisor_history_revision == attempt.record_revision
+        assert review.start_gate_history_revision == 0
+        assert review.opt_in_history_revision == 0
+        assert review.retained_opt_in_operation_ids == ()
+        assert "supervisor_gate_reference_unverified" in review.missing_proofs
+        unknown = product.state_root / "worker-future-reference.json"
+        unknown.write_bytes(b"unknown owner")
+        unrecognized = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert unrecognized.unrecognized_worker_state_names == (unknown.name,)
+        assert "worker_reference_owner_unrecognized" in unrecognized.missing_proofs
+        unknown.unlink()
+        assert not tuple(product.state_root.glob("worker-payload-*"))
+        with pytest.raises(PackageProductGcExecutionError) as blocked:
+            gc.prepare()
+        assert blocked.value.code == "plugin_package_gc_worker_history_unsettled"
+        with pytest.raises(PackageProductGcExecutionError) as unsettled:
+            with_authority.prepare()
+        assert unsettled.value.code == "plugin_package_gc_worker_history_unsettled"
+    finally:
+        owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_gc_revision_join_keeps_all_same_artifact_pins() -> None:
+    reference = history_retention_module.CodingWorkerAttemptReferenceV1(
+        attempt_id="1" * 32,
+        plugin_id="workerprobe",
+        receipt_fingerprint="2" * 64,
+        selected_package_revision_digest="a" * 64,
+        selected_locator_revision="selected-v1",
+        native_platform="linux",
+        gate_revision=1,
+        gate_phase="bound",
+    )
+    matching = tuple(
+        PluginPackageRevisionRefV1(
+            plugin_id="workerprobe",
+            plugin_version="1",
+            package_content_digest="a" * 64,
+            dependency_lock_digest=lock,
+            package_source_identity="source-" + lock[0],
+        )
+        for lock in ("b" * 64, "c" * 64)
+    )
+    other_plugin = replace(matching[0], plugin_id="another")
+    other_artifact = replace(matching[0], package_content_digest="d" * 64)
+    same_lock_newer_version = replace(matching[0], plugin_version="2")
+    assert history_retention_module._matching_gc_revision_refs(
+        reference,
+        frozenset(
+            (*matching, other_plugin, other_artifact, same_lock_newer_version)
+        ),
+    ) == (matching[0], same_lock_newer_version, matching[1])
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux Product Worker GC history"
+)
+def test_worker_package_gc_refuses_compacted_c5_attempt_without_gate(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        lifecycle,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = owner.runtime_owner.product_owner
+        receipt = "a" * 64
+        attempt_id = "b" * 32
+        key = _AttemptKey(receipt, attempt_id, 1).encoded
+        attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
+        initial = _initial_state(restart_budget=3)
+        registered = _next_state(initial)
+        registered["attempts"] = {key: attempt}
+        settled = _next_state(registered)
+        settled_attempt = dict(attempt)
+        settled_attempt.update(
+            phase="settled",
+            domainRetired=True,
+            protocolTerminal=True,
+            cleanupSettlement=WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt,
+                attempt_id=attempt_id,
+                owner_generation=1,
+                host_identity="host-a",
+                boot_identity="boot-a",
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ).to_dict(),
+        )
+        settled["attempts"] = {key: settled_attempt}
+        compacted = _next_state(settled)
+        compacted["attempts"] = {}
+        journal = activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+            product.state_root / "worker-activation-state.jsonl"
+        )
+        for revision, state in enumerate(
+            (initial, registered, settled, compacted)
+        ):
+            assert journal.compare_and_swap(expected_revision=revision, document=state)
+        assert journal.load_read_only() == compacted
+        assert len(journal.retained_attempts_read_only()) == 1
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.gate_record is None
+        assert tuple(
+            reference.attempt_id
+            for reference in review.retained_activation_references
+        ) == (attempt_id,)
+        assert not review.retained_activation_references[0].current
+        assert review.unverified_activation_references == (
+            (attempt_id, "activation_reference_gate_absent"),
+        )
+        elsewhere = review_coding_product_worker_history_retention(
+            product, attempt_id="c" * 32
+        )
+        assert elsewhere.unverified_activation_references == ()
+        assert elsewhere.global_unverified_activation_references == (
+            (attempt_id, "activation_reference_gate_absent"),
+        )
+        assert "global_activation_reference_unverified" in elsewhere.missing_proofs
+        assert "start_gate_absent" in review.missing_proofs
+        authority = CodingPosixWorkerGcHistoryAuthority(product)
+        with pytest.raises(ValueError, match="C5 attempt history is incomplete"):
+            authority.require_settled(
+                observed_names=tuple(os.listdir(product.state_root))
+            )
     finally:
         owner.close()
 
@@ -6747,6 +8049,16 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         assert stage.is_dir() and held.is_dir()
         stage.rmdir()
         held.rename(stage)
+        with product.gc_gate.read_snapshot_guard():
+            assert preview_coding_product_worker_empty_payload_debt(
+                product, attempt_id=attempt_id
+            ) == plan
+            with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                repair_coding_product_worker_empty_payload_debt(
+                    product, expected_plan=plan
+                )
+            assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+            assert stage.is_dir()
         replacement_stage = product.state_root / "replacement-empty-worker-stage"
         replacement_stage.mkdir(mode=0o700)
         assert (
@@ -6756,6 +8068,11 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         assert not stage.exists()
         assert list_coding_product_worker_payload_debts(product) == ()
         intent = product.state_root / f"worker-empty-repair-{attempt_id}.json"
+        review = review_coding_product_worker_history_retention(
+            product, attempt_id=attempt_id
+        )
+        assert review.retained_payload_repair_reference_names == (intent.name,)
+        assert "payload_repair_reference_retained" in review.missing_proofs
         staging_intent = product.state_root / (
             f".worker-empty-repair-{attempt_id}.json.stage"
         )
@@ -6805,7 +8122,15 @@ def test_empty_worker_payload_debt_requires_absent_supervisor_claim(
         )
         intent.unlink()
         held_intent.rename(intent)
-        gc.prepare()
+        with pytest.raises(PackageProductGcExecutionError) as no_repair_authority:
+            gc.prepare()
+        assert no_repair_authority.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
 
         crash_attempt = "56" * 16
         crash_stage = product.state_root / f"worker-payload-{crash_attempt}"
@@ -6990,7 +8315,10 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             preview_coding_product_worker_payload_debt(product, attempt_id=attempt_id)
             == plan
         )
-        gc = open_posix_local_wheel_product_root_gc(product)
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
         with pytest.raises(PackageProductGcExecutionError):
             gc.prepare()
         replacement_stage = product.state_root / "replacement-complete-worker-stage"
@@ -7096,6 +8424,13 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             payload.chmod(0o600)
             payload.write_bytes(body)
             payload.chmod(0o500)
+            with product.gc_gate.read_snapshot_guard():
+                with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                    repair_coding_product_worker_payload_debt(
+                        product, expected_plan=plan
+                    )
+                assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+                assert stage.is_dir()
         assert (
             repair_coding_product_worker_payload_debt(product, expected_plan=plan)
             == plan
@@ -7162,7 +8497,17 @@ def test_complete_worker_payload_repair_resumes_partial_deletion(
             held_intent.rename(intent)
         else:
             replacement_stage.rmdir()
-        gc.prepare()
+        with pytest.raises(PackageProductGcExecutionError) as orphan_history:
+            gc.prepare()
+        assert orphan_history.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        with pytest.raises(PackageProductGcExecutionError) as bound_orphan:
+            open_posix_local_wheel_product_root_gc(
+                product,
+                worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+            ).prepare()
+        assert bound_orphan.value.code == "plugin_package_gc_worker_history_unsettled"
     finally:
         owner.close()
 
@@ -7423,6 +8768,13 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
                     product, expected_review=review
                 )
             payload.write_bytes(b"incomplete Worker payload")
+            with product.gc_gate.read_snapshot_guard():
+                with pytest.raises(PluginPackageGcReservationError) as blocked_write:
+                    repair_coding_product_worker_unmarked_payload_debt(
+                        product, expected_review=review
+                    )
+                assert blocked_write.value.code == "plugin_package_gc_read_guard_nested"
+                assert stage.is_dir()
         assert (
             repair_coding_product_worker_unmarked_payload_debt(
                 product, expected_review=review
@@ -7466,6 +8818,14 @@ def test_unmarked_worker_payload_repair_resumes_exact_partial_deletion(
             )
             intent.unlink()
             held_intent.rename(intent)
-        open_posix_local_wheel_product_root_gc(product).prepare()
+        with pytest.raises(PackageProductGcExecutionError) as no_repair_authority:
+            open_posix_local_wheel_product_root_gc(product).prepare()
+        assert no_repair_authority.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
     finally:
         owner.close()

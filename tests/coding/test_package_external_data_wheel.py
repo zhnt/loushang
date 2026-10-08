@@ -12,7 +12,7 @@ import time
 import zipfile
 from base64 import urlsafe_b64encode
 from collections.abc import AsyncIterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import replace
 from hashlib import sha256
 from importlib.metadata import version
@@ -81,6 +81,7 @@ from loushang.coding.plugin_management_read_sdk import (
     open_coding_plugin_management_read_client,
 )
 from loushang.coding.plugin_management_rpc_scope import CodingPluginRpcSessionScope
+from loushang.coding.plugin_support_status import main as plugin_status_cli_main
 from loushang.coding.session_manager import SessionManager
 from loushang.coding.ui import mode as coding_tui_mode
 from loushang.coding.ui.plugin_theme import select_coding_plugin_theme
@@ -4007,6 +4008,23 @@ def test_external_data_skill_enters_fenced_session_catalog(
     assert sdk_preview["correlationId"] == "test:sdk-current-preview"
     assert "reviewpack" in sdk_preview["compiledPluginIds"]
     assert str(tmp_path) not in json.dumps(sdk_preview)
+    sdk_status = open_coding_plugin_management_read_client(workspace).support_status(
+        correlation_id="test:sdk-support-status"
+    )
+    review_status = next(
+        item for item in sdk_status["installations"] if item["pluginId"] == "reviewpack"
+    )
+    assert review_status["desiredState"] == "installed_enabled"
+    assert review_status["productAdmission"] == "observed_in_preview"
+    assert review_status["productSelection"] == "projected"
+    assert review_status["productUse"] == "not_checked"
+    assert sdk_status["snapshotStatus"] == "partial_evidence"
+    status_stdout = StringIO()
+    with redirect_stdout(status_stdout):
+        assert plugin_status_cli_main(["--workspace", str(workspace)]) == 0
+    cli_status = json.loads(status_stdout.getvalue())
+    assert cli_status["installations"] == sdk_status["installations"]
+    assert str(tmp_path) not in status_stdout.getvalue()
     from loushang.coding.ui.product_binding import build_coding_ui_controller
     from loushang.harnesstui.conversation.intents import PromptIntent
 
@@ -4020,6 +4038,14 @@ def test_external_data_skill_enters_fenced_session_catalog(
     assert "skill:review" in (ui_result.status_message or "")
     assert "partial" in (ui_result.status_message or "")
     assert str(tmp_path) not in (ui_result.status_message or "")
+    ui_status = asyncio.run(
+        build_coding_ui_controller(
+            session=object(), plugin_workspace=workspace
+        ).dispatch(PromptIntent(text="/plugins status"))
+    )
+    assert ui_status.error_message is None
+    assert "reviewpack: installed_enabled" in (ui_status.status_message or "")
+    assert "selection=projected; use=not_checked" in (ui_status.status_message or "")
     ui_list = asyncio.run(
         build_coding_ui_controller(
             session=object(), plugin_workspace=workspace

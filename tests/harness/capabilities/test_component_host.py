@@ -680,6 +680,159 @@ def test_component_host_rechecks_decision_expiry_at_factory_boundary(
     )
 
 
+def test_component_host_pins_one_admission_across_slow_graph_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        marker = tmp_path / "activation.log"
+        monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+        fixture = _fixture(tmp_path, returned_facet="query")
+        now = [150]
+        identities = iter(("1" * 48, "2" * 48))
+        journal = PluginActivationDecisionJournal(
+            tmp_path / "activation.jsonl",
+            scope_id="workspace:test",
+            identity_factory=lambda: next(identities),
+            clock=lambda: now[0],
+        )
+        host = CapabilityComponentHost(
+            decision_journal=journal,
+            import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+            host_boot_id="3" * 32,
+            clock=lambda: now[0],
+            owner_snapshot_reader=lambda _capability_id: fixture.owner_snapshot,
+            trust_snapshot_reader=(
+                lambda _plugin_id, _source_identity: fixture.trust_snapshot
+            ),
+            product_policy_revision_reader=(
+                lambda _product_id, _scope_id: "coding-plugin-policy-1"
+            ),
+        )
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        decision = journal.issue_activation_decision(
+            subject,
+            disposition="approved",
+            authorization=PluginApprovalAuthorizationV1.direct(
+                actor_id="operator:test", source="component-host-test"
+            ),
+            issued_at_unix_ms=140,
+            expires_at_unix_ms=300,
+            expected_journal_revision=0,
+        )
+        started = host.begin_admission(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+        )
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=started,
+        )
+        now[0] = 351
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:slow-graph",
+            profile_fingerprint="f" * 64,
+        )
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime, fixture.plan, (prepared.binding,)
+        )
+        prepared.commit_after_graph_publication()
+        assert marker.read_text(encoding="utf-8").splitlines() == [
+            "import",
+            "create",
+        ]
+        with pytest.raises(CapabilityComponentHostError):
+            host.prepare_component(
+                fixture.resolved,
+                package=fixture.package,
+                owner_snapshot=fixture.owner_snapshot,
+                trust_snapshot=fixture.trust_snapshot,
+                decision_id=decision.decision_id,
+                admission_start=started,
+            )
+        await RuntimeCapabilityGraphBinder().dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_component_host_started_admission_keeps_authority_and_time_bounds(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, returned_facet="query")
+    now = [150]
+    current_owner = [fixture.owner_snapshot]
+    journal = _journal(tmp_path)
+    host = CapabilityComponentHost(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+        host_boot_id="3" * 32,
+        clock=lambda: now[0],
+        owner_snapshot_reader=lambda _capability_id: current_owner[0],
+        trust_snapshot_reader=(
+            lambda _plugin_id, _source_identity: fixture.trust_snapshot
+        ),
+        product_policy_revision_reader=(
+            lambda _product_id, _scope_id: "coding-plugin-policy-1"
+        ),
+    )
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    stale_start = host.begin_admission(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    expired_start = host.begin_admission(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    current_owner[0] = _authority(
+        fixture.resolved.definition, revocation_epoch=4
+    ).snapshot()
+    with pytest.raises(CapabilityComponentHostError) as stale:
+        host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=stale_start,
+        )
+    assert stale.value.code == "capability_provider_owner_authority_stale"
+    current_owner[0] = fixture.owner_snapshot
+    now[0] = 900_150
+    with pytest.raises(CapabilityComponentHostError) as expired:
+        host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=expired_start,
+        )
+    assert expired.value.code == "capability_provider_admission_start_expired"
+    host.abort_admission_start(stale_start)
+    host.abort_admission_start(expired_start)
+
+
 async def _component_host_rechecks_decision_expiry_at_factory_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

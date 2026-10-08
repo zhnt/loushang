@@ -20,6 +20,9 @@ from loushang.harness.package_product.product_runtime import (
 from loushang.harness.package_product.product_worker_candidate import (
     verify_product_selected_worker_candidate,
 )
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.worker._native_profile_bridge import (
     _WINDOWS_LPAC_PROFILE_ID,
     _windows_lpac_provisioning_identity,
@@ -32,7 +35,6 @@ from loushang.harness.worker.contracts import (
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationReceiptV1,
 )
-from loushang.hosting import observe_windows_worker_job_absent
 
 from .package_product_worker_policy import coding_worker_session_scope_id
 from .package_product_worker_windows_launch_intent import (
@@ -209,7 +211,6 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                 worker_request=self._worker_request,
             )
             self._product.assert_session_runtime_current(self._runtime)
-            self._runtime.assert_selected_plugin_manifest_current(self._selected)
             self._require_store_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
@@ -221,7 +222,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
     def compare_and_swap(
         self, *, expected_revision: int, document: Mapping[str, object]
     ) -> bool:
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             self._require_launch_intent(
                 self._product,
@@ -229,8 +230,9 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                 worker_request=self._worker_request,
             )
             self._product.assert_session_runtime_current(self._runtime)
-            self._runtime.assert_selected_plugin_manifest_current(self._selected)
-            self._require_store_current()
+            self._require_store_current(
+                desired_phase=document.get("phase"), write=True
+            )
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
             ):
@@ -242,21 +244,35 @@ class CodingWindowsProductWorkerProvisioningStateStore:
             self._product.assert_root_gc_authority_current()
             return committed
 
-    def _require_store_current(self) -> None:
+    def _require_store_current(
+        self, *, desired_phase: object | None = None, write: bool = False
+    ) -> None:
         try:
+            self._runtime.assert_selected_plugin_manifest_current(self._selected)
             self._worker_request.validate_current()
             return
-        except WorkerBindingError as stale:
-            # A stopped Supervisor intentionally makes its launch request
-            # unusable. Native cleanup still needs the same exact journal,
-            # retained stage and launch intent after physical process exit.
+        except (PackageProductRuntimeReadError, WorkerBindingError) as stale:
+            # Disable or update invalidates Product selection. A terminal
+            # Supervisor may still be waiting for Hosting to close native
+            # preparation before it can record physical process settlement.
+            # Only this exact retained attempt may write cleanup phases.
             from .package_product_worker_windows_recovery_inventory import (
                 _current_after_verified_retirements_under_gc_guard,
                 _inspect_windows_worker_recovery_inventory_under_gc_guard,
-                require_coding_windows_worker_terminal_cleanup_attempt,
+                require_coding_windows_worker_native_release_attempt,
             )
 
             try:
+                if write and desired_phase not in {
+                    "debt",
+                    "cleaning",
+                    "revoke_effect",
+                    "grants_revoked",
+                    "delete_effect",
+                    "profile_deleted",
+                    "settled",
+                }:
+                    raise ValueError("Windows Worker stale write is not native cleanup")
                 inventory = _inspect_windows_worker_recovery_inventory_under_gc_guard(
                     self._product
                 )
@@ -265,7 +281,7 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                     inventory,
                     attempt_id=self._worker_request.identity.attempt_id,
                 )
-                job_name = require_coding_windows_worker_terminal_cleanup_attempt(
+                require_coding_windows_worker_native_release_attempt(
                     inventory,
                     attempt_id=self._worker_request.identity.attempt_id,
                     payload_directory_identity=(
@@ -277,8 +293,6 @@ class CodingWindowsProductWorkerProvisioningStateStore:
                     identity_fingerprint=self._worker_request.identity.fingerprint,
                 )
                 self._worker_request.runtime.verify()
-                if observe_windows_worker_job_absent(job_name) is not True:
-                    raise ValueError("Windows Worker Job is still present")
             except (OSError, RuntimeError, ValueError) as error:
                 raise stale from error
 

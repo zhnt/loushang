@@ -10,12 +10,12 @@ import json
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -37,10 +37,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
 from .package_product_worker_policy import CodingWorkerOptInV1
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
+    from .package_product_worker_opt_in_base_v2 import CodingWorkerOptInReplayV2
 
 _OPAQUE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?\Z")
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
@@ -229,9 +242,22 @@ def _decode_coding_worker_opt_in_history(
 def _validate_opt_in_events(
     events: tuple[CodingWorkerOptInDecisionV1, ...], *, scope_id: str
 ) -> None:
-    seen_operations: set[str] = set()
-    latest: dict[str, CodingWorkerOptInDecisionV1] = {}
-    for revision, event in enumerate(events, 1):
+    _fold_opt_in_events(events, scope_id=scope_id)
+
+
+def _fold_opt_in_events(
+    events: tuple[CodingWorkerOptInDecisionV1, ...],
+    *,
+    scope_id: str,
+    start_revision: int = 1,
+    initial_latest: Mapping[str, CodingWorkerOptInDecisionV1] | None = None,
+    initial_operations: frozenset[str] = frozenset(),
+) -> tuple[dict[str, CodingWorkerOptInDecisionV1], frozenset[str]]:
+    """Validate global revisions and decisions across a V1 or V2 boundary."""
+
+    seen_operations = set(initial_operations)
+    latest = {} if initial_latest is None else dict(initial_latest)
+    for revision, event in enumerate(events, start_revision):
         prior = latest.get(event.plugin_id)
         expected_generation = 1 if prior is None else prior.generation + 1
         expected_kill = 0 if prior is None else prior.kill_switch_generation
@@ -248,6 +274,17 @@ def _validate_opt_in_events(
             raise CodingWorkerOptInJournalError("coding_worker_opt_in_corrupt")
         seen_operations.add(event.operation_id)
         latest[event.plugin_id] = event
+    return latest, frozenset(seen_operations)
+
+
+@dataclass(frozen=True, slots=True)
+class CodingWorkerOptInRetentionProjectionV1:
+    """Decisions still needed to join retained receipts after V2 cutover."""
+
+    reference_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
+    latest_decisions: tuple[CodingWorkerOptInDecisionV1, ...]
+    operation_ids: tuple[str, ...]
+    revision: int
 
 
 class CodingWorkerOptInJournal:
@@ -259,6 +296,7 @@ class CodingWorkerOptInJournal:
         *,
         scope_id: str,
         gc_gate: PluginPackageGcReservationJournal,
+        store_id: str | None = None,
     ) -> None:
         if not isinstance(path, Path) or not path.is_absolute():
             raise ValueError("Coding Worker opt-in journal path is invalid")
@@ -270,11 +308,16 @@ class CodingWorkerOptInJournal:
             raise ValueError("Coding Worker opt-in scope is invalid")
         if not isinstance(gc_gate, PluginPackageGcReservationJournal):
             raise TypeError("Product GC gate is required")
+        if store_id is not None and (
+            type(store_id) is not str or not store_id or len(store_id) > 128
+        ):
+            raise ValueError("Coding Worker opt-in store is invalid")
         if path != gc_gate.path.parent / "worker-opt-in.jsonl":
             raise ValueError("Coding Worker opt-in journal is outside Product state")
         self._path = path
         self._scope_id = scope_id
         self._gc_gate = gc_gate
+        self._store_id = store_id
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
 
     @property
@@ -294,8 +337,88 @@ class CodingWorkerOptInJournal:
 
         self._require_plugin_id(plugin_id)
         with self._gc_gate.guard(), self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                _events, _history, replay = self._load_v2_state(rooted)
+                return self._latest(replay.latest_decisions, plugin_id)
             events, _history = self._load_history(rooted)
             return self._latest(events, plugin_id)
+
+    def current_read_only(self, plugin_id: str) -> CodingWorkerOptInDecisionV1 | None:
+        """Inspect an existing Product decision without creating owner state."""
+
+        self._require_plugin_id(plugin_id)
+        with (
+            self._gc_gate.read_guard(),
+            self._bound_journal(create_lock=False) as rooted,
+        ):
+            if self._v2_owner_exists(rooted):
+                _events, _history, replay = self._load_v2_state(rooted)
+                return self._latest(replay.latest_decisions, plugin_id)
+            events, _history = self._load_history(rooted)
+            return self._latest(events, plugin_id)
+
+    def history_read_only(self) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Inventory every retained operation under the Product GC read gate."""
+
+        with self._gc_gate.read_guard():
+            return self._history_under_gc_guard()
+
+    def _history_under_gc_guard(self) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Read while the Product reviewer already holds its GC snapshot."""
+
+        with self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_full_history_unavailable"
+                )
+            events, _history = self._load_history(rooted)
+            return events
+
+    def retention_projection_under_gc_guard(
+        self,
+    ) -> CodingWorkerOptInRetentionProjectionV1:
+        """Join retained decisions while the Product reviewer owns the GC gate.
+
+        The V2 semantic base keeps each plugin's decision at cutover. Combined
+        with retained events, that proves later receipts even after revocation.
+        Older decisions that were superseded before cutover have no retained
+        receipt authority and are intentionally unavailable here.
+        """
+
+        with self._bound_journal(create_lock=False) as rooted:
+            if self._v2_owner_exists(rooted):
+                from .package_product_worker_history_stage_v2 import (
+                    read_coding_worker_v2_preparation,
+                )
+                from .package_product_worker_opt_in_base_v2 import (
+                    CodingWorkerOptInSemanticBaseV2,
+                )
+
+                events, _history, replay = self._load_v2_state(rooted)
+                prepared = read_coding_worker_v2_preparation(rooted)
+                if prepared is None:
+                    raise CodingWorkerOptInJournalError(
+                        "coding_worker_opt_in_v2_preparation_absent"
+                    )
+                base = prepared.semantic_bases[0]
+                if not isinstance(base, CodingWorkerOptInSemanticBaseV2):
+                    raise CodingWorkerOptInJournalError(
+                        "coding_worker_opt_in_v2_base_changed"
+                    )
+                return CodingWorkerOptInRetentionProjectionV1(
+                    reference_decisions=(*base.latest_decisions, *events),
+                    latest_decisions=replay.latest_decisions,
+                    operation_ids=tuple(sorted(replay.operation_ids)),
+                    revision=replay.last_revision,
+                )
+            events, _history = self._load_history(rooted)
+            latest, _operations = _fold_opt_in_events(events, scope_id=self._scope_id)
+            return CodingWorkerOptInRetentionProjectionV1(
+                reference_decisions=events,
+                latest_decisions=tuple(latest[key] for key in sorted(latest)),
+                operation_ids=tuple(item.operation_id for item in events),
+                revision=len(events),
+            )
 
     def change(
         self,
@@ -320,8 +443,20 @@ class CodingWorkerOptInJournal:
             or (action == "revoke" and opt_in is not None)
         ):
             raise ValueError("Coding Worker opt-in command is invalid")
-        with self._gc_gate.guard(), self._bound_journal() as rooted:
-            events, history = self._load_history(rooted)
+        with self._gc_gate.guard(require_write=True), self._bound_journal() as rooted:
+            checkpoints = self._checkpoint_writer_fence(rooted)
+            if self._v2_owner_exists(rooted):
+                events, history, v2_replay = self._load_v2_state(rooted)
+                revision = v2_replay.last_revision
+                self._assert_checkpoint_high_water(
+                    checkpoints, events, initial_latest=v2_replay.latest_decisions
+                )
+            else:
+                events, history = self._load_history(rooted)
+                v2_replay = None
+                revision = len(events)
+                self._assert_checkpoint_source(checkpoints, history)
+                self._assert_checkpoint_high_water(checkpoints, events)
             replay = next(
                 (event for event in events if event.operation_id == operation_id), None
             )
@@ -336,7 +471,17 @@ class CodingWorkerOptInJournal:
                         "coding_worker_opt_in_operation_conflict"
                     )
                 return replay
-            previous = self._latest(events, plugin_id)
+            if any(
+                operation_id in record.new_opt_in_operation_ids
+                for record in checkpoints
+            ) or (v2_replay is not None and operation_id in v2_replay.operation_ids):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_operation_retired"
+                )
+            previous = self._latest(
+                events if v2_replay is None else v2_replay.latest_decisions,
+                plugin_id,
+            )
             generation = 0 if previous is None else previous.generation
             if generation != expected_generation:
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_stale")
@@ -355,7 +500,7 @@ class CodingWorkerOptInJournal:
                     "coding_worker_opt_in_generation_invalid"
                 )
             decision = CodingWorkerOptInDecisionV1.create(
-                journal_revision=len(events) + 1,
+                journal_revision=revision + 1,
                 scope_id=self._scope_id,
                 plugin_id=plugin_id,
                 operation_id=operation_id,
@@ -368,7 +513,7 @@ class CodingWorkerOptInJournal:
             if len(line) > _MAX_SEGMENT_BYTES:
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_capacity")
             if (
-                len(events) - history.last_sealed_revision >= _MAX_EVENTS
+                revision - history.last_sealed_revision >= _MAX_EVENTS
                 or len(history.active_raw) + len(line) > _MAX_SEGMENT_BYTES
             ):
                 try:
@@ -377,7 +522,7 @@ class CodingWorkerOptInJournal:
                         stem=_STEM,
                         stream_id=_STEM,
                         history=history,
-                        last_revision=len(events),
+                        last_revision=revision,
                     )
                 except CodingWorkerHistorySegmentError as exc:
                     raise CodingWorkerOptInJournalError(exc.code) from exc
@@ -397,7 +542,115 @@ class CodingWorkerOptInJournal:
                 durability=self._durability,
                 bound_file=target,
             )
+            commit_coding_worker_active_segment(
+                rooted,
+                stem=_STEM,
+                stream_id=_STEM,
+                generation=generation,
+                previous_raw=(
+                    b""
+                    if generation != history.active_generation
+                    else history.active_raw
+                ),
+                appended_line=line,
+            )
             return decision
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        """Refuse a missing Product owner once checkpoint state is present."""
+
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            ANCHOR_NAME,
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        if self._store_id is None:
+            for name in (
+                ANCHOR_NAME,
+                "worker-history-checkpoints.jsonl",
+                "worker-history-checkpoints.jsonl.lock",
+                "worker-history-checkpoints.head.json",
+                "worker-history-checkpoints.segments.json",
+            ):
+                try:
+                    rooted.sibling(name).stat()
+                except FileNotFoundError:
+                    continue
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_checkpoint_owner_required"
+                ) from None
+            return ()
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted, scope_id=self._scope_id, store_id=self._store_id
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerOptInJournalError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> None:
+        if not checkpoints:
+            return
+        prior = checkpoints[-1].stream_snapshots[0]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem=_STEM,
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerOptInJournalError(
+                "coding_worker_opt_in_checkpoint_source_changed"
+            )
+
+    @staticmethod
+    def _assert_checkpoint_high_water(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        events: tuple[CodingWorkerOptInDecisionV1, ...],
+        *,
+        initial_latest: tuple[CodingWorkerOptInDecisionV1, ...] = (),
+    ) -> None:
+        if not checkpoints:
+            return
+        latest_checkpoint = checkpoints[-1]
+        latest: dict[str, CodingWorkerOptInDecisionV1] = {
+            item.plugin_id: item for item in initial_latest
+        }
+        for event in events:
+            latest[event.plugin_id] = event
+        for (
+            plugin_id,
+            generation,
+            kill_generation,
+            action,
+            digest,
+        ) in latest_checkpoint.opt_in_generation_high_water:
+            current = latest.get(plugin_id)
+            if (
+                current is None
+                or current.generation < generation
+                or current.kill_switch_generation < kill_generation
+                or (
+                    current.generation == generation
+                    and (current.action != action or current.decision_digest != digest)
+                )
+            ):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_checkpoint_high_water_changed"
+                )
 
     @contextmanager
     def _bound_journal(self, *, create_lock: bool = True) -> Iterator[RootedFile]:
@@ -410,8 +663,7 @@ class CodingWorkerOptInJournal:
                 not stat.S_ISDIR(opened.st_mode)
                 or opened.st_uid != os.geteuid()
                 or stat.S_IMODE(opened.st_mode) & 0o077
-                or (opened.st_dev, opened.st_ino)
-                != (visible.st_dev, visible.st_ino)
+                or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
             ):
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_state_root_unsafe"
@@ -419,7 +671,17 @@ class CodingWorkerOptInJournal:
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
                 with file_io.bind(self._path, durable=True) as rooted:
-                    if create_lock:
+                    v2_owner = self._v2_owner_exists(rooted)
+                    if v2_owner:
+                        try:
+                            rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                exclusive=create_lock, suffix="", create=False
+                            )
+                        except FileNotFoundError as exc:
+                            raise CodingWorkerOptInJournalError(
+                                "coding_worker_opt_in_lock_missing"
+                            ) from exc
+                    elif create_lock:
                         try:
                             rooted.stat()
                         except FileNotFoundError:
@@ -438,11 +700,15 @@ class CodingWorkerOptInJournal:
                                 raise CodingWorkerOptInJournalError(
                                     "coding_worker_opt_in_lock_missing"
                                 ) from exc
-                        rooted.acquire_lock(
+                        created = rooted.acquire_lock(
                             exclusive=True,
                             suffix=".lock",
                             initialize_empty_target_if_new=True,
                         )
+                        if created:
+                            initialize_coding_worker_active_head(
+                                rooted, stem=_STEM, stream_id=_STEM
+                            )
                     else:
                         try:
                             rooted.stat()
@@ -482,11 +748,82 @@ class CodingWorkerOptInJournal:
         events, _history = self._load_history(rooted)
         return events
 
-    def _load_history(
+    @staticmethod
+    def _v2_owner_exists(rooted: RootedFile) -> bool:
+        try:
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _load_v2_state(
         self, rooted: RootedFile
     ) -> tuple[
-        tuple[CodingWorkerOptInDecisionV1, ...], CodingWorkerSegmentedHistoryV1
+        tuple[CodingWorkerOptInDecisionV1, ...],
+        CodingWorkerSegmentedHistoryV1,
+        CodingWorkerOptInReplayV2,
     ]:
+        """Use the committed Product base and retained bytes after V2 ownership."""
+
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+        from .package_product_worker_opt_in_base_v2 import (
+            CodingWorkerOptInReplayV2,
+            _parse_opt_in_segment,
+        )
+
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if owner.scope_id != self._scope_id or owner.store_id != self._store_id:
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_owner_changed"
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=_STEM)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerOptInReplayV2) or any(
+                item.scope_id != self._scope_id for item in replay.latest_decisions
+            ):
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_owner_changed"
+                )
+            manifest_raw = rooted.sibling(_STEM + ".segments.json").read_bytes(
+                max_bytes=1024 * 1024
+            )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                manifest_raw, stream_id=_STEM
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise CodingWorkerOptInJournalError(
+                    "coding_worker_opt_in_v2_manifest_changed"
+                )
+            history = CodingWorkerSegmentedHistoryV1(
+                manifest=manifest,
+                segments=(b"",) * retained.first_retained_generation
+                + retained.segments,
+            )
+            events = tuple(
+                event
+                for raw in retained.segments
+                for event in _parse_opt_in_segment(raw)
+            )
+            return events, history, replay
+        except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+            raise CodingWorkerOptInJournalError(exc.code) from exc
+        except (OSError, ValueError) as exc:
+            raise CodingWorkerOptInJournalError(
+                "coding_worker_opt_in_v2_corrupt"
+            ) from exc
+
+    def _load_history(
+        self, rooted: RootedFile
+    ) -> tuple[tuple[CodingWorkerOptInDecisionV1, ...], CodingWorkerSegmentedHistoryV1]:
         try:
             history = read_coding_worker_segmented_history(
                 rooted,
@@ -502,17 +839,14 @@ class CodingWorkerOptInJournal:
                 raw.decode("utf-8"),
                 target=self._path,
                 record_codec=_CODEC,
-                load_policy=JournalLoadPolicy(
-                    partial_tail="raise", create_lock=False
-                ),
+                load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
             ).records
             lines = raw.splitlines(keepends=True)
             if (
                 len(segment) > _MAX_EVENTS
                 or len(segment) != len(lines)
                 or any(
-                    event.journal_revision != revision
-                    or line != _opt_in_line(event)
+                    event.journal_revision != revision or line != _opt_in_line(event)
                     for revision, (event, line) in enumerate(
                         zip(segment, lines, strict=True), len(events) + 1
                     )
@@ -550,13 +884,17 @@ class CodingWorkerOptInJournal:
 
 
 def _opt_in_line(decision: CodingWorkerOptInDecisionV1) -> bytes:
-    return json.dumps(decision.to_dict(), ensure_ascii=False, sort_keys=True).encode(
-        "utf-8"
-    ) + b"\n"
+    return (
+        json.dumps(decision.to_dict(), ensure_ascii=False, sort_keys=True).encode(
+            "utf-8"
+        )
+        + b"\n"
+    )
 
 
 __all__ = [
     "CodingWorkerOptInDecisionV1",
     "CodingWorkerOptInJournal",
     "CodingWorkerOptInJournalError",
+    "CodingWorkerOptInRetentionProjectionV1",
 ]

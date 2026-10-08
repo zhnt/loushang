@@ -145,7 +145,7 @@ def repair_coding_windows_product_worker_clean_exit_orphan_runtime(
     ) -> Iterator[None]:
         if lease != expected_lease:
             raise ValueError("Windows Worker orphan lease changed")
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             current = _review_under_gc_guard(
                 product, attempt_id=expected_review.attempt_id, orphans=(lease,)
             )

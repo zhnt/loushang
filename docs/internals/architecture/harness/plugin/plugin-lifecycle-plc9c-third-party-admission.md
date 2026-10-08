@@ -1045,7 +1045,12 @@ reopen case: a separate process admits and launches the Product Worker, proves
 a live query, and exits without cleanup; a fresh process opens the same Product,
 observes the absent Job and orphan lease, then performs four fresh-reviewed
 settlement steps and verifies that the reviewed payload stage is retired. The
-case remains a candidate until its native Windows CI result is retained.
+direct and hosted crash/reopen cases passed in CI run `37502903364` on
+`8c3d6b87`. The uploaded `windows-worker-session-pytest-report` passed the
+repository XML verifier with 4 tests, zero skips, failures, or errors across
+both clean public Session paths and both crash/reopen paths. Later local Worker
+history changes still require their own exact-head CI rerun; this evidence
+does not open general third-party Worker routing.
 One narrower clean-exit writeback candidate is now available when the Worker
 and LPAC cleanup reached their durable terminal witnesses before the Product
 runtime process disappeared. It requires the full launch, grant, revoke,
@@ -1335,7 +1340,9 @@ Supervisor reads leave no lock or history, and a retained lock with missing
 history refuses an epoch reset. Existing
 payload recovery tests passed 11 cases, and the installed Linux native Worker
 case passed after this integration. Claims and transitions still replay the
-retained history, and no terminal-history checkpoint or anti-reuse index exists.
+retained history. A later Product checkpoint candidate records exact stream
+snapshots and historical IDs, but no journal retirement or writer-enforced
+anti-reuse index exists.
 The opt-in journal also passed forced rollover, revocation/reallow replay,
 changed-seal refusal, and post-publication interruption. A real Product Wheel
 case forced both opt-in and receipt rollover and retained the old receipt.
@@ -1371,12 +1378,31 @@ policy, owner, and evidence-authority identities across revisions. A regression
 first reproduced a valid CAS rewrite of host or boot identity; Product CAS now
 rejects it before append, and strict replay rejects the same bytes in retained
 history. All historical full-state records are still retained, so this
-rotation does not solve sustained storage or history pruning. The current
-installed Linux pilot can have no C5 activation-state journal; the review
+rotation does not solve sustained storage or history pruning. Earlier explicit
+Linux canary attempts can have no C5 activation-state journal; the review
 reports that absence as an unresolved reference proof rather than treating it
 as zero active references.
-The Windows
-LPAC provisioning inventory likewise has a bounded attempt count. These are
+The Linux Package GC history authority now requires the retained C5 attempt
+IDs to equal every retained start-gate attempt ID before it permits root
+deletion. A settled Supervisor and absent native group cannot compensate for
+a missing C5 attempt; the explicit public Session GC regression checks this
+refusal before adding the missing retained records.
+The C5 journal now exposes a strict, no-create, read-only inventory of every
+retained attempt's last phase and revision, including attempts absent from the
+current compacted state. The compacted-ID regression first failed because that
+inventory was missing, then passed after the reader was added; the complete
+segmented C5 file passed 9/9. The later Product retention review joins the
+ordinary Host start gate, backup, and GC references; this journal reader alone
+grants no deletion authority.
+The Linux Product retention review now reports unverified retained C5
+references across the whole Product snapshot as well as those related to the
+selected attempt or receipt. A compacted C5 attempt with no gate remains a
+visible global debt even when reviewing another attempt; a settled C5 attempt
+with a matching gate and Supervisor remains a positive case only when its
+native process group is also observed absent. A present or unobserved group
+remains a global debt. This inventory alone is a checkpoint input, not receipt
+closure or history-pruning authority. The Windows LPAC provisioning inventory
+likewise has a bounded attempt count. These are
 safe refusals for a pilot, not yet a retention policy for sustained third-party
 use. Removing the numeric checks or increasing them only moves the failure
 point.
@@ -1394,28 +1420,113 @@ only after no active or recoverable attempt references it and the current
 opt-in decision has moved past it. An unknown observation retains the debt.
 The current backup-retention projection describes the Arch Installation's
 private-data backup, not a Worker attempt. The GC reservation snapshot names
-Package revisions, not Worker attempt IDs. Neither owner currently supplies an
-attempt-level absence proof. A terminal Supervisor record and absent payload
-therefore cannot authorize historical deletion; Product needs an explicit
-attempt-to-retention binding or an owner attestation covering every backup and
-GC reference before checkpoint publication.
+Package revisions, not Worker attempt IDs. The current Coding Product backup
+topology admits only Arch private-data backups. Its POSIX and Windows backup
+writer constructors use the same versioned type authority; the Linux retention
+review now records an attempt-specific observation that Worker backup is
+unsupported; the Windows retained launch-intent review records the same
+typed observation. If a Worker backup kind is added, these observations refuse until
+that owner provides an attempt-reference inventory. It does not speak for
+external workspace copies or a future Product release. A terminal Supervisor
+record and absent payload still cannot authorize historical deletion; the
+checkpoint must bind this topology revision and the GC owner's reservation
+revision to the exact attempt and receipt closure proof.
 The Linux Product now has a read-only attempt-retention review that joins the
 start gate, Supervisor settlement, exact receipt, current activation-state
 references and opt-in decision,
 fresh native group observation, payload inventory, runtime leases, and GC
 reservations while holding the Product owner locks. It also checks every
 retained start-gate reference to the receipt against that attempt's Supervisor
-settlement. It reports the missing
-attempt-level backup and receipt-reference proofs explicitly and grants no
-prune authority. The GC read guard also keeps nested owner reads strict and
+settlement and a fresh native group absence observation. The review records
+each related gate whose binding, Supervisor, or native absence remains
+unverified; an unsettled attempt cannot be hidden by another attempt using the
+same receipt. The review reports receipt references verified only when every
+gate for that receipt has a matching retained settled C5 attempt, all those
+gates have settled Supervisor and absent native-group proof, and no active C5
+reference remains. The ordinary pending Host now records and settles its own
+C5 transitions; older explicit canary attempts still lack that write path.
+The same snapshot now checks every retained gate against its own receipt,
+Supervisor, and native-group observation, including gates for other receipts.
+An orphan or unsettled gate elsewhere is a global reference debt and prevents
+the selected receipt from claiming fully verified references. A Product-wide
+checkpoint cannot rely on a review that overlooks another receipt's gate.
+This read-only result grants no checkpoint or pruning authority. The GC read guard
+also keeps nested owner reads strict and
 blocks journal append while a shared read lock is held.
+Linux Hosting now exposes a strict current boot ID alongside its existing
+application-scoped machine key. A Coding Product cleanup-evidence owner uses
+both identities to re-open an exact retention review before accepting a C5
+tree-settlement witness: the selected gate must be bound, the Supervisor
+process settled, the native group absent on the same boot, the payload and
+repair debts absent, and the retained C5 attempt must match the receipt,
+generation, host, and boot. A changed witness or generation refuses. The
+real installed Product test exercises this verifier with a synthetic settled
+C5 history, and the ordinary pending Host now invokes it on release. Changed-boot
+absence and registered-lease expiry methods remain closed. This verification
+port alone does not write C5 transitions or authorize history pruning.
+The same snapshot now records the global retained start-gate, Supervisor, and
+receipt revisions and lists Supervisor attempts with no retained gate. It also
+reads the complete opt-in operation history under the Product GC read gate and
+records its global revision and retained operation IDs without creating a
+missing journal. The same read records every retained gate and Supervisor
+attempt ID, receipt fingerprint, and the maximum Supervisor epoch for each
+Supervisor key. These are exact anti-reuse checkpoint inputs; no retired ID is
+removed by this review. An
+orphan Supervisor is a separate missing proof even when the selected attempt
+is elsewhere. These revision marks are checkpoint inputs, not durable
+anti-reuse or permission to retire history.
+The Linux review also classifies Product Worker state-root names against the
+current journal, native-release, payload-stage, and repair-intent owners.
+Unknown Worker-owned names and retained payload repair intents remain explicit
+reference debts. This keeps a later owner or interrupted stage from silently
+looking absent to a checkpoint candidate; it still does not authorize pruning.
+The Linux Package GC history authority now rejects an unknown Worker state-root
+name under its pinned root read as well. A Product negative first showed that
+the read-only review noticed such a name while the GC history authority accepted
+it; the authority now refuses the same observation before Package deletion.
+For a retained payload repair intent, it verifies the exact canonical record,
+absent payload stage, and the required Supervisor state under the pinned Product
+root. Completed repairs can then permit Package GC; malformed or incomplete
+repairs still refuse it. These durable repair records remain reference debts for
+history pruning, which needs a separate checkpoint proof.
+The Product Package GC dispatcher now invokes its platform Worker history
+authority whenever any Worker-owned state-root name is present, including an
+unknown name or a repair intent without the established journal prefixes. The
+end-to-end Linux Product regression first showed `gc.prepare()` skipped the
+authority for an isolated unknown name; it now refuses both unbound and bound
+GC, while a clean no-Worker preparation still passes. The Windows history
+authority now classifies every Worker-prefixed state-root name against the
+current exact Windows owners and refuses unknown or staged names. The portable classifier
+cases pass, and CI run `37502903364` on pushed head `8c3d6b87` passed the
+native normal/partial-stage GC and host-crash GC jobs separately, 1/1 each with
+verified zero-skip JUnit reports. These jobs prove their stated journeys, not
+long-term checkpoint, history pruning, or general Worker admission.
+A regression then showed that the concrete opt-in writer could revoke inside
+the same thread's GC read snapshot through a nested default guard. The GC
+reference-writer fence, reservation mutations, Product root GC, and Product
+Worker state writers now require write admission; the shared read gate rejects
+that nested write before state changes. The Linux receipt witness now uses the
+strict no-create receipt reader. The native release approval query likewise
+reads without creating its journal lock, so the Product retention review can
+inspect it inside the shared GC snapshot. This repairs snapshot atomicity for these
+bound owners. The later candidate checkpoint publisher uses the write gate;
+history pruning remains closed.
+The three Linux payload-debt repair paths also require GC write admission while
+their read-only previews retain snapshot access. A real Product regression
+first deleted an empty payload stage inside a GC read snapshot, then passed
+after the write fence was applied to empty, complete, and unmarked repairs.
+The Product backup-type initializer now carries management recovery's workspace
+preflight into its GC lock and refuses a missing GC lock on an existing
+management workspace. A substituted workspace cannot trigger tail repair
+before the identity check; focused Coding recovery regressions cover both
+the swap and missing-lock cases.
 The review's payload inventory now uses the Product's original state-root
 directory identity, shared with POSIX root GC. A real Product negative first
 showed that swapping in an empty private directory between open and scan could
 make the older visible-path check report no payload debt; the fixed reader
 refuses that descriptor. The existing Product gate/receipt/Supervisor recovery
 case passed after the change. This is an identity proof for one read, not the
-missing backup, receipt-reference, or anti-reuse checkpoint proof.
+missing receipt-reference or anti-reuse checkpoint proof.
 
 The checkpoint must be durable before old bytes are removed; a crash during
 publication must select one complete generation or refuse, never accept a
@@ -1427,6 +1538,268 @@ than 2,048 sequential queries. More than 4,096 receipt generations, Windows
 attempt rotation, and crash/reopen checks at each checkpoint publication
 boundary remain open. Until those retention and platform reports exist, the
 explicit pilot remains bounded and general Worker routing stays closed.
+The Linux retention review now exposes its exact fact join to a caller already
+holding Package runtime quiescence and the Product GC gate. The candidate
+checkpoint publisher acquires those locks in that order, takes a fresh GC
+reservation snapshot under the write gate, re-runs the join, and publishes
+before releasing either lock. The public review remains read-only.
+The join now also strictly reads the opt-in, receipt, C5, start-gate, and
+Supervisor segment manifests and active heads from the pinned Product state
+root. It records each stream's segment lengths and SHA-256 digests, active
+generation, last sealed revision, total record revision, and a canonical
+snapshot fingerprint. The review compares those total revisions with each
+strict semantic journal replay and reports a mismatch as a missing proof. A
+checkpoint binds those fingerprints together with the existing semantic
+references and high-water marks; a revision count or ID inventory alone cannot
+prove unchanged historical bytes. Subsequent publication and repair now reopen
+all five strict streams and verify each prior segment digest against the exact
+current byte prefix, including the former active segment after append or
+rotation. A higher revision cannot conceal rewritten old records.
+The Product checkpoint reader applies the same prefix proof to the latest
+published snapshot before Package GC accepts a present checkpoint journal;
+newly appended source records remain valid while a rewritten checkpointed
+prefix refuses.
+The candidate checkpoint journal now appends a digest-chained Product record
+containing the five stream snapshots, new opt-in operation IDs, new attempt IDs,
+new receipt fingerprints, current opt-in and Supervisor high-water marks, the
+GC reservation revision, and the versioned backup-topology revision. It refuses
+publication while any closure proof is missing. A complete record survives
+reopen; an append without its committed active head is refused. Package GC
+strictly replays a present checkpoint journal but still proves its own retained
+Worker histories. A real Product fault injection now proves that an appended
+record without its committed active head is refused on reopen and by Package
+GC. A bounded repair now replays the committed prefix and accepts exactly one
+complete appended record only when the current Product closure derives the
+same bytes under runtime quiescence and the GC write gate. Changed source
+history, an absent or changed head, and multiple or partial appended records
+still refuse repair. The checkpoint grants no journal deletion, ID-reuse
+bypass, default routing, or general third-party Worker admission. Recovery
+across all publication boundaries still needs Product-level evidence.
+The real Linux Product test now forces a one-record checkpoint segment cap.
+An injected interruption immediately after the sealed manifest publication
+reopens the prior complete record with an empty successor and permits Package
+GC. A subsequent append without a committed successor head refuses Package GC;
+the exact repair commits that one record and GC passes again. Other crash
+boundaries still require their own evidence.
+The Product now creates a separate scope- and Store-bound checkpoint owner
+anchor before the first journal file. It records the last committed checkpoint
+revision and digest. After each active head is committed, the publisher updates
+that anchor; a reader or Package GC refuses a missing, changed, ahead, or
+lagging anchor. A later Product writer can replay the complete checkpoint chain
+and advance a lagging anchor before returning an idempotent publication. The
+real Linux Product test injects failure after the head commit and before the
+anchor update: GC refuses, then the same publication settles the anchor and
+GC passes. The anchored first-creation case injects failure before the empty
+head is written: GC refuses, while a later Product publication verifies the
+zero-revision anchor and empty first file, creates the missing head, and
+continues. The unanchored version of that state remains refused.
+If source history advances after an interrupted append, the exact repair
+refuses to turn stale bytes into a committed checkpoint. A separate Product
+rollback now accepts an active head that proves its old byte prefix, strictly
+replays the committed checkpoint chain, and durably truncates only the
+uncommitted tail under runtime quiescence and the GC write gate. A focused
+journal regression covers a partial tail and changed-byte refusal. The real
+Product case advances opt-in history after an interrupted successor append,
+refuses stale repair, rolls back the tail, and publishes a fresh checkpoint;
+Package GC passes after the rollback and again after publication. This
+rollback does not delete a committed checkpoint or any Worker source history.
+Fault injection immediately before and immediately after native truncation
+reopens as either an unchanged uncommitted tail that can be retried or the exact
+previously committed prefix. The complete non-live Worker candidate file on
+the current branch passed 35 cases with 12 expected host-runtime skips after
+this recovery work; that result does not supply history-pruning or Windows
+production evidence.
+The anchor does not authorize pruning or make removed journal history
+reconstructible. Source-history retirement, writer-enforced anti-reuse, and
+the Windows equivalent remain separate gates.
+
+### Source-history retirement format candidate
+
+The current segment manifest is version 1: generation zero and revision one
+must be present, and every semantic reader replays all records. Deleting even
+one sealed segment under that format is corruption. A retirement implementation
+therefore needs a new, explicit manifest version and a Product-owned semantic
+base; it must not reinterpret a missing version-1 segment as a retired one.
+
+The version-2 cutover record for each of the five streams must name the exact
+checkpoint anchor revision and digest, the original sealed segment byte counts
+and digests through the cutoff, the first retained generation and global record
+revision, and a typed semantic base at that boundary. The retained segment
+names keep their original generations and record revisions. The reader checks
+the version-2 manifest and Product anchor before projecting the base plus all
+retained bytes. While deletion debt is open, it accepts only old segments
+listed by that debt with their original byte counts and digests. It rejects a
+gap, an unknown old segment, a changed segment, or an anchor that lags the
+cutover. A version-1 reader continues to require the complete original
+history; there is no silent mixed-format mode.
+
+One Product-owned cutover index commits all five prepared stream records
+together against the same anchor. Until that index commits, every stream is
+version 1 authority; after it commits, every stream is version 2 authority.
+
+| Stream | Semantic base required before a prefix can be removed |
+| --- | --- |
+| Opt-in | Last complete decision per Plugin, including any active allow policy, selection and kill-switch generations, and every retired operation ID. |
+| Activation receipts | Last issued sequence and retired receipt fingerprints; every receipt still named by a live or recoverable attempt remains in retained bytes. |
+| C5 activation state | Exact current attempts and CAS revision, plus every retired attempt ID and immutable admission identity needed to refuse reuse. |
+| Start gates | Exact current unbound or bound attempts and global revision; retired attempt IDs remain in the checkpoint index. |
+| Supervisor | Exact current attempt and retry-window state, per-key epoch high water, global revision, and retired attempt IDs. |
+
+The Product writer first proves every proposed retired attempt or receipt has
+no recovery, native process, payload, backup, or GC reference using a fresh
+reopen under runtime quiescence and the GC write gate. It publishes and anchors
+the checkpoint, then durably records a retirement intent with exact source
+segments and the typed base. Only after the version-2 readers and all five
+writers can join that base may it commit the Product cutover index. Physical
+removal of old sealed segments follows through a durable deletion ledger.
+Interruption before cutover leaves version 1 authoritative; after cutover it
+leaves a resumable deletion debt. Package GC must replay the cutover and debt
+before deleting a Package root. Writers must consult checkpoint tombstones and
+high-water marks before accepting a new operation, attempt, receipt, or epoch.
+
+This is the required target protocol, not implemented authority. The first
+code slice proves a read-only retirement preview against complete version-1
+bytes and explicit negative cases. The next slice defines canonical version-2
+stream cutover candidates and a Product index binding all five streams to the
+same checkpoint. Those record classes have no publication path. The generic
+candidate constructor still accepts an unverified semantic-base digest;
+the later staging path writes candidate bytes but grants no authority.
+Subsequent slices must carry typed bases through Product readers and writers,
+then prove the publication/deletion crash matrix on a real Product and Windows
+equivalent before any source segment is physically removed in production.
+
+The first writer fence is on Linux Product opt-in. Under the Product GC write
+gate, it reads the exact anchored checkpoint chain before accepting a new
+operation. An operation ID already recorded by a checkpoint but absent from
+retained opt-in events is refused; a still-retained exact replay keeps its
+existing idempotent result. The writer verifies that the checkpoint's exact
+opt-in source bytes remain a prefix and refuses a state below the latest
+checkpoint's per-Plugin generation or kill-switch high-water mark. It reads
+only the committed prefix of a strictly recognized uncommitted checkpoint tail
+so the existing rollback and stale-repair flow remains available, and
+the Product passes its store identity when constructing this writer. This is
+one of five required writer joins and does not make V2 cutover authoritative.
+
+The Linux Product receipt issuer now joins the same anchored checkpoint before
+issuing or replaying a receipt. It requires the checkpoint's receipt bytes to
+remain an exact prefix, derives the next global issue sequence above both the
+retained records and checkpoint waterline, and refuses a candidate fingerprint
+already recorded by any checkpoint. A strictly recognized uncommitted
+checkpoint tail still supplies only its committed prefix. This is the second
+writer join; the receipt reader still requires complete version-1 history.
+
+The Linux Product start-gate appender is the third writer join. It verifies
+the checkpoint's exact start-gate byte prefix before an intent or bound record,
+refuses any attempt ID already retired by an anchored checkpoint, and derives
+the next global journal revision above both retained records and the checkpoint
+waterline. The existing V1 replay and Product admission checks remain in
+effect; the gate reader still requires complete version-1 history.
+
+The Linux Product C5 activation-state CAS writer is the fourth writer join.
+It verifies the checkpoint's exact C5 byte prefix and derives its CAS revision
+above the checkpoint waterline. A new attempt ID already recorded in an
+anchored checkpoint is refused, while a still-retained attempt may continue
+through a later state revision. The Product binds the writer to its scope and
+store identity under the GC write gate. The C5 reader still requires complete
+version-1 history; this fence grants no cutover or pruning authority.
+
+The Linux Product Supervisor appender is the fifth writer join. Under the
+Product GC write gate and its journal lock, it verifies the anchored
+checkpoint's exact Supervisor byte prefix and refuses a global record revision
+at or below the checkpoint waterline. A new claim cannot reuse an attempt ID
+or a per-key epoch already recorded by a checkpoint. Existing attempt
+transitions continue through the retained version-1 history. The Supervisor
+reader and epoch allocator still require that complete history; no version-2
+cutover or source deletion is authorized by this writer fence.
+
+The first typed semantic-base slice covers opt-in. It replays a verified sealed
+V1 prefix into the last complete decision per Plugin and every retired
+operation ID, then validates retained records from the original global
+revision, generation, and kill-switch boundary. A canonical base carries the
+retired seal-chain digest; an opt-in cutover factory reprojects the exact V1
+prefix before binding its byte digest to the retirement preview. Changed
+prefix bytes, altered base state, reused operation IDs, and generation rollback
+refuse. Its bytes may be durably staged as a candidate; no Product-routed V2
+reader, Product cutover publication, or source deletion exists yet.
+
+The second typed semantic-base slice covers activation receipts. It projects
+the sealed V1 prefix into the last issued sequence and every retired receipt
+fingerprint, then replays retained records at the original sequence while
+refusing gaps and fingerprint reuse. Its cutover factory reprojects the prefix
+and binds the canonical base digest to the checkpoint and exact seal chain.
+This does not prove that an old receipt is unreferenced by C5, native recovery,
+backup, or Package GC; the Product-wide closure must still prove those joins
+before publication. Staged receipt-base bytes have no Product-routed V2
+reader or deletion authority.
+
+The third typed semantic-base slice covers C5 activation state. It stores the
+exact last CAS record at the sealed boundary and every attempt ID already
+settled and compacted out of that state. Retained full-state records resume
+the existing immutable-identity and phase-transition validator from this
+boundary; removed attempts may never reappear under the same or a different
+key. The C5 cutover factory reprojects the sealed V1 prefix before binding the
+base digest to the checkpoint. A staged base remains inert until a
+Product-routed V2 reader, Product owner index, and deletion protocol are
+complete.
+
+The fourth typed semantic-base slice covers Start Gates. It retains the latest
+intent or bound record for each attempt outside the anchored checkpoint
+chain's retired-ID set, plus the global revision and that exact tombstone set.
+Retained records must continue the intent-to-bound transition and cannot reuse
+a retired ID or change a binding. Candidate cutover creation now replays the
+retained bytes for all four typed streams, so a checkpoint cannot retire an
+attempt that still has a later Start Gate record. Product-wide closure must
+still prove that excluded gates have no native or recovery references before
+the Product owner index commits or old segments are removed.
+
+The fifth typed semantic-base slice covers Supervisor. It retains the latest
+non-retired record for each attempt and the last record, epoch, clean-stop
+revision, and retry ordinal for each Supervisor key. A retired attempt must
+have settled in the sealed prefix and cannot reappear in retained history.
+Retained claims and transitions replay from the original global revision;
+the cutover factory reprojects the sealed prefix and checks the resulting
+per-key epoch waterline against the anchored checkpoint chain. This candidate
+may now have durably staged bytes, but has no Product-routed V2 reader or
+writer, Product index publication, or source-deletion authority.
+
+A read-only five-stream preparation now takes one anchored checkpoint chain
+and exact V1 histories, projects and replays every typed base, then binds the
+five individually validated stream digests into one Product index candidate.
+It refuses a missing stream, changed source, stale anchor, or repeated
+checkpoint identity.
+The older generic index constructor remains a byte-format primitive; Product
+publication must prove Product-wide reference closure, use the typed
+preparation, and recheck the same sources under runtime quiescence and the GC
+write gate before switching authority.
+
+The Linux Product now has a read-only V2 preflight using the same runtime
+quiescence then GC write-gate order as checkpoint publication. It reopens the
+anchored checkpoint, reviews every checkpointed attempt for current native,
+payload, backup, lease, and GC references, requires the current five-stream
+snapshot and topology revisions to match that checkpoint, then reads all five
+rooted V1 histories for typed preparation. This preflight writes no V2 files
+and does not make a cutover index authoritative. The host-runtime integration
+path and durable publication crash matrix remain to be verified.
+
+The Linux Product can now durably stage a V2 preparation under that same
+runtime/GC custody period. A fixed-name intent is written before the candidate
+index, five typed bases, and five stream cutover records. Every artifact is
+checked against the intent's digest; an interrupted write resumes only when
+the intent and existing bytes match. A rollback removes those exact files by
+inode identity while no Product owner index exists. Package GC refuses to
+delete a Package root while preparation artifacts remain. Staging does not
+commit the Product owner index, switch any V1 reader or writer, or remove
+source history; those steps still need their own crash and recovery proof.
+
+A strict V2 physical reader candidate now verifies the Product owner index
+against staged typed artifacts, the anchored checkpoint chain, the immutable
+cutover prefix, the V1 generation manifest, exact sealed bytes and heads, and
+semantic replay of retained segments. It permits a retired segment or head to
+be absent only when an exact deletion ledger is bound to that owner index.
+The reader also follows later active appends and rotations while retaining the
+cutover prefix check. The ledger has a canonical type but no Product-owned
+publication or deletion executor. Product readers and writers still select V1;
+no old segment may yet be removed in production.
 
 The first retention implementation uses Product-owned immutable journal
 segments rather than rewriting a live JSONL file in place. A first writer
@@ -1444,9 +1817,221 @@ and the contiguous global revision chain, and refuse an unreferenced segment,
 missing seal, duplicate attempt or receipt, or stale writer generation. An
 interrupted manifest publication therefore leaves either the old complete
 generation or a refused orphan; it cannot silently shorten history.
-The current bounded pilot does not authenticate the active file's last
-committed length or digest. History pruning, restore, and broader routing
-require that additional proof so a truncated active file cannot appear valid.
+The active file now has a per-generation, Product-owned head containing its
+last committed length and digest. A first writer publishes the empty head
+after creating the durable lock and empty file; sealing publishes the empty
+successor and its head before the manifest names it. Every append checks the
+previous head, writes and syncs the record, verifies exact resulting bytes,
+then atomically publishes the next head. Readers refuse a missing or changed
+head, including a file shortened at a complete record boundary. A crash after
+the append but before head publication leaves an explicit refusal for operator
+repair; it cannot silently accept a shorter history. This closes the active
+tail integrity gap for newly created Product state. History pruning, restore,
+and broader routing still require the separate attempt-level retention and
+anti-reuse proofs above.
+The real public Linux Coding Session route was then checked after query,
+disable, and update. In all three installed-Product cases the newly started
+attempt had durable start-gate and Supervisor settlement, while the separate
+C5 activation-state journal was initially absent. The first valid start-gate
+write now establishes an empty, head-verified C5 history under the Product GC
+gate; later gate writes refuse a missing C5 owner. The read-only retention
+review distinguishes that durable empty history from a missing journal. The
+ordinary pending Host then owned its attempt through the start gate and
+Supervisor, so the review reported `receipt_references_unverified`. The current
+Linux explicit Session Host also writes C5 transitions. Earlier attempt
+references and the later checkpoint must still be joined before history
+pruning or general third-party routing is accepted.
+The public Linux `loushang-worker-native query` entrypoint now uses the same
+Product C5 coordinator: it records admission before first effect, publishes
+after Session graph preparation, and retires and settles only after the Worker
+process and payload have been cleaned up. Its cross-process Product regression
+first found four settled start gates with no C5 records; after the change all
+four had retained settled C5 attempts. A graph-preparation failure after
+Worker start also left a fifth settled attempt. This closes that explicit CLI
+write path, while the low-level canary fixture and durable checkpoint/pruning
+gates remain separate.
+The read-only retention review now exposes every retained C5 attempt, including
+one settled and compacted out of the latest snapshot. Linux Package GC also
+joins those retained C5 attempts to start-gate and Supervisor history and
+refuses an absent gate, unsettled attempt, or changed receipt/policy binding.
+A real Product regression first showed that a compacted C5 attempt without a
+gate was accepted as empty history, then passed with this refusal. This closes
+that Package-deletion gap only. The later ordinary pending Host writes C5 state;
+checkpoint and history-pruning authority remain open.
+A second real Product case now starts and settles an ordinary Worker, adds a
+settled C5 record with the same attempt, receipt, and policy binding, compacts
+that C5 attempt out of the latest snapshot, and still permits Package GC
+preparation. The focused native test passed 1/1. This guards the positive
+join as well as the missing-gate refusal, while retaining all history bytes.
+
+The Linux start-gate intent is already a durable pre-launch record used by
+both the ordinary pending Host and the explicit operator query. The retention
+review now projects it together with the exact Product receipt as a typed
+attempt reference carrying the attempt, receipt fingerprint, selected Package artifact
+digest, locator revision, and Linux platform. A changed receipt binding yields
+no reference. This read-only projection does not prove closure or permit
+history pruning; it avoids introducing a second pre-launch journal with a
+crash window between two writes. Windows now has a read-only equivalent that
+joins each retained launch intent to its exact receipt under the Product GC
+read guard; it refuses native or Supervisor history without an intent and a
+changed binding. A native crash/reopen run passed both clean public Session
+routes but exposed a fixture-owned install runtime lease still orphaned beside
+the public Session lease; the crash fixture now closes that setup runtime
+before the deliberate process exit and asserts the complete orphan set. This
+native repair path passed on 2026-10-06 in CI run `37493522912`: the direct and
+hosted crash/reopen cases and both clean public Session routes passed 4/4 with
+zero skips, failures, or errors in the verified Windows JUnit report. This is
+evidence for that remote head; the subsequent local GC ownership changes still
+need native reruns. The Linux
+retention review now also joins retained C5 attempts relevant to the selected
+attempt or receipt against gate and Supervisor history. Missing gates, changed
+bindings, unbound gates, and unsettled Supervisors remain explicit reference
+debts, including after C5 compaction. This join does not attest native absence
+for every related attempt or close a reference. Cleanup may close a reference
+only after Supervisor and native process settlement, payload debt retirement,
+and the exact Product selection check. A crash between registration and
+settlement remains an open reference on reopen. The retention reviewer must
+read this authority under the Product GC gate and reject an absent or changed
+record; initializing an empty C5 journal after an ordinary launch would not
+prove the old attempt. The Linux Product now records a typed, versioned
+no-Worker-backup observation from the Product backup type authority. The GC
+owner still needs an exact attempt-level closure decision; an Arch private-data
+backup projection or Package revision-only reservation cannot supply it. The
+Linux review now reports GC reservations whose
+plugin ID and Package content digest match the attempt's receipt. This is a
+conservative attempt-to-revision join under the GC read guard; any active GC
+reservation still blocks pruning, and the join grants no durable
+attempt-level absence attestation. Windows now uses the same exact Plugin and
+Wheel artifact join under one GC read guard for every retained launch-intent
+reference. Its report
+also preserves the total active reservation count, so an unrelated reservation
+cannot silently become an attempt-level absence proof. Both Product reviews
+now carry the GC owner's journal revision captured under the same strict read
+gate as the active reservations. That revision is checkpoint input, not a
+durable absence attestation. The native public
+Session crash/reopen case checks the no-reservation observation and passed in
+the same four-case Windows run. Only after those joins can a checkpoint carry a
+durable anti-reuse high-water mark and retire sealed segments. Linux and
+Windows must use the same reference semantics, with their respective native
+settlement witnesses.
+The Windows offline recovery reader now captures the complete retained opt-in,
+receipt, and Supervisor histories, the Package GC reservation revision and
+active revision refs, and typed Worker-backup observations while holding runtime
+quiescence and one Product GC read snapshot. Its opt-in reader is strict and
+does not create an absent journal. These records are inputs for a later
+checkpoint's operation and attempt anti-reuse proofs; the current reader does
+not publish a checkpoint or permit history pruning.
+The C5 full-state replay rules are now shared between the existing Linux
+segmented journal and a platform-neutral canonical-record decoder intended for
+Windows Product custody. The decoder rejects torn or changed canonical records,
+phase regression, changed immutable attempt identities, and reuse after
+compaction. Its portable cases and the existing Linux segmented cases passed
+11/11; the C5 import-boundary suite passed 7/7. A Windows Product-rooted CAS
+journal now uses these rules and commits a separate immutable byte-digest head
+for every revision. Linux and Windows journals expose the same read-only
+projection of retained C5 attempts, including attempts absent from the latest
+state. Windows Package GC now recognizes only the exact C5 journal/head names;
+when a C5 owner exists, it refuses active or unmatched attempts and requires
+fresh proof that each retained launched attempt's named Job is absent before
+root deletion. It also requires the V2 cleanup contract and matches C5 owner
+generation to the Product receipt. The Windows offline recovery snapshot includes
+the exact C5 revision and retained attempt projection under Package runtime
+quiescence and the GC read gate. It also distinguishes an absent C5 owner from a
+present empty lock, so an interrupted initialization cannot be mistaken for
+a never-started owner.
+The same lease-quiescent snapshot now observes whether each retained native
+Windows Job name is absent; a missing Job name or failed native observation
+remains unknown rather than becoming proof of absence. A future
+cleanup writer must recheck this live observation under its own locks.
+The snapshot grants no recovery write. A Coding Worker candidate Product can
+open a policy-checked Windows C5 store, while a builtins-only Product is
+rejected. The Windows pending Host now opens that store, refuses an interrupted
+empty owner and unfinished prior attempts, registers its own attempt before
+native launch, publishes it with the graph, and settles or records cleanup debt
+on release. Its payload and launch-intent recovery remain separate Product
+owners; C5 registration follows their initial materialization.
+A read-only Windows C5 cleanup evidence owner now joins one normal-exit attempt
+across the Product receipt, launch identity, settled Supervisor, complete LPAC
+history and settlement fingerprint, absent named Job, and retired C5 reference.
+Its runtime-incarnation token in the C5 boot-identity slot grants no OS reboot
+inference: changed-boot and orphan-lease verifiers remain closed. The pending
+Host now calls this owner for normal exit. A Product recovery writer uses the
+same evidence-authority version after a crash, but accepts only a
+process-settled Supervisor, settled LPAC history, repaired orphan lease,
+retired payload stage, and absent named Job. It then retires and settles the
+exact C5 attempt through the Product store. A Product recovery composition now
+resumes those ordered Supervisor, native, lease, stage, and C5 steps from their
+persisted phases; it verifies the exact trusted C5 owner before the first
+recovery write, and every writer repeats its own fresh review. The native Hosted
+crash case exercises that composition, while the direct case retains granular
+step assertions. Both await the next Windows runner report.
+The explicit offline `loushang-worker-windows-candidate --workspace <path>
+--windows-candidate inspect --attempt-id <id>` command (or `recover-crash` in
+place of `inspect`) now opens
+the fenced Product owner for one pathless inspection or ordered recovery. It
+refuses other platforms and does not open an unflagged Session route. The native
+Hosted crash case exercises inspect and recovery through this CLI; until its
+Windows report passes, the command remains a candidate surface. That native
+case now stops recovery once after Supervisor settlement and once after stage
+retirement, then reruns the CLI from each persisted phase before accepting C5
+settlement. The first resumed path must not restart a settled Supervisor; the
+second must not repeat native, lease, or stage effects.
+A dedicated native normal-exit case now retains a retired C5 test attempt and
+asks this owner to verify the real settled Supervisor, LPAC journal fingerprint,
+and absent named Job. It also injects a present Job and a changed LPAC witness;
+both must refuse. The owner reads the registry's actual orphan leases before
+the Product GC read, instead of assuming that set is empty. The case is queued
+in the strict Windows Worker Session CI job and has not yet produced a native
+pass report. The public direct, Hosted, and crash restart cases now assert
+normal C5 settlement and crash recovery writeback; these changed native
+assertions also await a Windows report.
+An expected revision above zero against a genuinely absent C5 owner now returns
+a CAS miss without creating its lock; orphan state still fails closed.
+Its native reopen, GC join, and complete-record-loss test is part of the next
+strict Windows CI report. The Host and crash recovery wiring are candidate
+implementation until that report verifies them; the unflagged Windows route
+remains closed.
+The snapshot also projects each journal's retained revision, opt-in operation
+IDs, Supervisor attempt IDs and per-key epoch high-water marks, and receipt
+fingerprints from those exact histories. The native crash/reopen candidate
+checks those projections and refuses a missing opt-in history behind a retained
+lock; its new assertions still await the next Windows runner report.
+Linux Package GC now consumes a Coding-owned, read-only Worker history
+authority through the existing Product GC port. When Worker history is present,
+an unbound authority refuses GC. The bound authority requires every retained
+start-gate attempt to have a matching process-settled Supervisor record and
+historical receipt, verifies native group absence, and refuses active C5
+state or changed journal bytes. It can inspect historical gates after the
+candidate is no longer in the current Product policy; only new gate writes
+still require that policy. A real installed public Session passed GC after
+settlement and refused GC when its retained gate bytes changed. A separate
+Product case first reproduced GC success with a missing payload and unsettled
+Supervisor attempt; it now refuses both an absent authority and the bound
+authority. A synthetic attempt with settled Supervisor history but no gate
+also remains GC debt after payload repair. These checks protect Package root
+deletion and retain all Worker history. They do not provide the shared
+attempt-reference, backup, checkpoint, or anti-reuse proofs required to prune
+history or open general routing.
+Both Linux and Windows Package GC history readers now join each retained
+activation receipt to its exact historical `allow` opt-in decision for the
+same Plugin. An absent or orphaned opt-in journal, changed decision digest, or
+missing historical allow refuses Package root deletion while retaining all
+Worker audit records. The real Linux public Session case passed the missing
+history refusal and restored-history positive; the Windows Product GC case has
+the corresponding native positive and negative assertions pending CI. This
+join does not publish an anti-reuse checkpoint or authorize history pruning.
+The Linux Product retention review now requires the reviewed receipt to bind
+exactly one historical `allow` decision, including the original scope, owner
+generation, and kill-switch generation. Its real installed-Product regression
+passed the positive and missing-history cases; missing history also prevents
+the review from claiming verified receipt references. This is a read-only
+checkpoint input and grants no retirement or pruning authority.
+The review now applies that join to every retained receipt in the same Product
+snapshot. An injected second typed receipt with no matching historical allow
+becomes a global unverified opt-in reference and prevents the otherwise clean
+first receipt from claiming verified references. The installed-Product positive
+and this negative passed in one focused regression. This still does not
+publish a checkpoint or authorize sealed-segment deletion.
 Competing direct first openers outside the Product GC gate can observe the
 newly created lock before its empty file is published. Such an interruption
 leaves an explicit initialization debt for operator review, never an empty
@@ -1464,6 +2049,14 @@ per-attempt provisioning histories and a bounded inventory; it needs its own
 equivalent terminal-history and anti-reuse proof before general routing. This
 is the first implementation candidate, not a claim that long-term retirement
 or general Worker routing is ready.
+For low-volume Linux histories, the Product now has an explicit five-stream V1
+seal operation under runtime quiescence, the GC write gate, and existing stream
+locks. It returns the minimal first-retained cutoff `(1, 1, 1, 1, 1)` and
+resumes only an exact empty successor left before manifest publication;
+changed orphan bytes, active leases, and staged V2 artifacts refuse. This
+operation publishes no checkpoint or V2 owner and authorizes no deletion. A new
+checkpoint, Product preflight, owner commit, and retirement are separate steps;
+the installed Worker Session through those steps still needs direct evidence.
 
 1. **Author artifact.** A versioned author recipe packages one Worker
    declaration document, a platform-specific executable, and a manifest whose
@@ -1747,7 +2340,27 @@ and materializes a new transcript under its owner, constructs the ordinary
 Session with an explicit Worker, completes the same SDK query, retains the Skill,
 and disposes the runtime. Its verified report is
 `/home/dev/lsspace/.artifacts/plugin-plc9/w5-sdk-hosted-r2-20261004.xml`.
-Windows native proof and default routing remain closed. A separate negative
+Windows native proof was still open at that stage; the explicit Windows AMD64
+Direct, Hosted, and two crash/reopen Session cases later passed 4/4 with no
+skips or failures in CI run `37511360385` on `acd038cb`. The report was
+downloaded and passed `verify_pytest_xml.py --require-tests-count 4`.
+The current code head needs its own native result, and default Windows routing
+remains closed. A separate negative
 gate proves unmaterialized direct Sessions and nonpersistent hosted runtimes
 refuse before Product selection; its report is
 `/home/dev/lsspace/.artifacts/plugin-plc9/w5-runtime-persist-refusal-20261004.xml`.
+
+The explicit Linux ordinary Session now records its pending Worker attempt in
+Product C5 state before the native effect. The graph publication callback
+publishes the exact attempt only after its Provider is visible. Session disposal
+and failed graph preparation retire the attempt and record protocol and tree
+settlement after Product reopens the bound start gate, Supervisor result, native
+group, payload state, and receipt. A Supervisor shutdown exception does not
+skip this evidence check after the process and payload close. The installed
+Product regression checks the direct Session, failed preparation, retained C5
+references, and Package GC's positive and changed-history refusal paths.
+The per-receipt GC positive case adds settled test records for older explicit
+canary attempts that do not use this pending Host; it does not claim those
+attempts now write C5 in production.
+Changed-boot and registered-lease recovery still refuse; this evidence owner
+does not authorize crash recovery or general third-party Worker routing.

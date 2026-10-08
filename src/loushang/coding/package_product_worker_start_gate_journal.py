@@ -10,12 +10,12 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -35,12 +35,30 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.worker.gated_start import WorkerNativeProcessIdentityV1
 
+from .package_product_worker_activation_state_journal import (
+    CodingProductWorkerActivationStateJournal,
+)
 from .package_product_worker_history_segments import (
     CodingWorkerHistorySegmentError,
     CodingWorkerSegmentedHistoryV1,
+    CodingWorkerSegmentManifestV1,
+    commit_coding_worker_active_segment,
+    initialize_coding_worker_active_head,
     read_coding_worker_segmented_history,
     seal_coding_worker_active_segment,
 )
+from .package_product_worker_history_stream_snapshot import (
+    CodingWorkerHistoryStreamSnapshotV1,
+)
+from .package_product_worker_history_v2_names import PRODUCT_OWNER_INDEX_NAME
+
+if TYPE_CHECKING:
+    from .package_product_worker_history_checkpoint import (
+        CodingWorkerHistoryCheckpointV1,
+    )
+    from .package_product_worker_start_gate_base_v2 import (
+        CodingWorkerStartGateReplayV2,
+    )
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -240,6 +258,40 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
+def _fold_start_gate_records(
+    records: tuple[CodingWorkerStartGateRecordV1, ...],
+    *,
+    initial_latest: Mapping[str, CodingWorkerStartGateRecordV1] | None = None,
+    retired_attempt_ids: frozenset[str] = frozenset(),
+    scope_id: str | None = None,
+) -> dict[str, CodingWorkerStartGateRecordV1]:
+    """Validate intent/bound continuity across V1 or a typed V2 boundary."""
+
+    latest = {} if initial_latest is None else dict(initial_latest)
+    for record in records:
+        if record.attempt_id in retired_attempt_ids or (
+            scope_id is not None and record.scope_id != scope_id
+        ):
+            raise ValueError("Worker gate retired attempt or scope changed")
+        previous = latest.get(record.attempt_id)
+        if record.phase == "intent":
+            if previous is not None:
+                raise ValueError("Worker gate attempt repeated")
+        elif (
+            previous is None
+            or previous.phase != "intent"
+            or previous.receipt_fingerprint != record.receipt_fingerprint
+            or previous.worker_identity_fingerprint
+            != record.worker_identity_fingerprint
+            or previous.policy_fingerprint != record.policy_fingerprint
+            or previous.scope_id != record.scope_id
+            or previous.native_closure_digest != record.native_closure_digest
+        ):
+            raise ValueError("Worker gate binding changed")
+        latest[record.attempt_id] = record
+    return latest
+
+
 class CodingWorkerStartGateJournal:
     """One Product-private intent/bound history; reads grant no recovery power."""
 
@@ -247,12 +299,8 @@ class CodingWorkerStartGateJournal:
         if (
             not isinstance(product, PosixLocalWheelProductSessionOwner)
             or product.policy.product_id != "coding"
-            or not any(
-                binding.source_trust_class == "local-worker-candidate"
-                for binding in product.policy.bindings
-            )
         ):
-            raise ValueError("Coding Worker candidate Product owner is required")
+            raise ValueError("Coding Product owner is required")
         self._product = product
         self._path = product.state_root / _FILE_NAME
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
@@ -268,7 +316,11 @@ class CodingWorkerStartGateJournal:
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             with self._bound_journal(create_lock=False) as rooted:
-                records = self._load(rooted)
+                if self._v2_owner_exists(rooted):
+                    _history, replay = self._load_v2_state(rooted)
+                    records = replay.current_records
+                else:
+                    records = self._load(rooted)
                 return next(
                     (
                         record
@@ -284,9 +336,16 @@ class CodingWorkerStartGateJournal:
         with self._product.gc_gate.guard():
             self._product.assert_root_gc_authority_current()
             with self._bound_journal(create_lock=False) as rooted:
-                latest: dict[str, CodingWorkerStartGateRecordV1] = {}
-                for record in self._load(rooted):
-                    latest[record.attempt_id] = record
+                latest: dict[str, CodingWorkerStartGateRecordV1]
+                if self._v2_owner_exists(rooted):
+                    _history, replay = self._load_v2_state(rooted)
+                    latest = {
+                        record.attempt_id: record for record in replay.current_records
+                    }
+                else:
+                    latest = {}
+                    for record in self._load(rooted):
+                        latest[record.attempt_id] = record
                 self._product.assert_root_gc_authority_current()
                 return tuple(
                     sorted(latest.values(), key=lambda record: record.journal_revision)
@@ -304,10 +363,39 @@ class CodingWorkerStartGateJournal:
         native_closure_digest: str,
         identity: WorkerNativeProcessIdentityV1 | None = None,
     ) -> CodingWorkerStartGateRecordV1:
-        with self._product.gc_gate.guard():
+        if not any(
+            binding.source_trust_class == "local-worker-candidate"
+            for binding in self._product.policy.bindings
+        ):
+            raise ValueError("Coding Worker candidate Product owner is required")
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with self._bound_journal() as rooted:
-                records, history = self._load_history(rooted)
+                checkpoints = self._checkpoint_writer_fence(rooted)
+                if self._v2_owner_exists(rooted):
+                    history, replay = self._load_v2_state(rooted)
+                    records = replay.current_records
+                    last_revision = replay.last_revision
+                    checkpoint_revision = (
+                        0
+                        if not checkpoints
+                        else checkpoints[-1].stream_snapshots[3].total_revision
+                    )
+                    if checkpoint_revision > last_revision:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_checkpoint_source_changed"
+                        )
+                    if attempt_id in replay.retired_attempt_ids:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_attempt_retired"
+                        )
+                else:
+                    records, history = self._load_history(rooted)
+                    checkpoint_revision = self._assert_checkpoint_source(
+                        checkpoints, history
+                    )
+                    last_revision = 0 if not records else records[-1].journal_revision
+                self._assert_checkpoint_attempt_available(checkpoints, attempt_id)
                 previous = next(
                     (
                         record
@@ -334,8 +422,18 @@ class CodingWorkerStartGateJournal:
                     raise CodingWorkerStartGateJournalError(
                         "coding_worker_start_gate_binding_changed"
                     )
+                activation = CodingProductWorkerActivationStateJournal(
+                    self._product.state_root / "worker-activation-state.jsonl"
+                )
+                if not activation.initialized_read_only():
+                    if records:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_start_gate_activation_history_missing"
+                        )
+                    activation.load()
+                next_revision = max(last_revision, checkpoint_revision) + 1
                 record = CodingWorkerStartGateRecordV1.create(
-                    journal_revision=len(records) + 1,
+                    journal_revision=next_revision,
                     phase=phase,
                     attempt_id=attempt_id,
                     worker_identity_fingerprint=worker_identity_fingerprint,
@@ -345,7 +443,7 @@ class CodingWorkerStartGateJournal:
                     native_closure_digest=native_closure_digest,
                     identity=identity,
                 )
-                active_records = len(records) - history.last_sealed_revision
+                active_records = last_revision - history.last_sealed_revision
                 record_bytes = canonical_json_bytes(record.to_dict()) + b"\n"
                 if len(record_bytes) > _MAX_BYTES:
                     raise CodingWorkerStartGateJournalError(
@@ -361,19 +459,21 @@ class CodingWorkerStartGateJournal:
                             stem="worker-start-gates",
                             stream_id="worker-start-gates",
                             history=history,
-                            last_revision=len(records),
+                            last_revision=last_revision,
                         )
                     except CodingWorkerHistorySegmentError as exc:
                         raise CodingWorkerStartGateJournalError(exc.code) from exc
                     target = rooted.sibling(
                         f"worker-start-gates.g{history.active_generation + 1:08d}.jsonl"
                     )
+                    generation = history.active_generation + 1
                 else:
                     target = rooted.sibling(
                         self._path.name
                         if history.active_generation == 0
                         else f"worker-start-gates.g{history.active_generation:08d}.jsonl"
                     )
+                    generation = history.active_generation
                 append_jsonl_record(
                     self._path,
                     record,
@@ -382,7 +482,73 @@ class CodingWorkerStartGateJournal:
                     durability=self._durability,
                     bound_file=target,
                 )
+                commit_coding_worker_active_segment(
+                    rooted,
+                    stem="worker-start-gates",
+                    stream_id="worker-start-gates",
+                    generation=generation,
+                    previous_raw=(
+                        b""
+                        if generation != history.active_generation
+                        else history.active_raw
+                    ),
+                    appended_line=record_bytes,
+                )
                 return record
+
+    def _checkpoint_writer_fence(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerHistoryCheckpointV1, ...]:
+        from .package_product_worker_history_checkpoint import (
+            CodingWorkerHistoryCheckpointError,
+            read_coding_worker_checkpoint_writer_fence,
+        )
+        from .package_product_worker_history_checkpoint_anchor import (
+            CodingWorkerCheckpointAnchorError,
+        )
+
+        try:
+            return read_coding_worker_checkpoint_writer_fence(
+                rooted,
+                scope_id=self._product.policy.project_scope_id,
+                store_id=self._product.epoch_runtime.registry.store_id,
+            )
+        except (
+            CodingWorkerHistoryCheckpointError,
+            CodingWorkerCheckpointAnchorError,
+            CodingWorkerHistorySegmentError,
+        ) as exc:
+            raise CodingWorkerStartGateJournalError(exc.code) from exc
+
+    @staticmethod
+    def _assert_checkpoint_source(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        history: CodingWorkerSegmentedHistoryV1,
+    ) -> int:
+        if not checkpoints:
+            return 0
+        prior = checkpoints[-1].stream_snapshots[3]
+        current = CodingWorkerHistoryStreamSnapshotV1.capture(
+            stem="worker-start-gates",
+            active_generation=history.active_generation,
+            last_sealed_revision=history.last_sealed_revision,
+            segments=history.segments,
+        )
+        if not prior.is_exact_prefix_of(current, current_segments=history.segments):
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_checkpoint_source_changed"
+            )
+        return prior.total_revision
+
+    @staticmethod
+    def _assert_checkpoint_attempt_available(
+        checkpoints: tuple[CodingWorkerHistoryCheckpointV1, ...],
+        attempt_id: str,
+    ) -> None:
+        if any(attempt_id in item.new_attempt_ids for item in checkpoints):
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_attempt_retired"
+            )
 
     @contextmanager
     def _bound_journal(self, *, create_lock: bool = True) -> Iterator[RootedFile]:
@@ -410,12 +576,27 @@ class CodingWorkerStartGateJournal:
             io = RootedFileIO(self._path.parent, root_fd)
             try:
                 with io.bind(self._path, durable=True) as rooted:
-                    if create_lock:
-                        rooted.acquire_lock(
+                    if self._v2_owner_exists(rooted):
+                        try:
+                            rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                exclusive=create_lock, suffix="", create=False
+                            )
+                        except FileNotFoundError as exc:
+                            raise CodingWorkerStartGateJournalError(
+                                "coding_worker_start_gate_lock_missing"
+                            ) from exc
+                    elif create_lock:
+                        created = rooted.acquire_lock(
                             exclusive=True,
                             suffix=".lock",
                             initialize_empty_target_if_new=True,
                         )
+                        if created:
+                            initialize_coding_worker_active_head(
+                                rooted,
+                                stem="worker-start-gates",
+                                stream_id="worker-start-gates",
+                            )
                     else:
                         try:
                             rooted.stat()
@@ -451,6 +632,73 @@ class CodingWorkerStartGateJournal:
     def _load(self, rooted: RootedFile) -> tuple[CodingWorkerStartGateRecordV1, ...]:
         records, _history = self._load_history(rooted)
         return records
+
+    @staticmethod
+    def _v2_owner_exists(rooted: RootedFile) -> bool:
+        try:
+            rooted.sibling(PRODUCT_OWNER_INDEX_NAME).stat()
+        except FileNotFoundError:
+            return False
+        return True
+
+    def _load_v2_state(
+        self, rooted: RootedFile
+    ) -> tuple[CodingWorkerSegmentedHistoryV1, CodingWorkerStartGateReplayV2]:
+        """Read a committed base and retained physical Start Gate generations."""
+
+        from .package_product_worker_history_cutover_v2 import (
+            CodingWorkerProductCutoverIndexV2,
+        )
+        from .package_product_worker_history_read_v2 import (
+            CodingWorkerV2ReadError,
+            read_coding_worker_v2_retained_history,
+        )
+        from .package_product_worker_start_gate_base_v2 import (
+            CodingWorkerStartGateReplayV2,
+        )
+
+        stem = "worker-start-gates"
+        try:
+            owner = CodingWorkerProductCutoverIndexV2.from_bytes(
+                rooted.sibling(PRODUCT_OWNER_INDEX_NAME).read_bytes(max_bytes=4096)
+            )
+            if (
+                owner.scope_id != self._product.policy.project_scope_id
+                or owner.store_id != self._product.epoch_runtime.registry.store_id
+            ):
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_owner_changed"
+                )
+            retained = read_coding_worker_v2_retained_history(rooted, stem=stem)
+            replay = retained.replay
+            if not isinstance(replay, CodingWorkerStartGateReplayV2):
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_owner_changed"
+                )
+            manifest = CodingWorkerSegmentManifestV1.from_bytes(
+                rooted.sibling(stem + ".segments.json").read_bytes(
+                    max_bytes=1024 * 1024
+                ),
+                stream_id=stem,
+            )
+            if manifest.active_generation != retained.active_generation:
+                raise CodingWorkerStartGateJournalError(
+                    "coding_worker_start_gate_v2_manifest_changed"
+                )
+            return (
+                CodingWorkerSegmentedHistoryV1(
+                    manifest=manifest,
+                    segments=(b"",) * retained.first_retained_generation
+                    + retained.segments,
+                ),
+                replay,
+            )
+        except (CodingWorkerV2ReadError, CodingWorkerHistorySegmentError) as exc:
+            raise CodingWorkerStartGateJournalError(exc.code) from exc
+        except (OSError, ValueError) as exc:
+            raise CodingWorkerStartGateJournalError(
+                "coding_worker_start_gate_v2_corrupt"
+            ) from exc
 
     def _load_history(
         self, rooted: RootedFile
@@ -500,24 +748,7 @@ class CodingWorkerStartGateJournal:
                 ):
                     raise ValueError("Worker gate sealed revision changed")
             records = tuple(all_records)
-            latest: dict[str, CodingWorkerStartGateRecordV1] = {}
-            for record in records:
-                previous = latest.get(record.attempt_id)
-                if record.phase == "intent":
-                    if previous is not None:
-                        raise ValueError("Worker gate attempt repeated")
-                elif (
-                    previous is None
-                    or previous.phase != "intent"
-                    or previous.receipt_fingerprint != record.receipt_fingerprint
-                    or previous.worker_identity_fingerprint
-                    != record.worker_identity_fingerprint
-                    or previous.policy_fingerprint != record.policy_fingerprint
-                    or previous.scope_id != record.scope_id
-                    or previous.native_closure_digest != record.native_closure_digest
-                ):
-                    raise ValueError("Worker gate binding changed")
-                latest[record.attempt_id] = record
+            _fold_start_gate_records(records)
             return records, history
         except (JournalCodecError, UnicodeError, ValueError) as exc:
             raise CodingWorkerStartGateJournalError(

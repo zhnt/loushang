@@ -17,7 +17,15 @@ class PluginPackageGcReferenceGatePort(Protocol):
 def gc_reference_guard(
     gate: PluginPackageGcReferenceGatePort | None,
 ) -> AbstractContextManager[frozenset[PluginPackageRevisionRefV1]]:
-    return nullcontext(frozenset()) if gate is None else gate.guard()
+    if gate is None:
+        return nullcontext(frozenset())
+    # Import here because Package lifecycle owns this neutral port and the
+    # concrete reservation journal imports that lifecycle owner.
+    from .package_gc_reservation import PluginPackageGcReservationJournal
+
+    if isinstance(gate, PluginPackageGcReservationJournal):
+        return gate.guard(require_write=True)
+    return gate.guard()
 
 
 __all__ = ["PluginPackageGcReferenceGatePort", "gc_reference_guard"]

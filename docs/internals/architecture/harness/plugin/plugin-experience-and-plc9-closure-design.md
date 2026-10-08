@@ -1522,13 +1522,24 @@ pre-B workspace migration removes that migration work only; fresh B and
 already-fenced B behavior, including no-write refusal of unfenced inputs,
 remain in block 5.
 
-| Closure block | Current evidence boundary (2026-10-04) | Remaining acceptance |
+| Closure block | Current evidence boundary (2026-10-06) | Remaining acceptance |
 | --- | --- | --- |
 | 1. Read-only visibility | Product-scoped preview and explanation paths have implementation and focused evidence. | Final integrated regression. |
 | 2. Data Resource authoring | Skill, Prompt, and Theme authoring and their selected Product consumers have focused evidence. | Final integrated regression; no implied Method, Asset, or Source opening. |
 | 3. Management transport | CLI, RPC, UI, and management SDK paths and repair actions have focused evidence. | Final integrated regression of the shared Product authority. |
-| 4. Executable topology | Explicit Linux installed-Worker query and negative canaries pass, including ordinary Python SDK Sessions; default routing remains closed. Windows Product release/approval/receipt, retained payload stage, and Hosting capture recheck candidates are authored; Windows-native payload and launch evidence is pending. | Durable history retention, general third-party admission, native Windows Product launch and recovery evidence, platform evidence. |
+| 4. Executable topology | Explicit Linux installed-Worker query and negative canaries pass, including ordinary Python SDK Sessions; default routing remains closed. Windows public Session direct, hosted, and both crash/reopen paths passed 4/4 in native CI run `37502903364` on head `8c3d6b87`; normal/partial-stage GC and crash GC passed separately 1/1 each, with verified zero-skip reports. The complete run passed. Local receipt-history commits still need an exact-head rerun. | Durable history retention, general third-party admission, current-head native Windows evidence and platform closure. |
 | 5. Storage and B workspace | Sole Desired State selection and Product GC/private-data paths have focused evidence; Windows writeback code exists. | Native Windows production and recovery evidence plus final integrated regression. |
+
+The 2026-10-07 Linux Worker continuation adds a Product-owned, digest-chained
+history checkpoint candidate and a separate scope- and Store-bound committed
+tip anchor. Real Product tests cover first-head interruption and recovery,
+one-record rotation, append-before-head refusal and repair, stale-source tail
+rollback, and head-before-anchor refusal followed by idempotent settlement.
+The full non-live Worker candidate file passed 35 cases with 12 selected
+host-runtime skips; exact import boundaries passed 165 cases. These results
+strengthen block 4's recovery evidence but do not retire source histories,
+enforce old-ID tombstones in writers, open general third-party Worker routing,
+or replace the remaining native Windows and final integrated gates.
 
 The post-development Astra architecture and integrity reviews found two
 recoverable P1 defects. Ordinary explicit Linux Worker Sessions now renew a
@@ -1564,8 +1575,8 @@ consumer inventories missing the new Windows receipt owner and journal; their
 focused rerun passed after the inventories were updated. The October 3
 Architecture rerun passed all 654 cases after replacing a stale count of
 `self._admit()` calls with checks of the exact handoff recovery guard and
-admission order. Complete Coding regression remains pending. Partial
-suite counters are not completion measures for any block.
+admission order. At that checkpoint, complete Coding regression remained
+pending. Partial suite counters are not completion measures for any block.
 
 1. **Read-only author and operator visibility.** Freeze an owner-revisioned
    preview/explain schema, preserve the current list and A1/A2 split, and
@@ -2381,11 +2392,14 @@ cutover paths; it does not establish general old-workspace migration or
 default-route promotion.
 The new v1 data-Wheel author manifest uses exact fields and rejects an
 `enabled` field at Package candidate admission; it cannot introduce a second
-enablement writer through that route. The remaining live `source.enabled` and
-`manifest.enabled` vetoes belong to legacy resolution and generic preflight.
-For admitted B Product paths, removing those peer vetoes still depends on
-proof that every selection uses the sole Desired State writer. The accepted
-pre-B compatibility boundary removes old-workspace migration from this gate;
+enablement writer through that route. Generic preflight now treats an exact
+Product selection of a published revision as authoritative: neither its
+`manifest.enabled` default nor its `source.enabled` availability can veto it.
+This applies to every trusted Host caller of generic preflight, not only B
+Product callers. Revocation must change Product selection, Source trust, or
+Approval; Source availability still governs acquisition and update. Legacy
+resolution retains its separate compatibility behavior. The accepted pre-B
+compatibility boundary removes old-workspace migration from this gate;
 legacy-route removal remains tied to the separate default-route decision.
 For the already Product-selected Coding data path, the selected-root capture
 now projects effective enablement from Product Desired State. It preserves the
@@ -2396,9 +2410,11 @@ Desired State is disabled, then becomes usable in a new Product-backed Session
 after management enable. The same old field remains false in an adopted Skill
 that a real Session loads, and in an adopted Theme that a new Session renders
 only after Product management enable. The stable-manifest control cases also
-passed; generic preflight still rejects a disabled Plugin without a Product
-selection. These three Resource paths are bounded sole-Desired evidence, not
-a removal of legacy or generic peer vetoes for all workspaces.
+passed. Generic preflight requires an exact Product selection and refuses a
+published Plugin that is absent from it; a disabled manifest or Source flag
+alone no longer vetoes a selected published revision. These three Resource
+paths are bounded sole-Desired evidence, not a removal of legacy routes for
+all workspaces.
 The Product composition boundary also compares the projected name, version,
 metadata, manifest digest, and contribution index with the freshly verified
 selected manifest before preflight; only effective enablement may differ from
@@ -3065,6 +3081,358 @@ tests, with 63 documented skips and 31 existing-selector deselections.
 The remaining Git delivery step carries only the reviewed documentation P2
 correction; it does not alter this verified Product code.
 
+After that exact-head run, the delivery branch added an explicit Windows
+Coding Session Worker candidate. Product-selected receipt and Provider checks
+now accept the exact Windows owner; async graph preparation stages the PE,
+commits the launch intent, binds the LPAC provisioning store, and starts the
+Supervisor before publishing the query facet. Separate native CI cases now
+exercise direct and Hosted first-Session entry through the public Python API.
+The corresponding Linux Product transaction passed 16/16, and Linux direct
+and Hosted public Session cases each passed 1/1 against the worktree source.
+Architecture documentation passed 10/10 and the light documentation check
+passed 9/9. The new Windows cases collected but skipped on Linux; their native
+results, recovery after these public entries, and the next exact-head full
+regression remain pending. This candidate does not open default Windows
+routing or general third-party Worker admission.
+
+The 2026-10-06 local regression against the explicit Windows Session candidate
+and its architecture-inventory correction passed the complete Harness gate
+(5,574 passed, 121 skipped), all 362 Coding test files under `not live` and
+`--skip-host-runtime` (4,778 passed, 79 skipped, 8 deselected), the complete
+Architecture suite (654 passed), the complete Hosting gate (513 passed,
+53 skipped), and the complete AppHost gate (2,758 passed, 12 skipped). The
+AppHost G8, G9, and G10 strict evidence reports passed 19/19, 16/16, and
+15/15 respectively, and the G10 installed POSIX canary passed. Coding used
+sequential file batches with the repository's leased pytest runner because a
+single run exceeded the local 164 MB runtime tmpfs; every file batch passed
+and cleaned its own scratch. This is Linux and portable regression evidence.
+The direct and Hosted Windows Worker Session cases still need non-skipped native
+CI reports, including recovery and cleanup. General third-party Worker
+admission, default Worker routing, post-development review of this final head,
+and Git delivery remain open.
+
+The explicit Linux Direct and Hosted public Coding Session regressions now
+also revoke the per-install Worker opt-in after a successful query while each
+Session is open. A subsequent public query is fenced; disposal leaves no
+additional Worker payload or incomplete Supervisor attempt. The two focused
+native cases each passed 1/1 on 2026-10-06. This supplies W5 revocation and
+cleanup evidence for both explicit SDK entries, not general third-party
+Worker admission or its full operator and update lifecycle.
+The direct public Session now also has a separate installed-Product disable
+case: while the Session is open, Desired State changes to disabled; its next
+Worker query is fenced, disposal clears the new attempt, and a newly created
+public Session refuses the unselected Product root with
+`package_product_root_not_selected`. This focused native case passed 1/1 on
+2026-10-06. A separate direct public Session case installs an accepted Worker
+version 2 while version 1 is pinned: the new Product selection is verified,
+the old Session's next query is fenced, and disposal leaves no additional
+payload or incomplete Supervisor attempt. That focused native case also
+passed 1/1 on 2026-10-06. The general W5 author/operator path remains
+separate acceptance work.
+The Worker `candidate-status` CLI now uses the fenced Product read-only owner
+and a shared-lock, no-create opt-in journal read. The journal's focused suite
+passed 6/6, the installed Linux Product Session verified the same decision
+through the read-only owner (1/1), and the fresh-process operator journey
+passed 1/1 with both empty and allowed status responses. The journey checks
+that status creates no new files and does not change the opt-in journal bytes.
+That first read-only status reported only the retained opt-in decision, not
+Worker selection, native release, or Product Session use.
+An explicitly Worker-aware read-only Product owner can now load the Worker
+Source binding and verify one selected Store root, declaration, and native
+executable as inert candidate evidence. The installed Linux public Session
+case confirmed the exact version and executable digest (1/1); the ordinary
+data preview owner refuses this Worker read. This evidence is internal and
+initially did not change the `candidate-status` output or grant execution.
+The current `candidate-status` V2 now joins the opt-in observation and that
+selected candidate evidence. It marks changed Desired State or opt-in
+revisions `stale_evidence`, reports an observed version and executable digest
+only for an exact selected Worker, and keeps `productUse: not_checked`.
+The cross-process Linux operator journey passed 1/1 for absent, selected, and
+disabled candidates; two focused cases cover Desired State and opt-in changes.
+This remains partial Product evidence and does not check the native release or
+admit a general Worker route.
+The V2 status now also compares the exact selected artifact, contribution,
+owner, and native platform with the retained opt-in identity. It reports
+`identity_match_in_read`, `identity_mismatch`, `not_allowed`, or `not_selected`
+without calling that observation readiness or Product use. A focused changed
+artifact-digest projection case guards the mismatch result. The real
+cross-process operator journey passed 1/1 through unselected, selected without
+allow, matching allow, and disabled states; the installed public SDK Session
+case passed 1/1 after the read-owner change.
+The Linux operator journey now also uses a public `candidate-update` command:
+it captures a second exact Wheel, refuses an update while the first revision is
+still allowed or the inventory revision is stale, revokes opt-in, commits the
+Product update, refuses use before a new allow, and queries the new version
+after re-allow. The updated cross-process native case passed 1/1 in 301 seconds
+on 2026-10-07. Both Linux and Windows opt-in owners now select the exact
+Product-selected Source binding when historical versions remain in the
+catalog. The same cross-process journey then removes the v2 selection, uses
+the explicit offline Package GC command to delete both v1 and v2 candidates,
+and checks that both physical roots are absent. That extended native case
+passed 1/1 in 315 seconds on 2026-10-07. This does not establish the Windows
+update/GC combination or general third-party self-service.
+The same Linux operator flow now accepts an exact retry of the already
+committed `candidate-update` operation while its selected revision and
+inventory remain current. It derives the Product management command from the
+retained Package lifecycle request and checks both artifact digests, the
+original inventory CAS, committed selection, and current opt-in. Product
+`restart_required` still represents a committed update and is accepted only
+with that transition evidence. A different operation ID is refused. The full
+cross-process update-to-physical-GC case passed 1/1 in 368 seconds on
+2026-10-07; the final exact-head CI gate remains pending.
+The Windows Session run on `8abde84b` passed native provisioning release
+after Product disable, then exposed a second C5 boundary: its cleanup review
+recognized only normal `stopped` Supervisor history, while the revoked facet
+correctly leaves a fenced attempt that Hosting physically reaps and records as
+`process_settled`. The review now accepts that fenced phase only with the same
+complete native settlement history, retained payload and launch identity,
+absent Job, retired activation, and no orphan leases. Focused portable cleanup
+and recovery cases passed 24/24; a non-skipped native Windows Session report
+for this change remains required.
+The dedicated Windows Worker Session CI job originally required four JUnit
+cases: Direct and Hosted clean first-Session use, plus their two parameterized
+crash/reopen/retirement cases. It now requires a fifth native Product-rooted C5
+journal reopen and tamper-refusal case. The report rejects skips, failures, and
+errors. The generalized verifier and change-gate suite passed 60/60 locally;
+this strengthens the native evidence contract but does not substitute for a
+non-skipped Windows runner result.
+The later native Windows public Session job on `43bf85d8` reached the direct
+ordinary graph but failed after 522 seconds when the first-party `coding.lsp`
+Provider admission expired before its factory ran. The Session now accepts
+each in-process Provider admission and its exact activation decision at graph
+start, consumes that decision before a potentially slow Worker preparation,
+and carries a single-use in-process start witness for at most 15 minutes.
+Factory construction still rechecks current owner, source trust, Product
+policy, exact consumed decision, and retained authorization. Without that
+witness the original decision and admission expiry rules remain in force.
+The component, activation-journal, and AgentProduct contract suite passed
+53/53 locally; exact-head native Windows confirmation remains pending.
+
+The 2026-10-06 full Harness check on `2a9962fc` passed Ruff and mypy over 770
+source files. Its pytest run had 5,572 passes and 121 skips, with two failing
+architecture import-boundary assertions: the new read-only Product preview
+imported a Worker type directly. Commit `cb46e2e2` routes that type through the
+Package Product adapter instead; both failing cases then passed 2/2, and Ruff
+and mypy passed for the changed files. A complete Harness rerun on the fixed
+head remains pending, so this is a focused repair rather than a final green
+gate.
+
+The Linux author smoke command now accepts `--kind worker` with exact
+contribution and owner IDs. It takes one bounded Wheel snapshot, creates a
+disposable fenced Product workspace, then checks candidate capture,
+installation, enablement, and read-only selection in separate command
+processes. It reports native release and Product use as `not_checked` and
+does not execute the Worker. The real static-ELF positive and invalid-Wheel
+negative cases passed 2/2 on 2026-10-06. This shortens the author feedback
+path without opening general Worker self-service.
+The full Harness check was then rerun on `0749c90f`: Ruff passed, mypy found
+no issues in 770 source files, and pytest finished with 5,574 passes, 121
+skips, and zero failures in 20 minutes 42 seconds. This clears the local
+Harness regression after the import-boundary repair; Coding's separate broad
+suite, Windows-native reports, and final delivery checks remain separate.
+
+On 2026-10-06, the Linux Product Worker segmented journals gained a durable
+per-generation active head for the opt-in, start-gate, receipt, activation-state,
+and Supervisor streams. It commits the exact active byte length and digest
+after each append and is published empty before a new generation becomes
+active. Focused journal regressions passed 26/26, including complete-record
+truncation, missing head, uncommitted append, and missing successor-head
+refusals. Three separate real installed-Product public Session cases passed
+for query, disable fencing, and update fencing. Architecture documentation
+checks passed 10/10. This closes the active-tail proof for newly created Linux
+Product state; attempt-level backup/GC retention, safe pruning, Windows
+native Session evidence, and general third-party routing are still open.
+
+The active-head change and its receipt-error regression were committed as
+`b95ffd9d` and `ffe8ec6f`. On the latter head, a bounded offline Coding run
+covered all 362 sorted test files in separate processes: 4,786 passed, 84
+skipped, and eight deselected by existing selectors. A mixed batch exhausted
+the default 164 MiB pytest runtime filesystem; the affected SDK file passed
+14/14 in a private `/tmp` runtime, Session exports passed 19/19 alone, and the
+remaining eight files passed 197/197 alone. The Worker candidate file passed
+32 with 12 host-runtime skips after its byte-corruption assertion was aligned
+with the new active-head error. Three separate installed-Product public Worker
+Session cases passed for query, disable, and update. This is complete file
+coverage, not a single-process order-equivalent Coding gate; exact-head CI
+remains required. The complete `make check-harness` on `ffe8ec6f` passed Ruff,
+mypy over 770 source files, and 5,574 pytest cases with 121 skips and zero
+failures in 21 minutes 56 seconds.
+The next real public Linux Worker Session regression joined each newly
+started start-gate attempt to the read-only retention review after Session
+disposal. Query, disable, and update passed 3/3 in 7 minutes 55 seconds. Each
+review found a settled ordinary attempt but no C5 activation-state journal,
+and retained `activation_state_absent` and
+`receipt_references_unverified` as missing proofs. This makes the W5
+cross-lifecycle reference gap executable evidence rather than an inferred
+permission to prune or open general routing.
+The first local host-runtime Worker candidate file run on that head stopped
+after its repaired-release case expected the older generic start-gate
+corruption error. The active-head journal correctly refused the changed bytes
+with `coding_worker_segment_head_changed`; that exact assertion was updated,
+and the repaired-release native case passed 1/1 in 3 minutes 3 seconds.
+The interrupted file run was not a complete host-runtime gate.
+The complete file was then rerun with `not live` and native host-runtime cases
+enabled on `b6502668`: 43 passed, one platform-conditional skip, and zero
+failures in 24 minutes 22 seconds. The single skipped case does not supply a
+Windows-native report; the dedicated Windows Session CI gate remains open.
+Linux Package GC then gained a read-only Worker history authority. A
+regression first proved that GC accepted an unsettled Supervisor attempt after
+its payload directory disappeared. The fixed GC gate refuses that attempt
+with or without the bound authority, while a real installed public Session
+passes GC after complete settlement and refuses changed retained gate bytes.
+The focused Product positive/negative run passed 2/2. Five synthetic payload
+repair variants now retain GC debt after their stage is removed because their
+Supervisor record has no start-gate reference; the focused repaired case
+passed. This is Package root deletion protection, not Worker history pruning
+or a general third-party route.
+The complete offline Worker candidate and Package GC CLI files passed
+35 tests with 12 existing host-runtime skips after those call sites were
+updated. Architecture documentation checks passed 10/10. Before this GC
+change, the same head passed the complete Hosting gate (513 passed,
+53 skipped), AppHost gate (2,758 passed, 12 skipped, all G8/G9/G10 evidence
+and installed canary), and Architecture suite (654 passed); those broad
+results are a pre-change baseline, not exact-head final regression.
+The complete `make check-harness` on `68100ffb` passed Ruff and mypy over
+770 source files; pytest had 5,572 passes, 121 skips, and two failures because
+the existing C50/C54 import inventories did not yet name the new Linux GC
+history owner. Its only Harness Worker import is the native group observer.
+Both exact architecture assertions passed 2/2 after the inventories were
+updated. This focused repair does not replace a complete Harness rerun on the
+repaired head.
+The complete Worker candidate file on `508883be` then passed with native
+host-runtime enabled: 44 passed, one platform-conditional skip, and zero
+failures in 18 minutes 58 seconds. This includes the real settled public
+Session Package GC positive, changed retained-gate refusal, and the
+no-payload unsettled-history refusal. The final Harness rerun and native
+Windows Session report remain separate acceptance gates.
+CI run `37520786728` on pushed head `83bfc783` completed the dedicated
+Linux sustained Worker job successfully. Its downloaded JUnit report passed
+the repository verifier with one test, zero skips, failures, or errors at
+`/home/dev/lsspace/.artifacts/plugin-plc9/worker-sustained-37520786728.xml`.
+This exercises 2,049 queries within one Product Worker attempt; it does not
+exercise 4,096 receipt generations, checkpoint publication, or history pruning.
+The run's full Coding job passed. Its Windows Worker Session job also passed;
+the downloaded JUnit report passed the repository verifier with four tests,
+zero skips, failures, or errors at
+`/home/dev/lsspace/.artifacts/plugin-plc9/windows-worker-session-37520786728.xml`.
+The overall run concluded as cancelled after the Host Runtime selected gate
+failed, so it is not a green exact-head acceptance result.
+The Host Runtime selected gate failed after the underlying job reported a real
+missing-C5 Package GC assertion and then reached its 10-minute timeout. The
+missing-C5 GC check passed its focused local regression after correction, and
+the next head raises that job's time limit to 20 minutes. The current run is
+therefore not an exact-head acceptance result for the correction.
+The explicit Linux Worker query CLI also lacked production C5 writes: its real
+cross-process regression showed four bound start gates and zero retained C5
+attempts. The CLI now uses the Product C5 coordinator from before first effect
+through graph publication and verified post-cleanup settlement. The same
+regression passed after the change, including an injected graph-preparation
+failure after Worker startup; all five attempts were retained and settled.
+Focused C50/C54 architecture tests passed 16/16, and the generated package
+dependency document remained current. This is local evidence for the explicit
+CLI route; the manual canary fixture and exact-head full CI remain separate.
+The Linux retention review now joins each reviewed receipt to exactly one
+historical `allow` opt-in decision with the same digest, Plugin, scope, owner
+generation, and kill-switch generation. A real installed-Product regression
+passed after first reproducing the missing proof; suppressing the retained
+opt-in history makes receipt references unverified. This supplies a checkpoint
+input, not checkpoint publication or permission to prune history.
+The complete local non-live Host Runtime selection on the current branch
+passed 29 tests, skipped seven platform-conditional cases, and deselected
+18,701 cases in 22 minutes 29 seconds. Because the workflow's 20-minute job
+limit could not accommodate that exact scope plus setup time, its limit is now
+45 minutes. This does not replace the next pushed-head CI gate or the native
+Windows report for the new changes.
+The Linux retention review now checks every retained receipt's historical
+opt-in binding in the same Product snapshot. A real installed-Product case
+passed with an injected second typed receipt lacking its historical allow:
+the unrelated first receipt could no longer claim globally verified references.
+The focused regression passed 1/1; this remains read-only checkpoint input.
+The complete offline Worker candidate file then passed 35 tests with 12
+expected host-runtime skips and zero failures.
+The C5 attempt replay rules were extracted for Linux and a future Windows
+Product journal. A portable canonical-record decoder and the existing Linux
+segmented journal passed 11/11 focused tests, and the C5 architecture import
+boundary passed 7/7. At that checkpoint Windows Product C5 persistence and
+recovery remained open; the decoder alone did not establish lifecycle closure.
+The Windows Product-rooted C5 CAS journal now persists each canonical state
+revision beneath the pinned private root with an immutable committed-byte head.
+It shares Linux's retained-attempt projection. Windows Package GC now accepts
+only exact C5 names and checks any present C5 history against launched attempts
+and Product receipts plus fresh native Job absence before Package root deletion.
+The C5 join requires the Windows V2 native cleanup contract and matches the
+retained owner generation to the receipt's Product selection generation.
+The shared C5 replay guard now treats the cleanup contract version as an
+immutable attempt field; a later revision cannot upgrade a V1 attempt to V2.
+It also requires a newly observed attempt to enter as `registered`, so a
+retained record cannot first appear with an unsupported settlement claim.
+The Windows offline recovery snapshot now carries the retained C5 revision and
+attempts as read-only evidence and records whether the C5 owner lock exists,
+including an empty interrupted initialization. It also reports a read-only
+native Job absence
+observation per retained attempt. The current Windows pending Host refuses an existing
+C5 owner before any payload or launch-intent effect until it owns C5 writes and
+settlement itself. The next native Windows Session job requires its reopen, GC join,
+recovery read, and complete-record-loss case in
+addition to the existing four Session cases. Local C5 import-boundary checks
+passed 7/7; the new Windows case collected and skipped on Linux. Ordinary
+Windows Worker C5 writes, cleanup evidence, crash recovery, and native GC
+evidence remain open, so this candidate does not open the Windows route.
+The native Windows normal-retirement GC case now appends a C5 fixture through
+registered, effect-started, retired, and settled revisions for its real
+launched attempt before Package deletion. It requires the real
+named Job to be absent and injects present and unknown Job observations to
+confirm that both refuse GC. This tests the GC join; the fixture does not
+represent production Windows Host C5 writes and awaits the next native run.
+The Windows LPAC provisioning inventory now projects the exact settled
+journal fingerprint from its pinned, strictly decoded state. The native Worker
+case compares that value with the profile's V2 settlement witness. This gives
+a later C5 cleanup authority a durable byte identity for the native join;
+it does not itself authorize C5 settlement.
+A read-only Windows cleanup evidence owner now performs the normal-exit join
+across C5, Product receipt, launch identity, Supervisor, LPAC journal, and
+named Job absence. Its changed-boot and orphan-lease methods refuse. The
+ordinary Windows Host now registers and publishes C5, then uses the owner to
+settle normal exit or record cleanup debt. A Product-only crash recovery writer
+uses the same authority version after exact Supervisor, LPAC, lease, payload,
+and Job recovery; it cannot admit a new Worker. These writes await native CI
+verification, so Windows C5 production closure is not yet claimed.
+The native normal-exit Worker test now exercises that owner against a real
+settled attempt and a retired C5 test record, with present-Job and changed-LPAC
+witness refusals. It reads actual registry orphan leases. The Windows Session
+CI job includes the case and requires six non-skipped results; a native report
+is still pending. Portable owner checks passed 4/4, while this case skipped on
+Linux. The new C5 Host and crash writeback paths also await that native gate.
+
+CI run `37610885162` on `5321eff8` completed successfully on 2026-10-07.
+Its downloaded Windows Worker Session JUnit report passed the strict repository
+verifier with six tests, zero skips, failures, or errors: native C5 reopen and
+complete-record-loss refusal, Direct and Hosted selected Product Sessions,
+their two crash/reopen/retirement variants, and normal-exit C5 cleanup evidence.
+The same run completed the full Coding job with 4,231 passes, 63 skips, and
+40 deselections; the two Windows GC jobs and Linux 2,049-query sustained
+Product job each passed their independently verified native or Product report.
+This supplies native evidence for the Windows production Host C5 writeback
+on that head. The later Product-selection preflight change and documentation
+updates require a new exact-head CI run before final PR acceptance. Explicit
+Windows candidate gates and general Worker routing remain separately closed.
+
+On 2026-10-07 the real installed Linux Product Worker `installed-protocol`
+case passed on the later branch, with an independently verified 1/1 non-skipped
+JUnit report at `/tmp/plc9-v2-product-664.xml`. It published a five-stream
+checkpoint, staged and committed the V2 Product owner, retired the owner-named
+sealed segments through durable deletion debt, reopened retained history,
+prepared Package GC, then created a fresh ordinary Coding Session that queried
+the selected Worker after cutover and prepared GC again. The source already
+contains this bounded commit/retire path, so an older status line saying that
+Product cannot publish or prune V2 history is no longer current. The test does
+not prove Windows V2, restore across retired bytes, every publication crash
+boundary, or general Worker routing. The focused Product owner commit and
+retirement files also passed 12/12 with zero skips on this branch; their strict
+JUnit report is `/tmp/plc9-v2-commit-retire-664.xml` and covers stale
+precommit facts, interrupted deletion retry, changed bytes/debt, and an active
+runtime lease refusal.
+
 ## Independent Review Record
 
 On 2026-09-26, three independent `gpt-6-astra` reviews examined this candidate
@@ -3079,3 +3447,22 @@ scope owner accepted this candidate on 2026-09-26. That decision does not
 accept later wire schemas, public command names, execution
 topologies, or default activation; those need their exact owner contracts and
 implementation evidence.
+
+## Latest Delivery Gate
+
+On 2026-10-07, exact code-head Actions run `37646863077` on `cd25e160`
+completed with 71 successful checks. The Windows Worker Session job passed
+its strict seven-case, non-skipped report gate, including disable while a
+public Session remained pinned. Both Windows GC jobs, full Coding, Linux
+Harness, Hosting on Linux, macOS, and Windows, and the sustained Linux
+2,049-query Product journey also passed. This resolves the earlier pending
+native Session and cross-platform CI status for that code head.
+
+The subsequent `a80337bb` commit changes only the Worker authoring guide to
+spell out native Hosting release review, approval, installation, and the
+separate per-install opt-in decision. Local `make check-docs-light` passed
+9/9 and `git diff --check` passed. Final branch-head CI and post-development
+architecture, integrity, and author-experience review remain delivery gates.
+General third-party Worker self-service, default Worker routing, the Windows
+update/GC combination, and remaining Windows V2/restore/crash-boundary
+expansion stay behind their separate Product acceptance gates.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 
 from loushang.harness.capabilities.graph_planning import (
@@ -31,6 +32,8 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.bindings import RuntimeBindingState
 from loushang.harness.runtime.registration import RegistrationOwner, RegistrationScope
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -692,6 +695,7 @@ async def _cleanup_nodes_once(
             except asyncio.CancelledError:
                 codes.append("provider_retirement_cancelled")
             except Exception:
+                _LOG.exception("Capability provider retirement failed")
                 codes.append("provider_retirement_failed")
             else:
                 mounted.provider_released = True
