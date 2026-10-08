@@ -3447,3 +3447,22 @@ scope owner accepted this candidate on 2026-09-26. That decision does not
 accept later wire schemas, public command names, execution
 topologies, or default activation; those need their exact owner contracts and
 implementation evidence.
+
+## Latest Delivery Gate
+
+On 2026-10-07, exact code-head Actions run `37646863077` on `cd25e160`
+completed with 71 successful checks. The Windows Worker Session job passed
+its strict seven-case, non-skipped report gate, including disable while a
+public Session remained pinned. Both Windows GC jobs, full Coding, Linux
+Harness, Hosting on Linux, macOS, and Windows, and the sustained Linux
+2,049-query Product journey also passed. This resolves the earlier pending
+native Session and cross-platform CI status for that code head.
+
+The subsequent `a80337bb` commit changes only the Worker authoring guide to
+spell out native Hosting release review, approval, installation, and the
+separate per-install opt-in decision. Local `make check-docs-light` passed
+9/9 and `git diff --check` passed. Final branch-head CI and post-development
+architecture, integrity, and author-experience review remain delivery gates.
+General third-party Worker self-service, default Worker routing, the Windows
+update/GC combination, and remaining Windows V2/restore/crash-boundary
+expansion stay behind their separate Product acceptance gates.
