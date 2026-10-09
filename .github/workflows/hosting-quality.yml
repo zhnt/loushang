@@ -359,7 +359,6 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTEST_ADDOPTS: >-
-            -o faulthandler_timeout=60
             --junitxml=.artifacts/worker-p4-ordinary.xml
         run: |
           mkdir -p .artifacts
