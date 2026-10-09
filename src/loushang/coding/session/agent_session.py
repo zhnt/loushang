@@ -1175,9 +1175,6 @@ class AgentSession(AgentProductSession):
             assembly.management_lease.claim_runtime(
                 runtime_claim_id if capability_plugins is not None else None
             )
-        if worker_binding is not None:
-            async with self._coding_composition_record_lock:
-                await self._record_coding_composition_startup_locked(existing_only=True)
         await super().prepare_model_call_runtime()
         worker_tool_lease = self._coding_worker_turn_tool_lease
         if worker_tool_lease is not None and worker_tool_lease.state == "staged":
@@ -1190,12 +1187,26 @@ class AgentSession(AgentProductSession):
         await self._record_coding_composition_startup()
         self._coding_product_desired_preflight_completed = True
 
+    async def _preflight_worker_preparation(
+        self, catalog_snapshot: object | None
+    ) -> None:
+        if self._coding_product_worker_ordinary_binding is None:
+            return
+        async with self._coding_composition_record_lock:
+            await self._record_coding_composition_startup_locked(
+                existing_only=True,
+                prepared_catalog_snapshot=catalog_snapshot,
+            )
+
     async def _record_coding_composition_startup(self) -> None:
         async with self._coding_composition_record_lock:
             await self._record_coding_composition_startup_locked()
 
     async def _record_coding_composition_startup_locked(
-        self, *, existing_only: bool = False
+        self,
+        *,
+        existing_only: bool = False,
+        prepared_catalog_snapshot: object | None = None,
     ) -> None:
         plan = self._coding_composition_plan
         if plan is None or not self.session_manager.persist:
@@ -1285,7 +1296,11 @@ class AgentSession(AgentProductSession):
                 str(item["ownerGenerationReference"]),
             ),
         )
-        catalog_snapshot = self._resource_catalog_snapshot
+        catalog_snapshot = (
+            prepared_catalog_snapshot
+            if prepared_catalog_snapshot is not None
+            else self._resource_catalog_snapshot
+        )
         catalog_fingerprint = (
             fingerprint_catalog_value(
                 "loushang.coding-composition-catalog-selection/v1",
@@ -1370,19 +1385,33 @@ class AgentSession(AgentProductSession):
                 if isinstance(original_worker, dict)
                 else None
             )
-            if (
-                existing.get("version") != 1
-                or existing.get("setId") != plan.set_id
-                or existing.get("planFingerprint") != plan.fingerprint
-                or existing.get("productPolicyRevision")
-                != policy_revision
-                or existing.get("catalogSelectionFingerprint") != catalog_fingerprint
-                or existing.get("selectedRevisions") != revisions
-                or comparable_original_worker != comparable_worker
-            ):
+            changed_fields = tuple(
+                name
+                for name, matches in (
+                    ("version", existing.get("version") == 1),
+                    ("setId", existing.get("setId") == plan.set_id),
+                    (
+                        "planFingerprint",
+                        existing.get("planFingerprint") == plan.fingerprint,
+                    ),
+                    (
+                        "productPolicyRevision",
+                        existing.get("productPolicyRevision") == policy_revision,
+                    ),
+                    (
+                        "catalogSelectionFingerprint",
+                        existing.get("catalogSelectionFingerprint")
+                        == catalog_fingerprint,
+                    ),
+                    ("selectedRevisions", existing.get("selectedRevisions") == revisions),
+                    ("workerSelection", comparable_original_worker == comparable_worker),
+                )
+                if not matches
+            )
+            if changed_fields:
                 raise ValueError(
                     "Coding Session effective composition changed since startup; "
-                    "create a new Session"
+                    "create a new Session (" + ", ".join(changed_fields) + ")"
                 )
             if not existing_only:
                 self._coding_session_manager.mark_composition_startup_prepared()
@@ -1644,9 +1673,16 @@ class AgentSession(AgentProductSession):
         worker_tool_lease = self._coding_worker_turn_tool_lease
         if worker_tool_lease is not None:
             try:
-                result = await worker_tool_lease.dispose()
+                result = (
+                    worker_tool_lease.rollback_registration()
+                    if worker_tool_lease.state == "staged"
+                    else await worker_tool_lease.dispose()
+                )
                 if result.state not in {"removed", "already_removed"}:
-                    raise RuntimeError("Coding Worker turn Tool retirement failed")
+                    raise RuntimeError(
+                        "Coding Worker turn Tool retirement failed: "
+                        f"{result.diagnostic_code or result.state}"
+                    )
             except BaseException as exc:
                 if primary_error is None:
                     primary_error = exc

@@ -363,10 +363,12 @@ class SessionToolRuntime:
             activation_change = None
 
         def rollback_runtime_binding() -> RegistrationDisposalResult:
+            was_staged = registry_lease.state == "staged"
             result = registry_lease.rollback_registration()
             if result.state in {"removed", "already_removed"}:
                 if activation_checkpoint is None or activation_change is None:
-                    self._sync_available(activate_new=False, rebind=True)
+                    if not was_staged:
+                        self._sync_available(activate_new=False, rebind=True)
                 else:
                     self._restore_activation_publication(
                         activation_checkpoint,

@@ -348,6 +348,7 @@ from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
+    SessionCapabilityWorkerComponentRequest,
 )
 from loushang.harness.tools.workspace import LOCAL_TOOL_OPERATIONS
 from loushang.harness.transcript import (
@@ -3403,14 +3404,14 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             del model, context, options
                             nonlocal worker_turn_calls
                             worker_turn_calls += 1
-                            tool_turn = worker_turn_calls == 1
+                            tool_turn = worker_turn_calls % 2 == 1
                             message = AssistantMessage(
                                 endpoint="test",
                                 role="assistant",
                                 content=[
                                     ToolCall(
                                         type="toolCall",
-                                        id="worker-query-turn",
+                                        id=f"worker-query-turn-{worker_turn_calls}",
                                         name=CODING_WORKER_QUERY_TOOL_NAME,
                                         arguments={"symbol": "review"},
                                     )
@@ -3689,31 +3690,15 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                         assert selected_updated.manifest.version == "2"
                                     finally:
                                         updated_runtime.dispose_runtime()
-                                else:
-                                    revoked = product_opt_in.revoke(
-                                        plugin_id=_PLUGIN,
-                                        operation_id="worker-public-session-revoke",
-                                        expected_generation=decision.generation,
-                                    )
-                                    assert revoked.action == "revoke"
-                                    assert revoked.kill_switch_generation == (
-                                        decision.kill_switch_generation + 1
-                                    )
-                                expected_error = (
-                                    ValueError
-                                    if (
-                                        disable_while_direct_session_open
-                                        or update_while_direct_session_open
-                                    )
-                                    else CapabilityWorkerFacetProxyError
-                                )
-                                expected_message = (
-                                    "Coding Worker selection changed before Session preparation"
-                                    if expected_error is ValueError
-                                    else "worker_capability_facet_proxy_owner_unavailable"
-                                )
-                                with pytest.raises(expected_error, match=expected_message):
-                                    await direct_session.query_worker_symbol("review")
+                                if (
+                                    disable_while_direct_session_open
+                                    or update_while_direct_session_open
+                                ):
+                                    with pytest.raises(
+                                        ValueError,
+                                        match="Coding Worker selection changed before Session preparation",
+                                    ):
+                                        await direct_session.query_worker_symbol("review")
                             finally:
                                 await direct_session.dispose()
                                 assert all(
@@ -3732,12 +3717,16 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             if item.attempt_id not in gate_attempts_before_direct
                         )
                         assert len(direct_gate_attempts) == 1
-                        if native_mode == "built-release":
-                            resumed_manager = asyncio.run(
+                        if (
+                            not disable_while_direct_session_open
+                            and not update_while_direct_session_open
+                        ):
+                            assert product_opt_in.current(_PLUGIN) == decision
+                            drift_manager = asyncio.run(
                                 SessionManager.load(direct_transcript)
                             )
-                            resumed_session = create_agent_session(
-                                session_manager=resumed_manager,
+                            drift_session = create_agent_session(
+                                session_manager=drift_manager,
                                 model=direct_model,
                                 stream_fn=worker_turn_stream,
                                 services=create_services(settings_manager=settings),
@@ -3756,7 +3745,9 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                             return "catalog-drift"
                                         return original_fingerprint(domain, value)
 
-                                    async def reject_native_prepare():
+                                    async def reject_native_prepare(
+                                        _request, _graph_generation
+                                    ):
                                         raise AssertionError(
                                             "native graph started before resume validation"
                                         )
@@ -3768,21 +3759,69 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                             drift_catalog_fingerprint,
                                         )
                                         drift.setattr(
-                                            resumed_session,
-                                            "_ensure_session_graph_prepared",
+                                            SessionCapabilityWorkerComponentRequest,
+                                            "prepare_component",
                                             reject_native_prepare,
                                         )
                                         with pytest.raises(
                                             ValueError,
                                             match="effective composition changed",
                                         ):
-                                            await resumed_session.prepare_model_call_runtime()
+                                            await drift_session.prepare_model_call_runtime()
+                                finally:
+                                    await drift_session.dispose()
+
+                            asyncio.run(verify_resume_drift_before_native())
+                            resumed_manager = asyncio.run(
+                                SessionManager.load(direct_transcript)
+                            )
+                            resumed_session = create_agent_session(
+                                session_manager=resumed_manager,
+                                model=direct_model,
+                                stream_fn=worker_turn_stream,
+                                services=create_services(settings_manager=settings),
+                                worker_candidate_plugin_id=_PLUGIN,
+                                worker_query_turn_tool=True,
+                            )
+
+                            async def verify_resumed_turn_and_revocation() -> None:
+                                try:
+                                    await resumed_session.prepare_model_call_runtime()
+                                    await resumed_session.prompt(
+                                        "Query the review symbol again"
+                                    )
+                                    assert worker_turn_calls == 4
+                                    assert sum(
+                                        getattr(message, "role", None) == "toolResult"
+                                        and any(
+                                            isinstance(part, TextPart)
+                                            and part.text == "Review symbol"
+                                            for part in message.content
+                                        )
+                                        for message in resumed_session.get_session_context().messages
+                                    ) == 2
+                                    revoked = product_opt_in.revoke(
+                                        plugin_id=_PLUGIN,
+                                        operation_id="worker-public-session-revoke",
+                                        expected_generation=decision.generation,
+                                    )
+                                    assert revoked.action == "revoke"
+                                    assert revoked.kill_switch_generation == (
+                                        decision.kill_switch_generation + 1
+                                    )
+                                    with pytest.raises(
+                                        CapabilityWorkerFacetProxyError,
+                                        match="worker_capability_facet_proxy_owner_unavailable",
+                                    ):
+                                        await resumed_session.query_worker_symbol(
+                                            "review"
+                                        )
                                 finally:
                                     await resumed_session.dispose()
 
-                            asyncio.run(verify_resume_drift_before_native())
+                            asyncio.run(verify_resumed_turn_and_revocation())
                             assert len(CodingWorkerStartGateJournal(product).attempts()) == (
-                                len(gate_attempts_before_direct) + 1
+                                len(gate_attempts_before_direct) + 2
                             )
                         direct_retention = review_coding_product_worker_history_retention(
                             product, attempt_id=direct_gate_attempts[0].attempt_id
