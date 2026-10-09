@@ -93,6 +93,11 @@ Neither may silently override a narrower implemented owner contract.
   authoring, kind-specific Product gates, and unfinished PLC9 work. It does not
   replace Architecture V2 or the PLC9 plan, and individual Product gates remain
   subject to their exact owner decisions and implementation evidence.
+- [Plugin Experience Improvements P0–P4](plugin-improvements-p0-p4-design.md)
+  is a candidate implementation design for the next data-Plugin user journey,
+  evidence presentation, author/local discovery path, Coding composition
+  choice, and separately gated third-party Worker path. It adds no authority
+  until exact Product owners accept and implement each slice.
 - [Plugin Lifecycle And Coding Pluginization Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the only coordinating PLC0-PLC9 delivery plan. Its status section tracks
   the current implementation, including the production `coding.lsp` route.
