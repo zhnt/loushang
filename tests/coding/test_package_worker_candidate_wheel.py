@@ -5836,7 +5836,7 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
             require_worker=False,
         )
         post_cutover_manager = asyncio.run(
-            SessionManager.new(
+            SessionManager.new_with_composition(
                 session_dir=tmp_path / "catalog-transcripts",
                 cwd=str(workspace),
                 session_id="worker-post-v2",

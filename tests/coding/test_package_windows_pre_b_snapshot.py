@@ -3279,7 +3279,7 @@ def _assert_windows_worker_public_session_restarts_after_recovery(
     ):
         if entry_kind == "direct":
             manager = asyncio.run(
-                SessionManager.new(
+                SessionManager.new_with_composition(
                     session_dir=tmp_path / "reopened-worker-transcripts",
                     cwd=str(workspace),
                     session_id="windows-worker-reopened",
@@ -4495,7 +4495,7 @@ finally:
                         ):
                             if ordinary_entry_kind == "direct":
                                 ordinary_manager = asyncio.run(
-                                    SessionManager.new(
+                                    SessionManager.new_with_composition(
                                         session_dir=(
                                             tmp_path / "ordinary-worker-transcripts"
                                         ),
@@ -4689,7 +4689,7 @@ finally:
                             session_manager=unmaterialized_session,
                         )
                     worker_session = asyncio.run(
-                        SessionManager.new(
+                        SessionManager.new_with_composition(
                             session_dir=tmp_path / "worker-transcripts",
                             cwd=str(workspace),
                             session_id="windows-worker-candidate",

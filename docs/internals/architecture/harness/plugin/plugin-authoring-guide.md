@@ -486,9 +486,12 @@ The ordinary Session opt-in is available through the Python SDK only; Coding
 CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
 
 The Python SDK exposes the same selected read-only query through an ordinary
-Coding Session. For a direct Session, first create a persisted
-`SessionManager` with `defer_materialization=False`, then pass that manager to
-`create_agent_session(..., worker_candidate_plugin_id="reviewworker")`.
+Coding Session. For a direct Session, first call
+`manager = await SessionManager.new_with_composition(session_dir=..., cwd=...,
+composition_set="coding-standard", defer_materialization=False)` so the
+transcript owner pins the set before writing its Header. Pass that manager to
+`create_agent_session(session_manager=manager,
+worker_candidate_plugin_id="reviewworker")`.
 The caller can query the selected Worker with
 `await session.query_worker_symbol("review")` and must dispose the Session
 when done. For a hosted first Session, use

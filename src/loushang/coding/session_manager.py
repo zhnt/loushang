@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from typing import Self
 
 from loushang.ai.types import UserMessage
 from loushang.coding.composition_provenance import (
@@ -11,7 +12,10 @@ from loushang.coding.composition_provenance import (
     pinned_composition_plan,
     startup_composition_record,
 )
-from loushang.coding.composition_sets import CodingCompositionSetPlan
+from loushang.coding.composition_sets import (
+    CodingCompositionSetPlan,
+    resolve_coding_composition_set,
+)
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
@@ -141,6 +145,31 @@ class SessionManager(
     ProductTranscriptSession[ResolvedRuntimeProfile, RuntimeProfileBinding]
 ):
     """Coding binding over the Harness-owned Agent transcript session API."""
+
+    @classmethod
+    async def new_with_composition(
+        cls,
+        *,
+        session_dir: Path,
+        cwd: str,
+        composition_set: str = "coding-standard",
+        persist: bool = True,
+        parent_session: str | None = None,
+        session_id: str | None = None,
+        defer_materialization: bool = True,
+    ) -> Self:
+        """Pin a canonical Coding choice before transcript materialization."""
+
+        plan = resolve_coding_composition_set(composition_set)
+        return await cls.new(
+            session_dir=session_dir,
+            cwd=cwd,
+            persist=persist,
+            parent_session=parent_session,
+            session_id=session_id,
+            additional_header_metadata=composition_header_metadata(plan),
+            defer_materialization=defer_materialization,
+        )
 
     async def append_message(
         self,

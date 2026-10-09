@@ -86,6 +86,28 @@ def test_cli_composition_choice_rejects_unknown_set() -> None:
         resolve_cli_composition_choice("user-profile", {})
 
 
+def test_materialized_direct_session_pins_composition_before_header(tmp_path) -> None:
+    async def journey() -> None:
+        manager = await SessionManager.new_with_composition(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            composition_set="coding-standard",
+            defer_materialization=False,
+        )
+        try:
+            assert manager.is_persisted()
+            assert pinned_composition_plan(manager.get_header().metadata) is (
+                resolve_coding_composition_set("coding-standard")
+            )
+            assert manager.bind_new_composition_plan(
+                resolve_coding_composition_set("coding-standard")
+            ) is resolve_coding_composition_set("coding-standard")
+        finally:
+            await manager.dispose_runtime_profile()
+
+    asyncio.run(journey())
+
+
 @pytest.mark.parametrize(
     ("extra", "expected"),
     [
