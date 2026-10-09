@@ -445,9 +445,17 @@ class AgentSession(AgentProductSession):
                 for item in selected
             }:
                 raise ValueError("Coding Product Session packages changed")
-        elif capability_plugin_assembly is not None:
-            # This legacy Capability-only runtime has no base Product package
-            # graph; Resource-only Wheels are checked by their Catalog owner.
+        elif (
+            capability_plugin_assembly is not None
+            and (
+                coding_base_product_runtime_binding is not None
+                or coding_selected_capability_manifests
+            )
+        ):
+            # Compare the Product-selected Capability set when this route has
+            # Product evidence, including an empty set. Legacy management
+            # leases have a separate owner and no Product selection to compare.
+            # Resource-only Wheels are checked by their Catalog owner.
             selected = coding_selected_capability_manifests
             packages = capability_plugin_assembly.runtime.packages
             if len(packages) != len(selected) or {
