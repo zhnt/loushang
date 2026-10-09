@@ -331,6 +331,19 @@ query before claiming general user availability. Dependency-bearing candidates
 remain refused for execution until their selected runtime environment and
 complete closure have Product proof.
 
+The Linux ordinary-query candidate selects
+`posix-static-query-contained-elf-v1`, separate from the earlier general H6
+static containment profile. The checked-in launcher closes all inherited
+descriptors on payload exec, admits the exact sealed payload memfd, denies
+pathname execution with Landlock, and uses a seccomp allowlist for framed
+stdin/stdout/stderr and static runtime computation. File, process, network,
+and new executable authority are denied. Missing Landlock or descriptor
+closure support refuses the launch. The query profile also bounds address
+space and CPU time; the Product still binds its source digest and compiled
+launcher digest into the exact native release decision. These controls and
+their adversarial tests are required evidence, not proof that the entire P4
+lifecycle has closed.
+
 The Product first admits the exact artifact and native release, then records
 an explicit per-install trust/opt-in decision. A fresh Session resolves the
 same identity, policy revision, containment proof, and bounded admission;

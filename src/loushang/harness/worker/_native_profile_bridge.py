@@ -36,10 +36,13 @@ from .product_activation import (
 )
 
 _POSIX_CONTAINED_PROFILE_ID = "posix-static-contained-elf-v1"
+_POSIX_QUERY_CONTAINED_PROFILE_ID = "posix-static-query-contained-elf-v1"
 _POSIX_PLATFORM_IDENTITY = "platform:linux-x86_64-syscall-abi"
 _WINDOWS_LPAC_PROFILE_ID = "windows-lpac-contained-pe-v1"
 _CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v1"
 _GATED_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v2"
+_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-query-containment-launch/v1"
+_GATED_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-query-containment-launch/v2"
 _EXECUTION_CLOSURE_DOMAIN = "loushang.worker.native-execution-closure/v1"
 _WINDOWS_OPERATION_NONCE_DOMAIN = "loushang.worker.windows-lpac-operation/v1"
 _WINDOWS_LIFECYCLE_DOMAIN = "loushang.worker.windows-lpac-lifecycle/v1"
@@ -108,6 +111,25 @@ class ProductWorkerNativeProfilePort(Protocol):
     async def close(self) -> None: ...
 
 
+def _posix_containment_protocol(profile_id: str, gated: bool) -> str:
+    if profile_id == _POSIX_QUERY_CONTAINED_PROFILE_ID:
+        return (
+            _GATED_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL
+            if gated
+            else _QUERY_CONTAINMENT_ARGUMENT_PROTOCOL
+        )
+    if profile_id == _POSIX_CONTAINED_PROFILE_ID:
+        return (
+            _GATED_CONTAINMENT_ARGUMENT_PROTOCOL
+            if gated
+            else _CONTAINMENT_ARGUMENT_PROTOCOL
+        )
+    raise WorkerBindingError(
+        "Worker native profile is unsupported",
+        code="worker_native_profile_unsupported",
+    )
+
+
 class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
     def __init__(
         self,
@@ -128,7 +150,10 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
                 "Worker native profile catalog changed",
                 code="worker_native_profile_catalog_mismatch",
             )
-        if policy.native_profile_id != _POSIX_CONTAINED_PROFILE_ID:
+        if policy.native_profile_id not in {
+            _POSIX_CONTAINED_PROFILE_ID,
+            _POSIX_QUERY_CONTAINED_PROFILE_ID,
+        }:
             raise WorkerBindingError(
                 "Worker native profile is unsupported",
                 code="worker_native_profile_unsupported",
@@ -177,7 +202,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
                 f"{worker_request.runtime.cwd_inode}"
             ),
             f"containment-profile:sha256:{containment_profile_sha256}",
-            f"invocation:{_GATED_CONTAINMENT_ARGUMENT_PROTOCOL if start_gate_read_fd is not None else _CONTAINMENT_ARGUMENT_PROTOCOL}",
+            f"invocation:{_posix_containment_protocol(policy.native_profile_id, start_gate_read_fd is not None)}",
             _POSIX_PLATFORM_IDENTITY,
         )
         self._receipt = receipt
@@ -277,7 +302,7 @@ class _PosixStaticContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
             )
         return _PosixStaticContainedLaunchCaptureSpec(
             request=request,
-            profile_id=_POSIX_CONTAINED_PROFILE_ID,
+            profile_id=self._receipt.policy.native_profile_id,
             execution_closure=self._execution_closure,
             launcher_path=str(self._launcher_path),
             launcher_sha256=self._launcher_sha256,

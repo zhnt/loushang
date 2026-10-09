@@ -7305,7 +7305,7 @@ def test_explicit_worker_wheel_reaches_real_product_transaction(
                 )
                 assert worker_policy.effective_required
                 assert worker_policy.native_profile_id == (
-                    "posix-static-contained-elf-v1"
+                    "posix-static-query-contained-elf-v1"
                 )
                 receipt = receipt_owner.issue()
                 if shape == "valid":

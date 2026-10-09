@@ -387,6 +387,12 @@ does not install the native profile. After the selected candidate and native
 closure are current, the operator records the separate per-install decision
 and checks its exact identity alignment:
 
+The Linux query route uses the dedicated
+`posix-static-query-contained-elf-v1` native profile. Its launcher requires
+Landlock and descriptor closure support on the target host and refuses a
+launch if either is unavailable. The native release and candidate approval
+must be repeated after the launcher source or profile revision changes.
+
 ```text
 loushang-worker-native --workspace PATH candidate-allow \
   --plugin-id reviewworker --operation-id allow-reviewworker-1 \
