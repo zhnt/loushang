@@ -306,6 +306,11 @@ into the new header; a materialized legacy Session without that identity
 cannot be reinterpreted as a new set. Existing `coding.arch` mount policy and
 delegated read-only invocation profiles retain their current authority; this
 feature must not widen them.
+The Hosted Catalog's materialized Coding candidate seals the canonical
+`coding-standard` choice in its creation header before publication. Its Product
+Session must prepare the matching startup record before accepting user input;
+older candidates without a proven choice remain discoverable but cannot be
+silently resumed.
 
 Acceptance uses real minimal, standard, and architecture Sessions with
 enabled and disabled Base/LSP/Arch states, exact new-Session Resource Catalog
