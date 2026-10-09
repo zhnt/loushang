@@ -43,7 +43,7 @@ import loushang.coding.session.agent_session as coding_agent_session_module
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
 import loushang.hosting.service_group as service_group_module
-from loushang.agent import Agent
+from loushang.agent import Agent, synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
@@ -3210,12 +3210,22 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                     selected_ordinary_assembly = compiled_base.bind_workspace(
                         deferred_workspace
                     )
+                    ordinary_session_manager = asyncio.run(
+                        SessionManager.new_with_composition(
+                            session_dir=tmp_path / "ordinary-worker-transcripts",
+                            cwd=str(workspace),
+                            session_id="worker-catalog",
+                            defer_materialization=False,
+                        )
+                    )
+                    ordinary_transcript = ordinary_session_manager.get_session_file()
+                    assert ordinary_transcript is not None
                     ordinary_worker_now = [150]
                     selected_ordinary_binding = (
                         prepare_coding_product_worker_ordinary_binding(
                             product_owner=product,
                             runtime=runtime,
-                            session_manager=session_manager,
+                            session_manager=ordinary_session_manager,
                             plugin_id=_PLUGIN,
                             ordinary=selected_ordinary_assembly,
                             clock=lambda: ordinary_worker_now[0],
@@ -3310,7 +3320,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     "thinking_level": "off",
                                 }
                             ),
-                            session_manager=await SessionManager.load(selected_transcript),
+                            session_manager=await SessionManager.load(ordinary_transcript),
                             capability_runtime=stage_resource_composition_candidate(
                                 RuntimeProfileResolver().resolve(
                                     standard_capability_composition_plan(
@@ -3375,17 +3385,6 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
 
                     asyncio.run(exercise_selected_ordinary_worker())
                     if direct_entry_only:
-                        payloads_before_direct = frozenset(
-                            product.state_root.glob("worker-payload-*")
-                        )
-                        gate_attempts_before_direct = {
-                            item.attempt_id
-                            for item in CodingWorkerStartGateJournal(product).attempts()
-                        }
-                        supervisor_journal = (
-                            open_coding_product_worker_supervisor_journal(product)
-                        )
-                        incomplete_before_direct = supervisor_journal.incomplete()
                         direct_model = Model(
                             id="direct-worker",
                             name="Direct Worker",
@@ -3399,6 +3398,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         )
                         worker_turn_calls = 0
 
+                        @synthetic_model_transport
                         async def worker_turn_stream(model, context, options=None):
                             del model, context, options
                             nonlocal worker_turn_calls
@@ -3443,6 +3443,96 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             )
                             return stream
 
+                        if (
+                            not disable_while_direct_session_open
+                            and not update_while_direct_session_open
+                        ):
+                            from loushang.coding.cli import application
+                            from loushang.coding.cli.args import parse_args
+                            from loushang.coding.composition_provenance import (
+                                startup_composition_record,
+                            )
+                            from loushang.harness.tools.workspace.registry import (
+                                WorkspaceToolRegistry,
+                            )
+
+                            cli_parent = tmp_path / "cli-session-store"
+                            cli_parent.mkdir(mode=0o700)
+                            cli_dir = cli_parent / "transcripts"
+                            cli_dir.mkdir(mode=0o700)
+                            cli_args = parse_args(
+                                [
+                                    "--mode", "print",
+                                    "--cwd", str(workspace),
+                                    "--composition-set", "coding-standard",
+                                    "--worker-query-plugin", _PLUGIN,
+                                ]
+                            )
+                            worker_turn_calls = 0
+                            with monkeypatch.context() as cli_builder_patch:
+                                cli_builder_patch.setattr(
+                                    application,
+                                    "create_agent_session_runtime",
+                                    lambda **kwargs: create_agent_session_runtime(
+                                        model=direct_model,
+                                        stream_fn=worker_turn_stream,
+                                        **kwargs,
+                                    ),
+                                )
+                                cli_runtime = application.default_runtime_builder(
+                                    args=cli_args,
+                                    cwd=workspace,
+                                    session_dir=cli_dir,
+                                    services=create_services(
+                                        settings_manager=settings
+                                    ),
+                                    tool_registry=WorkspaceToolRegistry(),
+                                )
+
+                            async def exercise_cli_worker_turn() -> None:
+                                try:
+                                    cli_session = await cli_runtime.create_session(
+                                        cwd=str(workspace)
+                                    )
+                                    await cli_session.prompt("Query the review symbol")
+                                    assert worker_turn_calls == 2
+                                    startup = startup_composition_record(
+                                        cli_session.session_manager.get_entries()
+                                    )
+                                    assert startup is not None
+                                    assert startup["workerSelection"]["pluginId"] == _PLUGIN
+                                    cli_messages = cli_session.get_session_context().messages
+                                    assert any(
+                                        getattr(message, "role", None) == "toolResult"
+                                        and any(
+                                            isinstance(part, TextPart)
+                                            and part.text == "Review symbol"
+                                            for part in message.content
+                                        )
+                                        for message in cli_messages
+                                    ), [
+                                        (
+                                            message.role,
+                                            [getattr(part, "text", None) for part in message.content],
+                                        )
+                                        for message in cli_messages
+                                    ]
+                                finally:
+                                    await cli_runtime.dispose_session_runtime()
+
+                            asyncio.run(exercise_cli_worker_turn())
+                        worker_turn_calls = 0
+                        payloads_before_direct = frozenset(
+                            product.state_root.glob("worker-payload-*")
+                        )
+                        gate_attempts_before_direct = {
+                            item.attempt_id
+                            for item in CodingWorkerStartGateJournal(product).attempts()
+                        }
+                        supervisor_journal = (
+                            open_coding_product_worker_supervisor_journal(product)
+                        )
+                        incomplete_before_direct = supervisor_journal.incomplete()
                         direct_manager = asyncio.run(
                             SessionManager.new_with_composition(
                                 session_dir=tmp_path / "public-worker-transcripts",
@@ -3481,10 +3571,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     for tool in direct_session.get_all_tools()
                                     if tool.name == CODING_WORKER_QUERY_TOOL_NAME
                                 )
-                                query_result = await query_tool.execute(
-                                    "worker-query-probe", {"symbol": "review"}
-                                )
-                                assert query_result.content[0].text == "Review symbol"
+                                assert query_tool.parameters["required"] == ["symbol"]
                                 await direct_session.prompt("Query the review symbol")
                                 assert worker_turn_calls == 2
                                 assert any(
@@ -3612,10 +3699,20 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     assert revoked.kill_switch_generation == (
                                         decision.kill_switch_generation + 1
                                     )
-                                with pytest.raises(
-                                    CapabilityWorkerFacetProxyError,
-                                    match="worker_capability_facet_proxy_owner_unavailable",
-                                ):
+                                expected_error = (
+                                    ValueError
+                                    if (
+                                        disable_while_direct_session_open
+                                        or update_while_direct_session_open
+                                    )
+                                    else CapabilityWorkerFacetProxyError
+                                )
+                                expected_message = (
+                                    "Coding Worker selection changed before Session preparation"
+                                    if expected_error is ValueError
+                                    else "worker_capability_facet_proxy_owner_unavailable"
+                                )
+                                with pytest.raises(expected_error, match=expected_message):
                                     await direct_session.query_worker_symbol("review")
                             finally:
                                 await direct_session.dispose()
@@ -3837,75 +3934,6 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             "receipt_references_unverified"
                             not in direct_retention.missing_proofs
                         )
-                        if (
-                            not disable_while_direct_session_open
-                            and not update_while_direct_session_open
-                        ):
-                            from loushang.coding.cli import application
-                            from loushang.coding.cli.args import parse_args
-                            from loushang.coding.composition_provenance import (
-                                startup_composition_record,
-                            )
-                            from loushang.harness.tools.workspace.registry import (
-                                WorkspaceToolRegistry,
-                            )
-
-                            cli_dir = tmp_path / "cli-worker-transcripts"
-                            cli_dir.mkdir(mode=0o700)
-                            cli_args = parse_args(
-                                [
-                                    "--mode", "print",
-                                    "--cwd", str(workspace),
-                                    "--composition-set", "coding-standard",
-                                    "--worker-query-plugin", _PLUGIN,
-                                ]
-                            )
-                            worker_turn_calls = 0
-                            with monkeypatch.context() as cli_builder_patch:
-                                cli_builder_patch.setattr(
-                                    application,
-                                    "create_agent_session_runtime",
-                                    lambda **kwargs: create_agent_session_runtime(
-                                        model=direct_model,
-                                        stream_fn=worker_turn_stream,
-                                        **kwargs,
-                                    ),
-                                )
-                                cli_runtime = application.default_runtime_builder(
-                                    args=cli_args,
-                                    cwd=workspace,
-                                    session_dir=cli_dir,
-                                    services=create_services(
-                                        settings_manager=settings
-                                    ),
-                                    tool_registry=WorkspaceToolRegistry(),
-                                )
-
-                            async def exercise_cli_worker_turn() -> None:
-                                try:
-                                    cli_session = await cli_runtime.create_session(
-                                        cwd=str(workspace)
-                                    )
-                                    await cli_session.prompt("Query the review symbol")
-                                    assert worker_turn_calls == 2
-                                    startup = startup_composition_record(
-                                        cli_session.session_manager.get_entries()
-                                    )
-                                    assert startup is not None
-                                    assert startup["workerSelection"]["pluginId"] == _PLUGIN
-                                    assert any(
-                                        getattr(message, "role", None) == "toolResult"
-                                        and any(
-                                            isinstance(part, TextPart)
-                                            and part.text == "Review symbol"
-                                            for part in message.content
-                                        )
-                                        for message in cli_session.get_session_context().messages
-                                    )
-                                finally:
-                                    await cli_runtime.dispose_session_runtime()
-
-                            asyncio.run(exercise_cli_worker_turn())
                         if disable_while_direct_session_open:
                             with pytest.raises(
                                 PackageProductRuntimeReadError

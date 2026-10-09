@@ -1334,6 +1334,9 @@ class AgentSession(AgentProductSession):
                 "productPolicyRevision": worker_receipt.policy.product_policy_revision,
                 "nativeProfileId": worker_receipt.policy.native_profile_id,
                 "selectedLocatorRevision": worker_receipt.policy.selected_locator_revision,
+                "selectedLocatorFingerprint": (
+                    worker_receipt.policy.selected_locator_fingerprint
+                ),
                 "workerConfigurationFingerprint": (
                     worker_receipt.policy.worker_configuration_fingerprint
                 ),
@@ -1633,10 +1636,6 @@ class AgentSession(AgentProductSession):
 
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None
-        try:
-            await super()._dispose_session_runtime_profile()
-        except BaseException as exc:
-            primary_error = exc
         worker_tool_lease = self._coding_worker_turn_tool_lease
         if worker_tool_lease is not None:
             try:
@@ -1650,6 +1649,15 @@ class AgentSession(AgentProductSession):
                     primary_error.add_note(
                         f"Coding Worker turn Tool retirement also failed: {exc}"
                     )
+        try:
+            await super()._dispose_session_runtime_profile()
+        except BaseException as exc:
+            if primary_error is None:
+                primary_error = exc
+            else:
+                primary_error.add_note(
+                    f"Session runtime retirement also failed: {exc}"
+                )
         base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
         if (
             primary_error is None

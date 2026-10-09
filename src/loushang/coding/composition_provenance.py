@@ -110,6 +110,7 @@ def _validate_startup_record(raw: dict[str, JSONValue]) -> dict[str, object]:
         if not isinstance(worker, dict) or set(worker) != {
             "pluginId", "receiptFingerprint", "productPolicyRevision",
             "nativeProfileId", "selectedLocatorRevision",
+            "selectedLocatorFingerprint",
             "workerConfigurationFingerprint",
         }:
             raise ValueError("Coding Session Worker startup evidence is malformed")
@@ -118,6 +119,7 @@ def _validate_startup_record(raw: dict[str, JSONValue]) -> dict[str, object]:
             or worker["pluginId"] not in revision_ids
             or not _digest(worker["receiptFingerprint"])
             or not _digest(worker["workerConfigurationFingerprint"])
+            or not _digest(worker["selectedLocatorFingerprint"])
             or any(
                 not isinstance(worker[key], str) or not worker[key]
                 for key in (

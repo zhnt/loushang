@@ -111,6 +111,11 @@ def prepare_coding_product_worker_ordinary_binding(
         raise CodingWorkerOrdinaryBootstrapError(
             "coding_worker_ordinary_product_scope_changed"
         )
+    existing_startup = startup_composition_record(session_manager.get_entries())
+    if existing_startup is None and session_manager.get_entries():
+        raise CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_ordinary_startup_provenance_missing"
+        )
     transcript_directory = AgentTranscriptDirectoryRuntime(
         session_dir=session_manager.get_session_dir()
     )
@@ -122,6 +127,7 @@ def prepare_coding_product_worker_ordinary_binding(
             plugin_id=plugin_id,
             transcript_directory=transcript_directory,
             session_manager=session_manager,
+            active_session=True,
         )
     else:
         assert type(product_owner) is PosixLocalWheelProductSessionOwner
@@ -131,6 +137,7 @@ def prepare_coding_product_worker_ordinary_binding(
             plugin_id=plugin_id,
             transcript_directory=transcript_directory,
             session_manager=session_manager,
+            active_session=True,
         )
     receipt = receipt_owner.issue()
     if receipt is None:
@@ -146,11 +153,6 @@ def prepare_coding_product_worker_ordinary_binding(
     ):
         raise CodingWorkerOrdinaryBootstrapError(
             "coding_worker_ordinary_selection_changed"
-        )
-    existing_startup = startup_composition_record(session_manager.get_entries())
-    if existing_startup is None and session_manager.get_entries():
-        raise CodingWorkerOrdinaryBootstrapError(
-            "coding_worker_ordinary_startup_provenance_missing"
         )
     if existing_startup is not None:
         worker = existing_startup.get("workerSelection")
@@ -172,6 +174,8 @@ def prepare_coding_product_worker_ordinary_binding(
             or worker.get("nativeProfileId") != receipt.policy.native_profile_id
             or worker.get("selectedLocatorRevision")
             != receipt.policy.selected_locator_revision
+            or worker.get("selectedLocatorFingerprint")
+            != receipt.policy.selected_locator_fingerprint
             or worker.get("workerConfigurationFingerprint")
             != receipt.policy.worker_configuration_fingerprint
         ):

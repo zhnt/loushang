@@ -1148,8 +1148,13 @@ def open_coding_selected_worker_receipt_owner(
     native_closure_reader: CodingWorkerNativeClosureReadPort,
     transcript_directory: AgentTranscriptDirectoryRuntime,
     session_manager: SessionManager,
+    active_session: bool = False,
 ) -> CodingWorkerProductReceiptOwner:
-    """Bind one resumed candidate to Product selection and its Coding Session."""
+    """Bind one Product candidate to its exact Coding Session owner.
+
+    An attached active Session owns subsequent transcript appends. Detached
+    selection retains the discovery locator revision as an exact snapshot.
+    """
 
     if not isinstance(product_owner, PosixLocalWheelProductSessionOwner):
         raise TypeError("Coding Worker requires a Product owner")
@@ -1208,6 +1213,7 @@ def open_coding_selected_worker_receipt_owner(
         gc_gate=product_owner.gc_gate,
         session_id=runtime.session_id,
         selected_session_file=selected_session_file,
+        attached_session=session_manager if active_session else None,
     )
     return CodingWorkerProductReceiptOwner(
         product_owner=product_owner,
@@ -1226,6 +1232,7 @@ def open_coding_product_selected_worker_receipt_owner(
     plugin_id: str,
     transcript_directory: AgentTranscriptDirectoryRuntime,
     session_manager: SessionManager,
+    active_session: bool = False,
 ) -> CodingWorkerProductReceiptOwner:
     """Open native closure from Product custody for one selected Session.
 
@@ -1241,6 +1248,7 @@ def open_coding_product_selected_worker_receipt_owner(
         native_closure_reader=native_reader,
         transcript_directory=transcript_directory,
         session_manager=session_manager,
+        active_session=active_session,
     )
 
 

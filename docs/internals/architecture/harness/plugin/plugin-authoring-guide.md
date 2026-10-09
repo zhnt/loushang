@@ -528,6 +528,15 @@ passing `worker_candidate_plugin_id` explicitly selects the Windows Worker
 candidate for that Session; the current-head native production gate remains
 pending. Other Sessions and the default route remain unchanged.
 
+For this ordinary Session path, the Product keeps the selected Transcript's
+source, path, file identity, and startup locator fingerprint pinned. It
+rechecks current Session discovery and compares the bounded on-disk Transcript
+with its Session owner at each Worker policy witness. Appends committed by that
+owner retain the attached locator revision; an external append, same-ID copy,
+file replacement, or changed discovery source refuses the next query. A
+detached query of an existing Session instead uses its exact discovery
+snapshot.
+
 For an already persisted Coding Session in that workspace, the explicit Linux
 query Consumer can use the selected Worker after native release approval,
 installation, and candidate opt-in:

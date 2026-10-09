@@ -506,6 +506,7 @@ def open_coding_windows_product_selected_worker_receipt_owner(
     plugin_id: str,
     transcript_directory: AgentTranscriptDirectoryRuntime,
     session_manager: SessionManager,
+    active_session: bool = False,
 ) -> CodingWindowsWorkerProductReceiptOwner:
     """Bind an exact selected Windows Worker to its persisted Coding Session."""
 
@@ -545,6 +546,7 @@ def open_coding_windows_product_selected_worker_receipt_owner(
         gc_gate=product_owner.gc_gate,
         session_id=runtime.session_id,
         selected_session_file=selected_session_file,
+        attached_session=session_manager if active_session else None,
     )
     return CodingWindowsWorkerProductReceiptOwner(
         product=product_owner,
