@@ -796,3 +796,94 @@ def test_disabled_base_keeps_capability_and_catalog_evidence_exact(
             owner.close()
 
     asyncio.run(journey())
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="fenced Product route")
+def test_resumed_session_rechecks_disabled_base_before_first_prepare(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    assert cutover_cli_main(["--workspace", str(workspace)]) == 0
+    capsys.readouterr()
+
+    def change_base(*, action: str, desired_state: str) -> None:
+        owner = open_coding_fenced_product_application_owner(
+            resolve_coding_plugin_lifecycle_state_layout(workspace),
+            workspace=workspace,
+            runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        )
+        try:
+            product = owner.runtime_owner.product_owner
+            inventory = product.desired_state.snapshot()
+            base = next(
+                item
+                for item in inventory.installations
+                if item.installation_key.plugin_id == "coding.base"
+            )
+            changed = product.management.submit(
+                PluginManagementCommandV1(
+                    action=action,
+                    mutation=PluginDesiredStateMutationV1(
+                        operation_id=f"p3:resume-base:{action}",
+                        idempotency_key=f"p3:resume-base:{action}",
+                        expected_inventory_revision=inventory.inventory_revision,
+                        installation_key=base.installation_key,
+                        desired_state=desired_state,
+                        package_revision=None,
+                        actor_id="operator",
+                        policy_revision=product.desired_policy_revision,
+                    ),
+                )
+            )
+            assert changed.result is not None
+            assert changed.result.disposition == "succeeded"
+        finally:
+            owner.close()
+
+    change_base(action="disable", desired_state="installed_disabled")
+
+    async def journey() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=True
+        )
+        original = create_agent_session(
+            session_manager=manager,
+            services=create_services(settings_manager=SettingsManager(ControlConfig())),
+            composition_set="coding-standard",
+        )
+        try:
+            await original.prepare_model_call_runtime()
+            assert startup_composition_record(manager.get_entries()) is not None
+            await manager.append_message(
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text="resume disabled base")],
+                    timestamp=0.0,
+                )
+            )
+        finally:
+            await original.dispose()
+
+        session_file = manager.get_session_file()
+        assert session_file is not None
+        restored = await SessionManager.load(session_file)
+        resumed = create_agent_session(
+            session_manager=restored,
+            services=create_services(settings_manager=SettingsManager(ControlConfig())),
+        )
+        try:
+            change_base(action="enable", desired_state="installed_enabled")
+            with pytest.raises(
+                CodingCapabilityPluginCompositionError,
+                match="requires restart",
+            ):
+                await resumed.prepare_model_call_runtime()
+        finally:
+            await resumed.dispose()
+
+    asyncio.run(journey())

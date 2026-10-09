@@ -538,6 +538,7 @@ class AgentSession(AgentProductSession):
         )
         self._coding_worker_turn_tool_lease: RegistrationLease | None = None
         self._coding_product_desired_selections = coding_product_desired_selections
+        self._coding_product_desired_preflight_completed = False
         self.coding_product_workspace_witness = coding_product_workspace_witness
         product_base = (
             coding_base_product_session_assembly.compilation
@@ -1077,7 +1078,10 @@ class AgentSession(AgentProductSession):
                 raise ValueError(
                     "Coding Worker selection changed before Session preparation"
                 ) from exc
-        if product_runtime is not None:
+        if (
+            product_runtime is not None
+            and not self._coding_product_desired_preflight_completed
+        ):
             for selection in self._coding_product_desired_selections:
                 try:
                     product_runtime.assert_plugin_desired_selection_current(selection)
@@ -1184,6 +1188,7 @@ class AgentSession(AgentProductSession):
         self._publish_coding_capability_owner_retirement_receipts()
         self._publish_coding_base_owner_retirement_receipts()
         await self._record_coding_composition_startup()
+        self._coding_product_desired_preflight_completed = True
 
     async def _record_coding_composition_startup(self) -> None:
         async with self._coding_composition_record_lock:
