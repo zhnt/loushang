@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from loushang.agent.types import AgentMessage
@@ -275,6 +275,27 @@ class AgentTranscriptUnitOfWork:
     @property
     def header(self) -> ConversationHeader:
         return self._repository.header
+
+    def bind_unmaterialized_header_metadata(
+        self, metadata: Mapping[str, JSONValue]
+    ) -> None:
+        """Bind Product creation facts before any transcript write can publish them."""
+
+        self._require_idle_commit("bind transcript creation metadata")
+        if self._materialized or self._revision != 0 or self._repository.records:
+            raise RuntimeError("Transcript creation metadata is already sealed")
+        if not isinstance(metadata, Mapping) or not metadata:
+            raise ValueError("Transcript creation metadata is invalid")
+        if any(
+            not isinstance(key, str)
+            or not key
+            or key in self.header.metadata
+            for key in metadata
+        ):
+            raise ValueError("Transcript creation metadata conflicts with its header")
+        self._repository.set_header(
+            replace(self.header, metadata={**self.header.metadata, **metadata})
+        )
 
     @property
     def records(self) -> tuple[AgentTranscriptRecord, ...]:

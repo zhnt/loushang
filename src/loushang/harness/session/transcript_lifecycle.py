@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import errno
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from inspect import isawaitable
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
     DiagnosticsQuery,
@@ -111,6 +112,7 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     persist: bool
     resolve_cwd_override: Callable[[str | Path], str]
     materialize_new_transcript: bool = False
+    new_session_header_metadata: Mapping[str, JSONValue] | None = None
 
     def prepare_import(
         self, source: Path, destination: Path, cwd_override: str | None, fingerprint: str | None,
@@ -150,6 +152,7 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
                 cwd=cwd,
                 persist=self.persist,
                 parent_session=parent_session_ref,
+                additional_header_metadata=self.new_session_header_metadata,
                 defer_materialization=False,
             )
         return await self.session_type.new(
@@ -157,6 +160,7 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
             cwd=cwd,
             persist=self.persist,
             parent_session=parent_session_ref,
+            additional_header_metadata=self.new_session_header_metadata,
         )
 
     async def restore(

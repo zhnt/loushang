@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from loushang.harness.config.agent._settings_codec import CONTROL_CONFIG_CODEC
+from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentPreviewRequestV1,
 )
@@ -47,6 +48,23 @@ class CodingCurrentPreviewQuery:
     workspace: Path
     layout: CodingPluginLifecycleStateLayout
     workspace_guard: Callable[[], None] | None = None
+
+    def configured_capabilities(self) -> dict[str, str]:
+        """Read the CLI inference input under the same bounded settings policy."""
+
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        if not coding_fenced_product_exists(self.layout):
+            raise CodingCurrentPreviewError(code="plugin_preview_product_not_fenced")
+        try:
+            settings = _capture_preview_settings(self.workspace)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            raise CodingCurrentPreviewError(
+                code="plugin_preview_settings_unavailable"
+            ) from exc
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        return dict(settings.capabilities)
 
     def owner_revisions(self) -> tuple[str, str, str]:
         """Read Product policy, authority, and Skill settings without composing."""
@@ -158,6 +176,19 @@ def bind_coding_current_preview_query(
 def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
     """Apply the Product codec without a lock; hash only the relevant projection."""
 
+    settings = _capture_preview_settings(workspace)
+    digest = sha256(b"loushang.coding.preview.disabled-skills/v1\0")
+    digest.update(json.dumps(
+        settings.disabled_skills,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8"))
+    return settings.disabled_skills, f"sha256:{digest.hexdigest()}"
+
+
+def _capture_preview_settings(workspace: Path) -> ControlConfig:
+    """Read only declared settings bytes for preview and CLI choice inference."""
+
     settings = CONTROL_CONFIG_CODEC.default()
     for label, path in (
         ("global", default_global_settings_path()),
@@ -173,13 +204,7 @@ def _capture_disabled_skills(workspace: Path) -> tuple[tuple[str, ...], str]:
         if result.issues:
             raise ValueError("Plugin preview settings have invalid fields")
         settings = result.value
-    digest = sha256(b"loushang.coding.preview.disabled-skills/v1\0")
-    digest.update(json.dumps(
-        settings.disabled_skills,
-        ensure_ascii=True,
-        separators=(",", ":"),
-    ).encode("utf-8"))
-    return settings.disabled_skills, f"sha256:{digest.hexdigest()}"
+    return settings
 
 
 def _read_settings_bytes(path: Path) -> bytes | None:

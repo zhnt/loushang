@@ -44,6 +44,24 @@ Desired State, and Product gate. A new general-purpose profile system is not
 implied by these sets. See the
 [composition-set code](../../../../../src/loushang/coding/composition_sets.py).
 
+For an ordinary new Coding Session, `loushang --composition-set coding-minimal`
+(or `coding-standard`/`coding-architecture`) selects one of these canonical
+requests. With no option, a configured `coding.arch` settings key selects
+`coding-architecture`; otherwise the CLI selects `coding-standard`. An
+explicit choice wins even when the Arch key is present. The Session header pins
+the plan fingerprint. Runtime preparation stores a separate startup receipt
+with selected Package revision fingerprints, effective Catalog selection, and
+owner generation references; `/session` diagnostics reads that evidence when
+the Base command pack is selected. A restored Session reuses its
+pinned set and refuses an explicit conflicting choice. The option does not
+enable a disabled Provider or change an active Session.
+When Base is disabled, the receipt still lists independently selected LSP/Arch
+Package revisions and the Catalog selection; Base Tools and `/session` are
+absent. Product Desired State or selected manifest changes between Session
+construction and startup are rechecked before the Session accepts input.
+An older persisted Session without the composition header has no verifiable
+set choice and cannot be resumed through this route; create a new Session.
+
 The durable [management service](../../../../../src/loushang/harness/plugin_management/service.py)
 owns desired-state operations. The fenced Coding Product exposes bounded
 CLI, optional Coding RPC, TUI `/plugins`, and local SDK query/command/repair

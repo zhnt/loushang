@@ -71,7 +71,8 @@ class CliArgs(AgentCliArgs):
     work_log_run: str | None
     work_log_inspect_format: WorkLogInspectFormat
     preview_current_plugins: bool
-    preview_composition_set: str
+    composition_set: str | None
+    preview_composition_set: str | None
     discover_local_plugins: bool
     discover_local_plugins_format: Literal["text", "json"]
     discover_local_query: str
@@ -207,6 +208,7 @@ def parse_args(
         work_log_run=namespace.work_log_run,
         work_log_inspect_format=namespace.work_log_inspect_format,
         preview_current_plugins=namespace.preview_current_plugins,
+        composition_set=namespace.composition_set,
         preview_composition_set=namespace.preview_composition_set,
         discover_local_plugins=namespace.discover_local_plugins,
         discover_local_plugins_format=namespace.discover_local_plugins_format,

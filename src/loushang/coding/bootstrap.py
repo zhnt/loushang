@@ -81,10 +81,12 @@ from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
 )
+from loushang.coding.composition_provenance import composition_header_metadata
 from loushang.coding.composition_sets import (
     CODING_KERNEL_PROMPT_REVISION,
     CodingCompositionSetId,
     CodingCompositionSetPlan,
+    infer_coding_composition_set,
     resolve_coding_composition_set,
 )
 from loushang.coding.control.settings_store import (
@@ -566,6 +568,8 @@ def _create_agent_session(
         ProductCompositionAssemblyRequest | None
     ) = None,
     composition_set: CodingCompositionSetPlan | None = None,
+    composition_set_explicit: bool = False,
+    composition_choice_from_cli: bool = False,
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
@@ -585,7 +589,29 @@ def _create_agent_session(
         resource_catalog_source_policy
     )
     session_no_tools_mode = normalize_no_tools(no_tools)
-    resolved_composition_set = _canonical_coding_composition_set(composition_set)
+    requested_composition_set = _canonical_coding_composition_set(composition_set)
+    services = services or create_services()
+    if composition_choice_from_cli and not composition_set_explicit and (
+        infer_coding_composition_set(
+            services.settings_manager.get_settings().capabilities
+        ) != requested_composition_set.set_id
+    ):
+        raise ValueError(
+            "Coding composition settings changed before Session startup; "
+            "retry with the current settings"
+        )
+    resolved_composition_set = session_manager.bind_new_composition_plan(
+        requested_composition_set
+    )
+    if (
+        composition_set_explicit
+        and resolved_composition_set.set_id != requested_composition_set.set_id
+    ):
+        raise ValueError(
+            "Coding Session composition set is pinned to "
+            f"{resolved_composition_set.set_id}; requested "
+            f"{requested_composition_set.set_id}. Create a new Session to switch sets"
+        )
     resolved_invocation_profile = (
         canonical_coding_agent_invocation_product_profile(invocation_product_profile)
         if invocation_product_profile is not None
@@ -694,7 +720,6 @@ def _create_agent_session(
             raise ValueError(
                 "child approval actor must match its delegated execution profile"
             )
-    services = services or create_services()
     if package_product_runtime_factory is not None:
         settings = services.settings_manager.get_settings()
         if settings.package_roots or settings.plugin_sources:
@@ -2152,16 +2177,40 @@ def _create_agent_session(
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly=(base_plugin_session_assembly),
                 coding_base_product_session_assembly=(product_base_session_assembly),
+                coding_external_data_product_compilation=(
+                    product_external_data_compilation
+                ),
+                coding_selected_capability_manifests=(
+                    tuple(
+                        product_base_runtime.capture_selected_plugin_manifest_for(
+                            selection.installation_key.plugin_id,
+                            max_files=64,
+                            max_total_bytes=1024 * 1024,
+                        )
+                        for selection in product_capability_desired_selections
+                        if selection.desired_state == "installed_enabled"
+                    )
+                    if product_base_compilation is None
+                    and product_base_runtime is not None
+                    else ()
+                ),
                 coding_base_product_runtime_binding=(
                     product_base_runtime
-                    if product_base_session_assembly is not None
-                    else None
+                ),
+                coding_product_desired_selections=(
+                    *(
+                        (product_base_disabled_selection,)
+                        if product_base_disabled_selection is not None
+                        else ()
+                    ),
+                    *product_capability_desired_selections,
                 ),
                 coding_product_workspace_witness=product_workspace_witness,
                 coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 coding_product_worker_ordinary_binding=worker_ordinary_binding,
+                coding_composition_plan=resolved_composition_set,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 resource_catalog_refresh_bootstrap_factory=(
                     prepare_resource_catalog_refresh
@@ -2499,6 +2548,7 @@ def create_agent_session(
             composition_set=resolve_coding_composition_set(
                 "coding-standard" if composition_set is None else composition_set
             ),
+            composition_set_explicit=composition_set is not None,
             services=services,
             output_capture_factory=output_capture_factory,
             agent_factory=agent_factory,
@@ -2771,6 +2821,8 @@ def _create_agent_session_runtime(
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetPlan | None = None,
+    composition_set_explicit: bool = False,
+    composition_choice_from_cli: bool = False,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
@@ -2822,6 +2874,7 @@ def _create_agent_session_runtime(
             sys.platform == "win32" and worker_candidate_plugin_id is not None
         ),
     )
+    resolved_composition_set = _canonical_coding_composition_set(composition_set)
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
         runtime_factory=partial(
@@ -2839,6 +2892,7 @@ def _create_agent_session_runtime(
             ),
             product_owner_selection=product_owner_selection,
             materialize_new_transcript=worker_candidate_plugin_id is not None,
+            new_session_header_metadata=composition_header_metadata(resolved_composition_set),
         ),
         fixed_services=fixed_services,
         build_session=lambda session_manager, session_services, start_event: (
@@ -2857,7 +2911,9 @@ def _create_agent_session_runtime(
                     allowed_tool_names=allowed_tool_names,
                     active_tool_names=active_tool_names,
                     no_tools=no_tools,
-                    composition_set=composition_set,
+                    composition_set=resolved_composition_set,
+                    composition_set_explicit=composition_set_explicit,
+                    composition_choice_from_cli=composition_choice_from_cli,
                     services=session_services,
                     package_product_runtime_factory=product_factory,
                     worker_candidate_plugin_id=worker_candidate_plugin_id,
@@ -2945,6 +3001,8 @@ def create_agent_session_runtime(
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
+    composition_set_explicit: bool | None = None,
+    composition_choice_from_cli: bool = False,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
@@ -2972,6 +3030,12 @@ def create_agent_session_runtime(
         composition_set=resolve_coding_composition_set(
             "coding-standard" if composition_set is None else composition_set
         ),
+        composition_set_explicit=(
+            composition_set is not None
+            if composition_set_explicit is None
+            else composition_set_explicit
+        ),
+        composition_choice_from_cli=composition_choice_from_cli,
         services=services,
         services_factory=services_factory,
         agent_factory=agent_factory,

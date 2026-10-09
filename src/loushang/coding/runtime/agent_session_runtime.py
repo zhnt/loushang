@@ -12,6 +12,7 @@ from loushang.coding.session_manager import (
     _bind_owned_session_manager,
     _create_owned_session_factory,
 )
+from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session import AgentProductSessionRuntime
@@ -49,6 +50,7 @@ class AgentSessionRuntime(
         session_factory: SessionFactory,
         persist: bool = True,
         materialize_new_transcript: bool = False,
+        new_session_header_metadata: dict[str, JSONValue] | None = None,
         current_session: AgentSession | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         auto_refresh_session_index: bool = False,
@@ -92,6 +94,7 @@ class AgentSessionRuntime(
             session_factory=session_factory,
             persist=persist,
             materialize_new_transcript=materialize_new_transcript,
+            new_session_header_metadata=new_session_header_metadata,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
             copy_file=_copy_session_import,

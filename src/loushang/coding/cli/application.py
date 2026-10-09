@@ -51,6 +51,7 @@ from loushang.coding.cli.args import (
     plugin_repair_option_requested,
     removed_legacy_resource_option,
 )
+from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.startup_route import _cli_launch_plan
@@ -58,6 +59,7 @@ from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
 )
+from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.continuity import (
     shutdown_coding_continuity,
 )
@@ -391,14 +393,14 @@ def default_runtime_builder(
         "capabilities",
         {},
     )
-    if (
-        invocation_product_profile is None
-        and isinstance(configured_capabilities, Mapping)
-        and "coding.arch" in configured_capabilities
-    ):
-        # An explicit Arch mount is a Product request for the architecture
-        # composition set; the mount value still decides whether it activates.
-        runtime_options["composition_set"] = "coding-architecture"
+    if invocation_product_profile is None:
+        runtime_options["composition_set"] = resolve_cli_composition_choice(
+            getattr(args, "composition_set", None), configured_capabilities
+        )
+        runtime_options["composition_set_explicit"] = (
+            getattr(args, "composition_set", None) is not None
+        )
+        runtime_options["composition_choice_from_cli"] = True
     runtime = runtime_factory(**runtime_options)
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions
@@ -1025,6 +1027,7 @@ def _run_coding_current_preview_cli(
             args,
             cwd=None,
             preview_current_plugins=False,
+            composition_set=baseline.composition_set,
             preview_composition_set=baseline.preview_composition_set,
         )
         != baseline
@@ -1034,17 +1037,41 @@ def _run_coding_current_preview_cli(
     try:
         workspace_guard()
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        document = format_plugin_current_preview(
-            bind_coding_current_preview_query(
-                project_root, workspace_guard=workspace_guard
-            ),
-            PluginCurrentPreviewRequestV1(
-                correlation_id="cli:preview-current-plugins",
-                product_id=CODING_PRODUCT_ID,
-                scope_id=layout.scope_id,
-                composition_set_id=args.preview_composition_set,
-            ),
+        query = bind_coding_current_preview_query(
+            project_root, workspace_guard=workspace_guard
         )
+        configured_capabilities = query.configured_capabilities()
+        if (
+            args.preview_composition_set is not None
+            and args.composition_set is not None
+            and args.preview_composition_set != args.composition_set
+        ):
+            stderr.write("Error: plugin_preview_composition_conflict\n")
+            return 2
+        selected_set = resolve_cli_composition_choice(
+            args.preview_composition_set or args.composition_set,
+            configured_capabilities,
+        )
+        projected = json.loads(
+            format_plugin_current_preview(
+                query,
+                PluginCurrentPreviewRequestV1(
+                    correlation_id="cli:preview-current-plugins",
+                    product_id=CODING_PRODUCT_ID,
+                    scope_id=layout.scope_id,
+                    composition_set_id=selected_set,
+                ),
+            )
+        )
+        plan = resolve_coding_composition_set(selected_set)
+        projected["requestedComposition"] = {
+            "setId": plan.set_id,
+            "planFingerprint": plan.fingerprint,
+            "pluginRequests": [item.to_dict() for item in plan.plugin_requests],
+        }
+        document = json.dumps(projected, ensure_ascii=False, sort_keys=True) + "\n"
+        if query.configured_capabilities() != configured_capabilities:
+            raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
         workspace_guard()
     except CodingPluginManagementReadSdkError as error:
         stderr.write(f"Error: {error.code}\n")

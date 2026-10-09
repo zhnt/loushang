@@ -532,6 +532,16 @@ the currently enabled data Resource composition without creating a Session:
 loushang --preview-current-plugins --preview-composition-set coding-standard
 ```
 
+For a new ordinary Coding Session, `loushang --composition-set coding-minimal`
+selects the same canonical Product request for startup. The preview-only flag
+does not affect startup. If neither is given, preview and startup both infer
+`coding-architecture` when a `coding.arch` settings key exists, even when its
+mount mode is disabled; otherwise they use `coding-standard`. An explicit
+`--composition-set` overrides that inference. Preview JSON separates
+`requestedComposition` from the projected Product and Catalog outcome; the
+request does not enable a disabled Plugin. Existing Sessions keep their pinned
+composition choice. Create a new Session to switch sets.
+
 The JSON reports Product admission, projected Skill/Prompt names, stable
 blocking codes, and explicit evidence gaps. `compiledPluginIds` covers the
 data Resource compilation path; it does not claim a Capability Provider was
