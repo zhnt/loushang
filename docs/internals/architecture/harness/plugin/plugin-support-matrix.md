@@ -26,6 +26,29 @@ retirement; the two paths have different authority and lifecycle guarantees.
 The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
+## Current composition and management
+
+Coding already defines `coding-minimal`, `coding-standard`, and
+`coding-architecture` composition sets. Their inert Product requests contain,
+respectively, no Plugin, `coding.base` plus optional `coding.lsp.default`, and
+those two plus optional `coding.arch.default`. The sets are Product policy;
+actual admission and new-Session selection still depend on the exact owner,
+Desired State, and Product gate. A new general-purpose profile system is not
+implied by these sets. See the
+[composition-set code](../../../../../src/loushang/coding/composition_sets.py).
+
+The durable [management service](../../../../../src/loushang/harness/plugin_management/service.py)
+owns desired-state operations. The fenced Coding Product exposes bounded
+CLI, optional Coding RPC, TUI `/plugins`, and local SDK query/command/repair
+adapters; the TUI command route currently supports enable, disable, remove,
+and own-operation repair. Read-only composition preview reports
+`partial_evidence`: it can explain projected admission and Catalog selection,
+but cannot claim that a Session used a Resource. The separate support-status
+projection joins management and preview without making that claim. See the
+[TUI command adapter](../../../../../src/loushang/coding/plugin_management_ui.py),
+[preview contract](../../../../../src/loushang/harness/plugin_management/current_preview.py),
+and [read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py).
+
 The explicit `loushang-worker-windows-candidate` offline inspect and crash
 recovery command is implemented behind `--windows-candidate`. The hosted
 crash/reopen Product case calls `inspect` and `recover-crash`, verifies refusal

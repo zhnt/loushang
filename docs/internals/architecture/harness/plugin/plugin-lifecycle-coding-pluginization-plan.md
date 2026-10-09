@@ -87,21 +87,25 @@
   and explicit offline Product root-GC command. [PLC9D3k--D3l]
   (plugin-lifecycle-plc9d3k-contract.md) add private-data confirmation seams
   and durable evidence; [PLC9D3m](plugin-lifecycle-plc9d3m-contract.md)
-  projects the pre-B workspace-snapshot status. Production private-data and
-  backup owner bindings, default management/RPC selection, Windows GC, and
-  public Coding dependency admission remain open. The POSIX configured
-  Product now proves shared-dependency Store reuse and GC after every holder
-  root has a verified deletion result.
-- Coding legacy-workspace migration foundation classifies pre-B inputs,
-  verifies first-B snapshot members and old Installation intent, reacquires
-  exact local Source bytes, and prepares an inert adoption review. It does not
-  authorize adoption or install a legacy Plugin through Product. The offline
-  cutover command remains limited to fresh workspaces; operator approval,
-  Product installation, and settings migration remain separate delivery work.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
-  internal/offline POSIX root-GC execution, durable private-data confirmation
-  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
-  remains open.
+  projects the pre-B workspace-snapshot status. These D3 records are historical
+  slice boundaries: current Coding Product code also binds Arch private-data
+  backup, deletion, restore, and expiry owners, plus POSIX shared-dependency
+  Store reuse and GC after every holder root has a verified deletion result.
+- The legacy-workspace migration foundation below records historical work.
+  The Product owner ended pre-B compatibility for this delivery on 2026-10-01:
+  fresh and verifiable B-fenced workspaces remain in scope, while unfenced
+  pre-B Plugin inputs refuse without writes. Automatic first-B cutover is
+  accepted for genuinely fresh Linux workspaces; Windows first-B remains an
+  explicit candidate route.
+- Delivery anchor: PLC8 closed; PLC9 remains open at `7a3673aa`.
+  Product-backed management, data Wheel authoring, POSIX root/shared-dependency
+  GC, and Arch private-data owners have implemented routes; explicit Windows
+  Worker Session and GC candidate journeys passed native CI. CLI, optional
+  Coding RPC, TUI, and local SDK have Product-backed management paths.
+  General third-party Worker admission, default routing, ordinary unflagged
+  Windows routing, the Windows update/GC combination, and Windows private-data
+  production use retain separate gates. See the
+  [support matrix](plugin-support-matrix.md) for current entry-route limits.
 - Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
   only; Current remains the default; no general third-party Worker
   authoring/admission surface is published.

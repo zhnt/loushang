@@ -16,9 +16,10 @@ PLUGIN_STATUS_ENTRYPOINTS = (
     PLUGIN_ROOT / "plugin-lifecycle-coding-pluginization-plan.md",
 )
 PLUGIN_DELIVERY_ANCHOR = (
-    "PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m internal/offline "
-    "POSIX root-GC execution, durable private-data confirmation evidence, and "
-    "pre-B workspace-snapshot status projection implemented; PLC9 remains open."
+    "PLC8 closed; PLC9 remains open at `7a3673aa`. Product-backed management, "
+    "data Wheel authoring, POSIX root/shared-dependency GC, and Arch "
+    "private-data owners have implemented routes; explicit Windows Worker "
+    "Session and GC candidate journeys passed native CI."
 )
 PLUGIN_WORKER_CANARY_BOUNDARY = (
     "explicit Linux/Windows AMD64 Coding Product opt-in only; Current remains "
