@@ -45,6 +45,7 @@ from loushang.coding.cli.args import (
     ExtensionFlag,
     current_preview_option_requested,
     help_text,
+    local_discovery_option_requested,
     parse_args,
     plugin_explanation_option_requested,
     plugin_repair_option_requested,
@@ -92,6 +93,11 @@ from loushang.coding.package_product_management_cli import (
 from loushang.coding.package_product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
 )
+from loushang.coding.plugin_local_discovery import (
+    blocked_coding_local_discovery,
+    discover_coding_local_plugins,
+    format_coding_local_discovery,
+)
 from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
@@ -105,6 +111,7 @@ from loushang.coding.plugin_management_preview import (
     bind_coding_current_preview_query,
 )
 from loushang.coding.plugin_management_read_sdk import (
+    CodingPluginManagementReadClientV1,
     CodingPluginManagementReadSdkError,
     open_coding_plugin_management_read_client,
 )
@@ -501,6 +508,7 @@ async def run_cli(
                 return 1
     if (
         current_preview_option_requested(raw_argv)
+        or local_discovery_option_requested(raw_argv)
         or plugin_explanation_option_requested(raw_argv)
         or plugin_repair_option_requested(raw_argv)
     ):
@@ -526,9 +534,27 @@ async def run_cli(
                 ),
             )
         except CodingPluginManagementReadSdkError as error:
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(error.code),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
             resolved_stderr.write(f"Error: {error.code}\n")
             return 1
         except (OSError, RuntimeError, ValueError):
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(
+                            "local_discovery_workspace_unavailable"
+                        ),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
             code = (
                 "plugin_repair_workspace_unavailable"
                 if args.repair_plugin_desired_operation is not None
@@ -545,6 +571,13 @@ async def run_cli(
                 args,
                 project_root=project_root,
                 workspace_guard=workspace_client.assert_workspace_current,
+                stdout=stdout or sys.stdout,
+                stderr=resolved_stderr,
+            )
+        if args.discover_local_plugins:
+            return _run_coding_local_discovery_cli(
+                args,
+                client=workspace_client,
                 stdout=stdout or sys.stdout,
                 stderr=resolved_stderr,
             )
@@ -923,6 +956,59 @@ def _coding_state_preparation_ports(
         ),
         format_error=_format_cli_error,
     )
+
+
+def _run_coding_local_discovery_cli(
+    args: CliArgs,
+    *,
+    client: CodingPluginManagementReadClientV1,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if (
+        replace(
+            args,
+            cwd=None,
+            discover_local_plugins=False,
+            discover_local_plugins_format=baseline.discover_local_plugins_format,
+            discover_local_query=baseline.discover_local_query,
+            discover_local_kind=baseline.discover_local_kind,
+            discover_local_source=baseline.discover_local_source,
+            discover_local_limit=baseline.discover_local_limit,
+        )
+        != baseline
+    ):
+        stderr.write("Error: local_discovery_operation_conflict\n")
+        return 2
+    try:
+        document = discover_coding_local_plugins(
+            client,
+            query=args.discover_local_query,
+            kind=args.discover_local_kind,
+            source=args.discover_local_source,
+            limit=args.discover_local_limit,
+        )
+        stdout.write(
+            format_coding_local_discovery(document, args.discover_local_plugins_format)
+        )
+        return 1 if document["disposition"] == "blocked" else 0
+    except CodingPluginManagementReadSdkError as error:
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery(error.code),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
+    except (OSError, RuntimeError, ValueError):
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery("local_discovery_unavailable"),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
 
 
 def _run_coding_current_preview_cli(

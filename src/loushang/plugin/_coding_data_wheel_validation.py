@@ -93,7 +93,15 @@ def validate_coding_data_wheel(path: str | Path) -> dict[str, object]:
         "diagnostics": [],
         "profile": f"coding-data-{kind}-v1",
         "resourceKind": kind,
+        "targetInstallCommand": [
+            "loushang",
+            "--install-package",
+            str(source),
+            "--package-scope",
+            "project",
+        ],
         "valid": True,
+        "validationResult": "passed",
     }
 
 
@@ -218,6 +226,7 @@ def _failure(base: dict[str, object], code: str) -> dict[str, object]:
         **base,
         "diagnostics": [{"code": code}],
         "valid": False,
+        "validationResult": "failed",
     }
 
 

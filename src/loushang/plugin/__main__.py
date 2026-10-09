@@ -171,14 +171,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
-        report = {
+        report: dict[str, object] = {
             "buildCommand": list(scaffold.build_command),
+            "disposableSmoke": "not_checked",
             "smokeCommand": list(scaffold.smoke_command),
             "profile": f"coding-data-{scaffold_kind}-v1",
             "productAdmission": "not_checked",
             "productSelection": "not_checked",
             "productUse": "not_checked",
             "sourcePath": str(scaffold.source_path),
+            "validationResult": "not_checked",
         }
         if scaffold_kind in {"skill", "prompt"}:
             report["validationCommand"] = [
@@ -288,8 +290,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
+        artifact_sha256 = sha256(wheel_path.read_bytes()).hexdigest()
         report = {
             "artifactPath": str(wheel_path),
+            "artifactSha256": artifact_sha256,
+            "disposableSmoke": "not_checked",
             "profile": (
                 "coding-data-skill-v1"
                 if is_skill
@@ -300,9 +305,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "productAdmission": "not_checked",
             "productSelection": "not_checked",
             "productUse": "not_checked",
-            "sha256": sha256(wheel_path.read_bytes()).hexdigest(),
+            "sha256": artifact_sha256,
+            "sourcePath": str(source.absolute()),
         }
         if is_skill or is_prompt:
+            validation = validate_coding_data_wheel(wheel_path)
+            report["validationResult"] = (
+                "passed" if validation["valid"] else "failed"
+            )
+            report["validationDiagnostics"] = validation["diagnostics"]
             report["validationCommand"] = [
                 "loushang-plugin",
                 "validate-coding-wheel",
@@ -315,6 +326,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "--package-scope",
                 "project",
             ]
+        else:
+            report["validationResult"] = "candidate_not_checked"
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 0
     if args.command == "build-coding-worker-candidate":

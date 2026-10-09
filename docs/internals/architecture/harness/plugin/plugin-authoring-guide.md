@@ -84,6 +84,31 @@ workspace. Install and enable the Wheel separately in the destination
 workspace, then check its own Session. These Skill/Prompt commands do not open
 the Theme or Worker candidate gates.
 
+The build JSON now groups `sourcePath`, `artifactPath`, `artifactSha256`, the
+Coding compatibility `profile`, `validationResult`, `validationDiagnostics`,
+`disposableSmoke`, and the exact `targetInstallCommand`. A Skill or Prompt build
+performs the inert Wheel validation immediately; running its printed
+`validationCommand` checks the final bytes again. The validator prints the same
+target install command only for a valid artifact. `disposableSmoke` stays
+`not_checked` until the separate smoke command runs, and the smoke result
+remains labelled `workspace: disposable`. Neither author report asserts target
+workspace admission.
+
+Use `loushang --discover-local-plugins` from a Coding workspace to inspect
+local installed Plugins and native Resources without starting a Session. Add
+`--discover-local-plugins-format json` for the version 1 JSON contract;
+`--discover-local-query`, `--discover-local-kind`, `--discover-local-source`,
+and `--discover-local-limit` filter bounded metadata. Each installed Plugin row
+has an Installation identity and, when available, an opaque Package revision
+fingerprint. Skill/Prompt kinds for a disabled data Wheel come from bounded
+inert validation of its exact Product-bound artifact; they do not imply current
+admission. Native Resource rows have a Resource identity and no Plugin ID.
+`nativeCatalogSelection` describes a disposable native-only Catalog view;
+`productSelection` is `not_checked` for those rows. The response reports
+source completeness, diagnostics, and truncation. An unfenced workspace can
+still return native rows with a partial result; a local listing never installs
+or enables a Plugin.
+
 For the existing Screen Theme candidate, run `loushang-plugin
 init-coding-theme ./themepack --resource-name dusk`, edit
 `./themepack/themes/dusk.json`, then run its returned `buildCommand` and

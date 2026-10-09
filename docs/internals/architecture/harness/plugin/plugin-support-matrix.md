@@ -26,6 +26,13 @@ retirement; the two paths have different authority and lifecycle guarantees.
 The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
 
+`loushang --discover-local-plugins` is the read-only local inventory route.
+Its version 1 JSON form distinguishes installed Plugin Installations from
+native Resource candidates, names source completeness and truncation, and
+keeps native-only Catalog selection separate from fenced Product selection.
+It uses Product-declared local sources and does not inspect unrelated paths or
+execute Extension Python.
+
 ## Current composition and management
 
 Coding already defines `coding-minimal`, `coding-standard`, and

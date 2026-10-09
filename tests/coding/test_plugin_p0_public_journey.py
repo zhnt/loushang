@@ -174,8 +174,21 @@ def test_p0_public_author_to_target_skill_and_prompt_journey(
         source = Path(str(scaffold["sourcePath"]))
         source.write_text(f"# {resource_name}\n{marker}\n", encoding="utf-8")
         built = _author_command(scaffold["buildCommand"][1:], capsys)  # type: ignore[index]
+        assert built["sourcePath"] == str(source)
+        assert built["validationResult"] == "passed"
+        assert built["disposableSmoke"] == "not_checked"
+        if kind == "skill":
+            second_command = list(scaffold["buildCommand"][1:])
+            second_command[-1] = str(tmp_path / plugin_id / "dist-second")
+            second = _author_command(second_command, capsys)
+            assert second["sha256"] == built["sha256"]
+            assert Path(second["artifactPath"]).read_bytes() == Path(
+                built["artifactPath"]
+            ).read_bytes()
         validated = _author_command(built["validationCommand"][1:], capsys)  # type: ignore[index]
         assert validated["sha256"] == built["sha256"]
+        assert validated["validationResult"] == "passed"
+        assert validated["targetInstallCommand"] == built["targetInstallCommand"]
         assert validated["productAdmission"] == "not_checked"
         assert smoke_cli_main(scaffold["smokeCommand"][1:]) == 0  # type: ignore[index]
         smoke = json.loads(capsys.readouterr().out)
@@ -184,6 +197,22 @@ def test_p0_public_author_to_target_skill_and_prompt_journey(
         assert receipt is not None and receipt["pluginId"] == plugin_id
         assert receipt["sourceSha256"] == built["sha256"]
         assert receipt["nextCommands"][0] == f"loushang --enable-plugin {plugin_id}"
+        disabled_discovery = _target_command(
+            workspace,
+            "--discover-local-plugins",
+            "--discover-local-plugins-format",
+            "json",
+            "--discover-local-kind",
+            kind,
+        )
+        disabled_row = next(
+            row for row in disabled_discovery["rows"]
+            if row["identityKind"] == "plugin_installation"
+            and row["pluginId"] == plugin_id
+        )
+        assert disabled_row["desiredState"] == "installed_disabled"
+        assert disabled_row["resourceKinds"] == [kind]
+        assert disabled_row["productSelection"] == "not_selected"
         _target_command(workspace, "--enable-plugin", plugin_id)
         artifacts[kind] = built
 
@@ -194,6 +223,35 @@ def test_p0_public_author_to_target_skill_and_prompt_journey(
     assert {
         item["name"] for item in listing if item["desiredState"] == "installed_enabled"
     } >= {"skillpack", "promptpack"}
+    discovery = _target_command(
+        workspace,
+        "--discover-local-plugins",
+        "--discover-local-plugins-format",
+        "json",
+    )
+    assert discovery["discoveryVersion"] == 1
+    package_rows = {
+        row["pluginId"]: row
+        for row in discovery["rows"]
+        if row["identityKind"] == "plugin_installation"
+    }
+    assert package_rows["skillpack"]["desiredState"] == "installed_enabled"
+    assert package_rows["skillpack"]["packageRevisionFingerprint"]
+    assert package_rows["skillpack"]["productSelection"] == "selected"
+    assert package_rows["promptpack"]["productSelection"] == "selected"
+    skill_discovery = _target_command(
+        workspace,
+        "--discover-local-plugins",
+        "--discover-local-plugins-format",
+        "json",
+        "--discover-local-kind",
+        "skill",
+    )
+    assert "skillpack" in {
+        row["pluginId"]
+        for row in skill_discovery["rows"]
+        if row["identityKind"] == "plugin_installation"
+    }
 
     transport = _OfflineModelTransport()
     registry = get_default_api_registry()
