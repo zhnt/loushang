@@ -4497,6 +4497,19 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                         asyncio.run(exercise_settled_product_start_refusal())
                     assert not settled_start_lease.runtime.package_root.exists()
                 if native_mode == "installed-protocol":
+                    # The ordinary Session above renewed this Session's receipt.
+                    # The earlier receipt must be fenced before legacy stage checks.
+                    superseded_receipt = receipt
+                    receipt = receipt_owner.issue()
+                    assert receipt is not None
+                    assert receipt != superseded_receipt
+                    assert (
+                        receipt_owner.current_witness(superseded_receipt)
+                        != superseded_receipt.authority_witness
+                    )
+                    assert (
+                        receipt_owner.current_witness(receipt) == receipt.authority_witness
+                    )
                     journaled_root = product.state_root / f"worker-payload-{attempt_id}"
                     # Reopen a complete stage left by an older Product version.
                     # Current materialization must never recreate this settled ID.

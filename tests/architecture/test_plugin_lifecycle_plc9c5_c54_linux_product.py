@@ -38,6 +38,9 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py": {
         "loushang.harness.worker.product_activation",
     },
+    CODING_ROOT / "package_product_worker_crash_c5_settlement.py": {
+        "loushang.harness.worker.product_activation",
+    },
     CODING_ROOT / "package_product_worker_history_retention.py": {
         "loushang.harness.worker.gated_start",
         "loushang.harness.worker.journal",

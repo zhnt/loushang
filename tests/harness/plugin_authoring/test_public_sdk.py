@@ -254,11 +254,14 @@ def test_coding_data_skill_cli_builds_new_artifact_from_skill_file(
     wheel = tmp_path / "dist" / "reviewpack-1-py3-none-any.whl"
     assert report == {
         "artifactPath": str(wheel),
+        "artifactSha256": sha256(wheel.read_bytes()).hexdigest(),
+        "disposableSmoke": "not_checked",
         "profile": "coding-data-skill-v1",
         "productAdmission": "not_checked",
         "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
+        "sourcePath": str(skill_root / "SKILL.md"),
         "targetInstallCommand": [
             "loushang",
             "--install-package",
@@ -267,6 +270,8 @@ def test_coding_data_skill_cli_builds_new_artifact_from_skill_file(
             "project",
         ],
         "validationCommand": ["loushang-plugin", "validate-coding-wheel", str(wheel)],
+        "validationDiagnostics": [],
+        "validationResult": "passed",
     }
     with pytest.raises(SystemExit, match="2"):
         plugin_cli_main(args)
@@ -319,11 +324,14 @@ def test_coding_data_prompt_cli_builds_new_artifact(
     wheel = tmp_path / "dist" / "promptpack-1-py3-none-any.whl"
     assert report == {
         "artifactPath": str(wheel),
+        "artifactSha256": sha256(wheel.read_bytes()).hexdigest(),
+        "disposableSmoke": "not_checked",
         "profile": "coding-data-prompt-v1",
         "productAdmission": "not_checked",
         "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
+        "sourcePath": str(prompt),
         "targetInstallCommand": [
             "loushang",
             "--install-package",
@@ -332,6 +340,8 @@ def test_coding_data_prompt_cli_builds_new_artifact(
             "project",
         ],
         "validationCommand": ["loushang-plugin", "validate-coding-wheel", str(wheel)],
+        "validationDiagnostics": [],
+        "validationResult": "passed",
     }
     assert wheel.read_bytes() == build_coding_data_prompt_wheel(
         plugin_id="promptpack",

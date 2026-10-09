@@ -1044,6 +1044,11 @@ def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> No
             Path("src/loushang/coding/package_product_management_cli.py"),
             "_ProductCliOwner.open",
         ),
+        # P1 transition-status reads keep the CLI on the same read-only ledger.
+        (
+            Path("src/loushang/coding/package_product_management_cli.py"),
+            "read_coding_fenced_desired_transition",
+        ),
         # Read-only preview opens the ledger with strict load policy and never
         # becomes a second Desired State writer.
         (

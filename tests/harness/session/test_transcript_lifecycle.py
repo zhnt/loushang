@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -300,9 +301,10 @@ def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) 
             cwd: str,
             persist: bool,
             parent_session: str | None,
+            additional_header_metadata: Mapping[str, object] | None = None,
         ) -> BoundTranscript:
             cls.actions.append(
-                ("new", session_dir, cwd, persist, parent_session)
+                ("new", session_dir, cwd, persist, parent_session, additional_header_metadata)
             )
             return cls(cwd, session_dir / "new.jsonl")
 
@@ -352,7 +354,7 @@ def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) 
         assert forked.get_session_file() == tmp_path / "fork.jsonl"
         assert cloned.get_session_file() == tmp_path / "new.jsonl"
         assert BoundTranscript.actions == [
-            ("new", tmp_path, str(tmp_path), True, "parent.jsonl"),
+            ("new", tmp_path, str(tmp_path), True, "parent.jsonl", None),
             (
                 "open",
                 tmp_path / "saved.jsonl",
@@ -367,6 +369,7 @@ def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) 
                 str(tmp_path),
                 True,
                 str(tmp_path / "new.jsonl"),
+                None,
             ),
             ("dispose", tmp_path / "saved.jsonl"),
         ]

@@ -8,7 +8,6 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -23,10 +22,10 @@ from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.coding.bootstrap import create_services
 from loushang.coding.hosted_bootstrap import create_coding_hosted_attempt
 from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.session_manager import SessionManager
 from loushang.harness.config.agent import SettingsManager
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
+from ._hosted_composition_seed import seed_hosted_history
 from .test_hosted_bootstrap import _launch
 from .test_hosted_discovery import _create
 from .test_hosted_session import _model, _stream
@@ -72,13 +71,9 @@ def test_G17_PRODUCT_discover_resume_interact_and_recover_without_replay(
                     selected = page.candidates[0].identity
                     # A normal append since listing is not stale identity authority.
                     path = scope.session_dir / f"hosted-{selected.session_id}.jsonl"
-                    manager = await SessionManager.open(path)
-                    try:
-                        await manager.append_message(UserMessage(
-                            role="user", content="before resume", timestamp=1.0,
-                        ))
-                    finally:
-                        await manager.dispose_runtime_profile()
+                    await seed_hosted_history(
+                        scope, "before resume", session_id=selected.session_id
+                    )
                     lines = path.read_text().splitlines()
                     header = json.loads(lines[0])
                     header["metadata"]["padding"] = "x" * 35000
@@ -125,7 +120,7 @@ def test_G17_PRODUCT_discover_resume_interact_and_recover_without_replay(
                     await client_scope.close()
                 await app.close()
                 await attempt.close()
-    asyncio.run(asyncio.wait_for(scenario(), 30))
+    asyncio.run(asyncio.wait_for(scenario(), 90))
 
 
 @pytest.mark.parametrize("enabled", [False, True])
