@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from loushang.agent import Agent, PrepareModelCallFn
@@ -61,6 +61,10 @@ from loushang.coding.package_product_runtime import CodingProductWorkspaceWitnes
 from loushang.coding.package_product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
     validate_coding_product_worker_ordinary_session_inputs,
+)
+from loushang.coding.package_product_worker_turn_tool import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+    CodingWorkerTurnToolBinding,
 )
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import (
@@ -124,6 +128,8 @@ from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
+    RegistrationLease,
+    RegistrationOwner,
 )
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -147,6 +153,7 @@ from loushang.harness.session.model_call import SessionModelCallCapabilityConsum
 from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
 )
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.factory import ToolsOptions
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
@@ -210,6 +217,58 @@ async def _execute_coding_branch_summary(
 
 class AgentSession(AgentProductSession):
     """Coding content and policy bound to the shared Agent Product session."""
+
+    @staticmethod
+    def _reject_peer_worker_tool(tool: object) -> None:
+        if isinstance(tool, ToolDefinition) and tool.name == CODING_WORKER_QUERY_TOOL_NAME:
+            raise ValueError("Coding Worker query Tool is reserved for the Product owner")
+
+    def register_runtime_tools(
+        self,
+        tools: Iterable[object],
+        *,
+        activate: bool = False,
+        source_info: object | None = None,
+    ) -> tuple[ToolDefinition, ...]:
+        definitions = tuple(tools)
+        for definition in definitions:
+            self._reject_peer_worker_tool(definition)
+        return super().register_runtime_tools(
+            definitions, activate=activate, source_info=source_info
+        )
+
+    def _register_extension_runtime_tool(
+        self, tool: object, source_info: object | None = None
+    ) -> None:
+        self._reject_peer_worker_tool(tool)
+        super()._register_extension_runtime_tool(tool, source_info)
+
+    def _bind_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner | str,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        self._reject_peer_worker_tool(tool)
+        return super()._bind_extension_runtime_tool(tool, owner, source_info)
+
+    def _adopt_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease | None:
+        self._reject_peer_worker_tool(tool)
+        return super()._adopt_extension_runtime_tool(tool, owner, source_info)
+
+    def _stage_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        self._reject_peer_worker_tool(tool)
+        return super()._stage_extension_runtime_tool(tool, owner, source_info)
 
     def __init__(
         self,
@@ -278,6 +337,7 @@ class AgentSession(AgentProductSession):
         coding_product_worker_ordinary_binding: (
             CodingProductWorkerOrdinarySessionBinding | None
         ) = None,
+        coding_worker_turn_tool: CodingWorkerTurnToolBinding | None = None,
         coding_composition_plan: CodingCompositionSetPlan | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
         resource_catalog_refresh_bootstrap_factory: Any | None = None,
@@ -347,6 +407,11 @@ class AgentSession(AgentProductSession):
                 combined=coding_product_worker_ordinary_binding.combined,
                 workspace_binding=workspace_capability_binding,
             )
+        if coding_worker_turn_tool is not None and (
+            coding_product_worker_ordinary_binding is None
+            or coding_product_worker_ordinary_binding.activation_receipt is None
+        ):
+            raise ValueError("Coding Worker turn Tool requires a selected Worker receipt")
         if (
             coding_base_product_session_assembly is not None
             and capability_plugin_assembly is not None
@@ -468,6 +533,10 @@ class AgentSession(AgentProductSession):
         )
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
         self._coding_base_product_runtime_binding = coding_base_product_runtime_binding
+        self._coding_product_worker_ordinary_binding = (
+            coding_product_worker_ordinary_binding
+        )
+        self._coding_worker_turn_tool_lease: RegistrationLease | None = None
         self._coding_product_desired_selections = coding_product_desired_selections
         self.coding_product_workspace_witness = coding_product_workspace_witness
         product_base = (
@@ -770,10 +839,38 @@ class AgentSession(AgentProductSession):
                 arch_tool_registration_slot.bind(self._composition.tool_controller)
             if base_tool_registration_slot is not None:
                 base_tool_registration_slot.bind(self._composition.tool_controller)
+            if coding_worker_turn_tool is not None:
+                assert coding_product_worker_ordinary_binding is not None
+                receipt = coding_product_worker_ordinary_binding.activation_receipt
+                assert receipt is not None
+                self._coding_worker_turn_tool_lease = (
+                    self._composition.tool_controller.stage_runtime_tool(
+                        coding_worker_turn_tool.definition(),
+                        owner=RegistrationOwner(
+                            owner_kind="product",
+                            owner_id="coding",
+                            runtime_id=(
+                                f"{session_manager.get_header().conversation_id}:"
+                                f"{coding_worker_turn_tool.plugin_id}:query"
+                            ),
+                            generation=receipt.policy.owner_selection_generation,
+                        ),
+                    )
+                )
         except BaseException as error:
             run_cleanup_steps(
                 error,
                 (
+                    *(
+                        (
+                            (
+                                "Coding Worker turn Tool admission rollback",
+                                self._coding_worker_turn_tool_lease.rollback_registration,
+                            ),
+                        )
+                        if self._coding_worker_turn_tool_lease is not None
+                        else ()
+                    ),
                     *(
                         (
                             (
@@ -963,6 +1060,23 @@ class AgentSession(AgentProductSession):
     async def prepare_model_call_runtime(self) -> None:
         product_runtime = self._coding_base_product_runtime_binding
         product_compilation = self._coding_base_product_compilation
+        worker_binding = self._coding_product_worker_ordinary_binding
+        if (
+            product_runtime is not None
+            and worker_binding is not None
+            and worker_binding.selected_worker_manifest is not None
+        ):
+            try:
+                product_runtime.assert_selected_plugin_manifest_current(
+                    worker_binding.selected_worker_manifest
+                )
+            except (
+                PackageProductRuntimeActivationError,
+                PackageProductRuntimeReadError,
+            ) as exc:
+                raise ValueError(
+                    "Coding Worker selection changed before Session preparation"
+                ) from exc
         if product_runtime is not None:
             for selection in self._coding_product_desired_selections:
                 try:
@@ -1057,7 +1171,16 @@ class AgentSession(AgentProductSession):
             assembly.management_lease.claim_runtime(
                 runtime_claim_id if capability_plugins is not None else None
             )
+        if worker_binding is not None:
+            async with self._coding_composition_record_lock:
+                await self._record_coding_composition_startup_locked(existing_only=True)
         await super().prepare_model_call_runtime()
+        worker_tool_lease = self._coding_worker_turn_tool_lease
+        if worker_tool_lease is not None and worker_tool_lease.state == "staged":
+            worker_tool_lease.activate()
+            self._composition.tool_controller.activate_tool_names(
+                [CODING_WORKER_QUERY_TOOL_NAME]
+            )
         self._publish_coding_capability_owner_retirement_receipts()
         self._publish_coding_base_owner_retirement_receipts()
         await self._record_coding_composition_startup()
@@ -1066,7 +1189,9 @@ class AgentSession(AgentProductSession):
         async with self._coding_composition_record_lock:
             await self._record_coding_composition_startup_locked()
 
-    async def _record_coding_composition_startup_locked(self) -> None:
+    async def _record_coding_composition_startup_locked(
+        self, *, existing_only: bool = False
+    ) -> None:
         plan = self._coding_composition_plan
         if plan is None or not self.session_manager.persist:
             return
@@ -1092,6 +1217,9 @@ class AgentSession(AgentProductSession):
                 ),
             )
         )
+        worker_binding = self._coding_product_worker_ordinary_binding
+        if worker_binding is not None and worker_binding.selected_worker_manifest is not None:
+            selected = (*selected, worker_binding.selected_worker_manifest)
         revisions = [
             {
                 "pluginId": item.manifest.name,
@@ -1196,8 +1324,44 @@ class AgentSession(AgentProductSession):
             if isinstance(catalog_snapshot, ResourceCatalogSnapshot)
             else None
         )
+        worker_receipt = (
+            worker_binding.activation_receipt if worker_binding is not None else None
+        )
+        worker_selection: dict[str, object] | None = (
+            {
+                "pluginId": worker_receipt.policy.plugin_id,
+                "receiptFingerprint": worker_receipt.fingerprint,
+                "productPolicyRevision": worker_receipt.policy.product_policy_revision,
+                "nativeProfileId": worker_receipt.policy.native_profile_id,
+                "selectedLocatorRevision": worker_receipt.policy.selected_locator_revision,
+                "workerConfigurationFingerprint": (
+                    worker_receipt.policy.worker_configuration_fingerprint
+                ),
+            }
+            if worker_receipt is not None
+            else None
+        )
         existing = startup_composition_record(self.session_manager.get_entries())
         if existing is not None:
+            original_worker = existing.get("workerSelection")
+            comparable_worker = (
+                {
+                    key: value
+                    for key, value in worker_selection.items()
+                    if key != "receiptFingerprint"
+                }
+                if worker_selection is not None
+                else None
+            )
+            comparable_original_worker = (
+                {
+                    key: value
+                    for key, value in original_worker.items()
+                    if key != "receiptFingerprint"
+                }
+                if isinstance(original_worker, dict)
+                else None
+            )
             if (
                 existing.get("version") != 1
                 or existing.get("setId") != plan.set_id
@@ -1206,29 +1370,36 @@ class AgentSession(AgentProductSession):
                 != policy_revision
                 or existing.get("catalogSelectionFingerprint") != catalog_fingerprint
                 or existing.get("selectedRevisions") != revisions
+                or comparable_original_worker != comparable_worker
             ):
                 raise ValueError(
                     "Coding Session effective composition changed since startup; "
                     "create a new Session"
                 )
-            self._coding_session_manager.mark_composition_startup_prepared()
+            if not existing_only:
+                self._coding_session_manager.mark_composition_startup_prepared()
             return
         if self._coding_composition_had_entries_at_construction:
             raise ValueError(
                 "Coding Session has input without startup composition evidence; "
                 "create a new Session"
             )
+        if existing_only:
+            return
+        startup_data: dict[str, object] = {
+            "version": 1,
+            "setId": plan.set_id,
+            "planFingerprint": plan.fingerprint,
+            "productPolicyRevision": policy_revision,
+            "catalogSelectionFingerprint": catalog_fingerprint,
+            "selectedRevisions": revisions,
+            "ownerGenerations": generations,
+        }
+        if worker_selection is not None:
+            startup_data["workerSelection"] = worker_selection
         await self.session_manager.append_custom_entry(
             CODING_COMPOSITION_STARTUP_TYPE,
-            {
-                "version": 1,
-                "setId": plan.set_id,
-                "planFingerprint": plan.fingerprint,
-                "productPolicyRevision": policy_revision,
-                "catalogSelectionFingerprint": catalog_fingerprint,
-                "selectedRevisions": revisions,
-                "ownerGenerations": generations,
-            },
+            startup_data,
         )
         self._coding_session_manager.mark_composition_startup_prepared()
 
@@ -1466,6 +1637,19 @@ class AgentSession(AgentProductSession):
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
+        worker_tool_lease = self._coding_worker_turn_tool_lease
+        if worker_tool_lease is not None:
+            try:
+                result = await worker_tool_lease.dispose()
+                if result.state not in {"removed", "already_removed"}:
+                    raise RuntimeError("Coding Worker turn Tool retirement failed")
+            except BaseException as exc:
+                if primary_error is None:
+                    primary_error = exc
+                else:
+                    primary_error.add_note(
+                        f"Coding Worker turn Tool retirement also failed: {exc}"
+                    )
         base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
         if (
             primary_error is None

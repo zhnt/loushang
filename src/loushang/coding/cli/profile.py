@@ -221,6 +221,18 @@ CODING_CLI_PROFILE: CliProfile = _CODING_STANDARD_CLI_PROFILE.augment(
             help="Choose the Coding composition set for a new Session.",
         ),
         CliArgumentSpec(
+            "coding.worker_query_plugin",
+            ("--worker-query-plugin",),
+            "worker_query_plugin",
+            owner="product",
+            default=None,
+            metavar="PLUGIN_ID",
+            help=(
+                "Explicitly select one approved read-only query Worker for a "
+                "new Linux x86-64 standard Session."
+            ),
+        ),
+        CliArgumentSpec(
             "coding.preview_composition_set",
             ("--preview-composition-set",),
             "preview_composition_set",

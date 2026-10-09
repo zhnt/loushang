@@ -68,7 +68,7 @@ def _validate_startup_record(raw: dict[str, JSONValue]) -> dict[str, object]:
         "version", "setId", "planFingerprint", "productPolicyRevision",
         "catalogSelectionFingerprint", "selectedRevisions", "ownerGenerations",
     }
-    if set(raw) != keys or type(raw["version"]) is not int or raw["version"] != 1:
+    if set(raw) not in (keys, keys | {"workerSelection"}) or type(raw["version"]) is not int or raw["version"] != 1:
         raise ValueError("Coding Session composition startup provenance is malformed")
     if not isinstance(raw["setId"], str) or not _digest(raw["planFingerprint"]):
         raise ValueError("Coding Session composition startup identity is malformed")
@@ -105,6 +105,28 @@ def _validate_startup_record(raw: dict[str, JSONValue]) -> dict[str, object]:
         revision_ids.append(plugin_id)
     if revision_ids != sorted(set(revision_ids)):
         raise ValueError("Coding Session composition startup revisions are not canonical")
+    if "workerSelection" in raw:
+        worker = raw["workerSelection"]
+        if not isinstance(worker, dict) or set(worker) != {
+            "pluginId", "receiptFingerprint", "productPolicyRevision",
+            "nativeProfileId", "selectedLocatorRevision",
+            "workerConfigurationFingerprint",
+        }:
+            raise ValueError("Coding Session Worker startup evidence is malformed")
+        if (
+            not isinstance(worker["pluginId"], str)
+            or worker["pluginId"] not in revision_ids
+            or not _digest(worker["receiptFingerprint"])
+            or not _digest(worker["workerConfigurationFingerprint"])
+            or any(
+                not isinstance(worker[key], str) or not worker[key]
+                for key in (
+                    "productPolicyRevision", "nativeProfileId",
+                    "selectedLocatorRevision",
+                )
+            )
+        ):
+            raise ValueError("Coding Session Worker startup identity is malformed")
     generations = raw["ownerGenerations"]
     if not isinstance(generations, list):
         raise ValueError("Coding Session composition startup owner generations are malformed")

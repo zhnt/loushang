@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import platform
 import stat
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -94,6 +95,9 @@ from loushang.coding.package_product_management_cli import (
 )
 from loushang.coding.package_product_runtime import (
     require_fresh_coding_product_inputs_without_writes,
+)
+from loushang.coding.package_product_worker_turn_tool import (
+    CODING_WORKER_QUERY_TOOL_NAME,
 )
 from loushang.coding.plugin_local_discovery import (
     blocked_coding_local_discovery,
@@ -394,13 +398,36 @@ def default_runtime_builder(
         {},
     )
     if invocation_product_profile is None:
-        runtime_options["composition_set"] = resolve_cli_composition_choice(
+        selected_composition_set = resolve_cli_composition_choice(
             getattr(args, "composition_set", None), configured_capabilities
         )
+        runtime_options["composition_set"] = selected_composition_set
         runtime_options["composition_set_explicit"] = (
             getattr(args, "composition_set", None) is not None
         )
         runtime_options["composition_choice_from_cli"] = True
+    worker_query_plugin = getattr(args, "worker_query_plugin", None)
+    if worker_query_plugin is not None:
+        if (
+            invocation_product_profile is not None
+            or sys.platform != "linux"
+            or platform.machine().lower() not in {"x86_64", "amd64"}
+            or args.mode != "print"
+            or args.no_session
+            or getattr(args, "no_tools", False)
+            or getattr(args, "no_builtin_tools", False)
+            or runtime_options.get("composition_set") != "coding-standard"
+            or (
+                bool(args.tools)
+                and CODING_WORKER_QUERY_TOOL_NAME not in args.tools
+            )
+        ):
+            raise ValueError(
+                "Worker query requires a persisted Linux x86-64 Coding "
+                "standard print-mode Session with Tools enabled"
+            )
+        runtime_options["worker_candidate_plugin_id"] = worker_query_plugin
+        runtime_options["worker_query_turn_tool"] = True
     runtime = runtime_factory(**runtime_options)
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions

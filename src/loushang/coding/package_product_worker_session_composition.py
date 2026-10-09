@@ -35,6 +35,9 @@ from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderSelectionPlanV1,
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityWorkerComponentRequest,
@@ -598,6 +601,8 @@ class CodingProductWorkerOrdinarySessionBinding:
     ordinary: SessionCapabilityCompositionInputs
     combined: SessionCapabilityCompositionInputs
     workspace_binding: CapabilityBundleProviderBinding
+    selected_worker_manifest: PackageProductSelectedPluginManifestV1 | None = None
+    activation_receipt: ProductWorkerActivationReceiptV1 | None = None
 
     def __post_init__(self) -> None:
         validate_coding_product_worker_ordinary_session_inputs(
@@ -605,6 +610,16 @@ class CodingProductWorkerOrdinarySessionBinding:
             combined=self.combined,
             workspace_binding=self.workspace_binding,
         )
+        selected = self.selected_worker_manifest
+        receipt = self.activation_receipt
+        if (selected is None) != (receipt is None):
+            raise ValueError("Coding Worker selection evidence is incomplete")
+        if selected is not None and receipt is not None and (
+            selected.snapshot.installation_key.plugin_id != receipt.policy.plugin_id
+            or selected.snapshot.root_ref.artifact_digest
+            != receipt.policy.plugin_revision_digest
+        ):
+            raise ValueError("Coding Worker selection evidence changed")
 
 
 __all__ = [

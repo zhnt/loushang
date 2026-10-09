@@ -39,12 +39,14 @@ import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
+import loushang.coding.session.agent_session as coding_agent_session_module
 import loushang.harness.package_product.product_local_wheel_runtime as local_wheel_runtime_module
 import loushang.harness.package_product.product_root_gc_runtime as root_gc_module
 import loushang.hosting.service_group as service_group_module
 from loushang.agent import Agent
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import UserMessage
+from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
 from loushang.coding._base_product_composition import (
     compile_coding_base_product_selection,
     extend_coding_base_product_data_resources,
@@ -222,6 +224,10 @@ from loushang.coding.package_product_worker_start_gate_recovery import (
     review_coding_product_worker_gated_recovery,
     review_coding_product_worker_orphan_runtime,
     settle_coding_product_worker_gated_attempt,
+)
+from loushang.coding.package_product_worker_turn_tool import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+    CodingWorkerTurnToolBinding,
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session_manager import SessionManager
@@ -3391,21 +3397,105 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                 max_tokens=4_096,
                             ),
                         )
+                        worker_turn_calls = 0
+
+                        async def worker_turn_stream(model, context, options=None):
+                            del model, context, options
+                            nonlocal worker_turn_calls
+                            worker_turn_calls += 1
+                            tool_turn = worker_turn_calls == 1
+                            message = AssistantMessage(
+                                endpoint="test",
+                                role="assistant",
+                                content=[
+                                    ToolCall(
+                                        type="toolCall",
+                                        id="worker-query-turn",
+                                        name=CODING_WORKER_QUERY_TOOL_NAME,
+                                        arguments={"symbol": "review"},
+                                    )
+                                    if tool_turn
+                                    else TextPart(type="text", text="Query complete")
+                                ],
+                                api="test",
+                                provider="test",
+                                model="direct-worker",
+                                response_id=None,
+                                usage=Usage(
+                                    input=0,
+                                    output=0,
+                                    cache_read=0,
+                                    cache_write=0,
+                                    total_tokens=0,
+                                    cost={},
+                                ),
+                                stop_reason="toolUse" if tool_turn else "stop",
+                                error_message=None,
+                                timestamp=0.0,
+                            )
+                            stream = AssistantMessageEventStream()
+                            stream.push(
+                                {
+                                    "type": "done",
+                                    "reason": message.stop_reason,
+                                    "message": message,
+                                }
+                            )
+                            return stream
+
+                        direct_manager = asyncio.run(
+                            SessionManager.new_with_composition(
+                                session_dir=tmp_path / "public-worker-transcripts",
+                                cwd=str(workspace),
+                                session_id="worker-direct-public",
+                                defer_materialization=False,
+                            )
+                        )
+                        direct_transcript = direct_manager.get_session_file()
+                        assert direct_transcript is not None
                         direct_session = create_agent_session(
-                            session_manager=asyncio.run(
-                                SessionManager.load(selected_transcript)
-                            ),
+                            session_manager=direct_manager,
                             model=direct_model,
+                            stream_fn=worker_turn_stream,
                             services=create_services(settings_manager=settings),
                             worker_candidate_plugin_id=_PLUGIN,
+                            worker_query_turn_tool=True,
                         )
 
                         async def exercise_direct_worker() -> None:
                             try:
+                                assert all(
+                                    tool.name != CODING_WORKER_QUERY_TOOL_NAME
+                                    for tool in direct_session.get_all_tools()
+                                )
+                                with pytest.raises(ValueError, match="reserved for the Product owner"):
+                                    direct_session.register_runtime_tools(
+                                        [CodingWorkerTurnToolBinding(_PLUGIN).definition()]
+                                    )
                                 await direct_session.prepare_model_call_runtime()
                                 assert await direct_session.query_worker_symbol(
                                     "review"
                                 ) == "Review symbol"
+                                query_tool = next(
+                                    tool
+                                    for tool in direct_session.get_all_tools()
+                                    if tool.name == CODING_WORKER_QUERY_TOOL_NAME
+                                )
+                                query_result = await query_tool.execute(
+                                    "worker-query-probe", {"symbol": "review"}
+                                )
+                                assert query_result.content[0].text == "Review symbol"
+                                await direct_session.prompt("Query the review symbol")
+                                assert worker_turn_calls == 2
+                                assert any(
+                                    getattr(message, "role", None) == "toolResult"
+                                    and any(
+                                        isinstance(part, TextPart)
+                                        and part.text == "Review symbol"
+                                        for part in message.content
+                                    )
+                                    for message in direct_session.get_session_context().messages
+                                )
                                 assert any(
                                     item.name == "worker-extra"
                                     for item in direct_session.resource_bundle.skills
@@ -3529,6 +3619,10 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     await direct_session.query_worker_symbol("review")
                             finally:
                                 await direct_session.dispose()
+                                assert all(
+                                    tool.name != CODING_WORKER_QUERY_TOOL_NAME
+                                    for tool in direct_session.get_all_tools()
+                                )
 
                         asyncio.run(exercise_direct_worker())
                         assert frozenset(product.state_root.glob("worker-payload-*")) == (
@@ -3541,6 +3635,58 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             if item.attempt_id not in gate_attempts_before_direct
                         )
                         assert len(direct_gate_attempts) == 1
+                        if native_mode == "built-release":
+                            resumed_manager = asyncio.run(
+                                SessionManager.load(direct_transcript)
+                            )
+                            resumed_session = create_agent_session(
+                                session_manager=resumed_manager,
+                                model=direct_model,
+                                stream_fn=worker_turn_stream,
+                                services=create_services(settings_manager=settings),
+                                worker_candidate_plugin_id=_PLUGIN,
+                                worker_query_turn_tool=True,
+                            )
+
+                            async def verify_resume_drift_before_native() -> None:
+                                try:
+                                    original_fingerprint = (
+                                        coding_agent_session_module.fingerprint_catalog_value
+                                    )
+
+                                    def drift_catalog_fingerprint(domain, value):
+                                        if domain == "loushang.coding-composition-catalog-selection/v1":
+                                            return "catalog-drift"
+                                        return original_fingerprint(domain, value)
+
+                                    async def reject_native_prepare():
+                                        raise AssertionError(
+                                            "native graph started before resume validation"
+                                        )
+
+                                    with monkeypatch.context() as drift:
+                                        drift.setattr(
+                                            coding_agent_session_module,
+                                            "fingerprint_catalog_value",
+                                            drift_catalog_fingerprint,
+                                        )
+                                        drift.setattr(
+                                            resumed_session,
+                                            "_ensure_session_graph_prepared",
+                                            reject_native_prepare,
+                                        )
+                                        with pytest.raises(
+                                            ValueError,
+                                            match="effective composition changed",
+                                        ):
+                                            await resumed_session.prepare_model_call_runtime()
+                                finally:
+                                    await resumed_session.dispose()
+
+                            asyncio.run(verify_resume_drift_before_native())
+                            assert len(CodingWorkerStartGateJournal(product).attempts()) == (
+                                len(gate_attempts_before_direct) + 1
+                            )
                         direct_retention = review_coding_product_worker_history_retention(
                             product, attempt_id=direct_gate_attempts[0].attempt_id
                         )
@@ -3691,13 +3837,82 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                             "receipt_references_unverified"
                             not in direct_retention.missing_proofs
                         )
+                        if (
+                            not disable_while_direct_session_open
+                            and not update_while_direct_session_open
+                        ):
+                            from loushang.coding.cli import application
+                            from loushang.coding.cli.args import parse_args
+                            from loushang.coding.composition_provenance import (
+                                startup_composition_record,
+                            )
+                            from loushang.harness.tools.workspace.registry import (
+                                WorkspaceToolRegistry,
+                            )
+
+                            cli_dir = tmp_path / "cli-worker-transcripts"
+                            cli_dir.mkdir(mode=0o700)
+                            cli_args = parse_args(
+                                [
+                                    "--mode", "print",
+                                    "--cwd", str(workspace),
+                                    "--composition-set", "coding-standard",
+                                    "--worker-query-plugin", _PLUGIN,
+                                ]
+                            )
+                            worker_turn_calls = 0
+                            with monkeypatch.context() as cli_builder_patch:
+                                cli_builder_patch.setattr(
+                                    application,
+                                    "create_agent_session_runtime",
+                                    lambda **kwargs: create_agent_session_runtime(
+                                        model=direct_model,
+                                        stream_fn=worker_turn_stream,
+                                        **kwargs,
+                                    ),
+                                )
+                                cli_runtime = application.default_runtime_builder(
+                                    args=cli_args,
+                                    cwd=workspace,
+                                    session_dir=cli_dir,
+                                    services=create_services(
+                                        settings_manager=settings
+                                    ),
+                                    tool_registry=WorkspaceToolRegistry(),
+                                )
+
+                            async def exercise_cli_worker_turn() -> None:
+                                try:
+                                    cli_session = await cli_runtime.create_session(
+                                        cwd=str(workspace)
+                                    )
+                                    await cli_session.prompt("Query the review symbol")
+                                    assert worker_turn_calls == 2
+                                    startup = startup_composition_record(
+                                        cli_session.session_manager.get_entries()
+                                    )
+                                    assert startup is not None
+                                    assert startup["workerSelection"]["pluginId"] == _PLUGIN
+                                    assert any(
+                                        getattr(message, "role", None) == "toolResult"
+                                        and any(
+                                            isinstance(part, TextPart)
+                                            and part.text == "Review symbol"
+                                            for part in message.content
+                                        )
+                                        for message in cli_session.get_session_context().messages
+                                    )
+                                finally:
+                                    await cli_runtime.dispose_session_runtime()
+
+                            asyncio.run(exercise_cli_worker_turn())
                         if disable_while_direct_session_open:
                             with pytest.raises(
                                 PackageProductRuntimeReadError
                             ) as disabled_new_session:
                                 create_agent_session(
                                     session_manager=asyncio.run(
-                                        SessionManager.load(selected_transcript)
+                                        SessionManager.load(direct_transcript)
                                     ),
                                     model=direct_model,
                                     services=create_services(settings_manager=settings),

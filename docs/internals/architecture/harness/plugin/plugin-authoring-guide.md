@@ -482,8 +482,31 @@ partial observation of the selected Worker version and executable digest;
 the selected artifact, contribution, owner, and native platform match the
 retained allow decision in this read. It is not a native release or Session-use
 check.
-The ordinary Session opt-in is available through the Python SDK only; Coding
-CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
+The previously verified ordinary Session opt-in is the Python SDK path. RPC
+and Screen do not offer a Worker selection switch.
+
+The P4 ordinary-turn candidate adds `--worker-query-plugin PLUGIN_ID` for a
+new, persisted `coding-standard` Session on Linux x86-64. This route is still
+under native and owner review; it is not evidence of general Worker admission.
+It registers one Session-owned `worker_query_symbol` Tool backed by the same
+read-only Product facet as the explicit SDK query. A model-visible Tool call
+and its persisted result are required before claiming Product turn use:
+
+```text
+loushang --mode print --cwd PATH --composition-set coding-standard \
+  --worker-query-plugin reviewworker \
+  "Use worker_query_symbol to query the review symbol."
+```
+
+The four checks are separate: builder/validator proves inert Wheel bytes;
+native `review`/`approve`/`install` proves the exact H6 release; Product
+`candidate-status` after install, enable, and allow proves current candidate
+alignment; the new Coding Session's startup receipt and Tool result prove its
+actual selected revision and query. A passing earlier check never fills in a
+later check. The candidate route refuses minimal/architecture sets, disabled
+Base, nonpersistent Sessions, and other platforms. Revocation, changed
+selection, or an expired admission must refuse the next query through the
+Product owner.
 
 The Python SDK exposes the same selected read-only query through an ordinary
 Coding Session. For a direct Session, first call

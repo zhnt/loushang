@@ -21,9 +21,13 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
+from loushang.harness.plugin_management.current_preview import (
+    plugin_package_revision_fingerprint,
+)
 from loushang.harness.transcript.directory import AgentTranscriptDirectoryRuntime
 
 from ._base_product_composition import CodingBaseProductSessionAssembly
+from .composition_provenance import startup_composition_record
 from .package_product_worker_ordinary_error import CodingWorkerOrdinaryBootstrapError
 from .package_product_worker_payload import plan_coding_product_worker_pending_launch
 from .package_product_worker_pending_host import (
@@ -133,6 +137,47 @@ def prepare_coding_product_worker_ordinary_binding(
         raise CodingWorkerOrdinaryBootstrapError(
             "coding_worker_ordinary_candidate_not_allowed"
         )
+    selected_worker = runtime.capture_selected_plugin_manifest_for(
+        plugin_id, max_files=16, max_total_bytes=16 * 1024 * 1024
+    )
+    if (
+        selected_worker.snapshot.root_ref.artifact_digest
+        != receipt.policy.plugin_revision_digest
+    ):
+        raise CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_ordinary_selection_changed"
+        )
+    existing_startup = startup_composition_record(session_manager.get_entries())
+    if existing_startup is None and session_manager.get_entries():
+        raise CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_ordinary_startup_provenance_missing"
+        )
+    if existing_startup is not None:
+        worker = existing_startup.get("workerSelection")
+        expected_revision = {
+            "pluginId": plugin_id,
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                selected_worker.snapshot.package_revision
+            ),
+            "instanceRevisionRef": selected_worker.snapshot.instance_revision_ref.to_dict(),
+        }
+        revisions = existing_startup.get("selectedRevisions")
+        if (
+            not isinstance(worker, dict)
+            or not isinstance(revisions, list)
+            or expected_revision not in revisions
+            or worker.get("pluginId") != receipt.policy.plugin_id
+            or worker.get("productPolicyRevision")
+            != receipt.policy.product_policy_revision
+            or worker.get("nativeProfileId") != receipt.policy.native_profile_id
+            or worker.get("selectedLocatorRevision")
+            != receipt.policy.selected_locator_revision
+            or worker.get("workerConfigurationFingerprint")
+            != receipt.policy.worker_configuration_fingerprint
+        ):
+            raise CodingWorkerOrdinaryBootstrapError(
+                "coding_worker_ordinary_startup_selection_changed"
+            )
     base_policy = CodingWorkerBaseCompositionPolicyBinding(
         base=ordinary.compilation,
         receipt_owner=receipt_owner,
@@ -230,6 +275,8 @@ def prepare_coding_product_worker_ordinary_binding(
         ordinary=ordinary.session_inputs,
         combined=combined,
         workspace_binding=ordinary.workspace_binding,
+        selected_worker_manifest=selected_worker,
+        activation_receipt=receipt,
     )
 
 
