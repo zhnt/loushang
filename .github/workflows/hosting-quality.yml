@@ -334,6 +334,52 @@ jobs:
           tests/architecture/test_hosting_architecture_baseline.py
           -q
 
+  worker-p4-ordinary:
+    if: ${{ fromJSON(inputs.plan).checks.hosting }}
+    name: Worker P4 ordinary Coding Session (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run installed Product ordinary Session gate
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/worker-p4-ordinary.xml
+        run: |
+          mkdir -p .artifacts
+          uv run --extra dev python scripts/dev/run_pytest.py \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_reaches_installed_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_disable_fences_pinned_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_update_fences_pinned_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_hosted_first_session_reaches_installed_product \
+            -m 'not live' \
+            -q
+
+      - name: Reject empty, skipped, or failing P4 ordinary report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/worker-p4-ordinary.xml
+          --require-tests-count 4
+
+      - name: Upload P4 ordinary pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-p4-ordinary-pytest-report
+          path: .artifacts/worker-p4-ordinary.xml
+          if-no-files-found: error
+
   worker-sustained:
     if: ${{ fromJSON(inputs.plan).checks.hosting }}
     name: Worker sustained Product query (Linux)
@@ -375,7 +421,7 @@ jobs:
   selected-checks:
     name: Selected checks
     if: always()
-    needs: [hosting-quality, worker-sustained]
+    needs: [hosting-quality, worker-p4-ordinary, worker-sustained]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -385,4 +431,4 @@ jobs:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
           python scripts/ci/verify_gate.py
-          --jobs '{"hosting-quality":"hosting","worker-sustained":"hosting"}'
+          --jobs '{"hosting-quality":"hosting","worker-p4-ordinary":"hosting","worker-sustained":"hosting"}'
