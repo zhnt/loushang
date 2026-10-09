@@ -17,6 +17,7 @@ from loushang.plugin._coding_data_skill_wheel import (
     write_coding_data_skill_wheel,
     write_coding_data_theme_wheel,
 )
+from loushang.plugin._coding_data_wheel_validation import validate_coding_data_wheel
 from loushang.plugin._coding_local_worker_wheel import (
     write_coding_local_worker_candidate_wheel,
 )
@@ -40,6 +41,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "validate", help="validate a Plugin package without Product admission"
     )
     validate_parser.add_argument("path")
+    wheel_validate_parser = commands.add_parser(
+        "validate-coding-wheel",
+        help="inertly validate one Coding Skill or Prompt Wheel without Product admission",
+    )
+    wheel_validate_parser.add_argument("path")
     conformance_parser = commands.add_parser(
         "conformance", help="run explicitly approved execution conformance"
     )
@@ -63,7 +69,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "skill_file", help="Markdown SKILL.md; name defaults to its parent directory"
     )
     build_parser.add_argument(
-        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+        "--plugin-id",
+        required=True,
+        help="lowercase letters and digits, starting with a letter",
     )
     build_parser.add_argument(
         "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
@@ -74,7 +82,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     build_parser.add_argument(
         "--contribution-id", help="defaults to <skill-name>-skill"
     )
-    build_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
+    build_parser.add_argument(
+        "--output-dir", default="dist", help="wheel directory (default: dist)"
+    )
     prompt_parser = commands.add_parser(
         "build-coding-prompt",
         help="build one Coding data Prompt wheel",
@@ -84,7 +94,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prompt_file", help="Markdown .md file; name defaults to filename stem"
     )
     prompt_parser.add_argument(
-        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+        "--plugin-id",
+        required=True,
+        help="lowercase letters and digits, starting with a letter",
     )
     prompt_parser.add_argument(
         "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
@@ -95,7 +107,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     prompt_parser.add_argument(
         "--contribution-id", help="defaults to <prompt-name>-prompt"
     )
-    prompt_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
+    prompt_parser.add_argument(
+        "--output-dir", default="dist", help="wheel directory (default: dist)"
+    )
     theme_parser = commands.add_parser(
         "build-coding-theme",
         help="build one Coding Screen Theme candidate wheel; Product rollout remains gated",
@@ -105,7 +119,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "theme_file", help="bounded Theme JSON file; name defaults to filename stem"
     )
     theme_parser.add_argument(
-        "--plugin-id", required=True, help="lowercase letters and digits, starting with a letter"
+        "--plugin-id",
+        required=True,
+        help="lowercase letters and digits, starting with a letter",
     )
     theme_parser.add_argument(
         "--version", required=True, help="numeric version: 1, 1.2, or 1.2.3"
@@ -116,7 +132,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     theme_parser.add_argument(
         "--contribution-id", help="defaults to <theme-name>-theme"
     )
-    theme_parser.add_argument("--output-dir", default="dist", help="wheel directory (default: dist)")
+    theme_parser.add_argument(
+        "--output-dir", default="dist", help="wheel directory (default: dist)"
+    )
     worker_parser = commands.add_parser(
         "build-coding-worker-candidate",
         help="package a default-dark native Worker candidate without activating it",
@@ -140,8 +158,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     worker_parser.add_argument("--output-dir", default="dist")
     args = parser.parse_args(argv)
     if args.command in {"init-coding-skill", "init-coding-prompt", "init-coding-theme"}:
-        scaffold_kind: Literal["skill", "prompt", "theme"] = (
-            args.command.removeprefix("init-coding-")
+        scaffold_kind: Literal["skill", "prompt", "theme"] = args.command.removeprefix(
+            "init-coding-"
         )
         try:
             scaffold = create_coding_data_scaffold(
@@ -153,21 +171,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
-        print(
-            json.dumps(
-                {
-                    "buildCommand": list(scaffold.build_command),
-                    "smokeCommand": list(scaffold.smoke_command),
-                    "profile": f"coding-data-{scaffold_kind}-v1",
-                    "productAdmission": "not_checked",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                    "sourcePath": str(scaffold.source_path),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-        )
+        report = {
+            "buildCommand": list(scaffold.build_command),
+            "smokeCommand": list(scaffold.smoke_command),
+            "profile": f"coding-data-{scaffold_kind}-v1",
+            "productAdmission": "not_checked",
+            "productSelection": "not_checked",
+            "productUse": "not_checked",
+            "sourcePath": str(scaffold.source_path),
+        }
+        if scaffold_kind in {"skill", "prompt"}:
+            report["validationCommand"] = [
+                "loushang-plugin",
+                "validate-coding-wheel",
+                scaffold.smoke_command[1],
+            ]
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 0
     if args.command == "validate":
         result = validate_package(args.path)
@@ -196,14 +215,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 0 if result.valid else 1
+    if args.command == "validate-coding-wheel":
+        validation_report = validate_coding_data_wheel(args.path)
+        print(json.dumps(validation_report, ensure_ascii=False, sort_keys=True))
+        return 0 if validation_report["valid"] else 1
     if args.command in {
-        "build-coding-skill", "build-coding-prompt", "build-coding-theme"
+        "build-coding-skill",
+        "build-coding-prompt",
+        "build-coding-theme",
     }:
         is_skill = args.command == "build-coding-skill"
         is_prompt = args.command == "build-coding-prompt"
         source = Path(
-            args.skill_file if is_skill
-            else args.prompt_file if is_prompt
+            args.skill_file
+            if is_skill
+            else args.prompt_file
+            if is_prompt
             else args.theme_file
         )
         kind = "Skill" if is_skill else "Prompt" if is_prompt else "Theme"
@@ -261,24 +288,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
-        print(
-            json.dumps(
-                {
-                    "artifactPath": str(wheel_path),
-                    "profile": (
-                        "coding-data-skill-v1" if is_skill
-                        else "coding-data-prompt-v1" if is_prompt
-                        else "coding-data-theme-v1"
-                    ),
-                    "productAdmission": "not_checked",
-                    "productSelection": "not_checked",
-                    "productUse": "not_checked",
-                    "sha256": sha256(wheel_path.read_bytes()).hexdigest(),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-        )
+        report = {
+            "artifactPath": str(wheel_path),
+            "profile": (
+                "coding-data-skill-v1"
+                if is_skill
+                else "coding-data-prompt-v1"
+                if is_prompt
+                else "coding-data-theme-v1"
+            ),
+            "productAdmission": "not_checked",
+            "productSelection": "not_checked",
+            "productUse": "not_checked",
+            "sha256": sha256(wheel_path.read_bytes()).hexdigest(),
+        }
+        if is_skill or is_prompt:
+            report["validationCommand"] = [
+                "loushang-plugin",
+                "validate-coding-wheel",
+                str(wheel_path),
+            ]
+            report["targetInstallCommand"] = [
+                "loushang",
+                "--install-package",
+                str(wheel_path.absolute()),
+                "--package-scope",
+                "project",
+            ]
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 0
     if args.command == "build-coding-worker-candidate":
         source = Path(args.executable_file)
@@ -347,15 +384,16 @@ def _read_worker_candidate_source(source: Path) -> bytes:
         not stat.S_ISREG(visible_before.st_mode)
         or not 0 < visible_before.st_size <= maximum
     ):
-        raise ValueError("Worker executable source must be a regular file within 16 MiB")
+        raise ValueError(
+            "Worker executable source must be a regular file within 16 MiB"
+        )
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     with os.fdopen(os.open(source, flags), "rb") as input_file:
         opened = os.fstat(input_file.fileno())
         if (
             not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (
-                visible_before.st_dev, visible_before.st_ino
-            )
+            or (opened.st_dev, opened.st_ino)
+            != (visible_before.st_dev, visible_before.st_ino)
             or opened.st_size != visible_before.st_size
         ):
             raise ValueError("Worker executable source changed during open")
@@ -365,10 +403,20 @@ def _read_worker_candidate_source(source: Path) -> bytes:
     if (
         not 0 < len(body) <= maximum
         or len(body) != opened.st_size
-        or (opened.st_dev, opened.st_ino, opened.st_size,
-            opened.st_mtime_ns, opened.st_ctime_ns)
-        != (after.st_dev, after.st_ino, after.st_size,
-            after.st_mtime_ns, after.st_ctime_ns)
+        or (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        )
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
         or (visible_after.st_dev, visible_after.st_ino)
         != (opened.st_dev, opened.st_ino)
     ):

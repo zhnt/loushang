@@ -61,14 +61,19 @@ workspace:
 ```text
 loushang-plugin init-coding-skill ./reviewpack --resource-name review
 # Edit ./reviewpack/skills/review/SKILL.md.
-# Run buildCommand from the JSON result.
+# Run buildCommand, then validationCommand from the JSON results.
 # Run smokeCommand from the JSON result.
 ```
 
 Use `init-coding-prompt` for a Prompt. Scaffold creation refuses to replace
 an existing source directory. The JSON `buildCommand` makes a deterministic
 Wheel and still reports Product admission/use as `not_checked`. The
-`smokeCommand` calls the Coding-owned `loushang-coding-plugin-smoke` entrypoint
+`validationCommand` checks the built Skill/Prompt Wheel as bounded inert bytes.
+It is distinct from `loushang-plugin validate <package-tree>`, which accepts
+a directory containing `plugin.json`. Its result retains
+`productAdmission: not_checked`; the build output also supplies an absolute
+`targetInstallCommand` for the destination workspace. `smokeCommand` calls the
+Coding-owned `loushang-coding-plugin-smoke` entrypoint
 with that exact Wheel in a disposable, offline, fresh Coding Product workspace.
 It installs and enables the Plugin, starts a new Session,
 invokes the requested Resource, and checks the persisted prepared model input.
@@ -168,6 +173,7 @@ workspace; Product Source admission requires an absolute wheel path.
 
 ```text
 loushang-plugin build-coding-skill skills/review/SKILL.md --plugin-id reviewpack --version 1 --output-dir dist
+loushang-plugin validate-coding-wheel "$(pwd)/dist/reviewpack-1-py3-none-any.whl"
 loushang --install-package "$(pwd)/dist/reviewpack-1-py3-none-any.whl" --package-scope project
 loushang --enable-plugin reviewpack
 ```
@@ -196,6 +202,7 @@ current POSIX fenced Product path:
 
 ```text
 loushang-plugin build-coding-prompt prompts/review.md --plugin-id promptpack --version 1 --output-dir dist
+loushang-plugin validate-coding-wheel "$(pwd)/dist/promptpack-1-py3-none-any.whl"
 loushang --install-package "$(pwd)/dist/promptpack-1-py3-none-any.whl" --package-scope project
 loushang --enable-plugin promptpack
 ```

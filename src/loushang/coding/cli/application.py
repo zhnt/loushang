@@ -89,6 +89,9 @@ from loushang.coding.package_product_management_cli import (
     coding_fenced_product_exists,
     repair_coding_fenced_cli_desired_operation,
 )
+from loushang.coding.package_product_runtime import (
+    require_fresh_coding_product_inputs_without_writes,
+)
 from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
@@ -464,6 +467,38 @@ async def run_cli(
     resolved_stderr = stderr or sys.stderr
     if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
         return 2
+    if any(
+        argument == option or argument.startswith(f"{option}=")
+        for option in ("--install-package", "--update-package", "--uninstall-package")
+        for argument in raw_argv
+    ):
+        candidate = _parse_application_args(raw_argv, resolved_stderr, None, True)
+        if candidate.args is not None and (
+            candidate.args.install_packages
+            or candidate.args.update_packages
+            or candidate.args.uninstall_packages
+        ):
+            try:
+                project_root = (
+                    Path(cwd or candidate.args.cwd or Path.cwd())
+                    .expanduser()
+                    .resolve(strict=True)
+                )
+                layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+                if not coding_fenced_product_exists(layout):
+                    supplied_settings = getattr(services, "settings_manager", None)
+                    require_fresh_coding_product_inputs_without_writes(
+                        layout,
+                        workspace=project_root,
+                        settings_manager=(
+                            supplied_settings
+                            if isinstance(supplied_settings, SettingsManager)
+                            else None
+                        ),
+                    )
+            except (OSError, RuntimeError, ValueError) as error:
+                resolved_stderr.write(f"Error: {error}\n")
+                return 1
     if (
         current_preview_option_requested(raw_argv)
         or plugin_explanation_option_requested(raw_argv)
@@ -1092,6 +1127,7 @@ async def _run_coding_pre_runtime_operation(
         if args.uninstall_packages:
             return uninstall_coding_fenced_data_wheels(
                 layout,
+                workspace=context.project_root,
                 plugin_ids=args.uninstall_packages,
                 scope=args.package_scope,
                 stdout=context.stdout,

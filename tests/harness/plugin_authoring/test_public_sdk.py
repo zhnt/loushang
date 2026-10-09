@@ -26,6 +26,7 @@ from loushang.plugin import (
     PluginPackageSpec,
     build_coding_data_prompt_wheel,
     build_coding_data_skill_wheel,
+    build_coding_data_theme_wheel,
     capability_provider,
     capability_requirement,
     package,
@@ -38,6 +39,7 @@ from loushang.plugin import (
     write_package_tree,
 )
 from loushang.plugin.__main__ import main as plugin_cli_main
+from loushang.plugin._coding_data_skill_wheel import _build_resource_wheel
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _AUTHOR_GUIDE = Path(
@@ -257,6 +259,14 @@ def test_coding_data_skill_cli_builds_new_artifact_from_skill_file(
         "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
+        "targetInstallCommand": [
+            "loushang",
+            "--install-package",
+            str(wheel),
+            "--package-scope",
+            "project",
+        ],
+        "validationCommand": ["loushang-plugin", "validate-coding-wheel", str(wheel)],
     }
     with pytest.raises(SystemExit, match="2"):
         plugin_cli_main(args)
@@ -314,6 +324,14 @@ def test_coding_data_prompt_cli_builds_new_artifact(
         "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
+        "targetInstallCommand": [
+            "loushang",
+            "--install-package",
+            str(wheel),
+            "--package-scope",
+            "project",
+        ],
+        "validationCommand": ["loushang-plugin", "validate-coding-wheel", str(wheel)],
     }
     assert wheel.read_bytes() == build_coding_data_prompt_wheel(
         plugin_id="promptpack",
@@ -324,6 +342,84 @@ def test_coding_data_prompt_cli_builds_new_artifact(
     )
     with pytest.raises(SystemExit, match="2"):
         plugin_cli_main(args)
+
+
+@pytest.mark.parametrize("kind", ["skill", "prompt"])
+def test_coding_data_wheel_cli_validates_built_artifact_without_product_admission(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str
+) -> None:
+    root = tmp_path / kind
+    assert plugin_cli_main([f"init-coding-{kind}", str(root)]) == 0
+    scaffold = json.loads(capsys.readouterr().out)
+    assert plugin_cli_main(scaffold["buildCommand"][1:]) == 0
+    built = json.loads(capsys.readouterr().out)
+
+    assert plugin_cli_main(["validate-coding-wheel", built["artifactPath"]]) == 0
+    validated = json.loads(capsys.readouterr().out)
+    assert validated["valid"] is True
+    assert validated["artifactPath"] == built["artifactPath"]
+    assert validated["sha256"] == built["sha256"]
+    assert validated["profile"] == f"coding-data-{kind}-v1"
+    assert validated["pluginId"] == kind
+    assert validated["productAdmission"] == "not_checked"
+    assert validated["productSelection"] == "not_checked"
+    assert validated["productUse"] == "not_checked"
+    artifact = Path(built["artifactPath"])
+    changed = bytearray(artifact.read_bytes())
+    changed[0] ^= 1
+    artifact.write_bytes(changed)
+    assert plugin_cli_main(["validate-coding-wheel", str(artifact)]) == 1
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["valid"] is False
+    assert rejected["sha256"] != built["sha256"]
+
+
+def test_coding_data_wheel_cli_rejects_non_wheel_and_unsupported_kind(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = build_coding_data_skill_wheel(
+        plugin_id="reviewpack",
+        version="1",
+        contribution_id="review-skill",
+        skill_name="review",
+        skill_document=b"---\nname: review\ndescription: Review files\n---\n# Review\n",
+    )
+    wheel = tmp_path / "reviewpack-1-py3-none-any.whl"
+    wheel.write_bytes(skill)
+    linked = tmp_path / "linked-1-py3-none-any.whl"
+    linked.symlink_to(wheel)
+    for invalid in (tmp_path, linked):
+        assert plugin_cli_main(["validate-coding-wheel", str(invalid)]) == 1
+        assert json.loads(capsys.readouterr().out)["valid"] is False
+
+    theme = build_coding_data_theme_wheel(
+        plugin_id="themepack",
+        version="1",
+        contribution_id="dusk-theme",
+        theme_name="dusk",
+        theme_document=b'{"schemaVersion":1,"tokens":{"welcome.title":{"color":"red"}}}',
+    )
+    theme_path = tmp_path / "themepack-1-py3-none-any.whl"
+    theme_path.write_bytes(theme)
+    assert plugin_cli_main(["validate-coding-wheel", str(theme_path)]) == 1
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["valid"] is False
+    assert rejected["diagnostics"][0]["code"] == "coding_data_wheel_profile_unsupported"
+
+    misplaced = _build_resource_wheel(
+        plugin_id="reviewpack",
+        version="2",
+        resource_spec=resource.skill(
+            contribution_id="review-skill", locator="other/review"
+        ),
+        body_path="other/review/SKILL.md",
+        body=b"# Review\n",
+    )
+    misplaced_path = tmp_path / "reviewpack-2-py3-none-any.whl"
+    misplaced_path.write_bytes(misplaced)
+    assert plugin_cli_main(["validate-coding-wheel", str(misplaced_path)]) == 1
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["diagnostics"][0]["code"] == "coding_data_wheel_profile_unsupported"
 
 
 @pytest.mark.parametrize(
@@ -342,14 +438,17 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
     build_command: str,
 ) -> None:
     root = tmp_path / "reviewpack"
-    assert plugin_cli_main(
-        [
-            f"init-coding-{kind}",
-            str(root),
-            "--resource-name",
-            "review",
-        ]
-    ) == 0
+    assert (
+        plugin_cli_main(
+            [
+                f"init-coding-{kind}",
+                str(root),
+                "--resource-name",
+                "review",
+            ]
+        )
+        == 0
+    )
     report = json.loads(capsys.readouterr().out)
     source = root / relative_source
     assert report["sourcePath"] == str(source)
@@ -364,7 +463,9 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
     ]
     assert source.is_file()
     if kind == "theme":
-        assert json.loads(source.read_text(encoding="utf-8"))["tokens"]["welcome.title"] == {
+        assert json.loads(source.read_text(encoding="utf-8"))["tokens"][
+            "welcome.title"
+        ] == {
             "color": "red",
             "bold": True,
         }
@@ -379,7 +480,9 @@ def test_coding_data_scaffold_produces_buildable_source_without_replacement(
         plugin_cli_main([f"init-coding-{kind}", str(root)])
     assert source.read_bytes() == original
     with pytest.raises(SystemExit, match="2"):
-        plugin_cli_main([f"init-coding-{kind}", str(tmp_path / "invalid"), "--resource-name", "BAD"])
+        plugin_cli_main(
+            [f"init-coding-{kind}", str(tmp_path / "invalid"), "--resource-name", "BAD"]
+        )
     assert not (tmp_path / "invalid").exists()
 
 

@@ -3562,6 +3562,16 @@ def test_external_data_wheel_installs_through_real_coding_cli(
         )
     )
     assert result == 0, stderr.getvalue()
+    install_receipt = json.loads(stdout.getvalue())
+    assert install_receipt["operationKind"] == "A2"
+    assert install_receipt["pluginId"] == "reviewpack"
+    assert install_receipt["sourceSha256"] == sha256(source.read_bytes()).hexdigest()
+    assert install_receipt["stage"] == "package_operation_recorded"
+    assert install_receipt["nextCommands"][0] == "loushang --enable-plugin reviewpack"
+    assert install_receipt["nextCommands"][-1] == (
+        "loushang --explain-plugin-operation "
+        + install_receipt["record"]["operationId"]
+    )
     listing = list_plugin_records(
         build_coding_plugin_management_cli_read_binding(workspace, settings)
     )
@@ -5118,6 +5128,11 @@ def test_fenced_cli_refuses_external_executable_and_invalid_wheels(
         assert code in stderr.getvalue(), (version_id, stderr.getvalue())
         operation_id = (
             stderr.getvalue().split("(Package operation: ", 1)[1].split(")", 1)[0]
+        )
+        failure_receipt = json.loads(stderr.getvalue().splitlines()[-1])
+        assert failure_receipt["operationId"] == operation_id
+        assert ["loushang", "--explain-plugin-operation", operation_id] in (
+            failure_receipt["nextCommands"]
         )
         failed_operations.append((operation_id, code))
     before_explain = tuple(

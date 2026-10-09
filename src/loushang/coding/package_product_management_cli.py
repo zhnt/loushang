@@ -28,6 +28,9 @@ from loushang.harness.plugin_management.desired_command import (
     PluginDesiredRepairResultV1,
     resume_plugin_desired_operation,
 )
+from loushang.harness.plugin_management.journal_codecs import (
+    PluginDesiredStateJournalTransition,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationProjector,
@@ -55,6 +58,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
+    PackageRetentionHandoffReceiptV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -124,6 +128,49 @@ def explain_coding_fenced_plugin_operation(
         if workspace_guard is not None:
             workspace_guard()
         return result
+    finally:
+        runtime.close()
+
+
+def read_coding_fenced_package_handoff(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> PackageRetentionHandoffReceiptV1 | None:
+    """Observe one exact A2 handoff receipt without repairing its owner."""
+
+    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
+    try:
+        result = PackageRetentionHandoffJournal(
+            runtime.control_root / "product-state" / "handoff.jsonl"
+        ).read_operation(operation_id)
+        runtime.assert_current()
+        return result
+    finally:
+        runtime.close()
+
+
+def read_coding_fenced_desired_transition(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> PluginDesiredStateJournalTransition | None:
+    """Read one exact Desired commit without repairing management or Product state."""
+
+    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
+    try:
+        desired = PluginDesiredStateLedger(
+            runtime.control_root / "product-state" / "desired-state.jsonl",
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+        _snapshot, transitions = desired.capture_read_only()
+        matches = [
+            transition
+            for transition in transitions
+            if transition.mutation.operation_id == operation_id
+        ]
+        runtime.assert_current()
+        if len(matches) > 1:
+            raise ValueError("Desired operation identity is ambiguous")
+        return matches[0] if matches else None
     finally:
         runtime.close()
 
@@ -446,5 +493,7 @@ __all__ = [
     "coding_fenced_product_exists",
     "explain_coding_fenced_package_operation",
     "explain_coding_fenced_plugin_operation",
+    "read_coding_fenced_package_handoff",
+    "read_coding_fenced_desired_transition",
     "repair_coding_fenced_cli_desired_operation",
 ]
