@@ -31,6 +31,7 @@ from .package_product_management_cli import (
     build_coding_fenced_product_management_cli_ports,
     explain_coding_fenced_plugin_operation,
     read_coding_fenced_desired_transition,
+    read_coding_fenced_handoff_desired_commit,
     read_coding_fenced_package_handoff,
 )
 from .package_product_runtime import (
@@ -182,36 +183,11 @@ def _write_package_failure(
         if handoff is not None:
             stage = handoff.state
             handoff_receipt_id = handoff.receipt_id
-            if handoff.desired_receipt is not None:
-                desired_inventory_revision = handoff.desired_receipt.inventory_revision
-                committed_revision = handoff.desired_receipt.request.root_ref.to_dict()
-            elif handoff.state == "dependency_pinned":
-                desired_request = handoff.request.desired_request
-                transition = read_coding_fenced_desired_transition(
-                    layout, desired_request.command_id
-                )
-                if transition is not None:
-                    key = transition.mutation.installation_key
-                    selected = transition.committed_state.selection.package_revision
-                    if (
-                        transition.mutation.expected_inventory_revision
-                        == desired_request.expected_inventory_revision
-                        and transition.inventory_revision
-                        == desired_request.expected_inventory_revision + 1
-                        and (key.product_id, key.scope_id, key.plugin_id)
-                        == (
-                            desired_request.product_id,
-                            desired_request.scope_id,
-                            desired_request.plugin_id,
-                        )
-                        and selected is not None
-                        and selected.plugin_version == desired_request.root_ref.version
-                        and selected.package_content_digest
-                        == desired_request.root_ref.artifact_digest
-                    ):
-                        stage = "desired_committed"
-                        desired_inventory_revision = transition.inventory_revision
-                        committed_revision = desired_request.root_ref.to_dict()
+            desired_commit = read_coding_fenced_handoff_desired_commit(layout, handoff)
+            if desired_commit is not None:
+                desired_inventory_revision, committed_revision, _source = desired_commit
+                if handoff.state == "dependency_pinned":
+                    stage = "desired_committed"
     except (OSError, RuntimeError, ValueError):
         pass
     try:

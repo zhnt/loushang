@@ -175,6 +175,54 @@ def read_coding_fenced_desired_transition(
         runtime.close()
 
 
+def read_coding_fenced_handoff_desired_commit(
+    layout: CodingPluginLifecycleStateLayout,
+    handoff: PackageRetentionHandoffReceiptV1,
+) -> tuple[
+    int, dict[str, object], Literal["owner_receipt", "verified_transition"]
+] | None:
+    """Prove an exact Desired commit even before handoff settlement is journaled."""
+
+    desired_request = handoff.request.desired_request
+    if handoff.desired_receipt is not None:
+        return (
+            handoff.desired_receipt.inventory_revision,
+            desired_request.root_ref.to_dict(),
+            "owner_receipt",
+        )
+    if handoff.state != "dependency_pinned":
+        return None
+    transition = read_coding_fenced_desired_transition(
+        layout, desired_request.command_id
+    )
+    if transition is None:
+        return None
+    key = transition.mutation.installation_key
+    selected = transition.committed_state.selection.package_revision
+    if (
+        transition.mutation.expected_inventory_revision
+        != desired_request.expected_inventory_revision
+        or transition.inventory_revision
+        != desired_request.expected_inventory_revision + 1
+        or (key.product_id, key.scope_id, key.plugin_id)
+        != (
+            desired_request.product_id,
+            desired_request.scope_id,
+            desired_request.plugin_id,
+        )
+        or selected is None
+        or selected.plugin_version != desired_request.root_ref.version
+        or selected.package_content_digest
+        != desired_request.root_ref.artifact_digest
+    ):
+        return None
+    return (
+        transition.inventory_revision,
+        desired_request.root_ref.to_dict(),
+        "verified_transition",
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _ProductCliOwner:
     layout: CodingPluginLifecycleStateLayout
@@ -495,5 +543,6 @@ __all__ = [
     "explain_coding_fenced_plugin_operation",
     "read_coding_fenced_package_handoff",
     "read_coding_fenced_desired_transition",
+    "read_coding_fenced_handoff_desired_commit",
     "repair_coding_fenced_cli_desired_operation",
 ]

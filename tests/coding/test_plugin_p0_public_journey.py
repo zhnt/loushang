@@ -773,6 +773,31 @@ def test_p0_public_update_retirement_interruption_reports_committed_revision(
         next(item for item in selected if item["name"] == "reviewpack")["version"]
         == "2"
     )
+    pending_explain = _target_command(
+        workspace, "--explain-plugin-operation", operation_id
+    )
+    expected_repair = f"loushang-package-repair repair-handoff {operation_id}"
+    assert pending_explain["operationKind"] == "a2_package"
+    assert pending_explain["managementActorId"] == "product:coding"
+    assert pending_explain["desiredCommitEvidence"] == "verified_transition"
+    assert pending_explain["repairCommand"] == expected_repair
+    from loushang.coding.plugin_management_read_sdk import (
+        open_coding_plugin_management_read_client,
+    )
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    sdk_explain = open_coding_plugin_management_read_client(
+        workspace
+    ).explain_operation(operation_id, correlation_id="test:pending-a2-sdk")
+    assert sdk_explain["repairCommand"] == expected_repair
+    tui_explain = asyncio.run(
+        build_coding_ui_controller(
+            session=object(), plugin_workspace=workspace
+        ).dispatch(PromptIntent(text=f"/plugins explain {operation_id}"))
+    )
+    assert tui_explain.error_message is None
+    assert expected_repair in (tui_explain.status_message or "")
     monkeypatch.setattr(PluginRetirementSetLedger, "open_set", original_open_set)
     from loushang.coding.cli.package_repair import main as repair_cli_main
 

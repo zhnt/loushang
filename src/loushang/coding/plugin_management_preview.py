@@ -48,6 +48,32 @@ class CodingCurrentPreviewQuery:
     layout: CodingPluginLifecycleStateLayout
     workspace_guard: Callable[[], None] | None = None
 
+    def owner_revisions(self) -> tuple[str, str, str]:
+        """Read Product policy, authority, and Skill settings without composing."""
+
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        if not coding_fenced_product_exists(self.layout):
+            raise CodingCurrentPreviewError(code="plugin_preview_product_not_fenced")
+        try:
+            _disabled, settings_revision = _capture_disabled_skills(self.workspace)
+            with CodingFencedProductReadOnlyPreviewOwner.open(
+                self.layout, workspace_guard=self.workspace_guard
+            ) as owner:
+                policy_revision = owner.policy.policy_revision
+                authority_revision = owner.policy.authority_revision
+                owner.epoch_runtime.assert_current()
+            _after, after_settings_revision = _capture_disabled_skills(self.workspace)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            raise CodingCurrentPreviewError(
+                code="plugin_preview_owner_unavailable"
+            ) from exc
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        if settings_revision != after_settings_revision:
+            raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
+        return policy_revision, authority_revision, settings_revision
+
     def preview_current(
         self, request: PluginCurrentPreviewRequestV1
     ) -> CodingCurrentDataResourcePreviewV1:

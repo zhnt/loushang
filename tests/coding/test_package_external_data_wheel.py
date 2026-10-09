@@ -74,6 +74,7 @@ from loushang.coding.plugin_management_explanation import (
 )
 from loushang.coding.plugin_management_preview import (
     CodingCurrentPreviewError,
+    CodingCurrentPreviewQuery,
     bind_coding_current_preview_query,
 )
 from loushang.coding.plugin_management_read_sdk import (
@@ -4026,9 +4027,31 @@ def test_external_data_skill_enters_fenced_session_catalog(
     )
     assert review_status["desiredState"] == "installed_enabled"
     assert review_status["productAdmission"] == "observed_in_preview"
-    assert review_status["productSelection"] == "projected"
+    assert review_status["productSelection"] == "selected"
+    assert review_status["selectedContributions"]
+    initial_revision_fingerprint = review_status["packageRevisionFingerprint"]
     assert review_status["productUse"] == "not_checked"
     assert sdk_status["snapshotStatus"] == "partial_evidence"
+    with monkeypatch.context() as drift_patch:
+        drift_patch.setattr(
+            CodingCurrentPreviewQuery,
+            "owner_revisions",
+            lambda _query: (
+                sdk_preview["productPolicyRevision"] + ":changed",
+                sdk_preview["productAuthorityRevision"],
+                sdk_preview["disabledSkillSettingsRevision"],
+            ),
+        )
+        drift_status = open_coding_plugin_management_read_client(
+            workspace
+        ).support_status(correlation_id="test:policy-only-drift")
+    assert drift_status["snapshotStatus"] == "stale_evidence"
+    assert "product_policy_drift" in drift_status["evidenceGaps"]
+    assert next(
+        item
+        for item in drift_status["installations"]
+        if item["pluginId"] == "reviewpack"
+    )["productSelection"] == "stale_evidence"
     status_stdout = StringIO()
     with redirect_stdout(status_stdout):
         assert plugin_status_cli_main(["--workspace", str(workspace)]) == 0
@@ -4055,7 +4078,7 @@ def test_external_data_skill_enters_fenced_session_catalog(
     )
     assert ui_status.error_message is None
     assert "reviewpack: installed_enabled" in (ui_status.status_message or "")
-    assert "selection=projected; use=not_checked" in (ui_status.status_message or "")
+    assert "selection=selected; use=not_checked" in (ui_status.status_message or "")
     ui_list = asyncio.run(
         build_coding_ui_controller(
             session=object(), plugin_workspace=workspace
@@ -4308,6 +4331,21 @@ def test_external_data_skill_enters_fenced_session_catalog(
             == 0
         ), stderr.getvalue()
         assert review.revision_ref == old_revision
+        updated_status = open_coding_plugin_management_read_client(
+            workspace
+        ).support_status(correlation_id="test:updated-support-status")
+        updated_review = next(
+            item
+            for item in updated_status["installations"]
+            if item["pluginId"] == "reviewpack"
+        )
+        assert updated_review["productSelection"] == "selected"
+        assert updated_review["packageRevisionFingerprint"] != (
+            initial_revision_fingerprint
+        )
+        assert updated_review["instanceRevisionRef"] != (
+            review_status["instanceRevisionRef"]
+        )
         next_manager = asyncio.run(
             SessionManager.new(
                 session_dir=tmp_path / "next-sessions",
@@ -4530,6 +4568,40 @@ def test_external_data_skill_enters_fenced_session_catalog(
         resumed.rebuild_model_input(snapshots[0].snapshot_id).logical_input,
         ensure_ascii=False,
     )
+    settings.set_disabled_skills((), scope="project")
+    same_body = (
+        "---\nname: review\ndescription: review files v2\n---\n# Review v2\n"
+    ).encode()
+    native_collision = workspace / "skills" / "review" / "SKILL.md"
+    native_collision.parent.mkdir(parents=True)
+    native_collision.write_bytes(same_body)
+    with zipfile.ZipFile(io.BytesIO(_data_wheel(version="2"))) as wheel:
+        assert native_collision.read_bytes() == wheel.read(
+            "reviewpack/skills/review/SKILL.md"
+        )
+    collision_preview = open_coding_plugin_management_read_client(
+        workspace
+    ).preview_current(correlation_id="test:identical-content-collision")
+    assert any(
+        item["resourceKind"] == "skill"
+        and item["name"] == "review"
+        and item["sourceKind"] == "project_local"
+        for item in collision_preview["catalogResources"]
+    )
+    assert not any(
+        item["installationKey"]["pluginId"] == "reviewpack"
+        for item in collision_preview["selectedResources"]
+    )
+    collision_status = open_coding_plugin_management_read_client(
+        workspace
+    ).support_status(correlation_id="test:identical-content-status")
+    collision_review = next(
+        item
+        for item in collision_status["installations"]
+        if item["pluginId"] == "reviewpack"
+    )
+    assert collision_review["productSelection"] == "projected"
+    assert collision_review["productUse"] == "not_checked"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX Product Source")
@@ -6945,6 +7017,45 @@ def test_cli_repairs_only_its_own_interrupted_desired_operation(
         ]
         == "running"
     )
+    read_client = open_coding_plugin_management_read_client(workspace)
+    pending_status = read_client.support_status(correlation_id="test:pending-cli-status")
+    base_status = next(
+        item
+        for item in pending_status["installations"]
+        if item["pluginId"] == "coding.base"
+    )
+    [pending] = [
+        item
+        for item in base_status["pendingOperations"]
+        if item["operationId"] == crashed_operation
+    ]
+    assert pending["actorId"] == "coding:cli"
+    assert pending["operationKind"] == "a1_desired"
+    assert pending["repairCommand"] == (
+        f"loushang --repair-plugin-desired-operation {crashed_operation}"
+    )
+    pending_explanation = read_client.explain_operation(
+        crashed_operation, correlation_id="test:pending-cli-explain"
+    )
+    assert pending_explanation["operationKind"] == "a1_desired"
+    assert pending_explanation["repairCommand"] == pending["repairCommand"]
+    assert "package_product_handoff" not in pending_explanation["evidenceGaps"]
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    controller = build_coding_ui_controller(
+        session=object(), plugin_workspace=workspace
+    )
+    status_message = asyncio.run(
+        controller.dispatch(PromptIntent(text="/plugins status"))
+    )
+    explanation_message = asyncio.run(
+        controller.dispatch(
+            PromptIntent(text=f"/plugins explain {crashed_operation}")
+        )
+    )
+    assert pending["repairCommand"] in (status_message.status_message or "")
+    assert pending["repairCommand"] in (explanation_message.status_message or "")
     code, output, error = _p2_cli(
         workspace, "--repair-plugin-desired-operation", crashed_operation
     )

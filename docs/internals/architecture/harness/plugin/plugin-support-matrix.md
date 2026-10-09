@@ -42,9 +42,15 @@ owns desired-state operations. The fenced Coding Product exposes bounded
 CLI, optional Coding RPC, TUI `/plugins`, and local SDK query/command/repair
 adapters; the TUI command route currently supports enable, disable, remove,
 and own-operation repair. Read-only composition preview reports
-`partial_evidence`: it can explain projected admission and Catalog selection,
-but cannot claim that a Session used a Resource. The separate support-status
-projection joins management and preview without making that claim. See the
+`partial_evidence`: it captures the Product-selected Package and contribution
+identity alongside a disposable Catalog generation and exact selected
+candidate fingerprint. The preview emits an opaque Package revision fingerprint
+because the owner's Source identity may contain a local path. This is evidence
+for a *new-Session projection*, not proof that an existing Session consumed the
+Resource. The version 2 support-status projection joins this receipt with the
+management owner's exact Installation, selected Package and Instance revision,
+then retains `productUse=not_checked`. It marks policy, authority, settings, or
+Desired State drift as stale. See the
 [TUI command adapter](../../../../../src/loushang/coding/plugin_management_ui.py),
 [preview contract](../../../../../src/loushang/harness/plugin_management/current_preview.py),
 and [read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py).
@@ -82,10 +88,26 @@ another workspace or platform. See the [authoring guide](plugin-authoring-guide.
 For a fenced POSIX workspace, `loushang-coding-plugin-status --workspace PATH`,
 `/plugins status`, and the local read SDK's `support_status()` use the same
 read-only Coding projection. It joins the management owner's Desired State and
-the Product's current composition preview. `observed_in_preview` admission
-and `projected` selection are partial evidence; `productUse` remains
-`not_checked` until an actual Session or Screen consumer proves use. A changed
-Desired State revision reports `stale_evidence` rather than a current selection.
+the Product's current composition preview. `selected` means the exact
+Installation, Package revision, Instance revision, contribution, and Catalog
+receipt agree; `projected` means only the Product composition identified the
+Plugin. Neither stage proves live use. `productUse` remains `not_checked` until
+an exact Session or Screen owner receipt proves use. A changed Desired State,
+Product policy/authority, or persisted disabled-Skill settings revision reports
+`stale_evidence`. Pending A1 operations carry their original actor and exact
+operation ID. CLI-origin and TUI-origin operations present only their own repair
+commands.
+
+`--explain-plugin-operation`, `/plugins explain`, and the Coding read SDK
+classify an observed A2 Package operation separately from an A1-only Desired
+State command. A successful A1 enable with no Package operation has no Package
+handoff gap. An incomplete, exactly joined A2 handoff can offer
+`loushang-package-repair repair-handoff` when the Product-owned Desired commit
+has an exact receipt or verified transition. The A2 management actor remains
+`product:coding`; the operator repair command does not recast it as a CLI-owned
+Desired operation. The status row includes the exact Installation, an opaque Package
+revision fingerprint, Instance revision, retirement states, and cleanup debt;
+TUI list and status show nonempty debt.
 
 ## Product and platform gates
 

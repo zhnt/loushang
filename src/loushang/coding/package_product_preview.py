@@ -28,6 +28,7 @@ from loushang.harness.package_product.product_worker_candidate import (
 from loushang.harness.plugin_management.current_preview import (
     PluginCurrentCompositionPreviewV1,
     PluginCurrentResourceAdmissionV1,
+    PluginCurrentResourceSelectionV1,
 )
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
@@ -43,6 +44,7 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductSelectedRootReader,
 )
 from loushang.harness.plugin_management.records import PluginInstallationKeyV1
+from loushang.harness.resources._catalog_records import VerifiedPluginResourceOrigin
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
 )
@@ -302,15 +304,14 @@ class CodingFencedProductReadOnlyPreviewOwner:
             )
         loader = CodingResourceLoader(workspace_root=workspace)
         receipt = loader.prepare_catalog_input_receipt(workspace)
+        product_inputs = compiled.product_resource_inputs() if compiled is not None else ()
         adapter = build_coding_initial_resource_catalog_adapter(
             receipt,
             product_scope_id="plugin-preview-current",
             product_composition=(
                 compiled.product_composition if compiled is not None else None
             ),
-            product_snapshot_resources=(
-                compiled.product_resource_inputs() if compiled is not None else None
-            ),
+            product_snapshot_resources=(product_inputs if compiled is not None else None),
             package_admission_now=evaluated_at,
             disabled_skills=disabled_skills or (),
             source_policy=(
@@ -319,11 +320,56 @@ class CodingFencedProductReadOnlyPreviewOwner:
                 else CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
             ),
         )
-        bundle = adapter.prepare_bootstrap_projection(
+        catalog_result = adapter.prepare_bootstrap_projection_with_receipt(
             product_id=self.policy.product_id,
             session_id="plugin-preview-current",
             cwd=workspace,
         )
+        bundle = catalog_result.bundle
+        catalog = catalog_result.catalog
+        selected_candidates = {
+            entry.primary_candidate_fingerprint
+            for entry in catalog.effective_entries
+        }
+        candidates = {
+            item.candidate_fingerprint: item
+            for item in catalog.candidate_summaries
+        }
+        inputs_by_admission = {
+            item.admission.fingerprint: item for item in product_inputs
+        }
+        selections: list[PluginCurrentResourceSelectionV1] = []
+        for fingerprint in sorted(selected_candidates):
+            candidate = candidates[fingerprint]
+            origin = candidate.content_origin
+            if not isinstance(origin, VerifiedPluginResourceOrigin):
+                continue
+            product_input = inputs_by_admission.get(origin.resource_admission_fingerprint)
+            if product_input is None:
+                continue  # Legacy or built-in package Resources have no Product input.
+            admission = product_input.admission
+            snapshot = product_input.selected_manifest.snapshot
+            instance = admission.candidate.instance_revision_ref
+            if (
+                admission.contribution_id != origin.resource_contribution_id
+                or admission.candidate.package_content_digest != origin.package_content_digest
+                or f"{instance.instance_id}:{instance.plugin_id}@{instance.revision}"
+                != origin.plugin_instance_revision_ref
+            ):
+                raise ValueError("Product preview Catalog selection changed owner identity")
+            selections.append(
+                PluginCurrentResourceSelectionV1(
+                    installation_key=snapshot.installation_key,
+                    package_revision=snapshot.package_revision,
+                    instance_revision_ref=instance,
+                    contribution_id=admission.contribution_id,
+                    resource_kind=candidate.identity.resource_kind,
+                    admission_fingerprint=admission.fingerprint,
+                    candidate_fingerprint=fingerprint,
+                    catalog_generation=catalog.catalog_generation,
+                    catalog_snapshot_fingerprint=catalog.snapshot_fingerprint,
+                )
+            )
         after, _ = desired.capture_read_only()
         self.epoch_runtime.assert_current()
         executable, gaps = _selection_evidence(
@@ -389,6 +435,17 @@ class CodingFencedProductReadOnlyPreviewOwner:
             catalog_resources=catalog_resources,
             catalog_diagnostic_codes=tuple(
                 sorted({item.code for item in bundle.diagnostics})
+            ),
+            catalog_generation=catalog.catalog_generation,
+            catalog_snapshot_fingerprint=catalog.snapshot_fingerprint,
+            selected_resources=tuple(
+                sorted(
+                    selections,
+                    key=lambda item: (
+                        item.installation_key.plugin_id,
+                        item.contribution_id,
+                    ),
+                )
             ),
             requires_authorized_preflight=tuple(sorted(executable)),
             evidence_gaps=tuple(sorted(gaps)),

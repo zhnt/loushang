@@ -11,6 +11,7 @@ from loushang.harness.plugin_management.journal_codecs import (
     PluginManagementOperationEvent,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateSnapshotV1
+from loushang.harness.plugin_management.operations import PluginManagementCommandV1
 from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleSnapshotV1,
 )
@@ -463,6 +464,7 @@ class PluginManagementOperationSummaryV1:
     disposition: str | None
     error_code: str | None
     journal_revision: int
+    actor_id: str
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -470,6 +472,7 @@ class PluginManagementOperationSummaryV1:
             "errorCode": self.error_code,
             "idempotencyKey": self.idempotency_key,
             "journalRevision": self.journal_revision,
+            "actorId": self.actor_id,
             "operationId": self.operation_id,
             "progressCode": self.progress_code,
             "status": self.status,
@@ -977,6 +980,11 @@ def _operation_summary(
         disposition=None if result is None else result.disposition,
         error_code=None if result is None else result.error_code,
         journal_revision=event.journal_revision,
+        actor_id=(
+            event.command.mutation.actor_id
+            if isinstance(event.command, PluginManagementCommandV1)
+            else event.command.actor_id
+        ),
     )
 
 

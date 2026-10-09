@@ -160,6 +160,11 @@ class CodingPluginManagementReadClientV1:
             composition_set_id=composition_set_id,
         )
         after = self.management_snapshot(correlation_id=f"{correlation_id}:after")
+        policy_revision, authority_revision, settings_revision = (
+            bind_coding_current_preview_query(
+                self.workspace, workspace_guard=self._assert_workspace_identity
+            ).owner_revisions()
+        )
         def desired_revision(document: dict[str, object]) -> int:
             revisions = document.get("ownerRevisions")
             value = revisions.get("desiredState") if isinstance(revisions, dict) else None
@@ -169,10 +174,25 @@ class CodingPluginManagementReadClientV1:
 
         first_revision = desired_revision(before)
         last_revision = desired_revision(after)
+        drift: set[str] = set()
         if first_revision != last_revision:
-            # The projector marks stale evidence when its two owner revisions
-            # differ; never accidentally present an older preview as current.
-            preview = {**preview, "desiredInventoryRevision": -1}
+            drift.add("desired_state_drift")
+        if before.get("ownerRevisions") != after.get("ownerRevisions"):
+            drift.add("management_owner_drift")
+        if preview.get("productPolicyRevision") != policy_revision:
+            drift.add("product_policy_drift")
+        if preview.get("productAuthorityRevision") != authority_revision:
+            drift.add("product_authority_drift")
+        if preview.get("disabledSkillSettingsRevision") != settings_revision:
+            drift.add("disabled_skill_settings_drift")
+        if drift:
+            gaps = preview.get("evidenceGaps")
+            if not isinstance(gaps, list):
+                raise ValueError("Plugin support Product evidence gaps are invalid")
+            preview = {
+                **preview,
+                "evidenceGaps": sorted(set(gaps) | drift | {"stale_snapshot"}),
+            }
         return project_coding_plugin_support_status(
             after, preview, correlation_id=correlation_id
         )
