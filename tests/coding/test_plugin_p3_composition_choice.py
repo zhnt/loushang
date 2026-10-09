@@ -70,7 +70,11 @@ def test_cli_exposes_new_session_choice_separately_from_preview_only_choice() ->
     default = parse_args([])
     selected = parse_args(["--composition-set", "coding-minimal"])
     preview = parse_args(
-        ["--preview-current-plugins", "--preview-composition-set", "coding-architecture"]
+        [
+            "--preview-current-plugins",
+            "--preview-composition-set",
+            "coding-architecture",
+        ]
     )
 
     assert default.composition_set is None
@@ -237,6 +241,28 @@ def test_new_session_persists_choice_and_resume_refuses_an_explicit_switch(
             )
             session_file = session.get_session_file()
             assert session_file is not None and session_file.is_file()
+            forked = await session.session_manager.fork(
+                session.session_manager.get_leaf_id() or ""
+            )
+            try:
+                assert pinned_composition_plan(forked.get_header().metadata) is (
+                    resolve_coding_composition_set("coding-minimal")
+                )
+                assert startup_composition_record(forked.get_entries()) == startup
+                fork_file = forked.get_session_file()
+                assert fork_file is not None and fork_file.is_file()
+            finally:
+                await forked.dispose_runtime_profile()
+            reopened_fork = await SessionManager.load(fork_file)
+            try:
+                assert pinned_composition_plan(reopened_fork.get_header().metadata) is (
+                    resolve_coding_composition_set("coding-minimal")
+                )
+                assert (
+                    startup_composition_record(reopened_fork.get_entries()) == startup
+                )
+            finally:
+                await reopened_fork.dispose_runtime_profile()
         finally:
             await created_runtime.dispose_session_runtime()
 
@@ -246,7 +272,10 @@ def test_new_session_persists_choice_and_resume_refuses_an_explicit_switch(
             assert pinned_composition_plan(
                 resumed.session_manager.get_header().metadata
             ) is resolve_coding_composition_set("coding-minimal")
-            assert startup_composition_record(resumed.session_manager.get_entries()) == startup
+            assert (
+                startup_composition_record(resumed.session_manager.get_entries())
+                == startup
+            )
         finally:
             await resumed_runtime.dispose_session_runtime()
 
@@ -254,7 +283,10 @@ def test_new_session_persists_choice_and_resume_refuses_an_explicit_switch(
             session_dir=session_dir, composition_set="coding-architecture"
         )
         try:
-            with pytest.raises(ValueError, match="pinned to coding-minimal; requested coding-architecture"):
+            with pytest.raises(
+                ValueError,
+                match="pinned to coding-minimal; requested coding-architecture",
+            ):
                 await switched_runtime.restore_session(session_file)
         finally:
             await switched_runtime.dispose_session_runtime()
@@ -408,14 +440,17 @@ def test_concurrent_prepare_writes_only_one_startup_receipt(
         await asyncio.sleep(0)
         release.set()
         await asyncio.gather(first, second)
-        assert len(
-            [
-                entry
-                for entry in manager.get_entries()
-                if isinstance(entry.payload, ExtensionData)
-                and entry.payload.extension_type == "coding.composition-startup/v1"
-            ]
-        ) == 1
+        assert (
+            len(
+                [
+                    entry
+                    for entry in manager.get_entries()
+                    if isinstance(entry.payload, ExtensionData)
+                    and entry.payload.extension_type == "coding.composition-startup/v1"
+                ]
+            )
+            == 1
+        )
         await session.dispose()
 
     asyncio.run(journey())
@@ -468,7 +503,11 @@ def test_schema_valid_foreign_startup_cannot_unlock_user_input(
     ("set_id", "capabilities", "expected_plugins"),
     [
         ("coding-minimal", {"coding.arch": "always"}, set()),
-        ("coding-standard", {"coding.lsp": "always"}, {"coding.base", "coding.lsp.default"}),
+        (
+            "coding-standard",
+            {"coding.lsp": "always"},
+            {"coding.base", "coding.lsp.default"},
+        ),
         (
             "coding-architecture",
             {"coding.lsp": "always", "coding.arch": "always"},
@@ -537,7 +576,9 @@ def test_fenced_product_startup_records_effective_selection(
             command = await session.execute_command_async("session", "")
             if "coding.base" in expected_plugins:
                 assert command is not None
-                assert command.result["session"]["coding_composition"]["startup"] == record
+                assert (
+                    command.result["session"]["coding_composition"]["startup"] == record
+                )
             else:
                 assert command is None
             await manager.append_message(
@@ -644,7 +685,9 @@ def test_cli_builder_starts_explicit_minimal_and_inferred_architecture(
         drift_dir = drift_parent / "sessions"
         drift_parent.mkdir(mode=0o700)
         drift_dir.mkdir(mode=0o700)
-        drift_services = create_services(settings_manager=SettingsManager(ControlConfig()))
+        drift_services = create_services(
+            settings_manager=SettingsManager(ControlConfig())
+        )
         runtime = application.default_runtime_builder(
             args=parse_args([]),
             cwd=workspace,
@@ -656,7 +699,9 @@ def test_cli_builder_starts_explicit_minimal_and_inferred_architecture(
             drift_services.settings_manager.update_settings(
                 scope="session", capabilities={"coding.arch": "disabled"}
             )
-            with pytest.raises(ValueError, match="settings changed before Session startup"):
+            with pytest.raises(
+                ValueError, match="settings changed before Session startup"
+            ):
                 await runtime.create_session(cwd=str(workspace))
             assert not list(drift_dir.glob("*.jsonl"))
         finally:
@@ -729,7 +774,10 @@ def test_disabled_base_keeps_capability_and_catalog_evidence_exact(
                 services=create_services(
                     settings_manager=SettingsManager(
                         ControlConfig(
-                            capabilities={"coding.lsp": "always", "coding.arch": "always"}
+                            capabilities={
+                                "coding.lsp": "always",
+                                "coding.arch": "always",
+                            }
                         )
                     )
                 ),
@@ -739,7 +787,9 @@ def test_disabled_base_keeps_capability_and_catalog_evidence_exact(
                 await session.prepare_model_call_runtime()
                 record = startup_composition_record(manager.get_entries())
                 assert record is not None
-                assert {item["pluginId"] for item in record["selectedRevisions"]} == expected
+                assert {
+                    item["pluginId"] for item in record["selectedRevisions"]
+                } == expected
                 assert session._coding_base_product_compilation is None
                 assert not {"bash", "read", "write"} & {
                     item.name for item in session.get_all_tools()
@@ -753,7 +803,9 @@ def test_disabled_base_keeps_capability_and_catalog_evidence_exact(
                 ) == (set_id == "coding-architecture")
                 skills = session._skill_catalog_consumer
                 assert skills is not None
-                assert "review" in {item.name for item in skills.list_effective_skills()}
+                assert "review" in {
+                    item.name for item in skills.list_effective_skills()
+                }
             finally:
                 await session.dispose()
 
