@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from contextlib import AsyncExitStack
 
-from loushang.ai.types import UserMessage
+from loushang.ai.model import Model, ModelSelection
+from loushang.ai.types import ImagePart, UserMessage
 from loushang.apphost import SessionBindingKeyV1
 from loushang.coding import hosted_bootstrap
 from loushang.coding.hosted_catalog import (
@@ -12,21 +13,30 @@ from loushang.coding.hosted_catalog import (
     CodingHostedSessionCatalogV1,
 )
 from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
+from loushang.harness.tools.core import ToolDefinition
 
 
 async def seed_hosted_history(
     scope: CodingHostedScopeV1,
-    text: str,
+    content: str | list[ImagePart],
     *,
     session_id: str | None = None,
+    catalog: CodingHostedSessionCatalogV1 | None = None,
+    model: Model | ModelSelection | None = None,
+    tools: list[ToolDefinition] | None = None,
 ) -> None:
     """Use the same Product selection and startup receipt as Hosted resume."""
 
-    catalog = CodingHostedSessionCatalogV1((scope,))
+    owns_catalog = catalog is None
+    if catalog is None:
+        catalog = CodingHostedSessionCatalogV1((scope,))
     async with AsyncExitStack() as cleanup:
-        cleanup.push_async_callback(catalog.close)
+        if owns_catalog:
+            cleanup.push_async_callback(catalog.close)
         factory = CodingRealHostedSessionFactoryV1(
-            services_factory=lambda cwd: hosted_bootstrap._services(cwd)
+            services_factory=lambda cwd: hosted_bootstrap._services(cwd),
+            model=model,
+            tools=tools,
         )
         cleanup.push_async_callback(factory.close)
         identities = await catalog.list_identities((scope.discovery_scope,), limit=256)
@@ -52,5 +62,5 @@ async def seed_hosted_history(
         cleanup.push_async_callback(binding.close)
         await binding.control.prepare_model_call_runtime()
         await manager.append_message(
-            UserMessage(role="user", content=text, timestamp=1.0)
+            UserMessage(role="user", content=content, timestamp=1.0)
         )

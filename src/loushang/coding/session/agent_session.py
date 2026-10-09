@@ -445,18 +445,10 @@ class AgentSession(AgentProductSession):
                 for item in selected
             }:
                 raise ValueError("Coding Product Session packages changed")
-        elif capability_plugin_assembly is not None and (
-            coding_selected_capability_manifests
-            or coding_external_data_product_compilation is not None
-        ):
-            selected = (
-                *coding_selected_capability_manifests,
-                *(
-                    coding_external_data_product_compilation.selected_manifests
-                    if coding_external_data_product_compilation is not None
-                    else ()
-                ),
-            )
+        elif capability_plugin_assembly is not None:
+            # This legacy Capability-only runtime has no base Product package
+            # graph; Resource-only Wheels are checked by their Catalog owner.
+            selected = coding_selected_capability_manifests
             packages = capability_plugin_assembly.runtime.packages
             if len(packages) != len(selected) or {
                 package.manifest.name: package.content_digest for package in packages
@@ -1670,7 +1662,7 @@ class AgentSession(AgentProductSession):
 
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None
-        worker_tool_lease = self._coding_worker_turn_tool_lease
+        worker_tool_lease = getattr(self, "_coding_worker_turn_tool_lease", None)
         if worker_tool_lease is not None:
             try:
                 result = (

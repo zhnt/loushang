@@ -2694,6 +2694,7 @@ def create_agent_session_result(
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
@@ -2730,6 +2731,7 @@ def create_agent_session_result(
         package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
         worker_candidate_plugin_id=worker_candidate_plugin_id,
+        worker_query_turn_tool=worker_query_turn_tool,
         resource_catalog_source_policy=resource_catalog_source_policy,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,

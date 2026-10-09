@@ -1031,17 +1031,10 @@ def test_same_session_manager_rejects_concurrent_product_runtime_until_dispose(
     workspace.mkdir()
 
     async def scenario() -> None:
-        manager = await SessionManager.new(
+        manager = await SessionManager.new_with_composition(
             session_dir=tmp_path / "sessions",
             cwd=str(workspace),
             persist=True,
-        )
-        await manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="product runtime lease")],
-                timestamp=0.0,
-            )
         )
         services = create_services(
             settings_manager=SettingsManager(
@@ -1063,6 +1056,13 @@ def test_same_session_manager_rejects_concurrent_product_runtime_until_dispose(
                     services=services,
                 )
             await first.prepare_model_call_runtime()
+            await manager.append_message(
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text="product runtime lease")],
+                    timestamp=0.0,
+                )
+            )
         finally:
             await first.dispose()
         resumed_manager = await SessionManager.load(manager.get_session_file())
@@ -2247,19 +2247,11 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
     session_dir = tmp_path / "sessions"
 
     async def scenario() -> None:
-        first_manager = await SessionManager.new(
+        first_manager = await SessionManager.new_with_composition(
             session_dir=session_dir,
             cwd=str(workspace),
             persist=True,
         )
-        await first_manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="resume lifecycle")],
-                timestamp=0.0,
-            )
-        )
-        session_file = first_manager.get_session_file()
         first = create_agent_session(
             session_manager=first_manager,
             model=_model(),
@@ -2270,6 +2262,14 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
             ),
         )
         await first.prepare_model_call_runtime()
+        await first_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="resume lifecycle")],
+                timestamp=0.0,
+            )
+        )
+        session_file = first_manager.get_session_file()
         first_base = first._coding_base_product_compilation
         assert first_base is not None
         selected_revision = first_base.selected_manifest.snapshot.package_revision
@@ -2346,17 +2346,11 @@ def test_product_arch_resume_reuses_selected_revision_and_private_cache(
     )
 
     async def scenario() -> None:
-        first_manager = await SessionManager.new(
+        first_manager = await SessionManager.new_with_composition(
             session_dir=session_dir,
             cwd=str(workspace),
+            composition_set="coding-architecture",
             persist=True,
-        )
-        await first_manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="resume Arch cache")],
-                timestamp=0.0,
-            )
         )
         first = create_agent_session(
             session_manager=first_manager,
@@ -2365,6 +2359,13 @@ def test_product_arch_resume_reuses_selected_revision_and_private_cache(
             composition_set="coding-architecture",
         )
         await first.prepare_model_call_runtime()
+        await first_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="resume Arch cache")],
+                timestamp=0.0,
+            )
+        )
         first_assembly = first._coding_capability_plugin_assembly
         assert first_assembly is not None
         assert first_assembly.tool_owner_for("coding.arch.default") is not None

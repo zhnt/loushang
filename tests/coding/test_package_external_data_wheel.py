@@ -4862,11 +4862,15 @@ def test_external_theme_wheel_reaches_selected_catalog_and_visible_tui_fallback(
     wheel = tmp_path / "themepack-1-py3-none-any.whl"
     assert json.loads(built.stdout) == {
         "artifactPath": str(wheel),
+        "artifactSha256": sha256(wheel.read_bytes()).hexdigest(),
+        "disposableSmoke": "not_checked",
         "profile": "coding-data-theme-v1",
         "productAdmission": "not_checked",
         "productSelection": "not_checked",
         "productUse": "not_checked",
         "sha256": sha256(wheel.read_bytes()).hexdigest(),
+        "sourcePath": str(document),
+        "validationResult": "candidate_not_checked",
     }
     for args in (
         ("--install-package", str(wheel), "--package-scope", "project"),

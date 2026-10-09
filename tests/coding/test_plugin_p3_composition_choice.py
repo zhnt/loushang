@@ -331,9 +331,20 @@ def test_sealed_legacy_transcript_without_provenance_refuses_reinterpretation(
                 session_manager=manager, composition_set="coding-architecture"
             )
         before = tuple((tmp_path / "sessions").glob("*.jsonl"))
+        assert len(before) == 1
+        original = before[0].read_bytes()
+        forked = await manager.fork(manager.get_leaf_id() or "")
+        assert pinned_composition_plan(forked.get_header().metadata) is None
+        after_fork = tuple((tmp_path / "sessions").glob("*.jsonl"))
+        assert len(after_fork) == 2
+        assert before[0].read_bytes() == original
         with pytest.raises(ValueError, match="no proven composition choice"):
-            await manager.fork(manager.get_leaf_id() or "")
-        assert tuple((tmp_path / "sessions").glob("*.jsonl")) == before
+            create_agent_session(
+                session_manager=forked, composition_set="coding-architecture"
+            )
+        assert tuple((tmp_path / "sessions").glob("*.jsonl")) == after_fork
+        await forked.dispose_runtime_profile()
+        await manager.dispose_runtime_profile()
 
     asyncio.run(journey())
 
