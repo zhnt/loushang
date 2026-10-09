@@ -61,6 +61,8 @@ jobs:
           src/loushang/coding/package_product_worker_start_gate.py
           src/loushang/coding/package_product_worker_start_gate_journal.py
           src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/coding/package_product_worker_cleanup_evidence.py
+          src/loushang/coding/package_product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
           src/loushang/coding/package_product_worker_capability.py
           src/loushang/coding/package_product_worker_provider.py
@@ -115,6 +117,8 @@ jobs:
           src/loushang/coding/package_product_worker_start_gate.py
           src/loushang/coding/package_product_worker_start_gate_journal.py
           src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/coding/package_product_worker_cleanup_evidence.py
+          src/loushang/coding/package_product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
           src/loushang/coding/package_product_worker_native_approval.py
           src/loushang/coding/package_product_worker_native_release.py
