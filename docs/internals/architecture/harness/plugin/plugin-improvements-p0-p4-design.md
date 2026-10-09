@@ -301,8 +301,11 @@ Desired State, and Product policy; a changed preview is recomputed or refused
 before committing Session input. Add a durable Session-owned startup
 provenance record for the selected set ID, plan fingerprint, and effective
 owner generation/revision evidence; resume and diagnostics cannot silently
-switch sets. Existing `coding.arch` mount policy and delegated read-only invocation
-profiles retain their current authority; this feature must not widen them.
+switch sets. A fork carries its source Session's proven composition identity
+into the new header; a materialized legacy Session without that identity
+cannot be reinterpreted as a new set. Existing `coding.arch` mount policy and
+delegated read-only invocation profiles retain their current authority; this
+feature must not widen them.
 
 Acceptance uses real minimal, standard, and architecture Sessions with
 enabled and disabled Base/LSP/Arch states, exact new-Session Resource Catalog

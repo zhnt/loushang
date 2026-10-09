@@ -666,6 +666,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         *,
         leaf_id: str,
         binding_input: BindingInputT,
+        additional_header_metadata: Mapping[str, JSONValue] | None = None,
         _projection: Callable[[AgentTranscriptLifecycleSession[ProductBindingT]], None] | None = None,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         """Fork one selected source path using an already selected Product binding."""
@@ -685,6 +686,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
                 else None
             ),
             binding_input=binding_input,
+            additional_header_metadata=additional_header_metadata,
         )
         context = self._new_context(
             session_dir=source_context.session_dir,

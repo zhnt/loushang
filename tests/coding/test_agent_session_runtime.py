@@ -309,7 +309,10 @@ async def test_runtime_listener_failure_does_not_duplicate_agent_message(
 
 @_async_test
 async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.bootstrap import (
+        create_agent_session,
+        create_agent_session_runtime,
+    )
     from loushang.coding.session_manager import SessionManager
 
     project_a = tmp_path / "project-a"
@@ -324,11 +327,17 @@ async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
     first = await runtime.create_session(cwd=str(project_a))
     await first.session_manager.append_message(_user_message("first"))
 
-    second_manager = await SessionManager.new(
-        session_dir=tmp_path, cwd=str(project_b.resolve()), persist=True
+    second_manager = await SessionManager.new_with_composition(
+        session_dir=tmp_path,
+        cwd=str(project_b.resolve()),
+        composition_set="coding-standard",
+        persist=True,
     )
+    second_session = create_agent_session(session_manager=second_manager)
+    await second_session.prepare_model_call_runtime()
     await second_manager.append_message(_user_message("second"))
     assert second_manager.session_file is not None
+    await second_session.dispose()
 
     switched = await runtime.switch_session(second_manager.session_file)
     records = runtime.list_sessions()
@@ -343,14 +352,24 @@ async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "composition_set", ("coding-minimal", "coding-standard", "coding-architecture")
+)
 @_async_test
-async def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
+async def test_runtime_clone_session_forks_current_leaf(
+    tmp_path, composition_set: str
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.composition_provenance import pinned_composition_plan
+    from loushang.coding.composition_sets import resolve_coding_composition_set
 
     project = tmp_path / "project"
     project.mkdir()
     runtime = create_agent_session_runtime(
-        session_dir=tmp_path, model=_model(), persist=True
+        session_dir=tmp_path,
+        model=_model(),
+        persist=True,
+        composition_set=composition_set,
     )
     session = await runtime.create_session(cwd=str(project))
     await session.session_manager.append_message(_user_message("first"))
@@ -362,6 +381,9 @@ async def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
     assert runtime.get_current_session() is cloned
     assert cloned.session_manager.session_file != session.session_manager.session_file
     assert cloned.session_manager.get_leaf_id() == leaf_id
+    assert pinned_composition_plan(cloned.session_manager.get_header().metadata) is (
+        resolve_coding_composition_set(composition_set)
+    )
     assert [
         message.content[0].text for message in cloned.get_session_context().messages
     ] == ["first", "second"]
@@ -734,7 +756,8 @@ async def test_runtime_dispose_publishes_latest_session_summary(tmp_path) -> Non
     summaries = SessionManager.load_index(tmp_path)
     assert len(summaries) == 1
     assert summaries[0].last_message_preview == "hi"
-    assert summaries[0].entry_count == 2
+    assert summaries[0].message_count == 2
+    assert summaries[0].entry_count == 3  # two messages plus P3 startup evidence
 
 
 @_async_test
@@ -759,7 +782,7 @@ async def test_runtime_incrementally_repairs_current_summary_before_continuity_q
 
     published = catalog.try_query_index_snapshot()
     assert published.index_state == "fresh"
-    assert published.items[0].source_revision == 2
+    assert published.items[0].source_revision == 3  # P3 startup plus two messages
     assert published.items[0].projection.last_message_preview == "latest"
 
     runtime.repair_session_index()

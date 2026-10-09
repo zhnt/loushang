@@ -205,6 +205,16 @@ class SessionManager(
     def _fork_binding_input(self) -> ResolvedRuntimeProfile:
         return self.runtime_profile
 
+    def _fork_header_metadata(self) -> Mapping[str, JSONValue] | None:
+        pinned = pinned_composition_plan(self.get_header().metadata)
+        if pinned is None:
+            if self.persist:
+                raise ValueError(
+                    "Coding Session has no proven composition choice; create a new Session"
+                )
+            return None
+        return composition_header_metadata(pinned)
+
     def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
         return self._lifecycle_session.product_binding.value(slot)
 

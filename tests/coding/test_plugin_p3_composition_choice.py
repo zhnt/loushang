@@ -330,6 +330,10 @@ def test_sealed_legacy_transcript_without_provenance_refuses_reinterpretation(
             create_agent_session(
                 session_manager=manager, composition_set="coding-architecture"
             )
+        before = tuple((tmp_path / "sessions").glob("*.jsonl"))
+        with pytest.raises(ValueError, match="no proven composition choice"):
+            await manager.fork(manager.get_leaf_id() or "")
+        assert tuple((tmp_path / "sessions").glob("*.jsonl")) == before
 
     asyncio.run(journey())
 
