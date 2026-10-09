@@ -160,6 +160,7 @@ from loushang.coding.package_product_worker_provider import (
 )
 from loushang.coding.package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
+    bind_coding_worker_query_consumer,
 )
 from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptError
 from loushang.coding.package_product_worker_windows_activation_state_journal import (
@@ -4527,6 +4528,9 @@ finally:
                                             )
                                             == "Review symbol"
                                         )
+                                        worker_consumer = bind_coding_worker_query_consumer(
+                                            ordinary_session
+                                        )
                                         if disable_while_ordinary_session_open:
                                             snapshot = (
                                                 worker_product.desired_state.snapshot()
@@ -4564,14 +4568,17 @@ finally:
                                             )
                                             assert disabled.status == "terminal"
                                             with pytest.raises(
-                                                CapabilityWorkerFacetProxyError,
-                                                match=(
-                                                    "worker_capability_facet_proxy_owner_unavailable"
-                                                ),
+                                                ValueError,
+                                                match="Coding Worker selection changed before Session preparation",
                                             ):
                                                 await ordinary_session.query_worker_symbol(
                                                     "review"
                                                 )
+                                            with pytest.raises(
+                                                CapabilityWorkerFacetProxyError,
+                                                match="worker_capability_facet_proxy_owner_unavailable",
+                                            ):
+                                                await worker_consumer.query(symbol="review")
                                         if crash_after_ordinary_query:
                                             print(
                                                 "windows-public-worker-healthy:direct",

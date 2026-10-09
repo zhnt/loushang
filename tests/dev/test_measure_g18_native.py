@@ -1818,7 +1818,7 @@ def test_recovery_seed_validates_linked_state_without_mutating_files(
     assert seed["files"] == {
         name: hashlib.sha256(data).hexdigest()
         for name, data in before.items()
-        if name.split("/", 1)[0]
+        if Path(name).parts[0]
         in {"application", "cwd", "home", "session-assets"}
     }
     assert before == {

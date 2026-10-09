@@ -357,6 +357,7 @@ jobs:
 
       - name: Run installed Product ordinary Session gate
         env:
+          PYTHONUNBUFFERED: "1"
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
             --junitxml=.artifacts/worker-p4-ordinary.xml
@@ -368,7 +369,7 @@ jobs:
             tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_update_fences_pinned_product \
             tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_hosted_first_session_reaches_installed_product \
             -m 'not live' \
-            -q
+            -vv
 
       - name: Reject empty, skipped, or failing P4 ordinary report
         run: >-
