@@ -24,13 +24,15 @@ from dataclasses import replace
 from hashlib import sha256, shake_256
 from pathlib import Path
 from struct import pack_into
-from threading import Event
+from threading import Event, Thread
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
+import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_module
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
 import loushang.coding.package_product_worker_native_install as native_install_module
@@ -88,6 +90,10 @@ from loushang.coding.package_product_worker_capability import (
 )
 from loushang.coding.package_product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
+)
+from loushang.coding.package_product_worker_crash_c5_settlement import (
+    CodingWorkerCrashC5SettlementError,
+    settle_coding_product_worker_crash_c5,
 )
 from loushang.coding.package_product_worker_discovery import (
     CodingWorkerTranscriptDiscoveryReader,
@@ -526,6 +532,363 @@ def _run_independent_product_worker_crash(
 
         asyncio.run(start_and_crash())
     raise AssertionError("Independent Product Worker crash did not exit")
+
+
+def _run_independent_ordinary_worker_turn_crash(
+    workspace_path: str,
+    transcript_dir_path: str,
+) -> None:
+    """Crash a real Coding turn after its Product Worker Tool has answered."""
+
+    from loushang.coding import package_product_runtime
+
+    workspace = Path(workspace_path)
+    package_product_runtime.version = lambda _distribution: "2.0.0"
+    os.environ["LOUSHANG_HOME"] = str(workspace.parent / "private-home")
+    settings = SettingsManager(
+        global_settings_path=workspace.parent / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    manager = asyncio.run(
+        SessionManager.new_with_composition(
+            session_dir=Path(transcript_dir_path),
+            cwd=str(workspace),
+            session_id="worker-independent-ordinary-crash",
+            defer_materialization=False,
+        )
+    )
+    assert manager.get_session_file() is not None
+    model = Model(
+        id="independent-ordinary-worker",
+        name="Independent Ordinary Worker",
+        provider="test",
+        endpoint="test",
+        capabilities=Capabilities(
+            input=("text",), context_window=128_000, max_tokens=4_096
+        ),
+    )
+    calls = 0
+
+    @synthetic_model_transport
+    async def worker_turn_stream(model, context, options=None):
+        del model, options
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            answered = any(
+                getattr(message, "role", None) == "toolResult"
+                and any(
+                    isinstance(part, TextPart) and part.text == "Review symbol"
+                    for part in message.content
+                )
+                for message in context.messages
+            )
+            os._exit(0 if answered else 92)
+        message = AssistantMessage(
+            endpoint="test",
+            role="assistant",
+            content=[
+                ToolCall(
+                    type="toolCall",
+                    id="worker-independent-ordinary-query",
+                    name=CODING_WORKER_QUERY_TOOL_NAME,
+                    arguments={"symbol": "review"},
+                )
+            ],
+            api="test",
+            provider="test",
+            model="independent-ordinary-worker",
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="toolUse",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "toolUse", "message": message})
+        return stream
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=model,
+        stream_fn=worker_turn_stream,
+        services=create_services(settings_manager=settings),
+        worker_candidate_plugin_id=_PLUGIN,
+        worker_query_turn_tool=True,
+    )
+
+    async def run_turn() -> None:
+        await session.prepare_model_call_runtime()
+        await session.prompt("Query review before independent crash")
+
+    asyncio.run(run_turn())
+    raise AssertionError("Independent ordinary Worker turn did not crash")
+
+
+def _verify_independent_ordinary_worker_turn_crash_recovery(
+    *,
+    workspace: Path,
+    tmp_path: Path,
+    prior_attempt_ids: set[str],
+) -> None:
+    """Reopen, settle, and reclaim one crashed ordinary Coding Worker turn."""
+
+    transcript_dir = tmp_path / "independent-ordinary-worker-transcripts"
+    libc = ctypes.CDLL(None, use_errno=True)
+    prior_subreaper = ctypes.c_int()
+    assert libc.prctl(37, ctypes.byref(prior_subreaper), 0, 0, 0) == 0
+    assert libc.prctl(36, 1, 0, 0, 0) == 0
+    native_identity = None
+    recovered = None
+    try:
+        child = subprocess.run(
+            (
+                sys.executable,
+                "-c",
+                (
+                    "from tests.coding.test_package_worker_candidate_wheel "
+                    "import _run_independent_ordinary_worker_turn_crash; "
+                    "import sys; "
+                    "_run_independent_ordinary_worker_turn_crash(*sys.argv[1:])"
+                ),
+                str(workspace),
+                str(transcript_dir),
+            ),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=90,
+            check=False,
+        )
+        assert child.returncode == 0, child.stderr
+        transcripts = tuple(transcript_dir.glob("*.jsonl"))
+        assert len(transcripts) == 1
+        loaded = asyncio.run(SessionManager.load(transcripts[0]))
+        assert any(
+            getattr(message, "role", None) == "toolResult"
+            and any(
+                isinstance(part, TextPart) and part.text == "Review symbol"
+                for part in message.content
+            )
+            for message in loaded.build_context().messages
+        )
+
+        lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+        recovered = open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+            worker_candidates=True,
+        )
+        product = recovered.runtime_owner.product_owner
+        new_gates = tuple(
+            gate
+            for gate in CodingWorkerStartGateJournal(product).attempts()
+            if gate.attempt_id not in prior_attempt_ids
+        )
+        assert len(new_gates) == 1
+        gate = new_gates[0]
+        assert gate.phase == "bound"
+        assert gate.identity is not None
+        native_identity = gate.identity
+        if worker_native_group_status_after_restart(native_identity) == "present":
+            with suppress(ProcessLookupError):
+                os.killpg(native_identity.pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                reaped_pid, _ = os.waitpid(native_identity.pid, os.WNOHANG)
+            except ChildProcessError:
+                break
+            if reaped_pid == native_identity.pid:
+                break
+            time.sleep(0.01)
+        else:
+            pytest.fail("independent ordinary Worker process was not reaped")
+        assert worker_native_group_absent_after_restart(native_identity)
+
+        orphan = review_coding_product_worker_orphan_runtime(
+            product, attempt_id=gate.attempt_id
+        )
+        assert orphan.repair_candidate
+        assert orphan.orphan_lease is not None
+        assert orphan.receipt_record is not None
+        assert (
+            orphan.receipt_record.receipt.policy.native_profile_id
+            == "posix-static-query-contained-elf-v1"
+        )
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as unsettled:
+            review_coding_product_worker_gated_recovery(
+                product, attempt_id=gate.attempt_id
+            )
+        assert unsettled.value.code == "package_epoch_lease_orphaned"
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError):
+            settle_coding_product_worker_crash_c5(
+                product, attempt_id=gate.attempt_id
+            )
+        assert repair_coding_product_worker_orphan_runtime(
+            product, expected_review=orphan
+        ) == orphan.orphan_lease
+        review = review_coding_product_worker_gated_recovery(
+            product, attempt_id=gate.attempt_id
+        )
+        assert review.same_boot_settlement_candidate
+        plan = preview_coding_product_worker_payload_debt(
+            product, attempt_id=gate.attempt_id
+        )
+        with pytest.raises(CodingWorkerPayloadMaterializationError) as premature:
+            repair_coding_product_worker_payload_debt(product, expected_plan=plan)
+        assert premature.value.code == "coding_worker_payload_process_unsettled"
+        settled = settle_coding_product_worker_gated_attempt(
+            product, expected_review=review, expected_plan=plan
+        )
+        assert settled.process_settled
+        assert settled.failure_code == "coding_worker_host_lost"
+        with pytest.raises(CodingWorkerCrashC5SettlementError) as payload_live:
+            settle_coding_product_worker_crash_c5(
+                product, attempt_id=gate.attempt_id
+            )
+        assert payload_live.value.code == "coding_worker_crash_c5_payload_live"
+        assert repair_coding_product_worker_payload_debt(
+            product, expected_plan=plan
+        ) == plan
+        assert not (product.state_root / f"worker-payload-{gate.attempt_id}").exists()
+        repair_record = (
+            product.state_root / f"worker-complete-repair-{gate.attempt_id}.json"
+        )
+        original_repair = repair_record.read_bytes()
+        original_supervisor_digest = json.loads(original_repair)[
+            "supervisorFingerprint"
+        ]
+        changed_digest = (
+            "0" * 64 if original_supervisor_digest != "0" * 64 else "1" * 64
+        )
+        altered_repair = original_repair.replace(
+            original_supervisor_digest.encode(), changed_digest.encode()
+        )
+        assert altered_repair != original_repair
+        repair_record.write_bytes(altered_repair)
+        try:
+            with pytest.raises(CodingWorkerCrashC5SettlementError) as tampered:
+                settle_coding_product_worker_crash_c5(
+                    product, attempt_id=gate.attempt_id
+                )
+            assert tampered.value.code == "coding_worker_crash_c5_payload_unproven"
+        finally:
+            repair_record.write_bytes(original_repair)
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        with pytest.raises(PackageProductGcExecutionError) as c5_unsettled:
+            gc.prepare()
+        assert c5_unsettled.value.code == (
+            "plugin_package_gc_worker_history_unsettled"
+        )
+        writer_started = Event()
+        writer_finished = Event()
+        writer_errors: list[BaseException] = []
+        writer_thread: Thread | None = None
+        original_verify = (
+            crash_c5_module._UnderGuardCleanupEvidenceAuthority.verify_tree_settlement
+        )
+
+        def competing_gc_writer() -> None:
+            writer_started.set()
+            try:
+                with product.gc_gate.guard(require_write=True):
+                    pass
+            except BaseException as exc:
+                writer_errors.append(exc)
+            finally:
+                writer_finished.set()
+
+        def verify_while_writer_waits(self, **kwargs):
+            nonlocal writer_thread
+            writer_thread = Thread(target=competing_gc_writer, daemon=True)
+            writer_thread.start()
+            assert writer_started.wait(1)
+            assert not writer_finished.wait(0.05)
+            result = original_verify(self, **kwargs)
+            assert not writer_finished.is_set()
+            return result
+
+        with patch.object(
+            crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+            "verify_tree_settlement",
+            verify_while_writer_waits,
+        ):
+            c5 = settle_coding_product_worker_crash_c5(
+                product, attempt_id=gate.attempt_id
+            )
+        assert c5.phase == "settled"
+        assert writer_thread is not None
+        writer_thread.join(timeout=2)
+        assert writer_finished.is_set()
+        assert not writer_errors
+        recovered.close()
+        recovered = None
+        c5_cli = subprocess.run(
+            (
+                sys.executable,
+                "-m",
+                "loushang.coding.cli.package_worker_native",
+                "--workspace",
+                str(workspace),
+                "settle-crashed-c5",
+                "--attempt-id",
+                gate.attempt_id,
+            ),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+        assert c5_cli.returncode == 0, c5_cli.stderr
+        assert json.loads(c5_cli.stdout) == {
+            "crashedC5Settlement": {
+                "attemptId": gate.attempt_id,
+                "ownerGeneration": (
+                    orphan.receipt_record.receipt.policy.owner_selection_generation
+                ),
+                "phase": "settled",
+            }
+        }
+        recovered = open_coding_fenced_product_application_owner(
+            lifecycle,
+            workspace=workspace,
+            runtime_version="2.0.0",
+            runtime_protocol_epoch=2,
+            worker_candidates=True,
+        )
+        product = recovered.runtime_owner.product_owner
+        c5 = settle_coding_product_worker_crash_c5(
+            product, attempt_id=gate.attempt_id
+        )
+        assert c5.phase == "settled"
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        gc.prepare()
+    finally:
+        if native_identity is not None and (
+            worker_native_group_status_after_restart(native_identity) == "present"
+        ):
+            with suppress(ProcessLookupError):
+                os.killpg(native_identity.pid, signal.SIGKILL)
+        if recovered is not None:
+            recovered.close()
+        assert libc.prctl(36, prior_subreaper.value, 0, 0, 0) == 0
 
 
 @pytest.mark.parametrize(
@@ -6156,8 +6519,17 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
 
         asyncio.run(exercise_post_cutover_worker())
         gc.prepare()
+        prior_attempt_ids = {
+            gate.attempt_id
+            for gate in CodingWorkerStartGateJournal(product).attempts()
+        }
     finally:
         reopened.close()
+    _verify_independent_ordinary_worker_turn_crash_recovery(
+        workspace=workspace,
+        tmp_path=tmp_path,
+        prior_attempt_ids=prior_attempt_ids,
+    )
 
 
 @pytest.mark.requires_host_runtime

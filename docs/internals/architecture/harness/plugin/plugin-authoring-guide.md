@@ -564,6 +564,29 @@ general high-volume Worker route.
 Product start-gate attempt IDs and phases for recovery triage; it does not
 authorize a repair.
 
+If the Linux Product process exits during an ordinary Worker turn, wait until
+the exact native group is absent, then use the attempt ID from that list to
+recheck each owner in order:
+
+```text
+loushang-worker-native --workspace PATH review-orphan-runtime --attempt-id ID
+loushang-worker-native --workspace PATH repair-orphan-runtime \
+  --attempt-id ID --review-id ORPHAN_REVIEW_ID
+loushang-worker-native --workspace PATH review-gated-attempt --attempt-id ID
+loushang-worker-native --workspace PATH settle-gated-attempt \
+  --attempt-id ID --review-id GATED_REVIEW_ID --plan-id PLAN_ID
+loushang-worker-native --workspace PATH repair-payload-debt \
+  --attempt-id ID --plan-id PLAN_ID
+loushang-worker-native --workspace PATH settle-crashed-c5 --attempt-id ID
+```
+
+Each command reopens Product evidence. A stale review, live group, unretired
+orphan lease, unsettled Supervisor, or incomplete payload repair stops the
+sequence. The final command settles the exact C5 activation attempt and then
+Package GC can verify its retained history; it does not discard the journals.
+If C5 settlement reports `coding_worker_crash_c5_runtime_active`, close the
+other active Product Session normally before retrying the same attempt.
+
 ## Read-only Coding Preview
 
 In a POSIX workspace that has completed the fenced Product cutover, inspect

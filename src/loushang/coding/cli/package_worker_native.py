@@ -28,6 +28,9 @@ from loushang.coding.package_product_runtime import (
     admit_coding_external_worker_wheel,
     open_coding_fenced_product_application_owner,
 )
+from loushang.coding.package_product_worker_crash_c5_settlement import (
+    settle_coding_product_worker_crash_c5,
+)
 from loushang.coding.package_product_worker_native_approval import (
     CodingWorkerNativeApprovalJournal,
 )
@@ -216,6 +219,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     payload_repair.add_argument("--attempt-id", required=True)
     payload_repair.add_argument("--plan-id", required=True)
+    crash_c5 = actions.add_parser(
+        "settle-crashed-c5",
+        help="settle C5 after exact orphan, process, and payload recovery",
+    )
+    crash_c5.add_argument("--attempt-id", required=True)
     empty_review = actions.add_parser(
         "review-empty-payload-debt", help="review one empty pre-marker Worker stage"
     )
@@ -841,6 +849,17 @@ def _execute(
             "payloadDebtRepair": {
                 "attemptId": repaired_plan.attempt_id,
                 "planId": repaired_plan.fingerprint,
+            }
+        }
+    if args.action == "settle-crashed-c5":
+        c5_settled = settle_coding_product_worker_crash_c5(
+            product, attempt_id=args.attempt_id
+        )
+        return {
+            "crashedC5Settlement": {
+                "attemptId": c5_settled.attempt_id,
+                "ownerGeneration": c5_settled.owner_generation,
+                "phase": c5_settled.phase,
             }
         }
     if args.action in {"review-unmarked-payload-debt", "repair-unmarked-payload-debt"}:

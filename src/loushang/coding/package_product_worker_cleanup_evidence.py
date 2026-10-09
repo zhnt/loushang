@@ -12,6 +12,9 @@ from hashlib import sha256
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.hosting.errors import HostingError
 from loushang.hosting.machine_identity import linux_machine_key
 from loushang.hosting.service_group import linux_current_boot_id
@@ -19,6 +22,11 @@ from loushang.hosting.service_group import linux_current_boot_id
 from .package_product_worker_history_retention import (
     CodingWorkerHistoryRetentionReviewV1,
     review_coding_product_worker_history_retention,
+)
+from .package_product_worker_payload import (
+    CodingWorkerPayloadMaterializationError,
+    _read_complete_repair_intent,
+    _stage_exists,
 )
 
 _HOST_DOMAIN = "loushang.coding.worker.cleanup/v1"
@@ -58,6 +66,40 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
 
         return review_coding_product_worker_history_retention(
             self._product, attempt_id=attempt_id
+        )
+
+    def _complete_repair_verified(
+        self,
+        *,
+        review: CodingWorkerHistoryRetentionReviewV1,
+        receipt_fingerprint: str,
+        attempt_id: str,
+    ) -> bool:
+        exact_name = f"worker-complete-repair-{attempt_id}.json"
+        matching = tuple(
+            name
+            for name in review.retained_payload_repair_reference_names
+            if name.endswith(f"-{attempt_id}.json")
+        )
+        if not matching:
+            return True
+        if matching != (exact_name,) or review.attempt_record is None:
+            return False
+        try:
+            with self._product.pinned_state_root_gc_read() as root_fd:
+                if _stage_exists(root_fd, attempt_id):
+                    return False
+                completed = _read_complete_repair_intent(root_fd, attempt_id)
+        except (CodingWorkerPayloadMaterializationError, OSError, ValueError):
+            return False
+        return bool(
+            completed is not None
+            and completed[0].attempt_id == attempt_id
+            and completed[0].receipt_fingerprint == receipt_fingerprint
+            and completed[1]
+            == sha256(
+                canonical_json_bytes(review.attempt_record.to_dict())
+            ).hexdigest()
         )
 
     def verify_tree_settlement(
@@ -127,9 +169,10 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
             and c5_references[0].boot_identity == boot_identity
             and c5_references[0].phase in {"retired", "cleanup_debt", "settled"}
             and f"worker-payload-{attempt_id}" not in fresh.payload_stage_names
-            and not any(
-                name.endswith(f"-{attempt_id}.json")
-                for name in fresh.retained_payload_repair_reference_names
+            and self._complete_repair_verified(
+                review=fresh,
+                receipt_fingerprint=receipt_fingerprint,
+                attempt_id=attempt_id,
             )
             and not fresh.unrecognized_worker_state_names
             and backup is not None

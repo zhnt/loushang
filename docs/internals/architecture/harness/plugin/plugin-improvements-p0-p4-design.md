@@ -355,6 +355,14 @@ revisions under the existing lifecycle rules. Missing native closure,
 expired admission, altered bytes, stale generation, orphaned process, or
 unsettled GC/cleanup debt fail closed with a repairable owner diagnostic.
 
+For a Linux ordinary turn whose Product process dies after Tool use, offline
+recovery first proves the native group absent, repairs only its orphan runtime
+lease, settles its exact Supervisor record, and removes its recorded payload
+debt. A separate C5 step holds runtime quiescence and the GC writer guard while
+it revalidates the completed repair intent and historical receipt, retires the
+activation attempt, and records cleanup settlement. Package GC remains closed
+until that C5 settlement is durable.
+
 P4 public activation waits for a focused security and platform review, real
 Product journey, native containment and crash/reopen evidence, bounded durable
 Worker history retention, and explicit owner approval for the exact route.
