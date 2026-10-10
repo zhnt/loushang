@@ -546,7 +546,7 @@ def test_windows_worker_candidate_requires_explicit_windows_product_flag(
         "package_lock",
     ),
 )
-def test_windows_ordinary_selection_preserves_unadmitted_pre_b_without_writing(
+def test_windows_public_ordinary_session_preserves_pre_b_without_writing(
     tmp_path: Path, legacy_kind: str
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -628,19 +628,12 @@ def test_windows_ordinary_selection_preserves_unadmitted_pre_b_without_writing(
             return_value=tmp_path / "global-settings.json",
         ),
     ):
-        if legacy_kind in {"desired_state", "package_lock"}:
-            selection = CodingFencedProductApplicationSelection()
-            try:
-                assert selection.factory_for_session(manager) is None
-            finally:
-                selection.close()
-        else:
-            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
-                create_agent_session(session_manager=manager, services=services)
+        with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
+            create_agent_session(session_manager=manager, services=services)
     assert snapshot() == before
 
 
-def test_windows_ordinary_fresh_session_keeps_unadmitted_product_closed(
+def test_windows_explicit_unadmitted_selection_keeps_fresh_product_closed(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -668,6 +661,124 @@ def test_windows_ordinary_fresh_session_keeps_unadmitted_product_closed(
     selection.close()
     assert not lifecycle.root.exists()
     assert not lifecycle.package_root.exists()
+
+
+def _windows_ordinary_test_model() -> Model:
+    return Model(
+        id="plc9-windows-ordinary",
+        name="PLC9 Windows Ordinary",
+        provider="test",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
+        ),
+    )
+
+
+def test_windows_public_ordinary_session_enters_fresh_b_product(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
+        patch(
+            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            side_effect=AssertionError("legacy base assembly"),
+        ),
+        patch(
+            "loushang.coding.bootstrap._default_package_materializer",
+            side_effect=AssertionError("legacy package materializer"),
+        ),
+    ):
+        session = create_agent_session(
+            session_manager=manager,
+            model=_windows_ordinary_test_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-standard",
+        )
+        try:
+            assert session.package_product_lifecycle_mode == "enforced"
+            assert session.package_product_binding_id is not None
+            assert session._package_controller.get_package_materializer() is None
+        finally:
+            asyncio.run(session.dispose())
+    assert reopen_coding_package_cutover(lifecycle).disposition == "fenced"
+    assert not lifecycle.desired_state.exists()
+    assert not (lifecycle.package_root / "package-lock.json").exists()
+
+
+def test_windows_public_runtime_session_enters_fresh_b_product(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
+        patch(
+            "loushang.coding.bootstrap.prepare_managed_coding_base_plugin_assembly",
+            side_effect=AssertionError("legacy base assembly"),
+        ),
+        patch(
+            "loushang.coding.bootstrap._default_package_materializer",
+            side_effect=AssertionError("legacy package materializer"),
+        ),
+    ):
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "runtime-sessions",
+            model=_windows_ordinary_test_model(),
+            services=create_services(settings_manager=settings),
+        )
+
+        async def create_and_close() -> None:
+            try:
+                session = await runtime.create_session(cwd=str(workspace))
+                assert session.package_product_lifecycle_mode == "enforced"
+                assert session.package_product_binding_id is not None
+                assert session._package_controller.get_package_materializer() is None
+            finally:
+                await runtime.dispose_session_runtime()
+
+        asyncio.run(create_and_close())
+    assert reopen_coding_package_cutover(lifecycle).disposition == "fenced"
 
 
 def test_windows_candidate_ordinary_session_uses_fresh_b_product(
