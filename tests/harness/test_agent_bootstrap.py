@@ -233,16 +233,16 @@ def test_agent_bootstrap_requires_explicit_unrestricted_tool_selection() -> None
             record_extension_diagnostics=lambda _diagnostics: None,
             registry_factory=object,
             register_tool=lambda _registry, _tool: None,
-            session_factory=lambda _agent, _bundle, _registry, active, _prompt, _mode: active,
+            session_factory=lambda _agent, _bundle, _registry, active, _prompt, _mode: (
+                active
+            ),
         )
 
     with pytest.warns(RuntimeWarning, match="denies all tools"):
         assert construct(request) == []
     with pytest.warns(RuntimeWarning, match="denies all tools"):
         assert construct(replace(request, active_tool_names=None)) == []
-    assert construct(replace(request, allowed_tool_names=ToolSelection.ALL)) == [
-        "read"
-    ]
+    assert construct(replace(request, allowed_tool_names=ToolSelection.ALL)) == ["read"]
 
 
 def test_agent_product_construction_runtime_composes_existing_owners(
