@@ -78,8 +78,11 @@ _SEGMENTED_SUFFIX = re.compile(
 )
 _PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
 _PAYLOAD_REPAIR = re.compile(
-    r"worker-(?P<kind>empty|complete|unmarked)-repair-"
+    r"worker-(?P<kind>empty|complete|unmarked|registered)-repair-"
     r"(?P<attempt>[0-9a-f]{32})\.json\Z"
+)
+_REGISTERED_REPAIR_STAGING = re.compile(
+    r"\.worker-registered-repair-[0-9a-f]{32}\.json\.stage\Z"
 )
 
 
@@ -95,7 +98,11 @@ def _known_worker_state_name(name: str) -> bool:
         "worker-history-checkpoint-owner.json",
     }:
         return True
-    if _PAYLOAD_STAGE.fullmatch(name) or _PAYLOAD_REPAIR.fullmatch(name):
+    if (
+        _PAYLOAD_STAGE.fullmatch(name)
+        or _PAYLOAD_REPAIR.fullmatch(name)
+        or _REGISTERED_REPAIR_STAGING.fullmatch(name)
+    ):
         return True
     return any(
         _SEGMENTED_SUFFIX.fullmatch(name[len(stem) :]) is not None

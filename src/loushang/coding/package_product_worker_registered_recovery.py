@@ -173,6 +173,8 @@ def review_coding_product_worker_registered_orphan(
             )
         )
         with product.pinned_state_root_gc_read() as root_fd:
+            from .package_product_worker_registered_payload_repair import _read_intent
+
             _require_private_visible_root(product.state_root, root_fd)
             state_names = tuple(os.listdir(root_fd))
             unrecognized = tuple(
@@ -183,10 +185,15 @@ def review_coding_product_worker_registered_orphan(
                     and not _known_worker_state_name(name)
                 )
             )
+            prior_repair = _read_intent(root_fd, attempt_id)
             plan = (
-                _verify_debt(root_fd, attempt_id)
-                if _stage_exists(root_fd, attempt_id)
-                else None
+                prior_repair.plan
+                if prior_repair is not None
+                else (
+                    _verify_debt(root_fd, attempt_id)
+                    if _stage_exists(root_fd, attempt_id)
+                    else None
+                )
             )
         fence = product.epoch_runtime.cutover_result.fence
         if fence is None:

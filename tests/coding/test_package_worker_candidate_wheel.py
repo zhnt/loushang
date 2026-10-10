@@ -39,6 +39,7 @@ import loushang.coding.package_product_worker_native_install as native_install_m
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
 import loushang.coding.package_product_worker_payload as worker_payload_module
 import loushang.coding.package_product_worker_receipt as receipt_journal_module
+import loushang.coding.package_product_worker_registered_payload_repair as registered_payload_module
 import loushang.coding.package_product_worker_start_gate_journal as gate_journal_module
 import loushang.coding.package_product_worker_start_gate_recovery as gated_recovery_module
 import loushang.coding.session.agent_session as coding_agent_session_module
@@ -209,6 +210,10 @@ from loushang.coding.package_product_worker_receipt import (
     open_coding_product_selected_worker_receipt_owner,
     open_coding_selected_worker_receipt_owner,
     read_coding_product_worker_receipt_record,
+)
+from loushang.coding.package_product_worker_registered_payload_repair import (
+    read_coding_product_worker_registered_payload_repair_intent,
+    repair_coding_product_worker_registered_payload_debt,
 )
 from loushang.coding.package_product_worker_registered_recovery import (
     repair_coding_product_worker_registered_orphan,
@@ -6771,6 +6776,37 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         assert after_repair.payload_repair_candidate
         assert after_repair.repaired_orphan_lease == review.orphan_lease
         assert after_repair.repaired_owner_revision == repaired[0]
+
+        def crash_after_first_payload_unlink(
+            _root_fd: int, _stage_fd: int, _stage_name: str, plan: object
+        ) -> None:
+            assert isinstance(plan, CodingWorkerPayloadDebtPlanV1)
+            (product.state_root / f"worker-payload-{gate.attempt_id}" / plan.entrypoint).unlink()
+            raise OSError("injected registered payload cleanup crash")
+
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            with patch.object(
+                registered_payload_module,
+                "_remove_verified_stage",
+                crash_after_first_payload_unlink,
+            ):
+                with pytest.raises(OSError, match="injected registered payload"):
+                    repair_coding_product_worker_registered_payload_debt(
+                        product, expected_review=after_repair
+                    )
+            incomplete = review_coding_product_worker_registered_orphan(
+                product, attempt_id=gate.attempt_id
+            )
+            assert incomplete.payload_repair_candidate
+            intent = repair_coding_product_worker_registered_payload_debt(
+                product, expected_review=incomplete
+            )
+        assert intent.plan == review.payload_plan
+        assert intent.lease_id == review.orphan_lease.lease_id
+        assert read_coding_product_worker_registered_payload_repair_intent(
+            product, attempt_id=gate.attempt_id
+        ) == intent
+        assert not (product.state_root / f"worker-payload-{gate.attempt_id}").exists()
     finally:
         reopened.close()
 
