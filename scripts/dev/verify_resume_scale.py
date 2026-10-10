@@ -31,6 +31,7 @@ from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.bootstrap import create_agent_session_runtime
 from loushang.coding.cli.__main__ import run_cli
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationJsonlHeaderCodec,
@@ -60,6 +61,10 @@ class VerificationResult:
     transcript_bytes: int
     initial_turn_seconds: float
     resume_turn_seconds: float
+    resume_worker_seconds: float
+    resume_to_first_model_seconds: float
+    resume_after_first_model_seconds: float
+    compacted: bool
     session_id: str
 
 
@@ -80,6 +85,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--root", type=Path)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--compact-before-resume",
+        action="store_true",
+        help="Persist a compaction checkpoint before the cold resume.",
+    )
 
     # Private subprocess mode. Keeping the model deterministic makes the test
     # independent from provider credentials and network availability.
@@ -104,20 +114,35 @@ def main() -> int:
 
     if args.root is not None:
         root = args.root.expanduser().resolve(strict=False)
-        root.mkdir(parents=True, exist_ok=True)
-        result = _verify(root, args.sessions, args.logical_size_mib)
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        result = _verify(
+            root,
+            args.sessions,
+            args.logical_size_mib,
+            compact=args.compact_before_resume,
+        )
         _print_result(result, root=root, as_json=args.json)
         return 0
 
     if args.keep:
         root = Path(tempfile.mkdtemp(prefix="loushang-resume-scale-"))
-        result = _verify(root, args.sessions, args.logical_size_mib)
+        result = _verify(
+            root,
+            args.sessions,
+            args.logical_size_mib,
+            compact=args.compact_before_resume,
+        )
         _print_result(result, root=root, as_json=args.json)
         return 0
 
     with tempfile.TemporaryDirectory(prefix="loushang-resume-scale-") as raw_root:
         root = Path(raw_root)
-        result = _verify(root, args.sessions, args.logical_size_mib)
+        result = _verify(
+            root,
+            args.sessions,
+            args.logical_size_mib,
+            compact=args.compact_before_resume,
+        )
         _print_result(result, root=None, as_json=args.json)
     return 0
 
@@ -126,13 +151,19 @@ def _verify(
     root: Path,
     session_count: int,
     logical_size_mib: int,
+    *,
+    compact: bool,
 ) -> VerificationResult:
     project = root / "project"
     catalog_dir = root / "catalog-sessions"
-    resume_dir = root / "resume-sessions"
-    project.mkdir(parents=True, exist_ok=True)
-    catalog_dir.mkdir(parents=True, exist_ok=True)
-    resume_dir.mkdir(parents=True, exist_ok=True)
+    resume_dir = root / "transcript-data" / "resume-sessions"
+    # Keep this offline fixture's Product state separate from the developer's
+    # ordinary state and from the Session store's direct parent.
+    platform_home = root / "platform-home"
+    project.mkdir(parents=True, exist_ok=True, mode=0o700)
+    catalog_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    platform_home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    worker_env = dict(os.environ, LOUSHANG_HOME=str(platform_home))
 
     logical_size = logical_size_mib * MIB
     _create_sparse_catalog(
@@ -144,7 +175,9 @@ def _verify(
     catalog_logical, catalog_allocated = _directory_sizes(catalog_dir)
 
     started = monotonic()
-    listed = _run_loushang_list(project=project, session_dir=catalog_dir)
+    listed = _run_loushang_list(
+        project=project, session_dir=catalog_dir, env=worker_env
+    )
     catalog_elapsed = monotonic() - started
     expected_items = min(session_count, EXPECTED_BOUNDED_ENRICHMENT)
     if len(listed) != expected_items:
@@ -183,7 +216,9 @@ def _verify(
     if len(steady_page.items) != expected_items or steady_page.bounded_fallback:
         raise RuntimeError("in-process steady index query did not return a fresh page")
     started = monotonic()
-    steady_listed = _run_loushang_list(project=project, session_dir=catalog_dir)
+    steady_listed = _run_loushang_list(
+        project=project, session_dir=catalog_dir, env=worker_env
+    )
     catalog_steady_elapsed = monotonic() - started
     if len(steady_listed) != expected_items:
         raise RuntimeError("steady lightweight index did not preserve the first page")
@@ -197,6 +232,7 @@ def _verify(
         prompts=("MANUAL-A", "MANUAL-B", "MANUAL-C", "MANUAL-D"),
         padding_bytes=padding_bytes,
         result_path=initial_result,
+        env=worker_env,
     )
     initial_elapsed = monotonic() - started
     initial = json.loads(initial_result.read_text(encoding="utf-8"))
@@ -215,9 +251,14 @@ def _verify(
     ]:
         raise RuntimeError("continuous-turn context did not preserve A-D ordering")
 
+    if compact:
+        asyncio.run(_append_compaction_checkpoint(session_file))
+
     # The listing subprocess is the installed loushang console entry and must not
     # replay the valid 40 MiB transcript just to display its Resume Catalog row.
-    large_list = _run_loushang_list(project=project, session_dir=resume_dir)
+    large_list = _run_loushang_list(
+        project=project, session_dir=resume_dir, env=worker_env
+    )
     if [item.get("session_id") for item in large_list] != [session_id]:
         raise RuntimeError("large valid transcript was not listed by session id")
 
@@ -230,18 +271,30 @@ def _verify(
         padding_bytes=0,
         result_path=resumed_result,
         resume=session_id,
+        env=worker_env,
     )
     resume_elapsed = monotonic() - started
     resumed = json.loads(resumed_result.read_text(encoding="utf-8"))
-    if resumed.get("observed_user_prompts") != [
-        [
-            "MANUAL-A",
-            "MANUAL-B",
-            "MANUAL-C",
-            "MANUAL-D",
-            "MANUAL-RESUMED",
-        ]
-    ]:
+    observed_prompts = resumed.get("observed_user_prompts")
+    expected_full = [
+        "MANUAL-A",
+        "MANUAL-B",
+        "MANUAL-C",
+        "MANUAL-D",
+        "MANUAL-RESUMED",
+    ]
+    if compact:
+        valid_context = (
+            isinstance(observed_prompts, list)
+            and len(observed_prompts) == 1
+            and isinstance(observed_prompts[0], list)
+            and len(observed_prompts[0]) == 3
+            and "Summary of A-C" in observed_prompts[0][0]
+            and observed_prompts[0][1:] == ["MANUAL-D", "MANUAL-RESUMED"]
+        )
+    else:
+        valid_context = observed_prompts == [expected_full]
+    if not valid_context:
         raise RuntimeError("resumed model input did not contain the complete history")
     if _required_string(resumed, "session_id") != session_id:
         raise RuntimeError("resume created a different session identity")
@@ -258,8 +311,31 @@ def _verify(
         transcript_bytes=transcript_bytes,
         initial_turn_seconds=initial_elapsed,
         resume_turn_seconds=resume_elapsed,
+        resume_worker_seconds=_required_number(resumed, "cli_seconds"),
+        resume_to_first_model_seconds=_required_number(
+            resumed, "cli_to_first_model_seconds"
+        ),
+        resume_after_first_model_seconds=_required_number(
+            resumed, "first_model_to_cli_end_seconds"
+        ),
+        compacted=compact,
         session_id=session_id,
     )
+
+
+async def _append_compaction_checkpoint(session_file: Path) -> None:
+    manager = await SessionManager.load(session_file, persist=True)
+    last_user = next(
+        (
+            entry.record_id
+            for entry in reversed(manager.get_branch())
+            if isinstance(entry.payload, UserMessage)
+        ),
+        None,
+    )
+    if last_user is None:
+        raise RuntimeError("cannot compact a transcript with no user message")
+    await manager.append_compaction("Summary of A-C", last_user, 0)
 
 
 def _create_sparse_catalog(
@@ -341,7 +417,9 @@ def _directory_sizes(root: Path) -> tuple[int, int]:
     return logical, allocated
 
 
-def _run_loushang_list(*, project: Path, session_dir: Path) -> list[dict[str, object]]:
+def _run_loushang_list(
+    *, project: Path, session_dir: Path, env: dict[str, str]
+) -> list[dict[str, object]]:
     executable = Path(sys.executable).with_name("loushang")
     completed = subprocess.run(
         [
@@ -354,14 +432,13 @@ def _run_loushang_list(*, project: Path, session_dir: Path) -> list[dict[str, ob
             str(EXPECTED_BOUNDED_ENRICHMENT),
             "--list-sessions-format",
             "json",
-            "--no-extensions",
-            "--no-skills",
         ],
         cwd=project,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=env,
         timeout=60,
         check=False,
     )
@@ -384,6 +461,7 @@ def _run_turn_worker(
     prompts: tuple[str, ...],
     padding_bytes: int,
     result_path: Path,
+    env: dict[str, str],
     resume: str | None = None,
 ) -> None:
     command = [
@@ -410,6 +488,7 @@ def _run_turn_worker(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
+        env=env,
         timeout=180,
         check=False,
     )
@@ -427,12 +506,15 @@ async def _run_worker(args: argparse.Namespace) -> int:
 
     observed_user_prompts: list[list[str]] = []
     call_count = 0
+    first_model_at: float | None = None
 
     @prepared_request_conformant
     async def stream_fn(model, context, options=None):
         del model, options
-        nonlocal call_count
+        nonlocal call_count, first_model_at
         call_count += 1
+        if first_model_at is None:
+            first_model_at = monotonic()
         user_prompts = [
             text
             for message in context.messages
@@ -462,8 +544,6 @@ async def _run_worker(args: argparse.Namespace) -> int:
         "--mode",
         "print",
         "--no-tools",
-        "--no-extensions",
-        "--no-skills",
         "--offline",
     ]
     if args._resume:
@@ -472,6 +552,7 @@ async def _run_worker(args: argparse.Namespace) -> int:
         argv.extend(("--message", prompt))
 
     stderr = StringIO()
+    cli_started = monotonic()
     with open(os.devnull, "w", encoding="utf-8") as stdout:
         exit_code = await run_cli(
             argv,
@@ -481,8 +562,11 @@ async def _run_worker(args: argparse.Namespace) -> int:
             cwd=project,
             runtime_builder=runtime_builder,
         )
+    cli_ended = monotonic()
     if exit_code != 0:
         raise RuntimeError(f"Coding CLI worker exited {exit_code}: {stderr.getvalue()}")
+    if first_model_at is None:
+        raise RuntimeError("Coding CLI worker did not reach the model")
     transcripts = sorted(session_dir.glob("*.jsonl"))
     if len(transcripts) != 1:
         raise RuntimeError(f"expected one transcript, found {len(transcripts)}")
@@ -496,6 +580,9 @@ async def _run_worker(args: argparse.Namespace) -> int:
                 "session_id": header.conversation_id,
                 "session_file": str(transcripts[0]),
                 "observed_user_prompts": observed_user_prompts,
+                "cli_seconds": cli_ended - cli_started,
+                "cli_to_first_model_seconds": first_model_at - cli_started,
+                "first_model_to_cli_end_seconds": cli_ended - first_model_at,
             },
             ensure_ascii=False,
             indent=2,
@@ -589,6 +676,13 @@ def _required_string(value: object, key: str) -> str:
     return selected
 
 
+def _required_number(value: object, key: str) -> float:
+    selected = value.get(key) if isinstance(value, dict) else None
+    if not isinstance(selected, int | float):
+        raise RuntimeError(f"worker result has no {key}")
+    return float(selected)
+
+
 def _print_result(
     result: VerificationResult,
     *,
@@ -609,8 +703,16 @@ def _print_result(
         "large_session": {
             "session_id": result.session_id,
             "transcript_mib": round(result.transcript_bytes / MIB, 3),
+            "compacted": result.compacted,
             "initial_a_to_d_seconds": round(result.initial_turn_seconds, 3),
             "restart_resume_seconds": round(result.resume_turn_seconds, 3),
+            "resume_worker_seconds": round(result.resume_worker_seconds, 3),
+            "resume_to_first_model_seconds": round(
+                result.resume_to_first_model_seconds, 3
+            ),
+            "resume_after_first_model_seconds": round(
+                result.resume_after_first_model_seconds, 3
+            ),
         },
         "fixture_root": str(root) if root is not None else None,
         "status": "passed",
@@ -638,8 +740,15 @@ def _print_result(
     print(
         "Valid large session: "
         f"{result.transcript_bytes / MIB:.2f} MiB; "
+        f"compacted {result.compacted}; "
         f"A-D {result.initial_turn_seconds:.3f}s; "
         f"restart+resume {result.resume_turn_seconds:.3f}s"
+    )
+    print(
+        "Resume worker: "
+        f"CLI {result.resume_worker_seconds:.3f}s; "
+        f"first model after {result.resume_to_first_model_seconds:.3f}s; "
+        f"remaining {result.resume_after_first_model_seconds:.3f}s"
     )
     if root is not None:
         print(f"Fixtures kept at: {root}")
