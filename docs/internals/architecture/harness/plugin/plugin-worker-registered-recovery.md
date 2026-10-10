@@ -7,8 +7,8 @@
 - Status: the explicit Linux Product route has local cross-process coverage for
   recovery before or after a V2 cutover. The cutover-after-recovery branch now
   covers no-effect-only and mixed Worker histories, V1 segment retirement, and
-  post-retirement proof tampering. Release still requires broad CI and a
-  physical reboot drill.
+  post-retirement proof tampering. The isolated-VM OS reboot drill passed on
+  PR head `7589582a`; release still requires broad CI on the final head.
 
 ## Durable boundary
 
@@ -71,10 +71,13 @@ commit-before-return crash, V2 history retention and GC, plus refusal for a
 same-boot lease, changed receipt or gate, Supervisor claim, bound native gate,
 active runtime, changed payload bytes, and concurrent GC/cutover.
 
-A separate real reboot drill must persist the workspace before host shutdown,
-then verify a changed OS boot identity and reopen the same Product state after
-restart. Changing a boot-ID function inside one process is simulation evidence,
-not completion of that drill.
+A separate real reboot drill persists the workspace before host shutdown,
+verifies a changed OS boot identity, and reopens the same Product state after
+restart. Changing a boot-ID function inside one process is simulation evidence.
+The [isolated-VM run on PR head `7589582a`](https://github.com/zhnt/loushang/actions/runs/38064696797)
+passed this gate with boot IDs `b7ecac2a-9131-4f10-b6e2-e3d6d0981cf9` and
+`dea83b09-aec5-4985-9b87-7da8da4eed98`, one Store and attempt, settled
+`noEffect`, Package GC preparation, and idempotent reopen.
 
 ### Isolated-host reboot drill
 
@@ -145,4 +148,4 @@ falsely rejects the recovery witness.
 Local regressions now refuse competing Supervisor claims and a bound native
 gate. Lease-registry and V2 seal tests refuse an active runtime; the cutover
 test holds the GC write gate while a competing GC writer waits. Remaining
-acceptance work is broad cross-platform verification and the real reboot drill.
+acceptance work is broad cross-platform verification on the final PR head.
