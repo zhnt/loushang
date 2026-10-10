@@ -6745,6 +6745,17 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         assert same_boot.activation_attempt.phase == "registered"
         assert same_boot.payload_plan is not None
         assert same_boot.orphan_lease is not None
+        with pytest.raises(ValueError, match="coding_worker_registered_c5_recovery_incomplete"):
+            execute_native_cli(
+                product,
+                Namespace(
+                    action="recover-registered-no-effect",
+                    attempt_id=gate.attempt_id,
+                ),
+            )
+        assert review_coding_product_worker_registered_orphan(
+            product, attempt_id=gate.attempt_id
+        ) == same_boot
 
         original_read = service_group_module._read_file
 
