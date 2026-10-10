@@ -4,6 +4,7 @@ from loushang.ai.model import load_builtin_model_registry
 
 CURATED_PROVIDER_IDS = [
     "anthropic",
+    "atlascloud",
     "baidu-qianfan",
     "dashscope",
     "deepseek",
@@ -52,6 +53,11 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     )
     qianfan = registry.get_model("baidu-qianfan", "openai-completions-cn", "ernie-5.1")
     stepfun = registry.get_model("stepfun", "openai-completions", "step-3.7-flash")
+    atlascloud = registry.get_model(
+        "atlascloud",
+        "openai-completions",
+        "qwen/qwen3.5-flash",
+    )
 
     assert moonshot.api == "openai-completions"
     assert moonshot.supports_stream is True
@@ -67,6 +73,17 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     assert stepfun.reasoning is True
     assert stepfun.auth is not None
     assert "STEPFUN_API_KEY" in stepfun.auth.api_key_envs
+    assert atlascloud.api == "openai-completions"
+    assert atlascloud.base_url == "https://api.atlascloud.ai/v1"
+    assert atlascloud.auth is not None
+    assert atlascloud.auth.api_key_env == "ATLASCLOUD_API_KEY"
+    assert atlascloud.adapter is not None
+    assert atlascloud.adapter.max_output_tokens_field == "max_tokens"
+    assert registry.get_model(
+        "atlascloud",
+        "openai-completions",
+        "deepseek-ai/deepseek-v4-pro",
+    ).reasoning is True
 
 
 def test_builtin_catalog_marks_single_preferred_endpoint_per_provider() -> None:
