@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterator
+import sys
+import sysconfig
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
@@ -1485,6 +1487,25 @@ def _compose_local_wheel_product(
     )
 
 
+def _host_marker_environment(
+    marker_environment: Mapping[str, str],
+    *,
+    native_platform: str,
+    python_platform: str,
+) -> dict[str, str]:
+    """Recover one Windows marker field absent from a scrubbed process env."""
+
+    marker = dict(marker_environment)
+    if native_platform == "win32" and not marker.get("platform_machine"):
+        # CPython obtains platform.machine() from PROCESSOR_ARCHITECTURE on
+        # Windows. A sanitized child environment can omit it even when the
+        # interpreter and its supported Wheel tags identify the architecture.
+        machine = {"win-amd64": "AMD64", "win-arm64": "ARM64"}.get(python_platform)
+        if machine is not None:
+            marker["platform_machine"] = machine
+    return marker
+
+
 @dataclass(frozen=True, slots=True)
 class PosixLocalWheelProductHostInputs:
     """Host resolution facts and bounded local-Wheel work for one Product."""
@@ -1500,7 +1521,11 @@ class PosixLocalWheelProductHostInputs:
     ) -> PosixLocalWheelProductHostInputs:
         return cls(
             environment=PackageResolutionEnvironmentV1.from_mapping(
-                {key: str(value) for key, value in default_environment().items()},
+                _host_marker_environment(
+                    {key: str(value) for key, value in default_environment().items()},
+                    native_platform=sys.platform,
+                    python_platform=sysconfig.get_platform(),
+                ),
                 supported_tags=tuple(str(tag) for tag in sys_tags()),
             ),
             acquisition_budgets=PackageAcquisitionBudgetV1(
