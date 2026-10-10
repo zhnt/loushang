@@ -90,8 +90,14 @@ class PackageResolutionEnvironmentV1:
             self.marker_environment
         ):
             raise ValueError("Resolution marker environment fields must be unique")
-        if any(not value for _key, value in self.marker_environment):
-            raise ValueError("Resolution marker environment values cannot be empty")
+        empty_keys = tuple(
+            key for key, value in self.marker_environment if not value
+        )
+        if empty_keys:
+            raise ValueError(
+                "Resolution marker environment values cannot be empty: "
+                + ", ".join(empty_keys)
+            )
         if (
             not self.supported_tags
             or self.supported_tags != tuple(sorted(set(self.supported_tags)))

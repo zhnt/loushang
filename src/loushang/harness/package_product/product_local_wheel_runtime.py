@@ -8,6 +8,7 @@ journals and owner adapters but never publishes an epoch or switches a root.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import stat
 import sys
@@ -1493,16 +1494,26 @@ def _host_marker_environment(
     native_platform: str,
     python_platform: str,
 ) -> dict[str, str]:
-    """Recover one Windows marker field absent from a scrubbed process env."""
+    """Recover Windows markers from independent interpreter and OS facts."""
 
     marker = dict(marker_environment)
-    if native_platform == "win32" and not marker.get("platform_machine"):
-        # CPython obtains platform.machine() from PROCESSOR_ARCHITECTURE on
-        # Windows. A sanitized child environment can omit it even when the
-        # interpreter and its supported Wheel tags identify the architecture.
-        machine = {"win-amd64": "AMD64", "win-arm64": "ARM64"}.get(python_platform)
-        if machine is not None:
-            marker["platform_machine"] = machine
+    if native_platform == "win32":
+        if not marker.get("platform_machine"):
+            # CPython obtains platform.machine() from PROCESSOR_ARCHITECTURE on
+            # Windows. A sanitized process can also cache that empty value.
+            machine = {"win-amd64": "AMD64", "win-arm64": "ARM64"}.get(
+                python_platform
+            )
+            if machine is not None:
+                marker["platform_machine"] = machine
+        if not marker.get("platform_release") or not marker.get("platform_version"):
+            # platform.uname() caches both fields. Reopen win32_ver's native
+            # version fact when an earlier observation cached an empty value.
+            release, version, _csd, _ptype = platform.win32_ver()
+            if release and not marker.get("platform_release"):
+                marker["platform_release"] = release
+            if version and not marker.get("platform_version"):
+                marker["platform_version"] = version
     return marker
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import platform
+
 import pytest
 from packaging.markers import default_environment
 
@@ -48,3 +50,38 @@ def test_unknown_windows_architecture_still_refuses_empty_marker() -> None:
     assert _host_marker_environment(
         raw, native_platform="linux", python_platform="win-amd64"
     )["platform_machine"] == ""
+
+
+def test_windows_host_marker_reopens_cached_empty_release_and_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = {key: str(value) for key, value in default_environment().items()}
+    raw["platform_release"] = ""
+    raw["platform_version"] = ""
+    monkeypatch.setattr(
+        platform, "win32_ver", lambda: ("10", "10.0.20348", "", "")
+    )
+    marker = _host_marker_environment(
+        raw, native_platform="win32", python_platform="win-amd64"
+    )
+    assert marker["platform_release"] == "10"
+    assert marker["platform_version"] == "10.0.20348"
+    assert raw["platform_release"] == raw["platform_version"] == ""
+    PackageResolutionEnvironmentV1.from_mapping(
+        marker, supported_tags=("cp311-cp311-win_amd64",)
+    )
+
+
+def test_unknown_windows_release_still_refuses_with_named_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = {key: str(value) for key, value in default_environment().items()}
+    raw["platform_release"] = ""
+    monkeypatch.setattr(platform, "win32_ver", lambda: ("", "10.0.20348", "", ""))
+    marker = _host_marker_environment(
+        raw, native_platform="win32", python_platform="win-amd64"
+    )
+    with pytest.raises(ValueError, match="platform_release"):
+        PackageResolutionEnvironmentV1.from_mapping(
+            marker, supported_tags=("cp311-cp311-win_amd64",)
+        )
