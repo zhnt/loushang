@@ -488,12 +488,16 @@ partial observation of the selected Worker version and executable digest;
 the selected artifact, contribution, owner, and native platform match the
 retained allow decision in this read. It is not a native release or Session-use
 check.
-The previously verified ordinary Session opt-in is the Python SDK path. RPC
-and Screen do not offer a Worker selection switch.
+That status field names the explicit Python SDK route; the separately approved
+CLI route below is not encoded in its value. RPC and Screen do not offer a
+Worker selection switch.
 
-The P4 ordinary-turn candidate adds `--worker-query-plugin PLUGIN_ID` for a
-new, persisted `coding-standard` Session on Linux x86-64. This route is still
-under native and owner review; it is not evidence of general Worker admission.
+The P4 ordinary-turn route adds `--worker-query-plugin PLUGIN_ID` for a new,
+persisted `coding-standard` Session on Linux x86-64. Its exact opt-in scope was
+approved after [PR #653](https://github.com/zhnt/loushang/pull/653) passed native,
+ordinary-turn, lifecycle, and cross-platform checks and independent security,
+platform, and lifecycle reviews. This approval is not general Worker admission;
+each workspace still requires its exact native release and per-install opt-in.
 It registers one Session-owned `worker_query_symbol` Tool backed by the same
 read-only Product facet as the explicit SDK query. A model-visible Tool call
 and its persisted result are required before claiming Product turn use:
@@ -531,8 +535,9 @@ same way. The hosted transcript owner materializes that new Session before
 issuing its Product receipt. The Product still checks the selected installed
 revision, native approval, current receipt, and per-install opt-in. On Windows,
 passing `worker_candidate_plugin_id` explicitly selects the Windows Worker
-candidate for that Session; the current-head native production gate remains
-pending. Other Sessions and the default route remain unchanged.
+candidate for that Session. The PR #653 head passed its seven-case Windows
+native Session gate, but the Windows ordinary CLI route and broad rollout
+remain closed. Other Sessions and the default route remain unchanged.
 
 For this ordinary Session path, the Product keeps the selected Transcript's
 source, path, file identity, and startup locator fingerprint pinned. It

@@ -1,19 +1,25 @@
-# Plugin Experience Improvements P0–P4: Candidate Design
+# Plugin Experience Improvements P0–P4: Design And Delivery
 
 ## Status And Scope
 
-- Design status: candidate for architecture, integrity/security, and author/user
-  experience review. This document does not grant Product rollout or execution
-  authority.
-- Evidence base: repository source at `7a3673aa`, with the documentation
-  corrections at `1e82042b`. Source and executable tests remain authoritative.
+- Design status: reviewed and delivered in [PR #653](https://github.com/zhnt/loushang/pull/653),
+  merged as `eeec20c5` on 2026-10-10. Its final head passed 72/72 selected CI
+  jobs and the independent P4 security, platform, and lifecycle reviews. The
+  requesting Product owner approved only the exact Linux x86-64 Worker route
+  recorded in that PR; general Worker admission and default routing remain
+  closed. Source and executable tests remain authoritative.
+- Design baseline: repository source at `7a3673aa`, with the documentation
+  corrections at `1e82042b`. The table below describes that pre-delivery
+  baseline; the [support matrix](plugin-support-matrix.md) records the current
+  Product-facing scope.
 - Scope: improve the existing Coding Plugin experience in five ordered
   priorities. These P0–P4 labels belong to this experience design; they do not
   rename the historical PLC9 P0/P1 slices or replace the
   [Plugin lifecycle plan](plugin-lifecycle-coding-pluginization-plan.md).
 - Initial Product scope: fresh, B-fenced Linux Coding workspaces and the
-  currently admitted local, document-only Skill and Prompt Wheels. Theme,
-  Windows, macOS, executable contributions, and remote sources retain their
+  currently admitted local, document-only Skill and Prompt Wheels. P4 later
+  opened one explicitly selected Linux Worker query route. Theme, Windows,
+  macOS, other executable contributions, and remote sources retain their
   separate gates as described in the [support matrix](plugin-support-matrix.md).
 
 The design advances one user path: an author prepares an artifact, the Product
@@ -22,9 +28,9 @@ selects it, and the user can explain or repair the result. Each transition
 keeps its current owner. There is no second Plugin registry, generic service
 bag, universal Profile runtime, or cross-owner atomic transaction.
 
-## Current Code And Decision Boundary
+## Baseline Code And Decision Boundary
 
-| Current code | What it establishes | Gap addressed here |
+| Baseline code at `7a3673aa` | What it established | Gap addressed here |
 | --- | --- | --- |
 | [Management service](../../../../../src/loushang/harness/plugin_management/service.py) and [read model](../../../../../src/loushang/harness/plugin_management/application.py) | Durable A1 Desired State operations; Installation, revision, skew, debt, and unknown-dimension projections | A user journey and consistent explanation across its supported surfaces |
 | [Coding CLI Product operations](../../../../../src/loushang/coding/cli/application.py) and [TUI commands](../../../../../src/loushang/coding/plugin_management_ui.py) | Fenced Product install/update/uninstall and bounded `/plugins` enable/disable/remove/repair routes | Public Wheel validation, chained command receipts, and stage-aware partial-failure guidance; the lifecycle path itself already works |

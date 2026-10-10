@@ -14,6 +14,14 @@
   and the accepted H6 native profile bridge. Current source and retained native
   reports remain higher authority than this candidate.
 
+Current route update (2026-10-10): [PR #653](https://github.com/zhnt/loushang/pull/653)
+delivered and obtained Product owner approval for one explicit Linux x86-64
+read-only ordinary Coding query route after its native, lifecycle, and
+independent review gates passed. The [support matrix](plugin-support-matrix.md)
+defines that exact current scope. The staged evidence below retains its
+original time context; it does not open general Worker admission, Windows or
+macOS ordinary routing, dependency execution, or default selection.
+
 The [current PLC9 inventory](plugin-lifecycle-plc9-inventory.md) records that
 the existing canary is selected through explicit Product inputs. The generic
 Plugin declaration codec recognizes `local_worker`, but Coding's public local
