@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -291,8 +292,41 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
 
     layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
     epoch = resolve_coding_package_epoch_layout(layout)
-    epoch.control_root.mkdir(parents=True, mode=0o700)
-    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    if sys.platform == "win32":
+        from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+        from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+            open_windows_directory,
+            open_windows_regular_file_at,
+        )
+
+        with WindowsPrivateDirectoryAcl() as acl:
+            parent = open_windows_directory(epoch.control_root.parent)
+            try:
+                control = open_windows_directory(
+                    epoch.control_root.name,
+                    dir_fd=parent,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                )
+                try:
+                    epoch_file = open_windows_regular_file_at(
+                        control,
+                        "epoch.jsonl",
+                        create_new=True,
+                        write=True,
+                        security_descriptor=acl.security_descriptor,
+                    )
+                    try:
+                        os.write(epoch_file, b"invalid B fence\n")
+                    finally:
+                        os.close(epoch_file)
+                finally:
+                    os.close(control)
+            finally:
+                os.close(parent)
+    else:
+        epoch.control_root.mkdir(parents=True, mode=0o700)
+        (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
     selected: list[str] = []
 
     def refuse_product(*_args: object, **_kwargs: object) -> None:

@@ -1525,7 +1525,10 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         and re.fullmatch(r"[0-9a-f]{64}", parts[3]) is not None
         and parts[4] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
     }
-    assert len({path.parent for path in decision_files}) == 1
+    assert len({path.parent for path in decision_files}) == 1, (
+        "Coding startup decision roots changed: "
+        + repr(sorted(str(path.relative_to(root)) for path in decision_files))
+    )
     assert {path.name for path in decision_files} == {
         "activation-decisions.jsonl", "definition-decisions.jsonl"
     }, "Coding startup decision workload changed"
