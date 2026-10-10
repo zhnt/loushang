@@ -1,0 +1,30 @@
+name: Registered Worker Reboot Drill
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/worker-registered-reboot-drill.yml
+      - scripts/dev/worker_registered_reboot_drill.py
+      - scripts/dev/worker_registered_qemu_reboot_drill.sh
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-linux-reboot:
+    if: github.head_ref == 'feat/worker-registered-recovery-509'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare registered Worker and recover after guest OS reboot
+        run: bash scripts/dev/worker_registered_qemu_reboot_drill.sh
+      - name: Upload reboot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registered-worker-real-reboot-evidence
+          path: .artifacts/registered-reboot-vm/
+          if-no-files-found: warn

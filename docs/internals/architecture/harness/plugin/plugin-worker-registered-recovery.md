@@ -105,6 +105,14 @@ idempotently. Keep the two JSON files in the drill directory with the exact
 source commit and VM reboot record as acceptance evidence. A prepared fixture
 or a container restart alone does not pass this gate.
 
+The `Registered Worker Reboot Drill` pull-request workflow runs these phases in
+one disposable QEMU guest, reboots its guest OS, and uploads the manifest,
+result, source commit, host evidence, and serial log. Its `host-evidence.json`
+records the guest's boot IDs and verifies that the QEMU process and persistent
+disk remained the same across reboot. A successful workflow run on the exact
+PR head can serve as the isolated-VM reboot evidence; a failed or skipped run
+cannot.
+
 ## V2 retirement boundary
 
 The registered no-effect attempt has an `intent` gate and no Supervisor
