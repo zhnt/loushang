@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from secrets import token_hex
@@ -256,7 +257,9 @@ class CodingRealHostedSessionFactoryV1:
         self._package_product_runtime_factory_for_session = (
             package_product_runtime_factory_for_session
         )
-        self._product_owner_selection = CodingFencedProductApplicationSelection()
+        self._product_owner_selection = CodingFencedProductApplicationSelection(
+            windows_candidate=sys.platform == "win32"
+        )
         self._closing = False
         self._closed = False
 

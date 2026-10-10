@@ -4,11 +4,11 @@
 
 - Tracking: #509.
 - Scope: the explicit Linux Coding Product Worker route.
-- Status: the explicit Linux Product route has local cross-process coverage for
-  recovery before or after a V2 cutover. The cutover-after-recovery branch now
-  covers no-effect-only and mixed Worker histories, V1 segment retirement, and
-  post-retirement proof tampering. The isolated-VM OS reboot drill passed on
-  PR head `7589582a`; release still requires broad CI on the final head.
+- Status: the explicit Linux Product route was merged in PR #660. Local
+  cross-process coverage recovers before or after a V2 cutover, including
+  no-effect-only and mixed Worker histories, V1 segment retirement, and
+  post-retirement proof tampering. The isolated-VM OS reboot drill and all 74
+  change-aware CI checks passed on final PR head `72b3d527` before merge.
 
 ## Durable boundary
 
@@ -74,10 +74,11 @@ active runtime, changed payload bytes, and concurrent GC/cutover.
 A separate real reboot drill persists the workspace before host shutdown,
 verifies a changed OS boot identity, and reopens the same Product state after
 restart. Changing a boot-ID function inside one process is simulation evidence.
-The [isolated-VM run on PR head `7589582a`](https://github.com/zhnt/loushang/actions/runs/38064696797)
-passed this gate with boot IDs `b7ecac2a-9131-4f10-b6e2-e3d6d0981cf9` and
-`dea83b09-aec5-4985-9b87-7da8da4eed98`, one Store and attempt, settled
-`noEffect`, Package GC preparation, and idempotent reopen.
+The [isolated-VM run on final PR head `72b3d527`](https://github.com/zhnt/loushang/actions/runs/38066579686)
+passed this gate with boot IDs `dc5dfca3-6735-4163-ac9a-55f8e210557f` and
+`93f9c381-7f7b-4d31-a649-4c346a09f451`, one Store and attempt, the same
+QEMU process and persistent disk, settled `noEffect`, Package GC preparation,
+and idempotent reopen.
 
 ### Isolated-host reboot drill
 

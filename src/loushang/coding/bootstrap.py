@@ -2563,9 +2563,7 @@ def create_agent_session(
             session_manager,
             services=services,
             worker_candidates=worker_candidate_plugin_id is not None,
-            windows_candidate=(
-                sys.platform == "win32" and worker_candidate_plugin_id is not None
-            ),
+            windows_candidate=sys.platform == "win32",
         )
     )
     try:
@@ -2909,9 +2907,7 @@ def _create_agent_session_runtime(
     )
     product_owner_selection = CodingFencedProductApplicationSelection(
         worker_candidates=worker_candidate_plugin_id is not None,
-        windows_candidate=(
-            sys.platform == "win32" and worker_candidate_plugin_id is not None
-        ),
+        windows_candidate=sys.platform == "win32",
     )
     resolved_composition_set = _canonical_coding_composition_set(composition_set)
     return build_agent_product_session_runtime(

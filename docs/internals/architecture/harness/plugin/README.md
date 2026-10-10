@@ -16,9 +16,10 @@
   release custody, Session use, and recovery; and POSIX root/shared-dependency
   GC plus Arch private-data backup, delete, restore, and expiry owners. Each
   route retains its own Product gate. Explicit Windows candidate first-B,
-  Worker, and GC native journeys passed at the final PLC9 code head; ordinary
-  unflagged Windows routing, general third-party Worker admission, and
-  Windows private-data production use remain separately gated. The final
+  Worker, and GC native journeys passed at the final PLC9 code head. Ordinary
+  unflagged Windows B Session selection is implemented in PR #662; Windows
+  Worker query CLI, general third-party Worker admission, and Windows
+  private-data production use retain separate gates. The final
   Coding offline package regression passed. The
   [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
   exact-head evidence and limits.
@@ -41,8 +42,9 @@
   cutover for a genuinely fresh Linux workspace on 2026-10-01. The ordinary
   Session implementation, interruption/old-snapshot regressions, and full
   Coding offline package regression have passed. Explicit Windows candidate
-  first-B and GC routes have native evidence; unflagged ordinary Windows
-  selection remains closed.
+  first-B and GC routes have native evidence. Direct, Session Runtime, and
+  Hosted ordinary Windows Sessions select the B Product in PR #662; Windows
+  Worker query CLI and default Worker routing retain separate gates.
 - Delivery anchor: PLC8 closed; PLC9 remains open at `7a3673aa`.
   Product-backed management, data Wheel authoring, POSIX root/shared-dependency
   GC, and Arch private-data owners have implemented routes; explicit Windows

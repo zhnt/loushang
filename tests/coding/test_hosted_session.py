@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 import time
 from pathlib import Path
 
@@ -173,6 +175,61 @@ def test_G14_PRODUCT_real_agent_session_streams_and_persists_messages(
     asyncio.run(asyncio.wait_for(scenario(), 20))
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows native Product route")
+def test_windows_hosted_ordinary_session_enters_fresh_b_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    import loushang.coding.package_product_runtime as product_runtime
+    from loushang.coding._plugin_lifecycle import (
+        resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+    )
+
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=tmp_path
+    )
+    monkeypatch.setattr(
+        product_runtime,
+        "resolve_coding_plugin_lifecycle_state_layout",
+        lambda _workspace: lifecycle,
+    )
+    monkeypatch.setattr(
+        product_runtime,
+        "default_global_settings_path",
+        lambda: tmp_path / "settings.json",
+    )
+    monkeypatch.setattr(product_runtime, "version", lambda _package: "2.0.0")
+
+    def reject_legacy(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Hosted ordinary Session reached legacy startup")
+
+    monkeypatch.setattr(
+        coding_bootstrap, "prepare_managed_coding_base_plugin_assembly", reject_legacy
+    )
+    monkeypatch.setattr(coding_bootstrap, "_default_package_materializer", reject_legacy)
+
+    async def scenario() -> None:
+        candidate, claimed, identity, factory = await _construction(tmp_path)
+        try:
+            binding = await factory.create_session(
+                binding_key=SessionBindingKeyV1(
+                    identity.product_id, identity.continuity_id, identity.session_id
+                ),
+                opaque_session_binding=claimed.opaque_binding,
+            )
+            try:
+                assert binding.control.package_product_lifecycle_mode == "enforced"
+                assert binding.control.package_product_binding_id is not None
+            finally:
+                await binding.close()
+        finally:
+            await claimed.close()
+            await candidate.close()
+            await factory.close()
+
+    asyncio.run(scenario())
+
+
 def test_hosted_product_runtime_requires_a_session_factory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -235,8 +292,42 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
 
     layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
     epoch = resolve_coding_package_epoch_layout(layout)
-    epoch.control_root.mkdir(parents=True, mode=0o700)
-    (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
+    if sys.platform == "win32":
+        from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
+        from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+            open_windows_directory,
+            open_windows_regular_file_at,
+        )
+
+        epoch.control_root.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with WindowsPrivateDirectoryAcl() as acl:
+            parent = open_windows_directory(epoch.control_root.parent)
+            try:
+                control = open_windows_directory(
+                    epoch.control_root.name,
+                    dir_fd=parent,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                )
+                try:
+                    epoch_file = open_windows_regular_file_at(
+                        control,
+                        "epoch.jsonl",
+                        create_new=True,
+                        write=True,
+                        security_descriptor=acl.security_descriptor,
+                    )
+                    try:
+                        os.write(epoch_file, b"invalid B fence\n")
+                    finally:
+                        os.close(epoch_file)
+                finally:
+                    os.close(control)
+            finally:
+                os.close(parent)
+    else:
+        epoch.control_root.mkdir(parents=True, mode=0o700)
+        (epoch.control_root / "epoch.jsonl").write_text("invalid B fence\n")
     selected: list[str] = []
 
     def refuse_product(*_args: object, **_kwargs: object) -> None:

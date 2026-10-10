@@ -1516,16 +1516,23 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         store["create_operation_id"]
         == f"create:{scope.session_dir}:{identity.session_id}"
     )
+    # The Windows Product gives its decision journals a private ACL leaf.
+    # Other hosts retain the existing five-part state-root layout.
+    decision_depth = 6 if sys.platform == "win32" else 5
     decision_files = {
         path
         for path in files
-        if len((parts := path.relative_to(root).parts)) == 5
+        if len((parts := path.relative_to(root).parts)) == decision_depth
         and parts[0] in {"cwd", "home"}
         and parts[1:3] == ("plugin-state", "coding-capability-plugins")
         and re.fullmatch(r"[0-9a-f]{64}", parts[3]) is not None
-        and parts[4] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
+        and (sys.platform != "win32" or parts[4] == "product-private")
+        and parts[-1] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
     }
-    assert len({path.parent for path in decision_files}) == 1
+    assert len({path.parent for path in decision_files}) == 1, (
+        "Coding startup decision roots changed: "
+        + repr(sorted(str(path.relative_to(root)) for path in decision_files))
+    )
     assert {path.name for path in decision_files} == {
         "activation-decisions.jsonl", "definition-decisions.jsonl"
     }, "Coding startup decision workload changed"

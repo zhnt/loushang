@@ -23,7 +23,7 @@
   [support matrix](plugin-support-matrix.md) records kind, platform, and
   entry-route limits.
 - Remaining PLC9 closure: general third-party Worker authoring/admission,
-  default Worker routing, ordinary unflagged Windows routing, the Windows
+  default Worker routing, Windows ordinary Worker query CLI routing, the Windows
   update/GC combination and private-data production use, wider Worker V2
   recovery evidence, final integrated management conformance, and an
   implemented `remote_service` topology remain separately gated. Fresh
