@@ -299,6 +299,7 @@ def test_hosted_fenced_default_refuses_invalid_product_without_legacy_fallback(
             open_windows_regular_file_at,
         )
 
+        epoch.control_root.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with WindowsPrivateDirectoryAcl() as acl:
             parent = open_windows_directory(epoch.control_root.parent)
             try:
