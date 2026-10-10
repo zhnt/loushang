@@ -90,14 +90,16 @@ def resolve_initial_active_tool_names(
 ) -> list[str] | None:
     if no_tools_mode == "all":
         return []
+    if allowed_tool_names is None or (
+        allowed_tool_names is not ToolSelection.ALL and not allowed_tool_names
+    ):
+        return []
     if active_tool_names is not None:
         names = list(active_tool_names)
     elif no_tools_mode == "builtin":
         names = non_builtin_tool_names(tool_registry)
     else:
         return None
-    if allowed_tool_names is None:
-        return []
     if allowed_tool_names is not ToolSelection.ALL:
         return [name for name in names if name in allowed_tool_names]
     return names

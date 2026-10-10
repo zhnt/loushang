@@ -197,7 +197,7 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
         ),
     )
 
-    assert result == ("session-2", {"resources": []}, None, "base", None)
+    assert result == ("session-2", {"resources": []}, [], "base", None)
     assert diagnostics == ["extension-diagnostic"]
 
 
@@ -238,6 +238,8 @@ def test_agent_bootstrap_requires_explicit_unrestricted_tool_selection() -> None
 
     with pytest.warns(RuntimeWarning, match="denies all tools"):
         assert construct(request) == []
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        assert construct(replace(request, active_tool_names=None)) == []
     assert construct(replace(request, allowed_tool_names=ToolSelection.ALL)) == [
         "read"
     ]
@@ -373,7 +375,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         {"resources": []},
         extension_runtime,
         None,
-        None,
+        [],
         "base prompt",
         None,
     )
