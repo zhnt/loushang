@@ -1055,7 +1055,7 @@ has its own explicit transport action allowlist and validates the no-decision
 terminal result; Coding SDK, CLI, and TUI use Coding's action registry.
 General later-phase A2 repair still requires evidence.
 The local Coding management SDK now binds the exact workspace identity and
-returns typed pathless results for the same ten inspect/repair actions. The
+returns typed pathless results for the same eleven inspect/repair actions. The
 CLI and TUI now enumerate those actions from the SDK's single Coding Product
 action registry, while RPC passes its requested action to that same validated
 client. This keeps exposed action names aligned without granting a new repair
