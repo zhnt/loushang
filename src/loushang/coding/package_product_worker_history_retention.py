@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -655,6 +656,31 @@ def _review_coding_product_worker_history_under_guard(
         if v2_owner_present
         else len(receipts)
     )
+    gate_history_revision = max((item.journal_revision for item in gates), default=0)
+    supervisor_history_revision = max(
+        (item.record_revision for item in supervisor_by_id.values()), default=0
+    )
+    if v2_owner_present:
+        from .package_product_worker_history_read_v2 import (
+            read_coding_worker_v2_retained_history,
+        )
+
+        with product.pinned_state_root_gc_read() as root_fd:
+            file_io = RootedFileIO(product.state_root, root_fd)
+            try:
+                with file_io.bind(
+                    product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+                ) as rooted:
+                    gate_history_revision = read_coding_worker_v2_retained_history(
+                        rooted, stem="worker-start-gates"
+                    ).last_revision
+                    supervisor_history_revision = (
+                        read_coding_worker_v2_retained_history(
+                            rooted, stem="worker-supervisor"
+                        ).last_revision
+                    )
+            finally:
+                file_io.cleanup()
     expected_stream_revisions = {
         "worker-opt-in": opt_in_projection.revision,
         "worker-activation-receipts": receipt_history_revision,
@@ -663,10 +689,8 @@ def _review_coding_product_worker_history_under_guard(
             if activation_state is None
             else cast(int, activation_state["stateRevision"])
         ),
-        "worker-start-gates": max((item.journal_revision for item in gates), default=0),
-        "worker-supervisor": max(
-            (item.record_revision for item in supervisor_by_id.values()), default=0
-        ),
+        "worker-start-gates": gate_history_revision,
+        "worker-supervisor": supervisor_history_revision,
     }
     stream_revisions_match = all(
         snapshot.total_revision == expected_stream_revisions[snapshot.stem]
@@ -694,13 +718,8 @@ def _review_coding_product_worker_history_under_guard(
                 for item in opt_in_projection.latest_decisions
             )
         ),
-        start_gate_history_revision=max(
-            (item.journal_revision for item in gates), default=0
-        ),
-        supervisor_history_revision=max(
-            (item.record_revision for item in supervisor_by_id.values()),
-            default=0,
-        ),
+        start_gate_history_revision=gate_history_revision,
+        supervisor_history_revision=supervisor_history_revision,
         receipt_history_revision=receipt_history_revision,
         retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
         retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),

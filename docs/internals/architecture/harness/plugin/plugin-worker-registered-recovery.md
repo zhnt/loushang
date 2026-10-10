@@ -5,8 +5,9 @@
 - Tracking: #509.
 - Scope: the explicit Linux Coding Product Worker route.
 - Status: the explicit Linux Product route has a local implementation and
-  cross-process regression; release still requires V2 retirement coverage,
-  negative evidence cases, and a physical reboot drill.
+  cross-process regression, including recovery in an already committed V2
+  Product; release still requires V2 cutover-after-recovery coverage, negative
+  evidence cases, and a physical reboot drill.
 
 ## Durable boundary
 
@@ -86,6 +87,12 @@ bound attempt populates the Supervisor stream; with no bound attempt, sealing
 also rejects the empty Supervisor stream. Neither refusal may be bypassed by
 creating a synthetic Supervisor claim. Keep the checkpoint refusal until the
 typed V2 bases preserve all no-effect references after V1 deletion.
+
+When V2 was committed before this attempt, the new attempt lives in active V2
+generations and the Product can recover it. Retention must compare total gate
+and Supervisor revisions from the verified V2 replay; taking the maximum
+revision among only currently retained records loses retired history and
+falsely rejects the recovery witness.
 
 V2 needs a cross-stream no-effect set proved by the retained C5 settlement,
 intent gate, receipt, and absent Supervisor claim. It must retain those proofs

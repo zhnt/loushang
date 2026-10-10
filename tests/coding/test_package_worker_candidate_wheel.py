@@ -6882,6 +6882,171 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
 
 
 @pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker Product recovery")
+def test_registered_worker_recovery_reopens_v2_active_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        stop_after_worker_allow=True,
+    )
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    manager = asyncio.run(
+        SessionManager.new_with_composition(
+            session_dir=tmp_path / "v2-prior-transcripts",
+            cwd=str(workspace),
+            session_id="v2-prior-worker",
+            defer_materialization=False,
+        )
+    )
+    session = create_agent_session(
+        session_manager=manager,
+        model=Model(
+            id="v2-prior-worker",
+            name="V2 Prior Worker",
+            provider="test",
+            endpoint="test",
+            capabilities=Capabilities(
+                input=("text",), context_window=128_000, max_tokens=4_096
+            ),
+        ),
+        services=create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=workspace / ".loushang" / "settings.json",
+            )
+        ),
+        worker_candidate_plugin_id=_PLUGIN,
+    )
+
+    async def query_prior_worker() -> None:
+        try:
+            await session.prepare_model_call_runtime()
+            assert await session.query_worker_symbol("review") == "Review symbol"
+        finally:
+            await session.dispose()
+
+    asyncio.run(query_prior_worker())
+    prior_owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = prior_owner.runtime_owner.product_owner
+        [prior_gate] = CodingWorkerStartGateJournal(product).attempts()
+        assert prior_gate.phase == "bound"
+        assert open_coding_product_worker_supervisor_journal(product).status(
+            prior_gate.attempt_id
+        ) is not None
+        opt_in_owner = CodingWorkerProductOptInOwner(product)
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="registered-v2-preparation-revoke",
+            expected_generation=current_opt_in.generation,
+        )
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        gc.prepare()
+        publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=prior_gate.attempt_id
+        )
+        cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+        publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=prior_gate.attempt_id
+        )
+        stage_coding_product_worker_v2_preparation(
+            product, first_retained_generations=cutoffs
+        )
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=cutoffs
+        )
+        assert retire_coding_product_worker_v2_history(product)
+        gc.prepare()
+        after_revoke = opt_in_owner.current(_PLUGIN)
+        assert after_revoke is not None
+        opt_in_owner.allow(
+            plugin_id=_PLUGIN,
+            operation_id="registered-v2-reallow",
+            expected_generation=after_revoke.generation,
+            require_worker=False,
+        )
+    finally:
+        prior_owner.close()
+
+    child = subprocess.run(
+        (
+            sys.executable,
+            "-c",
+            (
+                "from tests.coding.test_package_worker_candidate_wheel "
+                "import _run_independent_registered_worker_crash; "
+                "import sys; "
+                "_run_independent_registered_worker_crash(*sys.argv[1:])"
+            ),
+            str(workspace),
+            str(tmp_path / "v2-registered-transcripts"),
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")},
+        timeout=90,
+        check=False,
+    )
+    assert child.returncode == 0, child.stderr
+    reopened = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = reopened.runtime_owner.product_owner
+        [gate] = [
+            item
+            for item in CodingWorkerStartGateJournal(product).attempts()
+            if item.attempt_id != prior_gate.attempt_id
+        ]
+        assert gate.phase == "intent"
+        original_read = service_group_module._read_file
+
+        def changed_boot_read(
+            path: str, *, parent: int | None = None, limit: int = 4096
+        ) -> bytes:
+            if path == "/proc/sys/kernel/random/boot_id":
+                return b"00000000-0000-0000-0000-000000000000\n"
+            return original_read(path, parent=parent, limit=limit)
+
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            recovered = execute_native_cli(
+                product,
+                Namespace(
+                    action="recover-registered-no-effect",
+                    attempt_id=gate.attempt_id,
+                ),
+            )
+        assert recovered["registeredNoEffectRecovery"]["noEffect"] is True
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
+    finally:
+        reopened.close()
+
+
+@pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux H6 release")
 def test_explicit_worker_public_coding_session_disable_fences_pinned_product(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
