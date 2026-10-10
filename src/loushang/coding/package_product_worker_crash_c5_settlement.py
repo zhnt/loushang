@@ -270,18 +270,19 @@ def _settle_crash_c5_under_guard(
     coordinator.record_protocol_terminal(
         receipt=receipt, attempt_id=attempt_id, owner_generation=generation
     )
-    witness = evidence.current_tree_witness(attempt_id=attempt_id)
     if review.group_status == "prior_boot_absent":
-        coordinator.record_cleanup_debt(
-            WorkerCleanupDebtV1(
-                receipt_fingerprint=receipt.fingerprint,
-                attempt_id=attempt_id,
-                owner_generation=generation,
-                host_identity=evidence.host_identity,
-                boot_identity=c5.boot_identity,
-                reason=_CleanupDebtReason.SAME_BOOT_UNKNOWN_TREE,
+        if c5.phase != "cleanup_debt":
+            coordinator.record_cleanup_debt(
+                WorkerCleanupDebtV1(
+                    receipt_fingerprint=receipt.fingerprint,
+                    attempt_id=attempt_id,
+                    owner_generation=generation,
+                    host_identity=evidence.host_identity,
+                    boot_identity=c5.boot_identity,
+                    reason=_CleanupDebtReason.SAME_BOOT_UNKNOWN_TREE,
+                )
             )
-        )
+        witness = evidence.current_tree_witness(attempt_id=attempt_id)
         coordinator.settle_changed_boot_absence(
             receipt=receipt,
             attempt_id=attempt_id,
@@ -290,6 +291,7 @@ def _settle_crash_c5_under_guard(
             witness=witness,
         )
     else:
+        witness = evidence.current_tree_witness(attempt_id=attempt_id)
         coordinator.record_cleanup_settlement(
             WorkerCleanupSettlementV1(
                 receipt_fingerprint=receipt.fingerprint,
