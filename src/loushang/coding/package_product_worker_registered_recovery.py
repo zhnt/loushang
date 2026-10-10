@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
@@ -64,13 +64,15 @@ class CodingWorkerRegisteredOrphanReviewV1:
     runtime_epoch: int
     store_root_identity: str
     unrecognized_worker_state_names: tuple[str, ...]
+    repaired_orphan_lease: PackageEpochRuntimeLeaseV1 | None = None
+    repaired_owner_revision: int | None = None
 
     @property
-    def repair_candidate(self) -> bool:
+    def registered_candidate(self) -> bool:
         gate = self.gate_record
         c5 = self.activation_attempt
         receipt = self.receipt_record
-        lease = self.orphan_lease
+        lease = self.orphan_lease or self.repaired_orphan_lease
         plan = self.payload_plan
         if (
             gate is None
@@ -104,6 +106,19 @@ class CodingWorkerRegisteredOrphanReviewV1:
             and lease.runtime_epoch == self.runtime_epoch
             and lease.store_root_identity == self.store_root_identity
             and not self.unrecognized_worker_state_names
+        )
+
+    @property
+    def repair_candidate(self) -> bool:
+        return self.registered_candidate and self.orphan_lease is not None
+
+    @property
+    def payload_repair_candidate(self) -> bool:
+        return bool(
+            self.registered_candidate
+            and self.orphan_lease is None
+            and self.repaired_orphan_lease is not None
+            and self.repaired_owner_revision is not None
         )
 
 
@@ -180,7 +195,7 @@ def review_coding_product_worker_registered_orphan(
             )
         evidence = CodingPosixWorkerCleanupEvidenceAuthority(product)
         product.assert_root_gc_authority_current()
-        return CodingWorkerRegisteredOrphanReviewV1(
+        review = CodingWorkerRegisteredOrphanReviewV1(
             attempt_id=attempt_id,
             gate_record=gate,
             activation_attempt=c5,
@@ -194,6 +209,19 @@ def review_coding_product_worker_registered_orphan(
             store_root_identity=fence.fenced_root_identity,
             unrecognized_worker_state_names=unrecognized,
         )
+    repaired = (
+        None
+        if receipt is None
+        else registry.repaired_orphan_for_runtime(
+            store_id=registry.store_id,
+            runtime_id=receipt.receipt.policy.product_runtime_id,
+        )
+    )
+    return replace(
+        review,
+        repaired_orphan_lease=None if repaired is None else repaired[1],
+        repaired_owner_revision=None if repaired is None else repaired[0],
+    )
 
 
 def repair_coding_product_worker_registered_orphan(

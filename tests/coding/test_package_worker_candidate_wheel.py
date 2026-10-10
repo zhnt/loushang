@@ -6764,6 +6764,13 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             runtime_id=runtime_id,
         )
         assert repaired is not None and repaired[1] == review.orphan_lease
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            after_repair = review_coding_product_worker_registered_orphan(
+                product, attempt_id=gate.attempt_id
+            )
+        assert after_repair.payload_repair_candidate
+        assert after_repair.repaired_orphan_lease == review.orphan_lease
+        assert after_repair.repaired_owner_revision == repaired[0]
     finally:
         reopened.close()
 
