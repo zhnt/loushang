@@ -157,6 +157,7 @@ from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
 )
@@ -544,7 +545,7 @@ def _create_agent_session(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     services: BootstrapServices | None = None,
@@ -717,11 +718,11 @@ def _create_agent_session(
         )
     enable_multiagent_tools = (
         enable_multiagent
-        and allowed_tool_names is None
+        and allowed_tool_names is ToolSelection.ALL
         and session_no_tools_mode is None
     )
     if delegated_execution_profile is not None:
-        if tuple(allowed_tool_names or ()) != delegated_execution_profile.allowed_tools:
+        if (allowed_tool_names is ToolSelection.ALL or tuple(allowed_tool_names or ()) != delegated_execution_profile.allowed_tools):
             raise ValueError(
                 "child allowed tools must match its delegated execution profile"
             )
@@ -2522,7 +2523,7 @@ def create_agent_session(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
@@ -2617,7 +2618,7 @@ def create_agent_session_from_services(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
@@ -2683,7 +2684,7 @@ def create_agent_session_result(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
@@ -2854,7 +2855,7 @@ def _create_agent_session_runtime(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetPlan | None = None,
@@ -2991,7 +2992,7 @@ def _create_agent_invocation_session_runtime(
     services: BootstrapServices,
     services_factory: ServicesFactory | None,
     tool_registry: WorkspaceToolRegistry,
-    allowed_tool_names: list[str] | None,
+    allowed_tool_names: list[str] | ToolSelection | None,
     active_tool_names: list[str] | None,
     no_tools: NoToolsMode | bool | None,
     persist: bool,
@@ -3036,7 +3037,7 @@ def create_agent_session_runtime(
     thinking_level: ThinkingLevel | None = None,
     tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,

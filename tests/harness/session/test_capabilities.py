@@ -13,6 +13,7 @@ from loushang.harness.capabilities.commands import (
     SessionCommandRuntime,
 )
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.commands import (
     CommandDescriptor,
     CommandDispatchOutcome,
@@ -136,7 +137,7 @@ def test_session_tool_runtime_additive_activation_preserves_deferred_requests() 
     runtime = SessionToolRuntime(
         agent=_Agent(),
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=["read"],
         default_active_tool_names=lambda: ["read"],
         should_activate_new_tool=lambda _name, _definition: False,
@@ -165,7 +166,7 @@ def test_staged_disabled_runtime_tool_remains_on_demand_after_publication() -> N
     runtime = SessionToolRuntime(
         agent=_Agent(),
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=(),
         default_active_tool_names=lambda: (),
         should_activate_new_tool=lambda _name, _definition: True,
@@ -197,7 +198,7 @@ def test_staged_tool_activation_cycles_do_not_leave_ghost_default_intent() -> No
     runtime = SessionToolRuntime(
         agent=_Agent(),
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=(),
         default_active_tool_names=lambda: (),
         should_activate_new_tool=lambda name, _definition: (
@@ -436,7 +437,7 @@ def test_tool_activation_profile_selects_product_defaults() -> None:
     )
     definitions = [_tool_definition("write"), _tool_definition("read")]
 
-    assert profile.default_names(definitions) == ["read", "write"]
+    assert profile.default_names(definitions, ToolSelection.ALL) == ["read", "write"]
     assert profile.default_names(definitions, {"read"}) == ["read"]
     assert profile.should_activate_new("custom", definitions[0]) is True
     assert profile.should_activate_new("read", definitions[1]) is False
@@ -459,7 +460,7 @@ def test_tool_controller_uses_injected_revisioned_default_profile() -> None:
         agent=_Agent(),
         get_cwd=lambda: "/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="base",
         get_resource_bundle=lambda: None,
@@ -473,6 +474,34 @@ def test_tool_controller_uses_injected_revisioned_default_profile() -> None:
     ]
 
 
+def test_tool_controller_missing_ceiling_denies_available_tools() -> None:
+    from loushang.harness.session.tool_controller import SessionToolController
+
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(_tool_definition("read"))
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        controller = SessionToolController(
+            agent=_Agent(),
+            get_cwd=lambda: "/project",
+            tool_registry=registry,
+            allowed_tool_names=None,
+            initial_active_tool_names=["read"],
+            base_prompt="base",
+            get_resource_bundle=lambda: None,
+            get_diagnostics_service=lambda: None,
+            default_tool_profile=DefaultToolProfileSnapshot(
+                profile_id="product.tools.default",
+                profile_revision=1,
+                static_default_names=("read",),
+                automatic_selection_policy_fingerprint="product.tools.auto.v1",
+                automatic_selection_enabled=True,
+            ),
+        )
+    assert controller.get_active_tool_names() == []
+    assert controller.get_all_tools() == []
+    assert not controller.is_tool_allowed("read")
+
+
 def test_revisioned_profile_preserves_product_automatic_exclusions() -> None:
     from loushang.harness.session.tool_controller import SessionToolController
 
@@ -480,7 +509,7 @@ def test_revisioned_profile_preserves_product_automatic_exclusions() -> None:
         agent=_Agent(),
         get_cwd=lambda: "/project",
         tool_registry=WorkspaceToolRegistry(),
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="base",
         get_resource_bundle=lambda: None,
@@ -509,7 +538,7 @@ def test_tool_controller_has_no_implicit_product_default_profile() -> None:
             agent=_Agent(),
             get_cwd=lambda: "/project",
             tool_registry=WorkspaceToolRegistry(),
-            allowed_tool_names=None,
+            allowed_tool_names=ToolSelection.ALL,
             initial_active_tool_names=[],
             base_prompt="base",
             get_resource_bundle=lambda: None,

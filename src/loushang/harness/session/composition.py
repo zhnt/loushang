@@ -28,6 +28,7 @@ from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -217,7 +218,7 @@ class SessionFoundationInputs:
     resource_loader: ResourceLoaderPort | None
     get_resource_bundle: Callable[[], ResourceBundle | None]
     tool_registry: WorkspaceToolRegistry | None
-    allowed_tool_names: list[str] | None
+    allowed_tool_names: list[str] | ToolSelection | None
     active_tool_names: list[str] | None
     default_tool_profile: DefaultToolProfileSnapshot
     show_empty_tool_prompt: bool
@@ -239,9 +240,9 @@ class SessionFoundationInputs:
     set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
-    get_effective_skills: (
-        Callable[[], Sequence[SkillPromptSummary] | None] | None
-    ) = None
+    get_effective_skills: Callable[[], Sequence[SkillPromptSummary] | None] | None = (
+        None
+    )
     request_evidence: RequestEvidenceRuntimePort | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
     resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None
@@ -1062,7 +1063,8 @@ def _build_tool_controller(
         allowed_tool_names=(
             set(inputs.allowed_tool_names)
             if inputs.allowed_tool_names is not None
-            else None
+            and inputs.allowed_tool_names is not ToolSelection.ALL
+            else inputs.allowed_tool_names
         ),
         initial_active_tool_names=list(
             inputs.active_tool_names or [tool.name for tool in ports.agent.tools]
