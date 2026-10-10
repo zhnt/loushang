@@ -16,7 +16,7 @@
 ## Current executable boundary
 
 `PackageLifecyclePhase` has twelve phases, from `accepted` through
-`committed`. `CodingPackageRepairClientV1` currently exposes ten exact actions
+`committed`. `CodingPackageRepairClientV1` currently exposes eleven exact actions
 through one fenced Product runtime. The action is chosen by the operator and
 checked again by the corresponding Product owner; it is never inferred from a
 free-form operation ID or an A1 explanation.
@@ -31,13 +31,13 @@ free-form operation ID or an A1 explanation.
 | `transaction_pinned` with staged nodes | `inspect-staging`, then `repair-staging` | Exact checkpoint and all node receipts, pin, Source, Store and selected admission; resume only missing nodes |
 | `set_published` | `inspect-published`, then `repair-published` | Exact published set, transaction pin, Store, Source, and owner-bound replacement admission; no second publication |
 | `committed` with incomplete handoff | `repair-handoff` | Exact committed Package status and Product handoff identity; settle or report the handoff outcome without replaying publication |
+| `retryable_failure` in the operation retry domain | `repair-retryable` | Exact retryable status, original request and selected admission; the phase-specific owner still decides whether retry is safe |
 | Terminal `rejected`, `cancelled`, or fully settled `committed` | No new repair effect | Return the terminal owner evidence; do not create a fresh attempt through repair |
 
 These rows describe the currently exposed Coding POSIX actions, not a
 cross-platform guarantee or a permission to skip any owner-specific preflight.
 The runtime and owners remain authoritative when an observed phase and action
-disagree. A retryable failure is eligible only through its exact owner retry
-domain and attempt evidence; `repair-retryable` does not bypass these rows.
+disagree. `repair-retryable` does not bypass the phase-specific owner checks.
 
 ## Policy for later-phase expansion
 
