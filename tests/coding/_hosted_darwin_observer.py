@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import runpy
 import signal
 import sys
@@ -43,9 +44,38 @@ def _progress(phase, index):
         print(f"native scenario CLI {index}: {phase}", flush=True)
 
 
+class WitnessFailure(RuntimeError):
+    """Validated, pathless first failure reported by the retained witness."""
+
+    def __init__(self, receipt):
+        super().__init__("native CLI witness failed")
+        self.receipt = receipt
+
+
 def _read(root, name):
     try:
         if (root / "failed").exists():
+            with (root / "failed").open(encoding="utf-8") as source:
+                raw = source.read(4097)
+            if len(raw) <= 4096:
+                try:
+                    receipt = json.loads(raw)
+                except (ValueError, TypeError):
+                    receipt = None
+                if (isinstance(receipt, dict)
+                        and set(receipt) == {"type", "phase", "site"}
+                        and isinstance(receipt["type"], str)
+                        and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", receipt["type"])
+                        and isinstance(receipt["phase"], str)
+                        and receipt["phase"] in {
+                            "new", "spawning", "running", "exited", "awaiting-reap",
+                            "reaped", "awaiting-release",
+                        }
+                        and isinstance(receipt["site"], str)
+                        and re.fullmatch(
+                            r"[A-Za-z0-9_.-]{1,80}:[1-9][0-9]{0,5}", receipt["site"]
+                        )):
+                    raise WitnessFailure(receipt)
             raise RuntimeError("native CLI witness failed")
         path = root / name
         if not path.exists():
@@ -331,6 +361,10 @@ class NativeObservation:
                     if trace is not None else "unknown")
         with suppress(OSError, ValueError):
             print(f"native observation unknown: {type(error).__name__} at {location}", flush=True)
+            if isinstance(error, WitnessFailure):
+                receipt = error.receipt
+                print(f"native witness failure: type={receipt['type']} "
+                      f"phase={receipt['phase']} site={receipt['site']}", flush=True)
             if isinstance(error, DarwinWatchEventError):
                 print(f"native watch masks: registered={error.registered}, "
                       f"flags={error.flags:#x}, notes={error.notes:#x}", flush=True)
