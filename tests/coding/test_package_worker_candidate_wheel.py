@@ -210,6 +210,10 @@ from loushang.coding.package_product_worker_receipt import (
     open_coding_selected_worker_receipt_owner,
     read_coding_product_worker_receipt_record,
 )
+from loushang.coding.package_product_worker_registered_recovery import (
+    repair_coding_product_worker_registered_orphan,
+    review_coding_product_worker_registered_orphan,
+)
 from loushang.coding.package_product_worker_session_composition import (
     CodingProductWorkerOrdinarySessionBinding,
     CodingWorkerSessionCompositionError,
@@ -632,6 +636,32 @@ def _run_independent_ordinary_worker_turn_crash(
     raise AssertionError("Independent ordinary Worker turn did not crash")
 
 
+def _run_independent_registered_worker_crash(
+    workspace_path: str, transcript_dir_path: str
+) -> None:
+    """Exit after the Product has committed C5 registration, before effect."""
+
+    from loushang.coding.package_product_worker_activation_state import (
+        CodingProductWorkerActivationStateStore,
+    )
+
+    original = CodingProductWorkerActivationStateStore.compare_and_swap
+
+    def crash_after_register(self, *, expected_revision, document):
+        committed = original(
+            self, expected_revision=expected_revision, document=document
+        )
+        if committed and any(
+            isinstance(item, dict) and item.get("phase") == "registered"
+            for item in document["attempts"].values()
+        ):
+            os._exit(0)
+        return committed
+
+    CodingProductWorkerActivationStateStore.compare_and_swap = crash_after_register
+    _run_independent_ordinary_worker_turn_crash(workspace_path, transcript_dir_path)
+
+
 def _verify_independent_ordinary_worker_turn_crash_recovery(
     *,
     workspace: Path,
@@ -1019,6 +1049,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
     *,
     protocol_queries: int = 1,
     direct_entry_only: bool = False,
+    stop_after_worker_allow: bool = False,
     hosted_entry_only: bool = False,
     disable_while_direct_session_open: bool = False,
     update_while_direct_session_open: bool = False,
@@ -1687,6 +1718,8 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                 )
                 assert decision.opt_in.owner_id == _OWNER
                 assert product_opt_in.current(_PLUGIN) == decision
+                if stop_after_worker_allow:
+                    return
                 if direct_entry_only:
                     with CodingFencedProductReadOnlyPreviewOwner.open(
                         lifecycle
@@ -6617,6 +6650,122 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         prior_attempt_ids=prior_attempt_ids | {same_boot_attempt},
         prior_boot=True,
     )
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker Product recovery")
+def test_registered_worker_crash_reopens_exact_orphan_before_effect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    test_worker_source_catalog_pins_explicit_product_candidate(
+        tmp_path,
+        "installed-protocol",
+        monkeypatch,
+        direct_entry_only=True,
+        stop_after_worker_allow=True,
+    )
+    workspace = tmp_path / "workspace"
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    before = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        prior_ids = {
+            item.attempt_id
+            for item in CodingWorkerStartGateJournal(
+                before.runtime_owner.product_owner
+            ).attempts()
+        }
+    finally:
+        before.close()
+
+    child = subprocess.run(
+        (
+            sys.executable,
+            "-c",
+            (
+                "from tests.coding.test_package_worker_candidate_wheel "
+                "import _run_independent_registered_worker_crash; "
+                "import sys; "
+                "_run_independent_registered_worker_crash(*sys.argv[1:])"
+            ),
+            str(workspace),
+            str(tmp_path / "registered-worker-transcripts"),
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+        },
+        timeout=90,
+        check=False,
+    )
+    assert child.returncode == 0, child.stderr
+
+    reopened = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = reopened.runtime_owner.product_owner
+        [gate] = [
+            item
+            for item in CodingWorkerStartGateJournal(product).attempts()
+            if item.attempt_id not in prior_ids
+        ]
+        assert gate.phase == "intent" and gate.identity is None
+        assert (
+            open_coding_product_worker_supervisor_journal(product).status(
+                gate.attempt_id
+            )
+            is None
+        )
+        same_boot = review_coding_product_worker_registered_orphan(
+            product, attempt_id=gate.attempt_id
+        )
+        assert not same_boot.repair_candidate
+        assert same_boot.activation_attempt is not None
+        assert same_boot.activation_attempt.phase == "registered"
+        assert same_boot.payload_plan is not None
+        assert same_boot.orphan_lease is not None
+
+        original_read = service_group_module._read_file
+
+        def changed_boot_read(
+            path: str, *, parent: int | None = None, limit: int = 4096
+        ) -> bytes:
+            if path == "/proc/sys/kernel/random/boot_id":
+                return b"00000000-0000-0000-0000-000000000000\n"
+            return original_read(path, parent=parent, limit=limit)
+
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            review = review_coding_product_worker_registered_orphan(
+                product, attempt_id=gate.attempt_id
+            )
+            assert review.repair_candidate
+            assert (
+                repair_coding_product_worker_registered_orphan(
+                    product, expected_review=review
+                )
+                == review.orphan_lease
+            )
+        runtime_id = review.receipt_record.receipt.policy.product_runtime_id
+        repaired = product.epoch_runtime.registry.repaired_orphan_for_runtime(
+            store_id=product.epoch_runtime.registry.store_id,
+            runtime_id=runtime_id,
+        )
+        assert repaired is not None and repaired[1] == review.orphan_lease
+    finally:
+        reopened.close()
 
 
 @pytest.mark.requires_host_runtime
