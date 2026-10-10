@@ -34,6 +34,7 @@ import loushang.coding.package_product_backup_types as backup_types_module
 import loushang.coding.package_product_worker_activation_state_journal as activation_state_journal_module
 import loushang.coding.package_product_worker_crash_c5_settlement as crash_c5_module
 import loushang.coding.package_product_worker_history_checkpoint as checkpoint_module
+import loushang.coding.package_product_worker_history_preflight_v2 as history_preflight_v2_module
 import loushang.coding.package_product_worker_history_retention as history_retention_module
 import loushang.coding.package_product_worker_native_install as native_install_module
 import loushang.coding.package_product_worker_opt_in as opt_in_journal_module
@@ -7026,9 +7027,44 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         publish_coding_product_worker_history_checkpoint(
             product, attempt_id=gate.attempt_id
         )
-        stage_coding_product_worker_v2_preparation(
-            product, first_retained_generations=cutoffs
-        )
+        gc_writer_started = Event()
+        gc_writer_finished = Event()
+        gc_writer_errors: list[BaseException] = []
+        gc_writer_thread: Thread | None = None
+        read_repair_intent = history_preflight_v2_module._read_intent
+
+        def competing_gc_cutover_writer() -> None:
+            gc_writer_started.set()
+            try:
+                with product.gc_gate.guard(require_write=True):
+                    pass
+            except BaseException as exc:
+                gc_writer_errors.append(exc)
+            finally:
+                gc_writer_finished.set()
+
+        def read_repair_intent_while_gc_waits(*args, **kwargs):
+            nonlocal gc_writer_thread
+            gc_writer_thread = Thread(target=competing_gc_cutover_writer, daemon=True)
+            gc_writer_thread.start()
+            assert gc_writer_started.wait(1)
+            assert not gc_writer_finished.wait(0.05)
+            intent = read_repair_intent(*args, **kwargs)
+            assert not gc_writer_finished.is_set()
+            return intent
+
+        with patch.object(
+            history_preflight_v2_module,
+            "_read_intent",
+            read_repair_intent_while_gc_waits,
+        ):
+            stage_coding_product_worker_v2_preparation(
+                product, first_retained_generations=cutoffs
+            )
+        assert gc_writer_thread is not None
+        gc_writer_thread.join(timeout=2)
+        assert gc_writer_finished.is_set()
+        assert not gc_writer_errors
         commit_coding_product_worker_v2_owner(
             product, first_retained_generations=cutoffs
         )

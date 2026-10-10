@@ -103,6 +103,7 @@ and Supervisor revisions from the verified V2 replay; taking the maximum
 revision among only currently retained records loses retired history and
 falsely rejects the recovery witness.
 
-The remaining acceptance work covers competing Supervisor claims, a bound
-native gate, active runtime and concurrent GC/cutover refusals, broad
-cross-platform checks, and the real reboot drill.
+Local regressions now refuse competing Supervisor claims and a bound native
+gate. Lease-registry and V2 seal tests refuse an active runtime; the cutover
+test holds the GC write gate while a competing GC writer waits. Remaining
+acceptance work is broad cross-platform verification and the real reboot drill.
