@@ -220,8 +220,12 @@ def _settle_crash_c5_under_guard(
         or c5.host_identity != evidence.host_identity
         or c5.boot_identity != gate.identity.boot_id
         or (
-            (c5.boot_identity == evidence.boot_identity)
-            != (review.group_status == "absent")
+            review.group_status == "absent"
+            and c5.boot_identity != evidence.boot_identity
+        )
+        or (
+            review.group_status == "prior_boot_absent"
+            and c5.boot_identity == evidence.boot_identity
         )
         or not c5.current
     ):
