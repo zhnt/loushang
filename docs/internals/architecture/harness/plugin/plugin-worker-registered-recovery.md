@@ -7,8 +7,8 @@
 - Status: the explicit Linux Product route has local cross-process coverage for
   recovery before or after a V2 cutover. The cutover-after-recovery branch now
   covers no-effect-only and mixed Worker histories, V1 segment retirement, and
-  post-retirement proof tampering. Release still requires the remaining
-  negative evidence cases, broad CI, and a physical reboot drill.
+  post-retirement proof tampering. Release still requires broad CI and a
+  physical reboot drill.
 
 ## Durable boundary
 
@@ -57,12 +57,11 @@ idempotent and returns the exact settled attempt.
 ## Retention and tests
 
 A settled registered attempt has an `intent` gate, no Supervisor claim, and a
-C5 settlement. The Product history-retention review needs this as a distinct
-no-effect closure shape. It must not require a bound gate or settled Supervisor
-for this shape, and must prove the C5 transition never crossed `effect_started`,
-including after V2 history cutover. The present GC check equates all gate IDs
-with Supervisor IDs; it must instead account for this separately proved
-`intent` gate while preserving exact equality for every bound gate. GC still
+C5 settlement. The Product history-retention review handles this distinct
+no-effect closure shape without requiring a bound gate or settled Supervisor.
+It proves the C5 transition never crossed `effect_started`, including after V2
+history cutover. GC accounts for the separately proved `intent` gate while
+preserving exact equality for every bound gate. GC still
 requires the exact receipt, opt-in, history, backup, payload, runtime, and
 Package reference checks. Unknown native state remains a refusal.
 
@@ -76,6 +75,35 @@ A separate real reboot drill must persist the workspace before host shutdown,
 then verify a changed OS boot identity and reopen the same Product state after
 restart. Changing a boot-ID function inside one process is simulation evidence,
 not completion of that drill.
+
+### Isolated-host reboot drill
+
+Run both phases from the same source checkout on a disposable Linux x86-64 VM
+with a static C compiler. Choose a new private directory on storage that
+survives a full OS reboot. The developer script builds the installed Worker
+fixture, crashes its child immediately after durable C5 registration, and
+records the real boot ID, attempt, Store, workspace, and Product state root.
+
+```sh
+PYTHONPATH=src .venv/bin/python scripts/dev/worker_registered_reboot_drill.py \
+  prepare --root /persistent/registered-worker-drill
+```
+
+After the script exits, shut down and restart that **isolated VM** through its
+normal host control. Do not run the second phase in the original boot. On the
+restarted VM, with the same checkout and persistent directory, run:
+
+```sh
+PYTHONPATH=src .venv/bin/python scripts/dev/worker_registered_reboot_drill.py \
+  recover --root /persistent/registered-worker-drill
+```
+
+The recovery phase refuses an unchanged `/proc/sys/kernel/random/boot_id` or
+a changed Product Store/state root. It then uses the production recovery owner,
+requires settled `noEffect`, prepares Package GC, and reopens the same attempt
+idempotently. Keep the two JSON files in the drill directory with the exact
+source commit and VM reboot record as acceptance evidence. A prepared fixture
+or a container restart alone does not pass this gate.
 
 ## V2 retirement boundary
 
