@@ -3114,6 +3114,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     else:
                                         product_session = AgentProductSession(
                                             **session_kwargs,
+                                            allowed_tool_names=[],
                                             execute_compaction=unsupported_runtime,
                                             execute_branch_summary=unsupported_runtime,
                                             get_changelog=lambda cwd, args: (cwd, args),
@@ -3525,6 +3526,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     )
                                 )
                             ),
+                            allowed_tool_names=[],
                             execute_compaction=unsupported_runtime,
                             execute_branch_summary=unsupported_runtime,
                             get_changelog=lambda cwd, args: (cwd, args),
