@@ -135,6 +135,7 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
     configure_persistent_approval_policy,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
@@ -331,7 +332,7 @@ def default_runtime_builder(
         registered_parent_tools = tuple(
             definition.name
             for definition in runtime_tool_registry.list_enabled_definitions()
-            if allowed_tool_names is None or definition.name in allowed_tool_names
+            if definition.name in allowed_tool_names
         )
         register_coding_agent_delegate_tool(
             runtime_tool_registry,
@@ -376,7 +377,9 @@ def default_runtime_builder(
         services=services,
         services_factory=services_factory,
         tool_registry=runtime_tool_registry,
-        allowed_tool_names=allowed_tool_names,
+        allowed_tool_names=(
+            ToolSelection.ALL if allowed_tool_names is None else allowed_tool_names
+        ),
         active_tool_names=active_tool_names,
         no_tools=(
             "all"

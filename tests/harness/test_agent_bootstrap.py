@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -9,6 +10,7 @@ import loushang.harness.session.bootstrap_construction as bootstrap_construction
 from loushang.ai.model import ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import ControlConfig
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.package_product.product_runtime import (
@@ -164,7 +166,7 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
         resource_bundle={"resources": []},
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools_mode=None,
     )
@@ -197,6 +199,48 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
 
     assert result == ("session-2", {"resources": []}, None, "base", None)
     assert diagnostics == ["extension-diagnostic"]
+
+
+def test_agent_bootstrap_requires_explicit_unrestricted_tool_selection() -> None:
+    class FakeAgent:
+        session_id: str | None = None
+
+    request = AgentSessionConstructionRequest(
+        session_id="selection-test",
+        base_prompt="base",
+        resolved_prompt="base",
+        thinking_level="off",
+        model=None,
+        convert_to_llm=lambda value: value,
+        steering_mode="one-at-a-time",
+        follow_up_mode="one-at-a-time",
+        thinking_budgets={},
+        max_retry_delay_ms=None,
+        stream_fn=None,
+        resource_bundle={},
+        tools=None,
+        tool_registry=None,
+        allowed_tool_names=None,
+        active_tool_names=["read"],
+        no_tools_mode=None,
+    )
+
+    def construct(selection: AgentSessionConstructionRequest) -> list[str] | None:
+        return AgentSessionConstructionRuntime().construct(
+            selection,
+            agent_factory=lambda **_kwargs: FakeAgent(),
+            register_extension_tools=lambda bundle, registry: (bundle, registry, ()),
+            record_extension_diagnostics=lambda _diagnostics: None,
+            registry_factory=object,
+            register_tool=lambda _registry, _tool: None,
+            session_factory=lambda _agent, _bundle, _registry, active, _prompt, _mode: active,
+        )
+
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        assert construct(request) == []
+    assert construct(replace(request, allowed_tool_names=ToolSelection.ALL)) == [
+        "read"
+    ]
 
 
 def test_agent_product_construction_runtime_composes_existing_owners(
@@ -300,7 +344,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
             thinking_level="off",
             tools=None,
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=[],
             active_tool_names=None,
             no_tools=None,
             stream_fn=None,
@@ -413,7 +457,7 @@ def test_agent_product_construction_binding_compiles_research_policy(
         thinking_level=None,
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools=None,
         stream_fn=None,
@@ -575,7 +619,7 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
             thinking_level=None,
             tools=None,
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=[],
             active_tool_names=None,
             no_tools=None,
             stream_fn=None,
@@ -701,7 +745,7 @@ def test_agent_product_construction_resolves_final_profile_without_rebinding_res
         thinking_level=None,
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools=None,
         stream_fn=None,
@@ -804,7 +848,7 @@ def test_agent_product_construction_disposes_single_candidate_on_failure(
             thinking_level=None,
             tools=None,
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=[],
             active_tool_names=None,
             no_tools=None,
             stream_fn=None,

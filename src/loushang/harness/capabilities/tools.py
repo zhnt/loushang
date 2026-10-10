@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
+from enum import Enum
 from functools import wraps
 from threading import RLock
 from typing import Any, Concatenate, Generic, ParamSpec, TypeVar
+from warnings import warn
 
 from loushang.harness.capabilities.tool_intent import IntentEngineMode
 
@@ -15,6 +17,32 @@ R = TypeVar("R")
 
 ToolNameResolver = Callable[[T], str]
 ToolActivationPredicate = Callable[[str, T], bool]
+
+
+class ToolSelection(Enum):
+    """An explicit request to remove the session's tool-name ceiling."""
+
+    ALL = "all"
+
+
+def normalize_allowed_tool_names(
+    names: Iterable[str] | ToolSelection | None,
+) -> frozenset[str] | ToolSelection:
+    """Resolve a tool ceiling; an absent selection always denies tools."""
+
+    if names is ToolSelection.ALL:
+        return ToolSelection.ALL
+    if names is None:
+        warn(
+            "allowed_tool_names=None denies all tools; pass ToolSelection.ALL "
+            "explicitly for unrestricted selection",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return frozenset()
+    if isinstance(names, ToolSelection):
+        raise ValueError(f"unsupported tool selection: {names}")
+    return frozenset(_unique_names(names))
 
 
 class StaleToolActivationPublicationError(RuntimeError):
@@ -131,18 +159,14 @@ class ToolActivationCoordinator(Generic[T]):
         available: Iterable[T] = (),
         requested_names: Iterable[str] = (),
         name_of: ToolNameResolver[T] | None = None,
-        allowed_names: Iterable[str] | None = None,
+        allowed_names: Iterable[str] | ToolSelection | None = None,
         should_activate_new: ToolActivationPredicate[T] | None = None,
         rebind: ToolRebinder[T] | None = None,
     ) -> None:
         self._lock = RLock()
         self._coordinator_token = object()
         self._name_of = name_of or _default_name
-        self._allowed_names = (
-            frozenset(_unique_names(allowed_names))
-            if allowed_names is not None
-            else None
-        )
+        self._allowed_names = normalize_allowed_tool_names(allowed_names)
         self._should_activate_new = should_activate_new
         self._rebind = rebind
         self._available = self._index_available(available)
@@ -228,12 +252,8 @@ class ToolActivationCoordinator(Generic[T]):
             self._automatic_request_revisions = dict(
                 checkpoint.automatic_request_revisions
             )
-            self._seen_available_revisions = dict(
-                checkpoint.seen_available_revisions
-            )
-            self._explicit_touch_revisions = dict(
-                checkpoint.explicit_touch_revisions
-            )
+            self._seen_available_revisions = dict(checkpoint.seen_available_revisions)
+            self._explicit_touch_revisions = dict(checkpoint.explicit_touch_revisions)
             change = self._finish_transition_locked(
                 previous,
                 previous_available=previous_available,
@@ -266,8 +286,7 @@ class ToolActivationCoordinator(Generic[T]):
                 for name, revision in self._automatic_request_revisions.items()
                 if revision == publication_revision
                 and checkpoint_automatic.get(name) != revision
-                and self._explicit_touch_revisions.get(name, -1)
-                <= publication_revision
+                and self._explicit_touch_revisions.get(name, -1) <= publication_revision
             }
             seen_to_remove = {
                 name
@@ -312,7 +331,7 @@ class ToolActivationCoordinator(Generic[T]):
         )
 
     def is_allowed(self, name: str) -> bool:
-        return self._allowed_names is None or name in self._allowed_names
+        return self._allowed_names is ToolSelection.ALL or name in self._allowed_names
 
     def filter_names(self, names: Iterable[str]) -> tuple[str, ...]:
         return tuple(name for name in _unique_names(names) if self.is_allowed(name))
