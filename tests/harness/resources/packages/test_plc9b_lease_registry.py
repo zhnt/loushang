@@ -150,6 +150,11 @@ def test_registry_reports_all_live_leases_and_refuses_old_protocol(
         }
         with pytest.raises(PackageEpochRuntimeLeaseRegistryError, match="live"):
             registry.repair_orphan(first.lease.lease_id)
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as other_active:
+            registry.repair_orphan(
+                first.lease.lease_id, require_exclusive_active=True
+            )
+        assert other_active.value.code == "package_epoch_lease_other_runtime_active"
     finally:
         first.release()
         second.release()
@@ -490,7 +495,7 @@ os._exit(0)
         assert not lock_path.exists()
     finally:
         moved_lock.rename(lock_path)
-    registry.repair_orphan(lease_id)
+    registry.repair_orphan(lease_id, require_exclusive_active=True)
     repaired = registry.repaired_orphan_for_runtime(
         store_id=registry.store_id, runtime_id="runtime:crashed"
     )

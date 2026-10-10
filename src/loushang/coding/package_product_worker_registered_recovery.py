@@ -251,7 +251,9 @@ def repair_coding_product_worker_registered_orphan(
         raise CodingWorkerRegisteredRecoveryError(
             "coding_worker_registered_orphan_unproven"
         )
-    product.epoch_runtime.registry.repair_orphan(current.orphan_lease.lease_id)
+    product.epoch_runtime.registry.repair_orphan(
+        current.orphan_lease.lease_id, require_exclusive_active=True
+    )
     return current.orphan_lease
 
 

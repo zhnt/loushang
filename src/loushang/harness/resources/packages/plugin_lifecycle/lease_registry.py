@@ -311,13 +311,22 @@ class PackageEpochRuntimeLeaseRegistry:
                 active_runtime_lease_ids=tuple(sorted(active)),
             )
 
-    def repair_orphan(self, lease_id: str) -> None:
+    def repair_orphan(
+        self, lease_id: str, *, require_exclusive_active: bool = False
+    ) -> None:
+        if type(require_exclusive_active) is not bool:
+            raise TypeError("Package orphan exclusivity must be explicit")
         with self._coordination("exclusive"):
             records, active = self._load_unlocked()
             lease = active.get(lease_id)
             if lease is None:
                 raise self._error(
                     "Package runtime lease is not active", "package_epoch_lease_absent"
+                )
+            if require_exclusive_active and set(active) != {lease_id}:
+                raise self._error(
+                    "Other Package runtimes remain active",
+                    "package_epoch_lease_other_runtime_active",
                 )
             try:
                 with self._io.bind(self._lease_lock_path(lease_id)) as rooted:
