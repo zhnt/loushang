@@ -442,6 +442,7 @@ async def query_coding_product_worker(
                     copy_to_clipboard=lambda text: text,
                     retry_sleep=_no_model_execution,
                     footer_data_provider=_QueryOnlyFooter(),
+                    allowed_tool_names=[],
                     capability_composition_inputs=inputs,
                 )
                 await session.prepare_model_call_runtime()
