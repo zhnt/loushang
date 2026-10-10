@@ -55,7 +55,6 @@ from .package_product_worker_opt_in import (
 )
 from .package_product_worker_opt_in_owner import CodingWorkerProductOptInOwner
 from .package_product_worker_payload import (
-    _stage_exists,
     open_coding_product_worker_supervisor_journal,
 )
 from .package_product_worker_receipt import (
@@ -243,7 +242,6 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_references_verified: bool
     payload_stage_names: tuple[str, ...]
     retained_payload_repair_reference_names: tuple[str, ...]
-    verified_registered_payload_repair_names: tuple[str, ...]
     unrecognized_worker_state_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
@@ -348,9 +346,7 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("global_receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
-        if set(self.retained_payload_repair_reference_names) - set(
-            self.verified_registered_payload_repair_names
-        ):
+        if self.retained_payload_repair_reference_names:
             missing.append("payload_repair_reference_retained")
         if self.unrecognized_worker_state_names:
             missing.append("worker_reference_owner_unrecognized")
@@ -621,13 +617,6 @@ def _review_coding_product_worker_history_under_guard(
         )
     )
     with product.pinned_state_root_gc_read() as root_fd:
-        from .package_product_worker_registered_payload_repair import (
-            _read_intent as _read_registered_repair_intent,
-        )
-        from .package_product_worker_registered_payload_repair import (
-            registered_payload_repair_matches_no_effect_closure,
-        )
-
         state_names = tuple(os.listdir(root_fd))
         payloads = tuple(
             sorted(
@@ -652,29 +641,6 @@ def _review_coding_product_worker_history_under_guard(
                 and not _known_worker_state_name(name)
             )
         )
-        verified_registered_repairs: list[str] = []
-        for name in repair_references:
-            match = _PAYLOAD_REPAIR.fullmatch(name)
-            if match is None or match.group("kind") != "registered":
-                continue
-            repaired_attempt = match.group("attempt")
-            repaired_gate = gate_by_id.get(repaired_attempt)
-            registered = _read_registered_repair_intent(root_fd, repaired_attempt)
-            if (
-                registered is not None
-                and repaired_gate is not None
-                and not _stage_exists(root_fd, repaired_attempt)
-                and registered_payload_repair_matches_no_effect_closure(
-                    registered,
-                    gate=repaired_gate,
-                    receipt=receipt_by_fingerprint.get(
-                        repaired_gate.receipt_fingerprint
-                    ),
-                    activation=activation_by_id.get(repaired_attempt),
-                    supervisor=supervisor_by_id.get(repaired_attempt),
-                )
-            ):
-                verified_registered_repairs.append(name)
     product.assert_root_gc_authority_current()
     attempt_reference = _attempt_reference(gate, receipt)
     history_stream_snapshots = capture_coding_worker_history_streams_under_gc_guard(
@@ -773,7 +739,6 @@ def _review_coding_product_worker_history_under_guard(
         receipt_references_verified=receipt_references_verified,
         payload_stage_names=payloads,
         retained_payload_repair_reference_names=repair_references,
-        verified_registered_payload_repair_names=tuple(verified_registered_repairs),
         unrecognized_worker_state_names=unrecognized_worker_state,
         active_runtime_lease_ids=active_runtime_lease_ids,
         active_gc_reservation_count=len(gc_reservations),

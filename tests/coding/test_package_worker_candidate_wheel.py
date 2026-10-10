@@ -6870,10 +6870,12 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             product, attempt_id=gate.attempt_id
         )
         assert retention.no_effect_closure
-        assert retention.missing_proofs == ()
-        assert publish_coding_product_worker_history_checkpoint(
-            product, attempt_id=gate.attempt_id
-        )
+        assert "payload_repair_reference_retained" in retention.missing_proofs
+        with pytest.raises(CodingWorkerHistoryCheckpointError) as pending_v2:
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=gate.attempt_id
+            )
+        assert pending_v2.value.code == "coding_worker_checkpoint_closure_unproven"
         gc.prepare()
     finally:
         reopened.close()

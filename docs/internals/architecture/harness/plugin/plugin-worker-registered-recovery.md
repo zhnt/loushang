@@ -78,11 +78,14 @@ not completion of that drill.
 ## V2 retirement boundary
 
 The registered no-effect attempt has an `intent` gate and no Supervisor
-record. The current V2 cutover uses every checkpointed attempt ID as a
-Supervisor retirement ID. A V2 preparation therefore refuses this legitimate
-shape, even after a later bound attempt has populated the Supervisor stream.
-With no bound attempt, the V2 seal also refuses the empty Supervisor stream.
-Neither refusal may be bypassed by creating a synthetic Supervisor claim.
+record. The checkpoint remains closed while its registered repair reference
+exists. A guarded local exploration showed two further V2 format gaps: the
+current cutover uses every checkpointed attempt ID as a Supervisor retirement
+ID, so preparation would reject this legitimate shape even after a later
+bound attempt populates the Supervisor stream; with no bound attempt, sealing
+also rejects the empty Supervisor stream. Neither refusal may be bypassed by
+creating a synthetic Supervisor claim. Keep the checkpoint refusal until the
+typed V2 bases preserve all no-effect references after V1 deletion.
 
 V2 needs a cross-stream no-effect set proved by the retained C5 settlement,
 intent gate, receipt, and absent Supervisor claim. It must retain those proofs
