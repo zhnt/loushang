@@ -405,8 +405,18 @@ class CodingWorkerOptInJournal:
                     raise CodingWorkerOptInJournalError(
                         "coding_worker_opt_in_v2_base_changed"
                     )
+                archive = prepared.no_effect_archive
+                references = {
+                    item.decision_digest: item
+                    for item in (*base.latest_decisions, *events)
+                }
+                if archive is not None:
+                    references.update(
+                        (item.historical_allow.decision_digest, item.historical_allow)
+                        for item in archive.proofs
+                    )
                 return CodingWorkerOptInRetentionProjectionV1(
-                    reference_decisions=(*base.latest_decisions, *events),
+                    reference_decisions=tuple(references.values()),
                     latest_decisions=replay.latest_decisions,
                     operation_ids=tuple(sorted(replay.operation_ids)),
                     revision=replay.last_revision,

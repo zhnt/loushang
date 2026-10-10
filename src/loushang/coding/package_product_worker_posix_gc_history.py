@@ -42,8 +42,12 @@ from .package_product_worker_history_stream_snapshot import (
 )
 from .package_product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
+    NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
+)
+from .package_product_worker_no_effect_archive_v2 import (
+    CodingWorkerNoEffectArchiveV2,
 )
 from .package_product_worker_no_effect_closure import (
     is_coding_worker_no_effect_closure,
@@ -78,7 +82,9 @@ _HISTORY_STEMS = (
 )
 
 
-def _require_committed_v2_history(*, state_root: Path, root_fd: int) -> None:
+def _require_committed_v2_history(
+    *, state_root: Path, root_fd: int
+) -> CodingWorkerNoEffectArchiveV2 | None:
     """Prove the committed Product owner and all five retained streams."""
 
     file_io = RootedFileIO(state_root, root_fd)
@@ -88,6 +94,14 @@ def _require_committed_v2_history(*, state_root: Path, root_fd: int) -> None:
         ) as rooted:
             for stem in CODING_WORKER_HISTORY_STREAM_STEMS:
                 read_coding_worker_v2_retained_history(rooted, stem=stem)
+            from .package_product_worker_history_stage_v2 import (
+                read_coding_worker_v2_preparation,
+            )
+
+            prepared = read_coding_worker_v2_preparation(rooted)
+            if prepared is None:
+                raise ValueError("Linux Worker GC V2 preparation is absent")
+            return prepared.no_effect_archive
     finally:
         file_io.cleanup()
 
@@ -137,12 +151,18 @@ class CodingPosixWorkerGcHistoryAuthority:
                 ):
                     raise ValueError("Linux Worker GC history name is invalid")
 
+            archive = None
             if PRODUCT_OWNER_INDEX_NAME in observed_names:
-                _require_committed_v2_history(
+                archive = _require_committed_v2_history(
                     state_root=product.state_root, root_fd=root_fd
                 )
             elif any(
-                name in (*PREPARATION_STATE_NAMES, DELETION_LEDGER_NAME)
+                name
+                in (
+                    *PREPARATION_STATE_NAMES,
+                    NO_EFFECT_ARCHIVE_NAME,
+                    DELETION_LEDGER_NAME,
+                )
                 for name in observed_names
             ):
                 raise ValueError("Linux Worker GC V2 preparation remains open")
@@ -206,6 +226,11 @@ class CodingPosixWorkerGcHistoryAuthority:
             activation_by_id = {
                 item.attempt_id: item for item in retained_activation_attempts
             }
+            archived_proofs = (
+                {}
+                if archive is None
+                else {item.attempt_id: item for item in archive.proofs}
+            )
             for name in observed_names:
                 repair = _PAYLOAD_REPAIR.fullmatch(name)
                 if repair is None:
@@ -228,6 +253,7 @@ class CodingPosixWorkerGcHistoryAuthority:
                 elif kind == "registered":
                     registered = _read_registered_repair_intent(root_fd, attempt_id)
                     gate = gate_by_id.get(attempt_id)
+                    archived = archived_proofs.get(attempt_id)
                     valid = bool(
                         registered is not None
                         and gate is not None
@@ -239,6 +265,13 @@ class CodingPosixWorkerGcHistoryAuthority:
                             ),
                             activation=activation_by_id.get(attempt_id),
                             supervisor=record,
+                        )
+                        and (
+                            archived is None
+                            or sha256(
+                                canonical_json_bytes(registered.to_dict()) + b"\n"
+                            ).hexdigest()
+                            == archived.repair_intent_digest
                         )
                     )
                 else:

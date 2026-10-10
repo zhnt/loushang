@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal, cast
 
 from loushang.harness.journal._rooted_io import RootedFileIO
@@ -20,6 +21,9 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.worker.gated_start import (
     worker_native_group_status_after_restart,
 )
@@ -44,8 +48,12 @@ from .package_product_worker_history_stream_snapshot import (
 )
 from .package_product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
+    NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
+)
+from .package_product_worker_no_effect_archive_v2 import (
+    read_bound_coding_worker_no_effect_archive_v2,
 )
 from .package_product_worker_no_effect_closure import (
     is_coding_worker_no_effect_closure,
@@ -90,6 +98,7 @@ _REGISTERED_REPAIR_STAGING = re.compile(
 def _known_worker_state_name(name: str) -> bool:
     if name in (
         *PREPARATION_STATE_NAMES,
+        NO_EFFECT_ARCHIVE_NAME,
         PRODUCT_OWNER_INDEX_NAME,
         DELETION_LEDGER_NAME,
     ) or name in {
@@ -243,6 +252,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_references_verified: bool
     payload_stage_names: tuple[str, ...]
     retained_payload_repair_reference_names: tuple[str, ...]
+    registered_repair_reference_verified: bool
     unrecognized_worker_state_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
@@ -347,7 +357,10 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("global_receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
-        if self.retained_payload_repair_reference_names:
+        if (
+            self.retained_payload_repair_reference_names
+            and not self.registered_repair_reference_verified
+        ):
             missing.append("payload_repair_reference_retained")
         if self.unrecognized_worker_state_names:
             missing.append("worker_reference_owner_unrecognized")
@@ -413,6 +426,19 @@ def _review_coding_product_worker_history_under_guard(
     product.assert_root_gc_authority_current()
     with product.pinned_state_root_gc_read() as root_fd:
         v2_owner_present = PRODUCT_OWNER_INDEX_NAME in os.listdir(root_fd)
+        archive = None
+        if v2_owner_present:
+            file_io = RootedFileIO(product.state_root, root_fd)
+            try:
+                with file_io.bind(
+                    product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+                ) as rooted:
+                    archive = read_bound_coding_worker_no_effect_archive_v2(rooted)
+            finally:
+                file_io.cleanup()
+    archived_proofs = (
+        {} if archive is None else {item.attempt_id: item for item in archive.proofs}
+    )
     gated = _review_offline(product, attempt_id=attempt_id)
     gate = gated.gate_record
     receipts = read_coding_product_worker_receipt_records(product, retained_only=True)
@@ -618,6 +644,13 @@ def _review_coding_product_worker_history_under_guard(
         )
     )
     with product.pinned_state_root_gc_read() as root_fd:
+        from .package_product_worker_registered_payload_repair import (
+            _read_intent as _read_registered_repair_intent,
+        )
+        from .package_product_worker_registered_payload_repair import (
+            registered_payload_repair_matches_no_effect_closure,
+        )
+
         state_names = tuple(os.listdir(root_fd))
         payloads = tuple(
             sorted(
@@ -634,6 +667,37 @@ def _review_coding_product_worker_history_under_guard(
                 if _PAYLOAD_REPAIR.fullmatch(name) is not None
             )
         )
+        receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+        registered_repair_reference_verified = bool(repair_references)
+        for name in repair_references:
+            match = _PAYLOAD_REPAIR.fullmatch(name)
+            if match is None or match.group("kind") != "registered":
+                registered_repair_reference_verified = False
+                break
+            repair_attempt_id = match.group("attempt")
+            repair_gate = gate_by_id.get(repair_attempt_id)
+            repair_intent = _read_registered_repair_intent(root_fd, repair_attempt_id)
+            archived = archived_proofs.get(repair_attempt_id)
+            if (
+                repair_gate is None
+                or repair_intent is None
+                or not registered_payload_repair_matches_no_effect_closure(
+                    repair_intent,
+                    gate=repair_gate,
+                    receipt=receipt_by_fingerprint.get(repair_gate.receipt_fingerprint),
+                    activation=activation_by_id.get(repair_attempt_id),
+                    supervisor=supervisor_by_id.get(repair_attempt_id),
+                )
+                or (
+                    archived is not None
+                    and sha256(
+                        canonical_json_bytes(repair_intent.to_dict()) + b"\n"
+                    ).hexdigest()
+                    != archived.repair_intent_digest
+                )
+            ):
+                registered_repair_reference_verified = False
+                break
         unrecognized_worker_state = tuple(
             sorted(
                 name
@@ -758,6 +822,7 @@ def _review_coding_product_worker_history_under_guard(
         receipt_references_verified=receipt_references_verified,
         payload_stage_names=payloads,
         retained_payload_repair_reference_names=repair_references,
+        registered_repair_reference_verified=registered_repair_reference_verified,
         unrecognized_worker_state_names=unrecognized_worker_state,
         active_runtime_lease_ids=active_runtime_lease_ids,
         active_gc_reservation_count=len(gc_reservations),

@@ -36,6 +36,9 @@ from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
     CodingWorkerHistoryStreamSnapshotV1,
 )
+from .package_product_worker_no_effect_archive_v2 import (
+    CodingWorkerNoEffectArchiveV2,
+)
 from .package_product_worker_opt_in_base_v2 import (
     CodingWorkerOptInSemanticBaseV2,
 )
@@ -83,9 +86,17 @@ class CodingWorkerStreamCutoverV2:
             or type(self.source_fingerprint) is not str
             or _DIGEST.fullmatch(self.source_fingerprint) is None
             or type(self.first_retained_generation) is not int
-            or self.first_retained_generation < 1
+            or self.first_retained_generation < 0
             or type(self.first_retained_revision) is not int
-            or self.first_retained_revision < 2
+            or self.first_retained_revision
+            < (1 if self.first_retained_generation == 0 else 2)
+            or (
+                self.first_retained_generation == 0
+                and (
+                    self.stem != "worker-supervisor"
+                    or self.first_retained_revision != 1
+                )
+            )
             or type(self.active_generation) is not int
             or not self.first_retained_generation
             <= self.active_generation
@@ -119,7 +130,9 @@ class CodingWorkerStreamCutoverV2:
                 raise ValueError("Coding Worker V2 segment chain is invalid")
             expected_revision = seal.last_revision + 1
         if (
-            self.retired_sealed[-1].last_revision + 1 != self.first_retained_revision
+            (0 if not self.retired_sealed else self.retired_sealed[-1].last_revision)
+            + 1
+            != self.first_retained_revision
             or self.total_revision < expected_revision - 1
             or (self.active_byte_count == 0)
             != (self.total_revision == expected_revision - 1)
@@ -487,6 +500,7 @@ class CodingWorkerStreamCutoverV2:
         preview: CodingWorkerStreamRetirementPreviewV2,
         history: CodingWorkerSegmentedHistoryV1,
         semantic_base: CodingWorkerSupervisorSemanticBaseV2,
+        no_effect_attempt_ids: tuple[str, ...] = (),
     ) -> CodingWorkerStreamCutoverV2:
         """Bind per-key epoch/retry state to the complete checkpoint chain."""
 
@@ -499,6 +513,9 @@ class CodingWorkerStreamCutoverV2:
             )
             or type(preview) is not CodingWorkerStreamRetirementPreviewV2
             or type(semantic_base) is not CodingWorkerSupervisorSemanticBaseV2
+            or type(no_effect_attempt_ids) is not tuple
+            or any(type(item) is not str for item in no_effect_attempt_ids)
+            or no_effect_attempt_ids != tuple(sorted(set(no_effect_attempt_ids)))
         ):
             raise ValueError("Coding Worker V2 Supervisor semantic base differs")
         checkpoint = checkpoints[-1]
@@ -511,7 +528,7 @@ class CodingWorkerStreamCutoverV2:
             for ordinal, item in enumerate(checkpoints, 1)
         ):
             raise ValueError("Coding Worker V2 Supervisor checkpoint chain differs")
-        retired_ids = tuple(
+        checkpoint_ids = tuple(
             sorted(
                 {
                     attempt_id
@@ -520,8 +537,13 @@ class CodingWorkerStreamCutoverV2:
                 }
             )
         )
-        if len(retired_ids) != sum(
-            len(item.new_attempt_ids) for item in checkpoints
+        retired_ids = tuple(
+            item for item in checkpoint_ids if item not in no_effect_attempt_ids
+        )
+        if (
+            not set(no_effect_attempt_ids) <= set(checkpoint_ids)
+            or len(checkpoint_ids)
+            != sum(len(item.new_attempt_ids) for item in checkpoints)
         ) or (
             preview.stem != "worker-supervisor"
             or preview.checkpoint_revision != checkpoint.journal_revision
@@ -569,6 +591,7 @@ class CodingWorkerProductCutoverIndexV2:
     checkpoint_digest: str
     stream_digests: tuple[tuple[str, str], ...]
     record_digest: str
+    no_effect_archive_digest: str | None = None
     version: int = 2
 
     def __post_init__(self) -> None:
@@ -590,6 +613,13 @@ class CodingWorkerProductCutoverIndexV2:
                 type(digest) is not str or _DIGEST.fullmatch(digest) is None
                 for _stem, digest in self.stream_digests
             )
+            or (
+                self.no_effect_archive_digest is not None
+                and (
+                    type(self.no_effect_archive_digest) is not str
+                    or _DIGEST.fullmatch(self.no_effect_archive_digest) is None
+                )
+            )
             or type(self.version) is not int
             or self.version != 2
             or type(self.record_digest) is not str
@@ -599,7 +629,7 @@ class CodingWorkerProductCutoverIndexV2:
             raise ValueError("Coding Worker V2 Product cutover index is invalid")
 
     def _unsigned_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "checkpointDigest": self.checkpoint_digest,
             "checkpointRevision": self.checkpoint_revision,
             "scopeId": self.scope_id,
@@ -607,6 +637,9 @@ class CodingWorkerProductCutoverIndexV2:
             "streamDigests": [list(item) for item in self.stream_digests],
             "version": self.version,
         }
+        if self.no_effect_archive_digest is not None:
+            result["noEffectArchiveDigest"] = self.no_effect_archive_digest
+        return result
 
     def to_bytes(self) -> bytes:
         return canonical_json_bytes(
@@ -622,15 +655,27 @@ class CodingWorkerProductCutoverIndexV2:
             if (
                 type(value) is not dict
                 or set(value)
-                != {
-                    "checkpointDigest",
-                    "checkpointRevision",
-                    "recordDigest",
-                    "scopeId",
-                    "storeId",
-                    "streamDigests",
-                    "version",
-                }
+                not in (
+                    {
+                        "checkpointDigest",
+                        "checkpointRevision",
+                        "recordDigest",
+                        "scopeId",
+                        "storeId",
+                        "streamDigests",
+                        "version",
+                    },
+                    {
+                        "checkpointDigest",
+                        "checkpointRevision",
+                        "noEffectArchiveDigest",
+                        "recordDigest",
+                        "scopeId",
+                        "storeId",
+                        "streamDigests",
+                        "version",
+                    },
+                )
                 or type(value["streamDigests"]) is not list
             ):
                 raise ValueError(
@@ -646,6 +691,7 @@ class CodingWorkerProductCutoverIndexV2:
                     for item in value["streamDigests"]
                 ),
                 record_digest=value["recordDigest"],
+                no_effect_archive_digest=value.get("noEffectArchiveDigest"),
                 version=value["version"],
             )
             if record.to_bytes() != raw:
@@ -665,6 +711,7 @@ class CodingWorkerProductCutoverIndexV2:
         checkpoint: CodingWorkerHistoryCheckpointV1,
         anchor: CodingWorkerCheckpointAnchorV1,
         streams: tuple[CodingWorkerStreamCutoverV2, ...],
+        no_effect_archive: CodingWorkerNoEffectArchiveV2 | None = None,
     ) -> CodingWorkerProductCutoverIndexV2:
         """Bind five prepared stream records to one committed checkpoint tip."""
 
@@ -676,6 +723,16 @@ class CodingWorkerProductCutoverIndexV2:
             != (CodingWorkerStreamCutoverV2,) * len(CODING_WORKER_HISTORY_STREAM_STEMS)
             or tuple(item.stem for item in streams)
             != CODING_WORKER_HISTORY_STREAM_STEMS
+            or (
+                no_effect_archive is not None
+                and (
+                    type(no_effect_archive) is not CodingWorkerNoEffectArchiveV2
+                    or not no_effect_archive.proofs
+                    or no_effect_archive.scope_id != checkpoint.scope_id
+                    or no_effect_archive.store_id != checkpoint.store_id
+                    or no_effect_archive.checkpoint_digest != checkpoint.record_digest
+                )
+            )
             or checkpoint.scope_id != anchor.scope_id
             or checkpoint.store_id != anchor.store_id
             or checkpoint.journal_revision != anchor.latest_revision
@@ -700,6 +757,13 @@ class CodingWorkerProductCutoverIndexV2:
             ],
             "version": 2,
         }
+        archive_digest = (
+            None
+            if no_effect_archive is None
+            else sha256(no_effect_archive.to_bytes()).hexdigest()
+        )
+        if archive_digest is not None:
+            unsigned["noEffectArchiveDigest"] = archive_digest
         return cls(
             scope_id=checkpoint.scope_id,
             store_id=checkpoint.store_id,
@@ -709,6 +773,7 @@ class CodingWorkerProductCutoverIndexV2:
                 (item.stem, sha256(item.to_bytes()).hexdigest()) for item in streams
             ),
             record_digest=sha256(canonical_json_bytes(unsigned)).hexdigest(),
+            no_effect_archive_digest=archive_digest,
         )
 
 

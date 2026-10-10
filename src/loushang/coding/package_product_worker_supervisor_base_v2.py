@@ -103,7 +103,7 @@ class CodingWorkerSupervisorSemanticBaseV2:
             or not self.scope_id
             or len(self.scope_id) > 128
             or type(self.first_retained_generation) is not int
-            or self.first_retained_generation < 1
+            or self.first_retained_generation < 0
             or type(self.cutoff_revision) is not int
             or self.cutoff_revision < self.first_retained_generation
             or type(self.retired_sealed_digest) is not str
@@ -136,6 +136,17 @@ class CodingWorkerSupervisorSemanticBaseV2:
             )
             or type(self.version) is not int
             or self.version != 2
+            or (
+                self.first_retained_generation == 0
+                and (
+                    self.cutoff_revision != 0
+                    or self.current_attempts
+                    or self.key_states
+                    or self.retired_attempt_ids
+                    or self.retired_sealed_digest
+                    != sha256(canonical_json_bytes([])).hexdigest()
+                )
+            )
         ):
             raise ValueError("Coding Worker Supervisor V2 semantic base is invalid")
         current = {item.attempt_id: item for item in self.current_attempts}
@@ -241,7 +252,11 @@ class CodingWorkerSupervisorSemanticBaseV2:
             manifest is None
             or manifest.stream_id != "worker-supervisor"
             or type(first_retained_generation) is not int
-            or not 1 <= first_retained_generation <= manifest.active_generation
+            or not 0 <= first_retained_generation <= manifest.active_generation
+            or (
+                first_retained_generation == 0
+                and (manifest.active_generation != 0 or history.active_raw)
+            )
             or len(history.segments) != manifest.active_generation + 1
             or type(retired_attempt_ids) is not tuple
             or any(
@@ -286,7 +301,7 @@ class CodingWorkerSupervisorSemanticBaseV2:
         return cls(
             scope_id=scope_id,
             first_retained_generation=first_retained_generation,
-            cutoff_revision=retired[-1].last_revision,
+            cutoff_revision=0 if not retired else retired[-1].last_revision,
             retired_sealed_digest=sha256(
                 canonical_json_bytes([item.to_dict() for item in retired])
             ).hexdigest(),

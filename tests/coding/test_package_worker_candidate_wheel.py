@@ -398,6 +398,7 @@ from loushang.harness.worker.facet_proxy import (
     CapabilityWorkerReadOnlyFacetProxy,
 )
 from loushang.harness.worker.gated_start import (
+    WorkerNativeProcessIdentityV1,
     bind_worker_gated_start_release,
     worker_native_group_absent_after_restart,
     worker_native_group_status_after_restart,
@@ -6745,7 +6746,9 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         assert same_boot.activation_attempt.phase == "registered"
         assert same_boot.payload_plan is not None
         assert same_boot.orphan_lease is not None
-        with pytest.raises(ValueError, match="coding_worker_registered_c5_recovery_incomplete"):
+        with pytest.raises(
+            ValueError, match="coding_worker_registered_c5_recovery_incomplete"
+        ):
             execute_native_cli(
                 product,
                 Namespace(
@@ -6753,9 +6756,12 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
                     attempt_id=gate.attempt_id,
                 ),
             )
-        assert review_coding_product_worker_registered_orphan(
-            product, attempt_id=gate.attempt_id
-        ) == same_boot
+        assert (
+            review_coding_product_worker_registered_orphan(
+                product, attempt_id=gate.attempt_id
+            )
+            == same_boot
+        )
 
         original_read = service_group_module._read_file
 
@@ -6765,6 +6771,82 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             if path == "/proc/sys/kernel/random/boot_id":
                 return b"00000000-0000-0000-0000-000000000000\n"
             return original_read(path, parent=parent, limit=limit)
+
+        gate_files = {
+            path: path.read_bytes()
+            for path in product.state_root.glob("worker-start-gates*")
+            if path.is_file()
+        }
+        try:
+            CodingWorkerStartGateJournal(product).append(
+                phase="bound",
+                attempt_id=gate.attempt_id,
+                worker_identity_fingerprint=gate.worker_identity_fingerprint,
+                receipt_fingerprint=gate.receipt_fingerprint,
+                policy_fingerprint=gate.policy_fingerprint,
+                scope_id=gate.scope_id,
+                native_closure_digest=gate.native_closure_digest,
+                identity=WorkerNativeProcessIdentityV1(
+                    pid=999999,
+                    start_ticks=1,
+                    boot_id="00000000-0000-0000-0000-000000000001",
+                    user_id=os.geteuid(),
+                    pid_namespace_device=1,
+                    pid_namespace_inode=2,
+                ),
+            )
+            with patch.object(service_group_module, "_read_file", changed_boot_read):
+                bound = review_coding_product_worker_registered_orphan(
+                    product, attempt_id=gate.attempt_id
+                )
+                assert not bound.repair_candidate
+                with pytest.raises(ValueError, match="coding_worker_registered_orphan_unproven"):
+                    repair_coding_product_worker_registered_orphan(
+                        product, expected_review=bound
+                    )
+        finally:
+            for path, raw in gate_files.items():
+                path.write_bytes(raw)
+
+        supervisor_files = {
+            path: path.read_bytes()
+            for path in product.state_root.glob("worker-supervisor*")
+            if path.is_file()
+        }
+        try:
+            open_coding_product_worker_supervisor_journal(product).claim(
+                WorkerLaunchIdentityV1(
+                    plugin_id=same_boot.receipt_record.receipt.policy.plugin_id,
+                    plugin_revision_digest="a" * 64,
+                    contribution_id="query-provider",
+                    owner_id="coding",
+                    product_id="coding",
+                    scope_id=gate.scope_id,
+                    owner_generation=same_boot.activation_attempt.owner_generation,
+                    declaration_fingerprint="b" * 64,
+                    worker_configuration_fingerprint="c" * 64,
+                    attempt_id=gate.attempt_id,
+                    supervisor_epoch=1,
+                    session_nonce="d" * 64,
+                ),
+                max_attempts=1,
+            )
+            with patch.object(service_group_module, "_read_file", changed_boot_read):
+                claimed = review_coding_product_worker_registered_orphan(
+                    product, attempt_id=gate.attempt_id
+                )
+                assert claimed.supervisor_attempt is not None
+                assert not claimed.repair_candidate
+                with pytest.raises(ValueError, match="coding_worker_registered_orphan_unproven"):
+                    repair_coding_product_worker_registered_orphan(
+                        product, expected_review=claimed
+                    )
+        finally:
+            for path in product.state_root.glob("worker-supervisor*"):
+                if path.is_file() and path not in supervisor_files:
+                    path.unlink()
+            for path, raw in supervisor_files.items():
+                path.write_bytes(raw)
 
         for name, marker, expected_error in (
             (
@@ -6785,7 +6867,9 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             changed[position] = ord("1") if changed[position] == ord("0") else ord("0")
             try:
                 path.write_bytes(changed)
-                with patch.object(service_group_module, "_read_file", changed_boot_read):
+                with patch.object(
+                    service_group_module, "_read_file", changed_boot_read
+                ):
                     with pytest.raises(expected_error):
                         review_coding_product_worker_registered_orphan(
                             product, attempt_id=gate.attempt_id
@@ -6841,8 +6925,7 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
                         product, expected_review=after_repair
                     )
             assert not (
-                product.state_root
-                / f"worker-registered-repair-{gate.attempt_id}.json"
+                product.state_root / f"worker-registered-repair-{gate.attempt_id}.json"
             ).exists()
         finally:
             payload_file.chmod(0o700)
@@ -6853,7 +6936,11 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             _root_fd: int, _stage_fd: int, _stage_name: str, plan: object
         ) -> None:
             assert isinstance(plan, CodingWorkerPayloadDebtPlanV1)
-            (product.state_root / f"worker-payload-{gate.attempt_id}" / plan.entrypoint).unlink()
+            (
+                product.state_root
+                / f"worker-payload-{gate.attempt_id}"
+                / plan.entrypoint
+            ).unlink()
             raise OSError("injected registered payload cleanup crash")
 
         with patch.object(service_group_module, "_read_file", changed_boot_read):
@@ -6875,9 +6962,12 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             )
         assert intent.plan == review.payload_plan
         assert intent.lease_id == review.orphan_lease.lease_id
-        assert read_coding_product_worker_registered_payload_repair_intent(
-            product, attempt_id=gate.attempt_id
-        ) == intent
+        assert (
+            read_coding_product_worker_registered_payload_repair_intent(
+                product, attempt_id=gate.attempt_id
+            )
+            == intent
+        )
         assert not (product.state_root / f"worker-payload-{gate.attempt_id}").exists()
         gc = open_posix_local_wheel_product_root_gc(
             product,
@@ -6928,21 +7018,182 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             product, attempt_id=gate.attempt_id
         )
         assert retention.no_effect_closure
-        assert "payload_repair_reference_retained" in retention.missing_proofs
-        with pytest.raises(CodingWorkerHistoryCheckpointError) as pending_v2:
-            publish_coding_product_worker_history_checkpoint(
+        assert retention.missing_proofs == ()
+        publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=gate.attempt_id
+        )
+        cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+        publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=gate.attempt_id
+        )
+        stage_coding_product_worker_v2_preparation(
+            product, first_retained_generations=cutoffs
+        )
+        commit_coding_product_worker_v2_owner(
+            product, first_retained_generations=cutoffs
+        )
+        assert retire_coding_product_worker_v2_history(product)
+        assert not (product.state_root / "worker-start-gates.g00000000.jsonl").exists()
+        archive_path = product.state_root / "worker-history-v2-no-effect-archive.json"
+        archive_bytes = archive_path.read_bytes()
+        marker = b'"repairIntentDigest":"'
+        changed_archive = bytearray(archive_bytes)
+        position = archive_bytes.index(marker) + len(marker)
+        changed_archive[position] = (
+            ord("1") if changed_archive[position] == ord("0") else ord("0")
+        )
+        try:
+            archive_path.write_bytes(changed_archive)
+            with pytest.raises(PackageProductGcExecutionError) as changed_gc:
+                gc.prepare()
+            assert changed_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            archive_path.write_bytes(archive_bytes)
+        absent_archive = tmp_path / "detached-no-effect-archive.json"
+        try:
+            archive_path.rename(absent_archive)
+            with pytest.raises(PackageProductGcExecutionError) as missing_gc:
+                gc.prepare()
+            assert missing_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            absent_archive.rename(archive_path)
+        supervisor_path = product.state_root / "worker-supervisor.jsonl"
+        assert supervisor_path.read_bytes() == b""
+        try:
+            supervisor_path.write_bytes(b"forged-supervisor-claim\n")
+            with pytest.raises(PackageProductGcExecutionError) as changed_gc:
+                gc.prepare()
+            assert changed_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            supervisor_path.write_bytes(b"")
+        repair_path = (
+            product.state_root / f"worker-registered-repair-{gate.attempt_id}.json"
+        )
+        repair_bytes = repair_path.read_bytes()
+        changed_repair = bytearray(repair_bytes)
+        marker = b'"leaseId":"'
+        position = repair_bytes.index(marker) + len(marker)
+        changed_repair[position] = (
+            ord("1") if changed_repair[position] == ord("0") else ord("0")
+        )
+        try:
+            repair_path.write_bytes(changed_repair)
+            changed_review = review_coding_product_worker_history_retention(
                 product, attempt_id=gate.attempt_id
             )
-        assert pending_v2.value.code == "coding_worker_checkpoint_closure_unproven"
+            assert "payload_repair_reference_retained" in changed_review.missing_proofs
+            with pytest.raises(PackageProductGcExecutionError) as changed_gc:
+                gc.prepare()
+            assert changed_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        finally:
+            repair_path.write_bytes(repair_bytes)
         gc.prepare()
     finally:
         reopened.close()
+    final = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = final.runtime_owner.product_owner
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            assert (
+                execute_native_cli(
+                    product,
+                    Namespace(
+                        action="recover-registered-no-effect",
+                        attempt_id=gate.attempt_id,
+                    ),
+                )["registeredNoEffectRecovery"]["noEffect"]
+                is True
+            )
+        opt_in_owner = CodingWorkerProductOptInOwner(product)
+        revoked = opt_in_owner.current(_PLUGIN)
+        assert revoked is not None
+        opt_in_owner.allow(
+            plugin_id=_PLUGIN,
+            operation_id="registered-no-effect-v2-reallow",
+            expected_generation=revoked.generation,
+            require_worker=False,
+        )
+    finally:
+        final.close()
+    manager = asyncio.run(
+        SessionManager.new_with_composition(
+            session_dir=tmp_path / "after-no-effect-v2-transcripts",
+            cwd=str(workspace),
+            session_id="after-no-effect-v2-worker",
+            defer_materialization=False,
+        )
+    )
+    session = create_agent_session(
+        session_manager=manager,
+        model=Model(
+            id="after-no-effect-v2-worker",
+            name="After No Effect V2 Worker",
+            provider="test",
+            endpoint="test",
+            capabilities=Capabilities(
+                input=("text",), context_window=128_000, max_tokens=4_096
+            ),
+        ),
+        services=create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=workspace / ".loushang" / "settings.json",
+            )
+        ),
+        worker_candidate_plugin_id=_PLUGIN,
+    )
+
+    async def query_after_zero_supervisor_cutover() -> None:
+        try:
+            await session.prepare_model_call_runtime()
+            assert await session.query_worker_symbol("review") == "Review symbol"
+        finally:
+            await session.dispose()
+
+    asyncio.run(query_after_zero_supervisor_cutover())
+    after_normal = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        worker_candidates=True,
+    )
+    try:
+        product = after_normal.runtime_owner.product_owner
+        [normal_gate] = [
+            item
+            for item in CodingWorkerStartGateJournal(product).attempts()
+            if item.attempt_id != gate.attempt_id
+        ]
+        assert normal_gate.phase == "bound"
+        assert open_coding_product_worker_supervisor_journal(product).status(
+            normal_gate.attempt_id
+        ) is not None
+        open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        ).prepare()
+    finally:
+        after_normal.close()
 
 
 @pytest.mark.requires_host_runtime
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker Product recovery")
+@pytest.mark.parametrize(
+    "prior_cutover", (False, True), ids=("mixed-before-v2", "v2-active")
+)
 def test_registered_worker_recovery_reopens_v2_active_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prior_cutover: bool
 ) -> None:
     test_worker_source_catalog_pins_explicit_product_candidate(
         tmp_path,
@@ -7000,9 +7251,12 @@ def test_registered_worker_recovery_reopens_v2_active_history(
         product = prior_owner.runtime_owner.product_owner
         [prior_gate] = CodingWorkerStartGateJournal(product).attempts()
         assert prior_gate.phase == "bound"
-        assert open_coding_product_worker_supervisor_journal(product).status(
-            prior_gate.attempt_id
-        ) is not None
+        assert (
+            open_coding_product_worker_supervisor_journal(product).status(
+                prior_gate.attempt_id
+            )
+            is not None
+        )
         opt_in_owner = CodingWorkerProductOptInOwner(product)
         current_opt_in = opt_in_owner.current(_PLUGIN)
         assert current_opt_in is not None
@@ -7019,18 +7273,19 @@ def test_registered_worker_recovery_reopens_v2_active_history(
         publish_coding_product_worker_history_checkpoint(
             product, attempt_id=prior_gate.attempt_id
         )
-        cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
-        publish_coding_product_worker_history_checkpoint(
-            product, attempt_id=prior_gate.attempt_id
-        )
-        stage_coding_product_worker_v2_preparation(
-            product, first_retained_generations=cutoffs
-        )
-        commit_coding_product_worker_v2_owner(
-            product, first_retained_generations=cutoffs
-        )
-        assert retire_coding_product_worker_v2_history(product)
-        gc.prepare()
+        if prior_cutover:
+            cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=prior_gate.attempt_id
+            )
+            stage_coding_product_worker_v2_preparation(
+                product, first_retained_generations=cutoffs
+            )
+            commit_coding_product_worker_v2_owner(
+                product, first_retained_generations=cutoffs
+            )
+            assert retire_coding_product_worker_v2_history(product)
+            gc.prepare()
         after_revoke = opt_in_owner.current(_PLUGIN)
         assert after_revoke is not None
         opt_in_owner.allow(
@@ -7058,7 +7313,10 @@ def test_registered_worker_recovery_reopens_v2_active_history(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")},
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+        },
         timeout=90,
         check=False,
     )
@@ -7096,10 +7354,44 @@ def test_registered_worker_recovery_reopens_v2_active_history(
                 ),
             )
         assert recovered["registeredNoEffectRecovery"]["noEffect"] is True
-        open_posix_local_wheel_product_root_gc(
+        gc = open_posix_local_wheel_product_root_gc(
             product,
             worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
-        ).prepare()
+        )
+        gc.prepare()
+        if not prior_cutover:
+            opt_in_owner = CodingWorkerProductOptInOwner(product)
+            current_opt_in = opt_in_owner.current(_PLUGIN)
+            assert current_opt_in is not None
+            opt_in_owner.revoke(
+                plugin_id=_PLUGIN,
+                operation_id="registered-mixed-checkpoint-revoke",
+                expected_generation=current_opt_in.generation,
+            )
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=gate.attempt_id
+            )
+            cutoffs = seal_coding_product_worker_v1_history_for_v2(product)
+            assert cutoffs[-1] > 0
+            publish_coding_product_worker_history_checkpoint(
+                product, attempt_id=gate.attempt_id
+            )
+            prior_review = review_coding_product_worker_history_retention(
+                product, attempt_id=prior_gate.attempt_id
+            )
+            no_effect_review = review_coding_product_worker_history_retention(
+                product, attempt_id=gate.attempt_id
+            )
+            assert prior_review.missing_proofs == (), prior_review.missing_proofs
+            assert no_effect_review.missing_proofs == (), no_effect_review.missing_proofs
+            stage_coding_product_worker_v2_preparation(
+                product, first_retained_generations=cutoffs
+            )
+            commit_coding_product_worker_v2_owner(
+                product, first_retained_generations=cutoffs
+            )
+            assert retire_coding_product_worker_v2_history(product)
+            gc.prepare()
     finally:
         reopened.close()
 

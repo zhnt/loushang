@@ -4,10 +4,11 @@
 
 - Tracking: #509.
 - Scope: the explicit Linux Coding Product Worker route.
-- Status: the explicit Linux Product route has a local implementation and
-  cross-process regression, including recovery in an already committed V2
-  Product; release still requires V2 cutover-after-recovery coverage, negative
-  evidence cases, and a physical reboot drill.
+- Status: the explicit Linux Product route has local cross-process coverage for
+  recovery before or after a V2 cutover. The cutover-after-recovery branch now
+  covers no-effect-only and mixed Worker histories, V1 segment retirement, and
+  post-retirement proof tampering. Release still requires the remaining
+  negative evidence cases, broad CI, and a physical reboot drill.
 
 ## Durable boundary
 
@@ -79,14 +80,22 @@ not completion of that drill.
 ## V2 retirement boundary
 
 The registered no-effect attempt has an `intent` gate and no Supervisor
-record. The checkpoint remains closed while its registered repair reference
-exists. A guarded local exploration showed two further V2 format gaps: the
-current cutover uses every checkpointed attempt ID as a Supervisor retirement
-ID, so preparation would reject this legitimate shape even after a later
-bound attempt populates the Supervisor stream; with no bound attempt, sealing
-also rejects the empty Supervisor stream. Neither refusal may be bypassed by
-creating a synthetic Supervisor claim. Keep the checkpoint refusal until the
-typed V2 bases preserve all no-effect references after V1 deletion.
+record. A checkpoint may accept its retained registered repair reference only
+when the Product reader verifies every such reference against the exact gate,
+receipt, C5 settlement, absent Supervisor claim, and absent payload stage.
+The V2 preparation reopens all five V1 sources under runtime quiescence and the
+GC write gate. It archives the exact no-effect gate, receipt, C5 projection,
+historical allow, and registered repair intent digest. Each archived record
+must match its V1 source. The Product cutover index binds the archive digest;
+the preparation intent binds its bytes before the owner index can commit.
+
+Supervisor retirement IDs exclude only attempt IDs proved by this archive.
+They still include every normally settled Supervisor attempt. A no-effect-only
+history uses a typed zero-record Supervisor base and generation-zero manifest;
+it does not synthesize a Supervisor claim. After V1 source deletion, retained
+Product readers project the archived proof for GC and idempotent recovery.
+Missing or changed archive bytes, repair intent bytes, or an unexpected
+Supervisor record cause a refusal.
 
 When V2 was committed before this attempt, the new attempt lives in active V2
 generations and the Product can recover it. Retention must compare total gate
@@ -94,10 +103,6 @@ and Supervisor revisions from the verified V2 replay; taking the maximum
 revision among only currently retained records loses retired history and
 falsely rejects the recovery witness.
 
-V2 needs a cross-stream no-effect set proved by the retained C5 settlement,
-intent gate, receipt, and absent Supervisor claim. It must retain those proofs
-in typed bases after V1 deletion and reserve Supervisor retirement IDs for
-attempts that actually have settled Supervisor records. An empty Supervisor
-stream needs an explicit typed empty-stream cutover rule if a no-effect-only
-workspace is to cut over before any normal Worker launch. Acceptance needs
-both no-effect-only and mixed histories, V1 deletion, and tamper refusals.
+The remaining acceptance work covers competing Supervisor claims, a bound
+native gate, active runtime and concurrent GC/cutover refusals, broad
+cross-platform checks, and the real reboot drill.

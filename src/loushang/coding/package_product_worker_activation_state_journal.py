@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -154,7 +155,7 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                     read_coding_worker_v2_preparation,
                 )
 
-                history, _replay = self._load_v2_state(rooted)
+                history, replay = self._load_v2_state(rooted)
                 try:
                     prepared = read_coding_worker_v2_preparation(rooted)
                     if prepared is None:
@@ -181,10 +182,37 @@ class CodingProductWorkerActivationStateJournal(WorkerActivationStateJournal):
                         for item in attempts
                     ):
                         raise ValueError("Retired C5 attempt is unsettled")
+                    archive = prepared.no_effect_archive
+                    current_attempts = cast(
+                        dict[str, dict[str, object]],
+                        replay.last_record.document["attempts"],
+                    )
+                    current_ids = {
+                        cast(str, item["attemptId"])
+                        for item in current_attempts.values()
+                    }
                     return tuple(
-                        item
-                        for item in attempts
-                        if item.attempt_id not in retired_ids
+                        sorted(
+                            (
+                                *(
+                                    item
+                                    for item in attempts
+                                    if item.attempt_id not in retired_ids
+                                ),
+                                *(
+                                    ()
+                                    if archive is None
+                                    else (
+                                        replace(
+                                            item.activation,
+                                            current=item.attempt_id in current_ids,
+                                        )
+                                        for item in archive.proofs
+                                    )
+                                ),
+                            ),
+                            key=lambda item: (item.last_seen_revision, item.attempt_id),
+                        )
                     )
                 except (OSError, ValueError) as exc:
                     raise WorkerActivationStateJournalError(

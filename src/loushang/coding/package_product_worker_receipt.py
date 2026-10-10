@@ -961,7 +961,29 @@ def read_coding_product_worker_receipt_records(
                             scope_id=product.policy.project_scope_id,
                             store_id=product.epoch_runtime.registry.store_id,
                         )
-                        records = replay.retained_records
+                        from .package_product_worker_history_stage_v2 import (
+                            read_coding_worker_v2_preparation,
+                        )
+
+                        prepared = read_coding_worker_v2_preparation(rooted)
+                        if prepared is None:
+                            raise CodingWorkerReceiptError(
+                                "coding_worker_receipt_v2_preparation_absent"
+                            )
+                        archive = prepared.no_effect_archive
+                        records = tuple(
+                            sorted(
+                                (
+                                    *replay.retained_records,
+                                    *(
+                                        ()
+                                        if archive is None
+                                        else (item.receipt for item in archive.proofs)
+                                    ),
+                                ),
+                                key=lambda item: item.journal_revision,
+                            )
+                        )
                     else:
                         records = _read_receipt_records(
                             rooted,

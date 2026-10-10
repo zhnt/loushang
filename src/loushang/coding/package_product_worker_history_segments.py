@@ -93,9 +93,13 @@ class CodingWorkerSegmentManifestV1:
             type(self.stream_id) is not str
             or _STREAM.fullmatch(self.stream_id) is None
             or type(self.active_generation) is not int
-            or not 1 <= self.active_generation <= _MAX_GENERATIONS
+            or not 0 <= self.active_generation <= _MAX_GENERATIONS
             or type(self.sealed) is not tuple
             or len(self.sealed) != self.active_generation
+            or (
+                self.active_generation == 0
+                and (self.stream_id != "worker-supervisor" or self.sealed)
+            )
         ):
             raise ValueError("Worker segment manifest is invalid")
         expected_revision = 1
@@ -110,7 +114,7 @@ class CodingWorkerSegmentManifestV1:
 
     @property
     def last_sealed_revision(self) -> int:
-        return self.sealed[-1].last_revision
+        return 0 if not self.sealed else self.sealed[-1].last_revision
 
     def to_bytes(self) -> bytes:
         return canonical_json_bytes(

@@ -270,6 +270,7 @@ def test_product_v2_commit_reopens_physical_checkpoint_and_five_v1_streams(
     def review(_product: object, **kwargs: object) -> SimpleNamespace:
         reviewed.append(str(kwargs["attempt_id"]))
         return SimpleNamespace(
+            no_effect_closure=False,
             missing_proofs=(),
             history_stream_snapshots=checkpoint.stream_snapshots,
             gc_reservation_revision=checkpoint.gc_reservation_revision,
