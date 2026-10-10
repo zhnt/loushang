@@ -1,18 +1,18 @@
 name: Registered Worker Reboot Drill
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/worker-registered-reboot-drill.yml
-      - scripts/dev/worker_registered_reboot_drill.py
-      - scripts/dev/worker_registered_qemu_reboot_drill.sh
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   isolated-linux-reboot:
-    if: github.head_ref == 'feat/worker-registered-recovery-509'
+    if: ${{ fromJSON(inputs.plan).checks.registered_reboot }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -28,3 +28,18 @@ jobs:
           name: registered-worker-real-reboot-evidence
           path: .artifacts/registered-reboot-vm/
           if-no-files-found: warn
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [isolated-linux-reboot]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"isolated-linux-reboot":"registered_reboot"}'
