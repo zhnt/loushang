@@ -211,6 +211,9 @@ from loushang.coding.package_product_worker_receipt import (
     open_coding_selected_worker_receipt_owner,
     read_coding_product_worker_receipt_record,
 )
+from loushang.coding.package_product_worker_registered_c5_settlement import (
+    settle_coding_product_worker_registered_c5,
+)
 from loushang.coding.package_product_worker_registered_payload_repair import (
     read_coding_product_worker_registered_payload_repair_intent,
     repair_coding_product_worker_registered_payload_debt,
@@ -6807,6 +6810,60 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
             product, attempt_id=gate.attempt_id
         ) == intent
         assert not (product.state_root / f"worker-payload-{gate.attempt_id}").exists()
+        gc = open_posix_local_wheel_product_root_gc(
+            product,
+            worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
+        )
+        with pytest.raises(PackageProductGcExecutionError) as pending_gc:
+            gc.prepare()
+        assert pending_gc.value.code == "plugin_package_gc_worker_history_unsettled"
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            cli_recovery = execute_native_cli(
+                product,
+                Namespace(
+                    action="recover-registered-no-effect",
+                    attempt_id=gate.attempt_id,
+                ),
+            )
+        assert cli_recovery["registeredNoEffectRecovery"] == {
+            "attemptId": gate.attempt_id,
+            "ownerGeneration": review.activation_attempt.owner_generation,
+            "phase": "settled",
+            "noEffect": True,
+        }
+        [settled] = [
+            item
+            for item in activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+                product.state_root / "worker-activation-state.jsonl"
+            ).retained_attempts_read_only()
+            if item.attempt_id == gate.attempt_id
+        ]
+        assert settled.phase == "settled" and settled.no_effect
+        gc.prepare()
+        with patch.object(service_group_module, "_read_file", changed_boot_read):
+            assert (
+                settle_coding_product_worker_registered_c5(
+                    product, attempt_id=gate.attempt_id
+                )
+                == settled
+            )
+        opt_in_owner = CodingWorkerProductOptInOwner(product)
+        current_opt_in = opt_in_owner.current(_PLUGIN)
+        assert current_opt_in is not None
+        opt_in_owner.revoke(
+            plugin_id=_PLUGIN,
+            operation_id="registered-recovery-checkpoint-revoke",
+            expected_generation=current_opt_in.generation,
+        )
+        retention = review_coding_product_worker_history_retention(
+            product, attempt_id=gate.attempt_id
+        )
+        assert retention.no_effect_closure
+        assert retention.missing_proofs == ()
+        assert publish_coding_product_worker_history_checkpoint(
+            product, attempt_id=gate.attempt_id
+        )
+        gc.prepare()
     finally:
         reopened.close()
 

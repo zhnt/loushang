@@ -34,6 +34,7 @@ from .package_product_worker_history_read_v2 import (
 )
 from .package_product_worker_history_retention import (
     _PAYLOAD_REPAIR,
+    _REGISTERED_REPAIR_STAGING,
     _known_worker_state_name,
 )
 from .package_product_worker_history_stream_snapshot import (
@@ -57,6 +58,12 @@ from .package_product_worker_payload import (
 )
 from .package_product_worker_receipt import (
     read_coding_product_worker_receipt_records,
+)
+from .package_product_worker_registered_payload_repair import (
+    _read_intent as _read_registered_repair_intent,
+)
+from .package_product_worker_registered_payload_repair import (
+    registered_payload_repair_matches_no_effect_closure,
 )
 from .package_product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
@@ -115,6 +122,8 @@ class CodingPosixWorkerGcHistoryAuthority:
                 raise ValueError("Linux Worker GC inventory changed")
             for name in observed_names:
                 lowered = name.casefold()
+                if _REGISTERED_REPAIR_STAGING.fullmatch(name):
+                    raise ValueError("Linux Worker GC payload repair is incomplete")
                 if lowered.startswith(
                     ("worker-", ".worker-")
                 ) and not _known_worker_state_name(name):
@@ -191,6 +200,12 @@ class CodingPosixWorkerGcHistoryAuthority:
 
             gate_by_id = {item.attempt_id: item for item in gates}
             attempt_by_id = {item.attempt_id: item for item in attempts}
+            receipt_by_fingerprint = {
+                item.receipt.fingerprint: item for item in receipts
+            }
+            activation_by_id = {
+                item.attempt_id: item for item in retained_activation_attempts
+            }
             for name in observed_names:
                 repair = _PAYLOAD_REPAIR.fullmatch(name)
                 if repair is None:
@@ -210,6 +225,22 @@ class CodingPosixWorkerGcHistoryAuthority:
                         _read_unmarked_repair_intent(root_fd, attempt_id) is not None
                         and record is None
                     )
+                elif kind == "registered":
+                    registered = _read_registered_repair_intent(root_fd, attempt_id)
+                    gate = gate_by_id.get(attempt_id)
+                    valid = bool(
+                        registered is not None
+                        and gate is not None
+                        and registered_payload_repair_matches_no_effect_closure(
+                            registered,
+                            gate=gate,
+                            receipt=receipt_by_fingerprint.get(
+                                gate.receipt_fingerprint
+                            ),
+                            activation=activation_by_id.get(attempt_id),
+                            supervisor=record,
+                        )
+                    )
                 else:
                     complete = _read_complete_repair_intent(root_fd, attempt_id)
                     valid = (
@@ -223,12 +254,6 @@ class CodingPosixWorkerGcHistoryAuthority:
                     raise ValueError(
                         "Linux Worker GC payload repair reference is unverified"
                     )
-            receipt_by_fingerprint = {
-                item.receipt.fingerprint: item for item in receipts
-            }
-            activation_by_id = {
-                item.attempt_id: item for item in retained_activation_attempts
-            }
             no_effect_ids = {
                 gate.attempt_id
                 for gate in gates

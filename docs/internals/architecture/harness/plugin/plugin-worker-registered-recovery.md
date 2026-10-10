@@ -4,8 +4,9 @@
 
 - Tracking: #509.
 - Scope: the explicit Linux Coding Product Worker route.
-- Status: implementation contract; the Product route remains closed until its
-  recovery and retention tests pass.
+- Status: the explicit Linux Product route has a local implementation and
+  cross-process regression; release still requires V2 retirement coverage,
+  negative evidence cases, and a physical reboot drill.
 
 ## Durable boundary
 
@@ -73,3 +74,20 @@ A separate real reboot drill must persist the workspace before host shutdown,
 then verify a changed OS boot identity and reopen the same Product state after
 restart. Changing a boot-ID function inside one process is simulation evidence,
 not completion of that drill.
+
+## V2 retirement boundary
+
+The registered no-effect attempt has an `intent` gate and no Supervisor
+record. The current V2 cutover uses every checkpointed attempt ID as a
+Supervisor retirement ID. A V2 preparation therefore refuses this legitimate
+shape, even after a later bound attempt has populated the Supervisor stream.
+With no bound attempt, the V2 seal also refuses the empty Supervisor stream.
+Neither refusal may be bypassed by creating a synthetic Supervisor claim.
+
+V2 needs a cross-stream no-effect set proved by the retained C5 settlement,
+intent gate, receipt, and absent Supervisor claim. It must retain those proofs
+in typed bases after V1 deletion and reserve Supervisor retirement IDs for
+attempts that actually have settled Supervisor records. An empty Supervisor
+stream needs an explicit typed empty-stream cutover rule if a no-effect-only
+workspace is to cut over before any normal Worker launch. Acceptance needs
+both no-effect-only and mixed histories, V1 deletion, and tamper refusals.

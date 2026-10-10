@@ -19,7 +19,11 @@ from loushang.harness.package_product.product_local_wheel_runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.worker.journal import WorkerAttemptRecordV1
 
+from .package_product_worker_activation_history import (
+    CodingProductWorkerRetainedAttemptV1,
+)
 from .package_product_worker_activation_state_journal import (
     CodingProductWorkerActivationStateJournal,
 )
@@ -27,6 +31,9 @@ from .package_product_worker_cleanup_evidence import (
     CodingPosixWorkerCleanupEvidenceAuthority,
 )
 from .package_product_worker_history_retention import _known_worker_state_name
+from .package_product_worker_no_effect_closure import (
+    is_coding_worker_no_effect_closure,
+)
 from .package_product_worker_payload import (
     _DIR_FLAGS,
     _FILE_FLAGS,
@@ -42,12 +49,16 @@ from .package_product_worker_payload import (
     open_coding_product_worker_supervisor_journal,
 )
 from .package_product_worker_receipt import (
+    CodingWorkerReceiptRecordV1,
     read_coding_product_worker_receipt_record,
 )
 from .package_product_worker_registered_recovery import (
     CodingWorkerRegisteredOrphanReviewV1,
 )
-from .package_product_worker_start_gate_journal import CodingWorkerStartGateJournal
+from .package_product_worker_start_gate_journal import (
+    CodingWorkerStartGateJournal,
+    CodingWorkerStartGateRecordV1,
+)
 
 _ATTEMPT = re.compile(r"[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -312,6 +323,36 @@ def _expected_intent(
     )
 
 
+def registered_payload_repair_matches_no_effect_closure(
+    intent: CodingWorkerRegisteredPayloadRepairIntentV1,
+    *,
+    gate: CodingWorkerStartGateRecordV1 | None,
+    receipt: CodingWorkerReceiptRecordV1 | None,
+    activation: CodingProductWorkerRetainedAttemptV1 | None,
+    supervisor: WorkerAttemptRecordV1 | None,
+) -> bool:
+    """Bind a retained repair record to the exact settled C5 no-effect proof."""
+
+    if gate is None or receipt is None or activation is None:
+        return False
+    return bool(
+        is_coding_worker_no_effect_closure(
+            gate=gate,
+            activation=activation,
+            supervisor=supervisor,
+            receipt=receipt,
+        )
+        and intent.attempt_id == gate.attempt_id
+        and intent.plan.receipt_fingerprint == receipt.receipt.fingerprint
+        and intent.gate_record_digest == gate.record_digest
+        and intent.receipt_record_digest == receipt.record_digest
+        and intent.policy_fingerprint == activation.policy_fingerprint
+        and intent.host_identity == activation.host_identity
+        and intent.boot_identity == activation.boot_identity
+        and intent.owner_generation == activation.owner_generation
+    )
+
+
 def read_coding_product_worker_registered_payload_repair_intent(
     product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
 ) -> CodingWorkerRegisteredPayloadRepairIntentV1 | None:
@@ -444,5 +485,6 @@ __all__ = [
     "CodingWorkerRegisteredPayloadRepairError",
     "CodingWorkerRegisteredPayloadRepairIntentV1",
     "read_coding_product_worker_registered_payload_repair_intent",
+    "registered_payload_repair_matches_no_effect_closure",
     "repair_coding_product_worker_registered_payload_debt",
 ]

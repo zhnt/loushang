@@ -58,6 +58,9 @@ from loushang.coding.package_product_worker_payload import (
     repair_coding_product_worker_unmarked_payload_debt,
     review_coding_product_worker_unmarked_payload_debt,
 )
+from loushang.coding.package_product_worker_registered_recovery import (
+    recover_coding_product_worker_registered_no_effect,
+)
 from loushang.coding.package_product_worker_start_gate_journal import (
     CodingWorkerStartGateJournal,
 )
@@ -224,6 +227,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="settle C5 after exact orphan, process, and payload recovery",
     )
     crash_c5.add_argument("--attempt-id", required=True)
+    registered_c5 = actions.add_parser(
+        "recover-registered-no-effect",
+        help="recover one prior-boot Worker registered before native effect",
+    )
+    registered_c5.add_argument("--attempt-id", required=True)
     empty_review = actions.add_parser(
         "review-empty-payload-debt", help="review one empty pre-marker Worker stage"
     )
@@ -860,6 +868,18 @@ def _execute(
                 "attemptId": c5_settled.attempt_id,
                 "ownerGeneration": c5_settled.owner_generation,
                 "phase": c5_settled.phase,
+            }
+        }
+    if args.action == "recover-registered-no-effect":
+        settled = recover_coding_product_worker_registered_no_effect(
+            product, attempt_id=args.attempt_id
+        )
+        return {
+            "registeredNoEffectRecovery": {
+                "attemptId": settled.attempt_id,
+                "ownerGeneration": settled.owner_generation,
+                "phase": settled.phase,
+                "noEffect": settled.no_effect,
             }
         }
     if args.action in {"review-unmarked-payload-debt", "repair-unmarked-payload-debt"}:

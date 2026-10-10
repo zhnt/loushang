@@ -255,9 +255,41 @@ def repair_coding_product_worker_registered_orphan(
     return current.orphan_lease
 
 
+def recover_coding_product_worker_registered_no_effect(
+    product: PosixLocalWheelProductSessionOwner, *, attempt_id: str
+) -> CodingProductWorkerRetainedAttemptV1:
+    """Run exact, independently retryable lease, payload, and C5 owners."""
+
+    from .package_product_worker_registered_c5_settlement import (
+        settle_coding_product_worker_registered_c5,
+    )
+    from .package_product_worker_registered_payload_repair import (
+        repair_coding_product_worker_registered_payload_debt,
+    )
+
+    review = review_coding_product_worker_registered_orphan(
+        product, attempt_id=attempt_id
+    )
+    if review.repair_candidate:
+        repair_coding_product_worker_registered_orphan(
+            product, expected_review=review
+        )
+        review = review_coding_product_worker_registered_orphan(
+            product, attempt_id=attempt_id
+        )
+    if review.payload_repair_candidate:
+        repair_coding_product_worker_registered_payload_debt(
+            product, expected_review=review
+        )
+    return settle_coding_product_worker_registered_c5(
+        product, attempt_id=attempt_id
+    )
+
+
 __all__ = [
     "CodingWorkerRegisteredOrphanReviewV1",
     "CodingWorkerRegisteredRecoveryError",
     "repair_coding_product_worker_registered_orphan",
+    "recover_coding_product_worker_registered_no_effect",
     "review_coding_product_worker_registered_orphan",
 ]
