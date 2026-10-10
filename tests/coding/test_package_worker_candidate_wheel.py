@@ -6790,6 +6790,34 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
         assert after_repair.payload_repair_candidate
         assert after_repair.repaired_orphan_lease == review.orphan_lease
         assert after_repair.repaired_owner_revision == repaired[0]
+        assert after_repair.payload_plan is not None
+        payload_file = (
+            product.state_root
+            / f"worker-payload-{gate.attempt_id}"
+            / after_repair.payload_plan.entrypoint
+        )
+        original_payload = payload_file.read_bytes()
+        original_mode = stat.S_IMODE(payload_file.stat().st_mode)
+        assert original_payload and original_mode == 0o500
+        try:
+            payload_file.chmod(0o700)
+            payload_file.write_bytes(
+                original_payload[:-1] + bytes((original_payload[-1] ^ 1,))
+            )
+            payload_file.chmod(original_mode)
+            with patch.object(service_group_module, "_read_file", changed_boot_read):
+                with pytest.raises(CodingWorkerPayloadMaterializationError):
+                    repair_coding_product_worker_registered_payload_debt(
+                        product, expected_review=after_repair
+                    )
+            assert not (
+                product.state_root
+                / f"worker-registered-repair-{gate.attempt_id}.json"
+            ).exists()
+        finally:
+            payload_file.chmod(0o700)
+            payload_file.write_bytes(original_payload)
+            payload_file.chmod(original_mode)
 
         def crash_after_first_payload_unlink(
             _root_fd: int, _stage_fd: int, _stage_name: str, plan: object
