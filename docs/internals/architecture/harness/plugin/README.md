@@ -41,8 +41,9 @@
   cutover for a genuinely fresh Linux workspace on 2026-10-01. The ordinary
   Session implementation, interruption/old-snapshot regressions, and full
   Coding offline package regression have passed. Explicit Windows candidate
-  first-B and GC routes have native evidence; unflagged ordinary Windows
-  selection remains closed.
+  first-B and GC routes have native evidence. Direct, Session Runtime, and
+  Hosted ordinary Windows Sessions select the B Product in PR #662; Windows
+  Worker query CLI and default Worker routing retain separate gates.
 - Delivery anchor: PLC8 closed; PLC9 remains open at `7a3673aa`.
   Product-backed management, data Wheel authoring, POSIX root/shared-dependency
   GC, and Arch private-data owners have implemented routes; explicit Windows

@@ -19,6 +19,12 @@ does not add a second Plugin registry or change a default route.
 | Native Worker Wheel | `build-coding-worker-candidate`; disposable Linux smoke proves only artifact admission and selection | Explicit Linux `candidate-capture`, install, enable, update, disable, remove, native release, per-install allow/revoke, and separate offline Package GC | Explicit Linux Python SDK query or a new persisted `coding-standard` ordinary turn using `--worker-query-plugin`; the selected revision, startup receipt, and Tool result prove distinct stages | The exact Linux x86-64 read-only query route was approved on 2026-10-10 after [PR #653](https://github.com/zhnt/loushang/pull/653) passed 72/72 CI jobs and independent security, platform, and lifecycle reviews. It requires the `posix-static-query-contained-elf-v1` host profile; default routing stays closed. Windows native candidate tests passed, but Windows ordinary routing remains closed | Each installation still needs exact native release approval, current Product selection, and per-install opt-in. Actual-reboot validation, registered-before-effect recovery, Windows/macOS ordinary turns, dependency execution, effectful Tools, general self-service, and default routing remain closed |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
+PR #662 selects the fenced B Product for ordinary Windows Coding Sessions in
+Direct, Session Runtime, and Hosted construction. This is an ordinary Session
+route without Worker query activation. The explicit Windows Worker candidate
+remains separate, and the CLI `--worker-query-plugin` route still accepts only
+Linux x86-64. Native CI for the PR must pass before this route is released.
+
 The Linux Worker decision covers one locally installed immutable static Wheel,
 one read-only `coding.worker.query` facet, and an explicit new Session. The
 Product rechecks the current release, selected revision, and opt-in for use;
