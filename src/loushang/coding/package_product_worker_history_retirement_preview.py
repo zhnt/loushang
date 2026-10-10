@@ -61,9 +61,17 @@ class CodingWorkerStreamRetirementPreviewV2:
             or type(self.source_fingerprint) is not str
             or _DIGEST.fullmatch(self.source_fingerprint) is None
             or type(self.first_retained_generation) is not int
-            or self.first_retained_generation < 1
+            or self.first_retained_generation < 0
             or type(self.first_retained_revision) is not int
-            or self.first_retained_revision < 2
+            or self.first_retained_revision
+            < (1 if self.first_retained_generation == 0 else 2)
+            or (
+                self.first_retained_generation == 0
+                and (
+                    self.stem != "worker-supervisor"
+                    or self.first_retained_revision != 1
+                )
+            )
             or type(self.retired_sealed_digest) is not str
             or _DIGEST.fullmatch(self.retired_sealed_digest) is None
             or type(self.retired_generations) is not tuple
@@ -111,7 +119,11 @@ def preview_first_coding_worker_stream_retirement_v2(
     if (
         manifest is None
         or manifest.stream_id != stem
-        or not 1 <= first_retained_generation <= manifest.active_generation
+        or not 0 <= first_retained_generation <= manifest.active_generation
+        or (
+            first_retained_generation == 0
+            and (stem != "worker-supervisor" or manifest.active_generation != 0)
+        )
         or len(history.segments) != manifest.active_generation + 1
     ):
         raise CodingWorkerRetirementPreviewError(
@@ -144,7 +156,9 @@ def preview_first_coding_worker_stream_retirement_v2(
         checkpoint_digest=checkpoint.record_digest,
         source_fingerprint=snapshot.fingerprint,
         first_retained_generation=first_retained_generation,
-        first_retained_revision=retired[-1].last_revision + 1,
+        first_retained_revision=(
+            1 if not retired else retired[-1].last_revision + 1
+        ),
         retired_sealed_digest=sha256(
             canonical_json_bytes([item.to_dict() for item in retired])
         ).hexdigest(),

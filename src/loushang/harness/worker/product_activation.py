@@ -429,6 +429,7 @@ class WorkerCleanupSettlementV1:
     domain_retired: bool
     tree_settled: bool
     settlement_version: int = WORKER_CLEANUP_SETTLEMENT_VERSION
+    no_effect: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
@@ -446,9 +447,10 @@ class WorkerCleanupSettlementV1:
             raise ValueError("Cleanup settlement requires all exact-attempt exit edges")
         if self.settlement_version != WORKER_CLEANUP_SETTLEMENT_VERSION:
             raise ValueError("Unsupported Worker cleanup settlement version")
+        _require_bool(self.no_effect, name="no-effect settlement")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "attemptId": self.attempt_id,
             "bootIdentity": self.boot_identity,
             "domainRetired": self.domain_retired,
@@ -459,12 +461,19 @@ class WorkerCleanupSettlementV1:
             "settlementVersion": self.settlement_version,
             "treeSettled": self.tree_settled,
         }
+        if self.no_effect:
+            document["noEffect"] = True
+        return document
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
         document = _strict_document(
             value,
-            _SETTLEMENT_FIELDS,
+            (
+                _SETTLEMENT_NO_EFFECT_FIELDS
+                if isinstance(value, dict) and "noEffect" in value
+                else _SETTLEMENT_FIELDS
+            ),
             name="cleanup settlement",
         )
         return cls(
@@ -477,6 +486,9 @@ class WorkerCleanupSettlementV1:
             domain_retired=_bool(document, "domainRetired"),
             tree_settled=_bool(document, "treeSettled"),
             settlement_version=_integer(document, "settlementVersion"),
+            no_effect=(
+                _bool(document, "noEffect") if "noEffect" in document else False
+            ),
         )
 
 
@@ -494,6 +506,7 @@ class WorkerCleanupSettlementV2:
     tree_settled: bool
     native_containment_settled: bool
     settlement_version: int = WORKER_CLEANUP_SETTLEMENT_V2_VERSION
+    no_effect: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
@@ -517,9 +530,10 @@ class WorkerCleanupSettlementV2:
             raise ValueError("Cleanup V2 settlement requires all exact-attempt edges")
         if self.settlement_version != WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
             raise ValueError("Unsupported Worker cleanup V2 settlement version")
+        _require_bool(self.no_effect, name="no-effect settlement")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "attemptId": self.attempt_id,
             "bootIdentity": self.boot_identity,
             "domainRetired": self.domain_retired,
@@ -531,12 +545,19 @@ class WorkerCleanupSettlementV2:
             "settlementVersion": self.settlement_version,
             "treeSettled": self.tree_settled,
         }
+        if self.no_effect:
+            document["noEffect"] = True
+        return document
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
         document = _strict_document(
             value,
-            _SETTLEMENT_V2_FIELDS,
+            (
+                _SETTLEMENT_V2_NO_EFFECT_FIELDS
+                if isinstance(value, dict) and "noEffect" in value
+                else _SETTLEMENT_V2_FIELDS
+            ),
             name="cleanup V2 settlement",
         )
         return cls(
@@ -553,6 +574,9 @@ class WorkerCleanupSettlementV2:
                 "nativeContainmentSettled",
             ),
             settlement_version=_integer(document, "settlementVersion"),
+            no_effect=(
+                _bool(document, "noEffect") if "noEffect" in document else False
+            ),
         )
 
 
@@ -1449,6 +1473,8 @@ class ProductWorkerActivationCoordinator:
             WorkerCleanupSettlementV2,
         }:
             raise TypeError("Worker cleanup settlement must be typed")
+        if settlement.no_effect:
+            raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
         key = _AttemptKey(
             settlement.receipt_fingerprint,
             settlement.attempt_id,
@@ -1940,6 +1966,7 @@ class ProductWorkerActivationCoordinator:
                     domain_retired=True,
                     tree_settled=True,
                     native_containment_settled=True,
+                    no_effect=True,
                 )
             )
         else:
@@ -1952,6 +1979,7 @@ class ProductWorkerActivationCoordinator:
                 protocol_terminal=True,
                 domain_retired=True,
                 tree_settled=True,
+                no_effect=True,
             )
         new_state = _json_clone(self._state)
         new_attempt = _mapping(_mapping(new_state, "attempts"), key.encoded)
@@ -2233,6 +2261,8 @@ _SETTLEMENT_FIELDS = frozenset(
     }
 )
 _SETTLEMENT_V2_FIELDS = _SETTLEMENT_FIELDS | {"nativeContainmentSettled"}
+_SETTLEMENT_NO_EFFECT_FIELDS = _SETTLEMENT_FIELDS | {"noEffect"}
+_SETTLEMENT_V2_NO_EFFECT_FIELDS = _SETTLEMENT_V2_FIELDS | {"noEffect"}
 _DEBT_FIELDS = frozenset(
     {
         "attemptId",

@@ -46,6 +46,7 @@ class CodingProductWorkerRetainedAttemptV1:
     phase: str
     last_seen_revision: int
     current: bool
+    no_effect: bool = False
 
 
 def project_coding_worker_retained_attempts(
@@ -83,6 +84,10 @@ def project_coding_worker_retained_attempts(
             phase=cast(str, attempt["phase"]),
             last_seen_revision=revision,
             current=attempt_id in current_ids,
+            no_effect=(
+                isinstance(attempt["cleanupSettlement"], dict)
+                and attempt["cleanupSettlement"].get("noEffect") is True
+            ),
         )
         for attempt_id, (revision, attempt) in sorted(
             latest.items(), key=lambda item: (item[1][0], item[0])
@@ -139,11 +144,31 @@ def _fold_coding_worker_activation_attempt_history(
                     raise ValueError("Activation attempt identity changed")
                 prior_phase = cast(str, prior_attempt["phase"])
                 phase = cast(str, attempt["phase"])
+                prior_settlement = prior_attempt["cleanupSettlement"]
+                settlement = attempt["cleanupSettlement"]
+                prior_no_effect = (
+                    isinstance(prior_settlement, dict)
+                    and prior_settlement.get("noEffect") is True
+                )
+                no_effect = (
+                    isinstance(settlement, dict) and settlement.get("noEffect") is True
+                )
                 if (
                     phase != prior_phase
                     and phase not in _ATTEMPT_TRANSITIONS[prior_phase]
                 ):
                     raise ValueError("Activation attempt phase regressed")
+                if no_effect and not (
+                    (prior_phase == "registered" and phase == "settled")
+                    or (
+                        prior_phase == "settled"
+                        and phase == "settled"
+                        and prior_no_effect
+                    )
+                ):
+                    raise ValueError("No-effect settlement crossed the effect edge")
+                if prior_phase == "settled" and settlement != prior_settlement:
+                    raise ValueError("Activation cleanup settlement changed")
         previous = current
     return frozenset(retired)
 

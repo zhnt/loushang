@@ -10,8 +10,15 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Protocol, cast
 
+from loushang.harness.worker.activation_state_journal import _StateRecord
+from loushang.harness.worker.journal import WorkerAttemptRecordV1
+
 from .package_product_worker_activation_base_v2 import (
     CodingWorkerActivationSemanticBaseV2,
+    _parse_c5_segment,
+)
+from .package_product_worker_activation_history import (
+    project_coding_worker_retained_attempts,
 )
 from .package_product_worker_history_checkpoint import (
     CodingWorkerHistoryCheckpointV1,
@@ -32,6 +39,9 @@ from .package_product_worker_history_segments import (
 from .package_product_worker_history_stream_snapshot import (
     CODING_WORKER_HISTORY_STREAM_STEMS,
 )
+from .package_product_worker_no_effect_archive_v2 import (
+    CodingWorkerNoEffectArchiveV2,
+)
 from .package_product_worker_opt_in import CodingWorkerOptInDecisionV1
 from .package_product_worker_opt_in_base_v2 import (
     CodingWorkerOptInSemanticBaseV2,
@@ -40,12 +50,18 @@ from .package_product_worker_opt_in_base_v2 import (
 from .package_product_worker_receipt import CodingWorkerReceiptRecordV1
 from .package_product_worker_receipt_base_v2 import (
     CodingWorkerReceiptSemanticBaseV2,
+    _parse_receipt_segment,
 )
 from .package_product_worker_start_gate_base_v2 import (
     CodingWorkerStartGateSemanticBaseV2,
+    _parse_start_gate_segment,
+)
+from .package_product_worker_start_gate_journal import (
+    CodingWorkerStartGateRecordV1,
 )
 from .package_product_worker_supervisor_base_v2 import (
     CodingWorkerSupervisorSemanticBaseV2,
+    _parse_supervisor_segment,
 )
 
 CodingWorkerTypedBasesV2 = tuple[
@@ -98,11 +114,64 @@ def require_coding_worker_v2_retained_reference_closure(
             raise ValueError("Coding Worker V2 retained receipt opt-in unproved")
 
 
+def require_coding_worker_no_effect_archive_sources(
+    *,
+    archive: CodingWorkerNoEffectArchiveV2,
+    histories: tuple[CodingWorkerSegmentedHistoryV1, ...],
+    retired_attempt_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Prove every archived record against the five exact V1 sources."""
+
+    archived_ids = tuple(item.attempt_id for item in archive.proofs)
+    if not archived_ids or not set(archived_ids) <= set(retired_attempt_ids):
+        raise ValueError("Coding Worker no-effect V2 archive attempts differ")
+    opt_in = tuple(
+        record for raw in histories[0].segments for record in _parse_opt_in_segment(raw)
+    )
+    receipts: list[CodingWorkerReceiptRecordV1] = []
+    for raw in histories[1].segments:
+        receipts.extend(
+            _parse_receipt_segment(
+                raw, scope_id=archive.scope_id, first_revision=len(receipts) + 1
+            )
+        )
+    c5_records: list[_StateRecord] = []
+    for raw in histories[2].segments:
+        c5_records.extend(_parse_c5_segment(raw, first_revision=len(c5_records) + 1))
+    activation = project_coding_worker_retained_attempts(tuple(c5_records))
+    gates: list[CodingWorkerStartGateRecordV1] = []
+    for raw in histories[3].segments:
+        gates.extend(_parse_start_gate_segment(raw, first_revision=len(gates) + 1))
+    supervisor: list[WorkerAttemptRecordV1] = []
+    for raw in histories[4].segments:
+        supervisor.extend(
+            _parse_supervisor_segment(raw, first_revision=len(supervisor) + 1)
+        )
+    latest_gates = {item.attempt_id: item for item in gates}
+    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+    activation_by_id = {item.attempt_id: item for item in activation}
+    opt_in_by_digest = {item.decision_digest: item for item in opt_in}
+    supervisor_ids = {item.attempt_id for item in supervisor}
+    if any(
+        latest_gates.get(proof.attempt_id) != proof.gate
+        or receipt_by_fingerprint.get(proof.receipt.receipt.fingerprint)
+        != proof.receipt
+        or activation_by_id.get(proof.attempt_id) != proof.activation
+        or opt_in_by_digest.get(proof.historical_allow.decision_digest)
+        != proof.historical_allow
+        or proof.attempt_id in supervisor_ids
+        for proof in archive.proofs
+    ):
+        raise ValueError("Coding Worker no-effect V2 archive source differs")
+    return archived_ids
+
+
 @dataclass(frozen=True, slots=True)
 class CodingWorkerPreparedProductCutoverV2:
     index: CodingWorkerProductCutoverIndexV2
     streams: tuple[CodingWorkerStreamCutoverV2, ...]
     semantic_bases: CodingWorkerTypedBasesV2
+    no_effect_archive: CodingWorkerNoEffectArchiveV2 | None = None
 
     def __post_init__(self) -> None:
         bases = cast(tuple[_SemanticBaseV2, ...], self.semantic_bases)
@@ -134,6 +203,36 @@ class CodingWorkerPreparedProductCutoverV2:
                 (stream.stem, sha256(stream.to_bytes()).hexdigest())
                 for stream in self.streams
             )
+            or (
+                self.no_effect_archive is None
+                and self.index.no_effect_archive_digest is not None
+            )
+            or (
+                self.no_effect_archive is not None
+                and (
+                    type(self.no_effect_archive) is not CodingWorkerNoEffectArchiveV2
+                    or not self.no_effect_archive.proofs
+                    or self.no_effect_archive.scope_id != self.index.scope_id
+                    or self.no_effect_archive.store_id != self.index.store_id
+                    or self.no_effect_archive.checkpoint_digest
+                    != self.index.checkpoint_digest
+                    or self.index.no_effect_archive_digest
+                    != sha256(self.no_effect_archive.to_bytes()).hexdigest()
+                    or not {
+                        proof.attempt_id for proof in self.no_effect_archive.proofs
+                    }.issubset(self.semantic_bases[3].retired_attempt_ids)
+                    or bool(
+                        {proof.attempt_id for proof in self.no_effect_archive.proofs}
+                        & {
+                            *self.semantic_bases[4].retired_attempt_ids,
+                            *(
+                                item.attempt_id
+                                for item in self.semantic_bases[4].current_attempts
+                            ),
+                        }
+                    )
+                )
+            )
         ):
             raise ValueError("Coding Worker typed Product cutover differs")
 
@@ -145,6 +244,7 @@ class CodingWorkerPreparedProductCutoverV2:
         anchor: CodingWorkerCheckpointAnchorV1,
         histories: tuple[CodingWorkerSegmentedHistoryV1, ...],
         first_retained_generations: tuple[int, ...],
+        no_effect_archive: CodingWorkerNoEffectArchiveV2 | None = None,
     ) -> CodingWorkerPreparedProductCutoverV2:
         """Reproject and replay all five streams before forming one index."""
 
@@ -164,6 +264,10 @@ class CodingWorkerPreparedProductCutoverV2:
             or type(first_retained_generations) is not tuple
             or len(first_retained_generations) != len(histories)
             or any(type(item) is not int for item in first_retained_generations)
+            or (
+                no_effect_archive is not None
+                and type(no_effect_archive) is not CodingWorkerNoEffectArchiveV2
+            )
         ):
             raise ValueError("Coding Worker typed Product sources are invalid")
         checkpoint = checkpoints[-1]
@@ -196,6 +300,18 @@ class CodingWorkerPreparedProductCutoverV2:
         ):
             if len(values) != len(set(values)):
                 raise ValueError("Coding Worker typed Product checkpoint IDs repeat")
+        no_effect_ids = (
+            ()
+            if no_effect_archive is None
+            else require_coding_worker_no_effect_archive_sources(
+                archive=no_effect_archive,
+                histories=histories,
+                retired_attempt_ids=retired_attempt_ids,
+            )
+        )
+        supervisor_retired_ids = tuple(
+            item for item in retired_attempt_ids if item not in no_effect_ids
+        )
         previews = tuple(
             preview_first_coding_worker_stream_retirement_v2(
                 checkpoint=checkpoint,
@@ -237,16 +353,14 @@ class CodingWorkerPreparedProductCutoverV2:
                 history=histories[4],
                 scope_id=checkpoint.scope_id,
                 first_retained_generation=first_retained_generations[4],
-                retired_attempt_ids=retired_attempt_ids,
+                retired_attempt_ids=supervisor_retired_ids,
             ),
         )
         require_coding_worker_v2_retained_reference_closure(
             opt_in_base=bases[0],
             opt_in_segments=histories[0].segments[first_retained_generations[0] :],
             retained_receipts=bases[1]
-            .replay_retained(
-                histories[1].segments[first_retained_generations[1] :]
-            )
+            .replay_retained(histories[1].segments[first_retained_generations[1] :])
             .retained_records,
         )
         streams = (
@@ -279,14 +393,19 @@ class CodingWorkerPreparedProductCutoverV2:
                 preview=previews[4],
                 history=histories[4],
                 semantic_base=bases[4],
+                no_effect_attempt_ids=no_effect_ids,
             ),
         )
         return cls(
             index=CodingWorkerProductCutoverIndexV2.from_streams(
-                checkpoint=checkpoint, anchor=anchor, streams=streams
+                checkpoint=checkpoint,
+                anchor=anchor,
+                streams=streams,
+                no_effect_archive=no_effect_archive,
             ),
             streams=streams,
             semantic_bases=bases,
+            no_effect_archive=no_effect_archive,
         )
 
 

@@ -17,6 +17,7 @@
     "appservice",
     "host_runtime",
     "windows_shell",
+    "registered_reboot",
     "install",
     "lsp",
     "ci",
@@ -27,6 +28,17 @@
     "NOTICE"
   ],
   "rules": [
+    {
+      "paths": [
+        ".github/workflows/worker-registered-reboot-drill.yml",
+        "scripts/dev/worker_registered_reboot_drill.py",
+        "scripts/dev/worker_registered_qemu_reboot_drill.sh",
+        "src/loushang/coding/package_product_worker_registered_recovery.py",
+        "tests/coding/test_package_worker_candidate_wheel.py"
+      ],
+      "checks": ["registered_reboot"],
+      "reason": "registered Worker real reboot recovery evidence"
+    },
     {
       "paths": [
         "scripts/dev/_g18_provenance.py",
@@ -99,6 +111,7 @@
         "appservice",
         "host_runtime",
         "windows_shell",
+        "registered_reboot",
         "install",
         "lsp",
         "ci",
@@ -665,6 +678,9 @@
     ],
     "windows-shell": [
       "windows_shell"
+    ],
+    "worker-reboot": [
+      "registered_reboot"
     ],
     "lsp": [
       "lsp"

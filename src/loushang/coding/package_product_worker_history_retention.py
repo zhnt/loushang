@@ -10,8 +10,10 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal, cast
 
+from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.package_product.product_local_wheel_runtime import (
     PosixLocalWheelProductSessionOwner,
 )
@@ -19,6 +21,9 @@ from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationSnapshotV1,
 )
 from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.worker.gated_start import (
     worker_native_group_status_after_restart,
 )
@@ -43,8 +48,15 @@ from .package_product_worker_history_stream_snapshot import (
 )
 from .package_product_worker_history_v2_names import (
     DELETION_LEDGER_NAME,
+    NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
+)
+from .package_product_worker_no_effect_archive_v2 import (
+    read_bound_coding_worker_no_effect_archive_v2,
+)
+from .package_product_worker_no_effect_closure import (
+    is_coding_worker_no_effect_closure,
 )
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
@@ -75,14 +87,18 @@ _SEGMENTED_SUFFIX = re.compile(
 )
 _PAYLOAD_STAGE = re.compile(r"worker-payload-[0-9a-f]{32}\Z")
 _PAYLOAD_REPAIR = re.compile(
-    r"worker-(?P<kind>empty|complete|unmarked)-repair-"
+    r"worker-(?P<kind>empty|complete|unmarked|registered)-repair-"
     r"(?P<attempt>[0-9a-f]{32})\.json\Z"
+)
+_REGISTERED_REPAIR_STAGING = re.compile(
+    r"\.worker-registered-repair-[0-9a-f]{32}\.json\.stage\Z"
 )
 
 
 def _known_worker_state_name(name: str) -> bool:
     if name in (
         *PREPARATION_STATE_NAMES,
+        NO_EFFECT_ARCHIVE_NAME,
         PRODUCT_OWNER_INDEX_NAME,
         DELETION_LEDGER_NAME,
     ) or name in {
@@ -92,7 +108,11 @@ def _known_worker_state_name(name: str) -> bool:
         "worker-history-checkpoint-owner.json",
     }:
         return True
-    if _PAYLOAD_STAGE.fullmatch(name) or _PAYLOAD_REPAIR.fullmatch(name):
+    if (
+        _PAYLOAD_STAGE.fullmatch(name)
+        or _PAYLOAD_REPAIR.fullmatch(name)
+        or _REGISTERED_REPAIR_STAGING.fullmatch(name)
+    ):
         return True
     return any(
         _SEGMENTED_SUFFIX.fullmatch(name[len(stem) :]) is not None
@@ -164,6 +184,7 @@ def _receipt_gate_reference_issue(
     receipt: CodingWorkerReceiptRecordV1 | None,
     supervisor: WorkerAttemptRecordV1 | None,
     group_status: GatedGroupStatus,
+    activation: CodingProductWorkerRetainedAttemptV1 | None = None,
 ) -> str | None:
     """Require every attempt naming a receipt to have settled native custody."""
 
@@ -175,6 +196,13 @@ def _receipt_gate_reference_issue(
         or gate.scope_id != receipt.receipt.policy.product_scope_id
     ):
         return "receipt_reference_binding_changed"
+    if is_coding_worker_no_effect_closure(
+        gate=gate,
+        activation=activation,
+        supervisor=supervisor,
+        receipt=receipt,
+    ):
+        return None
     if gate.phase != "bound":
         return "receipt_reference_gate_unbound"
     if supervisor is None:
@@ -224,6 +252,7 @@ class CodingWorkerHistoryRetentionReviewV1:
     receipt_references_verified: bool
     payload_stage_names: tuple[str, ...]
     retained_payload_repair_reference_names: tuple[str, ...]
+    registered_repair_reference_verified: bool
     unrecognized_worker_state_names: tuple[str, ...]
     active_runtime_lease_ids: tuple[str, ...]
     active_gc_reservation_count: int
@@ -238,6 +267,23 @@ class CodingWorkerHistoryRetentionReviewV1:
         return _attempt_reference(self.gate_record, self.receipt_record)
 
     @property
+    def no_effect_closure(self) -> bool:
+        gate = self.gate_record
+        if gate is None:
+            return False
+        matching = tuple(
+            item
+            for item in self.retained_activation_references
+            if item.attempt_id == self.attempt_id
+        )
+        return len(matching) == 1 and is_coding_worker_no_effect_closure(
+            gate=gate,
+            activation=matching[0],
+            supervisor=self.attempt_record,
+            receipt=self.receipt_record,
+        )
+
+    @property
     def missing_proofs(self) -> tuple[str, ...]:
         """Conservative observations; this is never a prune authorization."""
 
@@ -245,15 +291,19 @@ class CodingWorkerHistoryRetentionReviewV1:
         gate = self.gate_record
         attempt = self.attempt_record
         receipt = self.receipt_record
+        no_effect = self.no_effect_closure
         if gate is None:
             missing.append("start_gate_absent")
-        elif gate.phase != "bound":
+        elif gate.phase != "bound" and not no_effect:
             missing.append("start_gate_unbound")
-        if attempt is None:
+        if attempt is None and not no_effect:
             missing.append("supervisor_attempt_absent")
-        elif not attempt.process_settled:
+        elif attempt is not None and not attempt.process_settled:
             missing.append("supervisor_process_unsettled")
-        if self.group_status not in {"absent", "prior_boot_absent"}:
+        if not no_effect and self.group_status not in {
+            "absent",
+            "prior_boot_absent",
+        }:
             missing.append("native_group_absence_unverified")
         if receipt is None:
             missing.append("activation_receipt_absent")
@@ -307,7 +357,10 @@ class CodingWorkerHistoryRetentionReviewV1:
             missing.append("global_receipt_gate_reference_unverified")
         if self.payload_stage_names:
             missing.append("payload_stage_retained")
-        if self.retained_payload_repair_reference_names:
+        if (
+            self.retained_payload_repair_reference_names
+            and not self.registered_repair_reference_verified
+        ):
             missing.append("payload_repair_reference_retained")
         if self.unrecognized_worker_state_names:
             missing.append("worker_reference_owner_unrecognized")
@@ -373,6 +426,19 @@ def _review_coding_product_worker_history_under_guard(
     product.assert_root_gc_authority_current()
     with product.pinned_state_root_gc_read() as root_fd:
         v2_owner_present = PRODUCT_OWNER_INDEX_NAME in os.listdir(root_fd)
+        archive = None
+        if v2_owner_present:
+            file_io = RootedFileIO(product.state_root, root_fd)
+            try:
+                with file_io.bind(
+                    product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+                ) as rooted:
+                    archive = read_bound_coding_worker_no_effect_archive_v2(rooted)
+            finally:
+                file_io.cleanup()
+    archived_proofs = (
+        {} if archive is None else {item.attempt_id: item for item in archive.proofs}
+    )
     gated = _review_offline(product, attempt_id=attempt_id)
     gate = gated.gate_record
     receipts = read_coding_product_worker_receipt_records(product, retained_only=True)
@@ -462,6 +528,10 @@ def _review_coding_product_worker_history_under_guard(
     )
     unverified_activation: list[tuple[str, str]] = []
     global_unverified_activation: list[tuple[str, str]] = []
+    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+    activation_by_id = {
+        item.attempt_id: item for item in retained_activation_references
+    }
     for reference in retained_activation_references:
         relevant = reference.attempt_id == attempt_id or (
             receipt is not None
@@ -476,6 +546,13 @@ def _review_coding_product_worker_history_under_guard(
             or referenced_gate.policy_fingerprint != reference.policy_fingerprint
         ):
             code = "activation_reference_binding_changed"
+        elif is_coding_worker_no_effect_closure(
+            gate=referenced_gate,
+            activation=reference,
+            supervisor=supervisor_by_id.get(reference.attempt_id),
+            receipt=receipt_by_fingerprint.get(reference.receipt_fingerprint),
+        ):
+            code = None
         elif referenced_gate.phase != "bound":
             code = "activation_reference_gate_unbound"
         elif reference.phase != "settled":
@@ -501,7 +578,6 @@ def _review_coding_product_worker_history_under_guard(
             global_unverified_activation.append(activation_issue)
             if relevant:
                 unverified_activation.append(activation_issue)
-    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
     receipt_gate_ids: list[str] = []
     unsettled: list[str] = []
     unverified: list[tuple[str, str]] = []
@@ -527,6 +603,7 @@ def _review_coding_product_worker_history_under_guard(
             referenced_receipt,
             supervisor_by_id.get(item.attempt_id),
             group_status,
+            activation_by_id.get(item.attempt_id),
         )
         if issue is None:
             continue
@@ -567,9 +644,21 @@ def _review_coding_product_worker_history_under_guard(
         )
     )
     with product.pinned_state_root_gc_read() as root_fd:
+        from .package_product_worker_registered_payload_repair import (
+            _read_intent as _read_registered_repair_intent,
+        )
+        from .package_product_worker_registered_payload_repair import (
+            registered_payload_repair_matches_no_effect_closure,
+        )
+
         state_names = tuple(os.listdir(root_fd))
         payloads = tuple(
-            sorted(name for name in state_names if name.startswith("worker-payload-"))
+            sorted(
+                name
+                for name in state_names
+                if name.startswith("worker-payload-")
+                or _REGISTERED_REPAIR_STAGING.fullmatch(name)
+            )
         )
         repair_references = tuple(
             sorted(
@@ -578,6 +667,37 @@ def _review_coding_product_worker_history_under_guard(
                 if _PAYLOAD_REPAIR.fullmatch(name) is not None
             )
         )
+        receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+        registered_repair_reference_verified = bool(repair_references)
+        for name in repair_references:
+            match = _PAYLOAD_REPAIR.fullmatch(name)
+            if match is None or match.group("kind") != "registered":
+                registered_repair_reference_verified = False
+                break
+            repair_attempt_id = match.group("attempt")
+            repair_gate = gate_by_id.get(repair_attempt_id)
+            repair_intent = _read_registered_repair_intent(root_fd, repair_attempt_id)
+            archived = archived_proofs.get(repair_attempt_id)
+            if (
+                repair_gate is None
+                or repair_intent is None
+                or not registered_payload_repair_matches_no_effect_closure(
+                    repair_intent,
+                    gate=repair_gate,
+                    receipt=receipt_by_fingerprint.get(repair_gate.receipt_fingerprint),
+                    activation=activation_by_id.get(repair_attempt_id),
+                    supervisor=supervisor_by_id.get(repair_attempt_id),
+                )
+                or (
+                    archived is not None
+                    and sha256(
+                        canonical_json_bytes(repair_intent.to_dict()) + b"\n"
+                    ).hexdigest()
+                    != archived.repair_intent_digest
+                )
+            ):
+                registered_repair_reference_verified = False
+                break
         unrecognized_worker_state = tuple(
             sorted(
                 name
@@ -600,6 +720,31 @@ def _review_coding_product_worker_history_under_guard(
         if v2_owner_present
         else len(receipts)
     )
+    gate_history_revision = max((item.journal_revision for item in gates), default=0)
+    supervisor_history_revision = max(
+        (item.record_revision for item in supervisor_by_id.values()), default=0
+    )
+    if v2_owner_present:
+        from .package_product_worker_history_read_v2 import (
+            read_coding_worker_v2_retained_history,
+        )
+
+        with product.pinned_state_root_gc_read() as root_fd:
+            file_io = RootedFileIO(product.state_root, root_fd)
+            try:
+                with file_io.bind(
+                    product.state_root / PRODUCT_OWNER_INDEX_NAME, durable=False
+                ) as rooted:
+                    gate_history_revision = read_coding_worker_v2_retained_history(
+                        rooted, stem="worker-start-gates"
+                    ).last_revision
+                    supervisor_history_revision = (
+                        read_coding_worker_v2_retained_history(
+                            rooted, stem="worker-supervisor"
+                        ).last_revision
+                    )
+            finally:
+                file_io.cleanup()
     expected_stream_revisions = {
         "worker-opt-in": opt_in_projection.revision,
         "worker-activation-receipts": receipt_history_revision,
@@ -608,10 +753,8 @@ def _review_coding_product_worker_history_under_guard(
             if activation_state is None
             else cast(int, activation_state["stateRevision"])
         ),
-        "worker-start-gates": max((item.journal_revision for item in gates), default=0),
-        "worker-supervisor": max(
-            (item.record_revision for item in supervisor_by_id.values()), default=0
-        ),
+        "worker-start-gates": gate_history_revision,
+        "worker-supervisor": supervisor_history_revision,
     }
     stream_revisions_match = all(
         snapshot.total_revision == expected_stream_revisions[snapshot.stem]
@@ -639,13 +782,8 @@ def _review_coding_product_worker_history_under_guard(
                 for item in opt_in_projection.latest_decisions
             )
         ),
-        start_gate_history_revision=max(
-            (item.journal_revision for item in gates), default=0
-        ),
-        supervisor_history_revision=max(
-            (item.record_revision for item in supervisor_by_id.values()),
-            default=0,
-        ),
+        start_gate_history_revision=gate_history_revision,
+        supervisor_history_revision=supervisor_history_revision,
         receipt_history_revision=receipt_history_revision,
         retained_start_gate_attempt_ids=tuple(sorted(gate_by_id)),
         retained_supervisor_attempt_ids=tuple(sorted(supervisor_by_id)),
@@ -684,6 +822,7 @@ def _review_coding_product_worker_history_under_guard(
         receipt_references_verified=receipt_references_verified,
         payload_stage_names=payloads,
         retained_payload_repair_reference_names=repair_references,
+        registered_repair_reference_verified=registered_repair_reference_verified,
         unrecognized_worker_state_names=unrecognized_worker_state,
         active_runtime_lease_ids=active_runtime_lease_ids,
         active_gc_reservation_count=len(gc_reservations),

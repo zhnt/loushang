@@ -34,12 +34,16 @@ from .package_product_worker_history_prepared_v2 import (
     CodingWorkerPreparedProductCutoverV2,
 )
 from .package_product_worker_history_v2_names import (
+    NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_ARTIFACT_NAMES,
     PREPARATION_INTENT_NAME,
     PREPARED_INDEX_NAME,
     PRODUCT_OWNER_INDEX_NAME,
     semantic_base_name,
     stream_cutover_name,
+)
+from .package_product_worker_no_effect_archive_v2 import (
+    CodingWorkerNoEffectArchiveV2,
 )
 from .package_product_worker_opt_in_base_v2 import (
     CodingWorkerOptInSemanticBaseV2,
@@ -95,7 +99,10 @@ class CodingWorkerV2PreparationIntent:
             or _DIGEST.fullmatch(self.index_digest) is None
             or type(self.artifact_digests) is not tuple
             or tuple(name for name, _digest in self.artifact_digests)
-            != PREPARATION_ARTIFACT_NAMES
+            not in (
+                PREPARATION_ARTIFACT_NAMES,
+                (*PREPARATION_ARTIFACT_NAMES, NO_EFFECT_ARCHIVE_NAME),
+            )
             or any(
                 type(digest) is not str or _DIGEST.fullmatch(digest) is None
                 for _name, digest in self.artifact_digests
@@ -203,6 +210,8 @@ def _artifact_bytes(
     for stream, base in zip(prepared.streams, bases, strict=True):
         result.append((semantic_base_name(stream.stem), base.to_bytes()))
         result.append((stream_cutover_name(stream.stem), stream.to_bytes()))
+    if prepared.no_effect_archive is not None:
+        result.append((NO_EFFECT_ARCHIVE_NAME, prepared.no_effect_archive.to_bytes()))
     return tuple(result)
 
 
@@ -216,7 +225,11 @@ def _optional_bytes(rooted: RootedFile, *, name: str, limit: int) -> bytes | Non
 def _artifact_limit(name: str) -> int:
     if name == PREPARED_INDEX_NAME:
         return _MAX_INDEX_BYTES
-    return _MAX_BASE_BYTES if name.endswith(".base.json") else _MAX_STREAM_BYTES
+    return (
+        _MAX_BASE_BYTES
+        if name.endswith(".base.json") or name == NO_EFFECT_ARCHIVE_NAME
+        else _MAX_STREAM_BYTES
+    )
 
 
 def stage_coding_worker_v2_preparation(
@@ -236,7 +249,7 @@ def stage_coding_worker_v2_preparation(
     if existing_intent is None:
         if any(
             _optional_bytes(rooted, name=name, limit=_artifact_limit(name)) is not None
-            for name in PREPARATION_ARTIFACT_NAMES
+            for name in (*PREPARATION_ARTIFACT_NAMES, NO_EFFECT_ARCHIVE_NAME)
         ):
             raise CodingWorkerV2PreparationError("coding_worker_v2_orphan_preparation")
         rooted.sibling(PREPARATION_INTENT_NAME).create_new(intent.to_bytes())
@@ -265,11 +278,18 @@ def read_coding_worker_v2_preparation(
     if raw_intent is None:
         if any(
             _optional_bytes(rooted, name=name, limit=_artifact_limit(name)) is not None
-            for name in PREPARATION_ARTIFACT_NAMES
+            for name in (*PREPARATION_ARTIFACT_NAMES, NO_EFFECT_ARCHIVE_NAME)
         ):
             raise CodingWorkerV2PreparationError("coding_worker_v2_orphan_preparation")
         return None
     intent = CodingWorkerV2PreparationIntent.from_bytes(raw_intent)
+    archive_named = NO_EFFECT_ARCHIVE_NAME in dict(intent.artifact_digests)
+    archive_present = (
+        _optional_bytes(rooted, name=NO_EFFECT_ARCHIVE_NAME, limit=_MAX_BASE_BYTES)
+        is not None
+    )
+    if archive_named != archive_present:
+        raise CodingWorkerV2PreparationError("coding_worker_v2_preparation_changed")
     artifacts: dict[str, bytes] = {}
     for name, digest in intent.artifact_digests:
         raw = _optional_bytes(rooted, name=name, limit=_artifact_limit(name))
@@ -309,7 +329,16 @@ def read_coding_worker_v2_preparation(
         )
     )
     prepared = CodingWorkerPreparedProductCutoverV2(
-        index=index, streams=streams, semantic_bases=bases
+        index=index,
+        streams=streams,
+        semantic_bases=bases,
+        no_effect_archive=(
+            None
+            if NO_EFFECT_ARCHIVE_NAME not in artifacts
+            else CodingWorkerNoEffectArchiveV2.from_bytes(
+                artifacts[NO_EFFECT_ARCHIVE_NAME]
+            )
+        ),
     )
     if (
         intent.scope_id != index.scope_id
@@ -335,11 +364,19 @@ def rollback_coding_worker_v2_preparation(rooted: RootedFile) -> bool:
     if raw_intent is None:
         if any(
             _optional_bytes(rooted, name=name, limit=_artifact_limit(name)) is not None
-            for name in PREPARATION_ARTIFACT_NAMES
+            for name in (*PREPARATION_ARTIFACT_NAMES, NO_EFFECT_ARCHIVE_NAME)
         ):
             raise CodingWorkerV2PreparationError("coding_worker_v2_orphan_preparation")
         return False
     intent = CodingWorkerV2PreparationIntent.from_bytes(raw_intent)
+    if (
+        NO_EFFECT_ARCHIVE_NAME not in dict(intent.artifact_digests)
+        and _optional_bytes(
+            rooted, name=NO_EFFECT_ARCHIVE_NAME, limit=_MAX_BASE_BYTES
+        )
+        is not None
+    ):
+        raise CodingWorkerV2PreparationError("coding_worker_v2_preparation_changed")
     targets: list[tuple[str, tuple[int, int]]] = []
     for name, digest in intent.artifact_digests:
         target = rooted.sibling(name)
