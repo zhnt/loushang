@@ -26,6 +26,7 @@ from loushang.coding.package_product_worker_history_stage_v2 import (
     stage_coding_worker_v2_preparation,
 )
 from loushang.coding.package_product_worker_history_v2_names import (
+    NO_EFFECT_ARCHIVE_NAME,
     PREPARATION_INTENT_NAME,
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
@@ -145,6 +146,22 @@ def test_v2_preparation_resumes_partial_rollback(
         assert (tmp_path / PREPARATION_INTENT_NAME).exists()
         assert rollback_coding_worker_v2_preparation(rooted)
         assert read_coding_worker_v2_preparation(rooted) is None
+
+
+def test_v2_preparation_refuses_unbound_no_effect_archive(tmp_path: Path) -> None:
+    with _rooted(tmp_path) as rooted:
+        stage_coding_worker_v2_preparation(rooted, prepared=_prepared())
+        rooted.sibling(NO_EFFECT_ARCHIVE_NAME).create_new(b"{}")
+        for operation in (
+            lambda: read_coding_worker_v2_preparation(rooted),
+            lambda: rollback_coding_worker_v2_preparation(rooted),
+        ):
+            with pytest.raises(
+                CodingWorkerV2PreparationError,
+                match="coding_worker_v2_preparation_changed",
+            ):
+                operation()
+        assert (tmp_path / PREPARATION_INTENT_NAME).exists()
 
 
 def test_v2_preparation_refuses_orphan_and_committed_owner(

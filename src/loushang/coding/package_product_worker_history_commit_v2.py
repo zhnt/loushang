@@ -114,7 +114,12 @@ def commit_coding_product_worker_v2_owner(
         or product.policy.product_id != "coding"
         or type(first_retained_generations) is not tuple
         or len(first_retained_generations) != len(CODING_WORKER_HISTORY_STREAM_STEMS)
-        or any(type(item) is not int or item < 1 for item in first_retained_generations)
+        or any(
+            type(item) is not int or item < 1
+            for item in first_retained_generations[:4]
+        )
+        or type(first_retained_generations[4]) is not int
+        or first_retained_generations[4] < 0
     ):
         raise ValueError(
             "Coding Worker V2 owner commit requires its Product and cutoffs"

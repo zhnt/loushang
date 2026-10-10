@@ -18,6 +18,7 @@ from loushang.coding.package_product_worker_history_cutover_v2 import (
     CodingWorkerStreamCutoverV2,
 )
 from loushang.coding.package_product_worker_history_retirement_preview import (
+    CodingWorkerStreamRetirementPreviewV2,
     preview_first_coding_worker_stream_retirement_v2,
 )
 from loushang.coding.package_product_worker_history_segments import (
@@ -119,6 +120,54 @@ def _history() -> tuple[
         ),
         records,
     )
+
+
+def test_supervisor_base_replays_an_explicit_zero_record_cutover() -> None:
+    manifest = CodingWorkerSegmentManifestV1(
+        stream_id="worker-supervisor", active_generation=0, sealed=()
+    )
+    assert CodingWorkerSegmentManifestV1.from_bytes(
+        manifest.to_bytes(), stream_id="worker-supervisor"
+    ) == manifest
+    history = CodingWorkerSegmentedHistoryV1(manifest=manifest, segments=(b"",))
+    base = CodingWorkerSupervisorSemanticBaseV2.from_v1_history(
+        history=history,
+        scope_id="scope",
+        first_retained_generation=0,
+        retired_attempt_ids=(),
+    )
+    assert base.cutoff_revision == 0
+    assert base.current_attempts == base.key_states == base.retired_attempt_ids == ()
+    assert CodingWorkerSupervisorSemanticBaseV2.from_bytes(base.to_bytes()) == base
+    assert base.replay_retained((b"",)).last_revision == 0
+    snapshot = CodingWorkerHistoryStreamSnapshotV1.capture(
+        stem="worker-supervisor",
+        active_generation=0,
+        last_sealed_revision=0,
+        segments=history.segments,
+    )
+    preview = CodingWorkerStreamRetirementPreviewV2(
+        stem="worker-supervisor",
+        checkpoint_revision=1,
+        checkpoint_digest="a" * 64,
+        source_fingerprint=snapshot.fingerprint,
+        first_retained_generation=0,
+        first_retained_revision=1,
+        retired_sealed_digest=sha256(b"[]").hexdigest(),
+        retired_generations=(),
+        retained_generations=(0,),
+    )
+    stream = CodingWorkerStreamCutoverV2.from_preview(
+        preview=preview,
+        history=history,
+        semantic_base_digest=sha256(base.to_bytes()).hexdigest(),
+    )
+    assert stream.first_retained_generation == stream.total_revision == 0
+    assert CodingWorkerStreamCutoverV2.from_bytes(stream.to_bytes()) == stream
+    with pytest.raises(ValueError, match="manifest is invalid"):
+        CodingWorkerSegmentManifestV1(
+            stream_id="worker-start-gates", active_generation=0, sealed=()
+        )
 
 
 def test_supervisor_base_replays_epoch_and_binds_checkpoint_waterline() -> None:

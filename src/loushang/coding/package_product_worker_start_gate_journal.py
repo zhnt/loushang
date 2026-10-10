@@ -318,7 +318,24 @@ class CodingWorkerStartGateJournal:
             with self._bound_journal(create_lock=False) as rooted:
                 if self._v2_owner_exists(rooted):
                     _history, replay = self._load_v2_state(rooted)
-                    records = replay.current_records
+                    from .package_product_worker_history_stage_v2 import (
+                        read_coding_worker_v2_preparation,
+                    )
+
+                    prepared = read_coding_worker_v2_preparation(rooted)
+                    if prepared is None:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_gate_v2_preparation_absent"
+                        )
+                    archive = prepared.no_effect_archive
+                    records = (
+                        *replay.current_records,
+                        *(
+                            ()
+                            if archive is None
+                            else (item.gate for item in archive.proofs)
+                        ),
+                    )
                 else:
                     records = self._load(rooted)
                 return next(
@@ -339,9 +356,23 @@ class CodingWorkerStartGateJournal:
                 latest: dict[str, CodingWorkerStartGateRecordV1]
                 if self._v2_owner_exists(rooted):
                     _history, replay = self._load_v2_state(rooted)
+                    from .package_product_worker_history_stage_v2 import (
+                        read_coding_worker_v2_preparation,
+                    )
+
+                    prepared = read_coding_worker_v2_preparation(rooted)
+                    if prepared is None:
+                        raise CodingWorkerStartGateJournalError(
+                            "coding_worker_gate_v2_preparation_absent"
+                        )
                     latest = {
                         record.attempt_id: record for record in replay.current_records
                     }
+                    archive = prepared.no_effect_archive
+                    if archive is not None:
+                        latest.update(
+                            (item.attempt_id, item.gate) for item in archive.proofs
+                        )
                 else:
                     latest = {}
                     for record in self._load(rooted):

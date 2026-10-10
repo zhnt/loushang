@@ -244,6 +244,19 @@ class ScopeTests(unittest.TestCase):
                 self.assertTrue(plan["checks"]["windows_shell"])
                 self.assertTrue(plan["workflows"]["windows-shell"])
 
+    def test_registered_worker_recovery_changes_select_real_reboot_gate(self):
+        for path in (
+            ".github/workflows/worker-registered-reboot-drill.yml",
+            "scripts/dev/worker_registered_reboot_drill.py",
+            "scripts/dev/worker_registered_qemu_reboot_drill.sh",
+            "src/loushang/coding/package_product_worker_registered_recovery.py",
+            "tests/coding/test_package_worker_candidate_wheel.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["registered_reboot"])
+                self.assertTrue(plan["workflows"]["worker-reboot"])
+
     def test_ordinary_worker_session_changes_select_native_gates(self):
         for path in (
             "src/loushang/coding/_tool_authority.py",

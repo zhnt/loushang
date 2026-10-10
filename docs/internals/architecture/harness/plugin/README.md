@@ -673,6 +673,9 @@ Neither may silently override a narrower implemented owner contract.
   progression from design/guards through receipt/lifecycle, Linux native,
   Windows mechanics, and the two Product canaries. Product activation remains
   explicit and default-dark; Current is still the default.
+- [Registered Worker Recovery Contract](plugin-worker-registered-recovery.md)
+  records the Product evidence and history-retention gates for a Linux C5
+  attempt stranded before its effect-start edge.
 - [PLC9C5 C5.1 Product Worker Receipt And Lifecycle Contract](plugin-lifecycle-plc9c5-c51-contract.md)
   implements the authority-free policy/receipt join, synchronous serialized
   freshness gate, deterministic publication/retirement lifecycle, durable

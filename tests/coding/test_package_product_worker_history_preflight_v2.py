@@ -132,6 +132,7 @@ def test_product_preflight_refuses_open_closure_before_preparing(
         assert kwargs["attempt_id"] == "a" * 32
         calls.append("review")
         return SimpleNamespace(
+            no_effect_closure=False,
             missing_proofs=("native_group_absence_unverified",),
             history_stream_snapshots=checkpoint.stream_snapshots,
             gc_reservation_revision=checkpoint.gc_reservation_revision,
@@ -169,6 +170,7 @@ def test_product_preflight_refuses_open_closure_before_preparing(
         preflight,
         "_review_coding_product_worker_history_under_guard",
         lambda _product, **_kwargs: SimpleNamespace(
+            no_effect_closure=False,
             missing_proofs=(),
             history_stream_snapshots=checkpoint.stream_snapshots,
             gc_reservation_revision=checkpoint.gc_reservation_revision,
