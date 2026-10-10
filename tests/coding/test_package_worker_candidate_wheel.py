@@ -6766,6 +6766,36 @@ def test_registered_worker_crash_reopens_exact_orphan_before_effect(
                 return b"00000000-0000-0000-0000-000000000000\n"
             return original_read(path, parent=parent, limit=limit)
 
+        for name, marker, expected_error in (
+            (
+                "worker-start-gates.jsonl",
+                gate.attempt_id.encode("ascii"),
+                CodingWorkerStartGateJournalError,
+            ),
+            (
+                "worker-activation-receipts.jsonl",
+                same_boot.receipt_record.opt_in_decision_digest.encode("ascii"),
+                CodingWorkerReceiptError,
+            ),
+        ):
+            path = product.state_root / name
+            original = path.read_bytes()
+            changed = bytearray(original)
+            position = original.index(marker)
+            changed[position] = ord("1") if changed[position] == ord("0") else ord("0")
+            try:
+                path.write_bytes(changed)
+                with patch.object(service_group_module, "_read_file", changed_boot_read):
+                    with pytest.raises(expected_error):
+                        review_coding_product_worker_registered_orphan(
+                            product, attempt_id=gate.attempt_id
+                        )
+                assert product.epoch_runtime.registry.review_orphans(
+                    store_id=product.epoch_runtime.registry.store_id
+                ) == (same_boot.orphan_lease,)
+            finally:
+                path.write_bytes(original)
+
         with patch.object(service_group_module, "_read_file", changed_boot_read):
             review = review_coding_product_worker_registered_orphan(
                 product, attempt_id=gate.attempt_id
