@@ -637,16 +637,22 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
     workspace: Path,
     tmp_path: Path,
     prior_attempt_ids: set[str],
-) -> None:
+    prior_boot: bool = False,
+) -> str:
     """Reopen, settle, and reclaim one crashed ordinary Coding Worker turn."""
 
-    transcript_dir = tmp_path / "independent-ordinary-worker-transcripts"
+    transcript_dir = tmp_path / (
+        "prior-boot-worker-transcripts"
+        if prior_boot
+        else "independent-ordinary-worker-transcripts"
+    )
     libc = ctypes.CDLL(None, use_errno=True)
     prior_subreaper = ctypes.c_int()
     assert libc.prctl(37, ctypes.byref(prior_subreaper), 0, 0, 0) == 0
     assert libc.prctl(36, 1, 0, 0, 0) == 0
     native_identity = None
     recovered = None
+    boot_patch = None
     try:
         child = subprocess.run(
             (
@@ -714,6 +720,20 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
         else:
             pytest.fail("independent ordinary Worker process was not reaped")
         assert worker_native_group_absent_after_restart(native_identity)
+        if prior_boot:
+            original_read = service_group_module._read_file
+
+            def changed_boot_read(
+                path: str, *, parent: int | None = None, limit: int = 4096
+            ) -> bytes:
+                if path == "/proc/sys/kernel/random/boot_id":
+                    return b"00000000-0000-0000-0000-000000000000\n"
+                return original_read(path, parent=parent, limit=limit)
+
+            boot_patch = patch.object(
+                service_group_module, "_read_file", changed_boot_read
+            )
+            boot_patch.start()
 
         orphan = review_coding_product_worker_orphan_runtime(
             product, attempt_id=gate.attempt_id
@@ -740,7 +760,10 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
         review = review_coding_product_worker_gated_recovery(
             product, attempt_id=gate.attempt_id
         )
-        assert review.same_boot_settlement_candidate
+        if prior_boot:
+            assert review.prior_boot_settlement_candidate
+        else:
+            assert review.same_boot_settlement_candidate
         plan = preview_coding_product_worker_payload_debt(
             product, attempt_id=gate.attempt_id
         )
@@ -793,12 +816,39 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
         assert c5_unsettled.value.code == (
             "plugin_package_gc_worker_history_unsettled"
         )
+        if prior_boot:
+            def reject_changed_boot(_authority, **_kwargs: object) -> bool:
+                return False
+
+            with patch.object(
+                crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+                "verify_changed_boot_absence",
+                reject_changed_boot,
+            ):
+                with pytest.raises(RuntimeError):
+                    settle_coding_product_worker_crash_c5(
+                        product, attempt_id=gate.attempt_id
+                    )
+            [debt] = (
+                item
+                for item in activation_state_journal_module.CodingProductWorkerActivationStateJournal(
+                    product.state_root / "worker-activation-state.jsonl",
+                    scope_id=product.policy.project_scope_id,
+                    store_id=product.epoch_runtime.registry.store_id,
+                ).retained_attempts_read_only()
+                if item.attempt_id == gate.attempt_id
+            )
+            assert debt.phase == "cleanup_debt"
         writer_started = Event()
         writer_finished = Event()
         writer_errors: list[BaseException] = []
         writer_thread: Thread | None = None
-        original_verify = (
-            crash_c5_module._UnderGuardCleanupEvidenceAuthority.verify_tree_settlement
+        verification_method = (
+            "verify_changed_boot_absence" if prior_boot else "verify_tree_settlement"
+        )
+        original_verify = getattr(
+            crash_c5_module._UnderGuardCleanupEvidenceAuthority,
+            verification_method,
         )
 
         def competing_gc_writer() -> None:
@@ -823,7 +873,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
 
         with patch.object(
             crash_c5_module._UnderGuardCleanupEvidenceAuthority,
-            "verify_tree_settlement",
+            verification_method,
             verify_while_writer_waits,
         ):
             c5 = settle_coding_product_worker_crash_c5(
@@ -834,6 +884,12 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
         writer_thread.join(timeout=2)
         assert writer_finished.is_set()
         assert not writer_errors
+        retained_history = review_coding_product_worker_history_retention(
+            product, attempt_id=gate.attempt_id
+        )
+        assert retained_history.history_stream_revisions_match
+        assert retained_history.receipt_references_verified
+        assert len(retained_history.history_stream_snapshots) == 5
         recovered.close()
         recovered = None
         c5_cli = subprocess.run(
@@ -875,12 +931,21 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
             product, attempt_id=gate.attempt_id
         )
         assert c5.phase == "settled"
+        reopened_history = review_coding_product_worker_history_retention(
+            product, attempt_id=gate.attempt_id
+        )
+        assert (
+            reopened_history.history_stream_snapshots
+            == retained_history.history_stream_snapshots
+        )
         gc = open_posix_local_wheel_product_root_gc(
             product,
             worker_history_authority=CodingPosixWorkerGcHistoryAuthority(product),
         )
         gc.prepare()
     finally:
+        if boot_patch is not None:
+            boot_patch.stop()
         if native_identity is not None and (
             worker_native_group_status_after_restart(native_identity) == "present"
         ):
@@ -889,6 +954,7 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
         if recovered is not None:
             recovered.close()
         assert libc.prctl(36, prior_subreaper.value, 0, 0, 0) == 0
+    return gate.attempt_id
 
 
 @pytest.mark.parametrize(
@@ -3048,6 +3114,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     else:
                                         product_session = AgentProductSession(
                                             **session_kwargs,
+                                            allowed_tool_names=[],
                                             execute_compaction=unsupported_runtime,
                                             execute_branch_summary=unsupported_runtime,
                                             get_changelog=lambda cwd, args: (cwd, args),
@@ -3459,6 +3526,7 @@ def test_worker_source_catalog_pins_explicit_product_candidate(
                                     )
                                 )
                             ),
+                            allowed_tool_names=[],
                             execute_compaction=unsupported_runtime,
                             execute_branch_summary=unsupported_runtime,
                             get_changelog=lambda cwd, args: (cwd, args),
@@ -6538,10 +6606,16 @@ def test_explicit_worker_public_coding_session_reaches_installed_product(
         }
     finally:
         reopened.close()
-    _verify_independent_ordinary_worker_turn_crash_recovery(
+    same_boot_attempt = _verify_independent_ordinary_worker_turn_crash_recovery(
         workspace=workspace,
         tmp_path=tmp_path,
         prior_attempt_ids=prior_attempt_ids,
+    )
+    _verify_independent_ordinary_worker_turn_crash_recovery(
+        workspace=workspace,
+        tmp_path=tmp_path,
+        prior_attempt_ids=prior_attempt_ids | {same_boot_attempt},
+        prior_boot=True,
     )
 
 
