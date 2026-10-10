@@ -12,6 +12,7 @@ from loushang.harness.capabilities.tools import (
     StaleToolActivationCheckpointError,
     ToolActivationChange,
     ToolActivationCoordinator,
+    ToolSelection,
 )
 from loushang.harness.runtime.registration import (
     RegistrationDisposalResult,
@@ -117,7 +118,7 @@ class SessionToolRuntime:
 
     agent: AgentToolPort
     tool_registry: ToolRegistryPort
-    allowed_tool_names: set[str] | None
+    allowed_tool_names: set[str] | ToolSelection | None
     initial_active_tool_names: Iterable[str]
     default_active_tool_names: ToolDefaultSelection
     should_activate_new_tool: ToolActivationPolicy
@@ -305,9 +306,9 @@ class SessionToolRuntime:
         staged: bool = False,
         activate_new_on_publish: bool = True,
     ) -> RegistrationLease:
-        activation_checkpoint: LegacyToolActivationCheckpoint[
-            ToolDefinition
-        ] | None = None
+        activation_checkpoint: LegacyToolActivationCheckpoint[ToolDefinition] | None = (
+            None
+        )
         activation_change: ToolActivationChange[ToolDefinition] | None = None
 
         async def dispose_runtime_binding() -> RegistrationDisposalResult:
@@ -486,7 +487,9 @@ class SessionToolRuntime:
     def _legacy_default_selection_eligible_names(self) -> tuple[str, ...]:
         contributions = self.tool_registry.list_contributions()
         if not contributions:
-            return tuple(definition.name for definition in self._available_definitions())
+            return tuple(
+                definition.name for definition in self._available_definitions()
+            )
         return tuple(
             contribution.definition.name
             for contribution in contributions

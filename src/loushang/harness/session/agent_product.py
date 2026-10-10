@@ -68,6 +68,7 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_WORKSPACE_TOOL_REQUIREMENT,
 )
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import (
     CompactionSettings,
     RetrySettings,
@@ -381,7 +382,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         resource_bundle: ResourceBundle | None = None,
         extension_runner: SessionExtensionCompositionPort | None = None,
         tool_registry: WorkspaceToolRegistry | None = None,
-        allowed_tool_names: list[str] | None = None,
+        allowed_tool_names: list[str] | ToolSelection | None = None,
         active_tool_names: list[str] | None = None,
         default_activate_new_tools: bool | None = None,
         default_tool_profile: DefaultToolProfileSnapshot | None = None,
@@ -1109,7 +1110,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def _composition_ports(
         self,
         *,
-        allowed_tool_names: list[str] | None,
+        allowed_tool_names: list[str] | ToolSelection | None,
         active_tool_names: list[str] | None,
         default_tool_profile: DefaultToolProfileSnapshot,
         show_empty_tool_prompt: bool,
@@ -1685,8 +1686,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     )
                     if worker_requests:
                         prepared_catalog = (
-                            self._require_staged_resource_candidate()
-                            .prepared_resource_catalog_snapshot
+                            self._require_staged_resource_candidate().prepared_resource_catalog_snapshot
                             if catalog_bootstrap is not None
                             else None
                         )

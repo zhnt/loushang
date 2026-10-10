@@ -89,6 +89,7 @@ from loushang.harness.capabilities import (
 )
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -281,7 +282,7 @@ class AgentSession(AgentProductSession):
         resource_bundle: ResourceBundle | None = None,
         extension_runner: ExtensionRunner | None = None,
         tool_registry: WorkspaceToolRegistry | None = None,
-        allowed_tool_names: list[str] | None = None,
+        allowed_tool_names: list[str] | ToolSelection | None = ToolSelection.ALL,
         active_tool_names: list[str] | None = None,
         default_activate_new_tools: bool | None = None,
         show_empty_tool_prompt: bool = False,
