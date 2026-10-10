@@ -98,7 +98,11 @@ class PackageEpochRuntimeLeaseRecordV1:
     @classmethod
     def from_dict(cls, value: object) -> PackageEpochRuntimeLeaseRecordV1:
         if not isinstance(value, dict) or set(value) != {
-            "kind", "lease", "recordRevision", "recordVersion", "storeId"
+            "kind",
+            "lease",
+            "recordRevision",
+            "recordVersion",
+            "storeId",
         }:
             raise ValueError("Package runtime lease record has an invalid schema")
         if (
@@ -174,7 +178,10 @@ class PackageEpochRuntimeLeaseRegistry:
     ) -> None:
         if not isinstance(path, Path) or not path.is_absolute():
             raise ValueError("Package runtime lease journal must be absolute")
-        if not isinstance(coordination_lock, Path) or not coordination_lock.is_absolute():
+        if (
+            not isinstance(coordination_lock, Path)
+            or not coordination_lock.is_absolute()
+        ):
             raise ValueError("Package coordination lock must be absolute")
         if ".." in path.parts or ".." in coordination_lock.parts:
             raise ValueError("Package runtime lease paths cannot traverse parents")
@@ -186,7 +193,10 @@ class PackageEpochRuntimeLeaseRegistry:
             raise ValueError("Package runtime lease store is required")
         if path == coordination_lock or path.parent != coordination_lock.parent:
             raise ValueError("Package lease journal and coordination must share a root")
-        if fences.path.parent != path.parent or fences.path in {path, coordination_lock}:
+        if fences.path.parent != path.parent or fences.path in {
+            path,
+            coordination_lock,
+        }:
             raise ValueError("Package epoch fence and runtime lease must share a root")
         self.path = path
         self.coordination_lock = coordination_lock
@@ -206,16 +216,24 @@ class PackageEpochRuntimeLeaseRegistry:
             records, active = self._load_unlocked()
             fence = self.fences.current(self.store_id)
             if fence is None:
-                raise self._error("Package Store has no current epoch fence", "package_epoch_unfenced")
+                raise self._error(
+                    "Package Store has no current epoch fence", "package_epoch_unfenced"
+                )
             if runtime_protocol_epoch < fence.minimum_runtime_protocol_epoch:
-                raise self._error("Package runtime protocol is too old", "package_runtime_protocol_unsupported")
+                raise self._error(
+                    "Package runtime protocol is too old",
+                    "package_runtime_protocol_unsupported",
+                )
             self._require_live(active)
             if any(
                 lease.runtime_epoch != fence.epoch
                 or lease.store_root_identity != fence.fenced_root_identity
                 for lease in active.values()
             ):
-                raise self._error("Package Store has mixed runtime epochs", "package_epoch_leases_mixed")
+                raise self._error(
+                    "Package Store has mixed runtime epochs",
+                    "package_epoch_leases_mixed",
+                )
             if any(lease.runtime_id == runtime_id for lease in active.values()):
                 raise self._error(
                     "Package runtime identity is already registered",
@@ -233,7 +251,10 @@ class PackageEpochRuntimeLeaseRegistry:
             try:
                 rooted.acquire_lock(exclusive=True)
                 if self.fences.current(self.store_id) != fence:
-                    raise self._error("Package epoch advanced during registration", "package_epoch_fence_stale")
+                    raise self._error(
+                        "Package epoch advanced during registration",
+                        "package_epoch_fence_stale",
+                    )
                 self._append_unlocked(
                     PackageEpochRuntimeLeaseRecordV1(
                         record_revision=len(records) + 1,
@@ -249,12 +270,17 @@ class PackageEpochRuntimeLeaseRegistry:
 
     def snapshot(self, *, store_id: str) -> PackageEpochLeaseSnapshotV1:
         if store_id != self.store_id:
-            raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
+            raise self._error(
+                "Package runtime lease store changed",
+                "package_epoch_lease_store_changed",
+            )
         with self._coordination("shared"):
             records, active = self._load_unlocked()
             self._require_live(active)
             if not active:
-                raise self._error("Package Store has no active runtime", "package_epoch_lease_absent")
+                raise self._error(
+                    "Package Store has no active runtime", "package_epoch_lease_absent"
+                )
             return PackageEpochLeaseSnapshotV1.create(
                 store_id=self.store_id,
                 owner_revision=len(records),
@@ -272,7 +298,10 @@ class PackageEpochRuntimeLeaseRegistry:
         """
 
         if store_id != self.store_id:
-            raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
+            raise self._error(
+                "Package runtime lease store changed",
+                "package_epoch_lease_store_changed",
+            )
         with self._coordination("exclusive", create=not read_only):
             records, active = self._load_unlocked()
             self._require_live(active)
@@ -287,7 +316,9 @@ class PackageEpochRuntimeLeaseRegistry:
             records, active = self._load_unlocked()
             lease = active.get(lease_id)
             if lease is None:
-                raise self._error("Package runtime lease is not active", "package_epoch_lease_absent")
+                raise self._error(
+                    "Package runtime lease is not active", "package_epoch_lease_absent"
+                )
             try:
                 with self._io.bind(self._lease_lock_path(lease_id)) as rooted:
                     observed = rooted.stat()
@@ -300,7 +331,8 @@ class PackageEpochRuntimeLeaseRegistry:
                     except OSError as exc:
                         if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                             raise self._error(
-                                "Package runtime lease remains live", "package_epoch_lease_live"
+                                "Package runtime lease remains live",
+                                "package_epoch_lease_live",
                             ) from exc
                         raise
                     self._append_unlocked(
@@ -312,7 +344,10 @@ class PackageEpochRuntimeLeaseRegistry:
                         )
                     )
             except OSError as exc:
-                raise self._error("Package runtime lease liveness is unknown", "package_epoch_lease_liveness_unknown") from exc
+                raise self._error(
+                    "Package runtime lease liveness is unknown",
+                    "package_epoch_lease_liveness_unknown",
+                ) from exc
 
     def review_orphans(
         self, *, store_id: str
@@ -324,7 +359,10 @@ class PackageEpochRuntimeLeaseRegistry:
         """
 
         if store_id != self.store_id:
-            raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
+            raise self._error(
+                "Package runtime lease store changed",
+                "package_epoch_lease_store_changed",
+            )
         with self._coordination("shared"):
             _, active = self._load_unlocked()
             orphans: list[PackageEpochRuntimeLeaseV1] = []
@@ -354,11 +392,45 @@ class PackageEpochRuntimeLeaseRegistry:
                     ) from exc
             return tuple(orphans)
 
+    def repaired_orphan_for_runtime(
+        self, *, store_id: str, runtime_id: str
+    ) -> tuple[int, PackageEpochRuntimeLeaseV1] | None:
+        """Read an exact terminal orphan repair with its owner revision.
+
+        A Product must compare the revision with a later exclusive quiescence
+        receipt before using this read as cleanup evidence. This method does
+        not repair a lease or treat an ordinary release as an orphan repair.
+        """
+
+        if store_id != self.store_id:
+            raise self._error(
+                "Package runtime lease store changed",
+                "package_epoch_lease_store_changed",
+            )
+        if type(runtime_id) is not str or not runtime_id:
+            raise ValueError("Package runtime identity is required")
+        with self._coordination("shared", create=False):
+            records, active = self._load_unlocked()
+            matching = tuple(
+                item for item in records if item.lease.runtime_id == runtime_id
+            )
+            if (
+                len(matching) != 2
+                or matching[0].kind != "registered"
+                or matching[1].kind != "orphan_repaired"
+                or matching[0].lease != matching[1].lease
+                or matching[0].lease.lease_id in active
+            ):
+                return None
+            return len(records) + 1, matching[0].lease
+
     def _release(self, handle: PackageEpochRuntimeLeaseHandle) -> None:
         with self._coordination("exclusive"):
             records, active = self._load_unlocked()
             if active.get(handle.lease.lease_id) != handle.lease:
-                raise self._error("Package runtime lease changed", "package_epoch_lease_stale")
+                raise self._error(
+                    "Package runtime lease changed", "package_epoch_lease_stale"
+                )
             self._append_unlocked(
                 PackageEpochRuntimeLeaseRecordV1(
                     record_revision=len(records) + 1,
@@ -383,30 +455,47 @@ class PackageEpochRuntimeLeaseRegistry:
         except FileNotFoundError:
             return (), {}
         except (OSError, UnicodeError) as exc:
-            raise self._error("Package runtime lease journal is unsafe", "package_epoch_lease_journal_corrupt") from exc
+            raise self._error(
+                "Package runtime lease journal is unsafe",
+                "package_epoch_lease_journal_corrupt",
+            ) from exc
         try:
             _assert_no_duplicate_keys(raw)
-            loaded: JsonlSnapshot[None, PackageEpochRuntimeLeaseRecordV1] = decode_jsonl(
-                raw,
-                target=self.path,
-                record_codec=_RECORD_CODEC,
+            loaded: JsonlSnapshot[None, PackageEpochRuntimeLeaseRecordV1] = (
+                decode_jsonl(
+                    raw,
+                    target=self.path,
+                    record_codec=_RECORD_CODEC,
+                )
             )
             records = loaded.records
         except (JournalFileError, OSError, UnicodeError, ValueError) as exc:
-            raise self._error("Package runtime lease journal is corrupt", "package_epoch_lease_journal_corrupt") from exc
+            raise self._error(
+                "Package runtime lease journal is corrupt",
+                "package_epoch_lease_journal_corrupt",
+            ) from exc
         active: dict[str, PackageEpochRuntimeLeaseV1] = {}
         seen: set[str] = set()
         for revision, record in enumerate(records, start=1):
             lease_id = record.lease.lease_id
             if record.record_revision != revision or record.store_id != self.store_id:
-                raise self._error("Package runtime lease history changed", "package_epoch_lease_journal_corrupt")
+                raise self._error(
+                    "Package runtime lease history changed",
+                    "package_epoch_lease_journal_corrupt",
+                )
             if record.kind == "registered":
                 if lease_id in seen:
-                    raise self._error("Package runtime lease was reused", "package_epoch_lease_journal_corrupt")
+                    raise self._error(
+                        "Package runtime lease was reused",
+                        "package_epoch_lease_journal_corrupt",
+                    )
                 active[lease_id] = record.lease
                 seen.add(lease_id)
             elif active.get(lease_id) != record.lease:
-                raise self._error("Package runtime lease release changed", "package_epoch_lease_journal_corrupt")
+                raise self._error(
+                    "Package runtime lease release changed",
+                    "package_epoch_lease_journal_corrupt",
+                )
             else:
                 del active[lease_id]
         return records, active
@@ -426,9 +515,15 @@ class PackageEpochRuntimeLeaseRegistry:
                         if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                             continue
                         raise
-                    raise self._error("Package runtime lease is orphaned", "package_epoch_lease_orphaned")
+                    raise self._error(
+                        "Package runtime lease is orphaned",
+                        "package_epoch_lease_orphaned",
+                    )
             except OSError as exc:
-                raise self._error("Package runtime lease liveness is unknown", "package_epoch_lease_liveness_unknown") from exc
+                raise self._error(
+                    "Package runtime lease liveness is unknown",
+                    "package_epoch_lease_liveness_unknown",
+                ) from exc
 
     def _append_unlocked(self, record: PackageEpochRuntimeLeaseRecordV1) -> None:
         try:
@@ -441,7 +536,10 @@ class PackageEpochRuntimeLeaseRegistry:
                 file_io=self._io,
             )
         except (JournalFileError, OSError) as exc:
-            raise self._error("Package runtime lease append failed", "package_epoch_lease_journal_corrupt") from exc
+            raise self._error(
+                "Package runtime lease append failed",
+                "package_epoch_lease_journal_corrupt",
+            ) from exc
 
     def _lease_lock_path(self, lease_id: str) -> Path:
         if len(lease_id) != 64 or any(c not in "0123456789abcdef" for c in lease_id):
@@ -460,7 +558,8 @@ class PackageEpochRuntimeLeaseRegistry:
             except OSError as exc:
                 if exc.errno in {errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES}:
                     raise self._error(
-                        "Package epoch coordination lock is busy", "package_epoch_lease_busy"
+                        "Package epoch coordination lock is busy",
+                        "package_epoch_lease_busy",
                     ) from exc
                 raise
             yield

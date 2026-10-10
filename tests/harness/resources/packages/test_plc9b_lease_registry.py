@@ -476,6 +476,9 @@ os._exit(0)
     before_review = registry.path.read_bytes()
     (orphan,) = registry.review_orphans(store_id=registry.store_id)
     assert orphan.lease_id == lease_id
+    assert registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:crashed"
+    ) is None
     assert registry.path.read_bytes() == before_review
     lock_path = registry._lease_lock_path(lease_id)
     moved_lock = lock_path.with_name(lock_path.name + ".held")
@@ -488,6 +491,15 @@ os._exit(0)
     finally:
         moved_lock.rename(lock_path)
     registry.repair_orphan(lease_id)
+    repaired = registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:crashed"
+    )
+    assert repaired is not None
+    assert repaired[0] > 0
+    assert repaired[1] == orphan
+    assert registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:other"
+    ) is None
     assert registry.review_orphans(store_id=registry.store_id) == ()
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as absent:
         registry.snapshot(store_id="package-store:test")

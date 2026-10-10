@@ -46,6 +46,9 @@ from .package_product_worker_history_v2_names import (
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
 )
+from .package_product_worker_no_effect_closure import (
+    is_coding_worker_no_effect_closure,
+)
 from .package_product_worker_opt_in import (
     CodingWorkerOptInDecisionV1,
     CodingWorkerOptInJournal,
@@ -164,6 +167,7 @@ def _receipt_gate_reference_issue(
     receipt: CodingWorkerReceiptRecordV1 | None,
     supervisor: WorkerAttemptRecordV1 | None,
     group_status: GatedGroupStatus,
+    activation: CodingProductWorkerRetainedAttemptV1 | None = None,
 ) -> str | None:
     """Require every attempt naming a receipt to have settled native custody."""
 
@@ -175,6 +179,13 @@ def _receipt_gate_reference_issue(
         or gate.scope_id != receipt.receipt.policy.product_scope_id
     ):
         return "receipt_reference_binding_changed"
+    if is_coding_worker_no_effect_closure(
+        gate=gate,
+        activation=activation,
+        supervisor=supervisor,
+        receipt=receipt,
+    ):
+        return None
     if gate.phase != "bound":
         return "receipt_reference_gate_unbound"
     if supervisor is None:
@@ -238,6 +249,23 @@ class CodingWorkerHistoryRetentionReviewV1:
         return _attempt_reference(self.gate_record, self.receipt_record)
 
     @property
+    def no_effect_closure(self) -> bool:
+        gate = self.gate_record
+        if gate is None:
+            return False
+        matching = tuple(
+            item
+            for item in self.retained_activation_references
+            if item.attempt_id == self.attempt_id
+        )
+        return len(matching) == 1 and is_coding_worker_no_effect_closure(
+            gate=gate,
+            activation=matching[0],
+            supervisor=self.attempt_record,
+            receipt=self.receipt_record,
+        )
+
+    @property
     def missing_proofs(self) -> tuple[str, ...]:
         """Conservative observations; this is never a prune authorization."""
 
@@ -245,15 +273,19 @@ class CodingWorkerHistoryRetentionReviewV1:
         gate = self.gate_record
         attempt = self.attempt_record
         receipt = self.receipt_record
+        no_effect = self.no_effect_closure
         if gate is None:
             missing.append("start_gate_absent")
-        elif gate.phase != "bound":
+        elif gate.phase != "bound" and not no_effect:
             missing.append("start_gate_unbound")
-        if attempt is None:
+        if attempt is None and not no_effect:
             missing.append("supervisor_attempt_absent")
-        elif not attempt.process_settled:
+        elif attempt is not None and not attempt.process_settled:
             missing.append("supervisor_process_unsettled")
-        if self.group_status not in {"absent", "prior_boot_absent"}:
+        if not no_effect and self.group_status not in {
+            "absent",
+            "prior_boot_absent",
+        }:
             missing.append("native_group_absence_unverified")
         if receipt is None:
             missing.append("activation_receipt_absent")
@@ -462,6 +494,10 @@ def _review_coding_product_worker_history_under_guard(
     )
     unverified_activation: list[tuple[str, str]] = []
     global_unverified_activation: list[tuple[str, str]] = []
+    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
+    activation_by_id = {
+        item.attempt_id: item for item in retained_activation_references
+    }
     for reference in retained_activation_references:
         relevant = reference.attempt_id == attempt_id or (
             receipt is not None
@@ -476,6 +512,13 @@ def _review_coding_product_worker_history_under_guard(
             or referenced_gate.policy_fingerprint != reference.policy_fingerprint
         ):
             code = "activation_reference_binding_changed"
+        elif is_coding_worker_no_effect_closure(
+            gate=referenced_gate,
+            activation=reference,
+            supervisor=supervisor_by_id.get(reference.attempt_id),
+            receipt=receipt_by_fingerprint.get(reference.receipt_fingerprint),
+        ):
+            code = None
         elif referenced_gate.phase != "bound":
             code = "activation_reference_gate_unbound"
         elif reference.phase != "settled":
@@ -501,7 +544,6 @@ def _review_coding_product_worker_history_under_guard(
             global_unverified_activation.append(activation_issue)
             if relevant:
                 unverified_activation.append(activation_issue)
-    receipt_by_fingerprint = {item.receipt.fingerprint: item for item in receipts}
     receipt_gate_ids: list[str] = []
     unsettled: list[str] = []
     unverified: list[tuple[str, str]] = []
@@ -527,6 +569,7 @@ def _review_coding_product_worker_history_under_guard(
             referenced_receipt,
             supervisor_by_id.get(item.attempt_id),
             group_status,
+            activation_by_id.get(item.attempt_id),
         )
         if issue is None:
             continue

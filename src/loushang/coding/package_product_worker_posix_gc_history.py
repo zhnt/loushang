@@ -44,6 +44,9 @@ from .package_product_worker_history_v2_names import (
     PREPARATION_STATE_NAMES,
     PRODUCT_OWNER_INDEX_NAME,
 )
+from .package_product_worker_no_effect_closure import (
+    is_coding_worker_no_effect_closure,
+)
 from .package_product_worker_opt_in import CodingWorkerOptInJournal
 from .package_product_worker_payload import (
     _read_complete_repair_intent,
@@ -223,7 +226,20 @@ class CodingPosixWorkerGcHistoryAuthority:
             receipt_by_fingerprint = {
                 item.receipt.fingerprint: item for item in receipts
             }
-            if set(gate_by_id) != set(attempt_by_id):
+            activation_by_id = {
+                item.attempt_id: item for item in retained_activation_attempts
+            }
+            no_effect_ids = {
+                gate.attempt_id
+                for gate in gates
+                if is_coding_worker_no_effect_closure(
+                    gate=gate,
+                    activation=activation_by_id.get(gate.attempt_id),
+                    supervisor=attempt_by_id.get(gate.attempt_id),
+                    receipt=receipt_by_fingerprint.get(gate.receipt_fingerprint),
+                )
+            }
+            if set(gate_by_id) - no_effect_ids != set(attempt_by_id):
                 raise ValueError("Linux Worker GC attempt history is incomplete")
             if set(gate_by_id) != {
                 item.attempt_id for item in retained_activation_attempts
@@ -234,13 +250,18 @@ class CodingPosixWorkerGcHistoryAuthority:
                 if (
                     activation_attempt.phase != "settled"
                     or gate is None
-                    or activation_attempt.attempt_id not in attempt_by_id
+                    or (
+                        activation_attempt.attempt_id not in attempt_by_id
+                        and activation_attempt.attempt_id not in no_effect_ids
+                    )
                     or gate.receipt_fingerprint
                     != activation_attempt.receipt_fingerprint
                     or gate.policy_fingerprint != activation_attempt.policy_fingerprint
                 ):
                     raise ValueError("Linux Worker GC C5 attempt history is incomplete")
             for gate in gates:
+                if gate.attempt_id in no_effect_ids:
+                    continue
                 attempt = attempt_by_id[gate.attempt_id]
                 receipt = receipt_by_fingerprint.get(gate.receipt_fingerprint)
                 if (
