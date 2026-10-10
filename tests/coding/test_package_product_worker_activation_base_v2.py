@@ -11,6 +11,7 @@ from loushang.coding.package_product_worker_activation_base_v2 import (
     CodingWorkerActivationSemanticBaseV2,
 )
 from loushang.coding.package_product_worker_activation_history import (
+    project_coding_worker_retained_attempts,
     validate_coding_worker_activation_attempt_history,
 )
 from loushang.coding.package_product_worker_history_checkpoint import (
@@ -72,6 +73,7 @@ def _states() -> tuple[dict[str, object], ...]:
             protocol_terminal=True,
             domain_retired=True,
             tree_settled=True,
+            no_effect=True,
         ).to_dict(),
     )
     settled["attempts"] = {key: settled_attempt}
@@ -132,6 +134,20 @@ def test_c5_base_replays_live_transition_and_compaction() -> None:
     changed_identity["attempts"] = {key: attempt}
     with pytest.raises(ValueError, match="retained replay"):
         base.replay_retained((_line(changed_identity),))
+
+
+def test_c5_v2_base_retains_no_effect_settlement_after_v1_retirement() -> None:
+    history, _ = _history(3)
+    base = CodingWorkerActivationSemanticBaseV2.from_v1_history(
+        history=history, scope_id="scope", first_retained_generation=1
+    )
+    reopened = CodingWorkerActivationSemanticBaseV2.from_bytes(base.to_bytes())
+    [attempt] = project_coding_worker_retained_attempts((reopened.last_record,))
+    assert attempt.no_effect
+    assert attempt.phase == "settled"
+    assert reopened.replay_retained((history.active_raw,)).retired_attempt_ids == (
+        frozenset({"b" * 32})
+    )
 
 
 def test_c5_base_refuses_retired_id_and_binds_exact_cutover() -> None:

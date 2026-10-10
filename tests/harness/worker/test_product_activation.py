@@ -1278,9 +1278,40 @@ def test_c51_no_effect_and_effect_exit_matrix(mode: str) -> None:
     except RuntimeError:
         assert mode in {"exception", "effect-error"}
     phase = coordinator.snapshot()["attempts"]  # type: ignore[index]
-    phase = next(iter(phase.values()))["phase"]  # type: ignore[union-attr,index]
-    assert phase == ("effect_started" if mode == "effect-error" else "settled")
+    attempt = next(iter(phase.values()))  # type: ignore[union-attr]
+    assert attempt["phase"] == (  # type: ignore[index]
+        "effect_started" if mode == "effect-error" else "settled"
+    )
+    if mode != "effect-error":
+        assert attempt["cleanupSettlement"]["noEffect"] is True  # type: ignore[index]
     assert authority.events.count("gate-exit") == 1
+
+
+def test_c51_explicit_settlement_cannot_claim_no_effect() -> None:
+    receipt = _receipt()
+    coordinator, _ = _coordinator(receipt=receipt)
+    with coordinator.admission(
+        policy=receipt.policy,
+        receipt=receipt,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        host_identity="host-1",
+        boot_identity="boot-1",
+    ):
+        pass
+    forged = WorkerCleanupSettlementV1(
+        receipt_fingerprint=receipt.fingerprint,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        host_identity="host-1",
+        boot_identity="boot-1",
+        protocol_terminal=True,
+        domain_retired=True,
+        tree_settled=True,
+        no_effect=True,
+    )
+    with pytest.raises(_ActivationRejected):
+        coordinator.record_cleanup_settlement(forged, witness=object())
 
 
 @pytest.mark.parametrize("_case_id", ("C51-COMMIT-BEFORE-RETURN",))
@@ -2560,3 +2591,4 @@ def test_cleanup_v2_no_effect_settles_without_native_side_effect_evidence() -> N
     assert attempt["phase"] == "settled"
     assert attempt["cleanupSettlement"]["settlementVersion"] == 2
     assert attempt["cleanupSettlement"]["nativeContainmentSettled"] is True
+    assert attempt["cleanupSettlement"]["noEffect"] is True
