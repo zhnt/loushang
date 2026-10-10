@@ -176,6 +176,9 @@ Neither may silently override a narrower implemented owner contract.
   freezes Product-owned recovery/epoch activation, one typed Package intent
   across operations/Session/CLI/RPC/startup, and explicit-non-Plugin-only
   fallback without granting transports Store or deletion authority.
+- [PLC9 A2 Later-Phase Repair Policy](plugin-lifecycle-a2-later-repair-policy.md)
+  maps existing bounded Coding repair actions to their Package phases and
+  defines the evidence and refusal gates for a general repair decision.
 - [PLC9B Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md)
   freezes the Package acquisition owner, exact entrypoint inventory, versioned
   wheel/closure/publication evidence, fail-closed recovery, and mandatory
