@@ -121,6 +121,7 @@ if ! wait_for_guest 900; then
   echo "KVM guest did not start; retrying the same disk with TCG" >&2
   kill "$(cat "$vm_root/qemu.pid")" 2>/dev/null || true
   rm -f "$vm_root/qemu.pid"
+  accel=tcg
   start_vm tcg
   wait_for_guest 1800
 fi
@@ -132,7 +133,11 @@ guest 'mkdir -p loushang && tar -xzf source.tar.gz -C loushang'
 guest 'sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential python3-venv python3-dev'
 guest 'cd loushang && python3 -m venv .venv && .venv/bin/python -m pip install -q --upgrade pip && .venv/bin/python -m pip install -q -e ".[dev]"'
 
-guest 'cd loushang && LOUSHANG_HOME=/home/drill/registered-worker-drill/private-home PYTHONPATH=src .venv/bin/python scripts/dev/worker_registered_reboot_drill.py prepare --root /home/drill/registered-worker-drill'
+fixture_timeout=90
+if [ "$accel" = tcg ]; then
+  fixture_timeout=900
+fi
+guest "cd loushang && LOUSHANG_HOME=/home/drill/registered-worker-drill/private-home PYTHONPATH=src .venv/bin/python scripts/dev/worker_registered_reboot_drill.py prepare --root /home/drill/registered-worker-drill --fixture-timeout $fixture_timeout"
 scp "${scp_args[@]}" \
   drill@127.0.0.1:registered-worker-drill/registered-worker-reboot-drill.json \
   "$artifact_root/manifest.json"

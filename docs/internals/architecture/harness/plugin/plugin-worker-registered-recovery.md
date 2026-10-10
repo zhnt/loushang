@@ -112,6 +112,9 @@ records the guest's boot IDs and verifies that the QEMU process and persistent
 disk remained the same across reboot. A successful workflow run on the exact
 PR head can serve as the isolated-VM reboot evidence; a failed or skipped run
 cannot.
+The workflow allows a longer fixture deadline under software CPU emulation;
+the Product recovery code and its boot-ID checks use the same path in either
+acceleration mode.
 
 ## V2 retirement boundary
 

@@ -81,7 +81,7 @@ def _open_product(workspace: Path):
     )
 
 
-def _prepare(root: Path) -> dict[str, object]:
+def _prepare(root: Path, *, fixture_timeout: int) -> dict[str, object]:
     import pytest
 
     from tests.coding.test_package_worker_candidate_wheel import (
@@ -124,7 +124,7 @@ def _prepare(root: Path) -> dict[str, object]:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=90,
+            timeout=fixture_timeout,
             check=False,
         )
         if child.returncode != 0:
@@ -241,11 +241,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=("prepare", "recover"))
     parser.add_argument("--root", required=True, type=Path)
+    parser.add_argument("--fixture-timeout", type=int, default=90)
     args = parser.parse_args()
     if sys.platform != "linux":
         raise RuntimeError("registered Worker reboot drill requires Linux")
+    if not 1 <= args.fixture_timeout <= 1800:
+        raise ValueError("fixture timeout must be between 1 and 1800 seconds")
     root = args.root.expanduser().resolve(strict=False)
-    result = _prepare(root) if args.phase == "prepare" else _recover(root)
+    result = (
+        _prepare(root, fixture_timeout=args.fixture_timeout)
+        if args.phase == "prepare"
+        else _recover(root)
+    )
     print(json.dumps(result, sort_keys=True))
 
 
