@@ -28,6 +28,9 @@ from loushang.harness.plugin_management.desired_command import (
     PluginDesiredRepairResultV1,
     resume_plugin_desired_operation,
 )
+from loushang.harness.plugin_management.journal_codecs import (
+    PluginDesiredStateJournalTransition,
+)
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operation_explanation import (
     PluginOperationExplanationProjector,
@@ -55,6 +58,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageRetentionHandoffJournal,
+    PackageRetentionHandoffReceiptV1,
 )
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductPosixFencedRuntimeOwner,
@@ -126,6 +130,97 @@ def explain_coding_fenced_plugin_operation(
         return result
     finally:
         runtime.close()
+
+
+def read_coding_fenced_package_handoff(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> PackageRetentionHandoffReceiptV1 | None:
+    """Observe one exact A2 handoff receipt without repairing its owner."""
+
+    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
+    try:
+        result = PackageRetentionHandoffJournal(
+            runtime.control_root / "product-state" / "handoff.jsonl"
+        ).read_operation(operation_id)
+        runtime.assert_current()
+        return result
+    finally:
+        runtime.close()
+
+
+def read_coding_fenced_desired_transition(
+    layout: CodingPluginLifecycleStateLayout,
+    operation_id: str,
+) -> PluginDesiredStateJournalTransition | None:
+    """Read one exact Desired commit without repairing management or Product state."""
+
+    runtime, _ports = _ProductCliOwner(layout).open(read_only=True)
+    try:
+        desired = PluginDesiredStateLedger(
+            runtime.control_root / "product-state" / "desired-state.jsonl",
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+        _snapshot, transitions = desired.capture_read_only()
+        matches = [
+            transition
+            for transition in transitions
+            if transition.mutation.operation_id == operation_id
+        ]
+        runtime.assert_current()
+        if len(matches) > 1:
+            raise ValueError("Desired operation identity is ambiguous")
+        return matches[0] if matches else None
+    finally:
+        runtime.close()
+
+
+def read_coding_fenced_handoff_desired_commit(
+    layout: CodingPluginLifecycleStateLayout,
+    handoff: PackageRetentionHandoffReceiptV1,
+) -> tuple[
+    int, dict[str, object], Literal["owner_receipt", "verified_transition"]
+] | None:
+    """Prove an exact Desired commit even before handoff settlement is journaled."""
+
+    desired_request = handoff.request.desired_request
+    if handoff.desired_receipt is not None:
+        return (
+            handoff.desired_receipt.inventory_revision,
+            desired_request.root_ref.to_dict(),
+            "owner_receipt",
+        )
+    if handoff.state != "dependency_pinned":
+        return None
+    transition = read_coding_fenced_desired_transition(
+        layout, desired_request.command_id
+    )
+    if transition is None:
+        return None
+    key = transition.mutation.installation_key
+    selected = transition.committed_state.selection.package_revision
+    if (
+        transition.mutation.expected_inventory_revision
+        != desired_request.expected_inventory_revision
+        or transition.inventory_revision
+        != desired_request.expected_inventory_revision + 1
+        or (key.product_id, key.scope_id, key.plugin_id)
+        != (
+            desired_request.product_id,
+            desired_request.scope_id,
+            desired_request.plugin_id,
+        )
+        or selected is None
+        or selected.plugin_version != desired_request.root_ref.version
+        or selected.package_content_digest
+        != desired_request.root_ref.artifact_digest
+    ):
+        return None
+    return (
+        transition.inventory_revision,
+        desired_request.root_ref.to_dict(),
+        "verified_transition",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -446,5 +541,8 @@ __all__ = [
     "coding_fenced_product_exists",
     "explain_coding_fenced_package_operation",
     "explain_coding_fenced_plugin_operation",
+    "read_coding_fenced_package_handoff",
+    "read_coding_fenced_desired_transition",
+    "read_coding_fenced_handoff_desired_commit",
     "repair_coding_fenced_cli_desired_operation",
 ]

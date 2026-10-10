@@ -160,6 +160,7 @@ from loushang.coding.package_product_worker_provider import (
 )
 from loushang.coding.package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_DEFINITION,
+    bind_coding_worker_query_consumer,
 )
 from loushang.coding.package_product_worker_receipt import CodingWorkerReceiptError
 from loushang.coding.package_product_worker_windows_activation_state_journal import (
@@ -3279,7 +3280,7 @@ def _assert_windows_worker_public_session_restarts_after_recovery(
     ):
         if entry_kind == "direct":
             manager = asyncio.run(
-                SessionManager.new(
+                SessionManager.new_with_composition(
                     session_dir=tmp_path / "reopened-worker-transcripts",
                     cwd=str(workspace),
                     session_id="windows-worker-reopened",
@@ -4495,7 +4496,7 @@ finally:
                         ):
                             if ordinary_entry_kind == "direct":
                                 ordinary_manager = asyncio.run(
-                                    SessionManager.new(
+                                    SessionManager.new_with_composition(
                                         session_dir=(
                                             tmp_path / "ordinary-worker-transcripts"
                                         ),
@@ -4526,6 +4527,9 @@ finally:
                                                 "review"
                                             )
                                             == "Review symbol"
+                                        )
+                                        worker_consumer = bind_coding_worker_query_consumer(
+                                            ordinary_session
                                         )
                                         if disable_while_ordinary_session_open:
                                             snapshot = (
@@ -4564,14 +4568,17 @@ finally:
                                             )
                                             assert disabled.status == "terminal"
                                             with pytest.raises(
-                                                CapabilityWorkerFacetProxyError,
-                                                match=(
-                                                    "worker_capability_facet_proxy_owner_unavailable"
-                                                ),
+                                                ValueError,
+                                                match="Coding Worker selection changed before Session preparation",
                                             ):
                                                 await ordinary_session.query_worker_symbol(
                                                     "review"
                                                 )
+                                            with pytest.raises(
+                                                CapabilityWorkerFacetProxyError,
+                                                match="worker_capability_facet_proxy_owner_unavailable",
+                                            ):
+                                                await worker_consumer.query(symbol="review")
                                         if crash_after_ordinary_query:
                                             print(
                                                 "windows-public-worker-healthy:direct",
@@ -4689,7 +4696,7 @@ finally:
                             session_manager=unmaterialized_session,
                         )
                     worker_session = asyncio.run(
-                        SessionManager.new(
+                        SessionManager.new_with_composition(
                             session_dir=tmp_path / "worker-transcripts",
                             cwd=str(workspace),
                             session_id="windows-worker-candidate",

@@ -849,8 +849,8 @@ def test_plc9b_canonical_entrypoint_inventory_exactly_matches_source_ast() -> No
     documented = _documented_entrypoint_counts()
     actual = _package_entrypoint_scope_counts()
 
-    assert len(documented) == 118
-    assert sum(documented.values()) == 173
+    assert len(documented) == 119
+    assert sum(documented.values()) == 174
     assert actual == documented
     assert "test_plc9_freezes_named_package_lifecycle_sites_and_occurrences" in (
         _source(BASELINE_TEST)
@@ -2245,6 +2245,26 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             pass
         elif path.is_relative_to(Path("src/loushang/harness/resources/packages")):
             assert path.name.startswith("product_"), path
+        elif path == Path("src/loushang/plugin/_coding_data_wheel_validation.py"):
+            # P0's inert author verifier may inspect Wheel bytes, never own
+            # the package lifecycle or desired-state transition authority.
+            tree = ast.parse(_source(path), filename=str(path))
+            assert {
+                node.module
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom)
+                and (node.module or "").startswith(
+                    "loushang.harness.resources.packages.plugin_lifecycle"
+                )
+            } == {"loushang.harness.resources.packages.plugin_lifecycle.wheel"}
+            assert not any(
+                alias.name.startswith(
+                    "loushang.harness.resources.packages.plugin_lifecycle"
+                )
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Import)
+                for alias in node.names
+            )
         else:
             assert path in {LINUX_LEGACY_RUNTIME, WINDOWS_LEGACY_RUNTIME}, path
 

@@ -42,8 +42,11 @@ except ImportError:  # pragma: no cover - Windows
 
 _DIRECT_PROFILE_ID = "posix-static-elf-v1"
 _CONTAINED_PROFILE_ID = "posix-static-contained-elf-v1"
+_QUERY_CONTAINED_PROFILE_ID = "posix-static-query-contained-elf-v1"
 _CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v1"
 _GATED_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-containment-launch/v2"
+_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-query-containment-launch/v1"
+_GATED_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL = "loushang-static-query-containment-launch/v2"
 _PLATFORM_IDENTITY = "platform:linux-x86_64-syscall-abi"
 _SUPPORTED_MACHINES = frozenset({"amd64", "x86_64"})
 _MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
@@ -58,6 +61,22 @@ _F_SEAL_GROW = 0x0004
 _F_SEAL_WRITE = 0x0008
 _PT_DYNAMIC = 2
 _PT_INTERP = 3
+
+
+def _contained_protocol(profile_id: str, gated: bool) -> str:
+    if profile_id == _QUERY_CONTAINED_PROFILE_ID:
+        return (
+            _GATED_QUERY_CONTAINMENT_ARGUMENT_PROTOCOL
+            if gated
+            else _QUERY_CONTAINMENT_ARGUMENT_PROTOCOL
+        )
+    if profile_id == _CONTAINED_PROFILE_ID:
+        return (
+            _GATED_CONTAINMENT_ARGUMENT_PROTOCOL
+            if gated
+            else _CONTAINMENT_ARGUMENT_PROTOCOL
+        )
+    raise ValueError("POSIX contained launch profile_id is unsupported")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +128,7 @@ class _PosixStaticContainedLaunchCaptureSpec(_LaunchCaptureSpec):
 
     def __post_init__(self) -> None:
         super(_PosixStaticContainedLaunchCaptureSpec, self).__post_init__()
-        if self.profile_id != _CONTAINED_PROFILE_ID:
+        if self.profile_id not in {_CONTAINED_PROFILE_ID, _QUERY_CONTAINED_PROFILE_ID}:
             raise ValueError("POSIX contained launch profile_id is unsupported")
         for name, digest in (
             ("launcher", self.launcher_sha256),
@@ -143,7 +162,7 @@ class _PosixStaticContainedLaunchCaptureSpec(_LaunchCaptureSpec):
             f"payload-static-elf:sha256:{self.executable_sha256}",
             f"cwd:posix:{self.cwd_device}:{self.cwd_inode}",
             f"containment-profile:sha256:{self.containment_profile_sha256}",
-            f"invocation:{_GATED_CONTAINMENT_ARGUMENT_PROTOCOL if self.start_gate_read_fd is not None else _CONTAINMENT_ARGUMENT_PROTOCOL}",
+            f"invocation:{_contained_protocol(self.profile_id, self.start_gate_read_fd is not None)}",
             _PLATFORM_IDENTITY,
         )
         if self.execution_closure != expected_closure:
@@ -479,9 +498,10 @@ class _PosixStaticLaunchMaterial:
             self._spec.launcher_path,
             "--loushang-protocol",
             (
-                _GATED_CONTAINMENT_ARGUMENT_PROTOCOL
-                if start_gate_descriptor is not None
-                else _CONTAINMENT_ARGUMENT_PROTOCOL
+                _contained_protocol(
+                    self._spec.profile_id,
+                    start_gate_descriptor is not None,
+                )
             ),
             "--loushang-profile-sha256",
             self._spec.containment_profile_sha256,

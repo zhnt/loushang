@@ -81,10 +81,12 @@ from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
 )
+from loushang.coding.composition_provenance import composition_header_metadata
 from loushang.coding.composition_sets import (
     CODING_KERNEL_PROMPT_REVISION,
     CodingCompositionSetId,
     CodingCompositionSetPlan,
+    infer_coding_composition_set,
     resolve_coding_composition_set,
 )
 from loushang.coding.control.settings_store import (
@@ -552,6 +554,7 @@ def _create_agent_session(
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -566,6 +569,8 @@ def _create_agent_session(
         ProductCompositionAssemblyRequest | None
     ) = None,
     composition_set: CodingCompositionSetPlan | None = None,
+    composition_set_explicit: bool = False,
+    composition_choice_from_cli: bool = False,
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
@@ -585,7 +590,29 @@ def _create_agent_session(
         resource_catalog_source_policy
     )
     session_no_tools_mode = normalize_no_tools(no_tools)
-    resolved_composition_set = _canonical_coding_composition_set(composition_set)
+    requested_composition_set = _canonical_coding_composition_set(composition_set)
+    services = services or create_services()
+    if composition_choice_from_cli and not composition_set_explicit and (
+        infer_coding_composition_set(
+            services.settings_manager.get_settings().capabilities
+        ) != requested_composition_set.set_id
+    ):
+        raise ValueError(
+            "Coding composition settings changed before Session startup; "
+            "retry with the current settings"
+        )
+    resolved_composition_set = session_manager.bind_new_composition_plan(
+        requested_composition_set
+    )
+    if (
+        composition_set_explicit
+        and resolved_composition_set.set_id != requested_composition_set.set_id
+    ):
+        raise ValueError(
+            "Coding Session composition set is pinned to "
+            f"{resolved_composition_set.set_id}; requested "
+            f"{requested_composition_set.set_id}. Create a new Session to switch sets"
+        )
     resolved_invocation_profile = (
         canonical_coding_agent_invocation_product_profile(invocation_product_profile)
         if invocation_product_profile is not None
@@ -658,6 +685,17 @@ def _create_agent_session(
         raise CodingWorkerOrdinaryBootstrapError(
             "coding_worker_ordinary_explicit_selection_unavailable"
         )
+    if worker_query_turn_tool and (
+        worker_candidate_plugin_id is None
+        or sys.platform != "linux"
+        or session_host_environment.architecture.lower() not in {"x86_64", "amd64"}
+        or resolved_composition_set.set_id != "coding-standard"
+        or session_no_tools_mode is not None
+        or not session_manager.persist
+    ):
+        raise CodingWorkerOrdinaryBootstrapError(
+            "coding_worker_query_turn_scope_unsupported"
+        )
     if package_product_runtime_factory is not None and (
         initial_resource_catalog_product_composition_assembly is not None
         or package_materializer is not None
@@ -694,7 +732,6 @@ def _create_agent_session(
             raise ValueError(
                 "child approval actor must match its delegated execution profile"
             )
-    services = services or create_services()
     if package_product_runtime_factory is not None:
         settings = services.settings_manager.get_settings()
         if settings.package_roots or settings.plugin_sources:
@@ -2083,6 +2120,23 @@ def _create_agent_session(
                 ordinary=product_base_session_assembly,
                 clock=coding_plugin_clock,
             )
+        worker_turn_tool = None
+        worker_tool_registry = registry
+        if worker_ordinary_binding is not None and worker_query_turn_tool:
+            from loushang.coding.package_product_worker_turn_tool import (
+                CODING_WORKER_QUERY_TOOL_NAME,
+                CodingWorkerTurnToolBinding,
+            )
+            assert worker_candidate_plugin_id is not None
+            assert worker_ordinary_binding.activation_receipt is not None
+            worker_turn_tool = CodingWorkerTurnToolBinding(worker_candidate_plugin_id)
+            if any(
+                definition.name == CODING_WORKER_QUERY_TOOL_NAME
+                for definition in (registry.list_definitions() if registry is not None else ())
+            ):
+                raise CodingWorkerOrdinaryBootstrapError(
+                    "coding_worker_query_tool_name_conflict"
+                )
 
         def construct_child_session(
             initial_resource_catalog_bootstrap: Any | None = None,
@@ -2110,14 +2164,14 @@ def _create_agent_session(
                     *(
                         definition.name
                         for definition in (
-                            registry.list_enabled_definitions()
-                            if registry is not None
+                            worker_tool_registry.list_enabled_definitions()
+                            if worker_tool_registry is not None
                             else ()
                         )
                         if definition.name not in base_tool_names
                     ),
                 ]
-            return AgentSession(
+            session = AgentSession(
                 agent=agent,
                 session_manager=session_manager,
                 settings_manager=services.settings_manager,
@@ -2125,7 +2179,7 @@ def _create_agent_session(
                 resource_loader=services.resource_loader,
                 resource_bundle=bundle,
                 extension_runner=extension_runner,
-                tool_registry=registry,
+                tool_registry=worker_tool_registry,
                 allowed_tool_names=[]
                 if session_no_tools_mode == "all"
                 else allowed_tool_names,
@@ -2152,22 +2206,50 @@ def _create_agent_session(
                 coding_base_plugin_assembly=coding_base_plugin_assembly,
                 coding_base_plugin_session_assembly=(base_plugin_session_assembly),
                 coding_base_product_session_assembly=(product_base_session_assembly),
+                coding_external_data_product_compilation=(
+                    product_external_data_compilation
+                ),
+                coding_selected_capability_manifests=(
+                    tuple(
+                        product_base_runtime.capture_selected_plugin_manifest_for(
+                            selection.installation_key.plugin_id,
+                            max_files=64,
+                            max_total_bytes=1024 * 1024,
+                        )
+                        for selection in product_capability_desired_selections
+                        if selection.desired_state == "installed_enabled"
+                    )
+                    if product_base_compilation is None
+                    and product_base_runtime is not None
+                    else ()
+                ),
                 coding_base_product_runtime_binding=(
                     product_base_runtime
-                    if product_base_session_assembly is not None
-                    else None
+                ),
+                coding_product_desired_selections=(
+                    *(
+                        (product_base_disabled_selection,)
+                        if product_base_disabled_selection is not None
+                        else ()
+                    ),
+                    *product_capability_desired_selections,
                 ),
                 coding_product_workspace_witness=product_workspace_witness,
                 coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 coding_product_worker_ordinary_binding=worker_ordinary_binding,
+                coding_worker_turn_tool=worker_turn_tool,
+                coding_composition_plan=resolved_composition_set,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 resource_catalog_refresh_bootstrap_factory=(
                     prepare_resource_catalog_refresh
                 ),
                 resource_catalog_refresh_lock=(services.resource_catalog_refresh_lock),
             )
+            if worker_turn_tool is not None:
+                worker_turn_tool.bind_session(session)
+            return session
 
         try:
             child_session = resource_catalog_adapter.construct_session(
@@ -2451,6 +2533,7 @@ def create_agent_session(
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
@@ -2499,6 +2582,7 @@ def create_agent_session(
             composition_set=resolve_coding_composition_set(
                 "coding-standard" if composition_set is None else composition_set
             ),
+            composition_set_explicit=composition_set is not None,
             services=services,
             output_capture_factory=output_capture_factory,
             agent_factory=agent_factory,
@@ -2506,6 +2590,7 @@ def create_agent_session(
             package_materializer=package_materializer,
             package_product_runtime_factory=selected_factory,
             worker_candidate_plugin_id=worker_candidate_plugin_id,
+            worker_query_turn_tool=worker_query_turn_tool,
             resource_catalog_source_policy=resource_catalog_source_policy,
             append_system_prompt=append_system_prompt,
             extension_flag_values=extension_flag_values,
@@ -2609,6 +2694,7 @@ def create_agent_session_result(
     package_materializer: PackageMaterializer | None = None,
     package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
@@ -2645,6 +2731,7 @@ def create_agent_session_result(
         package_materializer=package_materializer,
         package_product_runtime_factory=package_product_runtime_factory,
         worker_candidate_plugin_id=worker_candidate_plugin_id,
+        worker_query_turn_tool=worker_query_turn_tool,
         resource_catalog_source_policy=resource_catalog_source_policy,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
@@ -2771,11 +2858,14 @@ def _create_agent_session_runtime(
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetPlan | None = None,
+    composition_set_explicit: bool = False,
+    composition_choice_from_cli: bool = False,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
     persist: bool = True,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
@@ -2822,6 +2912,7 @@ def _create_agent_session_runtime(
             sys.platform == "win32" and worker_candidate_plugin_id is not None
         ),
     )
+    resolved_composition_set = _canonical_coding_composition_set(composition_set)
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
         runtime_factory=partial(
@@ -2839,6 +2930,7 @@ def _create_agent_session_runtime(
             ),
             product_owner_selection=product_owner_selection,
             materialize_new_transcript=worker_candidate_plugin_id is not None,
+            new_session_header_metadata=composition_header_metadata(resolved_composition_set),
         ),
         fixed_services=fixed_services,
         build_session=lambda session_manager, session_services, start_event: (
@@ -2857,10 +2949,13 @@ def _create_agent_session_runtime(
                     allowed_tool_names=allowed_tool_names,
                     active_tool_names=active_tool_names,
                     no_tools=no_tools,
-                    composition_set=composition_set,
+                    composition_set=resolved_composition_set,
+                    composition_set_explicit=composition_set_explicit,
+                    composition_choice_from_cli=composition_choice_from_cli,
                     services=session_services,
                     package_product_runtime_factory=product_factory,
                     worker_candidate_plugin_id=worker_candidate_plugin_id,
+                    worker_query_turn_tool=worker_query_turn_tool,
                     agent_factory=agent_factory,
                     session_start_event=cast(SessionStartEvent | None, start_event),
                     append_system_prompt=append_system_prompt,
@@ -2945,11 +3040,14 @@ def create_agent_session_runtime(
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
+    composition_set_explicit: bool | None = None,
+    composition_choice_from_cli: bool = False,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
     persist: bool = True,
     worker_candidate_plugin_id: str | None = None,
+    worker_query_turn_tool: bool = False,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
@@ -2972,11 +3070,18 @@ def create_agent_session_runtime(
         composition_set=resolve_coding_composition_set(
             "coding-standard" if composition_set is None else composition_set
         ),
+        composition_set_explicit=(
+            composition_set is not None
+            if composition_set_explicit is None
+            else composition_set_explicit
+        ),
+        composition_choice_from_cli=composition_choice_from_cli,
         services=services,
         services_factory=services_factory,
         agent_factory=agent_factory,
         persist=persist,
         worker_candidate_plugin_id=worker_candidate_plugin_id,
+        worker_query_turn_tool=worker_query_turn_tool,
         append_system_prompt=append_system_prompt,
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,

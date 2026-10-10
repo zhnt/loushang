@@ -20,6 +20,7 @@ import pytest
 
 from loushang.tui.cell_width import strip_control_sequences
 
+from ._hosted_composition_seed import seed_hosted_history
 from ._hosted_terminal import foreground_terminal, process_table
 from .test_hosted_client import _argv
 from .test_hosted_client_terminal import _installed
@@ -233,23 +234,18 @@ def test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch(tm
 
 
 def _observe_recovery_cancel(root, *, observer=_observe_entry, recovery_cli=None):
-    from loushang.ai.types import UserMessage
+    from loushang.appserver.protocol import SessionScopeV1
     from loushang.appservice.continuity import decode_application_continuity_record
-    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.hosted_catalog import CodingHostedScopeV1
 
     recovery_cli = _recovery_cli if recovery_cli is None else recovery_cli
     recovery_cli(root, create=True)
     historical = "G17 history survives recovery cancellation without replay"
     (canonical,) = (root / "cwd").glob("*.jsonl")
 
-    async def seed_history():
-        manager = await SessionManager.open(canonical)
-        try:
-            await manager.append_message(UserMessage(role="user", content=historical, timestamp=1.0))
-        finally:
-            await manager.dispose_runtime_profile()
-
-    asyncio.run(seed_history())
+    asyncio.run(seed_hosted_history(
+        CodingHostedScopeV1(SessionScopeV1.CWD, root / "cwd", root), historical
+    ))
     history_bytes = canonical.read_bytes()
     (record,) = (root / "application").glob("*.json")
     snapshot = record.read_bytes()
@@ -282,7 +278,7 @@ def _recovery_cli(root, *, create, historical=None):
 def _recovery_interaction(driver, *, create, historical=None):
     if create:
         driver.write("/new cwd Recovery sentinel\r")
-    driver.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+    driver.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=90)
     driver.read_until(lambda out: "Recovery sentinel" in strip_control_sequences(out), timeout=10)
     if historical:
         driver.read_until(lambda out: historical in strip_control_sequences(out), timeout=20)

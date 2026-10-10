@@ -8,7 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.appserver.protocol import (
@@ -18,9 +17,9 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
 )
 from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.session_manager import SessionManager
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
+from ._hosted_composition_seed import seed_hosted_history
 from .test_hosted_discovery import _create
 from .test_hosted_local import _local_launch
 from .test_hosted_subprocess import _environment
@@ -33,18 +32,7 @@ def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(tmp_path):
         launch = _local_launch(tmp_path)
         for scope in launch.application.scopes:
             await _create(CodingHostedSessionCatalogV1((scope,)), scope)
-            (path,) = scope.session_dir.glob("*.jsonl")
-            manager = await SessionManager.open(path)
-            try:
-                await manager.append_message(
-                    UserMessage(
-                        role="user",
-                        content=f"Historical {scope.scope.value}",
-                        timestamp=1.0,
-                    )
-                )
-            finally:
-                await manager.dispose_runtime_profile()
+            await seed_hosted_history(scope, f"Historical {scope.scope.value}")
         executable = Path(sys.executable).parent / (
             "loushang-mux.exe" if os.name == "nt" else "loushang-mux"
         )

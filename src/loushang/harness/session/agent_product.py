@@ -1576,6 +1576,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
         await self._ensure_session_graph_prepared()
 
+    async def _preflight_worker_preparation(
+        self, catalog_snapshot: object | None
+    ) -> None:
+        """Let a Product validate prepared selection before native Worker effects."""
+
+        del catalog_snapshot
+
     async def _ensure_session_graph_prepared(
         self,
     ) -> SessionModelCallCapabilityConsumer:
@@ -1652,13 +1659,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                                 admission_start=component_starts[id(request)],
                             )
                         )
-                    for request in composition_inputs.component_requests:
-                        if isinstance(request, SessionCapabilityWorkerComponentRequest):
-                            prepared_components.append(
-                                await request.prepare_component(
-                                    self._capability_graph_runtime.generation + 1
-                                )
-                            )
                 catalog_bootstrap = self._initial_resource_catalog_bootstrap
                 if catalog_bootstrap is not None:
                     extension_host = self._extension_runner
@@ -1677,6 +1677,26 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         ),
                     )
                     self._replace_initial_resource_catalog_graph_inputs()
+                if composition_inputs is not None:
+                    worker_requests = tuple(
+                        request
+                        for request in composition_inputs.component_requests
+                        if isinstance(request, SessionCapabilityWorkerComponentRequest)
+                    )
+                    if worker_requests:
+                        prepared_catalog = (
+                            self._require_staged_resource_candidate()
+                            .prepared_resource_catalog_snapshot
+                            if catalog_bootstrap is not None
+                            else None
+                        )
+                        await self._preflight_worker_preparation(prepared_catalog)
+                        for request in worker_requests:
+                            prepared_components.append(
+                                await request.prepare_component(
+                                    self._capability_graph_runtime.generation + 1
+                                )
+                            )
                 await self._capability_graph_binder.bind(
                     self._capability_graph_runtime,
                     self._session_capability_plan,

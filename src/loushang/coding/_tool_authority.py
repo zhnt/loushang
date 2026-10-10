@@ -7,6 +7,9 @@ from loushang.coding.lsp.tools import (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
 )
+from loushang.coding.package_product_worker_turn_tool import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
 from loushang.coding.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
 
 CODING_LSP_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
@@ -20,6 +23,7 @@ CODING_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
     *CODING_RESERVED_BASE_TOOL_NAMES,
     *CODING_LSP_EXACT_OWNER_TOOL_NAMES,
     *CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
+    CODING_WORKER_QUERY_TOOL_NAME,
 )
 
 

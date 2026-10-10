@@ -61,14 +61,19 @@ workspace:
 ```text
 loushang-plugin init-coding-skill ./reviewpack --resource-name review
 # Edit ./reviewpack/skills/review/SKILL.md.
-# Run buildCommand from the JSON result.
+# Run buildCommand, then validationCommand from the JSON results.
 # Run smokeCommand from the JSON result.
 ```
 
 Use `init-coding-prompt` for a Prompt. Scaffold creation refuses to replace
 an existing source directory. The JSON `buildCommand` makes a deterministic
 Wheel and still reports Product admission/use as `not_checked`. The
-`smokeCommand` calls the Coding-owned `loushang-coding-plugin-smoke` entrypoint
+`validationCommand` checks the built Skill/Prompt Wheel as bounded inert bytes.
+It is distinct from `loushang-plugin validate <package-tree>`, which accepts
+a directory containing `plugin.json`. Its result retains
+`productAdmission: not_checked`; the build output also supplies an absolute
+`targetInstallCommand` for the destination workspace. `smokeCommand` calls the
+Coding-owned `loushang-coding-plugin-smoke` entrypoint
 with that exact Wheel in a disposable, offline, fresh Coding Product workspace.
 It installs and enables the Plugin, starts a new Session,
 invokes the requested Resource, and checks the persisted prepared model input.
@@ -78,6 +83,31 @@ requires the ordinary POSIX Product route and proves only that temporary
 workspace. Install and enable the Wheel separately in the destination
 workspace, then check its own Session. These Skill/Prompt commands do not open
 the Theme or Worker candidate gates.
+
+The build JSON now groups `sourcePath`, `artifactPath`, `artifactSha256`, the
+Coding compatibility `profile`, `validationResult`, `validationDiagnostics`,
+`disposableSmoke`, and the exact `targetInstallCommand`. A Skill or Prompt build
+performs the inert Wheel validation immediately; running its printed
+`validationCommand` checks the final bytes again. The validator prints the same
+target install command only for a valid artifact. `disposableSmoke` stays
+`not_checked` until the separate smoke command runs, and the smoke result
+remains labelled `workspace: disposable`. Neither author report asserts target
+workspace admission.
+
+Use `loushang --discover-local-plugins` from a Coding workspace to inspect
+local installed Plugins and native Resources without starting a Session. Add
+`--discover-local-plugins-format json` for the version 1 JSON contract;
+`--discover-local-query`, `--discover-local-kind`, `--discover-local-source`,
+and `--discover-local-limit` filter bounded metadata. Each installed Plugin row
+has an Installation identity and, when available, an opaque Package revision
+fingerprint. Skill/Prompt kinds for a disabled data Wheel come from bounded
+inert validation of its exact Product-bound artifact; they do not imply current
+admission. Native Resource rows have a Resource identity and no Plugin ID.
+`nativeCatalogSelection` describes a disposable native-only Catalog view;
+`productSelection` is `not_checked` for those rows. The response reports
+source completeness, diagnostics, and truncation. An unfenced workspace can
+still return native rows with a partial result; a local listing never installs
+or enables a Plugin.
 
 For the existing Screen Theme candidate, run `loushang-plugin
 init-coding-theme ./themepack --resource-name dusk`, edit
@@ -168,6 +198,7 @@ workspace; Product Source admission requires an absolute wheel path.
 
 ```text
 loushang-plugin build-coding-skill skills/review/SKILL.md --plugin-id reviewpack --version 1 --output-dir dist
+loushang-plugin validate-coding-wheel "$(pwd)/dist/reviewpack-1-py3-none-any.whl"
 loushang --install-package "$(pwd)/dist/reviewpack-1-py3-none-any.whl" --package-scope project
 loushang --enable-plugin reviewpack
 ```
@@ -196,6 +227,7 @@ current POSIX fenced Product path:
 
 ```text
 loushang-plugin build-coding-prompt prompts/review.md --plugin-id promptpack --version 1 --output-dir dist
+loushang-plugin validate-coding-wheel "$(pwd)/dist/promptpack-1-py3-none-any.whl"
 loushang --install-package "$(pwd)/dist/promptpack-1-py3-none-any.whl" --package-scope project
 loushang --enable-plugin promptpack
 ```
@@ -355,6 +387,12 @@ does not install the native profile. After the selected candidate and native
 closure are current, the operator records the separate per-install decision
 and checks its exact identity alignment:
 
+The Linux query route uses the dedicated
+`posix-static-query-contained-elf-v1` native profile. Its launcher requires
+Landlock and descriptor closure support on the target host and refuses a
+launch if either is unavailable. The native release and candidate approval
+must be repeated after the launcher source or profile revision changes.
+
 ```text
 loushang-worker-native --workspace PATH candidate-allow \
   --plugin-id reviewworker --operation-id allow-reviewworker-1 \
@@ -450,13 +488,39 @@ partial observation of the selected Worker version and executable digest;
 the selected artifact, contribution, owner, and native platform match the
 retained allow decision in this read. It is not a native release or Session-use
 check.
-The ordinary Session opt-in is available through the Python SDK only; Coding
-CLI, RPC, TUI, and Screen do not offer the same Worker selection switch.
+The previously verified ordinary Session opt-in is the Python SDK path. RPC
+and Screen do not offer a Worker selection switch.
+
+The P4 ordinary-turn candidate adds `--worker-query-plugin PLUGIN_ID` for a
+new, persisted `coding-standard` Session on Linux x86-64. This route is still
+under native and owner review; it is not evidence of general Worker admission.
+It registers one Session-owned `worker_query_symbol` Tool backed by the same
+read-only Product facet as the explicit SDK query. A model-visible Tool call
+and its persisted result are required before claiming Product turn use:
+
+```text
+loushang --mode print --cwd PATH --composition-set coding-standard \
+  --worker-query-plugin reviewworker \
+  "Use worker_query_symbol to query the review symbol."
+```
+
+The four checks are separate: builder/validator proves inert Wheel bytes;
+native `review`/`approve`/`install` proves the exact H6 release; Product
+`candidate-status` after install, enable, and allow proves current candidate
+alignment; the new Coding Session's startup receipt and Tool result prove its
+actual selected revision and query. A passing earlier check never fills in a
+later check. The candidate route refuses minimal/architecture sets, disabled
+Base, nonpersistent Sessions, and other platforms. Revocation, changed
+selection, or an expired admission must refuse the next query through the
+Product owner.
 
 The Python SDK exposes the same selected read-only query through an ordinary
-Coding Session. For a direct Session, first create a persisted
-`SessionManager` with `defer_materialization=False`, then pass that manager to
-`create_agent_session(..., worker_candidate_plugin_id="reviewworker")`.
+Coding Session. For a direct Session, first call
+`manager = await SessionManager.new_with_composition(session_dir=..., cwd=...,
+composition_set="coding-standard", defer_materialization=False)` so the
+transcript owner pins the set before writing its Header. Pass that manager to
+`create_agent_session(session_manager=manager,
+worker_candidate_plugin_id="reviewworker")`.
 The caller can query the selected Worker with
 `await session.query_worker_symbol("review")` and must dispose the Session
 when done. For a hosted first Session, use
@@ -469,6 +533,15 @@ revision, native approval, current receipt, and per-install opt-in. On Windows,
 passing `worker_candidate_plugin_id` explicitly selects the Windows Worker
 candidate for that Session; the current-head native production gate remains
 pending. Other Sessions and the default route remain unchanged.
+
+For this ordinary Session path, the Product keeps the selected Transcript's
+source, path, file identity, and startup locator fingerprint pinned. It
+rechecks current Session discovery and compares the bounded on-disk Transcript
+with its Session owner at each Worker policy witness. Appends committed by that
+owner retain the attached locator revision; an external append, same-ID copy,
+file replacement, or changed discovery source refuses the next query. A
+detached query of an existing Session instead uses its exact discovery
+snapshot.
 
 For an already persisted Coding Session in that workspace, the explicit Linux
 query Consumer can use the selected Worker after native release approval,
@@ -491,6 +564,29 @@ general high-volume Worker route.
 Product start-gate attempt IDs and phases for recovery triage; it does not
 authorize a repair.
 
+If the Linux Product process exits during an ordinary Worker turn, wait until
+the exact native group is absent, then use the attempt ID from that list to
+recheck each owner in order:
+
+```text
+loushang-worker-native --workspace PATH review-orphan-runtime --attempt-id ID
+loushang-worker-native --workspace PATH repair-orphan-runtime \
+  --attempt-id ID --review-id ORPHAN_REVIEW_ID
+loushang-worker-native --workspace PATH review-gated-attempt --attempt-id ID
+loushang-worker-native --workspace PATH settle-gated-attempt \
+  --attempt-id ID --review-id GATED_REVIEW_ID --plan-id PLAN_ID
+loushang-worker-native --workspace PATH repair-payload-debt \
+  --attempt-id ID --plan-id PLAN_ID
+loushang-worker-native --workspace PATH settle-crashed-c5 --attempt-id ID
+```
+
+Each command reopens Product evidence. A stale review, live group, unretired
+orphan lease, unsettled Supervisor, or incomplete payload repair stops the
+sequence. The final command settles the exact C5 activation attempt and then
+Package GC can verify its retained history; it does not discard the journals.
+If C5 settlement reports `coding_worker_crash_c5_runtime_active`, close the
+other active Product Session normally before retrying the same attempt.
+
 ## Read-only Coding Preview
 
 In a POSIX workspace that has completed the fenced Product cutover, inspect
@@ -499,6 +595,16 @@ the currently enabled data Resource composition without creating a Session:
 ```text
 loushang --preview-current-plugins --preview-composition-set coding-standard
 ```
+
+For a new ordinary Coding Session, `loushang --composition-set coding-minimal`
+selects the same canonical Product request for startup. The preview-only flag
+does not affect startup. If neither is given, preview and startup both infer
+`coding-architecture` when a `coding.arch` settings key exists, even when its
+mount mode is disabled; otherwise they use `coding-standard`. An explicit
+`--composition-set` overrides that inference. Preview JSON separates
+`requestedComposition` from the projected Product and Catalog outcome; the
+request does not enable a disabled Plugin. Existing Sessions keep their pinned
+composition choice. Create a new Session to switch sets.
 
 The JSON reports Product admission, projected Skill/Prompt names, stable
 blocking codes, and explicit evidence gaps. `compiledPluginIds` covers the

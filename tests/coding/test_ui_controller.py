@@ -350,7 +350,11 @@ def test_controller_plugins_list_uses_management_read_without_model_prompt() -> 
                         "expiryReceiptId": None,
                     },
                     "operations": [
-                        {"operationId": "tui-plugin-desired:pending", "status": "running"}
+                        {
+                            "operationId": "tui-plugin-desired:pending",
+                            "actorId": "operator",
+                            "status": "running",
+                        }
                     ],
                 }
             ],

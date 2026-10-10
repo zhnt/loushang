@@ -1356,13 +1356,15 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
             "home-session",
         }
 
-        prepared = await runtime.prepare_restore_session_operation("cwd-session")
-        result = await prepared.consume()
-        assert result.current is not None
-        restored = result.current.session_manager.get_session_file()
-        assert restored is not None
-        assert restored.parent == runtime.session_dir.resolve()
-        assert restored != cwd_file
+        legacy_bytes = cwd_file.read_bytes()
+        authority_files = tuple(sorted(runtime.session_dir.glob("*.jsonl")))
+        with pytest.raises(
+            ValueError, match="no proven composition choice; create a new Session"
+        ):
+            await runtime.prepare_restore_session_operation("cwd-session")
+        assert cwd_file.read_bytes() == legacy_bytes
+        assert tuple(sorted(runtime.session_dir.glob("*.jsonl"))) == authority_files
+        assert runtime.get_current_session() is global_session
         await shutdown_coding_continuity(runtime)
         await runtime.dispose_session_runtime()
 

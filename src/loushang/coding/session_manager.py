@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from typing import Self
 
+from loushang.ai.types import UserMessage
+from loushang.coding.composition_provenance import (
+    composition_header_metadata,
+    pinned_composition_plan,
+    startup_composition_record,
+)
+from loushang.coding.composition_sets import (
+    CodingCompositionSetPlan,
+    resolve_coding_composition_set,
+)
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
@@ -135,6 +147,49 @@ class SessionManager(
     """Coding binding over the Harness-owned Agent transcript session API."""
 
     @classmethod
+    async def new_with_composition(
+        cls,
+        *,
+        session_dir: Path,
+        cwd: str,
+        composition_set: str = "coding-standard",
+        persist: bool = True,
+        parent_session: str | None = None,
+        session_id: str | None = None,
+        defer_materialization: bool = True,
+    ) -> Self:
+        """Pin a canonical Coding choice before transcript materialization."""
+
+        plan = resolve_coding_composition_set(composition_set)
+        return await cls.new(
+            session_dir=session_dir,
+            cwd=cwd,
+            persist=persist,
+            parent_session=parent_session,
+            session_id=session_id,
+            additional_header_metadata=composition_header_metadata(plan),
+            defer_materialization=defer_materialization,
+        )
+
+    async def append_message(
+        self,
+        message: object,
+        *,
+        metadata: Mapping[str, JSONValue] | None = None,
+    ) -> str:
+        if (
+            self.persist
+            and isinstance(message, UserMessage)
+            and pinned_composition_plan(self.get_header().metadata) is not None
+            and not getattr(self, "_coding_composition_ready", False)
+        ):
+            raise ValueError(
+                "Coding Session composition startup is not prepared; "
+                "prepare the Session before committing input"
+            )
+        return await super().append_message(message, metadata=metadata)
+
+    @classmethod
     def _session_factory(
         cls,
     ) -> AgentTranscriptSessionFactory[
@@ -150,8 +205,52 @@ class SessionManager(
     def _fork_binding_input(self) -> ResolvedRuntimeProfile:
         return self.runtime_profile
 
+    def _fork_header_metadata(self) -> Mapping[str, JSONValue] | None:
+        pinned = pinned_composition_plan(self.get_header().metadata)
+        if pinned is None:
+            # A legacy transcript may still be branched as transcript data.
+            # Its fork remains unproven and cannot be opened as a Product
+            # composition until a new Session is created with a sealed choice.
+            return None
+        return composition_header_metadata(pinned)
+
     def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
         return self._lifecycle_session.product_binding.value(slot)
+
+    def bind_new_composition_plan(
+        self, plan: CodingCompositionSetPlan
+    ) -> CodingCompositionSetPlan:
+        """Seal the canonical creation choice before the first durable record."""
+
+        self._coding_composition_ready = False
+        pinned = pinned_composition_plan(self.get_header().metadata)
+        if pinned is not None:
+            return pinned
+        if not self.persist:
+            return plan
+        try:
+            self._transcript.bind_unmaterialized_header_metadata(
+                composition_header_metadata(plan)
+            )
+        except RuntimeError as exc:
+            raise ValueError(
+                "Coding Session has no proven composition choice; create a new Session"
+            ) from exc
+        return plan
+
+    def mark_composition_startup_prepared(self) -> None:
+        pinned = pinned_composition_plan(self.get_header().metadata)
+        if pinned is None:
+            raise ValueError("Coding Session has no pinned composition plan")
+        startup = startup_composition_record(self.get_entries())
+        if startup is None:
+            raise ValueError("Coding Session has no startup composition receipt")
+        if (
+            startup["setId"] != pinned.set_id
+            or startup["planFingerprint"] != pinned.fingerprint
+        ):
+            raise ValueError("Coding Session startup receipt differs from its header")
+        self._coding_composition_ready = True
 
 
 def _create_owned_session_factory(

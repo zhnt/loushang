@@ -244,6 +244,36 @@ class ScopeTests(unittest.TestCase):
                 self.assertTrue(plan["checks"]["windows_shell"])
                 self.assertTrue(plan["workflows"]["windows-shell"])
 
+    def test_ordinary_worker_session_changes_select_native_gates(self):
+        for path in (
+            "src/loushang/coding/_tool_authority.py",
+            "src/loushang/coding/bootstrap.py",
+            "src/loushang/coding/composition_provenance.py",
+            "src/loushang/coding/composition_sets.py",
+            "src/loushang/coding/runtime/agent_session_runtime.py",
+            "src/loushang/coding/session/agent_session.py",
+            "src/loushang/coding/session_manager.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["hosting"])
+                self.assertTrue(plan["workflows"]["hosting"])
+                self.assertTrue(plan["checks"]["windows_shell"])
+                self.assertTrue(plan["workflows"]["windows-shell"])
+
+    def test_ordinary_worker_linux_cli_changes_select_native_gate(self):
+        for path in (
+            "src/loushang/coding/cli/application.py",
+            "src/loushang/coding/cli/args.py",
+            "src/loushang/coding/cli/composition_choice.py",
+            "src/loushang/coding/cli/profile.py",
+            "tests/coding/test_plugin_p4_worker_turn.py",
+        ):
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["hosting"])
+                self.assertTrue(plan["workflows"]["hosting"])
+
     def test_markdown_test_fixtures_are_not_ordinary_documentation(self):
         self.assertIn("tui_playback", self.selected("tests/tui/fixtures/table.md"))
 

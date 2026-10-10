@@ -16,7 +16,7 @@ does not add a second Plugin registry or change a default route.
 | Data Skill Wheel | `build-coding-skill` | Fenced Coding Product admits the constrained document-only profile | Enabled selected revision appears in a new Session; `/skill:<name>` reaches persisted prepared model input | Linux/POSIX Product path verified; not a default global Plugin selection | Per-workspace install/enable and exact Session proof |
 | Data Prompt Wheel | `build-coding-prompt` | Same constrained data profile | Enabled selected revision expands `/<name>` into persisted prepared model input | Linux/POSIX Product path verified | Per-workspace install/enable and exact Session proof |
 | Screen Theme Wheel | `init-coding-theme` then `build-coding-theme`; disposable Screen smoke | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
-| Native Worker Wheel | `build-coding-worker-candidate`; Linux disposable `loushang-coding-plugin-smoke --kind worker` checks admission and selection only | Linux operator `candidate-capture`, `candidate-install`, `candidate-enable`, `candidate-update`, `candidate-disable`, and `candidate-remove` stage exact capture, Product installation, version replacement, and Desired State; separate `loushang-package-gc --worker-candidates` deletes exact retired roots after settlement | Explicit Linux Python SDK Session query can use the selected Worker; default Coding Session remains Current | Linux x86-64 including a cross-process update-to-remove-to-physical-GC journey; explicit Windows AMD64 Direct, Hosted, crash/reopen, C5 reopen, normal-exit cleanup, and disable while a Session is pinned passed the seven-case native Session gate on `cd25e160`; unflagged Windows routing remains closed | No general third-party self-service, Windows update/GC combination, or default route |
+| Native Worker Wheel | `build-coding-worker-candidate`; Linux disposable `loushang-coding-plugin-smoke --kind worker` checks admission and selection only | Linux operator `candidate-capture`, `candidate-install`, `candidate-enable`, `candidate-update`, `candidate-disable`, and `candidate-remove` stage exact capture, Product installation, version replacement, and Desired State; separate `loushang-package-gc --worker-candidates` deletes exact retired roots after settlement | Explicit Linux Python SDK Session query can use the selected Worker. P4 adds a candidate `--worker-query-plugin` standard Session Tool path; default Coding Session remains Current | Linux x86-64 native ordinary-turn CLI/direct, disable, update, hosted first-Session, bounded history, and independent-process same-boot crash/reopen through C5 and GC passed at the P4 worktree head. Remote H6 native, ordinary-turn, and sustained Product reports passed on `319d81b3`; this is candidate evidence, not general availability. Independent architecture, integrity, and experience reviews found no new code blocker. Explicit Windows AMD64 Direct, Hosted, crash/reopen, C5 reopen, normal-exit cleanup, and disable while a Session is pinned passed the seven-case native Session gate on `cd25e160`; unflagged Windows routing remains closed | Final-head selected cross-platform CI and exact Linux route Product owner approval govern activation; prior-boot recovery, Windows ordinary turns, general third-party self-service, and default routing remain closed |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
 The local Extension row is the simple file-based author path comparable in
@@ -25,6 +25,60 @@ versioned Package path with installation, enablement, Product admission, and
 retirement; the two paths have different authority and lifecycle guarantees.
 The removed `--extension`/`-e` raw CLI flags are not a supported way to bypass
 Resource discovery or the Product gate.
+
+`loushang --discover-local-plugins` is the read-only local inventory route.
+Its version 1 JSON form distinguishes installed Plugin Installations from
+native Resource candidates, names source completeness and truncation, and
+keeps native-only Catalog selection separate from fenced Product selection.
+It uses Product-declared local sources and does not inspect unrelated paths or
+execute Extension Python.
+
+## Current composition and management
+
+Coding already defines `coding-minimal`, `coding-standard`, and
+`coding-architecture` composition sets. Their inert Product requests contain,
+respectively, no Plugin, `coding.base` plus optional `coding.lsp.default`, and
+those two plus optional `coding.arch.default`. The sets are Product policy;
+actual admission and new-Session selection still depend on the exact owner,
+Desired State, and Product gate. A new general-purpose profile system is not
+implied by these sets. See the
+[composition-set code](../../../../../src/loushang/coding/composition_sets.py).
+
+For an ordinary new Coding Session, `loushang --composition-set coding-minimal`
+(or `coding-standard`/`coding-architecture`) selects one of these canonical
+requests. With no option, a configured `coding.arch` settings key selects
+`coding-architecture`; otherwise the CLI selects `coding-standard`. An
+explicit choice wins even when the Arch key is present. The Session header pins
+the plan fingerprint. Runtime preparation stores a separate startup receipt
+with selected Package revision fingerprints, effective Catalog selection, and
+owner generation references; `/session` diagnostics reads that evidence when
+the Base command pack is selected. A restored Session reuses its
+pinned set and refuses an explicit conflicting choice. The option does not
+enable a disabled Provider or change an active Session.
+When Base is disabled, the receipt still lists independently selected LSP/Arch
+Package revisions and the Catalog selection; Base Tools and `/session` are
+absent. Product Desired State or selected manifest changes between Session
+construction and startup are rechecked before the Session accepts input.
+An older persisted Session without the composition header has no verifiable
+set choice and cannot be resumed through this route; create a new Session.
+
+The durable [management service](../../../../../src/loushang/harness/plugin_management/service.py)
+owns desired-state operations. The fenced Coding Product exposes bounded
+CLI, optional Coding RPC, TUI `/plugins`, and local SDK query/command/repair
+adapters; the TUI command route currently supports enable, disable, remove,
+and own-operation repair. Read-only composition preview reports
+`partial_evidence`: it captures the Product-selected Package and contribution
+identity alongside a disposable Catalog generation and exact selected
+candidate fingerprint. The preview emits an opaque Package revision fingerprint
+because the owner's Source identity may contain a local path. This is evidence
+for a *new-Session projection*, not proof that an existing Session consumed the
+Resource. The version 2 support-status projection joins this receipt with the
+management owner's exact Installation, selected Package and Instance revision,
+then retains `productUse=not_checked`. It marks policy, authority, settings, or
+Desired State drift as stale. See the
+[TUI command adapter](../../../../../src/loushang/coding/plugin_management_ui.py),
+[preview contract](../../../../../src/loushang/harness/plugin_management/current_preview.py),
+and [read SDK](../../../../../src/loushang/coding/plugin_management_read_sdk.py).
 
 The explicit `loushang-worker-windows-candidate` offline inspect and crash
 recovery command is implemented behind `--windows-candidate`. The hosted
@@ -59,10 +113,26 @@ another workspace or platform. See the [authoring guide](plugin-authoring-guide.
 For a fenced POSIX workspace, `loushang-coding-plugin-status --workspace PATH`,
 `/plugins status`, and the local read SDK's `support_status()` use the same
 read-only Coding projection. It joins the management owner's Desired State and
-the Product's current composition preview. `observed_in_preview` admission
-and `projected` selection are partial evidence; `productUse` remains
-`not_checked` until an actual Session or Screen consumer proves use. A changed
-Desired State revision reports `stale_evidence` rather than a current selection.
+the Product's current composition preview. `selected` means the exact
+Installation, Package revision, Instance revision, contribution, and Catalog
+receipt agree; `projected` means only the Product composition identified the
+Plugin. Neither stage proves live use. `productUse` remains `not_checked` until
+an exact Session or Screen owner receipt proves use. A changed Desired State,
+Product policy/authority, or persisted disabled-Skill settings revision reports
+`stale_evidence`. Pending A1 operations carry their original actor and exact
+operation ID. CLI-origin and TUI-origin operations present only their own repair
+commands.
+
+`--explain-plugin-operation`, `/plugins explain`, and the Coding read SDK
+classify an observed A2 Package operation separately from an A1-only Desired
+State command. A successful A1 enable with no Package operation has no Package
+handoff gap. An incomplete, exactly joined A2 handoff can offer
+`loushang-package-repair repair-handoff` when the Product-owned Desired commit
+has an exact receipt or verified transition. The A2 management actor remains
+`product:coding`; the operator repair command does not recast it as a CLI-owned
+Desired operation. The status row includes the exact Installation, an opaque Package
+revision fingerprint, Instance revision, retirement states, and cleanup debt;
+TUI list and status show nonempty debt.
 
 ## Product and platform gates
 

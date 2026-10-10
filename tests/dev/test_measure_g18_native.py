@@ -1726,7 +1726,6 @@ def test_embedded_screen_projection_accepts_existing_keyboard_and_cell_queries()
 
 
 def recovery_seed(root, scope_name):
-    from loushang.ai.types import UserMessage
     from loushang.appserver.protocol import SessionIdentityV1, SessionScopeV1
     from loushang.appservice.continuity import (
         ApplicationContinuityRecordV1,
@@ -1736,6 +1735,7 @@ def recovery_seed(root, scope_name):
     )
     from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
     from loushang.coding.session_manager import SessionManager
+    from tests.coding._hosted_composition_seed import seed_hosted_history
     from tests.coding.test_hosted_catalog import _intent
     from tests.coding.test_hosted_client import _launch
 
@@ -1744,23 +1744,20 @@ def recovery_seed(root, scope_name):
     )
 
     async def create():
-        candidate = await CodingHostedSessionCatalogV1((scope,)).create_candidate(
-            _intent(scope)
-        )
-        envelope = candidate.projection.envelope
-        await candidate.close()
-        (path,) = scope.session_dir.glob("*.jsonl")
-        manager = await SessionManager.open(path)
+        catalog = CodingHostedSessionCatalogV1((scope,))
         try:
-            await manager.append_message(
-                UserMessage(
-                    role="user",
-                    content=f"G17 canonical history recovered in {scope_name}",
-                    timestamp=1.0,
-                )
-            )
+            candidate = await catalog.create_candidate(_intent(scope))
+            envelope = candidate.projection.envelope
+            await candidate.close()
         finally:
-            await manager.dispose_runtime_profile()
+            await catalog.close()
+        assert envelope is not None
+        (path,) = scope.session_dir.glob("*.jsonl")
+        await seed_hosted_history(
+            scope,
+            f"G17 canonical history recovered in {scope_name}",
+            session_id=envelope.session_id,
+        )
         # CLI2 restores the appended history before CLI3 is measured.
         reopened = await SessionManager.open(path)
         await reopened.dispose_runtime_profile()
@@ -1817,9 +1814,12 @@ def test_recovery_seed_validates_linked_state_without_mutating_files(
     assert seed["scope"] == scope_name
     assert seed["shape"]["record_revision"] == 5
     assert seed["shape"]["muxes"] == [["main", 3, 0], ["picker", 2, 1]]
-    assert seed["shape"]["record_kinds"] == ["agent.message"]
+    assert seed["shape"]["record_kinds"] == ["extension.data", "agent.message"]
     assert seed["files"] == {
-        name: hashlib.sha256(data).hexdigest() for name, data in before.items()
+        name: hashlib.sha256(data).hexdigest()
+        for name, data in before.items()
+        if Path(name).parts[0]
+        in {"application", "cwd", "home", "session-assets"}
     }
     assert before == {
         str(path.relative_to(tmp_path)): path.read_bytes()
@@ -1835,6 +1835,9 @@ def test_recovery_seed_validates_linked_state_without_mutating_files(
         "member",
         "identity",
         "history",
+        "startup",
+        "decision-missing",
+        "decision-extra",
         "extra-session",
         "extra-app",
         "index",
@@ -1875,6 +1878,22 @@ def test_recovery_seed_rejects_changed_workload(tmp_path, fault):
             )
         else:
             (scope.session_dir / "extra.jsonl").write_bytes(session.read_bytes())
+    elif fault == "startup":
+        (session,) = scope.session_dir.glob("*.jsonl")
+        lines = session.read_bytes().splitlines()
+        header = json.loads(lines[0])
+        fingerprint = header["metadata"]["codingCompositionSetV1"]["planFingerprint"]
+        startup = json.loads(lines[1])
+        assert startup["payload"]["data"]["planFingerprint"] == fingerprint
+        startup["payload"]["data"]["planFingerprint"] = "0" * 64
+        lines[1] = json.dumps(startup).encode()
+        session.write_bytes(b"\n".join(lines) + b"\n")
+    elif fault in {"decision-missing", "decision-extra"}:
+        (decision,) = tmp_path.rglob("activation-decisions.jsonl")
+        if fault == "decision-missing":
+            decision.unlink()
+        else:
+            (decision.parent / "unexpected-decision.jsonl").write_bytes(b"{}\n")
     elif fault == "extra-app":
         (path.parent / "extra.json").write_bytes(path.read_bytes())
     elif fault == "directory-index":

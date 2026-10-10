@@ -382,6 +382,34 @@ def test_first_materialization_finishes_atomically_after_cancellation() -> None:
     asyncio.run(scenario())
 
 
+def test_creation_metadata_cannot_change_during_first_materialization() -> None:
+    async def scenario() -> None:
+        backend = BlockingCreateMemoryStore()
+        store = await AgentTranscriptUnitOfWork.create(
+            backend,
+            _key(),
+            _header(),
+            defer_materialization=True,
+        )
+        committing = asyncio.create_task(
+            store.append_agent_message(
+                UserMessage(role="user", content="hello", timestamp=1.0)
+            )
+        )
+        await backend.committed.wait()
+        with pytest.raises(RuntimeError, match="commit is in progress"):
+            store.bind_unmaterialized_header_metadata(
+                {"codingCompositionSetV1": {"setId": "coding-minimal"}}
+            )
+        assert "codingCompositionSetV1" not in store.header.metadata
+        backend.release.set()
+        await committing
+        loaded = await AgentTranscriptUnitOfWork.load(backend, _key())
+        assert loaded.header == store.header
+
+    asyncio.run(scenario())
+
+
 def test_commit_surfaces_backend_error_when_cancellation_arrives_concurrently() -> None:
     async def scenario() -> None:
         backend = BlockingFailureMemoryStore()

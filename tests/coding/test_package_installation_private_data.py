@@ -130,22 +130,15 @@ def test_product_arch_cache_writes_beneath_exact_installation(
 
     async def run_session(session_file: Path | None = None) -> tuple[Path, Path]:
         manager = (
-            await SessionManager.new(
+            await SessionManager.new_with_composition(
                 session_dir=tmp_path / "session",
                 cwd=str(workspace),
+                composition_set="coding-architecture",
                 persist=True,
             )
             if session_file is None
             else await SessionManager.load(session_file)
         )
-        if session_file is None:
-            await manager.append_message(
-                UserMessage(
-                    role="user",
-                    content=[TextPart(type="text", text="resume Arch cache")],
-                    timestamp=0.0,
-                )
-            )
         session = create_agent_session(
             session_manager=manager,
             model=Model(
@@ -166,6 +159,14 @@ def test_product_arch_cache_writes_beneath_exact_installation(
         )
         try:
             await session.prepare_model_call_runtime()
+            if session_file is None:
+                await manager.append_message(
+                    UserMessage(
+                        role="user",
+                        content=[TextPart(type="text", text="resume Arch cache")],
+                        timestamp=0.0,
+                    )
+                )
             assembly = session._coding_capability_plugin_assembly
             assert assembly is not None
             configuration = next(

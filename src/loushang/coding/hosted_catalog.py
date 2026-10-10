@@ -58,6 +58,8 @@ from loushang.harness.transcript.session_catalog import (
     session_file_authority_fingerprint,
 )
 
+from .composition_provenance import composition_header_metadata
+from .composition_sets import resolve_coding_composition_set
 from .product_plan import CODING_TRANSCRIPT_RUNTIME
 from .session_manager import (
     _LIFECYCLE,
@@ -696,10 +698,16 @@ class CodingHostedSessionCatalogV1:
                 "scopeFingerprint": scope.fingerprint,
                 "operationId": intent.request.operation_id,
             }
+            header_metadata = {
+                _METADATA_KEY: metadata,
+                **composition_header_metadata(
+                    resolve_coding_composition_set("coding-standard")
+                ),
+            }
             if self._owned_factory is not None:
                 session = await self._owned_factory.new(
                     session_dir=scope.session_dir, cwd=str(scope.cwd), session_id=session_id,
-                    additional_header_metadata={_METADATA_KEY: metadata}, defer_materialization=False,
+                    additional_header_metadata=header_metadata, defer_materialization=False,
                     create_root=self._new_root_creation(),
                 )
                 return await self._candidate_from_owned(session, scope)
@@ -708,7 +716,7 @@ class CodingHostedSessionCatalogV1:
                     session_dir=scope.session_dir,
                     cwd=str(scope.cwd),
                     session_id=session_id,
-                    additional_header_metadata={_METADATA_KEY: metadata},
+                    additional_header_metadata=header_metadata,
                     defer_materialization=False,
                 )
             except Exception:

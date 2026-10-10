@@ -18,7 +18,8 @@ from loushang.harness.capabilities.contribution_admission import (
     ResourceContributionSpec,
 )
 from loushang.harness.resource_catalog.bootstrap_projection import (
-    prepare_resource_catalog_bootstrap_projection,
+    ResourceCatalogBootstrapResult,
+    prepare_resource_catalog_bootstrap_result,
 )
 from loushang.harness.resource_catalog.inputs import (
     AdmittedPackageResource,
@@ -386,6 +387,19 @@ class InitialResourceCatalogProductAdapter:
     ) -> ResourceBundle:
         """Produce the Catalog-owned synchronous seed for Extension bootstrap."""
 
+        return self.prepare_bootstrap_projection_with_receipt(
+            product_id=product_id, session_id=session_id, cwd=cwd
+        ).bundle
+
+    def prepare_bootstrap_projection_with_receipt(
+        self,
+        *,
+        product_id: str,
+        session_id: str,
+        cwd: Path,
+    ) -> ResourceCatalogBootstrapResult:
+        """Expose the exact disposable Catalog selection to a Product read owner."""
+
         if not isinstance(product_id, str) or not product_id.strip():
             raise ValueError("initial Resource Catalog Product id must not be empty")
         if not isinstance(session_id, str) or not session_id.strip():
@@ -427,7 +441,7 @@ class InitialResourceCatalogProductAdapter:
                         source_root_order=embedded_spec.source_root_order,
                     )
                 )
-            return prepare_resource_catalog_bootstrap_projection(
+            return prepare_resource_catalog_bootstrap_result(
                 product_id=product_id,
                 runtime_id=f"resource-bootstrap:{session_id}",
                 product_policy_revision=selection.product_policy_revision,

@@ -83,7 +83,8 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     assert sum(groups["g12"].values()) <= 800 + 84 + 7, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
     # LMUX-M0: original catalog ownership, readonly hooks and validation (+205).
-    assert sum(groups["g14"].values()) <= 1_300 + 205, groups["g14"]
+    # P3: seal canonical composition before Hosted candidate materialization (+8).
+    assert sum(groups["g14"].values()) <= 1_300 + 205 + 8, groups["g14"]
     assert sum(groups["g16"].values()) <= 900, groups["g16"]
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
     assert sum(groups["g18"].values()) <= 200, groups["g18"]

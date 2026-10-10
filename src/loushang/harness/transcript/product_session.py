@@ -200,6 +200,11 @@ class ProductTranscriptSession(
     def _fork_binding_input(self) -> BindingInputT:
         raise NotImplementedError("Product transcript sessions must bind fork input")
 
+    def _fork_header_metadata(self) -> Mapping[str, JSONValue] | None:
+        """Return Product-owned creation facts that must survive a fork."""
+
+        return None
+
     @classmethod
     async def _construct_product(
         cls, factory: AgentTranscriptSessionFactory[BindingInputT, ProductBindingT],
@@ -555,6 +560,7 @@ class ProductTranscriptSession(
             self._lifecycle_session,
             leaf_id=leaf_id,
             binding_input=self._fork_binding_input(),
+            additional_header_metadata=self._fork_header_metadata(),
         ))
 
     async def create_branched_session(self, leaf_id: str) -> Path | None:

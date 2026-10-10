@@ -398,6 +398,35 @@
     },
     {
       "paths": [
+        "src/loushang/coding/_tool_authority.py",
+        "src/loushang/coding/bootstrap.py",
+        "src/loushang/coding/composition_provenance.py",
+        "src/loushang/coding/composition_sets.py",
+        "src/loushang/coding/runtime/agent_session_runtime.py",
+        "src/loushang/coding/session/agent_session.py",
+        "src/loushang/coding/session_manager.py"
+      ],
+      "checks": [
+        "hosting",
+        "windows_shell"
+      ],
+      "reason": "Ordinary Coding Worker Session and composition consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/cli/application.py",
+        "src/loushang/coding/cli/args.py",
+        "src/loushang/coding/cli/composition_choice.py",
+        "src/loushang/coding/cli/profile.py",
+        "tests/coding/test_plugin_p4_worker_turn.py"
+      ],
+      "checks": [
+        "hosting"
+      ],
+      "reason": "Linux ordinary Coding Worker command entry"
+    },
+    {
+      "paths": [
         "src/loushang/harness/workspace/**",
         "src/loushang/harness/worker/**",
         "src/loushang/harness/resources/packages/**",

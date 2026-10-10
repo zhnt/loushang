@@ -16,6 +16,9 @@ from loushang.harness.capabilities.provider_selection import (
 from loushang.harness.package_product.product_local_wheel_runtime import (
     WindowsLocalWheelProductSessionOwner,
 )
+from loushang.harness.plugin_management.package_product import (
+    PackageProductRuntimeReadError,
+)
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -320,7 +323,21 @@ class CodingWindowsProductWorkerPendingHost:
 
             async def settle_supervisor() -> None:
                 if supervisor.status.state == "healthy":
-                    await supervisor.shutdown()
+                    try:
+                        selected = (
+                            self.receipt_owner.current_witness(self.receipt)
+                            == self.receipt.authority_witness
+                        )
+                    except PackageProductRuntimeReadError:
+                        selected = False
+                    if selected:
+                        await supervisor.shutdown()
+                    else:
+                        # A revoked Product cannot use the normal draining
+                        # path: native close needs a fenced attempt first.
+                        await supervisor.fence(
+                            code="coding_worker_product_selection_stale"
+                        )
                 elif supervisor.status.state not in {"stopped", "failed", "fenced"}:
                     await supervisor.fence(code="coding_worker_graph_prepare_failed")
                 if supervisor.status.state in {"failed", "fenced"}:

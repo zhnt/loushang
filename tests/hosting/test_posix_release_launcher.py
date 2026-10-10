@@ -25,6 +25,14 @@ from loushang.coding.package_product_worker_native_release import (
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
+from loushang.hosting._posix_launch_preparation import (
+    _F_ADD_SEALS,
+    _F_SEAL_GROW,
+    _F_SEAL_SEAL,
+    _F_SEAL_SHRINK,
+    _F_SEAL_WRITE,
+    _create_memfd,
+)
 from tests.hosting.test_posix_launch_preparation import (
     _compile_containment_payload,
 )
@@ -112,6 +120,7 @@ def test_checked_in_launcher_build_and_native_containment(tmp_path: Path) -> Non
         os.close(cwd_fd)
         os.close(payload_fd)
         os.close(launcher_fd)
+
 
     reader = CodingLinuxWorkerReleaseCatalogReader(
         release_root=release,
@@ -433,6 +442,165 @@ def test_checked_in_launcher_gated_v2_waits_for_parent_release(tmp_path: Path) -
                     process.kill()
                     process.wait(timeout=10)
     finally:
+        os.close(cwd_fd)
+        os.close(payload_fd)
+        os.close(launcher_fd)
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(
+    sys.platform != "linux" or platform.machine().lower() not in {"x86_64", "amd64"},
+    reason="Linux x86-64 native launcher",
+)
+def test_strict_query_launcher_denies_ambient_file_and_process_authority(
+    tmp_path: Path,
+) -> None:
+    import fcntl
+
+    release = tmp_path / "release"
+    built = subprocess.run(
+        (sys.executable, str(_BUILDER), "--output-dir", str(release)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    catalog = json.loads(built.stdout)
+    secret = tmp_path / "secret"
+    secret.write_bytes(b"private worker host secret")
+    victim = tmp_path / "victim"
+    victim.write_bytes(b"preserve product state")
+    source = tmp_path / "probe.c"
+    payload = tmp_path / "probe"
+    source.write_text(
+        r'''
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+int main(int argc, char **argv) {
+    struct stat observed;
+    char output[256];
+    int result[13], fd, count;
+    pid_t child;
+    char *const command[] = {"/bin/true", NULL};
+    if (argc != 8) return 90;
+    errno = 0;
+    fd = openat(AT_FDCWD, argv[1], O_RDONLY);
+    result[0] = fd < 0 && errno == EPERM;
+    if (fd >= 0) close(fd);
+    errno = 0;
+    fd = openat(AT_FDCWD, argv[2], O_WRONLY | O_TRUNC);
+    result[1] = fd < 0 && errno == EPERM;
+    if (fd >= 0) close(fd);
+    errno = 0;
+    result[2] = unlinkat(AT_FDCWD, argv[2], 0) < 0 && errno == EPERM;
+    errno = 0;
+    result[3] = kill((pid_t)atoi(argv[3]), 0) < 0 && errno == EPERM;
+    errno = 0;
+    child = fork();
+    result[4] = child < 0 && errno == EPERM;
+    if (child == 0) _exit(91);
+    if (child > 0) waitpid(child, NULL, 0);
+    errno = 0;
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    result[5] = fd < 0 && errno == EPERM;
+    if (fd >= 0) close(fd);
+    errno = 0;
+    result[6] = execve("/bin/true", command, NULL) < 0 && errno == EPERM;
+    errno = 0;
+    result[7] = syscall(SYS_execveat, atoi(argv[5]), "/bin/true",
+                        command, NULL, AT_EMPTY_PATH) < 0 &&
+                (errno == EACCES || errno == EPERM);
+    errno = 0;
+    result[8] = fstat(atoi(argv[4]), &observed) < 0 && errno == EBADF;
+    errno = 0;
+    result[9] = fstat(atoi(argv[5]), &observed) < 0 && errno == EBADF;
+    errno = 0;
+    result[10] = fstat(atoi(argv[6]), &observed) < 0 && errno == EBADF;
+    errno = 0;
+    result[11] = fstat(atoi(argv[7]), &observed) < 0 && errno == EBADF;
+    errno = 0;
+    result[12] = fstatat(AT_FDCWD, argv[1], &observed, 0) < 0 &&
+                 errno == EPERM;
+    count = snprintf(output, sizeof output,
+                     "%d%d%d%d%d%d%d%d%d%d%d%d%d\n", result[0], result[1],
+                     result[2], result[3], result[4], result[5], result[6],
+                     result[7], result[8], result[9], result[10],
+                     result[11], result[12]);
+    if (count != 14 || write(1, output, (size_t)count) != count) return 92;
+    return 0;
+}
+''',
+        encoding="utf-8",
+    )
+    compiled = subprocess.run(
+        ("cc", "-static", "-O2", "-s", "-Wall", "-Wextra", "-Werror", "-o", str(payload), str(source)),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert compiled.returncode == 0, compiled.stderr
+    launcher = release / "containment-launcher"
+    launcher_fd = os.open(launcher, os.O_RDONLY)
+    payload_fd = _create_memfd()
+    os.write(payload_fd, payload.read_bytes())
+    fcntl.fcntl(
+        payload_fd,
+        _F_ADD_SEALS,
+        _F_SEAL_SEAL | _F_SEAL_SHRINK | _F_SEAL_GROW | _F_SEAL_WRITE,
+    )
+    cwd_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    decoy_fd = os.open(secret, os.O_RDONLY)
+    try:
+        observed = subprocess.run(
+            (
+                str(launcher),
+                "--loushang-protocol",
+                "loushang-static-query-containment-launch/v1",
+                "--loushang-profile-sha256",
+                str(catalog["profileSourceSha256"]),
+                "--loushang-payload-fd",
+                str(payload_fd),
+                "--loushang-preparation-fds",
+                f"{launcher_fd},{payload_fd},{cwd_fd}",
+                "--",
+                str(payload),
+                str(secret),
+                str(victim),
+                str(os.getpid()),
+                str(launcher_fd),
+                str(payload_fd),
+                str(cwd_fd),
+                str(decoy_fd),
+            ),
+            cwd=tmp_path,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=(launcher_fd, payload_fd, cwd_fd, decoy_fd),
+            timeout=10,
+            check=False,
+        )
+        assert observed.returncode == 0, (observed.returncode, observed.stderr)
+        assert observed.stdout == b"1111111111111\n"
+        assert secret.read_bytes() == b"private worker host secret"
+        assert victim.read_bytes() == b"preserve product state"
+    finally:
+        os.close(decoy_fd)
         os.close(cwd_fd)
         os.close(payload_fd)
         os.close(launcher_fd)

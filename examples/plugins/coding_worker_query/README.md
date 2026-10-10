@@ -29,11 +29,24 @@ The smoke uses a disposable Product workspace. A passing result establishes
 `productUse` remain `not_checked`. Do not read that result as approval to run
 the executable in another workspace.
 
+The P4 ordinary-turn candidate has four separate checkpoints:
+
+| Checkpoint | Evidence to retain |
+| --- | --- |
+| Inert Wheel | Builder digest and disposable smoke admission/selection result |
+| Native release | `loushang-worker-native review`, `approve`, `install`, and exact release status |
+| Workspace selection | `candidate-capture`, install, enable, allow, then current `candidate-status` for the same Plugin and revision |
+| Product turn | A new persisted `coding-standard` Session with `--worker-query-plugin reviewworker`, its startup selection receipt, and a `worker_query_symbol` Tool result in the transcript |
+
+The last checkpoint is a candidate path pending current native and owner gates.
+The CLI request is explicit and never changes the default route.
+
 To use this exact Wheel in an already fenced Linux Coding workspace, follow the
 [Worker operator sequence](../../../docs/internals/architecture/harness/plugin/plugin-authoring-guide.md):
 capture and install the candidate, enable its exact revision, approve and
 install the native H6 release, record per-install opt-in, then use an explicit
-Python SDK Session or the bounded `loushang-worker-native query` command. The
+Python SDK Session, the P4 candidate ordinary-turn flag, or the bounded
+`loushang-worker-native query` command. The
 same guide covers version update, revocation, removal, and offline Package GC.
 The Product checks those stages independently. This example does not open
 dependency-bearing Workers, general third-party self-service, Windows author

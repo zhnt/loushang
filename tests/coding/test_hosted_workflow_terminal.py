@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.ai.types import UserMessage
 from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.session_manager import SessionManager
 from tests.tui.terminal_process_support import selected_backend_name
 
-from .test_hosted_discovery import _create
+from ._hosted_composition_seed import seed_hosted_history
+from .test_hosted_catalog import _intent
 from .test_hosted_local import _local_launch
 from .test_mux_product_terminal import _command, _product, _see, _terminal
 from .test_mux_product_terminal import (
@@ -33,13 +32,10 @@ def test_G17_TERMINAL_LOCAL_discovery_picker_detach_reattach_and_stop(
     historical = "G17 local canonical history selected"
 
     async def seed():
-        await _create(CodingHostedSessionCatalogV1((scope,)), scope)
-        (path,) = scope.session_dir.glob("*.jsonl")
-        manager = await SessionManager.open(path)
-        try:
-            await manager.append_message(UserMessage(role="user", content=historical, timestamp=1.0))
-        finally:
-            await manager.dispose_runtime_profile()
+        catalog = CodingHostedSessionCatalogV1((scope,))
+        candidate = await catalog.create_candidate(_intent(scope))
+        await candidate.close()
+        await seed_hosted_history(scope, historical)
 
     asyncio.run(seed())
     record_testsuite_property("terminal_backend", selected_backend_name())

@@ -5,6 +5,8 @@ import inspect
 import json
 from dataclasses import replace
 from datetime import date
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -98,6 +100,52 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
         getattr(message, "role", None)
         for message in session.get_session_context().messages
     ] == ["user"]
+
+
+def test_product_capability_route_rejects_unselected_runtime_package(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding._capability_plugin_composition import (
+        CodingCapabilityPluginCompositionAssembly,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+    from loushang.harness.resources.plugins import PluginRuntimeResolution
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
+    assembly = object.__new__(CodingCapabilityPluginCompositionAssembly)
+    assembly.runtime = cast(
+        PluginRuntimeResolution,
+        SimpleNamespace(
+            packages=(
+                SimpleNamespace(
+                    manifest=SimpleNamespace(name="unselected.package"),
+                    content_digest="0" * 64,
+                ),
+            )
+        ),
+    )
+    owner = SimpleNamespace(binding_id="product-graph", activate=lambda: None)
+    runtime_binding = PackageProductRuntimeBindingV1(
+        product_id="coding",
+        lifecycle=cast(Any, owner),
+        inventory=cast(Any, owner),
+        mode="enforced",
+    )
+    try:
+        with pytest.raises(ValueError, match="Coding Product Session packages changed"):
+            AgentSession(
+                agent=Agent(),
+                session_manager=manager,
+                coding_capability_plugin_assembly=assembly,
+                coding_base_product_runtime_binding=runtime_binding,
+            )
+    finally:
+        asyncio.run(manager.dispose_runtime_profile())
 
 
 def _usage() -> Usage:

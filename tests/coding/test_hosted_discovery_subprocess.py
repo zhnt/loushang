@@ -6,7 +6,6 @@ import asyncio
 
 import pytest
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.framing import AppFramedStreamV1, AsyncioStreamTransportV1
 from loushang.appserver.protocol import (
     MuxCreateV1,
@@ -20,9 +19,9 @@ from loushang.appserver.protocol.connection_profile import AppConnectionProfileV
 from loushang.appserver.remote_client import RemoteAppClientV1
 from loushang.coding.cli.hosted import parse_launch
 from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.session_manager import SessionManager
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
+from ._hosted_composition_seed import seed_hosted_history
 from .test_hosted_discovery import _create
 from .test_hosted_subprocess import _argv, _environment, _installed_command
 
@@ -35,18 +34,7 @@ def test_G17_COMPAT_installed_stdio_discovers_and_resumes_admitted_history(
         launch, _ = parse_launch(_argv(tmp_path))
         scope = next(item for item in launch.scopes if item.scope is kind)
         await _create(CodingHostedSessionCatalogV1((scope,)), scope)
-        (path,) = scope.session_dir.glob("*.jsonl")
-        manager = await SessionManager.open(path)
-        try:
-            await manager.append_message(
-                UserMessage(
-                    role="user",
-                    content="Historical message before installed resume",
-                    timestamp=1.0,
-                )
-            )
-        finally:
-            await manager.dispose_runtime_profile()
+        await seed_hosted_history(scope, "Historical message before installed resume")
         process = await asyncio.create_subprocess_exec(
             _installed_command(),
             *_argv(tmp_path),

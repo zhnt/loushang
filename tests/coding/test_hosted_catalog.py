@@ -9,6 +9,7 @@ import pytest
 from loushang.ai.types import UserMessage
 from loushang.apphost import SessionCreateIntentV1, SessionCreateRequestV1
 from loushang.appserver.protocol import SessionScopeV1
+from loushang.coding.bootstrap import create_agent_session
 from loushang.coding.hosted_catalog import (
     CODING_HOSTED_COMPATIBILITY_ID,
     CodingHostedCandidateValidatorV1,
@@ -57,14 +58,16 @@ def test_G14_PRODUCT_canonical_transcript_create_and_fresh_owner_resume(
         manager = claimed.opaque_binding.take_manager()
         await claimed.close()
         await candidate.close()
+        session = create_agent_session(session_manager=manager, no_tools=True)
         try:
+            await session.prepare_model_call_runtime()
             await manager.append_message(
                 UserMessage(
                     role="user", content="persisted real transcript", timestamp=1.0
                 )
             )
         finally:
-            await manager.dispose_runtime_profile()
+            await session.dispose()
         await opened.close()
 
         fresh = CodingHostedSessionCatalogV1((scope,))
@@ -215,9 +218,7 @@ def test_G14_PRODUCT_candidate_revision_is_fenced_before_claim(tmp_path: Path) -
         path = next(scope.session_dir.glob("*.jsonl"))
         manager = await SessionManager.open(path)
         try:
-            await manager.append_message(
-                UserMessage(role="user", content="changed", timestamp=1.0)
-            )
+            await manager.append_custom_entry("test.revision-bump/v1", {"version": 1})
         finally:
             await manager.dispose_runtime_profile()
         try:
