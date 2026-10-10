@@ -169,9 +169,54 @@ def test_witness_loop_never_recovers_native_observation_failure_as_success(tmp_p
         signal.signal(signal.SIGINT, previous)
     assert len(observations) == 1
     assert len(calls) == 1
-    assert (tmp_path / "failed").exists()
+    assert json.loads((tmp_path / "failed").read_text()) == {
+        "type": "OSError", "phase": "running",
+        "site": "test_hosted_darwin_witness.py:151",
+    }
     assert not (tmp_path / "exited-retained").exists()
     assert not (tmp_path / "reaped").exists()
+
+
+def test_witness_retries_first_failure_receipt_without_reobserving(tmp_path, monkeypatch):
+    retained, calls, _ = _fixture(tmp_path)
+    observed, published = [], []
+    original_publish = module.publish
+
+    def observe(pid):
+        observed.append(pid)
+        raise OSError("sensitive failure text")
+
+    def publish(root, name, value):
+        if name == "failed":
+            published.append(value)
+            if len(published) == 1:
+                raise module.ReceiptIOError("retry")
+        return original_publish(root, name, value)
+
+    class EndControl(BaseException):
+        pass
+
+    ticks = []
+
+    def sleep(_delay):
+        ticks.append(True)
+        if len(ticks) == 4:
+            raise EndControl
+
+    retained.api.exited_unreaped = observe
+    monkeypatch.setattr(module, "publish", publish)
+    monkeypatch.setattr(module.time, "sleep", sleep)
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        with pytest.raises(EndControl):
+            module.witness(tmp_path, retained.arguments, api=retained.api, spawn=retained.spawn)
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    assert observed == [1234]
+    assert len(calls) == 1
+    assert len(published) == 2
+    assert published[0] == published[1] == json.loads((tmp_path / "failed").read_text())
+    assert "sensitive failure text" not in (tmp_path / "failed").read_text()
 
 
 def test_witness_loop_retries_receipt_stat_failure_without_respawn(tmp_path, monkeypatch):
