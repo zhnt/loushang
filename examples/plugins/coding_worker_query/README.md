@@ -38,14 +38,17 @@ The P4 ordinary-turn candidate has four separate checkpoints:
 | Workspace selection | `candidate-capture`, install, enable, allow, then current `candidate-status` for the same Plugin and revision |
 | Product turn | A new persisted `coding-standard` Session with `--worker-query-plugin reviewworker`, its startup selection receipt, and a `worker_query_symbol` Tool result in the transcript |
 
-The last checkpoint is a candidate path pending current native and owner gates.
-The CLI request is explicit and never changes the default route.
+The last checkpoint is approved only for the explicit Linux x86-64 scope in
+[PR #653](https://github.com/zhnt/loushang/pull/653). Each installation still
+needs its exact native release, current Product selection, per-install opt-in,
+and a host that passes the query containment profile. The CLI request never
+changes the default route.
 
 To use this exact Wheel in an already fenced Linux Coding workspace, follow the
 [Worker operator sequence](../../../docs/internals/architecture/harness/plugin/plugin-authoring-guide.md):
 capture and install the candidate, enable its exact revision, approve and
 install the native H6 release, record per-install opt-in, then use an explicit
-Python SDK Session, the P4 candidate ordinary-turn flag, or the bounded
+Python SDK Session, the P4 explicit ordinary-turn flag, or the bounded
 `loushang-worker-native query` command. The
 same guide covers version update, revocation, removal, and offline Package GC.
 The Product checks those stages independently. This example does not open
