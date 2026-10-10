@@ -817,10 +817,13 @@ def _verify_independent_ordinary_worker_turn_crash_recovery(
             "plugin_package_gc_worker_history_unsettled"
         )
         if prior_boot:
+            def reject_changed_boot(_authority, **_kwargs: object) -> bool:
+                return False
+
             with patch.object(
                 crash_c5_module._UnderGuardCleanupEvidenceAuthority,
                 "verify_changed_boot_absence",
-                return_value=False,
+                reject_changed_boot,
             ):
                 with pytest.raises(RuntimeError):
                     settle_coding_product_worker_crash_c5(
