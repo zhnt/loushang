@@ -871,15 +871,15 @@ def _execute(
             }
         }
     if args.action == "recover-registered-no-effect":
-        settled = recover_coding_product_worker_registered_no_effect(
+        registered_settled = recover_coding_product_worker_registered_no_effect(
             product, attempt_id=args.attempt_id
         )
         return {
             "registeredNoEffectRecovery": {
-                "attemptId": settled.attempt_id,
-                "ownerGeneration": settled.owner_generation,
-                "phase": settled.phase,
-                "noEffect": settled.no_effect,
+                "attemptId": registered_settled.attempt_id,
+                "ownerGeneration": registered_settled.owner_generation,
+                "phase": registered_settled.phase,
+                "noEffect": registered_settled.no_effect,
             }
         }
     if args.action in {"review-unmarked-payload-debt", "repair-unmarked-payload-debt"}:
