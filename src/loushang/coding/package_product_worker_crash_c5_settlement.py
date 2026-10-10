@@ -20,7 +20,9 @@ from loushang.harness.worker.product_activation import (
     ActivationWitness,
     ProductWorkerActivationCoordinator,
     ProductWorkerActivationReceiptV1,
+    WorkerCleanupDebtV1,
     WorkerCleanupSettlementV1,
+    _CleanupDebtReason,
 )
 
 from .package_product_worker_activation_history import (
@@ -155,7 +157,7 @@ def _settle_crash_c5_under_guard(
         or not supervisor.process_settled
         or supervisor.phase != "process_settled"
         or not review.native_closure_current
-        or review.group_status != "absent"
+        or review.group_status not in {"absent", "prior_boot_absent"}
     ):
         raise CodingWorkerCrashC5SettlementError(
             "coding_worker_crash_c5_recovery_incomplete"
@@ -216,7 +218,11 @@ def _settle_crash_c5_under_guard(
         or c5.owner_generation != receipt.policy.owner_selection_generation
         or c5.cleanup_contract_version != 1
         or c5.host_identity != evidence.host_identity
-        or c5.boot_identity != evidence.boot_identity
+        or c5.boot_identity != gate.identity.boot_id
+        or (
+            (c5.boot_identity == evidence.boot_identity)
+            != (review.group_status == "absent")
+        )
         or not c5.current
     ):
         raise CodingWorkerCrashC5SettlementError(
@@ -265,19 +271,38 @@ def _settle_crash_c5_under_guard(
         receipt=receipt, attempt_id=attempt_id, owner_generation=generation
     )
     witness = evidence.current_tree_witness(attempt_id=attempt_id)
-    coordinator.record_cleanup_settlement(
-        WorkerCleanupSettlementV1(
-            receipt_fingerprint=receipt.fingerprint,
+    if review.group_status == "prior_boot_absent":
+        coordinator.record_cleanup_debt(
+            WorkerCleanupDebtV1(
+                receipt_fingerprint=receipt.fingerprint,
+                attempt_id=attempt_id,
+                owner_generation=generation,
+                host_identity=evidence.host_identity,
+                boot_identity=c5.boot_identity,
+                reason=_CleanupDebtReason.SAME_BOOT_UNKNOWN_TREE,
+            )
+        )
+        coordinator.settle_changed_boot_absence(
+            receipt=receipt,
             attempt_id=attempt_id,
             owner_generation=generation,
-            host_identity=evidence.host_identity,
-            boot_identity=evidence.boot_identity,
-            protocol_terminal=True,
-            domain_retired=True,
-            tree_settled=True,
-        ),
-        witness=witness,
-    )
+            current_boot_identity=evidence.boot_identity,
+            witness=witness,
+        )
+    else:
+        coordinator.record_cleanup_settlement(
+            WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt.fingerprint,
+                attempt_id=attempt_id,
+                owner_generation=generation,
+                host_identity=evidence.host_identity,
+                boot_identity=c5.boot_identity,
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ),
+            witness=witness,
+        )
     [settled] = (
         item
         for item in journal.retained_attempts_read_only()

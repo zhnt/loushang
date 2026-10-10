@@ -16,7 +16,7 @@ does not add a second Plugin registry or change a default route.
 | Data Skill Wheel | `build-coding-skill` | Fenced Coding Product admits the constrained document-only profile | Enabled selected revision appears in a new Session; `/skill:<name>` reaches persisted prepared model input | Linux/POSIX Product path verified; not a default global Plugin selection | Per-workspace install/enable and exact Session proof |
 | Data Prompt Wheel | `build-coding-prompt` | Same constrained data profile | Enabled selected revision expands `/<name>` into persisted prepared model input | Linux/POSIX Product path verified | Per-workspace install/enable and exact Session proof |
 | Screen Theme Wheel | `init-coding-theme` then `build-coding-theme`; disposable Screen smoke | Explicit Coding Screen candidate profile | Exact selected revision and `theme: plugin:<name>` setting change a new Screen; no model-input use | Candidate route; Hosted Mux and live refresh excluded | Separate Product rollout decision |
-| Native Worker Wheel | `build-coding-worker-candidate`; disposable Linux smoke proves only artifact admission and selection | Explicit Linux `candidate-capture`, install, enable, update, disable, remove, native release, per-install allow/revoke, and separate offline Package GC | Explicit Linux Python SDK query or a new persisted `coding-standard` ordinary turn using `--worker-query-plugin`; the selected revision, startup receipt, and Tool result prove distinct stages | The exact Linux x86-64 read-only query route was approved on 2026-10-10 after [PR #653](https://github.com/zhnt/loushang/pull/653) passed 72/72 CI jobs and independent security, platform, and lifecycle reviews. It requires the `posix-static-query-contained-elf-v1` host profile; default routing stays closed. Windows native candidate tests passed, but Windows ordinary routing remains closed | Each installation still needs exact native release approval, current Product selection, and per-install opt-in. Prior-boot recovery, Windows/macOS ordinary turns, dependency execution, effectful Tools, general self-service, and default routing remain closed |
+| Native Worker Wheel | `build-coding-worker-candidate`; disposable Linux smoke proves only artifact admission and selection | Explicit Linux `candidate-capture`, install, enable, update, disable, remove, native release, per-install allow/revoke, and separate offline Package GC | Explicit Linux Python SDK query or a new persisted `coding-standard` ordinary turn using `--worker-query-plugin`; the selected revision, startup receipt, and Tool result prove distinct stages | The exact Linux x86-64 read-only query route was approved on 2026-10-10 after [PR #653](https://github.com/zhnt/loushang/pull/653) passed 72/72 CI jobs and independent security, platform, and lifecycle reviews. It requires the `posix-static-query-contained-elf-v1` host profile; default routing stays closed. Windows native candidate tests passed, but Windows ordinary routing remains closed | Each installation still needs exact native release approval, current Product selection, and per-install opt-in. Actual-reboot validation, registered-before-effect recovery, Windows/macOS ordinary turns, dependency execution, effectful Tools, general self-service, and default routing remain closed |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
 The Linux Worker decision covers one locally installed immutable static Wheel,
@@ -27,6 +27,17 @@ checks, ordinary Product turns, sustained queries, same-boot crash/reopen, C5
 settlement, and Package GC passed at the
 final PR head; the merged tree contains the same code. The Windows seven-case
 Session result is compatibility evidence for a separate platform decision.
+
+The Linux offline `settle-crashed-c5` operation also supports a launched
+attempt from an earlier boot after the exact orphan runtime lease, Supervisor
+attempt, and payload debt have been repaired. The cleanup authority reopens
+the durable five-stream history and C5 state under Product custody, requires
+the original native boot identity to differ from the current boot, and retains
+cleanup debt if the proof is rejected. The Product test simulates a changed
+boot identity against a real native Worker process and reopens the settled
+history from another process. It is not a physical reboot drill. A C5 record
+that never crossed its effect-start edge still lacks a Product history-retention
+contract and has no recovery route here.
 
 The local Extension row is the simple file-based author path comparable in
 shape to pi extensions. It runs trusted Python in-process. A Wheel is the

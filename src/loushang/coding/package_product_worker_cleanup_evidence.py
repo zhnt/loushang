@@ -1,8 +1,9 @@
 """Product-owned Linux cleanup evidence for a C5 Worker attempt.
 
 This owner reopens the settled Supervisor, start gate, native group and Product
-state under the retention review's locks. It grants no changed-boot or
-registered-lease recovery authority yet.
+state under the retention review's locks. It also verifies an exact prior-boot
+absence for the offline crash-recovery path. Registered-lease recovery remains
+closed.
 """
 
 from __future__ import annotations
@@ -97,9 +98,7 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
             and completed[0].attempt_id == attempt_id
             and completed[0].receipt_fingerprint == receipt_fingerprint
             and completed[1]
-            == sha256(
-                canonical_json_bytes(review.attempt_record.to_dict())
-            ).hexdigest()
+            == sha256(canonical_json_bytes(review.attempt_record.to_dict())).hexdigest()
         )
 
     def verify_tree_settlement(
@@ -114,6 +113,33 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
         evidence_authority_id: str,
         evidence_authority_fingerprint: str,
     ) -> bool:
+        return self._verify_tree_review(
+            receipt_fingerprint=receipt_fingerprint,
+            attempt_id=attempt_id,
+            owner_generation=owner_generation,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=witness,
+            evidence_authority_id=evidence_authority_id,
+            evidence_authority_fingerprint=evidence_authority_fingerprint,
+            group_status="absent",
+            current_boot_identity=None,
+        )
+
+    def _verify_tree_review(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        witness: object,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+        group_status: str,
+        current_boot_identity: str | None,
+    ) -> bool:
         if (
             type(witness) is not CodingWorkerHistoryRetentionReviewV1
             or type(receipt_fingerprint) is not str
@@ -127,9 +153,14 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
         ):
             return False
         try:
-            if (
-                host_identity != self.host_identity
-                or boot_identity != self.boot_identity
+            if host_identity != self.host_identity:
+                return False
+            if current_boot_identity is None:
+                if boot_identity != self.boot_identity:
+                    return False
+            elif (
+                current_boot_identity != self.boot_identity
+                or current_boot_identity == boot_identity
             ):
                 return False
             fresh = self.current_tree_witness(attempt_id=attempt_id)
@@ -160,7 +191,14 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
             and receipt.receipt.policy.product_id == "coding"
             and receipt.receipt.policy.product_scope_id == gate.scope_id
             and receipt.receipt.policy.fingerprint == gate.policy_fingerprint
-            and fresh.group_status == "absent"
+            and fresh.group_status == group_status
+            and (
+                group_status != "prior_boot_absent"
+                or (
+                    fresh.history_stream_revisions_match
+                    and fresh.historical_opt_in_verified
+                )
+            )
             and len(c5_references) == 1
             and c5_references[0].receipt_fingerprint == receipt_fingerprint
             and c5_references[0].policy_fingerprint == gate.policy_fingerprint
@@ -181,8 +219,31 @@ class CodingPosixWorkerCleanupEvidenceAuthority:
             and not backup.references
         )
 
-    def verify_changed_boot_absence(self, **_arguments: object) -> bool:
-        return False
+    def verify_changed_boot_absence(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        current_boot_identity: str,
+        witness: object,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+    ) -> bool:
+        return self._verify_tree_review(
+            receipt_fingerprint=receipt_fingerprint,
+            attempt_id=attempt_id,
+            owner_generation=owner_generation,
+            host_identity=host_identity,
+            boot_identity=boot_identity,
+            witness=witness,
+            evidence_authority_id=evidence_authority_id,
+            evidence_authority_fingerprint=evidence_authority_fingerprint,
+            group_status="prior_boot_absent",
+            current_boot_identity=current_boot_identity,
+        )
 
     def verify_registered_lease_expired(self, **_arguments: object) -> bool:
         return False
