@@ -781,6 +781,102 @@ def test_windows_public_runtime_session_enters_fresh_b_product(
     assert reopen_coding_package_cutover(lifecycle).disposition == "fenced"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows native orphan lock")
+def test_windows_ordinary_orphan_repair_refuses_worker_evidence(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(workspace), persist=False
+        )
+    )
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    with (
+        patch(
+            "loushang.coding.package_product_runtime.resolve_coding_plugin_lifecycle_state_layout",
+            return_value=lifecycle,
+        ),
+        patch(
+            "loushang.coding.package_product_runtime.default_global_settings_path",
+            return_value=tmp_path / "global-settings.json",
+        ),
+        patch("loushang.coding.package_product_runtime.version", return_value="2.0.0"),
+    ):
+        selection = CodingFencedProductApplicationSelection(windows_candidate=True)
+        try:
+            factory = selection.factory_for_session(manager, settings_manager=settings)
+            assert factory is not None
+            factory.dispose_unbound_runtime()
+        finally:
+            selection.close()
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    runtime_id = (
+        "coding-session:"
+        + sha256(manager.get_header().conversation_id.encode()).hexdigest()
+    )
+    child = "\n".join(
+        (
+            "import os, sys",
+            "from pathlib import Path",
+            "from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import PackageEpochFenceJournal",
+            "from loushang.harness.resources.packages.plugin_lifecycle.windows_lease_registry import PackageWindowsEpochRuntimeLeaseRegistry",
+            "registry = PackageWindowsEpochRuntimeLeaseRegistry(control_root=Path(sys.argv[1]), fences=PackageEpochFenceJournal(Path(sys.argv[2])), store_id=sys.argv[3])",
+            "registry.register(runtime_id=sys.argv[4], runtime_protocol_epoch=2)",
+            "os._exit(0)",
+        )
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child,
+            str(epoch.control_root),
+            str(epoch.control_root / "epoch.jsonl"),
+            epoch.store_id,
+            runtime_id,
+        ],
+        check=True,
+        timeout=30,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        lifecycle,
+        workspace=workspace,
+        runtime_version="2.0.0",
+        runtime_protocol_epoch=2,
+        windows_candidate=True,
+    )
+    try:
+        registry = owner.epoch_runtime.registry
+        (orphan,) = registry.review_orphans(store_id=registry.store_id)
+        assert orphan.runtime_id == runtime_id
+        worker_evidence = (
+            owner.runtime_owner.product_owner.state_root / "worker-start-gates.jsonl"
+        )
+        worker_evidence.write_bytes(b"")
+        try:
+            with pytest.raises(
+                RuntimeError, match="Worker recovery requires explicit review"
+            ):
+                owner.factory_for_session(manager)
+            assert registry.review_orphans(store_id=registry.store_id) == (orphan,)
+        finally:
+            worker_evidence.unlink()
+        factory = owner.factory_for_session(manager)
+        factory.dispose_unbound_runtime()
+        assert registry.review_orphans(store_id=registry.store_id) == ()
+    finally:
+        owner.close()
+
+
 def test_windows_candidate_ordinary_session_uses_fresh_b_product(
     tmp_path: Path,
 ) -> None:

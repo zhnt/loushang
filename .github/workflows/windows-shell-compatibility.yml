@@ -112,6 +112,7 @@ jobs:
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_public_ordinary_session_preserves_pre_b_without_writing
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_public_ordinary_session_enters_fresh_b_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_public_runtime_session_enters_fresh_b_product
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_ordinary_orphan_repair_refuses_worker_evidence
           tests/coding/test_hosted_session.py::test_windows_hosted_ordinary_session_enters_fresh_b_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_disable_fences_pinned_product
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
@@ -126,7 +127,7 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-worker-session-native.xml
-          --require-tests-count 16
+          --require-tests-count 17
 
       - name: Upload Windows Worker Session pytest report
         if: always()
