@@ -19,11 +19,11 @@ does not add a second Plugin registry or change a default route.
 | Native Worker Wheel | `build-coding-worker-candidate`; disposable Linux smoke proves only artifact admission and selection | Explicit Linux `candidate-capture`, install, enable, update, disable, remove, native release, per-install allow/revoke, and separate offline Package GC | Explicit Linux Python SDK query or a new persisted `coding-standard` ordinary turn using `--worker-query-plugin`; the selected revision, startup receipt, and Tool result prove distinct stages | The exact Linux x86-64 read-only query route was approved on 2026-10-10 after [PR #653](https://github.com/zhnt/loushang/pull/653) passed 72/72 CI jobs and independent security, platform, and lifecycle reviews. It requires the `posix-static-query-contained-elf-v1` host profile; default Worker routing stays closed. Windows native candidate tests passed; PR #662 admits ordinary Windows B Sessions without enabling the Windows Worker query CLI | Each installation still needs exact native release approval, current Product selection, and per-install opt-in. Windows Worker queries, macOS ordinary turns, dependency execution, effectful Tools, general self-service, and default Worker routing remain closed; PR #660 separately verifies Linux registered-before-effect recovery across a real reboot |
 | Other declared Resource kinds | Declaration/IR may exist | No corresponding public Coding Wheel profile for Method, Asset, or Source | No Product consumer proof from declaration alone | None claimed | Open each kind only with its Product owner and evidence |
 
-PR #662 selects the fenced B Product for ordinary Windows Coding Sessions in
-Direct, Session Runtime, and Hosted construction. This is an ordinary Session
-route without Worker query activation. The explicit Windows Worker candidate
-remains separate, and the CLI `--worker-query-plugin` route still accepts only
-Linux x86-64. Native CI for the PR must pass before this route is released.
+Ordinary Windows Coding Sessions select the fenced B Product in Direct,
+Session Runtime, and Hosted construction. This route does not activate Worker
+queries. The explicit Windows Worker candidate remains separate, and the CLI
+`--worker-query-plugin` route still accepts only Linux x86-64. PR #662 records
+the native acceptance for ordinary Windows Sessions.
 
 The Linux Worker decision covers one locally installed immutable static Wheel,
 one read-only `coding.worker.query` facet, and an explicit new Session. The
@@ -165,7 +165,7 @@ TUI list and status show nonempty debt.
 | Route | Current status | Evidence and limit |
 | --- | --- | --- |
 | Linux fresh workspace | Ordinary first-B cutover, Coding Session and offline Package GC are open | [Coding user guide](../../../../en/user-guide/README.md) and Product regressions; pre-B legacy migration is unsupported and refuses without writes |
-| Windows fresh workspace | Explicit `--windows-candidate` first-B cutover and offline GC are open; PR #662 admits unflagged ordinary B Sessions through Direct, Session Runtime, and Hosted construction | The ordinary route requires PR #662 native CI before release; Windows Worker query CLI and pre-B migration remain closed |
+| Windows fresh workspace | Explicit `--windows-candidate` first-B cutover and offline GC are open; unflagged ordinary B Sessions enter through Direct, Session Runtime, and Hosted construction | PR #662 records native acceptance for the ordinary route; Windows Worker query CLI and pre-B migration remain closed |
 | macOS | Hosting has native CI evidence | No claim here of an equivalent full Coding Product end-to-end gate |
 | Management | Fenced Product-backed CLI, optional Coding RPC, TUI, and local SDK have bounded query/command/repair routes | Exact owner/scope and command gates apply; generic Hosts do not automatically expose Coding routes |
 
