@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PR_ROUTING_FILES = {
     "scripts/ci/check-scopes.json",
     "scripts/ci/select_checks.py",
+    "scripts/ci/unit-tests.json",
     "scripts/ci/verify_gate.py",
     "tests/ci/test_change_gates.py",
 }

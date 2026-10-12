@@ -345,7 +345,8 @@ class ScopeTests(unittest.TestCase):
     def test_module_regression_workflow_change_runs_its_complete_inventory(self):
         for paths in (
             [selector.MODULE_REGRESSION_WORKFLOW],
-            [selector.MODULE_REGRESSION_WORKFLOW, "scripts/ci/select_checks.py"],
+            [selector.MODULE_REGRESSION_WORKFLOW, "scripts/ci/select_checks.py",
+             "scripts/ci/unit-tests.json", "tests/work/test_package_boundaries.py"],
         ):
             with self.subTest(paths=paths):
                 plan = selector.select(paths, pr_fast=True)
@@ -576,6 +577,7 @@ class ScopeTests(unittest.TestCase):
             ("src/loushang/coding/compaction.py", "coding"),
             ("src/loushang/harness/tools/core.py", "harness"),
             ("tests/coding/test_compaction_core.py", "coding"),
+            ("tests/work/test_package_boundaries.py", "work"),
         ):
             with self.subTest(path=path):
                 plan = selector.select([path], pr_fast=True)

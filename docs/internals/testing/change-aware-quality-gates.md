@@ -16,7 +16,7 @@ their results through `quality-gate`. Local development uses the same
 | Terminal lifecycle/platform code | TUI units, playback, native PTY/ConPTY, and tmux; a PR runs one Windows ConPTY startup/exit case unless it changes native backend ownership |
 | Hosting provider source | Hosting checks and its AppHost/AppService startup and settlement consumers |
 | Hosted native/wheel evidence helpers, supervisors, and PTY/ConPTY fixture drivers | AppService quality plus G16/G17 native and installed matrices; native evidence changes retain full Windows coverage on the PR |
-| Edits to the CI routing table, selector, gate verifier, or their existing contract tests | CI routing regressions, pinned Actions syntax check, one Agent module regression, and the three-platform E2E smoke |
+| Edits to the CI routing table, unit inventory, selector, gate verifier, or their existing contract tests | CI routing regressions, pinned Actions syntax check, one Agent module regression, and the three-platform E2E smoke |
 | Edits to the module regression reusable workflow | CI routing and Actions syntax checks, every eligible package's complete offline regression, and the three-platform E2E smoke |
 | Shared dependencies, gate infrastructure, or unknown non-document paths | All configured checks |
 
@@ -31,7 +31,7 @@ HarnessTUI, and TUI module jobs use deterministic shards. A change touching
 two packages runs both complete module regressions. Package source that selects
 a platform, Worker, installation, LSP, or other high-risk gate also keeps the
 existing route. The E2E smoke reopens a real hosted session and sends a second
-message. Changes to the four listed routing files exercise CI static checks,
+message. Changes to the five listed routing files exercise CI static checks,
 the Agent module job, and E2E. Changes to the module regression workflow run
 the complete eligible unit inventory instead of unrelated native suites. Other
 gate machinery retains full validation.

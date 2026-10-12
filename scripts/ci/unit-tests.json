@@ -142,6 +142,7 @@
   "work": [
     "tests/work/test_artifact_ref.py",
     "tests/work/test_event_log.py",
+    "tests/work/test_package_boundaries.py",
     "tests/work/test_public_api.py",
     "tests/work/test_run_projection.py",
     "tests/work/test_work_types.py"
