@@ -21,6 +21,7 @@ PR_ROUTING_FILES = {
     "scripts/ci/verify_gate.py",
     "tests/ci/test_change_gates.py",
 }
+MODULE_REGRESSION_WORKFLOW = ".github/workflows/package-unit-quality.yml"
 FAST_EXCLUDED_PACKAGES = {
     "plugin", "hosting", "apphost", "appservice", "appserver", "foundation",
 }
@@ -166,6 +167,13 @@ def select(
             "document_files"
         ]:
             enable(["docs"], f"{path}: documentation")
+            continue
+        if pr_fast and not full and path == MODULE_REGRESSION_WORKFLOW:
+            # This reusable workflow only runs offline module regressions. Gate
+            # changes elsewhere still retain broad native validation.
+            enable(["ci"], f"{path}: module regression workflow and Actions syntax")
+            unit_packages.update(set(unit_inventory) - FAST_EXCLUDED_PACKAGES)
+            e2e = True
             continue
         if pr_fast and not full and path in PR_ROUTING_FILES:
             enable(["ci"], f"{path}: PR gate routing regression and Actions syntax")

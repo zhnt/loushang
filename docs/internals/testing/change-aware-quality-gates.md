@@ -17,6 +17,7 @@ their results through `quality-gate`. Local development uses the same
 | Hosting provider source | Hosting checks and its AppHost/AppService startup and settlement consumers |
 | Hosted native/wheel evidence helpers, supervisors, and PTY/ConPTY fixture drivers | AppService quality plus G16/G17 native and installed matrices; native evidence changes retain full Windows coverage on the PR |
 | Edits to the CI routing table, selector, gate verifier, or their existing contract tests | CI routing regressions, pinned Actions syntax check, one Agent module regression, and the three-platform E2E smoke |
+| Edits to the module regression reusable workflow | CI routing and Actions syntax checks, every eligible package's complete offline regression, and the three-platform E2E smoke |
 | Shared dependencies, gate infrastructure, or unknown non-document paths | All configured checks |
 
 The fast PR/main-push route is limited to known package source and exact test files in
@@ -31,7 +32,9 @@ two packages runs both complete module regressions. Package source that selects
 a platform, Worker, installation, LSP, or other high-risk gate also keeps the
 existing route. The E2E smoke reopens a real hosted session and sends a second
 message. Changes to the four listed routing files exercise CI static checks,
-the Agent module job, and E2E. Other gate machinery retains full validation.
+the Agent module job, and E2E. Changes to the module regression workflow run
+the complete eligible unit inventory instead of unrelated native suites. Other
+gate machinery retains full validation.
 
 The existing routing rules are additive outside this fast PR route. Makefile source/test inventories retain explicitly shared
 support paths, such as the Coding product worker canary owned by Harness
@@ -40,9 +43,9 @@ shared test infrastructure. Package dependency direction does not mean every
 consumer change must rerun all of its providers' suites.
 
 The narrow routing-file exception applies to pull requests and ordinary main
-pushes. Scheduled/manual validation stays full. Other CI files,
-workflow definitions, test runners, build dependencies, and new unclassified
-test files still select the complete gate.
+pushes. Scheduled/manual validation stays full. Other CI files and workflow
+definitions, test runners, build dependencies, and new unclassified test files
+still select the complete gate.
 
 Windows jobs have a second selection within their affected scope. An ordinary
 PR or main push selected for Windows Shell runs three native cases: shell execution, an
@@ -51,7 +54,7 @@ AppService runs one authenticated local request and one native console entry
 case; TUI runs one ConPTY startup and
 exit case. Windows Worker recovery and GC changes retain the full Worker jobs;
 private data, ACL, and native package or platform changes retain their affected
-full Windows jobs. Gate infrastructure and unknown paths retain the complete
+full Windows jobs. Other gate infrastructure and unknown paths retain the complete
 Windows matrix. Scheduled/manual validation uses the full Windows suites.
 The Windows summary verifies each selected full or smoke job,
 including expected skips, against the same change plan.

@@ -342,6 +342,33 @@ class ScopeTests(unittest.TestCase):
             {"docs", "ci"},
         )
 
+    def test_module_regression_workflow_change_runs_its_complete_inventory(self):
+        for paths in (
+            [selector.MODULE_REGRESSION_WORKFLOW],
+            [selector.MODULE_REGRESSION_WORKFLOW, "scripts/ci/select_checks.py"],
+        ):
+            with self.subTest(paths=paths):
+                plan = selector.select(paths, pr_fast=True)
+                self.assertEqual(
+                    plan["unit_packages"],
+                    ["agent", "ai", "channel", "coding", "harness", "harnesstui",
+                     "harnesswork", "method", "ontology", "resource", "tui", "work"],
+                )
+                self.assertEqual(len(plan["unit_jobs"]), 32)
+                self.assertEqual(
+                    {name for name, enabled in plan["checks"].items() if enabled},
+                    {"docs", "ci"},
+                )
+                self.assertEqual(
+                    {name for name, enabled in plan["workflows"].items() if enabled},
+                    {"units", "e2e"},
+                )
+                self.assertFalse(any(
+                    plan["windows"][scope]
+                    for scope in ("smoke", "worker_pr", "worker_pr_extra",
+                                  "worker_full", "shell_full", "appservice_full", "tui_full")
+                ))
+
     def test_pr_routing_exception_keeps_build_and_other_ci_files_full(self):
         expected = set(selector.select([], full=True)["checks"])
         for path in (
