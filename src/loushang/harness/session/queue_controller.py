@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# CI mixed-module routing probe; no runtime behavior changes.
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol, cast
