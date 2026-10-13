@@ -1,5 +1,7 @@
 """Coding bindings for the generic summary evaluation runtime."""
 
+# CI routing probe for an ordinary Coding source edit; no runtime behavior changes.
+
 from __future__ import annotations
 
 from pathlib import Path
