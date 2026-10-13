@@ -2,6 +2,8 @@
 
 This review never carries a native spec or grants a cleanup effect. A writer
 must repeat every observation while holding its Package and Product locks.
+
+CI mixed-module routing probe; no runtime behavior changes.
 """
 
 from __future__ import annotations
