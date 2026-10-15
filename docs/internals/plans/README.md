@@ -9,6 +9,7 @@ This directory contains implementation plans for documentation and development w
 
 ## Current Plans
 
+- [Loushang `/goal` Command Plan](./2026-10-15-goal-command-plan.md) proposes durable Session goals, safe continuation, lifecycle controls, budgets and evidence-based completion. [Three independent design reviews](./2026-10-15-goal-command-reviews.md) track findings and revision closure; implementation remains future work.
 - [Third-party Worker Admission Delivery](./2026-10-13-third-party-worker-admission-goal2.md)
   tracks Goal 2's explicit native author/operator flow, real Session lifecycle
   evidence and remaining delivery gates.
