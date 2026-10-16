@@ -9,7 +9,7 @@ This directory contains implementation plans for documentation and development w
 
 ## Current Plans
 
-- [Loushang `/goal` Command Plan](./2026-10-15-goal-command-plan.md) proposes durable Session goals, safe continuation, lifecycle controls, budgets and evidence-based completion. [Three independent design reviews](./2026-10-15-goal-command-reviews.md) track findings and revision closure; implementation remains future work.
+- [Goal Plugin Design](./2026-10-16-goal-plugin-design.md) proposes a complete, Harness-owned optional Session plugin, with Coding as a consumer. [New three-view review](./2026-10-16-goal-plugin-reviews.md) records independent assessment of plugin ownership, runtime and delivery. The [earlier Coding-owned R3 proposal](./2026-10-15-goal-command-plan.md) and its [review evidence](./2026-10-15-goal-command-reviews.md) remain historical design inputs; implementation remains future work.
 - [Third-party Worker Admission Delivery](./2026-10-13-third-party-worker-admission-goal2.md)
   tracks Goal 2's explicit native author/operator flow, real Session lifecycle
   evidence and remaining delivery gates.
