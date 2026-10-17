@@ -83,7 +83,7 @@ BUILTIN_PERMISSION_PROFILES: tuple[PermissionProfile, ...] = (
         profile_id="standard",
         label="Standard",
         description=(
-            "Run normal workspace work without interruption; ask for deletion, "
+            "Run workspace and recoverable Git work without interruption; ask for content loss, "
             "publishing, privilege, secrets, and external side effects."
         ),
         approval_behavior="policy",

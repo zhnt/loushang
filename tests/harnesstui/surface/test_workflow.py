@@ -685,6 +685,18 @@ def test_surface_workflow_opens_and_applies_session_permissions() -> None:
     assert state.statuses[-1] == "Session permission revoked."
 
 
+def test_profile_selection_keeps_session_and_saved_default_feedback_on_the_page():
+    workflow, state = _workflow()
+    asyncio.run(workflow.handle_text("/permissions"))
+    asyncio.run(workflow.handle_intent(InputIntent(
+        kind="permission_profile_action", text="set-profile:user:full_access",
+    )))
+    assert state.permission_actions == ["set-profile:user:full_access"]
+    assert workflow.current.feedback == (
+        "Permissions updated to Full Access for this session. Saved as the user default."
+    )
+
+
 def test_surface_workflow_cancels_in_flight_continuity_activation() -> None:
     class _ActivationContent:
         selected_target = "typed-target"

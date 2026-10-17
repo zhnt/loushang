@@ -131,10 +131,13 @@ class EmbeddedResumeApprovalInteraction:
             scope, scope_separator, profile_id = value.partition(":")
             if not scope_separator or scope not in {"session", "project", "user"}:
                 return False
+            requested = permission_profile(profile_id).profile_id
             self.settings_manager.set_permission_profile(
-                permission_profile(profile_id).profile_id,
+                requested,
                 scope=cast(PermissionProfileScope, scope),
             )
+            if scope != "session":
+                self.settings_manager.set_permission_profile(requested, scope="session")
             return True
         if kind == "revoke":
             return self.resolver.revoke_grant(value)

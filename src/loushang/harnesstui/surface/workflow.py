@@ -743,6 +743,7 @@ class ScreenSurfaceWorkflow:
         if apply_action is None or not isinstance(payload, str):
             return
         surface = self.current
+        profile_feedback: str | None = None
         try:
             accepted = await apply_action(payload)
         except Exception as error:
@@ -756,17 +757,24 @@ class ScreenSurfaceWorkflow:
             self.app.set_status("Persistent Policy permission revoked.")
         elif payload.startswith("set-profile:"):
             _prefix, scope, profile_id = payload.split(":", 2)
-            self.app.set_status(
+            profile_feedback = (
                 "Permissions updated to "
-                f"{profile_id.replace('_', ' ').title()} ({scope})."
+                f"{profile_id.replace('_', ' ').title()} for this session."
+                + (f" Saved as the {scope} default." if scope != "session" else "")
             )
+            self.app.set_status(profile_feedback)
         else:
             self.app.set_status("Session permission revoked.")
         if (
             self.current is surface
             and self.ports.build_permissions_surface is not None
         ):
-            self.open(self.ports.build_permissions_surface())
+            refreshed = self.ports.build_permissions_surface()
+            if profile_feedback is not None:
+                # The open page owns visible feedback; reopening an overlay
+                # can clear or hide the conversation's transient status line.
+                refreshed.feedback = profile_feedback
+            self.open(refreshed)
         self.app.request_render(self.request_render_reason)
 
     def _resolve_command(self, text: str) -> ScreenSurfaceCommand | None:

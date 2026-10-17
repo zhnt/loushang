@@ -202,7 +202,12 @@ class AgentSessionApprovalRuntime:
             requested = permission_profile(profile_id).profile_id
             before = self.permission_profile_snapshot().effective_profile.profile_id
             typed_scope = cast(PermissionProfileScope, scope)
+            # Saving a default must succeed before changing this session. The
+            # settings setter still owns ordinary layer precedence; the user's
+            # interactive selection explicitly applies to this session too.
             self.set_permission_profile(requested, scope=typed_scope)
+            if typed_scope != "session":
+                self.set_permission_profile(requested, scope="session")
             after = self.permission_profile_snapshot()
             await self.dispatch_event(
                 PermissionProfileChanged(

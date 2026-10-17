@@ -143,7 +143,7 @@ class PermissionsCenterSurface:
                 return InputIntent(kind="consumed", note="permission_mode_disabled")
             if (
                 option.profile.profile_id == "full_access"
-                and not option.current
+                and (not option.current or self.selected_scope != "session")
             ):
                 self._confirm_full_access = True
                 return InputIntent(kind="consumed", note="permission_confirmation")
@@ -167,7 +167,7 @@ class PermissionsCenterSurface:
             RenderLine(self._tab_line()),
             RenderLine(
                 self._styled(
-                    "Control how tools, files, network, and approvals are handled.",
+                    "Apply now to this session; optionally save a default.",
                     "permissions.description",
                 )
             ),
@@ -294,7 +294,7 @@ class PermissionsCenterSurface:
             ),
             RenderLine(""),
             RenderLine(
-                f"Apply to: {self.selected_scope.title()}"
+                self._scope_description()
             ),
             RenderLine(""),
             RenderLine("Enter confirm · Esc back"),
@@ -324,18 +324,30 @@ class PermissionsCenterSurface:
         )
 
     def _scope_line(self) -> str:
-        return "Apply to  " + "  ".join(
+        return "Apply now  " + "  ".join(
             self._styled(
-                f"[{scope.title()}]"
+                f"[{label}]"
                 if scope == self.selected_scope
-                else scope.title(),
+                else label,
                 (
                     "permissions.scope.selected"
                     if scope == self.selected_scope
                     else "permissions.scope"
                 ),
             )
-            for scope in ("session", "project", "user")
+            for scope, label in (
+                ("session", "Session"),
+                ("project", "+ Project default"),
+                ("user", "+ User default"),
+            )
+        )
+
+    def _scope_description(self) -> str:
+        if self.selected_scope == "session":
+            return "Apply to this session now. Defaults stay unchanged."
+        return (
+            "Apply to this session now and save as the "
+            f"{self.selected_scope} default."
         )
 
     @staticmethod

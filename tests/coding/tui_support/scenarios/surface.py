@@ -481,7 +481,8 @@ def _run_permissions_mode_surface() -> object:
     assert result.app.state.permission_profile == "cautious"
     result.assert_text_contains("Standard")
     result.assert_text_contains("Cautious (current)")
-    result.assert_text_contains("Permissions updated to Cautious (project).")
+    result.assert_text_contains("Permissions updated to Cautious for this session.")
+    result.assert_text_contains("Saved as the project default.")
     result.assert_no_clear_screen()
     return result
 

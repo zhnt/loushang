@@ -1281,21 +1281,33 @@ session choice
   bounded by the managed ceiling
 ```
 
-Project and user selections are persisted in their existing settings layers;
-session selection is in-memory. The Policy wrapper reads the active setting
+Project and user defaults are persisted in their existing settings layers;
+session selection is in-memory. An interactive `/permissions` selection always
+applies to the current session immediately. Selecting project or user also
+saves that default, before applying the session override. Saving a default
+must succeed before changing the current session; errors are not reported as
+a successful mode change. This leaves existing project preferences intact
+when saving a user default. New sessions continue to use the precedence above.
+The underlying SettingsManager scoped setter retains its layer-only semantics.
+The Policy wrapper reads the active setting
 for every evaluation, so changing a mode affects the next tool action without
 rebuilding the tool registry.
 
 `/permissions` is a common Harness TUI center with two tabs:
 
 - **Mode** selects `standard`, `cautious`, or `full_access` for session,
-  project, or user scope. `full_access` requires a second confirmation.
+  session plus project default, or session plus user default. `full_access`
+  requires a second confirmation when enabling it or saving a persistent
+  default, including when the current session is already Full Access.
 - **Retained** reopens pending requests and revokes session/project/user
   permissions.
 
 The status line may show the effective mode as `perm=<mode>`. Mode changes
 publish the redacted `session.permission_profile_changed` event with previous,
 requested, effective, and scope fields.
+The refreshed permissions page also retains confirmation of immediate session
+application and the saved default, so reopening the page cannot hide that
+feedback behind the conversation's transient status line.
 
 Settings additionally expose:
 
@@ -1306,7 +1318,7 @@ Settings additionally expose:
 - pending requests;
 - managed fields that cannot be edited locally.
 
-CLI and TUI changes are transactional and validated before persistence.
+CLI and TUI changes are validated before persistence.
 Suggested commands are:
 
 ```text
@@ -1317,6 +1329,52 @@ Suggested commands are:
 ```
 
 Products may choose aliases, but they operate on the shared runtime.
+
+### 14.9 Recoverable Git Operations Across Shells
+
+Standard mode does not ask merely because Git changes local history or refs.
+The same literal Git classification applies to direct execution, POSIX shells,
+PowerShell and Cmd. It covers normal inspection, staging, commits/amendments,
+branch and tag changes (including force-moving/deleting local refs), merge,
+rebase, cherry-pick, revert, non-hard resets, index-only restore, stash
+operations (including dropping local stash refs), non-force worktree changes,
+remote configuration, fetch/pull, and publication dry runs. Repeated/attached
+`-C`, repository paths, understood data-only `-c` options and literal Git-only
+command chains/pipelines use the same rules.
+Local ref changes leave the Git objects available until pruning; they do not
+promise permanent recovery or a new checkpoint service.
+
+The classifier examines every command in a chain, preserving quoted messages
+as data. It cannot authorize a non-Git tail, dynamic expansion, mixed pipeline,
+redirection, executable config override or unknown Git alias by recognizing
+only the beginning of a script. Such scripts retain the dialect's existing
+fallback. Managed rules and declared effects are evaluated as before.
+
+Standard still asks for publication, uncommitted/untracked content loss
+(`reset --hard`, forced checkout/switch/rm/mv, worktree restore, `clean`, forced
+worktree removal), recovery-object/reflog
+pruning and explicitly executing additional programs (`rebase --exec`,
+`submodule foreach`, `bisect run`, external diff/merge tools). Full Access
+continues to suppress discretionary asks within existing execution ceilings.
+
+Decision and review (2026-10-17): accepted by Codex acting as the responsible
+Harness/HarnessTUI implementation agent, within the user's request for immediate
+session Full, optional user default persistence, and all recoverable Git work
+without approval. The alternative of widening only the PowerShell allowlist was
+rejected because it retains inconsistent command effects across Products and
+shells. Settings precedence remains a storage contract; interactive application
+is owned by AgentSessionApprovalRuntime; the pre-session Coding Resume adapter
+applies the same selection semantics without granting Resume admission. Git semantic classification remains
+owned by Policy, not by the presenter or approval broker. This revises local
+interaction and classification only; it does not select a new sandbox mode or
+replay persisted approval receipts as authority.
+
+Review basis: local architecture method master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`. Verification belongs to the existing
+`tests/harness/test_permissions.py`, `tests/harness/test_policy_engine.py`,
+`tests/harness/test_default_policy.py`, and
+`tests/harnesstui/approval/test_surface.py` contracts; the existing Coding
+permission/Gateway acceptance cases remain applicable. No PR gate is added.
 
 ## 15. Physical Module Layout
 

@@ -35,6 +35,20 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_embedded_permission_default_also_applies_to_current_root(tmp_path):
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "user.json",
+        project_settings_path=tmp_path / "project.json",
+    )
+    settings.set_permission_profile("cautious", scope="project")
+    settings.set_permission_profile("standard", scope="session")
+    approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
+    interaction = EmbeddedResumeApprovalInteraction(approval, settings)
+    assert asyncio.run(interaction.apply_permission_action("set-profile:user:full_access"))
+    assert interaction.permission_profile_snapshot().effective_profile.profile_id == "full_access"
+    assert SettingsManager(global_settings_path=tmp_path / "user.json").get_permission_profile_id() == "full_access"
+
+
 @pytest.mark.parametrize(
     ("composition_id", "no_tools", "worker_plugin_id", "expected_owners"),
     [
