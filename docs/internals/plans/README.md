@@ -9,7 +9,7 @@ This directory contains implementation plans for documentation and development w
 
 ## Current Plans
 
-- [Goal Plugin Design](./2026-10-16-goal-plugin-design.md) proposes a complete, Harness-owned optional Session plugin, with Coding as a consumer. [New three-view review](./2026-10-16-goal-plugin-reviews.md) records independent assessment of plugin ownership, runtime and delivery. The [earlier Coding-owned R3 proposal](./2026-10-15-goal-command-plan.md) and its [review evidence](./2026-10-15-goal-command-reviews.md) remain historical design inputs; implementation remains future work.
+- [Optional Harness Goal Component Design](./2026-10-17-goal-component-design.md) proposes complete Goal behavior as a built-in, optional Session owner component; managed Plugin delivery is deferred until independent delivery is needed. [Three-view review](./2026-10-17-goal-component-reviews.md) records the new independent architecture, runtime and delivery assessment. The [Plugin proposal](./2026-10-16-goal-plugin-design.md), its [review evidence](./2026-10-16-goal-plugin-reviews.md), the [Coding-owned R3 proposal](./2026-10-15-goal-command-plan.md) and its [reviews](./2026-10-15-goal-command-reviews.md) remain historical inputs; implementation remains future work.
 - [Third-party Worker Admission Delivery](./2026-10-13-third-party-worker-admission-goal2.md)
   tracks Goal 2's explicit native author/operator flow, real Session lifecycle
   evidence and remaining delivery gates.
