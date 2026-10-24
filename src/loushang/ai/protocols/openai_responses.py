@@ -218,7 +218,9 @@ class OpenAIResponsesAdapter:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         try:
-            from openai import AsyncOpenAI, Omit  # type: ignore
+            from loushang.ai.sdk_import import load_sdk_symbols
+
+            AsyncOpenAI, Omit = await load_sdk_symbols(self.api)  # type: ignore[misc]
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "openai SDK is not installed. Install via `pip install openai`"
