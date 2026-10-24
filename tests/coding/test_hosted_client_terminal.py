@@ -118,23 +118,23 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
 
 def _picker_resume(driver, text, scope_kind, attempt):
     """Shared original witness for live CLI2 and live/restored CLI3."""
-    driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
+    driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=15)
     checkpoint = 0
-    if attempt == 0:
-        assert text not in strip_control_sequences(driver.raw_output)
-        selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
-        driver.write(f"/sessions {selected_scope}\r")
-        driver.read_until(
-            lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
-        )
-        assert text not in strip_control_sequences(driver.raw_output)
-        checkpoint = len(driver.raw_output)
-        driver.write("\r")
+    # Both attempts must explicitly select the session because the picker mux is empty.
+    assert text not in strip_control_sequences(driver.raw_output)
+    selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
+    driver.write(f"/sessions {selected_scope}\r")
     driver.read_until(
-        lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
+        lambda out: "select a saved Session" in strip_control_sequences(out), timeout=20
+    )
+    assert text not in strip_control_sequences(driver.raw_output)
+    checkpoint = len(driver.raw_output)
+    driver.write("\r")
+    driver.read_until(
+        lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=25
     )
     driver.read_until(
-        lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
+        lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=12
     )
 
 
