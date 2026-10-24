@@ -43,6 +43,43 @@ OpenAI 的 `openai-responses` 与 `coding-responses` catalog 路由均列出
 `get_model("openai", "openai-responses", "gpt-6.1-sol")` 获取标准 API 模型。
 `coding-responses` 使用 ChatGPT OAuth，实际可用模型仍由账号权限决定。
 
+MiniMax 的普通模型列表在每个 endpoint 内按 `MiniMax-M3.1-Flash`、`MiniMax-M3`
+排序，Flash 的 catalog alias 为 `default-chat`。例如：
+
+```python
+model = get_model("minimax", "anthropic-messages", "MiniMax-M3.1-Flash")
+```
+
+Flash 强制开启 thinking，默认 effort 为 `max`；可通过 `ReasoningOptions(effort=...)`
+选择 `low`、`medium`、`high`、`xhigh` 或 `max`（通用 `minimal` 映射到 `low`）。
+`enabled=False` 会在发送请求前报错。Anthropic 使用 `output_config.effort`，
+OpenAI Chat Completions 使用 `reasoning_effort`。M3 保持可选 thinking，不发送深度档位。
+
+两个 Anthropic Flash 路由默认请求预算为 8192 tokens，与模型的 524288 输出能力上限
+分开记录，以兼容 Anthropic SDK 的非流式超时检查。显式 `max_output_tokens` 和自定义
+模型默认值仍优先使用，不会被静默截断。较大预算（例如 32000）请使用 `stream()`；
+Anthropic 0.89.0 的默认客户端会在发送 HTTP 前拒绝这样的非流式请求。自定义 adaptive
+模型在关闭 thinking 时保留显式 temperature，开启 thinking 时仍省略 temperature。
+
+OpenAI Chat Completions 的 JSON 和 SSE 响应保留 reasoning 文本及来源字段名。
+将返回的 `AssistantMessage` 连同 `ToolResultMessage` 传入下一次调用时，MiniMax 的
+`reasoning_content` 按原值回传；其他兼容服务的 `reasoning` / `reasoning_text` 也保留
+各自字段语义，不需要手动重建 thinking 内容。整条响应共用一个 thinking 累加器，
+因此字段标记在该响应内只记录一次；SSE 中 text/tool 与 reasoning 交错也不会重复标记。
+
+Catalog 的可选字段 `listed: false` 只隐藏普通列表项；显式 `get_model`、完整
+`ModelSelection` 和 `list_models(model_id=...)` 仍能读取旧模型。`listOrder` 只控制
+endpoint 内排序，默认值为 0；自定义文件可以显式覆盖整个模型定义。
+因此旧 MiniMax-M2.7 配置保持原 ID，不会被静默迁移。
+
+Flash 的 1M context / 524288 output 上限用于文本与 SDK 已支持的图片输入；此 SDK
+没有 video 消息类型，因此不声明视频能力。全球路由记录 Flash 的 USD 单价；未推断
+国内路由价格。M3 分档价格无法由当前 flat `Pricing` 表达，因此保持未知，避免误算。
+来源：[模型说明](https://platform.minimax.io/docs/guides/models-intro.md)、
+[价格](https://platform.minimax.io/docs/pricing/overview)、
+[OpenAI 兼容接口](https://platform.minimax.io/docs/api-reference/text-openai-api.md)、
+[Anthropic 兼容接口](https://platform.minimaxi.com/docs/api-reference/text-anthropic-api.md)。
+
 运行全部离线示例：
 
 ```bash

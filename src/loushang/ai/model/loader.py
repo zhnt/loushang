@@ -55,6 +55,9 @@ ALLOWED_MODEL_KEYS = frozenset(
         "adapter",
         "defaults",
         "upstreamId",
+        "listed",
+        "listOrder",
+        "reasoningRequired",
     }
 )
 ALLOWED_DEFAULT_KEYS = frozenset(
@@ -165,6 +168,14 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 model = _require_mapping(model_raw, model_path)
                 _reject_removed_field(model, model_path)
                 _validate_keyed_mapping(model, ALLOWED_MODEL_KEYS, model_path)
+                for key in ("listed", "reasoningRequired"):
+                    if key in model:
+                        _validate_bool(model[key], f"{model_path}.{key}")
+                if "listOrder" in model and (
+                    isinstance(model["listOrder"], bool)
+                    or not isinstance(model["listOrder"], int)
+                ):
+                    raise ValueError(f"listOrder must be an integer: {model_path}")
                 _validate_auth_mapping(model.get("auth"), f"{model_path}.auth")
                 _validate_adapter_mapping(
                     model.get("adapter"), endpoint_api, f"{model_path}.adapter"
@@ -533,6 +544,9 @@ def _build_provider_tree(raw: dict[str, Any]) -> dict[str, Provider]:
                     family=model_raw.get("family"),
                     alias=model_raw.get("alias"),
                     upstream_id=model_raw.get("upstreamId"),
+                    listed=model_raw.get("listed", True),
+                    list_order=model_raw.get("listOrder", 0),
+                    reasoning_required=model_raw.get("reasoningRequired", False),
                     capabilities=Capabilities.from_raw(model_raw),
                     knowledge=model_raw.get("knowledge"),
                     release_date=model_raw.get("releaseDate"),
@@ -646,7 +660,7 @@ def _combine_model_registries(
             provider_path = f"providers.{provider.id}"
             existing_provider = providers.get(provider.id)
             for endpoint in provider.list_endpoints():
-                for model in endpoint.list_models():
+                for model in endpoint.models.values():
                     model_key = (provider.id, endpoint.id, model.id)
                     field_path = (
                         f"providers.{provider.id}.endpoints.{endpoint.id}."
@@ -690,7 +704,7 @@ def _combine_model_registries(
                     )
 
                 models = dict(existing_endpoint.models) if existing_endpoint else {}
-                for model in endpoint.list_models():
+                for model in endpoint.models.values():
                     models[model.id] = model
                 if existing_endpoint is None:
                     endpoints[endpoint.id] = endpoint

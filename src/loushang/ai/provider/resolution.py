@@ -123,6 +123,12 @@ def resolve_request_for_model(
     headers = dict(auth_view.headers)
     max_tokens = _resolve_max_tokens(options, defaults)
     reasoning_enabled, reasoning_effort = _resolve_reasoning(options, defaults)
+    if model.reasoning_required:
+        if reasoning_enabled is False or reasoning_effort == "none":
+            raise ValueError(
+                f"Model {model.id!r} requires reasoning; it cannot be disabled"
+            )
+        reasoning_enabled = True
     temperature = _resolve_temperature(options, defaults)
     return ProviderRequest(
         model=model,

@@ -222,6 +222,7 @@ class OpenAIChatCompletionsAdapter:
             active_tool_call_indexes: dict[str, int] = {}
             tool_call_ids_by_index: dict[int, str] = {}
             received_finish_reason = False
+            reasoning_field: str | None = None
             while True:
                 try:
                     chunk = await stream_ctx.__anext__()  # type: ignore[attr-defined]
@@ -282,6 +283,15 @@ class OpenAIChatCompletionsAdapter:
                                     "len": len(reasoning_value),
                                 },
                             )
+                            if reasoning_field is None:
+                                # The assembler retains one thinking accumulator
+                                # for the whole response, even across text/tools.
+                                # Emit its replay-field marker only once.
+                                yield {
+                                    "type": "thinking_signature_delta",
+                                    "signature": candidate,
+                                }
+                                reasoning_field = candidate
                             yield {"type": "thinking_delta", "text": reasoning_value}
                             break
                     reasoning_details = getattr(delta, "reasoning_details", None)
@@ -525,6 +535,7 @@ def _iter_complete_message_parts(message: object) -> Iterator[RawPart]:
     ):
         reasoning_value = getattr(message, candidate, None)
         if isinstance(reasoning_value, str) and reasoning_value:
+            yield {"type": "thinking_signature_delta", "signature": candidate}
             yield {"type": "thinking_delta", "text": reasoning_value}
             break
     reasoning_details = getattr(message, "reasoning_details", None)
@@ -659,9 +670,10 @@ def _apply_reasoning_params(
             "type": "enabled" if reasoning_enabled else "disabled"
         }
         return
-    if thinking_format == "deepseek":
+    if thinking_format in {"deepseek", "adaptive"}:
+        enabled_type = "adaptive" if thinking_format == "adaptive" else "enabled"
         extra_body["thinking"] = {
-            "type": "enabled" if reasoning_enabled else "disabled"
+            "type": enabled_type if reasoning_enabled else "disabled"
         }
         _apply_reasoning_effort_if_supported(
             params,

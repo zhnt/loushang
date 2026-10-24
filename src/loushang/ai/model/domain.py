@@ -8,7 +8,9 @@ from typing import Literal, TypeAlias, cast
 
 Modality = Literal["text", "image"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
-_REASONING_FORMATS = frozenset({"openai", "deepseek", "moonshot", "zai-thinking"})
+_REASONING_FORMATS = frozenset(
+    {"openai", "deepseek", "moonshot", "zai-thinking", "adaptive"}
+)
 
 
 class _FrozenSequence(tuple[object, ...]):
@@ -121,11 +123,9 @@ ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
 
 _ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "budgeted"})
 _ANTHROPIC_REASONING_LEVELS = frozenset(
-    {"minimal", "low", "medium", "high", "xhigh"}
+    {"minimal", "low", "medium", "high", "xhigh", "max"}
 )
-_ANTHROPIC_REASONING_EFFORTS = frozenset(
-    {"low", "medium", "high", "xhigh", "max"}
-)
+_ANTHROPIC_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
 def _string_or_none_dict_from_raw(
@@ -312,9 +312,7 @@ class OpenAICompletionsConfig:
             "reasoning_format",
         )
         if self.reasoning_format not in _REASONING_FORMATS:
-            raise ValueError(
-                f"unsupported reasoningFormat: {self.reasoning_format!r}"
-            )
+            raise ValueError(f"unsupported reasoningFormat: {self.reasoning_format!r}")
         object.__setattr__(
             self,
             "reasoning_effort_map",
@@ -938,8 +936,19 @@ class Model:
     adapter: AdapterConfig | None = None
     defaults: Defaults = field(default_factory=Defaults)
     upstream_id: str | None = None
+    listed: bool = True
+    list_order: int = 0
+    reasoning_required: bool = False
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
+        if not isinstance(self.listed, bool) or not isinstance(
+            self.reasoning_required, bool
+        ):
+            raise ValueError("listed and reasoning_required must be booleans")
+        if isinstance(self.list_order, bool) or not isinstance(self.list_order, int):
+            raise ValueError("list_order must be an integer")
+        if self.reasoning_required and not self.capabilities.reasoning:
+            raise ValueError("reasoning_required requires reasoning capability")
         object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
         if self.upstream_id is not None and (
             not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
@@ -1031,6 +1040,12 @@ class Model:
             raw["auth"] = self.auth.to_raw()
         if self.upstream_id is not None:
             raw["upstreamId"] = self.upstream_id
+        if not self.listed:
+            raw["listed"] = False
+        if self.list_order:
+            raw["listOrder"] = self.list_order
+        if self.reasoning_required:
+            raw["reasoningRequired"] = True
         return {key: value for key, value in raw.items() if value is not None}
 
 
@@ -1074,7 +1089,10 @@ class Endpoint:
         return self.models.get(model_id)
 
     def list_models(self) -> list[Model]:
-        return sorted(self.models.values(), key=lambda item: item.id)
+        return sorted(
+            (model for model in self.models.values() if model.listed),
+            key=lambda item: (item.list_order, item.id),
+        )
 
     def to_raw(self) -> dict[str, object]:
         return _endpoint_to_raw(self)

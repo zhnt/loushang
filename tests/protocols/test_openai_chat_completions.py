@@ -437,6 +437,7 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
     assert [part["type"] for part in parts] == [
         "response_start",
         "usage_delta",
+        "thinking_signature_delta",
         "thinking_delta",
         "tool_call_thought_signature",
         "text_delta",
@@ -449,11 +450,15 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
     assert parts[1]["input"] == 2
     assert parts[1]["output"] == 2
     assert parts[1]["total_tokens"] == 5
-    assert parts[2] == {"type": "thinking_delta", "text": "plan"}
-    assert parts[3]["tool_call_id"] == "call_1"
-    assert parts[5]["id"] == "tool_call_0"
-    assert parts[6]["delta"] == '{"x":1}'
-    assert parts[8] == {"type": "stop_reason", "stop_reason": "error"}
+    assert parts[2] == {
+        "type": "thinking_signature_delta",
+        "signature": "reasoning_content",
+    }
+    assert parts[3] == {"type": "thinking_delta", "text": "plan"}
+    assert parts[4]["tool_call_id"] == "call_1"
+    assert parts[6]["id"] == "tool_call_0"
+    assert parts[7]["delta"] == '{"x":1}'
+    assert parts[9] == {"type": "stop_reason", "stop_reason": "error"}
 
 
 def test_openai_completions_stream_usage_only_chunk_updates_message_and_cost(

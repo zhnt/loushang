@@ -48,7 +48,7 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "minimax",
         "anthropic-messages",
-        "MiniMax-M3",
+        "MiniMax-M3.1-Flash",
         ("MINIMAX_API_KEY",),
     ),
     ProviderExample(

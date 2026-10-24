@@ -19,7 +19,7 @@ from loushang.ai.structured import StructuredOutputOptions
 
 PairingMode = Literal["strict", "repair"]
 
-ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
+ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
 
 
 CacheRetention = Literal["none", "short", "long"]
@@ -28,7 +28,7 @@ CacheRetention = Literal["none", "short", "long"]
 ToolChoice = str | Mapping[str, object]
 
 _TOOL_CHOICE_STRINGS = frozenset({"auto", "none", "required", "any"})
-_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh"})
+_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh", "max"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,8 +164,7 @@ class CallOptions:
             PreparedRequestCommitter,
         ):
             raise TypeError(
-                "prepared_request_committer must implement "
-                "commit_prepared_request"
+                "prepared_request_committer must implement commit_prepared_request"
             )
         if self.request_limits is not None and not isinstance(
             self.request_limits,

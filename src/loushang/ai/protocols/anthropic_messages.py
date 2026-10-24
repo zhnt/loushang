@@ -101,7 +101,9 @@ def _build_anthropic_message_payloads(
                             )
                         continue
                     payload = (
-                        AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(p)
+                        AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(
+                            p
+                        )
                     )
                     if payload is not None:
                         assistant_blocks.append(payload)
@@ -319,6 +321,10 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
                     if isinstance(thinking_budget_tokens, int)
                     else 1024,
                 }
+        elif resolved.reasoning_enabled is False and self.supports_adaptive_thinking(
+            adapter_config
+        ):
+            thinking_cfg = {"type": "disabled"}
 
         params: dict[str, Any] = {
             "model": upstream_model_id,
@@ -374,7 +380,7 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
                             lb.setdefault("cache_control", cache_control)
                     break
         # temperature：仅在未启用思考时设置
-        if not thinking_cfg and resolved.temperature is not None:
+        if not want_thinking and resolved.temperature is not None:
             params["temperature"] = resolved.temperature
         # Clamp max_tokens by remaining context if capability provides window
         remaining = compute_remaining_context(

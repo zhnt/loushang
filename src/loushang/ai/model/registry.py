@@ -410,8 +410,17 @@ class ModelRegistry:
         model_id: str | None = None,
     ) -> list[Model]:
         models = sorted(
-            self._models.values(),
-            key=lambda item: (item.provider_id, item.endpoint_id, item.id),
+            (
+                model
+                for model in self._models.values()
+                if model.listed or model_id is not None
+            ),
+            key=lambda item: (
+                item.provider_id,
+                item.endpoint_id,
+                item.list_order,
+                item.id,
+            ),
         )
         if provider is not None:
             models = [model for model in models if model.provider_id == provider]

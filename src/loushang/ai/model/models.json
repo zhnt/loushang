@@ -251,19 +251,59 @@
       },
       "endpoints": {
         "anthropic-messages": {
-          "displayName": "MiniMax Anthropic-compatible Messages",
+          "displayName": "MiniMax Anthropic-compatible Messages (Global)",
           "api": "anthropic-messages",
           "baseUrl": "https://api.minimax.io/anthropic",
+          "region": "global",
           "preferred": true,
           "docs": "https://platform.minimax.io/docs/api-reference/api-overview",
           "adapter": {
             "longCacheRetention": false
           },
           "models": {
+            "MiniMax-M3.1-Flash": {
+              "displayName": "MiniMax-M3.1-Flash",
+              "pricing": {
+                "currency": "USD",
+                "input": 0.15,
+                "output": 0.6,
+                "cacheRead": 0.015
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "interleavedThinking": false,
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "xhigh",
+                  "max": "max"
+                }
+              },
+              "family": "MiniMax-M3.1",
+              "alias": "default-chat",
+              "listOrder": -1,
+              "reasoningRequired": true,
+              "defaults": {"reasoningEffort": "max", "maxTokens": 8192},
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 524288,
+                "input": ["text", "image"],
+                "output": ["text"],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
             "MiniMax-M3": {
               "displayName": "MiniMax-M3",
+              "adapter": {"thinkingMode": "adaptive"},
               "family": "MiniMax-M3",
-              "alias": "default-chat",
+              "alias": "balanced-chat",
               "capabilities": {
                 "contextWindow": 1000000,
                 "input": [
@@ -278,13 +318,13 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": true
+                "temperature": false
               }
             },
             "MiniMax-M2.7": {
               "displayName": "MiniMax-M2.7",
               "family": "MiniMax-M2.7",
-              "alias": "balanced-chat",
+              "listed": false,
               "capabilities": {
                 "contextWindow": 204800,
                 "maxTokens": 131072,
@@ -300,6 +340,311 @@
                 "structuredOutput": false,
                 "attachment": false,
                 "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.06,
+                "cacheWrite": 0.375
+              }
+            }
+          }
+        },
+        "openai-completions": {
+          "displayName": "MiniMax OpenAI-compatible Chat Completions (Global)",
+          "api": "openai-completions",
+          "baseUrl": "https://api.minimax.io/v1",
+          "region": "global",
+          "docs": "https://platform.minimax.io/docs/api-reference/api-overview",
+          "auth": {
+            "kind": "apiKey",
+            "apiKeyEnv": "MINIMAX_API_KEY",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "strictSchema": false
+          },
+          "models": {
+            "MiniMax-M3.1-Flash": {
+              "displayName": "MiniMax-M3.1-Flash",
+              "pricing": {
+                "currency": "USD",
+                "input": 0.15,
+                "output": 0.6,
+                "cacheRead": 0.015
+              },
+              "adapter": {
+                "assistantReasoningContent": true,
+                "reasoningFormat": "adaptive",
+                "reasoningEffortMap": {"minimal": "low"}
+              },
+              "family": "MiniMax-M3.1",
+              "alias": "default-chat",
+              "listOrder": -1,
+              "reasoningRequired": true,
+              "defaults": {"reasoningEffort": "max"},
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 524288,
+                "input": ["text", "image"],
+                "output": ["text"],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M3": {
+              "displayName": "MiniMax-M3",
+              "adapter": {
+                "reasoningFormat": "adaptive",
+                "reasoningEffort": false
+              },
+              "family": "MiniMax-M3",
+              "alias": "balanced-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M2.7": {
+              "displayName": "MiniMax-M2.7",
+              "family": "MiniMax-M2.7",
+              "listed": false,
+              "capabilities": {
+                "contextWindow": 204800,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.06,
+                "cacheWrite": 0.375
+              }
+            }
+          }
+        },
+        "anthropic-messages-cn": {
+          "displayName": "MiniMax Anthropic-compatible Messages (China)",
+          "api": "anthropic-messages",
+          "baseUrl": "https://api.minimaxi.com/anthropic",
+          "region": "cn",
+          "docs": "https://platform.minimaxi.com/docs/api-reference/api-overview",
+          "adapter": {
+            "longCacheRetention": false
+          },
+          "models": {
+            "MiniMax-M3.1-Flash": {
+              "displayName": "MiniMax-M3.1-Flash",
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "interleavedThinking": false,
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "xhigh",
+                  "max": "max"
+                }
+              },
+              "family": "MiniMax-M3.1",
+              "alias": "default-chat",
+              "listOrder": -1,
+              "reasoningRequired": true,
+              "defaults": {"reasoningEffort": "max", "maxTokens": 8192},
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 524288,
+                "input": ["text", "image"],
+                "output": ["text"],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M3": {
+              "displayName": "MiniMax-M3",
+              "adapter": {"thinkingMode": "adaptive"},
+              "family": "MiniMax-M3",
+              "alias": "balanced-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M2.7": {
+              "displayName": "MiniMax-M2.7",
+              "family": "MiniMax-M2.7",
+              "listed": false,
+              "capabilities": {
+                "contextWindow": 204800,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.06,
+                "cacheWrite": 0.375
+              }
+            }
+          }
+        },
+        "openai-completions-cn": {
+          "displayName": "MiniMax OpenAI-compatible Chat Completions (China)",
+          "api": "openai-completions",
+          "baseUrl": "https://api.minimaxi.com/v1",
+          "region": "cn",
+          "docs": "https://platform.minimaxi.com/docs/api-reference/api-overview",
+          "auth": {
+            "kind": "apiKey",
+            "apiKeyEnv": "MINIMAX_API_KEY",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "strictSchema": false
+          },
+          "models": {
+            "MiniMax-M3.1-Flash": {
+              "displayName": "MiniMax-M3.1-Flash",
+              "adapter": {
+                "assistantReasoningContent": true,
+                "reasoningFormat": "adaptive",
+                "reasoningEffortMap": {"minimal": "low"}
+              },
+              "family": "MiniMax-M3.1",
+              "alias": "default-chat",
+              "listOrder": -1,
+              "reasoningRequired": true,
+              "defaults": {"reasoningEffort": "max"},
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 524288,
+                "input": ["text", "image"],
+                "output": ["text"],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M3": {
+              "displayName": "MiniMax-M3",
+              "adapter": {
+                "reasoningFormat": "adaptive",
+                "reasoningEffort": false
+              },
+              "family": "MiniMax-M3",
+              "alias": "balanced-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "MiniMax-M2.7": {
+              "displayName": "MiniMax-M2.7",
+              "family": "MiniMax-M2.7",
+              "listed": false,
+              "capabilities": {
+                "contextWindow": 204800,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.06,
+                "cacheWrite": 0.375
               }
             }
           }
