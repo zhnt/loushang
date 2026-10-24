@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any, TextIO
 
 from loushang.ai.sdk_import import load_sdk_symbols, sdk_package_for_api
 from loushang.foundation.observability import get_log
+from loushang.harnesstui.conversation.application_host import ActionHostScreenRunner
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 
 _log = get_log(__name__).bind(component="CodingSdkWarmup")
@@ -79,6 +81,32 @@ class CodingSdkWarmup:
         self._completed: set[str] = set()
         self._failed: set[str] = set()
         self._closed = False
+
+    @classmethod
+    def attach(
+        cls, *, app: ScreenConversationApp, session_provider: Callable[[], object]
+    ) -> CodingSdkWarmup:
+        warmup = cls(app=app, session_provider=session_provider)
+        app.on_session_ready = warmup.after_ready
+        return warmup
+
+    async def run_prepared(
+        self,
+        prepared: Any,
+        *,
+        run: Callable[..., Awaitable[int]],
+        stdin: TextIO,
+        stdout: TextIO,
+        screen_runner: ActionHostScreenRunner,
+    ) -> int:
+        self.app.notify_session_ready()
+        try:
+            return await run(
+                prepared, stdin=stdin, stdout=stdout, screen_runner=screen_runner
+            )
+        finally:
+            self.close()
+            self.app.on_session_ready = None
 
     def after_ready(self) -> None:
         if self._closed or self._timer is not None:

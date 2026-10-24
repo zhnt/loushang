@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import ModuleType, SimpleNamespace
 
-from loushang.coding.ui import sdk_warmup
+from loushang.coding.interaction import sdk_warmup
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui import RenderConstraints
 

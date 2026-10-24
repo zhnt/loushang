@@ -33,22 +33,15 @@ async def build_coding_settings_page(
         CODING_SETTING_COPY,
     )
 
-    async def _apply_model(value: str) -> str:
-        result = await select_available_model(
-            session,
-            query=value,
-            settings_manager=settings_manager,
-        )
-        if on_model_changed is not None:
-            on_model_changed()
-        return result
-
     return await SettingsPageView.create(
         status_provider=status_provider,
         ports=build_session_settings_workflow_ports(
             session=session,
             config=config,
-            apply_model=_apply_model,
+            apply_model=lambda value: select_available_model(
+                session, query=value, settings_manager=settings_manager,
+                on_model_changed=on_model_changed,
+            ),
         ),
         usage_provider=usage_provider,
         statusline_preview=statusline_preview,

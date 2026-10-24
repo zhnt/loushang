@@ -62,11 +62,13 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             continuity_reference=continuity_reference,
             session_provider=self._current_session,
             approval_interaction_provider=approval_interaction_provider,
-            select_model=lambda value: self._select_model(
-                value, on_model_changed=on_model_changed
+            select_model=lambda value: select_available_model(
+                self._current_session(), query=value, on_model_changed=on_model_changed
             ),
-            set_model_label=lambda label: self._set_model_label(
-                label, on_model_changed=on_model_changed
+            set_model_label=lambda label: setattr(
+                app.state,
+                "model_label",
+                label,
             ),
             set_session_label=lambda label: setattr(
                 app.state,
@@ -112,21 +114,6 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         if self.runtime is None:
             return self.session
         return current_agent_runtime_session(self.runtime, self.session)
-
-    async def _select_model(
-        self, value: str, *, on_model_changed: Callable[[], None] | None
-    ) -> str:
-        result = await select_available_model(self._current_session(), query=value)
-        if on_model_changed is not None:
-            on_model_changed()
-        return result
-
-    def _set_model_label(
-        self, label: str, *, on_model_changed: Callable[[], None] | None
-    ) -> None:
-        self.coding_app.state.model_label = label
-        if on_model_changed is not None:
-            on_model_changed()
 
     def _format_hotkeys(self) -> str:
         settings_manager = getattr(self._current_session(), "settings_manager", None)

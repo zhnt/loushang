@@ -9,6 +9,7 @@ from loushang.coding.continuity_bootstrap import (
     bind_coding_configured_continuity,
     get_coding_configured_continuity_composition,
 )
+from loushang.coding.interaction.sdk_warmup import CodingSdkWarmup
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plugin_theme import apply_coding_plugin_theme_to_screen
 from loushang.coding.ui.product_binding import (
@@ -183,11 +184,7 @@ async def _run_bound_screen_interactive_tui(
     def current_session():
         return current_agent_runtime_session(runtime, session)
 
-    from loushang.coding.ui.sdk_warmup import CodingSdkWarmup
-
-    sdk_warmup = CodingSdkWarmup(app=app, session_provider=current_session)
-    app.on_session_ready = sdk_warmup.after_ready
-
+    sdk_warmup = CodingSdkWarmup.attach(app=app, session_provider=current_session)
     action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
@@ -279,17 +276,11 @@ async def _run_bound_screen_interactive_tui(
         report_rebind_problem=report_rebind_problem,
         on_session_rebound=sdk_warmup.observe_current,
     ).prepare()
-    app.notify_session_ready()
-    try:
-        return await run_prepared_screen_conversation(
-            prepared,
-            stdin=stdin,
-            stdout=stdout,
-            screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
-        )
-    finally:
-        sdk_warmup.close()
-        app.on_session_ready = None
+    return await sdk_warmup.run_prepared(
+        prepared, stdin=stdin, stdout=stdout,
+        run=run_prepared_screen_conversation,
+        screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
+    )
 
 
 async def _run_plain_tui(

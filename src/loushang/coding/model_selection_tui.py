@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
@@ -18,6 +20,7 @@ async def select_available_model(
     query: str = "",
     choose: ModelPaletteChooser | None = None,
     settings_manager: object | None = None,
+    on_model_changed: Callable[[], None] | None = None,
 ) -> str:
     async def apply(selection: object) -> object:
         return await apply_model_selection(
@@ -26,13 +29,16 @@ async def select_available_model(
             settings_manager=settings_manager,
         )
 
-    return await select_session_model(
+    label = await select_session_model(
         session,
         apply_selection=apply,
         query=query,
         choose=choose,
         persistence_warning=persistence_warning_message,
     )
+    if on_model_changed is not None:
+        on_model_changed()
+    return label
 
 
 __all__ = ["ModelPaletteChooser", "select_available_model"]
