@@ -73,6 +73,17 @@ class CompactionResult:
         ):
             raise ValueError("compaction Model Input snapshot ids must be unique")
 
+    def public_payload(self) -> dict[str, object]:
+        """Project stable public result fields without the opaque provider state."""
+
+        return {
+            "summary": self.summary,
+            "first_kept_entry_id": self.first_kept_entry_id,
+            "tokens_before": self.tokens_before,
+            "details": self.details,
+            "model_input_snapshot_ids": self.model_input_snapshot_ids,
+        }
+
 
 class CompactionAborted(RuntimeError):
     """A Product hook deliberately stopped compaction before commit."""
@@ -700,8 +711,7 @@ def _snapshot_payload(snapshot: ContextUsageSnapshot) -> dict[str, Any]:
 
 
 def _compaction_result_payload(result: CompactionResult) -> dict[str, Any]:
-    payload = asdict(replace(result, provider_window=None))
-    payload.pop("provider_window", None)
+    payload = result.public_payload()
     if not result.model_input_snapshot_ids:
         payload.pop("model_input_snapshot_ids")
     return payload
