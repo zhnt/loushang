@@ -349,6 +349,7 @@ class OpenAIResponsesAdapter:
                 response,
                 reasoning_enabled=resolved.reasoning_enabled is True,
                 source=self.api,
+                on_tool_arguments=lambda data: _debug("tool_arguments", data),
             )
             try:
                 try:
