@@ -328,11 +328,13 @@ class _PreparedAdapter:
         retry_first: bool = False,
         terminal_error: bool = False,
         report_usage: bool = False,
+        response_text: str = "done",
     ) -> None:
         self.transport_calls = 0
         self.retry_first = retry_first
         self.terminal_error = terminal_error
         self.report_usage = report_usage
+        self.response_text = response_text
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -400,7 +402,7 @@ class _PreparedAdapter:
             }
             return
         yield {"type": "response_start", "response_id": "response-1"}
-        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "text_delta", "text": self.response_text}
         if self.report_usage:
             yield {
                 "type": "usage_delta",
@@ -2539,12 +2541,22 @@ def test_batched_compaction_records_ordered_history_and_merge_lineage() -> None:
     asyncio.run(scenario())
 
 
-def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
+def test_split_turn_compaction_retains_single_ordered_model_input() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
         source_id = session.get_entries()[0].record_id
         runtime = _model_call_runtime(session, is_current=lambda: True)
-        adapter = _PreparedAdapter()
+        adapter = _PreparedAdapter(
+            response_text=(
+                "## Goal\nContinue the task\n## Constraints & Preferences\n- c\n"
+                "## Progress\n### Done\n- [x] d\n### In Progress\n- [ ] i\n"
+                "### Blocked\n- none\n## Key Decisions\n- k\n"
+                "## Next Steps\n1. n\n## Critical Context\n- x\n\n---\n\n"
+                "**Turn Context (split turn):**\n\n"
+                "## Original Request\ncurrent turn\n## Early Progress\n- e\n"
+                "## Context for Suffix\n- s"
+            )
+        )
         registry = get_default_api_registry()
         adapter_source = "session-model-call-split-compaction-test"
         registry.register_api_adapter(adapter, source_id=adapter_source)
@@ -2569,12 +2581,12 @@ def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
         finally:
             registry.unregister_api_adapters(adapter_source)
 
-        assert adapter.transport_calls == 2
-        assert len(result.model_input_snapshot_ids) == 2
+        assert adapter.transport_calls == 1
+        assert len(result.model_input_snapshot_ids) == 1
         assert [
             session.rebuild_model_input(snapshot_id).snapshot.purpose
             for snapshot_id in result.model_input_snapshot_ids
-        ] == ["compaction_history", "compaction_turn_prefix"]
+        ] == ["compaction_history"]
         await runtime.dispose()
 
     asyncio.run(scenario())

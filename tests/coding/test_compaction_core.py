@@ -1232,12 +1232,21 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm() ->
 
 
 @pytest.mark.anyio
-async def test_compact_split_turn_forwards_call_options_to_both_summaries() -> None:
+async def test_compact_split_turn_uses_one_bounded_model_call() -> None:
     captured: list[tuple[object, object, object | None]] = []
+    combined_summary = (
+        "## Goal\nContinue the task\n## Constraints & Preferences\n- c\n"
+        "## Progress\n### Done\n- [x] d\n### In Progress\n- [ ] i\n"
+        "### Blocked\n- none\n## Key Decisions\n- k\n"
+        "## Next Steps\n1. n\n## Critical Context\n- x\n\n---\n\n"
+        "**Turn Context (split turn):**\n\n"
+        "## Original Request\ncurrent turn\n## Early Progress\n- e\n"
+        "## Context for Suffix\n- s"
+    )
 
     async def fake_complete(model, context, options=None):
         captured.append((model, context, options))
-        return f"summary-{len(captured)}"
+        return combined_summary
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1269,15 +1278,13 @@ async def test_compact_split_turn_forwards_call_options_to_both_summaries() -> N
         completer=fake_complete,
     )
 
-    assert (
-        result.summary
-        == "summary-1\n\n---\n\n**Turn Context (split turn):**\n\nsummary-2"
-    )
-    assert len(captured) == 2
-    assert [model for model, _, _ in captured] == ["model", "model"]
+    assert result.summary.startswith(combined_summary)
+    assert len(captured) == 1
+    assert [model for model, _, _ in captured] == ["model"]
     prompts = [context.messages[0].content[0].text for _, context, _ in captured]
     assert "[User]: older" in prompts[0]
-    assert "[User]: current turn" in prompts[1]
+    assert "[User]: current turn" in prompts[0]
+    assert "**Turn Context (split turn):**" in prompts[0]
     for _, _, options in captured:
         assert isinstance(options, CallOptions)
         assert options.auth == ApiKeyAuth("test-key")

@@ -36,6 +36,7 @@ from loushang.harness.context import (
     SummaryProfile,
     SummaryResourceOperations,
     build_summary_prompt,
+    validate_summary,
 )
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.transcript.interaction import BranchSummaryOutput
@@ -278,6 +279,61 @@ def default_summary_completer(
     return _complete_text(model, context, options)
 
 
+def single_call_capacity_pressure(
+    preparation: CompactionPreparation,
+    *,
+    model: object,
+    profile: SummaryProfile,
+    request_limits: PreparedRequestLimits | None = None,
+    utilization_percent: int = 85,
+) -> bool:
+    """Whether the compactable source is close to one summary request's limit."""
+
+    if not 1 <= utilization_percent <= 100:
+        raise ValueError("utilization_percent must be between 1 and 100")
+    if not preparation.messages_to_summarize:
+        return False
+    if preparation.is_split_turn and _summary_max_output_tokens(model) < 512:
+        return False
+    mode = "update" if preparation.previous_summary else "initial"
+    conversation = "\n\n".join(
+        _serialized_conversation_turns(
+            preparation.messages_to_summarize,
+            image_policy="placeholder",
+        )
+    )
+    if preparation.is_split_turn and preparation.turn_prefix_messages:
+        combined_mode = (
+            "split-turn-update"
+            if preparation.previous_summary
+            else "split-turn-initial"
+        )
+        if combined_mode in profile.prompts:
+            mode = combined_mode
+            conversation = _split_turn_conversation(
+                preparation,
+                image_policy="placeholder",
+            )
+    try:
+        budget = _summary_source_budget(
+            profile,
+            model=model,
+            mode=mode,
+            previous_summary=preparation.previous_summary,
+            custom_instructions=None,
+            request_limits=request_limits,
+            enforce_model_context=True,
+        )
+    except SummaryCapacityPlanError:
+        return False
+    return (
+        len(conversation.encode("utf-8")) * 100 >= budget.bytes * utilization_percent
+        or budget.tokens is not None
+        and _estimate_summary_tokens(conversation) * 100
+        >= budget.tokens * utilization_percent
+    )
+
+
 async def execute_transcript_compaction(
     *,
     preparation: CompactionPreparation,
@@ -298,42 +354,60 @@ async def execute_transcript_compaction(
 
     execution = _SummaryExecutionState()
     if preparation.is_split_turn and preparation.turn_prefix_messages:
-        history_result = (
-            await _summarize_messages(
-                preparation=preparation,
-                model=model,
-                profile=compaction_profile,
-                api_key=api_key,
-                headers=headers,
-                signal=signal,
-                custom_instructions=custom_instructions,
-                completer=completer,
-                model_call_purpose="compaction_history",
-                prepare_model_call=prepare_model_call,
-                request_limits=request_limits,
-                image_policy=image_policy,
-                execution=execution,
-            )
-            if preparation.messages_to_summarize
-            else _SummaryCallResult("No prior history.")
-        )
-        turn_prefix_result = await _summarize_turn_prefix(
-            messages=preparation.turn_prefix_messages,
+        combined = await _summarize_split_turn_once(
+            preparation=preparation,
             model=model,
-            profile=turn_prefix_profile,
+            profile=compaction_profile,
+            turn_prefix_profile=turn_prefix_profile,
             api_key=api_key,
             headers=headers,
             signal=signal,
+            custom_instructions=custom_instructions,
             completer=completer,
             prepare_model_call=prepare_model_call,
             request_limits=request_limits,
             image_policy=image_policy,
             execution=execution,
         )
-        summary = (
-            f"{history_result.text}\n\n---\n\n"
-            f"**Turn Context (split turn):**\n\n{turn_prefix_result.text}"
-        )
+        if combined is not None:
+            summary = combined.text
+        else:
+            history_result = (
+                await _summarize_messages(
+                    preparation=preparation,
+                    model=model,
+                    profile=compaction_profile,
+                    api_key=api_key,
+                    headers=headers,
+                    signal=signal,
+                    custom_instructions=custom_instructions,
+                    completer=completer,
+                    model_call_purpose="compaction_history",
+                    prepare_model_call=prepare_model_call,
+                    request_limits=request_limits,
+                    image_policy=image_policy,
+                    execution=execution,
+                )
+                if preparation.messages_to_summarize
+                else _SummaryCallResult("No prior history.")
+            )
+            turn_prefix_result = await _summarize_turn_prefix(
+                messages=preparation.turn_prefix_messages,
+                model=model,
+                profile=turn_prefix_profile,
+                api_key=api_key,
+                headers=headers,
+                signal=signal,
+                completer=completer,
+                prepare_model_call=prepare_model_call,
+                request_limits=request_limits,
+                image_policy=image_policy,
+                execution=execution,
+            )
+            summary = (
+                f"{history_result.text}\n\n---\n\n"
+                f"**Turn Context (split turn):**\n\n{turn_prefix_result.text}"
+            )
     else:
         result = await _summarize_messages(
             preparation=preparation,
@@ -373,6 +447,95 @@ async def execute_transcript_compaction(
         tokens_before=preparation.tokens_before,
         details=decoration.details,
         model_input_snapshot_ids=tuple(execution.snapshot_ids),
+    )
+
+
+async def _summarize_split_turn_once(
+    *,
+    preparation: CompactionPreparation,
+    model: object,
+    profile: SummaryProfile,
+    turn_prefix_profile: SummaryProfile,
+    api_key: str | None,
+    headers: Mapping[str, str] | None,
+    signal: object | None,
+    custom_instructions: str | None,
+    completer: SummaryCompleter,
+    prepare_model_call: PrepareModelCallFn | None,
+    request_limits: PreparedRequestLimits | None,
+    image_policy: SummaryImagePolicy,
+    execution: _SummaryExecutionState,
+) -> _SummaryCallResult | None:
+    if not preparation.messages_to_summarize:
+        return None
+    if _summary_max_output_tokens(model) < 512:
+        return None
+    mode = "split-turn-update" if preparation.previous_summary else "split-turn-initial"
+    if mode not in profile.prompts:
+        return None
+    conversation = _split_turn_conversation(preparation, image_policy=image_policy)
+    try:
+        budget = _summary_source_budget(
+            profile,
+            model=model,
+            mode=mode,
+            previous_summary=preparation.previous_summary,
+            custom_instructions=custom_instructions,
+            request_limits=request_limits,
+            enforce_model_context=completer is default_summary_completer,
+        )
+    except SummaryCapacityPlanError:
+        return None
+    if len(conversation.encode("utf-8")) > budget.bytes or (
+        budget.tokens is not None
+        and _estimate_summary_tokens(conversation) > budget.tokens
+    ):
+        return None
+    summary = await _run_summary_call(
+        conversation=conversation,
+        model=model,
+        profile=profile,
+        mode=mode,
+        previous_summary=preparation.previous_summary,
+        custom_instructions=custom_instructions,
+        api_key=api_key,
+        headers=headers,
+        signal=signal,
+        completer=completer,
+        purpose="compaction_history",
+        prepare_model_call=prepare_model_call,
+        request_limits=request_limits,
+        execution=execution,
+    )
+    marker = "**Turn Context (split turn):**"
+    if summary.count(marker) != 1:
+        return None
+    history_summary, prefix_summary = summary.split(marker, 1)
+    if not history_summary.strip() or not prefix_summary.strip():
+        return None
+    if not validate_summary(history_summary, profile).ok:
+        return None
+    if not validate_summary(prefix_summary, turn_prefix_profile).ok:
+        return None
+    return _SummaryCallResult(summary)
+
+
+def _split_turn_conversation(
+    preparation: CompactionPreparation,
+    *,
+    image_policy: SummaryImagePolicy,
+) -> str:
+    history = serialize_agent_conversation(
+        _model_messages(preparation.messages_to_summarize),
+        image_policy=image_policy,
+    )
+    turn_prefix = serialize_agent_conversation(
+        _model_messages(preparation.turn_prefix_messages),
+        image_policy=image_policy,
+    )
+    return (
+        f"[Older conversation]\n{history or '[No prior history]'}\n\n"
+        f"[Current turn prefix]\n{turn_prefix}"
     )
 
 
@@ -1308,4 +1471,5 @@ __all__ = [
     "normalize_branch_summary_output",
     "prepare_branch_summary",
     "serialize_agent_conversation",
+    "single_call_capacity_pressure",
 ]

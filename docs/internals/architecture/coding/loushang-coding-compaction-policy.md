@@ -25,21 +25,25 @@ Compaction policy 是 coding runtime 配置，描述 Loushang 在长会话中如
     "enabled": true,
     "compact_percent": 80,
     "reserve_tokens": 8192,
-    "keep_recent_tokens": 32768
+    "keep_recent_tokens": 32768,
+    "single_call_early_trigger": false
   }
 }
 ```
 
 ## Field Semantics
 
-- `enabled`: 是否允许自动 threshold compaction。
+- `enabled`: 是否允许自动 compaction，包括 threshold 与可选的 capacity 触发。
 - `compact_percent`: 普通 threshold compaction 开始触发的 `context_window` 百分比。
 - `reserve_tokens`: 固定安全余量，用于给 prompt 增长、tool result、summary 生成和模型输出留空间。
 - `keep_recent_tokens`: compaction 后保留最近原文上下文的目标大小。
+- `single_call_early_trigger`: 可选试验开关，默认 `false`。开启后，在普通阈值尚未触发时，若按当前 cut point 计算的待摘要内容达到单次摘要请求容量的 85%，提前自动压缩，事件原因为 `capacity`。
 
 `reserve_tokens` 不等同于模型输出 token。它是安全预算，包含输出余量和下一轮不可预测的上下文增长。
 
 `keep_recent_tokens` 不是触发阈值。它只影响 compaction 时选择 cut point 的位置。
+
+摘要请求容量由实际准备的请求字节上限、输入 token 上限、摘要提示与已有摘要共同决定。提前触发只调整压缩时机；若压缩内容仍无法容纳于一次请求，执行器继续使用有界分批与合并路径。跨越未完成 turn 的 cut point 会在容量允许时一次生成历史摘要和独立的 turn context；格式校验不通过时回退原来的两段摘要路径。
 
 ## Threshold Calculation
 

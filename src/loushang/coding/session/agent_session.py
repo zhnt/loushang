@@ -36,6 +36,7 @@ from loushang.coding.arch._plugin_tool_owner import (
     CodingArchToolRegistrationSlot,
 )
 from loushang.coding.compaction.adapter import (
+    coding_single_call_capacity_pressure,
     execute_coding_branch_summary,
 )
 from loushang.coding.compaction.adapter import (
@@ -903,6 +904,7 @@ class AgentSession(AgentProductSession):
                 capability_runtime=resolved_capability_runtime,
                 side_question_binding=side_question_binding,
                 execute_compaction=_execute_coding_compaction_runtime,
+                single_call_capacity_probe=coding_single_call_capacity_pressure,
                 execute_branch_summary=_execute_coding_branch_summary,
                 get_changelog=read_changelog_for_cwd,
                 copy_to_clipboard=_copy_to_clipboard,

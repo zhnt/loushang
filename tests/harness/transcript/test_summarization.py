@@ -27,6 +27,7 @@ from loushang.harness.transcript.summarization import (
     default_summary_completer,
     execute_transcript_compaction,
     serialize_agent_conversation,
+    single_call_capacity_pressure,
 )
 
 
@@ -77,6 +78,168 @@ def _summary_profile() -> SummaryProfile:
             "update": "Update a summary.",
             "turn-prefix": "Summarize the turn prefix.",
         },
+    )
+
+
+def _combined_summary_profile() -> SummaryProfile:
+    return SummaryProfile(
+        profile_id="combined-summary-test",
+        system_prompt="Summarize safely.",
+        prompts={
+            "initial": "Create a summary.",
+            "update": "Update a summary.",
+            "turn-prefix": "Summarize the turn prefix.",
+            "split-turn-initial": "Summarize history and turn prefix separately.",
+            "split-turn-update": "Update the summary and retain turn prefix.",
+        },
+    )
+
+
+def test_split_turn_single_call_carries_previous_summary_and_both_sources() -> None:
+    contexts: list[Context] = []
+
+    async def completer(
+        model: object, context: Context, options: CallOptions | None
+    ) -> str:
+        del model, options
+        contexts.append(context)
+        return "summary\n**Turn Context (split turn):**\nturn context"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(role="user", content="older work", timestamp=0.0)
+                ],
+                turn_prefix_messages=[
+                    UserMessage(
+                        role="user", content="unfinished request", timestamp=1.0
+                    )
+                ],
+                is_split_turn=True,
+                tokens_before=100,
+                previous_summary="Previous checkpoint",
+            ),
+            model=object(),
+            compaction_profile=_combined_summary_profile(),
+            turn_prefix_profile=_combined_summary_profile(),
+            completer=completer,
+        )
+    )
+
+    assert result.summary == "summary\n**Turn Context (split turn):**\nturn context"
+    assert len(contexts) == 1
+    prompt = contexts[0].messages[0].content[0].text
+    assert "[Older conversation]\n[User]: older work" in prompt
+    assert "[Current turn prefix]\n[User]: unfinished request" in prompt
+    assert "<previous-summary>\nPrevious checkpoint\n</previous-summary>" in prompt
+    assert "Update the summary and retain turn prefix." in prompt
+
+
+def test_split_turn_uses_bounded_legacy_path_when_combined_prompt_does_not_fit() -> (
+    None
+):
+    calls: list[Context] = []
+
+    async def completer(
+        model: object, context: Context, options: CallOptions | None
+    ) -> str:
+        del model, options
+        calls.append(context)
+        return f"summary-{len(calls)}"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(role="user", content="a" * 3_000, timestamp=0.0)
+                ],
+                turn_prefix_messages=[
+                    UserMessage(role="user", content="b" * 3_000, timestamp=1.0)
+                ],
+                is_split_turn=True,
+                tokens_before=2_000,
+            ),
+            model=object(),
+            compaction_profile=_combined_summary_profile(),
+            turn_prefix_profile=_combined_summary_profile(),
+            completer=completer,
+            request_limits=PreparedRequestLimits(max_canonical_bytes=70_000),
+        )
+    )
+
+    assert len(calls) == 2
+    assert result.summary == (
+        "summary-1\n\n---\n\n**Turn Context (split turn):**\n\nsummary-2"
+    )
+
+
+def test_split_turn_retries_legacy_path_if_combined_result_lacks_turn_context() -> None:
+    calls: list[Context] = []
+
+    async def completer(
+        model: object, context: Context, options: CallOptions | None
+    ) -> str:
+        del model, options
+        calls.append(context)
+        return f"summary-{len(calls)}"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(role="user", content="older", timestamp=0.0)
+                ],
+                turn_prefix_messages=[
+                    UserMessage(role="user", content="current", timestamp=1.0)
+                ],
+                is_split_turn=True,
+                tokens_before=100,
+            ),
+            model=object(),
+            compaction_profile=_combined_summary_profile(),
+            turn_prefix_profile=_combined_summary_profile(),
+            completer=completer,
+        )
+    )
+
+    assert len(calls) == 3
+    assert result.summary == (
+        "summary-2\n\n---\n\n**Turn Context (split turn):**\n\nsummary-3"
+    )
+
+
+def test_single_call_capacity_pressure_uses_actual_request_budget() -> None:
+    preparation = CompactionPreparation(
+        first_kept_entry_id="kept",
+        messages_to_summarize=[
+            UserMessage(role="user", content="a" * 3_900, timestamp=0.0)
+        ],
+        turn_prefix_messages=[],
+        is_split_turn=False,
+        tokens_before=2_000,
+    )
+    profile = _combined_summary_profile()
+
+    assert not single_call_capacity_pressure(
+        preparation,
+        model=object(),
+        profile=profile,
+    )
+    assert single_call_capacity_pressure(
+        preparation,
+        model=object(),
+        profile=profile,
+        request_limits=PreparedRequestLimits(max_canonical_bytes=70_000),
+    )
+    assert not single_call_capacity_pressure(
+        preparation,
+        model=object(),
+        profile=profile,
+        request_limits=PreparedRequestLimits(max_canonical_bytes=64_000),
     )
 
 

@@ -137,6 +137,7 @@ class TranscriptCompactionPolicy:
     reserve_tokens: int
     compact_percent: float = 100.0
     keep_recent_tokens: int | None = None
+    single_call_early_trigger: bool = False
 
 
 EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
@@ -189,6 +190,7 @@ CompactionHook = Callable[
 ]
 CompactionCommitObserver = Callable[[CompactionResult, str, bool], Awaitable[None]]
 HasQueuedMessages = Callable[[], bool]
+SingleCallCapacityProbe = Callable[[CompactionPreparation, object], bool]
 
 
 def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
@@ -210,6 +212,7 @@ class AgentTranscriptCompactionRuntime:
         execute_compaction: CompactionExecutor,
         dispatch_event: EventDispatcher,
         has_queued_messages: HasQueuedMessages,
+        single_call_capacity_probe: SingleCallCapacityProbe | None = None,
         before_compaction: CompactionHook | None = None,
         after_compaction: CompactionCommitObserver | None = None,
         record_runtime_exception: RuntimeExceptionRecorder = _noop_record_runtime_exception,
@@ -225,6 +228,7 @@ class AgentTranscriptCompactionRuntime:
         self._execute_compaction = execute_compaction
         self._dispatch_event = dispatch_event
         self._has_queued_messages = has_queued_messages
+        self._single_call_capacity_probe = single_call_capacity_probe
         self._before_compaction = before_compaction
         self._after_compaction = after_compaction
         self._record_runtime_exception = record_runtime_exception
@@ -358,6 +362,22 @@ class AgentTranscriptCompactionRuntime:
             keep_recent_tokens=policy.keep_recent_tokens,
             include_surface_fingerprint=False,
         )
+        capacity_pressure = False
+        capacity_probe = self._single_call_capacity_probe
+        if (
+            policy.enabled
+            and policy.single_call_early_trigger
+            and capacity_probe is not None
+            and decision.action == "none"
+        ):
+
+            def check_capacity() -> bool:
+                preparation = self._prepare_compaction(
+                    list(branch_snapshot), policy.keep_recent_tokens or 0
+                )
+                return bool(capacity_probe(preparation, model))
+
+            capacity_pressure = await asyncio.to_thread(check_capacity)
         current_messages = tuple(self._get_context_messages())
         if (
             policy != self._get_policy()
@@ -366,10 +386,14 @@ class AgentTranscriptCompactionRuntime:
             or current_messages not in (source_messages, tuple(context_messages))
         ):
             return AutoCompactionOutcome()
-        if decision.usage.tokens is None or decision.action != "threshold":
+        if decision.usage.tokens is None or (
+            decision.action != "threshold" and not capacity_pressure
+        ):
             return AutoCompactionOutcome()
         result = await self.compact(
-            reason="threshold", will_retry=False, raise_on_error=False
+            reason="threshold" if decision.action == "threshold" else "capacity",
+            will_retry=False,
+            raise_on_error=False,
         )
         return AutoCompactionOutcome(
             result=result,

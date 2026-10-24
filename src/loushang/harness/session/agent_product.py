@@ -17,6 +17,7 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.model import ModelSelection
 from loushang.ai.options import CallOptions
+from loushang.ai.prepared_request import PreparedRequestLimits
 from loushang.ai.types import ImagePart
 from loushang.foundation.json import JSONValue
 from loushang.foundation.platform_paths import resolve_platform_paths
@@ -232,6 +233,7 @@ from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
+    CompactionPreparation,
     CompactionResult,
     ProductTranscriptSession,
 )
@@ -374,6 +376,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
         session_manager: ProductTranscriptSession[Any, Any],
         capability_runtime: StagedResourceCompositionCandidate,
         execute_compaction: ProductCompactionExecutor,
+        single_call_capacity_probe: (
+            Callable[[CompactionPreparation, object, PreparedRequestLimits | None], bool]
+            | None
+        ) = None,
         execute_branch_summary: BranchSummaryExecutor,
         get_changelog: ChangelogProvider,
         copy_to_clipboard: ClipboardWriter,
@@ -830,6 +836,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             base_prompt if base_prompt is not None else self.agent.system_prompt
         )
         self._execute_product_compaction = execute_compaction
+        self._single_call_capacity_probe = single_call_capacity_probe
         self._execute_product_branch_summary = execute_branch_summary
         self._get_product_changelog = get_changelog
         self._copy_product_text = copy_to_clipboard
@@ -1245,6 +1252,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 get_compaction_capability=(
                     self._transcript_capability_ports.compaction_capability
                 ),
+                single_call_capacity_probe=self._single_call_capacity_probe,
             ),
             product=SessionProductInputs(
                 model_registry=self.model_registry,

@@ -24,6 +24,7 @@ from loushang.harness.transcript.summarization import (
     default_summary_completer,
     execute_branch_summary,
     execute_transcript_compaction,
+    single_call_capacity_pressure,
 )
 
 CODING_SUMMARY_RESOURCE_OPERATION_PROFILE = (
@@ -49,6 +50,19 @@ _decorate_coding_summary = partial(
     decorate_summary_resource_operations,
     profile=CODING_SUMMARY_RESOURCE_OPERATION_PROFILE,
 )
+
+
+def coding_single_call_capacity_pressure(
+    preparation: CompactionPreparation,
+    model: object,
+    request_limits: PreparedRequestLimits | None,
+) -> bool:
+    return single_call_capacity_pressure(
+        preparation,
+        model=model,
+        profile=CODING_COMPACTION_SUMMARY_PROFILE,
+        request_limits=request_limits,
+    )
 
 
 async def execute_coding_compaction(
@@ -113,6 +127,7 @@ async def execute_coding_branch_summary(
 
 
 __all__ = [
+    "coding_single_call_capacity_pressure",
     "CODING_SUMMARY_RESOURCE_OPERATION_PROFILE",
     "execute_coding_branch_summary",
     "execute_coding_compaction",

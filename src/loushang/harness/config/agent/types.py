@@ -42,6 +42,7 @@ class CompactionSettings:
     compact_percent: float | None = None
     reserve_tokens: int | None = None
     keep_recent_tokens: int | None = None
+    single_call_early_trigger: bool | None = None
 
 
 @dataclass(frozen=True)
