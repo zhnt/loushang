@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from loushang.foundation.json import JSONValue
 
@@ -126,11 +128,94 @@ class ToolResultMessage:
 Message = UserMessage | AssistantMessage | ToolResultMessage
 
 
+@dataclass(frozen=True, repr=False)
+class ProviderCompactionWindow:
+    """An opaque, provider-owned Responses window for a concrete model route."""
+
+    provider: str
+    endpoint: str
+    model: str
+    _items_json: str
+
+    @classmethod
+    def from_items(
+        cls,
+        *,
+        provider: str,
+        endpoint: str,
+        model: str,
+        items: list[dict[str, JSONValue]],
+    ) -> "ProviderCompactionWindow":
+        if not all(
+            isinstance(value, str) and value for value in (provider, endpoint, model)
+        ):
+            raise ValueError(
+                "provider compaction window requires a concrete model route"
+            )
+        if not isinstance(items, list) or not items:
+            raise ValueError("provider compaction window requires output items")
+        if any(not isinstance(item, dict) for item in items):
+            raise ValueError("provider compaction output items must be objects")
+        compacted = [item for item in items if item.get("type") == "compaction"]
+        if (
+            len(compacted) != 1
+            or not isinstance(compacted[0].get("encrypted_content"), str)
+            or not compacted[0]["encrypted_content"]
+        ):
+            raise ValueError(
+                "provider compaction window requires one opaque compaction item"
+            )
+        from loushang.foundation.json import require_json_value
+
+        safe_items = require_json_value(items, name="provider compaction window")
+        return cls(
+            provider, endpoint, model, json.dumps(safe_items, separators=(",", ":"))
+        )
+
+    @property
+    def items(self) -> list[dict[str, JSONValue]]:
+        return cast(list[dict[str, JSONValue]], json.loads(self._items_json))
+
+    def matches(self, model: object) -> bool:
+        return (
+            self.provider == getattr(model, "provider_id", None)
+            and self.endpoint == getattr(model, "endpoint_id", None)
+            and self.model == getattr(model, "id", None)
+            and getattr(model, "provider_compaction", None) == "openai-responses"
+        )
+
+    def to_raw(self) -> dict[str, JSONValue]:
+        return {
+            "provider": self.provider,
+            "endpoint": self.endpoint,
+            "model": self.model,
+            "items": cast(JSONValue, self.items),
+        }
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object]) -> "ProviderCompactionWindow":
+        provider = raw.get("provider")
+        endpoint = raw.get("endpoint")
+        model = raw.get("model")
+        items = raw.get("items")
+        if not all(isinstance(value, str) for value in (provider, endpoint, model)):
+            raise ValueError("provider compaction window route is invalid")
+        if not isinstance(items, list):
+            raise ValueError("provider compaction window items are invalid")
+        return cls.from_items(
+            provider=cast(str, provider),
+            endpoint=cast(str, endpoint),
+            model=cast(str, model),
+            items=cast(list[dict[str, JSONValue]], items),
+        )
+
+
 @dataclass(frozen=True)
 class Context:
     system_prompt: str | None = None
     messages: list[Message] = field(default_factory=list)
     tools: list[Tool] | None = None
+    provider_window: ProviderCompactionWindow | None = None
 
 
 # Stop reason aligned with pi-ai

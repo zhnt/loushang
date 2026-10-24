@@ -362,13 +362,42 @@ def test_registry_rejects_invalid_capability_values(
     message: str,
 ) -> None:
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
-    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"][
-        "models"
-    ]["test-model"]["capabilities"]
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"]["models"][
+        "test-model"
+    ]["capabilities"]
     assert isinstance(capabilities, dict)
     capabilities[field] = value
 
     with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
+def test_provider_compaction_requires_explicit_responses_endpoint_and_model(
+    tmp_path: Path,
+) -> None:
+    raw = _registry_raw(
+        api="openai-responses", endpoint_adapter={"developerRole": False}
+    )
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"]["models"][
+        "test-model"
+    ]["capabilities"]
+    capabilities["providerCompaction"] = "openai-responses"
+
+    model = load_model_registry_from_file(_write_registry(tmp_path, raw)).get_model(
+        "custom", "test-endpoint", "test-model"
+    )
+    assert model.provider_compaction == "openai-responses"
+    assert model.to_raw()["capabilities"]["providerCompaction"] == "openai-responses"
+
+    raw["providers"]["custom"]["endpoints"]["test-endpoint"]["api"] = (
+        "openai-completions"
+    )
+    with pytest.raises(ValueError, match="providerCompaction requires"):
+        validate_model_registry_raw(raw)
+
+    raw["providers"]["custom"]["endpoints"]["test-endpoint"]["api"] = "openai-responses"
+    capabilities["providerCompaction"] = "unknown"
+    with pytest.raises(ValueError, match="providerCompaction requires"):
         validate_model_registry_raw(raw)
 
 

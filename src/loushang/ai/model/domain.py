@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
 Modality = Literal["text", "image"]
+ProviderCompaction = Literal["openai-responses"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
 _REASONING_FORMATS = frozenset({"openai", "deepseek", "moonshot", "zai-thinking"})
 
@@ -58,6 +59,17 @@ def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
     if isinstance(value, str) and value:
         return value
     raise ValueError(f"adapter config field must be a non-empty string: {key}")
+
+
+def _provider_compaction_from_raw(
+    raw: Mapping[str, object],
+) -> ProviderCompaction | None:
+    value = raw.get("providerCompaction")
+    if value is None:
+        return None
+    if value == "openai-responses":
+        return "openai-responses"
+    raise ValueError("providerCompaction must be 'openai-responses'")
 
 
 def _copy_raw_value(value: object) -> object:
@@ -120,12 +132,8 @@ ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
 )
 
 _ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "budgeted"})
-_ANTHROPIC_REASONING_LEVELS = frozenset(
-    {"minimal", "low", "medium", "high", "xhigh"}
-)
-_ANTHROPIC_REASONING_EFFORTS = frozenset(
-    {"low", "medium", "high", "xhigh", "max"}
-)
+_ANTHROPIC_REASONING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh"})
+_ANTHROPIC_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
 def _string_or_none_dict_from_raw(
@@ -312,9 +320,7 @@ class OpenAICompletionsConfig:
             "reasoning_format",
         )
         if self.reasoning_format not in _REASONING_FORMATS:
-            raise ValueError(
-                f"unsupported reasoningFormat: {self.reasoning_format!r}"
-            )
+            raise ValueError(f"unsupported reasoningFormat: {self.reasoning_format!r}")
         object.__setattr__(
             self,
             "reasoning_effort_map",
@@ -777,6 +783,7 @@ class Capabilities:
     structured_output: bool = False
     attachment: bool = False
     temperature: bool = False
+    provider_compaction: ProviderCompaction | None = None
 
     def __post_init__(self) -> None:
         for attr in (
@@ -807,6 +814,8 @@ class Capabilities:
             ) or len(set(value)) != len(value):
                 raise ValueError(f"capability field has invalid modalities: {attr}")
             object.__setattr__(self, attr, tuple(value))
+        if self.provider_compaction not in (None, "openai-responses"):
+            raise ValueError("provider compaction must be 'openai-responses' or None")
 
     @property
     def supports_thinking(self) -> bool:
@@ -837,23 +846,25 @@ class Capabilities:
             structured_output=_capability_bool_from_raw(raw, "structuredOutput"),
             attachment=_capability_bool_from_raw(raw, "attachment"),
             temperature=_capability_bool_from_raw(raw, "temperature"),
+            provider_compaction=_provider_compaction_from_raw(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
-        return {
-            "capabilities": {
-                "contextWindow": self.context_window,
-                "maxTokens": self.max_tokens,
-                "input": list(self.input),
-                "output": list(self.output),
-                "reasoning": self.reasoning,
-                "stream": self.stream,
-                "toolUse": self.tool_use,
-                "structuredOutput": self.structured_output,
-                "attachment": self.attachment,
-                "temperature": self.temperature,
-            }
+        capabilities: dict[str, object] = {
+            "contextWindow": self.context_window,
+            "maxTokens": self.max_tokens,
+            "input": list(self.input),
+            "output": list(self.output),
+            "reasoning": self.reasoning,
+            "stream": self.stream,
+            "toolUse": self.tool_use,
+            "structuredOutput": self.structured_output,
+            "attachment": self.attachment,
+            "temperature": self.temperature,
         }
+        if self.provider_compaction is not None:
+            capabilities["providerCompaction"] = self.provider_compaction
+        return {"capabilities": capabilities}
 
 
 @dataclass(frozen=True)
@@ -999,6 +1010,14 @@ class Model:
     @property
     def supports_stream(self) -> bool:
         return self.capabilities.stream
+
+    @property
+    def provider_compaction(self) -> ProviderCompaction | None:
+        """Provider-native compaction for this concrete endpoint and model."""
+
+        if self.api != "openai-responses":
+            return None
+        return self.capabilities.provider_compaction
 
     @property
     def supports_thinking(self) -> bool:

@@ -11,6 +11,7 @@ ROOT_STABLE_EXPORTS = (
     "AssistantMessageEventStream",
     "AmbiguousModelError",
     "Context",
+    "ProviderCompactionWindow",
     "Message",
     "Model",
     "ModelNotFoundError",
@@ -47,6 +48,7 @@ ROOT_STABLE_EXPORTS = (
     "UserMessage",
     "Usage",
     "UsageCost",
+    "compact_provider_window",
     "complete",
     "complete_structured",
     "credential_status",
@@ -60,6 +62,7 @@ ROOT_STABLE_EXPORTS = (
 )
 
 API_INVOCATION_EXPORTS = (
+    "compact_provider_window",
     "complete",
     "complete_structured",
     "stream",

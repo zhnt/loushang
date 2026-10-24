@@ -635,7 +635,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -667,7 +668,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -699,7 +701,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -731,7 +734,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -763,7 +767,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -795,7 +800,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
@@ -827,7 +833,8 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": true,
+                "providerCompaction": "openai-responses"
               },
               "pricing": {
                 "currency": "USD",
