@@ -362,6 +362,18 @@ class AgentTranscriptUnitOfWork:
         if not self._profile.has_default_replay_semantics:
             return self._profile.replay(self.active_path())
         projection = self.replay_projection()
+        if projection.item_record_ids:
+            first_record = self.get(projection.item_record_ids[0])
+            if (
+                first_record is not None
+                and isinstance(first_record.payload, ContextCompactionCheckpoint)
+                and first_record.payload.provider_window is not None
+            ):
+                return AgentTranscriptContext(
+                    projection.items[1:],
+                    projection.state,
+                    first_record.payload.provider_window,
+                )
         return AgentTranscriptContext(projection.items, projection.state)
 
     def replay_projection(

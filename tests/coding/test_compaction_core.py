@@ -1276,6 +1276,7 @@ async def test_compact_split_turn_uses_one_bounded_model_call() -> None:
         headers={"x-test": "1"},
         signal=signal,
         completer=fake_complete,
+        strategy="local_combined",
     )
 
     assert result.summary.startswith(combined_summary)

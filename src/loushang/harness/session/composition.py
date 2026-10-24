@@ -1314,6 +1314,12 @@ async def apply_agent_session_model_selection(
         resolved = selection_runtime.resolve_model(
             cast(Model | ModelSelection, selection)
         )
+        window = agent.state.provider_window
+        if window is not None and not window.matches(resolved):
+            raise ValueError(
+                "Selected model is incompatible with the active provider "
+                "compaction checkpoint"
+            )
         validate_image_input_compatibility(resolved, agent.state.messages)
         previous = agent.model
         await selection_runtime.apply_model(resolved)

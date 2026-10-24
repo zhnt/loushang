@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.ai.types import ImagePart, TextPart, UserMessage
+from loushang.ai.context import normalize_context
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.protocols._openai_responses import convert_responses_messages
+from loushang.ai.types import (
+    Context,
+    ImagePart,
+    ProviderCompactionWindow,
+    TextPart,
+    UserMessage,
+)
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationPayloadCodecRegistry,
@@ -106,6 +115,72 @@ def _record(record_id: str, parent_id: str | None, kind: str, payload):
 
 def _text(message) -> str:
     return "".join(part.text for part in message.content if isinstance(part, TextPart))
+
+
+def test_provider_checkpoint_replay_restores_opaque_window_without_text_marker() -> (
+    None
+):
+    window = ProviderCompactionWindow.from_items(
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "opaque-state"}],
+    )
+    records = (
+        _record(
+            "old",
+            None,
+            AGENT_MESSAGE_KIND,
+            UserMessage(role="user", content="old", timestamp=1.0),
+        ),
+        _record(
+            "kept",
+            "old",
+            AGENT_MESSAGE_KIND,
+            UserMessage(role="user", content="kept", timestamp=2.0),
+        ),
+        _record(
+            "checkpoint",
+            "kept",
+            CONTEXT_COMPACTION_CHECKPOINT_KIND,
+            ContextCompactionCheckpoint(
+                summary="[Provider compaction state]",
+                first_kept_record_id="kept",
+                tokens_before=100,
+                provider_window=window,
+            ),
+        ),
+        _record(
+            "next",
+            "checkpoint",
+            AGENT_MESSAGE_KIND,
+            UserMessage(role="user", content="next", timestamp=3.0),
+        ),
+    )
+    replayed = AgentTranscriptProfile.default().replay(records)
+    assert replayed.provider_window == window
+    assert [message.content for message in replayed.messages] == ["kept", "next"]
+    model = Model(
+        id="gpt-6",
+        provider="openai",
+        endpoint="responses",
+        api="openai-responses",
+        capabilities=Capabilities(provider_compaction="openai-responses"),
+    )
+    normalized = normalize_context(
+        Context(
+            messages=[
+                message
+                for item in replayed.messages
+                if (message := context_item_to_model_message(item)) is not None
+            ],
+            provider_window=replayed.provider_window,
+        ),
+        model=model,
+    )
+    input_items = convert_responses_messages(model, normalized)
+    assert input_items[0] == window.items[0]
+    assert [item["content"][0]["text"] for item in input_items[1:]] == ["kept", "next"]
 
 
 def test_profile_replays_context_checkpoint_and_folds_runtime_state() -> None:

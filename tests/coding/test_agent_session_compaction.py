@@ -6,7 +6,13 @@ import pytest
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    ProviderCompactionWindow,
+    TextPart,
+    Usage,
+    UserMessage,
+)
 
 
 def _usage() -> Usage:
@@ -91,6 +97,85 @@ def _stream_with_final_message(
 
     asyncio.create_task(_feed())
     return stream
+
+
+def test_coding_provider_strategy_commits_window_and_refreshes_agent(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(manager.append_message(
+        UserMessage(role="user", content="old work", timestamp=0.0)
+    ))
+    asyncio.run(manager.append_message(
+        UserMessage(role="user", content="recent work", timestamp=1.0)
+    ))
+    model = Model(
+        id="gpt-6",
+        provider="openai",
+        endpoint="responses",
+        api="openai-responses",
+        capabilities=Capabilities(
+            context_window=128_000, max_tokens=8_192,
+            provider_compaction="openai-responses",
+        ),
+    )
+    session = AgentSession(
+        agent=Agent(initial_state={
+            "system_prompt": "project rules",
+            "model": model,
+            "thinking_level": "off",
+        }),
+        session_manager=manager,
+        settings_manager=SettingsManager(ControlConfig(
+            compaction=CompactionSettings(
+                enabled=True, keep_recent_tokens=1, strategy="provider"
+            )
+        )),
+    )
+    window = ProviderCompactionWindow.from_items(
+        provider="openai", endpoint="responses", model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "opaque"}],
+    )
+    observed: list[str] = []
+
+    async def fake_compact(**kwargs):
+        observed.append(kwargs["strategy"])
+        assert kwargs["provider_context"].system_prompt == "project rules"
+        preparation = kwargs["preparation"]
+        return CompactionResult(
+            summary="[Provider compaction state]",
+            first_kept_entry_id=preparation.first_kept_entry_id,
+            tokens_before=preparation.tokens_before,
+            provider_window=window,
+        )
+
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        fake_compact,
+    )
+    asyncio.run(session.compact())
+    assert observed == ["provider"]
+    assert manager.get_entries()[-1].payload.provider_window == window
+    assert session.agent.state.provider_window == window
+    assert all(
+        "[Provider compaction state]" not in str(message.content)
+        for message in session.agent.state.messages
+    )
+    with pytest.raises(ValueError, match="provider compaction checkpoint"):
+        asyncio.run(session.set_model(_model()))
+    assert session.agent.model == model
 
 
 def test_agent_session_compact_appends_compaction_and_rebuilds_context(

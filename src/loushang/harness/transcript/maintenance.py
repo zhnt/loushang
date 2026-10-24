@@ -16,7 +16,7 @@ from time import monotonic
 from typing import Any, Literal, Protocol
 
 from loushang.agent.types import AgentMessage
-from loushang.ai.types import AssistantMessage
+from loushang.ai.types import AssistantMessage, ProviderCompactionWindow
 from loushang.harness.context.compaction import CompactionCoordinator
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.events import (
@@ -58,6 +58,7 @@ class CompactionResult:
     tokens_before: int
     details: object | None = None
     model_input_snapshot_ids: tuple[str, ...] = ()
+    provider_window: ProviderCompactionWindow | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.model_input_snapshot_ids, tuple) or any(
@@ -127,6 +128,7 @@ class CompactionPreparation:
     previous_summary: str | None = None
     details: object | None = None
     plan: CompactionPlan | None = None
+    previous_provider_window: ProviderCompactionWindow | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,7 @@ class TranscriptCompactionStore(Protocol):
         details: object | None = None,
         from_hook: bool | None = None,
         model_input_snapshot_ids: tuple[str, ...] = (),
+        provider_window: ProviderCompactionWindow | None = None,
     ) -> str: ...
 
 
@@ -616,6 +619,12 @@ class AgentTranscriptCompactionRuntime:
 
         if result is None:
             result = await execute_compaction(preparation, custom_instructions)
+        if result.provider_window is not None and not result.provider_window.matches(
+            self._get_model()
+        ):
+            raise ValueError(
+                "Provider compaction result is incompatible with the selected model"
+            )
         result = _with_preparation_details(result, preparation)
         record_id = await self._transcript.append_compaction(
             result.summary,
@@ -624,6 +633,7 @@ class AgentTranscriptCompactionRuntime:
             details=result.details,
             from_hook=from_hook,
             model_input_snapshot_ids=result.model_input_snapshot_ids,
+            provider_window=result.provider_window,
         )
         return result, record_id, from_hook
 
@@ -690,7 +700,8 @@ def _snapshot_payload(snapshot: ContextUsageSnapshot) -> dict[str, Any]:
 
 
 def _compaction_result_payload(result: CompactionResult) -> dict[str, Any]:
-    payload = asdict(result)
+    payload = asdict(replace(result, provider_window=None))
+    payload.pop("provider_window", None)
     if not result.model_input_snapshot_ids:
         payload.pop("model_input_snapshot_ids")
     return payload

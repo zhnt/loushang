@@ -135,7 +135,7 @@ class ProviderCompactionWindow:
     provider: str
     endpoint: str
     model: str
-    _items_json: str
+    _items_json: str = field(repr=False)
 
     @classmethod
     def from_items(

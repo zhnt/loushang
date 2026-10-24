@@ -37,6 +37,7 @@ from loushang.ai.types import (
     Context,
     ImagePart,
     Message,
+    ProviderCompactionWindow,
     TextPart,
     ThinkingPart,
     Tool,
@@ -850,6 +851,7 @@ class SessionModelCallPreparer:
                     on_committed_normalization=self._schedule_normalized_cache,
                     sealed_system_prompt=sealed_input["system_prompt"],
                     sealed_tools=sealed_input["tools"],
+                    sealed_provider_window=sealed_input.get("provider_window"),
                 ),
             )
         except BaseException:
@@ -902,6 +904,7 @@ class _CurrentSessionCommitter(
         ) = None,
         sealed_system_prompt: object = None,
         sealed_tools: object = (),
+        sealed_provider_window: object = None,
     ) -> None:
         self._committer = committer
         self._is_current = is_current
@@ -920,6 +923,7 @@ class _CurrentSessionCommitter(
         self._normalization_pairing_mode: PairingMode | None = None
         self._sealed_system_prompt = sealed_system_prompt
         self._sealed_tools = sealed_tools
+        self._sealed_provider_window = sealed_provider_window
         self._sealed_verification_task: asyncio.Task[None] | None = None
         self._latest_attempt_by_invocation: dict[str, tuple[int, str]] = {}
 
@@ -964,6 +968,16 @@ class _CurrentSessionCommitter(
             system_prompt=cast(str | None, self._sealed_system_prompt),
             messages=messages,
             tools=tools,
+            provider_window=(
+                ProviderCompactionWindow.from_raw(
+                    cast(
+                        dict[str, object],
+                        thaw_model_input_json(self._sealed_provider_window),
+                    )
+                )
+                if self._sealed_provider_window is not None
+                else None
+            ),
         )
 
     def normalize_owned_context(
@@ -980,6 +994,7 @@ class _CurrentSessionCommitter(
         key = _normalization_key(model, pairing_mode)
         if (
             model.api == "openai-completions"
+            and context.provider_window is None
             and cache is not None
             and key is not None
             and cache.key == key
@@ -1050,6 +1065,13 @@ class _CurrentSessionCommitter(
         if (
             type(context) is not Context
             or context.system_prompt != self._sealed_system_prompt
+            or freeze_model_input_json(
+                context.provider_window.to_raw()
+                if context.provider_window is not None
+                else None,
+                name="current provider compaction window",
+            )
+            != self._sealed_provider_window
             or len(context.messages) != len(self._sealed_messages)
             or len(self._sealed_message_shapes) != len(self._sealed_messages)
             or freeze_model_input_json(
@@ -1586,7 +1608,7 @@ def _logical_input(
     serialized_messages: list[object] | None = None,
 ) -> dict[str, object]:
     context = preparation.context
-    return {
+    logical_input: dict[str, object] = {
         "system_prompt": context.system_prompt,
         "messages": (
             serialized_messages
@@ -1596,6 +1618,9 @@ def _logical_input(
         "tools": project_model_tools(context.tools or ()),
         "request_options": project_model_request_options(preparation.options),
     }
+    if context.provider_window is not None:
+        logical_input["provider_window"] = context.provider_window.to_raw()
+    return logical_input
 
 
 def project_model_tools(tools: Iterable[Any]) -> list[dict[str, JSONValue]]:

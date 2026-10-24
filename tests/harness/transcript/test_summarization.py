@@ -13,6 +13,7 @@ from loushang.ai.provider import ProviderRequest
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
+    ProviderCompactionWindow,
     TextPart,
     Usage,
     UserMessage,
@@ -95,6 +96,67 @@ def _combined_summary_profile() -> SummaryProfile:
     )
 
 
+def test_provider_strategy_sends_source_and_restored_window_without_local_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Model(
+        id="gpt-6",
+        provider="openai",
+        endpoint="responses",
+        api="openai-responses",
+        capabilities=Capabilities(provider_compaction="openai-responses"),
+    )
+    prior = ProviderCompactionWindow.from_items(
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "prior"}],
+    )
+    updated = ProviderCompactionWindow.from_items(
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "updated"}],
+    )
+    observed: list[Context] = []
+
+    async def compact(_model: Model, context: Context, _options: CallOptions):
+        assert _model == model
+        observed.append(context)
+        return updated
+
+    monkeypatch.setattr(summary_module, "compact_provider_window", compact)
+    preparation = CompactionPreparation(
+        first_kept_entry_id="kept",
+        messages_to_summarize=[
+            UserMessage(role="user", content="new work", timestamp=1.0)
+        ],
+        turn_prefix_messages=[],
+        is_split_turn=False,
+        tokens_before=120,
+        previous_summary="[Provider compaction state]",
+        previous_provider_window=prior,
+    )
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=preparation,
+            model=model,
+            compaction_profile=_summary_profile(),
+            turn_prefix_profile=_summary_profile(),
+            provider_context=Context(
+                system_prompt="original system", provider_window=prior
+            ),
+            strategy="provider",
+        )
+    )
+    assert result.provider_window == updated
+    assert result.model_input_snapshot_ids == ()
+    assert len(observed) == 1
+    assert observed[0].provider_window == prior
+    assert observed[0].system_prompt is None
+    assert [message.content for message in observed[0].messages] == ["new work"]
+
+
 def test_split_turn_single_call_carries_previous_summary_and_both_sources() -> None:
     contexts: list[Context] = []
 
@@ -124,6 +186,7 @@ def test_split_turn_single_call_carries_previous_summary_and_both_sources() -> N
             model=object(),
             compaction_profile=_combined_summary_profile(),
             turn_prefix_profile=_combined_summary_profile(),
+            strategy="local_combined",
             completer=completer,
         )
     )
@@ -135,6 +198,100 @@ def test_split_turn_single_call_carries_previous_summary_and_both_sources() -> N
     assert "[Current turn prefix]\n[User]: unfinished request" in prompt
     assert "<previous-summary>\nPrevious checkpoint\n</previous-summary>" in prompt
     assert "Update the summary and retain turn prefix." in prompt
+
+
+@pytest.mark.parametrize("from_previous_summary", [False, True])
+def test_combined_summary_falls_back_when_file_reference_is_lost(
+    from_previous_summary: bool,
+) -> None:
+    calls = 0
+    references = (
+        "`src/app.py`",
+        "`src/auth.py`",
+        "`tests/test_app.py`",
+        "`docs/plan.md`",
+    )
+
+    async def completer(
+        model: object, context: Context, options: CallOptions | None
+    ) -> str:
+        del model, context, options
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "history\n**Turn Context (split turn):**\nturn context"
+        return "retained " + " ".join(references) if calls == 2 else "turn context"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(
+                        role="user",
+                        content=(
+                            "older" if from_previous_summary
+                            else "older " + " ".join(references)
+                        ),
+                        timestamp=0.0,
+                    )
+                ],
+                turn_prefix_messages=[
+                    UserMessage(role="user", content="current", timestamp=1.0)
+                ],
+                is_split_turn=True,
+                tokens_before=100,
+                previous_summary=(
+                    "Modified " + " ".join(references)
+                    if from_previous_summary else None
+                ),
+            ),
+            model=object(),
+            compaction_profile=_combined_summary_profile(),
+            turn_prefix_profile=_combined_summary_profile(),
+            strategy="local_combined",
+            completer=completer,
+        )
+    )
+    assert calls == 3
+    assert all(reference in result.summary for reference in references)
+
+
+def test_default_separate_strategy_preserves_representative_paths_in_two_calls() -> None:
+    references = ("`src/app.py`", "`src/auth.py`", "`tests/test_app.py`", "`docs/plan.md`")
+    calls = 0
+
+    async def completer(
+        model: object, context: Context, options: CallOptions | None
+    ) -> str:
+        del model, context, options
+        nonlocal calls
+        calls += 1
+        return "retained " + " ".join(references) if calls == 1 else "turn context"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(
+                        role="user", content="older " + " ".join(references), timestamp=0
+                    )
+                ],
+                turn_prefix_messages=[
+                    UserMessage(role="user", content="current", timestamp=1)
+                ],
+                is_split_turn=True,
+                tokens_before=100,
+            ),
+            model=object(),
+            compaction_profile=_combined_summary_profile(),
+            turn_prefix_profile=_combined_summary_profile(),
+            completer=completer,
+        )
+    )
+    assert calls == 2
+    assert all(reference in result.summary for reference in references)
 
 
 def test_split_turn_uses_bounded_legacy_path_when_combined_prompt_does_not_fit() -> (
@@ -165,6 +322,7 @@ def test_split_turn_uses_bounded_legacy_path_when_combined_prompt_does_not_fit()
             model=object(),
             compaction_profile=_combined_summary_profile(),
             turn_prefix_profile=_combined_summary_profile(),
+            strategy="local_combined",
             completer=completer,
             request_limits=PreparedRequestLimits(max_canonical_bytes=70_000),
         )
@@ -202,6 +360,7 @@ def test_split_turn_retries_legacy_path_if_combined_result_lacks_turn_context() 
             model=object(),
             compaction_profile=_combined_summary_profile(),
             turn_prefix_profile=_combined_summary_profile(),
+            strategy="local_combined",
             completer=completer,
         )
     )
@@ -410,12 +569,9 @@ def test_compaction_uses_bounded_request_and_explicit_image_placeholder() -> Non
     prompt = context.messages[0].content[0].text
     assert image_data not in prompt
     assert (
-        "[Image omitted from summary input: mime_type=image/png; "
-        "base64_characters=20]"
+        "[Image omitted from summary input: mime_type=image/png; base64_characters=20]"
     ) in prompt
-    assert result.details == {
-        "degradations": [{"code": "image_omitted", "count": 1}]
-    }
+    assert result.details == {"degradations": [{"code": "image_omitted", "count": 1}]}
 
 
 def test_summary_image_refusal_is_explicit_and_skips_model_call() -> None:
@@ -423,9 +579,7 @@ def test_summary_image_refusal_is_explicit_and_skips_model_call() -> None:
     messages = [
         UserMessage(
             role="user",
-            content=[
-                ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")
-            ],
+            content=[ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")],
             timestamp=0.0,
         )
     ]
@@ -503,8 +657,7 @@ def test_compaction_batches_turns_and_merges_partials_with_bounded_calls() -> No
     assert len(calls) == 4
     assert result.summary == "partial-4"
     history_prompts = [
-        call_context.messages[0].content[0].text
-        for call_context, _options in calls[:3]
+        call_context.messages[0].content[0].text for call_context, _options in calls[:3]
     ]
     for index in range(1, 4):
         assert sum(f"turn-{index}:" in prompt for prompt in history_prompts) == 1
@@ -515,8 +668,7 @@ def test_compaction_batches_turns_and_merges_partials_with_bounded_calls() -> No
     assert all(
         options.max_output_tokens == 8_192
         and options.request_limits is not None
-        and options.request_limits.max_canonical_bytes
-        == SUMMARY_MAX_CANONICAL_BYTES
+        and options.request_limits.max_canonical_bytes == SUMMARY_MAX_CANONICAL_BYTES
         for _context, options in calls
     )
 

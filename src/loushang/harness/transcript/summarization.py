@@ -9,6 +9,7 @@ code-file activity; it does not reimplement the transcript algorithm.
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
@@ -25,12 +26,13 @@ from loushang.ai import (
     Context,
     Model,
     PreparedRequestLimits,
+    compact_provider_window,
     complete,
     stream,
 )
 from loushang.ai.model import OpenAIResponsesConfig
 from loushang.ai.trace import emit_trace
-from loushang.ai.types import AssistantMessage, TextPart, UserMessage
+from loushang.ai.types import AssistantMessage, Message, TextPart, UserMessage
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.context import (
     SummaryProfile,
@@ -45,6 +47,8 @@ from loushang.harness.transcript.maintenance import (
     CompactionResult,
 )
 from loushang.harness.transcript.profile import (
+    COMPACTION_SUMMARY_PREFIX,
+    COMPACTION_SUMMARY_SUFFIX,
     context_item_to_model_message,
     record_to_context_item,
 )
@@ -67,6 +71,7 @@ Summary of that exploration:
 
 SummaryCompleter = Callable[[object, Context, CallOptions | None], Awaitable[str]]
 SummaryImagePolicy: TypeAlias = Literal["placeholder", "refuse"]
+CompactionStrategy: TypeAlias = Literal["local_separate", "local_combined", "provider"]
 
 
 class SummaryImagePolicyError(ValueError):
@@ -349,25 +354,98 @@ async def execute_transcript_compaction(
     prepare_model_call: PrepareModelCallFn | None = None,
     request_limits: PreparedRequestLimits | None = None,
     image_policy: SummaryImagePolicy = "placeholder",
+    strategy: CompactionStrategy = "local_separate",
+    provider_context: Context | None = None,
 ) -> CompactionResult:
     """Execute a standard transcript-compaction plan with Product prompt policy."""
 
+    if strategy not in ("local_separate", "local_combined", "provider"):
+        raise ValueError(f"Unsupported compaction strategy: {strategy}")
+    if strategy != "provider" and preparation.previous_provider_window is not None:
+        raise ValueError(
+            "This session has a provider compaction checkpoint; "
+            "continue with its model route and provider strategy"
+        )
+    if strategy == "provider":
+        if provider_context is None:
+            raise ValueError("Provider compaction requires the current model context")
+        if provider_context.provider_window != preparation.previous_provider_window:
+            raise ValueError(
+                "Provider compaction window differs from the active checkpoint"
+            )
+        if custom_instructions:
+            raise ValueError("Provider compaction does not accept custom instructions")
+        if preparation.previous_provider_window is not None and not (
+            preparation.previous_provider_window.matches(model)
+        ):
+            raise ValueError(
+                "Provider compaction checkpoint belongs to another model route"
+            )
+        prior_window = preparation.previous_provider_window
+        prior_summary = (
+            [
+                UserMessage(
+                    role="user",
+                    content=(
+                        COMPACTION_SUMMARY_PREFIX
+                        + preparation.previous_summary
+                        + COMPACTION_SUMMARY_SUFFIX
+                    ),
+                    timestamp=0,
+                )
+            ]
+            if prior_window is None and preparation.previous_summary
+            else []
+        )
+        source_messages = [
+            *prior_summary,
+            *_model_messages(preparation.messages_to_summarize),
+            *_model_messages(preparation.turn_prefix_messages),
+        ]
+        window = await compact_provider_window(
+            cast(Model, model),
+            Context(
+                system_prompt=(
+                    None if prior_window is not None else provider_context.system_prompt
+                ),
+                messages=cast(list[Message], source_messages),
+                tools=provider_context.tools,
+                provider_window=prior_window,
+            ),
+            CallOptions(
+                auth=ApiKeyAuth(api_key) if api_key else None,
+                headers=headers or {},
+                cancellation=signal,
+                request_limits=request_limits,
+            ),
+        )
+        return CompactionResult(
+            summary="[Provider compaction state]",
+            first_kept_entry_id=preparation.first_kept_entry_id,
+            tokens_before=preparation.tokens_before,
+            details=preparation.details,
+            provider_window=window,
+        )
     execution = _SummaryExecutionState()
     if preparation.is_split_turn and preparation.turn_prefix_messages:
-        combined = await _summarize_split_turn_once(
-            preparation=preparation,
-            model=model,
-            profile=compaction_profile,
-            turn_prefix_profile=turn_prefix_profile,
-            api_key=api_key,
-            headers=headers,
-            signal=signal,
-            custom_instructions=custom_instructions,
-            completer=completer,
-            prepare_model_call=prepare_model_call,
-            request_limits=request_limits,
-            image_policy=image_policy,
-            execution=execution,
+        combined = (
+            await _summarize_split_turn_once(
+                preparation=preparation,
+                model=model,
+                profile=compaction_profile,
+                turn_prefix_profile=turn_prefix_profile,
+                api_key=api_key,
+                headers=headers,
+                signal=signal,
+                custom_instructions=custom_instructions,
+                completer=completer,
+                prepare_model_call=prepare_model_call,
+                request_limits=request_limits,
+                image_policy=image_policy,
+                execution=execution,
+            )
+            if strategy == "local_combined"
+            else None
         )
         if combined is not None:
             summary = combined.text
@@ -474,6 +552,11 @@ async def _summarize_split_turn_once(
     if mode not in profile.prompts:
         return None
     conversation = _split_turn_conversation(preparation, image_policy=image_policy)
+    required_references = _critical_path_references(
+        f"{preparation.previous_summary or ''}\n{conversation}"
+    )
+    if len(required_references) > 24:
+        return None
     try:
         budget = _summary_source_budget(
             profile,
@@ -517,7 +600,22 @@ async def _summarize_split_turn_once(
         return None
     if not validate_summary(prefix_summary, turn_prefix_profile).ok:
         return None
+    if not all(reference in summary for reference in required_references):
+        return None
     return _SummaryCallResult(summary)
+
+
+def _critical_path_references(previous_summary: str | None) -> tuple[str, ...]:
+    if not previous_summary:
+        return ()
+    references = re.findall(r"`([^`\n]+)`", previous_summary)
+    return tuple(
+        dict.fromkeys(
+            reference
+            for reference in references
+            if "/" in reference or "\\" in reference
+        )
+    )
 
 
 def _split_turn_conversation(
@@ -753,9 +851,7 @@ async def _summarize_messages(
                 model=model,
                 profile=profile,
                 mode=mode if index == 0 else "initial",
-                previous_summary=(
-                    preparation.previous_summary if index == 0 else None
-                ),
+                previous_summary=(preparation.previous_summary if index == 0 else None),
                 custom_instructions=custom_instructions,
                 api_key=api_key,
                 headers=headers,
@@ -811,12 +907,9 @@ async def _summarize_turn_prefix(
         request_limits=request_limits,
         enforce_model_context=completer is default_summary_completer,
     )
-    if (
-        len(conversation.encode("utf-8")) > source_budget.bytes
-        or (
-            source_budget.tokens is not None
-            and _estimate_summary_tokens(conversation) > source_budget.tokens
-        )
+    if len(conversation.encode("utf-8")) > source_budget.bytes or (
+        source_budget.tokens is not None
+        and _estimate_summary_tokens(conversation) > source_budget.tokens
     ):
         raise SummaryCapacityPlanError(
             "turn-prefix summary has no legal cut under the request budget"
@@ -1121,7 +1214,9 @@ def _model_input_snapshot_ids(options: CallOptions) -> tuple[str, ...]:
     if not isinstance(raw, tuple) or any(
         not isinstance(item, str) or not item.strip() for item in raw
     ):
-        raise TypeError("prepared-request committer returned invalid Model Input lineage")
+        raise TypeError(
+            "prepared-request committer returned invalid Model Input lineage"
+        )
     return raw
 
 
@@ -1379,9 +1474,7 @@ def _count_image_parts(messages: Sequence[AgentMessage]) -> int:
         content = getattr(message, "content", ())
         if isinstance(content, str):
             continue
-        count += sum(
-            1 for block in content if getattr(block, "type", None) == "image"
-        )
+        count += sum(1 for block in content if getattr(block, "type", None) == "image")
     return count
 
 
@@ -1389,9 +1482,7 @@ def _summary_request_limits(
     request_limits: PreparedRequestLimits | None,
 ) -> PreparedRequestLimits:
     if request_limits is None:
-        return PreparedRequestLimits(
-            max_canonical_bytes=SUMMARY_MAX_CANONICAL_BYTES
-        )
+        return PreparedRequestLimits(max_canonical_bytes=SUMMARY_MAX_CANONICAL_BYTES)
     maximum = request_limits.max_canonical_bytes
     return replace(
         request_limits,
