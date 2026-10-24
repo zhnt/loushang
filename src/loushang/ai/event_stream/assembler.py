@@ -20,6 +20,7 @@ from loushang.ai.event_stream.raw_parts import (
     ThinkingDeltaPart,
     ThinkingSignatureDeltaPart,
     ToolCallArgsDeltaPart,
+    ToolCallArgsFinalPart,
     ToolCallDonePart,
     ToolCallStartPart,
     ToolCallThoughtSignaturePart,
@@ -66,6 +67,7 @@ class _ToolCallBuffer:
     name: str
     index: int | None
     args_chunks: list[str] = field(default_factory=list)
+    final_arguments: str | None = None
     thought_signature: str | None = None
 
 
@@ -225,6 +227,22 @@ class RawAssembler:
                     },
                 )
             )
+            return
+
+        if part_type == "tool_call_args_final":
+            final_part = cast(ToolCallArgsFinalPart, part)
+            final_buffer = self._resolve_active_tool_call_buffer(final_part)
+            if final_buffer is None:
+                raise RuntimeError(
+                    "final tool call arguments received before tool call start"
+                )
+            arguments = final_part["arguments"]
+            if (
+                final_buffer.final_arguments is not None
+                and final_buffer.final_arguments != arguments
+            ):
+                raise RuntimeError("conflicting final tool-call arguments")
+            final_buffer.final_arguments = arguments
             return
 
         if part_type == "tool_call_done":
@@ -605,11 +623,15 @@ class RawAssembler:
         )
 
     def _parse_tool_call_arguments(self, buffer: _ToolCallBuffer) -> dict:
-        raw = "".join(buffer.args_chunks)
+        raw = (
+            buffer.final_arguments
+            if buffer.final_arguments is not None
+            else "".join(buffer.args_chunks)
+        )
         return parse_streaming_json(raw)
 
     def _resolve_active_tool_call_buffer(
-        self, part: ToolCallArgsDeltaPart | ToolCallDonePart
+        self, part: ToolCallArgsDeltaPart | ToolCallArgsFinalPart | ToolCallDonePart
     ) -> _ToolCallBuffer | None:
         tool_call_id = _optional_str(
             part.get("tool_call_id") or cast(Mapping[str, object], part).get("id")

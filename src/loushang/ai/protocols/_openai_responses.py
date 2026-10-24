@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import Any, TypedDict, cast
 
 from loushang.ai.context import NormalizedContext
@@ -43,7 +43,9 @@ def convert_responses_messages(
     """
     adapter_config = adapter_config or OpenAIResponsesConfig()
     input_items: list[dict[str, Any]] = (
-        normalized.provider_window.items if normalized.provider_window is not None else []
+        normalized.provider_window.items
+        if normalized.provider_window is not None
+        else []
     )
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.system_prompt
@@ -119,12 +121,14 @@ async def process_responses_stream(
     *,
     reasoning_enabled: bool = False,
     source: str = "openai-responses",
+    on_tool_arguments: Callable[[dict[str, object]], None] | None = None,
 ) -> AsyncIterator[RawPart]:
     events = DirectAsyncIterator(openai_stream)
     parts = _process_responses_events(
         events,
         reasoning_enabled=reasoning_enabled,
         source=source,
+        on_tool_arguments=on_tool_arguments,
     )
     try:
         async for part in parts:
@@ -141,6 +145,7 @@ async def _process_responses_events(
     *,
     reasoning_enabled: bool = False,
     source: str = "openai-responses",
+    on_tool_arguments: Callable[[dict[str, object]], None] | None = None,
 ) -> AsyncIterator[RawPart]:
     thinking_buf: list[str] = []
     text_buf: list[str] = []
@@ -149,6 +154,9 @@ async def _process_responses_events(
     current_reasoning_item: dict[str, Any] | None = None
     tool_call_ids_by_item_id: dict[str, str] = {}
     tool_call_ids_by_index: dict[int, str] = {}
+    tool_argument_delta_counts: dict[str, tuple[int, int]] = {}
+    tool_argument_done: dict[str, str] = {}
+    response_id: str | None = None
     emitted_response_start = False
     emit_thinking = reasoning_enabled
 
@@ -158,6 +166,7 @@ async def _process_responses_events(
             resp = getattr(event, "response", None)
             rid = getattr(resp, "id", None)
             if isinstance(rid, str):
+                response_id = rid
                 emitted_response_start = True
                 yield {"type": "response_start", "response_id": rid}
         elif etype == "response.output_item.added":
@@ -247,7 +256,37 @@ async def _process_responses_events(
                         delta_part["tool_call_id"] = indexed_tool_call_id
                 if index is not None:
                     delta_part["index"] = index
+                delta_call_id = delta_part.get("tool_call_id")
+                if isinstance(delta_call_id, str):
+                    count, chars = tool_argument_delta_counts.get(delta_call_id, (0, 0))
+                    tool_argument_delta_counts[delta_call_id] = (
+                        count + 1,
+                        chars + len(delta),
+                    )
                 yield _raw_part(delta_part)
+        elif etype == "response.function_call_arguments.done":
+            arguments = getattr(event, "arguments", None)
+            if isinstance(arguments, str):
+                final_part: dict[str, object] = {
+                    "type": "tool_call_args_final",
+                    "arguments": arguments,
+                }
+                item_id = getattr(event, "item_id", None)
+                if isinstance(item_id, str) and item_id:
+                    final_part["tool_call_id"] = tool_call_ids_by_item_id.get(
+                        item_id, item_id
+                    )
+                index = _optional_int(getattr(event, "output_index", None))
+                if "tool_call_id" not in final_part and index is not None:
+                    indexed_tool_call_id = tool_call_ids_by_index.get(index)
+                    if indexed_tool_call_id is not None:
+                        final_part["tool_call_id"] = indexed_tool_call_id
+                if index is not None:
+                    final_part["index"] = index
+                final_call_id = final_part.get("tool_call_id")
+                if isinstance(final_call_id, str):
+                    tool_argument_done[final_call_id] = arguments
+                yield _raw_part(final_part)
         elif etype == "response.output_item.done":
             item = getattr(event, "item", None)
             if item is None:
@@ -290,6 +329,61 @@ async def _process_responses_events(
                 if index is not None:
                     done_part["index"] = index
                     tool_call_ids_by_index.pop(index, None)
+                arguments = getattr(item, "arguments", None)
+                done_call_id = done_part.get("tool_call_id")
+                if isinstance(done_call_id, str):
+                    completed_arguments = tool_argument_done.pop(done_call_id, None)
+                    delta_count, delta_chars = tool_argument_delta_counts.pop(
+                        done_call_id, (0, 0)
+                    )
+                    if on_tool_arguments is not None:
+                        selected_arguments = (
+                            arguments
+                            if isinstance(arguments, str)
+                            else completed_arguments
+                        )
+                        on_tool_arguments(
+                            {
+                                "response_id": response_id,
+                                "tool_call_id": done_call_id,
+                                "tool_name": getattr(item, "name", None),
+                                "output_index": index,
+                                "delta_count": delta_count,
+                                "delta_chars": delta_chars,
+                                "arguments_done_chars": (
+                                    len(completed_arguments)
+                                    if completed_arguments is not None
+                                    else None
+                                ),
+                                "item_done_chars": (
+                                    len(arguments)
+                                    if isinstance(arguments, str)
+                                    else None
+                                ),
+                                "args_source": (
+                                    "item_done"
+                                    if isinstance(arguments, str)
+                                    else "arguments_done"
+                                    if completed_arguments is not None
+                                    else "delta"
+                                ),
+                                "valid_json": _is_json_object(selected_arguments),
+                                "final_matches_item": (
+                                    completed_arguments == arguments
+                                    if completed_arguments is not None
+                                    and isinstance(arguments, str)
+                                    else None
+                                ),
+                            }
+                        )
+                if isinstance(arguments, str):
+                    yield _raw_part(
+                        {
+                            **done_part,
+                            "type": "tool_call_args_final",
+                            "arguments": arguments,
+                        }
+                    )
                 yield _raw_part(done_part)
         elif etype in {
             "response.completed",
@@ -358,6 +452,15 @@ async def _process_responses_events(
         ),
         source=source,
     )
+
+
+def _is_json_object(value: object) -> bool | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return isinstance(json.loads(value), dict)
+    except (TypeError, ValueError):
+        return False
 
 
 async def _drain_terminal_events(openai_stream: AsyncIterator[object]) -> None:

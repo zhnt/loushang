@@ -61,6 +61,13 @@ class ToolCallArgsDeltaPart(TypedDict):
     index: NotRequired[int]
 
 
+class ToolCallArgsFinalPart(TypedDict):
+    type: Literal["tool_call_args_final"]
+    arguments: str
+    tool_call_id: NotRequired[str]
+    index: NotRequired[int]
+
+
 class ToolCallDonePart(TypedDict):
     type: Literal["tool_call_done"]
     tool_call_id: NotRequired[str]
@@ -113,6 +120,7 @@ RawPart = (
     | RedactedThinkingPart
     | ToolCallStartPart
     | ToolCallArgsDeltaPart
+    | ToolCallArgsFinalPart
     | ToolCallDonePart
     | ToolCallThoughtSignaturePart
     | ImagePartRaw
