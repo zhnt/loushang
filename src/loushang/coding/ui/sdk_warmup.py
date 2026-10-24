@@ -27,6 +27,14 @@ _BUILTIN_ADAPTERS = {
 }
 
 
+def _sdk_loaded(package: str) -> bool:
+    module = sys.modules.get(package)
+    if module is None or getattr(getattr(module, "__spec__", None), "_initializing", False):
+        return False
+    constructor = "AsyncAnthropic" if package == "anthropic" else "AsyncOpenAI"
+    return hasattr(module, constructor) and hasattr(module, "Omit")
+
+
 def _current_builtin_sdk(session: object) -> tuple[str, str] | None:
     model = getattr(getattr(session, "agent", None), "model", None)
     api = getattr(model, "api", None)
@@ -101,7 +109,7 @@ class CodingSdkWarmup:
             # starting another SDK; only the current model earns a hint.
             self._show_preparing(self._active_package == package)
             return
-        if package in self._completed or package in sys.modules:
+        if package in self._completed or _sdk_loaded(package):
             self._completed.add(package)
             self._show_preparing(False)
             return

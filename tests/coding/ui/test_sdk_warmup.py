@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 from loushang.coding.ui import sdk_warmup
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -105,3 +105,14 @@ def test_only_builtin_adapter_for_current_model_is_prepared(monkeypatch) -> None
     custom = SimpleNamespace(api="anthropic-messages", invoke_raw=lambda request: None)
     registry.register_provider_adapter("kimi-code", "anthropic-messages", custom)
     assert sdk_warmup._current_builtin_sdk(session) is None
+
+
+def test_partially_imported_sdk_still_needs_preparation(monkeypatch) -> None:
+    module = ModuleType("anthropic")
+    module.__spec__ = SimpleNamespace(_initializing=True)
+    module.AsyncAnthropic = object()
+    module.Omit = object()
+    monkeypatch.setitem(sdk_warmup.sys.modules, "anthropic", module)
+    assert not sdk_warmup._sdk_loaded("anthropic")
+    module.__spec__._initializing = False
+    assert sdk_warmup._sdk_loaded("anthropic")
