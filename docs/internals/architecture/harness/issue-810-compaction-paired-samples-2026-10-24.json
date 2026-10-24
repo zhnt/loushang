@@ -1,0 +1,1003 @@
+{
+  "schema": "loushang.compaction.paired-evidence.v1",
+  "date": "2026-10-24",
+  "synthetic": true,
+  "entries": [
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 1,
+      "elapsed_seconds": 24.511,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 19.425,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 5.084,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Make transcript checkpoints recoverable after a process crash using release marker `checkpoint-v2`.\n- Preserve exact compatibility error `CTX-409` when a checkpoint belongs to another model route.\n- Complete smoke run `qa-17`, including journal replay and resume-after-crash, before measuring latency.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- Branches must continue to reference the original journal.\n- Do not replace source history with a rendered summary.\n- Loader must validate a checkpoint offset against journal size and fall back to full scan on corruption.\n- Each next review must preserve the same constraints.\n- Preserve exact error code `CTX-409`.\n- Run resume after crash before latency measurement.\n\n## Progress\n### Done\n- [x] Chose `checkpoint-v2` design: durable offset plus validation of the journal tail before use.\n- [x] Confirmed single writer owns offset publication.\n- [x] Verified loader behavior conceptually across review cycles 2–17: offset checked against journal size; corruption falls back to full scan.\n- [x] Repeatedly confirmed full scan remains the recovery path and checkpoint offset is only a cache.\n- [x] Confirmed no journal entry was edited during reviews.\n- [x] Implemented compatibility error `CTX-409` in the model-route guard.\n- [x] Smoke run `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume-after-crash scenario for `qa-17`.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **`checkpoint-v2` stores durable offset + validates journal tail**: needed for crash recovery without mutating history.\n- **Single writer publishes offsets**: avoids concurrent checkpoint races.\n- **Full scan is authoritative recovery path**: checkpoint offset is only an optimization/cache.\n- **`CTX-409` reserved for cross-model-route checkpoint ownership**: preserves compatibility semantics exactly.\n\n## Next Steps\n1. Execute and verify resume after crash for `qa-17`.\n2. Confirm recovered state matches journal tail and original journal remains referenced.\n3. Measure latency only after resume-after-crash passes.\n4. Keep future review constraints unchanged: append-only journal, single writer, no rewritten history, full-scan fallback on corruption.\n\n## Critical Context\n- Release marker: `checkpoint-v2`\n- Compatibility error: `CTX-409`\n- Smoke run identifier: `qa-17`\n- Recovery invariant: loader validates offset against journal size; invalid/corrupt checkpoint falls back to full scan.\n- Historical entries must never be rewritten; branches must reference the original journal.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate the ERR_RETRY_GAP error occurring during resume after a crash. Constraints: preserve the single writer invariant, and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- ERR_RETRY_GAP was located in the code flow between tail validation and the retry mechanism.\n- Decided to write a focused regression test before making any changes to the loader.\n\n## Context for Suffix\n- The bug context: resume-after-crash path, retry gap between tail validation and retry logic.\n- Hard constraints: single writer invariant must remain intact; checkpoint-v2 release is blocked pending qa-17 validation of the retry path.\n- Pending work: the regression test for the retry gap, followed by loader changes only after the regression is in place.",
+      "continuation_answer": "The unfinished resume error is `ERR_RETRY_GAP`, which surfaced in the resume-after-crash path for smoke run `qa-17` at the gap between journal tail validation and the retry logic; the planned fix is a focused regression test for that retry gap written before any loader changes. The release condition is that marker `checkpoint-v2` must not ship until `qa-17` validates the retry path—specifically, resume after crash must pass (state must match the journal tail with the original journal still referenced) before any latency measurement is taken. The writer invariant requires a single writer to own checkpoint offset publication against an append-only journal, with historical entries never rewritten and branches continuing to reference the original journal; the loader validates the checkpoint offset against journal size and falls back to full scan on corruption, since the offset is only a cache. The compatibility error is exactly `CTX-409`, reserved for the case where a checkpoint belongs to another model route, and its semantics must be preserved unchanged.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 1,
+      "elapsed_seconds": 15.606,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 15.604,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash using the checkpoint-v2 release marker. Maintain an append-only journal with a single writer; never rewrite historical entries. Ensure the checkpoint loader validates the journal tail and treats the full scan as the authoritative recovery path. Additionally, preserve compatibility error code CTX-409 when a checkpoint belongs to another model route, and complete smoke run qa-17 including resume after crash before measuring latency.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer invariant.\n- Never rewrite historical journal entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Preserve constraints across all future review cycles.\n- Do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Progress\n### Done\n- [x] checkpoint-v2 design: durable offset stored and journal tail validated before use; single writer owns offset publication.\n- [x] Review cycles 2–17 completed; verified loader checks offset against journal size and falls back to full scan on corruption; full scan remains the recovery path and checkpoint offset is only a cache; no journal entry was edited.\n- [x] CTX-409 implemented in the model-route guard.\n- [x] qa-17 passed journal replay.\n\n### In Progress\n- [ ] Investigate ERR_RETRY_GAP during resume after crash; focused regression planned before changing the loader.\n\n### Blocked\n- qa-17 resume-after-crash validation pending; latency measurement blocked until retry path is validated. Blocked by unresolved ERR_RETRY_GAP.\n\n## Key Decisions\n- **Checkpoint offset as cache only**: The full scan remains the authoritative recovery path, so corruption or an out-of-range offset can never cause data loss.\n- **CTX-409 preserved exactly**: Ensures cross-model-route checkpoint conflicts surface a stable, documented compatibility error.\n- **Single writer owns offset publication**: Prevents torn checkpoints and maintains the append-only invariant.\n\n## Next Steps\n1. Run a focused regression reproducing ERR_RETRY_GAP between tail validation and retry during resume after crash.\n2. Fix root cause without violating the single-writer invariant, then re-validate qa-17 resume scenario.\n3. Only after qa-17 validates the retry path: measure latency and release checkpoint-v2.\n\n## Critical Context\n- Release marker: checkpoint-v2 (not yet released).\n- Compatibility error: CTX-409 (exact code must be preserved for foreign model-route checkpoints).\n- Smoke run identifier: qa-17 (passed journal replay; resume-after-crash pending).\n- Error under investigation: ERR_RETRY_GAP, occurring between tail validation and retry in the resume-after-crash path.\n- Loader behavior: offset validated against journal size; corruption triggers full-scan fallback; no journal entry edits permitted.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate ERR_RETRY_GAP during resume after crash. Keep the single writer invariant and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- Located ERR_RETRY_GAP: it occurs between tail validation and retry in the crash-resume path.\n- Decided to run a focused regression test before making any loader changes.\n\n## Context for Suffix\n- The retained suffix begins after the initial investigation finding; the next assistant should continue with the regression reproduction.\n- Do not modify the loader until the regression isolates where the retry gap is introduced.\n- Invariants in force: single writer, append-only journal, full-scan fallback, no checkpoint-v2 release before qa-17 retry-path validation.",
+      "continuation_answer": "The unfinished resume error is **ERR_RETRY_GAP**, which occurs between tail validation and retry in the resume-after-crash path, and is currently under investigation via a focused regression before any loader changes are made; the release condition is that **checkpoint-v2** must not be released until smoke run **qa-17** validates the retry path (qa-17 has passed journal replay, but resume-after-crash is still pending, so latency measurement is blocked), and this is enforced alongside the writer invariant that a **single writer** owns checkpoint offset publication while the journal remains append-only with no historical entries ever rewritten (branches still reference the original journal, and the full scan remains the authoritative recovery path, with the offset treated only as a cache that falls back to full scan on corruption); the compatibility error code to preserve exactly is **CTX-409**, which the model-route guard returns when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 2,
+      "elapsed_seconds": 14.85,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 14.848,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash via release marker **checkpoint-v2**. Maintain the append-only journal with a single writer, and never rewrite historical entries.\n\n## Constraints & Preferences\n- Append-only journal; never rewrite historical entries.\n- Single writer owns offset publication.\n- Branches must continue referencing the original journal; do not replace source history with a rendered summary.\n- Loader must validate checkpoint offset against journal size and fall back to the full scan on corruption.\n- The full scan remains the recovery path; the checkpoint offset is only a cache.\n- Preserve compatibility error code **CTX-409** exactly for checkpoints belonging to another model route.\n- Keep the single writer invariant.\n- Do not release checkpoint-v2 until qa-17 validates the retry path.\n- Each review cycle must preserve the same constraints.\n\n## Progress\n### Done\n- [x] checkpoint-v2 design: stores a durable offset and validates the journal tail before use; single writer owns offset publication.\n- [x] Review cycles 2–17 completed: full scan confirmed as recovery path, offset treated as cache only, no journal entries edited.\n- [x] CTX-409 implemented in the model-route guard.\n- [x] Smoke run **qa-17** passed journal replay.\n\n### In Progress\n- [ ] Investigate **ERR_RETRY_GAP** during resume after crash; run a focused regression before changing the loader.\n\n### Blocked\n- Resume-after-crash scenario not yet validated; checkpoint-v2 release is gated on qa-17 passing the retry path.\n\n## Key Decisions\n- **Checkpoint offset as cache only**: the full scan remains the authoritative recovery path, so corruption of the offset falls back safely.\n- **CTX-409 for foreign model routes**: exact code preserved as the compatibility contract.\n- **qa-17 ordering**: resume after crash must complete before latency measurement.\n\n## Next Steps\n1. Run the focused regression on the retry path to characterize ERR_RETRY_GAP between tail validation and retry.\n2. Only after the regression, consider loader changes (keeping the single writer invariant).\n3. Validate resume-after-crash in qa-17, then measure latency and release checkpoint-v2.\n\n## Critical Context\n- Release marker: **checkpoint-v2**.\n- Compatibility error: **CTX-409** (checkpoint belongs to another model route).\n- Smoke run identifier: **qa-17** (passed journal replay).\n- Current error: **ERR_RETRY_GAP**, occurring between tail validation and retry during resume after crash.\n- Invariants: append-only journal, single writer, no rewriting historical entries, full scan as recovery fallback.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate ERR_RETRY_GAP during resume after crash. Keep the single writer invariant and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- Identified ERR_RETRY_GAP occurring between tail validation and retry during resume after crash.\n- Decided the next step is a focused regression before changing the loader.\n\n## Context for Suffix\n- The regression has not yet been run; no loader changes have been made.\n- checkpoint-v2 release remains blocked pending qa-17 validation of the retry path.\n- Single writer invariant and append-only journal constraints still apply to any fix.",
+      "continuation_answer": "The unfinished resume error is **ERR_RETRY_GAP**, which surfaces between tail validation and retry during resume after a crash; it is currently under investigation via a focused regression, and no loader changes have been made yet. The release condition for **checkpoint-v2** is strict: it must not ship until the **qa-17** smoke run validates the resume-after-crash retry path (qa-17 has only passed journal replay so far), after which latency can be measured and the marker released. Throughout any fix, the single writer invariant holds: one writer owns offset publication against an append-only journal, historical entries are never rewritten, branches keep referencing the original journal, and the checkpoint offset remains a cache only, with the full scan as the authoritative recovery fallback on corruption. The compatibility error code **CTX-409** must be preserved exactly, as it signals that a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 2,
+      "elapsed_seconds": 18.575,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 10.923,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 7.65,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash using the release marker checkpoint-v2. Later, implement compatibility error code CTX-409 for checkpoints belonging to another model route, run smoke test qa-17, and resume after crash before measuring latency.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Branches must continue to reference the original journal.\n- Do not replace source history with a rendered summary.\n- The loader must check a checkpoint offset against journal size and fall back to the full scan on corruption.\n- Each subsequent review must preserve these same constraints.\n- Preserve the exact error code CTX-409 for cross-model-route checkpoint conflicts.\n- Resume after crash must occur before measuring latency.\n\n## Progress\n### Done\n- [x] checkpoint-v2 design: durable offset storage with journal tail validation before use; single writer owns offset publication\n- [x] Review cycles 2–17 completed — each confirmed: branches reference the original journal, loader validates offset against journal size with full-scan fallback on corruption, no journal entries edited, checkpoint offset treated as cache only\n- [x] CTX-409 implemented in the model-route guard\n- [x] Smoke run qa-17 passed journal replay\n\n### In Progress\n- [ ] Resume after crash scenario (must complete before latency measurement)\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Checkpoint offset is a cache, not source of truth**: the full journal scan remains the recovery path, ensuring corruption of a checkpoint never loses data.\n- **Single writer owns offset publication**: prevents concurrent offset writes corrupting recovery state.\n- **CTX-409 as exact compatibility error**: reserved specifically for checkpoints belonging to another model route.\n\n## Next Steps\n1. Execute and verify the resume-after-crash scenario using the checkpoint-v2 durable offset.\n2. Confirm loader validates offset against journal size and falls back to full scan if the offset is invalid or journal is corrupted.\n3. After successful resume, proceed to latency measurement.\n4. Carry forward the standing review constraints (append-only journal, single writer, no historical rewrites) into any further review cycles.\n\n## Critical Context\n- Release marker: checkpoint-v2\n- Error code: CTX-409 (model-route guard, cross-route checkpoint)\n- Smoke run identifier: qa-17 (passed journal replay)\n- Standing constraint set repeated in review cycles 2–17: inspect checkpoint path, verify branches reference original journal, offset-vs-size check with full-scan fallback, preserve constraints in next review.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` occurring during resume after crash; preserve the single writer invariant; do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- `ERR_RETRY_GAP` was located between tail validation and retry.\n- Next planned step is a focused regression before changing the loader.\n- Loader remains unchanged pending that regression and `qa-17` validation.\n\n## Context for Suffix\n- Retry/resume-after-crash path is the focus.\n- Single writer invariant must be maintained.\n- `checkpoint-v2` release is blocked on `qa-17`.\n- Avoid loader edits until the regression confirms the retry-path fix.",
+      "continuation_answer": "The unfinished resume error is `ERR_RETRY_GAP`, which surfaces on the retry/resume-after-crash path between tail validation and retry, and it must be confirmed fixed by a focused regression before any loader change is made. The release condition is that `checkpoint-v2` must not be released until smoke run `qa-17` validates the retry path (it has already passed journal replay, but the retry-path validation is still pending). The writer invariant requires a single writer to own offset publication, so any retry-path fix must preserve single-writer semantics without introducing concurrent offset writes. The compatibility error code is `CTX-409`, reserved by the model-route guard for checkpoints belonging to another model route. These exact identifiers — `ERR_RETRY_GAP`, `checkpoint-v2`, `qa-17`, `CTX-409` — anchor the current state: loader unchanged, resume blocked pending regression, release blocked pending `qa-17`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_separate",
+      "repetition": 1,
+      "elapsed_seconds": 19.213,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 10.217,
+          "prompt_utf8_bytes": 20440,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 8.994,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nRecover transcript checkpoints safely after process crash under the checkpoint-v2 release marker.\n\n## Constraints & Preferences\n- Preserve LEGACY-KEEP-42 across updates.\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- Branches must reference the original journal; do not replace source history with a rendered summary.\n- Loader must check checkpoint offset against journal size and fall back to full scan on corruption.\n- Preserve exact error code CTX-409 when a checkpoint belongs to another model route.\n- Resume after crash must be validated before measuring latency.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] Implemented checkpoint-v2 with durable offset, journal-tail validation, and single-writer offset publication.\n- [x] Confirmed offset-vs-journal-size check and corruption fallback to full scan across review cycles 2–17.\n- [x] Implemented CTX-409 in the model-route guard.\n- [x] qa-17 passed journal replay.\n\n### In Progress\n- [ ] Validate crash recovery via resume after crash.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Legacy marker**: Keep LEGACY-KEEP-42 for checkpoint compatibility.\n- **Checkpoint-v2 durability**: Store a durable offset and validate the journal tail before use; the single writer owns offset publication.\n- **Recovery model**: Full scan remains the recovery path; checkpoint offset is only a cache.\n- **Compatibility handling**: Use exact code CTX-409 for checkpoints belonging to another model route.\n\n## Next Steps\n1. Complete resume-after-crash validation.\n2. Measure latency only after crash resume is confirmed.\n\n## Critical Context\n- LEGACY-KEEP-42 is a durable compatibility marker.\n- No journal entry was edited; historical entries remain append-only.\n- Smoke run identifier: qa-17.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate the `ERR_RETRY_GAP` occurring during resume after a crash. Maintain the single-writer invariant, and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- `ERR_RETRY_GAP` was located in the window between tail validation and retry during crash-resume handling.\n- The next planned step is a focused regression test before making any loader changes.\n- No `checkpoint-v2` release is allowed yet.\n\n## Context for Suffix\nContinue by adding a targeted regression around resume-after-crash/retry behavior, confirming the tail-validation-to-retry sequence does not violate single-writer assumptions. Any fix should wait for the regression to expose the exact gap; `checkpoint-v2` remains gated on `qa-17` validation of the retry path.",
+      "continuation_answer": "The unfinished error is `ERR_RETRY_GAP`, observed in the window between tail validation and retry during crash-resume handling, where a resume attempt can observe a journal-tail state that a retry then misinterprets as a gap — a targeted regression test around resume-after-crash/retry will be added first to expose the exact gap before any loader fix is made, and no loader changes are permitted until the regression defines the failure precisely. The single-writer invariant must hold throughout: only one writer may publish checkpoint offsets, so the tail-validation-to-retry sequence cannot create a second offset publisher or race the durable offset against the journal tail. The release condition is that `checkpoint-v2` remains gated — it must not ship until smoke run `qa-17` validates the retry path after crash resume. Finally, the compatibility error code is the exact identifier `CTX-409`, raised by the model-route guard when a checkpoint belongs to another model route, and it must be preserved verbatim, as must the durable legacy marker `LEGACY-KEEP-42`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_combined",
+      "repetition": 1,
+      "elapsed_seconds": 16.366,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 16.364,
+          "prompt_utf8_bytes": 20921,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nRecover transcript checkpoints safely after a process crash (release marker: checkpoint-v2). Preserve durable compatibility markers across updates.\n\n## Constraints & Preferences\n- Preserve LEGACY-KEEP-42 across updates (durable compatibility marker from prior work).\n- Keep the append-only journal; never rewrite historical entries.\n- Maintain a single writer, which owns offset publication.\n- Do not replace source history with a rendered summary; branches must still reference the original journal.\n- Loader must validate a checkpoint offset against journal size and fall back to the full scan on corruption.\n- Compatibility error CTX-409 must be preserved exactly when a checkpoint belongs to another model route.\n- Do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Progress\n### Done\n- [x] Decision recorded: checkpoint-v2 stores a durable offset and validates the journal tail before use.\n- [x] Checkpoint offset treated as a cache only; full scan remains the recovery path.\n- [x] Implemented CTX-409 in the model-route guard.\n- [x] qa-17 passed journal replay.\n- [x] Review cycles 2–17 completed: branches still reference the original journal; no journal entry was edited.\n\n### In Progress\n- [ ] Investigate ERR_RETRY_GAP during resume after crash (found between tail validation and retry).\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Checkpoint offset as cache only**: The full scan remains the authoritative recovery path; the checkpoint offset must never become the sole source of truth.\n- **CTX-409 in model-route guard**: Exact error code preserved for cross-model-route checkpoint conflicts.\n- **Single writer owns offset publication**: Maintains the append-only invariant and prevents torn checkpoints.\n\n## Next Steps\n1. Write a focused regression for the ERR_RETRY_GAP path before changing the loader.\n2. Run qa-17 resume-after-crash scenario (validate the retry path) before measuring latency.\n3. Release checkpoint-v2 only after qa-17 validates the retry path.\n\n## Critical Context\n- Exact error code: CTX-409 (checkpoint belongs to another model route).\n- Smoke run identifier: qa-17.\n- Error under investigation: ERR_RETRY_GAP, occurring between tail validation and retry during resume after crash.\n- Resume after crash must complete before latency measurement.\n- Full scan is the fallback when offset validation fails (offset > journal size or corruption).\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate ERR_RETRY_GAP during resume after crash. Keep the single writer invariant and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- ERR_RETRY_GAP located between tail validation and retry during resume after crash.\n\n## Context for Suffix\n- The retained suffix continues from the ERR_RETRY_GAP finding.\n- Constraint: no loader changes before a focused regression is written.\n- Single writer invariant and checkpoint-v2 hold remain in force; qa-17 must validate the retry path before release.",
+      "continuation_answer": "The unfinished resume error **ERR_RETRY_GAP** occurs between tail validation and the retry step during resume-after-crash — a gap exists where the checkpoint's durable offset and the journal tail validation disagree, and the focused regression for this path must be written before any loader change is made, with the full scan remaining the fallback when offset validation fails (offset exceeding journal size or corruption). Release of **checkpoint-v2** is gated on **qa-17** validating the retry path, and latency measurement cannot begin until resume-after-crash completes; until that validation passes, the release is on hold. The writer invariant holds that a **single writer owns offset publication**, preserving the append-only journal — historical entries are never rewritten and branches continue to reference the original journal rather than a rendered summary. The compatibility error **CTX-409** is preserved exactly, raised when a checkpoint belongs to another model route, alongside the durable marker **LEGACY-KEEP-42**, which must survive updates.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_combined",
+      "repetition": 2,
+      "elapsed_seconds": 28.5,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 28.499,
+          "prompt_utf8_bytes": 20921,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nRecover transcript checkpoints safely after a process crash, using release marker `checkpoint-v2` while preserving compatibility marker `LEGACY-KEEP-42`.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- Do not replace source history with a rendered summary.\n- Loader must check checkpoint offset against journal size and fall back to full scan on corruption.\n- Preserve exact compatibility error `CTX-409` when a checkpoint belongs to another model route.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry/resume path.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] Defined `checkpoint-v2` to store a durable offset and validate the journal tail before use.\n- [x] Confirmed checkpoint offset is only a cache; full scan remains the recovery path.\n- [x] Completed review cycles 2–17 with no journal entries edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Validate crash recovery, specifically resume after crash.\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n\n### Blocked\n- `checkpoint-v2` release is blocked until `qa-17` validates the retry path.\n- `ERR_RETRY_GAP` remains unresolved pending focused regression.\n\n## Key Decisions\n- **Checkpoint offset as cache**: `checkpoint-v2` may accelerate load, but full journal scan remains the authoritative recovery path.\n- **Single writer owns offset publication**: preserves append-only journal invariant and avoids historical rewrites.\n- **Compatibility marker**: keep `LEGACY-KEEP-42` for checkpoint compatibility.\n- **Exact compatibility error**: preserve `CTX-409` for checkpoints belonging to another model route.\n\n## Next Steps\n1. Run a focused regression for `ERR_RETRY_GAP` before changing the loader.\n2. Keep the single-writer invariant while validating resume-after-crash retry behavior.\n3. Complete `qa-17` validation of the retry path before measuring latency or releasing `checkpoint-v2`.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Compatibility marker: `LEGACY-KEEP-42`.\n- Compatibility error: `CTX-409`.\n- Smoke run identifier: `qa-17`.\n- Current error: `ERR_RETRY_GAP`, found between tail validation and retry.\n- Historical journal must remain append-only; no entry rewrites.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Found `ERR_RETRY_GAP` between tail validation and retry.\n- Next step identified: focused regression before changing the loader.\n\n## Context for Suffix\n- `ERR_RETRY_GAP` is the active blocker for resume-after-crash.\n- Do not modify the loader before the focused regression.\n- Preserve append-only journal, single writer, full-scan fallback, `CTX-409`, `LEGACY-KEEP-42`, and `qa-17` constraints.",
+      "continuation_answer": "The unfinished resume error is `ERR_RETRY_GAP`, currently the active blocker: it surfaces during resume-after-crash, found between tail validation and retry, and remains unresolved pending a focused regression — importantly, no loader changes should be made before that regression runs. The release condition is that `checkpoint-v2` must not be released until smoke run `qa-17` completes validation of the retry/resume path (it has passed journal replay but not yet the retry path). The writer invariant is that a single writer owns checkpoint-offset publication, preserving the append-only journal so historical entries are never rewritten, with the checkpoint offset treated as only a cache and full journal scan remaining the authoritative recovery path — the loader must also check the checkpoint offset against journal size and fall back to full scan on corruption. Finally, the compatibility error `CTX-409` must be preserved exactly when a checkpoint belongs to another model route, alongside the compatibility marker `LEGACY-KEEP-42`, which must be kept for checkpoint compatibility.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "kimi-code/kimi-code-openai/kimi-for-coding",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_separate",
+      "repetition": 2,
+      "elapsed_seconds": 12.667,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 7.753,
+          "prompt_utf8_bytes": 20440,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 4.912,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cache_read_tokens": null,
+          "cache_write_tokens": null,
+          "cost": null
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nRecover transcript checkpoints safely. Make transcript checkpoints recoverable after a process crash via release marker checkpoint-v2.\n\n## Constraints & Preferences\n- Preserve LEGACY-KEEP-42 across updates.\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary.\n- Preserve exact error code CTX-409 when a checkpoint belongs to another model route.\n- Continue with resume after crash before measuring latency.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] Defined checkpoint-v2: durable offset + journal tail validation, single writer owns offset publication.\n- [x] Review cycles 2–17 completed: branches still reference the original journal; loader checks offset against journal size and falls back to full scan on corruption; no journal entry edited.\n- [x] Implemented CTX-409 in the model-route guard.\n- [x] Smoke run qa-17 passed journal replay.\n\n### In Progress\n- [ ] Validate crash recovery — resume after crash scenario.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Legacy marker**: Keep LEGACY-KEEP-42 for checkpoint compatibility.\n- **checkpoint-v2 design**: durable offset validated against journal tail; single writer owns offset publication.\n- **Full scan remains the recovery path**: checkpoint offset is only a cache; on corruption the loader falls back to a full scan.\n\n## Next Steps\n1. Run resume-after-crash validation for qa-17.\n2. Measure latency only after resume after crash passes.\n\n## Critical Context\n- LEGACY-KEEP-42 is a durable compatibility marker.\n- CTX-409 is the exact compatibility error for checkpoints belonging to another model route.\n- Smoke run identifier is qa-17; journal replay passed.\n- Loader checks checkpoint offset against journal size and falls back to full scan on corruption.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate the ERR_RETRY_GAP occurring during resume after a crash. Constraints: preserve the single writer invariant, and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- Located the ERR_RETRY_GAP: it arises in the gap between tail validation and the retry logic during crash-resume.\n- Identified next step: write a focused regression test for the retry path before making any changes to the loader.\n\n## Context for Suffix\n- The error occurs specifically at the boundary between tail validation and retry handling during resume, so fixes must address that handoff.\n- Two hard constraints govern all work: (1) the single writer invariant must be maintained, and (2) the checkpoint-v2 release is blocked pending qa-17 validation of the retry path.\n- The investigation is in the analysis stage; no loader changes have been made yet — a regression test is expected to come first.",
+      "continuation_answer": "The unfinished resume error is **ERR_RETRY_GAP**, which occurs at the boundary between tail validation and retry handling during crash-resume — i.e., the gap where the checkpoint-v2 offset has been validated against the journal tail but the retry logic has not yet taken over, so resume can fail spuriously after a crash; the fix is gated on writing a focused regression test for the retry path first, with no loader changes made yet. The release condition is that **checkpoint-v2** must not ship until the **qa-17** smoke run validates this retry path (journal replay already passed for qa-17), and latency is measured only after resume-after-crash passes. The writer invariant is that a **single writer** owns offset publication against the **append-only journal**, with **LEGACY-KEEP-42** preserved as a durable compatibility marker and historical entries never rewritten. The compatibility error code is exactly **CTX-409**, raised by the model-route guard when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 1,
+      "elapsed_seconds": 10.469,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 8.583,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": 3703,
+          "output_tokens": 1467,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 0.00051842,
+            "output": 0.00041076,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.00092918
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 1.884,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 269,
+          "output_tokens": 267,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 3.766e-05,
+            "output": 7.476e-05,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.00011242
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Make transcript checkpoints recoverable after a process crash.\n- Ship release marker `checkpoint-v2` while preserving the append-only journal and single-writer model.\n- Complete review cycles 2–17 verification of checkpoint path, journal references, and crash-safe loader fallback.\n- Handle compatibility error `CTX-409` and continue with resume-after-crash before measuring latency.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Loader must check checkpoint offset against journal size and fall back to full scan on corruption.\n- Checkpoint offset is only a cache; full scan remains the recovery path.\n- Preserve exact error code `CTX-409` when a checkpoint belongs to another model route.\n- Use smoke run identifier `qa-17`.\n- Resume after crash must be validated before measuring latency.\n- Future reviews must preserve the same constraints.\n\n## Progress\n### Done\n- [x] Defined `checkpoint-v2` with durable offset validation before use; single writer owns offset publication.\n- [x] Review cycles 2 through 17 completed: checkpoint path inspected, branches confirmed to reference original journal, loader offset/size check and full-scan corruption fallback confirmed.\n- [x] No journal entry was edited during review cycles.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume-after-crash scenario validation.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **`checkpoint-v2` stores a durable offset and validates the journal tail before use**: supports crash recovery while keeping journal history authoritative.\n- **Single writer owns offset publication**: preserves the single-writer invariant.\n- **Checkpoint offset is only a cache; full scan remains the recovery path**: ensures corruption fallback and avoids replacing source history.\n- **`CTX-409` enforced in model-route guard**: provides exact compatibility error for checkpoints created under another model route.\n\n## Next Steps\n1. Validate resume after crash using `checkpoint-v2` and `qa-17`.\n2. Confirm loader rejects invalid/corrupt offsets and falls back to full scan.\n3. Confirm branches still reference the original journal after resume.\n4. Verify `CTX-409` remains exact for cross-model-route checkpoints.\n5. Only after resume-after-crash passes, measure latency.\n6. Continue the next review while preserving all constraints.\n\n## Critical Context\n- Release marker: `checkpoint-v2`\n- Compatibility error: `CTX-409` — preserve exact code when a checkpoint belongs to another model route.\n- Smoke run identifier: `qa-17`\n- `qa-17` passed journal replay; resume after crash is the remaining scenario.\n- Append-only journal; single writer; no historical entry rewrites.\n- Full scan is the recovery path; checkpoint offset is only a cache.\n- Review cycles 2–17 are complete, with no journal entry edited.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` occurring during resume after a crash. Constraints: preserve the single-writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` in the gap between tail validation and retry.\n- Decided the next step is a focused regression test before making any loader changes.\n\n## Context for Suffix\n- No loader modifications have been made yet.\n- `checkpoint-v2` remains unreleased pending `qa-17` validation of the retry path.\n- The single-writer invariant must continue to hold throughout the investigation.",
+      "continuation_answer": "The unfinished resume issue is `ERR_RETRY_GAP`, located in the gap between checkpoint tail validation and retry, with no loader changes made yet and a focused regression test as the next step; `checkpoint-v2` remains unreleased until `qa-17` validates the retry path, the single-writer invariant must hold throughout (one writer owns offset publication), and `CTX-409` must remain the exact compatibility error when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 1,
+      "elapsed_seconds": 8.736,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 8.734,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": 3884,
+          "output_tokens": 1686,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 0.00054376,
+            "output": 0.00047208,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.00101584
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash while preserving the append-only journal, a single writer, and source history. Release marker: `checkpoint-v2`.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries; do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Loader must validate the checkpoint offset against journal size and fall back to the full scan on corruption.\n- The full scan remains the recovery path; the checkpoint offset is only a cache.\n- Preserve the exact compatibility error `CTX-409` when a checkpoint belongs to another model route.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Continue resume-after-crash investigation before measuring latency.\n\n## Progress\n### Done\n- [x] Defined `checkpoint-v2` to store a durable offset and validate the journal tail before use.\n- [x] Established that the single writer owns offset publication.\n- [x] Completed review cycles 2–17: checkpoint path inspected, branches still reference the original journal, and no journal entry was edited.\n- [x] Confirmed loader checks an offset against journal size and falls back to full scan on corruption.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n- [ ] Run a focused regression before changing the loader.\n\n### Blocked\n- `checkpoint-v2` release is gated on `qa-17` validating the retry path; `ERR_RETRY_GAP` remains unresolved.\n\n## Key Decisions\n- **Durable offset plus tail validation**: `checkpoint-v2` uses a durable offset but validates the journal tail before use.\n- **Single-writer offset publication**: avoids conflicting checkpoint state.\n- **Full-scan fallback**: corruption falls back to full scan; checkpoint offset is only a cache.\n- **No history rewrite**: preserve append-only journal and original source history.\n- **Exact compatibility code**: keep `CTX-409` unchanged for cross-model-route checkpoints.\n\n## Next Steps\n1. Create and run a focused regression for `ERR_RETRY_GAP` between tail validation and retry.\n2. Fix the loader only after the regression reproduces and isolates the gap.\n3. Validate resume after crash with `qa-17`, preserving the single writer invariant.\n4. Measure latency only after resume-after-crash validation.\n5. Release `checkpoint-v2` only after `qa-17` validates the retry path.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Smoke run identifier: `qa-17`.\n- Compatibility error: `CTX-409`, used when a checkpoint belongs to another model route.\n- Current error: `ERR_RETRY_GAP` during resume after crash.\n- `ERR_RETRY_GAP` occurs between tail validation and retry.\n- `qa-17` passed journal replay; resume after crash remains unvalidated.\n- No journal entry was edited; branches still reference the original journal.\n- Loader behavior: offset checked against journal size; corruption falls back to full scan.\n- Single writer invariant remains mandatory.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Found `ERR_RETRY_GAP` between tail validation and retry.\n- Determined the next step is a focused regression before changing the loader.\n\n## Context for Suffix\n- `ERR_RETRY_GAP` is unresolved and affects resume after crash.\n- Do not change the loader until the focused regression is run.\n- `qa-17` retry-path validation is the release gate for `checkpoint-v2`.\n- Preserve the single writer invariant and full-scan fallback behavior.",
+      "continuation_answer": "`ERR_RETRY_GAP` is the unresolved resume-after-crash error occurring between checkpoint tail validation and retry; it blocks `checkpoint-v2` release until `qa-17` validates the retry path. The single writer invariant remains mandatory—only the single writer publishes the durable offset—while the checkpoint offset is only a cache and corruption falls back to the full scan without rewriting the append-only journal or original source history. `CTX-409` is the exact compatibility error preserved for a checkpoint that belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 2,
+      "elapsed_seconds": 16.791,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 16.79,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": 172,
+          "output_tokens": 3110,
+          "cache_read_tokens": 3712,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 2.408e-05,
+            "output": 0.0008708,
+            "cacheRead": 1.03936e-05,
+            "cacheWrite": 0.0,
+            "total": 0.0009052736
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash. Release under marker `checkpoint-v2`. Preserve the append-only journal and single-writer model. Validate the resume-after-crash retry path with `qa-17` before release.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- `checkpoint-v2` stores a durable offset and validates the journal tail before use; the single writer owns offset publication.\n- Branches must still reference the original journal; do not replace source history with a rendered summary.\n- The loader must check an offset against journal size and fall back to the full scan on corruption.\n- Preserve the exact compatibility error code `CTX-409` when a checkpoint belongs to another model route.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Continue with resume-after-crash validation before measuring latency.\n- Each subsequent review must preserve the same constraints.\n\n## Progress\n### Done\n- [x] Established `checkpoint-v2` behavior: durable offset plus journal-tail validation; single writer owns offset publication.\n- [x] Completed review cycles 2–17; each confirmed the full scan remains the recovery path, the checkpoint offset is only a cache, and no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume-after-crash validation remains outstanding; `qa-17` has not yet validated the retry path.\n\n### Blocked\n- `checkpoint-v2` release is blocked pending `qa-17` validation of the resume-after-crash retry path.\n\n## Key Decisions\n- **`checkpoint-v2` stores a durable offset and validates the journal tail before use**: supports recoverability while preserving journal integrity.\n- **Full scan is the recovery path; offset is only a cache**: safe fallback if the checkpoint is corrupt or inconsistent.\n- **Single writer owns offset publication**: maintains the single-writer invariant.\n- **No journal rewriting**: preserves historical entries and auditability.\n- **Exact `CTX-409` code is preserved**: required for cross-model-route compatibility errors.\n\n## Next Steps\n1. Add a focused regression for `ERR_RETRY_GAP` between tail validation and retry before changing the loader.\n2. Run `qa-17` resume-after-crash validation and confirm the retry path while preserving the single-writer invariant.\n3. Measure latency only after resume-after-crash validation succeeds.\n4. Release `checkpoint-v2` only after `qa-17` validates the retry path.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Smoke run identifier: `qa-17`.\n- Compatibility error: `CTX-409`.\n- Current error under investigation: `ERR_RETRY_GAP`, occurring between tail validation and retry.\n- `qa-17` passed journal replay; resume after crash remains the remaining scenario.\n- Full-scan fallback on corruption and offset-vs-journal-size checks must remain intact.\n- Branches must reference the original journal; source history must not be replaced by a rendered summary.\n- No concrete file paths were provided; relevant components are the checkpoint path, journal, loader, and model-route guard.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` during resume after crash. Keep the single-writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` between tail validation and retry.\n- Next step is a focused regression before changing the loader.\n\n## Context for Suffix\n- `qa-17` passed journal replay; resume-after-crash is the remaining scenario.\n- `checkpoint-v2` release remains blocked until `qa-17` validates the retry path.\n- Preserve append-only journal behavior, single-writer offset publication, loader offset check against journal size, and full-scan fallback on corruption.",
+      "continuation_answer": "`ERR_RETRY_GAP` remains the unfinished resume-after-crash issue, occurring between journal-tail validation and retry; `checkpoint-v2` must not be released until `qa-17` validates that retry path. The single-writer invariant remains intact: one writer owns offset publication, the journal stays append-only with no historical rewrites, and the loader must check the offset against journal size and fall back to a full scan on corruption. The compatibility error code `CTX-409` must be preserved when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 2,
+      "elapsed_seconds": 7.61,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 5.264,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": 247,
+          "output_tokens": 949,
+          "cache_read_tokens": 3456,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 3.458e-05,
+            "output": 0.00026572,
+            "cacheRead": 9.6768e-06,
+            "cacheWrite": 0.0,
+            "total": 0.0003099768
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 2.343,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 141,
+          "output_tokens": 350,
+          "cache_read_tokens": 128,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 1.974e-05,
+            "output": 9.8e-05,
+            "cacheRead": 3.584e-07,
+            "cacheWrite": 0.0,
+            "total": 0.0001180984
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Make transcript checkpoints recoverable after a process crash, with release marker `checkpoint-v2`.\n- Preserve an append-only journal with a single writer, and never rewrite historical entries.\n- Complete resume-after-crash validation for smoke run `qa-17` before measuring latency.\n\n## Constraints & Preferences\n- Keep the journal append-only and maintain a single writer.\n- Never rewrite historical journal entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Loader must check checkpoint offset against journal size and fall back to full scan on corruption.\n- `checkpoint-v2` offset is only a cache; full scan remains the recovery path.\n- Preserve exact compatibility error code `CTX-409` when a checkpoint belongs to another model route.\n- Continue with resume-after-crash validation before latency measurement.\n- Future reviews must preserve the same constraints.\n\n## Progress\n### Done\n- [x] Decided `checkpoint-v2` stores a durable offset and validates the journal tail before use.\n- [x] Single writer owns offset publication.\n- [x] Review cycles 2 through 17 completed with confirmation that the full scan remains the recovery path, checkpoint offset is only a cache, and no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume-after-crash scenario for `qa-17`.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **`checkpoint-v2` design**: Stores durable offset and validates the journal tail before use.\n- **Offset as cache only**: The loader must check offset against journal size and fall back to full scan on corruption; full scan remains the recovery path.\n- **Immutable history**: The append-only journal and single-writer model are preserved; historical entries are never rewritten.\n- **Exact compatibility code**: Use `CTX-409` when a checkpoint belongs to another model route.\n\n## Next Steps\n1. Complete resume-after-crash validation for `qa-17`.\n2. Measure latency only after resume-after-crash succeeds.\n3. Preserve all existing constraints in the next review cycle.\n4. Reconfirm `CTX-409` behavior for checkpoints belonging to another model route.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Smoke run identifier: `qa-17`.\n- Compatibility error code: `CTX-409`.\n- Journal replay for `qa-17` passed.\n- Remaining scenario: resume after crash.\n- No source history was replaced with a rendered summary.\n- No historical journal entry was edited.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` occurring during resume after a crash, while preserving the single-writer invariant and not releasing `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` between tail validation and retry.\n- Decided the next step is a focused regression test before making any loader changes.\n\n## Context for Suffix\n- `ERR_RETRY_GAP` is the active issue in crash-resume handling.\n- The single-writer invariant must remain intact.\n- `checkpoint-v2` must not be released until `qa-17` validates the retry path.\n- A focused regression should precede any loader modification.",
+      "continuation_answer": "The unfinished resume-after-crash scenario for `qa-17` is blocked by `ERR_RETRY_GAP`, which occurs between tail validation and retry; a focused regression test should precede any loader modification, and `checkpoint-v2` must not be released until `qa-17` validates the retry path. Throughout, the single-writer invariant must hold: the journal remains append-only, historical entries are never rewritten, and the checkpoint offset is only a cache with full scan as the recovery path, while `CTX-409` must remain the exact compatibility code when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 3,
+      "elapsed_seconds": 8.8,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 6.203,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": 247,
+          "output_tokens": 866,
+          "cache_read_tokens": 3456,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 3.458e-05,
+            "output": 0.00024248,
+            "cacheRead": 9.6768e-06,
+            "cacheWrite": 0.0,
+            "total": 0.0002867368
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 2.594,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 141,
+          "output_tokens": 270,
+          "cache_read_tokens": 128,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 1.974e-05,
+            "output": 7.56e-05,
+            "cacheRead": 3.584e-07,
+            "cacheWrite": 0.0,
+            "total": 9.56984e-05
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Make transcript checkpoints recoverable after a process crash.\n- Ship the `checkpoint-v2` release marker.\n- Validate checkpoint loading against journal integrity and preserve recoverability.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- The loader must check an offset against journal size and fall back to a full scan on corruption.\n- The full scan remains the recovery path; the checkpoint offset is only a cache.\n- Preserve these same constraints in every review cycle.\n- Preserve exact compatibility error code `CTX-409` when a checkpoint belongs to another model route.\n- Use smoke run identifier `qa-17`.\n\n## Progress\n### Done\n- [x] Decided `checkpoint-v2` stores a durable offset and validates journal tail before use; single writer owns offset publication.\n- [x] Review cycles 2 through 17 completed; confirmed full scan remains recovery path, checkpoint offset is only a cache, and no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume-after-crash scenario remains to be verified before latency measurement.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **`checkpoint-v2` durable offset**: Stores a durable offset and validates the journal tail before use; single writer publishes the offset.\n- **Full scan fallback**: The loader checks offset against journal size and falls back to full scan on corruption; checkpoint offset is only a cache.\n- **Preserve original journal**: Reviews must not rewrite history or substitute rendered summaries for source history.\n\n## Next Steps\n1. Continue with resume after crash before measuring latency.\n2. Verify resume-after-crash behavior preserves append-only journal and single-writer constraints.\n3. Re-run or confirm `qa-17` journal replay remains passing.\n4. Measure latency after resume-after-crash is verified.\n5. Continue subsequent review cycles preserving all existing constraints.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Compatibility error: `CTX-409` — preserve exact code when a checkpoint belongs to another model route.\n- Smoke run identifier: `qa-17`.\n- `qa-17` passed journal replay.\n- No journal entry was edited across review cycles 2–17.\n- Branch references and original journal history must remain intact.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` occurring during resume after a crash. Constraints: maintain the single writer invariant and do not release checkpoint-v2 until qa-17 validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` in the gap between tail validation and retry.\n- Decided the next step is a focused regression test before making any changes to the loader.\n\n## Context for Suffix\n- Task remains unfinished; root cause is identified but not fixed.\n- Hard constraints still apply: preserve the single writer invariant; hold checkpoint-v2 until qa-17 validates the retry path.\n- Any loader changes should be preceded by the focused regression covering the tail-validation-to-retry gap.",
+      "continuation_answer": "The unfinished resume-after-crash issue is `ERR_RETRY_GAP`, located in the gap between tail validation and retry; the root cause is identified but not fixed, and a focused regression test must cover that gap before any loader change. The release condition is to hold `checkpoint-v2` until `qa-17` validates the retry path, while preserving the single-writer invariant so only one writer owns journal writes and durable offset publication. The exact compatibility error code to preserve for a checkpoint belonging to another model route is `CTX-409`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 3,
+      "elapsed_seconds": 10.52,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 10.518,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": 172,
+          "output_tokens": 2144,
+          "cache_read_tokens": 3712,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 2.408e-05,
+            "output": 0.00060032,
+            "cacheRead": 1.03936e-05,
+            "cacheWrite": 0.0,
+            "total": 0.0006347936
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash while preserving an append-only journal and single-writer model. Release marker: `checkpoint-v2`.\n\n## Constraints & Preferences\n- Keep the append-only journal; maintain a single writer.\n- Never rewrite historical journal entries.\n- `checkpoint-v2` must store a durable offset and validate the journal tail before use.\n- The single writer owns offset publication.\n- Branches must still reference the original journal.\n- Do not replace source history with a rendered summary.\n- The loader must check an offset against journal size and fall back to the full scan on corruption.\n- Preserve these constraints in subsequent reviews.\n- Preserve exact compatibility error `CTX-409` when a checkpoint belongs to another model route.\n- Smoke run identifier: `qa-17`.\n- Continue with resume-after-crash validation before measuring latency.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Keep the single-writer invariant during the `ERR_RETRY_GAP` investigation.\n\n## Progress\n### Done\n- [x] Defined `checkpoint-v2` as a durable offset with journal-tail validation.\n- [x] Confirmed the single writer owns offset publication.\n- [x] Completed review cycles 2 through 17 with the same outcome: full scan remains the recovery path, checkpoint offset is only a cache, and no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n- [ ] Validate the `qa-17` retry path before releasing `checkpoint-v2`.\n\n### Blocked\n- `checkpoint-v2` release is blocked until `qa-17` validates the retry path; `ERR_RETRY_GAP` is unresolved.\n\n## Key Decisions\n- **`checkpoint-v2` stores a durable offset and validates the journal tail before use**: supports recovery without rewriting history.\n- **Single writer owns offset publication**: preserves the single-writer invariant and avoids conflicting offset state.\n- **Full scan remains the recovery path; checkpoint offset is only a cache**: ensures safe fallback after corruption.\n- **`CTX-409` is handled in the model-route guard**: preserves the exact compatibility error for checkpoints from another model route.\n\n## Next Steps\n1. Add or run a focused regression for `ERR_RETRY_GAP` between tail validation and retry.\n2. Fix the retry gap without violating the single-writer and append-only constraints.\n3. Validate `qa-17` resume after crash and the retry path.\n4. Release `checkpoint-v2` only after `qa-17` validates the retry path.\n5. Measure latency only after resume-after-crash validation.\n\n## Critical Context\n- Error under investigation: `ERR_RETRY_GAP`.\n- Compatibility error must remain exactly: `CTX-409`.\n- Smoke run: `qa-17`.\n- Release marker: `checkpoint-v2`.\n- Review cycles 2-17 all confirmed: original journal references remain, no rendered-summary replacement, no journal edits.\n- Known code areas: checkpoint path, loader, journal tail validation, model-route guard.\n- No explicit filesystem paths or function names were provided in the conversation.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nCurrent unfinished task: investigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Found `ERR_RETRY_GAP` between tail validation and retry.\n- Decided the next step is a focused regression before changing the loader.\n\n## Context for Suffix\n- The turn is unfinished; the retained suffix continues the `ERR_RETRY_GAP` investigation.\n- Preserve the single-writer invariant, append-only journal, no historical rewrites, and the `checkpoint-v2` release gate.\n- Do not treat the current turn prefix as a completed task.\n- `qa-17` has passed journal replay, but resume-after-crash and retry-path validation remain outstanding.",
+      "continuation_answer": "The unfinished resume-after-crash issue is `ERR_RETRY_GAP`, which occurs between checkpoint journal-tail validation and retry while investigating resume recovery; `checkpoint-v2` must not be released until `qa-17` validates the retry path (journal replay has passed, but resume-after-crash/retry validation is still outstanding), and this work must preserve the single-writer invariant—the single writer owns offset publication—along with the append-only journal and no historical rewrites, while the compatibility error for a checkpoint belonging to another model route remains exactly `CTX-409`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_combined",
+      "repetition": 4,
+      "elapsed_seconds": 7.389,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 7.388,
+          "prompt_utf8_bytes": 20431,
+          "input_tokens": 172,
+          "output_tokens": 1364,
+          "cache_read_tokens": 3712,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 2.408e-05,
+            "output": 0.00038192,
+            "cacheRead": 1.03936e-05,
+            "cacheWrite": 0.0,
+            "total": 0.0004163936
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash while preserving the append-only journal and single-writer invariant. Release marker: `checkpoint-v2`. Validate recovery via smoke run `qa-17`, including resume after crash and retry-path behavior.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Loader must check the checkpoint offset against journal size.\n- On corruption, loader must fall back to the full scan.\n- Preserve exact error code `CTX-409` when a checkpoint belongs to another model route.\n- Complete resume-after-crash validation before measuring latency.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Preserve the single-writer invariant during `ERR_RETRY_GAP` investigation.\n- Use a focused regression before changing the loader.\n\n## Progress\n### Done\n- [x] Defined `checkpoint-v2` to store a durable offset and validate the journal tail before use.\n- [x] Established that the single writer owns offset publication.\n- [x] Reviewed checkpoint path in cycles 2–17; branches continue to reference the original journal.\n- [x] Confirmed the full scan remains the recovery path and the checkpoint offset is only a cache.\n- [x] Confirmed no journal entry was edited during review cycles.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n- [ ] Add a focused regression for the retry gap before modifying the loader.\n\n### Blocked\n- `checkpoint-v2` release is blocked until `qa-17` validates the retry path.\n\n## Key Decisions\n- **`checkpoint-v2` uses a durable offset plus journal-tail validation**: The offset is a cache, not the source of truth.\n- **Full scan remains the recovery fallback**: Corruption must not prevent recovery.\n- **Single writer publishes offsets**: Preserves the single-writer and append-only invariants.\n- **`CTX-409` is exact and stable**: It identifies checkpoints belonging to another model route.\n- **Regression before loader change**: Avoid altering loader behavior before reproducing and isolating `ERR_RETRY_GAP`.\n\n## Next Steps\n1. Create a focused regression reproducing `ERR_RETRY_GAP` between tail validation and retry.\n2. Use the regression to identify the loader/retry boundary failure without weakening journal or writer invariants.\n3. Fix the retry path, then rerun `qa-17` resume-after-crash validation.\n4. Only after `qa-17` passes, measure latency and consider releasing `checkpoint-v2`.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Smoke run identifier: `qa-17`.\n- Route-compatibility error: `CTX-409`.\n- Current defect: `ERR_RETRY_GAP` during resume after crash.\n- Failure location: between tail validation and retry.\n- `qa-17` has passed journal replay; resume-after-crash scenario remains incomplete.\n- Relevant components: loader, model-route guard, journal tail validation, retry path.\n- No source history or historical journal entries may be rewritten.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nCurrent unfinished task: investigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` between tail validation and retry.\n- Decided the next step is a focused regression before changing the loader.\n\n## Context for Suffix\nThe retained recent work concerns the unfinished `ERR_RETRY_GAP` investigation. `qa-17` journal replay has passed, but resume after crash and the retry path are not yet validated. `checkpoint-v2` must remain unreleased, and the single-writer/append-only journal constraints still apply. The next assistant should continue from the retry-gap regression rather than treating the task as complete.",
+      "continuation_answer": "The unfinished resume-after-crash error is `ERR_RETRY_GAP`, occurring between journal tail validation and retry; `qa-17` has passed journal replay but has not yet validated resume/retry, so `checkpoint-v2` remains unreleased until `qa-17` validates the retry path. The single-writer invariant is preserved by having the one writer publish offsets while the append-only journal is never rewritten and remains the source of truth, with full scan as fallback. The exact compatibility error for a checkpoint belonging to another model route is `CTX-409`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-v1",
+      "strategy": "local_separate",
+      "repetition": 4,
+      "elapsed_seconds": 6.594,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 4.205,
+          "prompt_utf8_bytes": 19572,
+          "input_tokens": 247,
+          "output_tokens": 814,
+          "cache_read_tokens": 3456,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 3.458e-05,
+            "output": 0.00022792,
+            "cacheRead": 9.6768e-06,
+            "cacheWrite": 0.0,
+            "total": 0.0002721768
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 2.387,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 141,
+          "output_tokens": 319,
+          "cache_read_tokens": 128,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 1.974e-05,
+            "output": 8.932e-05,
+            "cacheRead": 3.584e-07,
+            "cacheWrite": 0.0,
+            "total": 0.0001094184
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Make transcript checkpoints recoverable after a process crash.\n- Ship the release marker `checkpoint-v2`.\n- Preserve the append-only journal and a single writer.\n- Ensure checkpoints remain recoverable across model routes using exact error code `CTX-409`.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- `checkpoint-v2` must store a durable offset and validate the journal tail before use.\n- The single writer owns offset publication.\n- The loader must check an offset against journal size and fall back to the full scan on corruption.\n- The full scan remains the recovery path; the checkpoint offset is only a cache.\n- Preserve exact compatibility error code `CTX-409` when a checkpoint belongs to another model route.\n- Continue with resume after crash before measuring latency.\n- Every subsequent review must preserve the same constraints.\n\n## Progress\n### Done\n- [x] Decided `checkpoint-v2` uses a durable offset, validates the journal tail, and has the single writer publish the offset.\n- [x] Review cycles 2 through 17 completed with no journal entries edited.\n- [x] Confirmed the full scan remains the recovery path and the checkpoint offset is only a cache.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] Smoke run `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Resume after crash scenario.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **`checkpoint-v2` durable offset**: Stores an offset and validates the journal tail before use so recovery can trust the checkpoint.\n- **Single writer owns offset publication**: Preserves the single-writer constraint and avoids conflicting offset updates.\n- **Checkpoint as cache only**: The loader validates offset against journal size and falls back to the full scan on corruption, keeping the full scan as the authoritative recovery path.\n- **`CTX-409` in model-route guard**: Exact compatibility error code preserved when a checkpoint belongs to another model route.\n\n## Next Steps\n1. Implement/verify resume after crash.\n2. After resume-after-crash succeeds, measure latency.\n3. Continue the next review cycle while preserving the same constraints: inspect checkpoint path, verify branches reference the original journal, avoid replacing source history with a rendered summary, confirm offset-vs-journal-size validation and full-scan fallback on corruption.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Compatibility error code: `CTX-409` — used when a checkpoint belongs to another model route.\n- Smoke run identifier: `qa-17`.\n- `qa-17` passed journal replay.\n- Remaining scenario: resume after crash, to be completed before latency measurement.\n- No historical journal entries were edited during review cycles 2–17.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` during resume after a crash. Preserve the single-writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` between tail validation and retry during resume.\n- Decided the next step is a focused regression test before making any loader changes.\n- No loader changes have been made yet.\n\n## Context for Suffix\n- The investigation is still unfinished and centered on the resume-after-crash retry path.\n- `checkpoint-v2` remains unreleased and blocked on `qa-17` retry-path validation.\n- Any fix must maintain the single-writer invariant.",
+      "continuation_answer": "The unfinished resume issue is `ERR_RETRY_GAP`, found between tail validation and retry during resume after a crash; no loader changes have been made yet. `checkpoint-v2` must remain unreleased and is blocked until `qa-17` validates the retry path. Any fix must preserve the single-writer invariant, with the single writer owning offset publication and the append-only journal untouched. The exact compatibility error code is `CTX-409`, used when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_separate",
+      "repetition": 1,
+      "elapsed_seconds": 7.897,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 5.857,
+          "prompt_utf8_bytes": 20440,
+          "input_tokens": 572,
+          "output_tokens": 954,
+          "cache_read_tokens": 3328,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 8.008e-05,
+            "output": 0.00026712,
+            "cacheRead": 9.3184e-06,
+            "cacheWrite": 0.0,
+            "total": 0.0003565184
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 2.037,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 141,
+          "output_tokens": 276,
+          "cache_read_tokens": 128,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 1.974e-05,
+            "output": 7.728e-05,
+            "cacheRead": 3.584e-07,
+            "cacheWrite": 0.0,
+            "total": 9.73784e-05
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\n- Recover transcript checkpoints safely.\n- Make transcript checkpoints recoverable after a process crash; release marker is `checkpoint-v2`.\n\n## Constraints & Preferences\n- Preserve `LEGACY-KEEP-42` across updates.\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary; branches must still reference the original journal.\n- The loader must check an offset against journal size and fall back to the full scan on corruption.\n- Preserve exact compatibility error code `CTX-409` when a checkpoint belongs to another model route.\n- Smoke run identifier is `qa-17`.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] `checkpoint-v2` stores a durable offset and validates the journal tail before use.\n- [x] Single writer owns offset publication.\n- [x] Review cycles 2–17 complete: checkpoint path inspected, original journal references preserved, no journal entry edited.\n- [x] Full scan remains the recovery path; checkpoint offset is only a cache.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Validate crash recovery / resume after crash.\n- [ ] Measure latency after resume after crash is validated.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Legacy marker**: Keep `LEGACY-KEEP-42` for checkpoint compatibility.\n- **Checkpoint design**: `checkpoint-v2` stores a durable offset and validates the journal tail before use; the single writer owns offset publication.\n- **Recovery fallback**: The full scan is the recovery path, and the checkpoint offset is only a cache.\n- **Model-route guard**: Use exact error code `CTX-409` when a checkpoint belongs to another model route.\n\n## Next Steps\n1. Validate resume after crash.\n2. Measure latency only after resume after crash is validated.\n\n## Critical Context\n- `LEGACY-KEEP-42` is a durable compatibility marker.\n- `checkpoint-v2` is the release marker.\n- Review cycles 2–17 confirmed branches still reference the original journal and no historical entry was rewritten.\n- `qa-17` passed journal replay; resume after crash is the remaining scenario.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nInvestigate `ERR_RETRY_GAP` occurring during resume after a crash. Maintain the single-writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` in the flow between tail validation and retry.\n- Decided the next step is a focused regression test before making any changes to the loader.\n\n## Context for Suffix\n- The investigation is still unfinished.\n- Root cause has been narrowed to the gap between tail validation and retry, but no loader change has been made yet.\n- Constraints remain in force: preserve the single-writer invariant and hold `checkpoint-v2` release pending `qa-17` retry-path validation.",
+      "continuation_answer": "The unfinished resume-after-crash issue is `ERR_RETRY_GAP`, narrowed to the gap between tail validation and retry, with no loader change made yet; `checkpoint-v2` must not be released until `qa-17` validates the retry path. The single-writer invariant remains that one writer owns offset publication, and the exact compatibility code for a checkpoint belonging to another model route is `CTX-409`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_combined",
+      "repetition": 1,
+      "elapsed_seconds": 11.666,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 11.664,
+          "prompt_utf8_bytes": 20921,
+          "input_tokens": 675,
+          "output_tokens": 2302,
+          "cache_read_tokens": 3328,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 9.45e-05,
+            "output": 0.00064456,
+            "cacheRead": 9.3184e-06,
+            "cacheWrite": 0.0,
+            "total": 0.0007483784
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after a process crash. Release marker: `checkpoint-v2`. Recover transcript checkpoints safely.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- The loader must check an offset against journal size and fall back to the full scan on corruption.\n- Preserve exact code `CTX-409` when a checkpoint belongs to another model route.\n- Preserve `LEGACY-KEEP-42` across updates.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Continue with resume after crash before measuring latency.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] `checkpoint-v2` stores a durable offset and validates the journal tail before use.\n- [x] Single writer owns offset publication.\n- [x] Review cycles 2–17 completed; full scan remains the recovery path, checkpoint offset is only a cache, and no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n- [ ] Add a focused regression before changing the loader.\n\n### Blocked\n- `checkpoint-v2` release is blocked until `qa-17` validates the retry path.\n\n## Key Decisions\n- **`checkpoint-v2` durable offset + tail validation**: Recover safely after crash while preserving the single-writer invariant.\n- **Full scan remains recovery path**: Checkpoint offset is only a cache; corruption falls back to full scan.\n- **No historical rewrite**: Branches reference the original journal; source history is not replaced with a rendered summary.\n- **`CTX-409` model-route guard**: Preserve the exact compatibility error for checkpoints from another model route.\n- **`LEGACY-KEEP-42`**: Keep as a durable compatibility marker.\n\n## Next Steps\n1. Add a focused regression for `ERR_RETRY_GAP` between tail validation and retry.\n2. Fix the retry path/loader only after the regression, preserving the single writer and no historical rewrites.\n3. Run `qa-17` resume-after-crash retry validation, then measure latency, then release `checkpoint-v2`.\n\n## Critical Context\n- Exact compatibility error: `CTX-409` when a checkpoint belongs to another model route.\n- Smoke run identifier: `qa-17`.\n- `qa-17` passed journal replay; resume after crash is still the remaining scenario.\n- Current defect: `ERR_RETRY_GAP` occurs between tail validation and retry.\n- Loader has not been changed yet; next step is a focused regression.\n- `checkpoint-v2` must not be released until `qa-17` validates the retry path.\n- `LEGACY-KEEP-42` is a durable compatibility marker.\n- No journal entry was edited; historical entries must remain append-only and unchanged.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nCurrent unfinished task: investigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Found `ERR_RETRY_GAP` between tail validation and retry.\n- Next step is a focused regression before changing the loader.\n- No loader change has been made yet.\n\n## Context for Suffix\n- The unfinished turn is still in diagnosis.\n- Maintain the append-only journal, single writer, and no historical rewrites.\n- `qa-17` retry-path validation is required before releasing `checkpoint-v2`.",
+      "continuation_answer": "The unfinished resume-after-crash issue is `ERR_RETRY_GAP` occurring between tail validation and retry; a focused regression is still needed before changing the loader, and `checkpoint-v2` must not be released until `qa-17` validates the retry path, after which latency can be measured. The storage invariant remains an append-only journal with a single writer, no historical entry edits/rewrites, and branches referencing the original journal; compatibility must preserve `CTX-409` when a checkpoint belongs to another model route and keep `LEGACY-KEEP-42`.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_combined",
+      "repetition": 2,
+      "elapsed_seconds": 13.521,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 13.519,
+          "prompt_utf8_bytes": 20921,
+          "input_tokens": 163,
+          "output_tokens": 2650,
+          "cache_read_tokens": 3840,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 2.282e-05,
+            "output": 0.000742,
+            "cacheRead": 1.0752e-05,
+            "cacheWrite": 0.0,
+            "total": 0.000775572
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nMake transcript checkpoints recoverable after process crashes, safely ship release marker `checkpoint-v2`, and investigate `ERR_RETRY_GAP` during resume-after-crash before release.\n\n## Constraints & Preferences\n- Keep the append-only journal and a single writer.\n- Never rewrite historical journal entries.\n- Do not replace source history with a rendered summary.\n- Branches must still reference the original journal.\n- Loader must validate checkpoint offsets against journal size and fall back to full scan on corruption.\n- Preserve exact error code `CTX-409` when a checkpoint belongs to another model route.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n- Resume-after-crash validation should happen before latency measurement.\n- Preserve `LEGACY-KEEP-42` compatibility marker.\n\n## Progress\n### Done\n- [x] Selected append-only journal storage; single writer owns offset publication.\n- [x] Designed `checkpoint-v2` to store a durable offset and validate the journal tail before use.\n- [x] Completed review cycles 2–17: branches reference the original journal; no journal entries were edited.\n- [x] Confirmed full scan remains the recovery path and checkpoint offset is only a cache.\n- [x] Implemented `CTX-409` model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Investigate `ERR_RETRY_GAP` during resume after crash.\n- [ ] Run a focused regression between tail validation and retry before changing the loader.\n- [ ] Validate `qa-17` retry path and resume after crash.\n\n### Blocked\n- `checkpoint-v2` release is blocked until `qa-17` validates the retry path.\n- Loader changes should wait for the focused regression.\n\n## Key Decisions\n- **`checkpoint-v2` durable offset + tail validation**: ensures checkpoint recovery without rewriting journal history.\n- **Single writer owns offset publication**: preserves append-only consistency.\n- **Offset is only a cache**: full scan remains authoritative fallback on corruption.\n- **Preserve `CTX-409` exactly**: required for checkpoint/model-route mismatch compatibility.\n- **Hold release until `qa-17` retry validation**: `checkpoint-v2` must not ship with an unvalidated retry path.\n- **Regression before loader change**: confirm `ERR_RETRY_GAP` cause before modifying recovery logic.\n\n## Next Steps\n1. Build and run a focused regression reproducing `ERR_RETRY_GAP` between tail validation and retry.\n2. Use regression results to fix the retry/loader path without changing journal history or violating single-writer ownership.\n3. Validate `qa-17` resume after crash and retry behavior.\n4. Measure latency only after resume-after-crash validation.\n5. Release `checkpoint-v2` only after `qa-17` passes the retry path.\n\n## Critical Context\n- Release marker: `checkpoint-v2`.\n- Compatibility error: `CTX-409` for checkpoints belonging to another model route.\n- Smoke run identifier: `qa-17`; journal replay passed, retry path pending.\n- Active error: `ERR_RETRY_GAP` during resume after crash, located between tail validation and retry.\n- Append-only journal, single writer, no historical rewrites.\n- Full scan is the recovery path; checkpoint offset is cache-only.\n- `LEGACY-KEEP-42` remains a durable compatibility marker.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nCurrent unfinished task: investigate `ERR_RETRY_GAP` during resume after crash. Keep the single writer invariant and do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Found `ERR_RETRY_GAP` between tail validation and retry.\n- Decided the next step is a focused regression before changing the loader.\n\n## Context for Suffix\n- The retained suffix should continue from the focused regression and retry-path fix.\n- `qa-17` has passed journal replay, but resume-after-crash retry validation is still outstanding.\n- Do not change the loader before regression confirms the cause; do not release `checkpoint-v2` until `qa-17` validates retry behavior.\n- Maintain single-writer ownership and append-only journal invariants.",
+      "continuation_answer": "The unfinished issue is `ERR_RETRY_GAP` during resume after a crash, occurring between tail validation and retry; a focused regression must confirm the cause before changing the loader. `checkpoint-v2` must not be released until `qa-17` validates the retry path and resume-after-crash behavior. The writer invariant remains: an append-only journal with a single writer owning offset publication, no historical rewrites, and the checkpoint offset is only a cache—full scan stays authoritative. The compatibility error code is exactly `CTX-409`, used when a checkpoint belongs to another model route; `LEGACY-KEEP-42` also remains required.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    },
+    {
+      "model_route": "deepseek/openai-completions/deepseek-v4-flash",
+      "case": "synthetic-split-turn-update-v1",
+      "strategy": "local_separate",
+      "repetition": 2,
+      "elapsed_seconds": 7.271,
+      "calls": [
+        {
+          "purpose": "compaction_history",
+          "seconds": 4.864,
+          "prompt_utf8_bytes": 20440,
+          "input_tokens": 188,
+          "output_tokens": 873,
+          "cache_read_tokens": 3712,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 2.632e-05,
+            "output": 0.00024444,
+            "cacheRead": 1.03936e-05,
+            "cacheWrite": 0.0,
+            "total": 0.0002811536
+          }
+        },
+        {
+          "purpose": "compaction_turn_prefix",
+          "seconds": 2.404,
+          "prompt_utf8_bytes": 1115,
+          "input_tokens": 141,
+          "output_tokens": 300,
+          "cache_read_tokens": 128,
+          "cache_write_tokens": 0,
+          "cost": {
+            "input": 1.974e-05,
+            "output": 8.4e-05,
+            "cacheRead": 3.584e-07,
+            "cacheWrite": 0.0,
+            "total": 0.0001040984
+          }
+        }
+      ],
+      "retained_anchors": [
+        "CTX-409",
+        "checkpoint-v2",
+        "single writer",
+        "resume after crash",
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "LEGACY-KEEP-42"
+      ],
+      "missing_anchors": [],
+      "has_turn_context": true,
+      "summary": "## Goal\nRecover transcript checkpoints safely and make them recoverable after a process crash.\n\n## Constraints & Preferences\n- Preserve `LEGACY-KEEP-42` across updates.\n- Release marker is `checkpoint-v2`.\n- Keep the append-only journal and a single writer.\n- Never rewrite historical entries.\n- Inspect the checkpoint path and verify branches still reference the original journal.\n- Do not replace source history with a rendered summary.\n- Confirm the loader checks an offset against journal size and falls back to the full scan on corruption.\n- The next review must preserve the same constraints.\n- Preserve exact compatibility error `CTX-409` when a checkpoint belongs to another model route.\n- Continue with resume after crash before measuring latency.\n\n## Progress\n### Done\n- [x] Selected append-only storage.\n- [x] Implemented `checkpoint-v2` with a durable offset and journal-tail validation before use.\n- [x] Confirmed the single writer owns offset publication.\n- [x] Completed review cycles 2 through 17: branches still reference the original journal; checkpoint offset remains only a cache; full scan remains the recovery path; no journal entry was edited.\n- [x] Implemented `CTX-409` in the model-route guard.\n- [x] `qa-17` passed journal replay.\n\n### In Progress\n- [ ] Validate resume after crash before measuring latency.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Legacy marker**: Keep `LEGACY-KEEP-42` for checkpoint compatibility.\n- **checkpoint-v2**: Store a durable offset and validate the journal tail before use.\n- **Single writer**: The single writer owns offset publication.\n- **Recovery path**: The full scan remains the recovery path; the checkpoint offset is only a cache.\n\n## Next Steps\n1. Validate resume after crash.\n2. Measure latency after resume validation.\n\n## Critical Context\n- `LEGACY-KEEP-42` is a durable compatibility marker.\n- `checkpoint-v2` is the release marker.\n- `CTX-409` is the exact compatibility error when a checkpoint belongs to another model route.\n- Smoke run identifier is `qa-17`.\n- Journal replay passed for `qa-17`; resume after crash is the remaining scenario.\n- Review cycles 2–17 were completed without editing any journal entry and without replacing source history with a rendered summary.\n\n---\n\n**Turn Context (split turn):**\n\n## Original Request\nNo explicit new question was posed in the prefix. The user supplied an ongoing task directive:\n\n- Investigate `ERR_RETRY_GAP` occurring during resume after a crash.\n- Preserve the single-writer invariant.\n- Do not release `checkpoint-v2` until `qa-17` validates the retry path.\n\n## Early Progress\n- Located `ERR_RETRY_GAP` to the interval between tail validation and retry.\n- Determined the next step is a focused regression test before modifying the loader.\n- No loader changes made yet; `checkpoint-v2` remains unreleased pending `qa-17` validation.\n\n## Context for Suffix\nThe retained recent work should be read against these constraints: the bug is specifically in the tail-validation-to-retry boundary, any fix must not break single-writer guarantees, and release of `checkpoint-v2` is gated on `qa-17` sign-off of the retry path. The expected immediate activity is a targeted regression test rather than an immediate loader edit.",
+      "continuation_answer": "The unfinished resume-after-crash issue is `ERR_RETRY_GAP`, located in the interval between tail validation and retry, so the next step is a focused regression test before changing the loader; release of `checkpoint-v2` is gated on `qa-17` validating the retry path, while the single-writer invariant must remain intact—the single writer owns offset publication, the append-only journal is not rewritten, and the full scan remains the recovery path—and `CTX-409` remains the exact compatibility error when a checkpoint belongs to another model route.",
+      "continuation_recalled": [
+        "ERR_RETRY_GAP",
+        "qa-17",
+        "checkpoint-v2",
+        "single writer",
+        "CTX-409"
+      ],
+      "continuation_missing": []
+    }
+  ]
+}
