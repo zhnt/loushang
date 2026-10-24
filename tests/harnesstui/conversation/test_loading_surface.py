@@ -115,15 +115,15 @@ def test_loading_phase_survives_disabled_enter_and_tracks_real_progress():
     phase = ["initializing runtime"]
     with running_surface(lambda: phase[0]) as (worker, _, write_fd, output):
         deadline = time.monotonic() + 3
-        while "initializing runtime" not in output.getvalue() and time.monotonic() < deadline:
+        while "Initializing runtime" not in output.getvalue() and time.monotonic() < deadline:
             time.sleep(0.005)
-        assert "initializing runtime" in output.getvalue()
+        assert "Initializing runtime" in output.getvalue()
         os.write(write_fd, b"draft\r")
         phase[0] = "opening session"
         deadline = time.monotonic() + 3
-        while "opening session" not in output.getvalue() and time.monotonic() < deadline:
+        while "Opening session" not in output.getvalue() and time.monotonic() < deadline:
             time.sleep(0.005)
-        assert "opening session" in output.getvalue()
+        assert "Opening session" in output.getvalue()
         worker.request_transfer()
         transfer = worker.join(5)
         assert transfer.app.composer.value == "draft"

@@ -174,7 +174,7 @@ class ScreenFramePresentation:
         if state.startup_pending:
             message = state.status_message or "Loading session"
             if loading_phase and message.startswith("Loading session"):
-                message = f"{message} · {loading_phase}"
+                message = f"{loading_phase.capitalize()}{message[len('Loading session'):]}"
             if loading_indicator is not None:
                 message = f"{loading_indicator} {message}"
             return StatusBar(

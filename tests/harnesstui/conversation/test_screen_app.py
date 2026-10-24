@@ -79,7 +79,7 @@ def test_loading_status_animates_on_timer_and_stops_after_loading() -> None:
     assert len(status(width=12)) <= 11
 
     app.startup_phase_provider = lambda: "starting runtime"
-    assert status()[2:] == f"{LOADING_MESSAGE} · starting runtime"
+    assert status()[2:] == "Starting runtime · type now; Enter disabled"
     assert app.next_frame_due_ms(after_ms=1200) == 1400
 
     app.state.status_message = "Closing — waiting for preparation cleanup"
