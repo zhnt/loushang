@@ -186,6 +186,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     runtime: object | None = None
     completion_provider_loader: _AgentScreenCompletionProviderLoader | None = None
     report_rebind_problem: _AgentScreenRebindProblemReporter | None = None
+    on_session_rebound: Callable[[], None] | None = None
 
     def prepare(self) -> PreparedScreenConversationRun:
         session = self.session
@@ -374,6 +375,8 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                     error,
                 )
                 return
+            if self.on_session_rebound is not None:
+                self.on_session_rebound()
             if event_source.last_rebind_error is not None:
                 report_problem(
                     "event_rebind_failed",

@@ -49,10 +49,12 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             Callable[[], SessionApprovalInteractionPort | None] | None
         ) = None,
         command_catalog: ScreenSurfaceCommandCatalog | None = None,
+        on_model_changed: Callable[[], None] | None = None,
     ) -> None:
         self.session = session
         self.runtime = runtime
         self.status_provider = status_provider
+        self._on_model_changed = on_model_changed
         app.context_usage_provider = self._context_usage
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
@@ -61,8 +63,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             session_provider=self._current_session,
             approval_interaction_provider=approval_interaction_provider,
             select_model=lambda value: select_available_model(
-                self._current_session(),
-                query=value,
+                self._current_session(), query=value, on_model_changed=on_model_changed
             ),
             set_model_label=lambda label: setattr(
                 app.state,
@@ -145,6 +146,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             usage_provider=self._usage_snapshot,
             settings_manager=getattr(session, "settings_manager", None),
             statusline_preview=self.coding_app.statusline_preview_snapshot,
+            on_model_changed=self._on_model_changed,
         )
 
 

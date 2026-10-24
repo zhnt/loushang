@@ -57,6 +57,7 @@ class ScreenFramePresentation:
             pending_steers=len(state.pending_steers),
             status_message=state.presentation_status_message,
             context_usage=state.context_usage,
+            sdk_preparing=state.sdk_preparing,
         )
 
     def expanded_bottom_frame(
@@ -97,6 +98,7 @@ class ScreenFramePresentation:
         active_surface: Any | None,
         elapsed_seconds: float,
         loading_indicator: str | None = None,
+        loading_phase: str | None = None,
     ) -> BottomFrame:
         component.composer = composer
         component.surface = active_surface
@@ -106,7 +108,11 @@ class ScreenFramePresentation:
         )
         component.pending_queue = self.pending_queue(state)
         component.status_bar = (
-            self.status_bar(state, loading_indicator=loading_indicator)
+            self.status_bar(
+                state,
+                loading_indicator=loading_indicator,
+                loading_phase=loading_phase,
+            )
             if state.statusline_visible or state.startup_pending
             else None
         )
@@ -163,9 +169,12 @@ class ScreenFramePresentation:
         state: ScreenConversationState,
         *,
         loading_indicator: str | None = None,
+        loading_phase: str | None = None,
     ) -> StatusBar:
         if state.startup_pending:
             message = state.status_message or "Loading session"
+            if loading_phase and message.startswith("Loading session"):
+                message = f"{loading_phase.capitalize()}{message[len('Loading session'):]}"
             if loading_indicator is not None:
                 message = f"{loading_indicator} {message}"
             return StatusBar(

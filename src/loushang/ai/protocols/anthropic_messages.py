@@ -422,7 +422,9 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         prepared: PreparedModelRequest,
     ) -> AsyncIterator[RawPart]:
         try:
-            from anthropic import AsyncAnthropic, Omit  # type: ignore
+            from loushang.ai.sdk_import import load_sdk_symbols
+
+            AsyncAnthropic, Omit = await load_sdk_symbols(self.api)  # type: ignore[misc]
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "anthropic SDK is not installed. Install via `pip install anthropic`"

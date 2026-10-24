@@ -41,6 +41,7 @@ class StatusLinePreviewSnapshot:
     status_message: str | None = None
     context_usage: object | None = None
     session_id: str | None = None
+    sdk_preparing: bool = False
 
 
 def status_line_fields(
@@ -78,8 +79,16 @@ def status_line_fields(
         )
     if settings.runtime:
         runtime_text = "running" if snapshot.running else "idle"
+        if snapshot.sdk_preparing and not snapshot.running:
+            runtime_text += " · preparing model"
         runtime_token = "runtime.running" if snapshot.running else "runtime.idle"
-        fields.append(StatusField(runtime_text, priority=60, token=runtime_token))
+        fields.append(
+            StatusField(
+                runtime_text,
+                priority=75 if snapshot.sdk_preparing and not snapshot.running else 60,
+                token=runtime_token,
+            )
+        )
     if _show_auto_field(settings.queue, snapshot.pending_followups > 0 or snapshot.pending_steers > 0):
         fields.append(
             StatusField(

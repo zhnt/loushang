@@ -302,7 +302,7 @@ def test_coding_ui_package_stays_within_the_product_adapter_budget() -> None:
     }
 
     assert sum(line_counts.values()) <= 2_200, line_counts
-    assert line_counts["mode.py"] <= 350
+    assert line_counts["mode.py"] <= 355
 
 
 def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:

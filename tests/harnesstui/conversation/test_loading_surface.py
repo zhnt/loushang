@@ -56,8 +56,9 @@ class Output(StringIO):
 
 
 @contextmanager
-def running_surface():
+def running_surface(phase_provider=None):
     app = Screen(None, "/test", None, None)
+    app.startup_phase_provider = phase_provider
     read_fd, write_fd = os.pipe()
     output = Output()
     reader = PosixTerminalInputReader(read_fd)
@@ -108,6 +109,24 @@ def test_idle_loading_screen_animates_without_input():
             )
             time.sleep(0.005)
         assert len(visible_frames) >= 2
+
+
+def test_loading_phase_survives_disabled_enter_and_tracks_real_progress():
+    phase = ["initializing runtime"]
+    with running_surface(lambda: phase[0]) as (worker, _, write_fd, output):
+        deadline = time.monotonic() + 3
+        while "Initializing runtime" not in output.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert "Initializing runtime" in output.getvalue()
+        os.write(write_fd, b"draft\r")
+        phase[0] = "opening session"
+        deadline = time.monotonic() + 3
+        while "Opening session" not in output.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert "Opening session" in output.getvalue()
+        worker.request_transfer()
+        transfer = worker.join(5)
+        assert transfer.app.composer.value == "draft"
 
 
 def test_idle_escape_clears_visible_draft_without_another_input():
