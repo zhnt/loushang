@@ -14,7 +14,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from loushang.agent.types import AgentMessage
-from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    ProviderCompactionWindow,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.conversation import (
     BranchDelta,
@@ -271,14 +276,16 @@ class AgentTranscriptSession:
         raise TypeError(f"Unsupported transcript message: {type(message)!r}")
 
     async def lookup_prebuilt_user_message(
-        self, record: AgentTranscriptRecord,
+        self,
+        record: AgentTranscriptRecord,
     ) -> PrebuiltUserMessageLookupResult:
         """Observe a fixed-ID input without changing transcript or observers."""
 
         return await self._committer.lookup_prebuilt_user_message(record)
 
     async def commit_prebuilt_user_message(
-        self, record: AgentTranscriptRecord,
+        self,
+        record: AgentTranscriptRecord,
     ) -> CommitResult:
         """Commit or reconcile one fixed-ID user input through the message owner."""
 
@@ -288,7 +295,8 @@ class AgentTranscriptSession:
         return result
 
     async def commit_prebuilt_extension_data(
-        self, record: AgentTranscriptRecord,
+        self,
+        record: AgentTranscriptRecord,
     ) -> CommitResult:
         """Commit or reconcile one fixed-ID extension fact through Transcript."""
 
@@ -338,6 +346,7 @@ class AgentTranscriptSession:
         details: object | None = None,
         from_hook: bool | None = None,
         model_input_snapshot_ids: tuple[str, ...] = (),
+        provider_window: ProviderCompactionWindow | None = None,
     ) -> str:
         return self._complete_commit(
             await self._transcript.append_compaction_checkpoint(
@@ -348,6 +357,7 @@ class AgentTranscriptSession:
                     details=require_json_value(details, name="compaction.details"),
                     from_hook=from_hook,
                     model_input_snapshot_ids=model_input_snapshot_ids,
+                    provider_window=provider_window,
                 )
             )
         )

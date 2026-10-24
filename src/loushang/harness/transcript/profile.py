@@ -190,11 +190,15 @@ class AgentTranscriptProfile:
             return False
         for record in records:
             semantics = self._semantics_for(record)
-            if semantics is not None and (
-                semantics.project_context is not None
-                or semantics.reduce_state is not None
-                or semantics.resolve_checkpoint is not None
-            ) and type(record.payload) not in semantics.payload_types:
+            if (
+                semantics is not None
+                and (
+                    semantics.project_context is not None
+                    or semantics.reduce_state is not None
+                    or semantics.resolve_checkpoint is not None
+                )
+                and type(record.payload) not in semantics.payload_types
+            ):
                 # A subclass can override frozen field access or projection.
                 return False
             if isinstance(record.payload, RecordAnnotationPatch) and isinstance(
@@ -267,6 +271,23 @@ class AgentTranscriptProfile:
         records: Sequence[AgentTranscriptRecord],
     ) -> AgentTranscriptContext:
         projection = self.replay_projection(records)
+        if projection.item_record_ids:
+            first_id = projection.item_record_ids[0]
+            checkpoint = next(
+                (
+                    record.payload
+                    for record in records
+                    if record.record_id == first_id
+                    and isinstance(record.payload, ContextCompactionCheckpoint)
+                ),
+                None,
+            )
+            if checkpoint is not None and checkpoint.provider_window is not None:
+                return AgentTranscriptContext(
+                    messages=projection.items[1:],
+                    state=projection.state,
+                    provider_window=checkpoint.provider_window,
+                )
         return AgentTranscriptContext(
             messages=projection.items,
             state=projection.state,

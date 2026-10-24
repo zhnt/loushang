@@ -42,7 +42,9 @@ def convert_responses_messages(
     logic in the orchestration file.
     """
     adapter_config = adapter_config or OpenAIResponsesConfig()
-    input_items: list[dict[str, Any]] = []
+    input_items: list[dict[str, Any]] = (
+        normalized.provider_window.items if normalized.provider_window is not None else []
+    )
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():

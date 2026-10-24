@@ -6,7 +6,7 @@ from itertools import count
 
 import pytest
 
-from loushang.ai.types import UserMessage
+from loushang.ai.types import ProviderCompactionWindow, UserMessage
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationCommitResult,
@@ -214,6 +214,39 @@ async def _create(
         clock=lambda: datetime(2026, 7, 16, tzinfo=UTC),
         id_factory=ids or _id_factory(),
     )
+
+
+def test_unit_of_work_replay_uses_provider_window_after_checkpoint() -> None:
+    async def scenario() -> None:
+        store = await _create()
+        await store.append_agent_message(
+            UserMessage(role="user", content="old", timestamp=1.0)
+        )
+        kept = await store.append_agent_message(
+            UserMessage(role="user", content="kept", timestamp=2.0)
+        )
+        window = ProviderCompactionWindow.from_items(
+            provider="openai",
+            endpoint="responses",
+            model="gpt-6",
+            items=[{"type": "compaction", "encrypted_content": "opaque"}],
+        )
+        await store.append_compaction_checkpoint(
+            ContextCompactionCheckpoint(
+                summary="[Provider compaction state]",
+                first_kept_record_id=kept.record.record_id,
+                tokens_before=100,
+                provider_window=window,
+            )
+        )
+        await store.append_agent_message(
+            UserMessage(role="user", content="next", timestamp=3.0)
+        )
+        context = store.replay_context()
+        assert context.provider_window == window
+        assert [message.content for message in context.messages] == ["kept", "next"]
+
+    asyncio.run(scenario())
 
 
 def _application(message_id: str, content: str) -> ApplicationMessage:
@@ -489,7 +522,9 @@ def test_materialized_commits_publish_without_cloning_the_historical_graph(
     async def scenario() -> None:
         store = await _create()
         monkeypatch.setattr(ConversationRepository, "with_appended", reject_clone)
-        monkeypatch.setattr(ConversationRepository, "with_appended_records", reject_clone)
+        monkeypatch.setattr(
+            ConversationRepository, "with_appended_records", reject_clone
+        )
         first = await store.append_application_message(
             _application("application-1", "first")
         )

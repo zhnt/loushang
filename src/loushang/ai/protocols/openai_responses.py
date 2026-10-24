@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
-from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.errors import AIProviderProtocolError, UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import get_reasoning_summary
@@ -21,9 +21,10 @@ from loushang.ai.protocols._openai_responses import (
 )
 from loushang.ai.protocols._openai_sdk import OPENAI_SDK_API_KEY_PLACEHOLDER
 from loushang.ai.provider import PreparedModelRequest, ProviderRequest
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider.errors import normalize_provider_error, provider_error_part
 from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
+from loushang.ai.types import ProviderCompactionWindow
 from loushang.ai.utils.async_iter import close_async_source
 
 
@@ -97,6 +98,78 @@ class OpenAIResponsesAdapter:
 
     def __init__(self, *, client: Any | None = None) -> None:
         self._client = client
+
+    async def compact_window(
+        self, request: ProviderRequest
+    ) -> ProviderCompactionWindow:
+        """Use the standalone Responses endpoint and retain its entire output."""
+
+        model = request.model
+        if model.provider_compaction != "openai-responses":
+            raise UnsupportedCapabilityError(
+                f"Model {model.id!r} does not support provider compaction",
+                provider=model.provider_id,
+                endpoint=model.endpoint_id,
+                model=model.id,
+                details={"capability": "provider_compaction"},
+            )
+        from loushang.ai.sdk_import import load_sdk_symbols
+
+        AsyncOpenAI, Omit = await load_sdk_symbols(self.api)  # type: ignore[misc]
+        owns_client = self._client is None
+        client = (
+            self._client
+            if self._client is not None
+            else AsyncOpenAI(
+                api_key=OPENAI_SDK_API_KEY_PLACEHOLDER,
+                base_url=request.base_url,
+            )
+        )
+        try:
+            params: dict[str, Any] = {
+                "model": model.upstream_id or model.id,
+                "input": convert_responses_messages(
+                    model,
+                    request.context,
+                    _request_adapter_config(request),
+                    model.capabilities,
+                ),
+                "extra_headers": {
+                    "Authorization": Omit(),
+                    "X-Api-Key": Omit(),
+                    **canonicalize_sdk_headers(request.headers or {}),
+                },
+            }
+            timeout = getattr(request.options, "timeout_seconds", None)
+            if timeout is not None:
+                params["timeout"] = timeout
+            try:
+                response = await client.responses.compact(**params)
+            except Exception as error:
+                raise normalize_provider_error(error, source=self.api) from error
+            raw = (
+                response.model_dump(mode="json")
+                if hasattr(response, "model_dump")
+                else response
+            )
+            if not isinstance(raw, Mapping) or not isinstance(raw.get("output"), list):
+                raise AIProviderProtocolError(
+                    "Provider compaction omitted its output window"
+                )
+            try:
+                return ProviderCompactionWindow.from_items(
+                    provider=model.provider_id,
+                    endpoint=model.endpoint_id,
+                    model=model.id,
+                    items=raw["output"],
+                )
+            except (TypeError, ValueError) as error:
+                raise AIProviderProtocolError(
+                    "Provider compaction returned an invalid output window"
+                ) from error
+        finally:
+            if owns_client:
+                await close_async_source(client)
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         source = invoke_prepared_request(self, request)

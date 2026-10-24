@@ -267,6 +267,84 @@ def test_compaction_runtime_commits_checkpoint_and_publishes_common_events() -> 
     asyncio.run(scenario())
 
 
+def test_capacity_pressure_compacts_only_when_product_policy_opts_in() -> None:
+    async def scenario() -> None:
+        session = await _session()
+        user_id = await session.append_message(
+            UserMessage(role="user", content="older", timestamp=0.0)
+        )
+        completed = _assistant(total_tokens=20)
+        await session.append_message(completed)
+        policy = [
+            TranscriptCompactionPolicy(
+                enabled=True,
+                reserve_tokens=10,
+                keep_recent_tokens=4,
+            )
+        ]
+        events: list[object] = []
+        probes: list[object] = []
+
+        def prepare(_entries, _keep):
+            return CompactionPreparation(
+                first_kept_entry_id=user_id,
+                messages_to_summarize=[
+                    UserMessage(role="user", content="older", timestamp=0.0)
+                ],
+                turn_prefix_messages=[],
+                is_split_turn=False,
+                tokens_before=20,
+            )
+
+        async def execute(preparation, _instructions):
+            return CompactionResult(
+                summary="summary",
+                first_kept_entry_id=preparation.first_kept_entry_id,
+                tokens_before=preparation.tokens_before,
+            )
+
+        runtime = AgentTranscriptCompactionRuntime(
+            transcript=session,
+            get_policy=lambda: policy[0],
+            get_model=_model,
+            get_context_messages=lambda: list(session.build_context().messages),
+            refresh_context=lambda: None,
+            prepare_compaction=prepare,
+            execute_compaction=execute,
+            dispatch_event=lambda event: _append(events, event),
+            has_queued_messages=lambda: False,
+            single_call_capacity_probe=lambda preparation, model: (
+                probes.append((preparation, model)) or True
+            ),
+        )
+
+        assert (await runtime.maybe_compact_after_turn(completed)).result is None
+        assert probes == []
+        policy[0] = TranscriptCompactionPolicy(
+            enabled=False,
+            reserve_tokens=10,
+            keep_recent_tokens=4,
+            single_call_early_trigger=True,
+        )
+        assert (await runtime.maybe_compact_after_turn(completed)).result is None
+        assert probes == []
+        policy[0] = TranscriptCompactionPolicy(
+            enabled=True,
+            reserve_tokens=10,
+            keep_recent_tokens=4,
+            single_call_early_trigger=True,
+        )
+        outcome = await runtime.maybe_compact_after_turn(completed)
+
+        assert outcome.result is not None
+        assert len(probes) == 1
+        assert isinstance(events[0], ContextCompactionStarted)
+        assert events[0].reason == "capacity"
+        assert session.get_entries()[-1].kind == "context.compaction_checkpoint"
+
+    asyncio.run(scenario())
+
+
 def test_compaction_runtime_counts_the_completed_message_before_context_refresh() -> (
     None
 ):

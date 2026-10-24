@@ -47,9 +47,7 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
     coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    anthropic = registry.get_model(
-        "anthropic", "anthropic-messages", "claude-sonnet-5"
-    )
+    anthropic = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
     qianfan = registry.get_model("baidu-qianfan", "openai-completions-cn", "ernie-5.1")
     stepfun = registry.get_model("stepfun", "openai-completions", "step-3.7-flash")
 
@@ -111,4 +109,33 @@ def test_builtin_catalog_capabilities_match_public_adapter_surface() -> None:
         not model.capabilities.structured_output
         for model in registry.list_models()
         if model.api == "anthropic-messages"
+    )
+
+
+def test_provider_compaction_is_scoped_to_verified_openai_responses_models() -> None:
+    registry = load_builtin_model_registry()
+
+    assert (
+        registry.get_model(
+            "openai", "openai-responses", "gpt-6-astra"
+        ).provider_compaction
+        == "openai-responses"
+    )
+    assert (
+        registry.get_model(
+            "openai", "coding-responses", "gpt-6-astra"
+        ).provider_compaction
+        is None
+    )
+    assert (
+        registry.get_model(
+            "deepseek", "openai-completions", "deepseek-v4-flash"
+        ).provider_compaction
+        is None
+    )
+    assert (
+        registry.get_model(
+            "kimi-code", "kimi-code-anthropic", "kimi-for-coding"
+        ).provider_compaction
+        is None
     )

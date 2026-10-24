@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
 from loushang.agent.types import AgentMessage, CustomAgentMessage
-from loushang.ai.types import ImagePart, Message, TextPart
+from loushang.ai.types import ImagePart, Message, ProviderCompactionWindow, TextPart
 from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation.types import (
@@ -133,6 +133,7 @@ class ContextCompactionCheckpoint:
     details: JSONValue = None
     from_hook: bool | None = None
     model_input_snapshot_ids: tuple[str, ...] = ()
+    provider_window: ProviderCompactionWindow | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.summary, str):
@@ -363,6 +364,7 @@ class AgentTranscriptState:
 class AgentTranscriptContext:
     messages: tuple[AgentMessage, ...]
     state: AgentTranscriptState
+    provider_window: ProviderCompactionWindow | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))

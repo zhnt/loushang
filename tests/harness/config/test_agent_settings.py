@@ -28,6 +28,7 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
                     "enabled": False,
                     "compact_percent": 75,
                     "reserve_tokens": 2048,
+                    "single_call_early_trigger": True,
                 },
                 "session_dir": "/tmp/global-sessions",
                 "resource_roots": ["/tmp/global-resources"],
@@ -47,7 +48,10 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
         json.dumps(
             {
                 "system_prompt": "Use project rules.",
-                "compaction": {"keep_recent_tokens": 8192},
+                "compaction": {
+                    "keep_recent_tokens": 8192,
+                    "strategy": "local_combined",
+                },
                 "session_dir": "/tmp/project-sessions",
                 "resource_roots": ["/tmp/project-resources"],
             }
@@ -71,6 +75,8 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
     assert settings.compaction.compact_percent == 75
     assert settings.compaction.reserve_tokens == 2048
     assert settings.compaction.keep_recent_tokens == 8192
+    assert settings.compaction.single_call_early_trigger is True
+    assert settings.compaction.strategy == "local_combined"
     assert settings.session_dir == "/tmp/project-sessions"
     assert settings.resource_roots == ("/tmp/project-resources",)
     assert settings.package_roots == ("/tmp/global-packages",)

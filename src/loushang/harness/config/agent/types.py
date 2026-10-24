@@ -42,6 +42,12 @@ class CompactionSettings:
     compact_percent: float | None = None
     reserve_tokens: int | None = None
     keep_recent_tokens: int | None = None
+    single_call_early_trigger: bool | None = None
+    strategy: Literal["local_separate", "local_combined", "provider"] = "local_separate"
+
+    def __post_init__(self) -> None:
+        if self.strategy not in ("local_separate", "local_combined", "provider"):
+            raise ValueError(f"Unsupported compaction strategy: {self.strategy}")
 
 
 @dataclass(frozen=True)

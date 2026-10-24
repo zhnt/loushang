@@ -106,6 +106,60 @@ Summarize the prefix to provide context for the retained suffix:
 
 Be concise. Focus on what's needed to understand the kept suffix."""
 
+SPLIT_TURN_SUMMARIZATION_PROMPT = """Create one context checkpoint from the two labeled parts above.
+
+The [Older conversation] belongs in the main summary. The [Current turn prefix]
+is the beginning of an unfinished turn; its recent suffix remains available as
+original messages. Keep its request and early work in a separate Turn Context
+section so the next assistant can understand the retained suffix.
+
+If <previous-summary> is present, update it with the older conversation. Preserve
+still-relevant goals, constraints, decisions, completed work, and exact paths.
+Do not treat the current turn prefix as a completed task.
+
+Output this exact structure:
+
+## Goal
+[Goals from the older conversation and previous summary]
+
+## Constraints & Preferences
+- [Important constraints]
+
+## Progress
+### Done
+- [x] [Completed work]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Current blockers or (none)]
+
+## Key Decisions
+- **[Decision]**: [Rationale]
+
+## Next Steps
+1. [Next action]
+
+## Critical Context
+- [Exact paths, errors, and facts needed to continue]
+
+---
+
+**Turn Context (split turn):**
+
+## Original Request
+[What the user asked in the unfinished turn]
+
+## Early Progress
+- [Work and decisions in its prefix]
+
+## Context for Suffix
+- [Facts needed to understand the retained recent work]
+
+Be concise. Preserve exact file paths, function names, and error messages.
+Do not continue the conversation."""
+
 BRANCH_SUMMARY_PROMPT = """Create a structured summary of this conversation branch for context when returning later.
 
 Use this EXACT format:
@@ -168,6 +222,8 @@ CODING_COMPACTION_SUMMARY_PROFILE = SummaryProfile(
     prompts={
         "initial": SUMMARIZATION_PROMPT,
         "update": UPDATE_SUMMARIZATION_PROMPT,
+        "split-turn-initial": SPLIT_TURN_SUMMARIZATION_PROMPT,
+        "split-turn-update": SPLIT_TURN_SUMMARIZATION_PROMPT,
     },
     sections=_COMPACTION_SECTIONS,
     placeholder_markers=_PLACEHOLDER_MARKERS,
@@ -204,6 +260,7 @@ __all__ = [
     "COMPACTION_SYSTEM_PROMPT",
     "SUMMARIZATION_PROMPT",
     "SUMMARIZATION_SYSTEM_PROMPT",
+    "SPLIT_TURN_SUMMARIZATION_PROMPT",
     "TURN_PREFIX_SUMMARIZATION_PROMPT",
     "UPDATE_SUMMARIZATION_PROMPT",
 ]

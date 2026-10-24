@@ -679,6 +679,7 @@ class ProductTranscriptSession(
                 for message in context.messages
             ),
             state=context.state,
+            provider_window=context.provider_window,
         )
 
     def _session_blob_store(self, *, file_io: RootedFileIO | None = None) -> SessionBlobStore:

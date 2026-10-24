@@ -26,6 +26,7 @@ from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import (
     AssistantMessage,
     Message,
+    ProviderCompactionWindow,
     TextPart,
     Tool,
     ToolCall,
@@ -328,11 +329,13 @@ class _PreparedAdapter:
         retry_first: bool = False,
         terminal_error: bool = False,
         report_usage: bool = False,
+        response_text: str = "done",
     ) -> None:
         self.transport_calls = 0
         self.retry_first = retry_first
         self.terminal_error = terminal_error
         self.report_usage = report_usage
+        self.response_text = response_text
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -400,7 +403,7 @@ class _PreparedAdapter:
             }
             return
         yield {"type": "response_start", "response_id": "response-1"}
-        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "text_delta", "text": self.response_text}
         if self.report_usage:
             yield {
                 "type": "usage_delta",
@@ -1053,6 +1056,46 @@ def test_session_sealed_context_rejects_mutation_before_provider_normalization()
         owned = committer.owned_sealed_context(context)
         assert owned.messages[0].content[0].text == "sealed"
         assert owned.tools[0].parameters["properties"]["path"]["type"] == "string"
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_provider_window_is_owned_by_sealed_model_input() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        window = ProviderCompactionWindow.from_items(
+            provider="test-provider",
+            endpoint="test-endpoint",
+            model="model-call-test",
+            items=[{"type": "compaction", "encrypted_content": "sealed"}],
+        )
+        context = Context(
+            messages=[UserMessage(role="user", content="continue", timestamp=1.0)],
+            provider_window=window,
+        )
+        options = await runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=_model(api="openai-responses"),
+                context=context,
+                options=CallOptions(),
+            )
+        )
+        committer = options.prepared_request_committer
+        assert committer is not None
+        assert committer.owned_sealed_context(context).provider_window == window
+        committer.verify_sealed_context(context)
+        changed = ProviderCompactionWindow.from_items(
+            provider="test-provider",
+            endpoint="test-endpoint",
+            model="model-call-test",
+            items=[{"type": "compaction", "encrypted_content": "changed"}],
+        )
+        with pytest.raises(RuntimeError, match="sealed Model Input context changed"):
+            committer.verify_sealed_context(replace(context, provider_window=changed))
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -2207,7 +2250,9 @@ def test_worker_preparation_uses_the_transcript_owner_loop_for_owned_operations(
             created.append(True)
             return create_committer(**kwargs)
 
-        monkeypatch.setattr(session, "create_model_input_committer", observe_create_committer)
+        monkeypatch.setattr(
+            session, "create_model_input_committer", observe_create_committer
+        )
 
         def is_current() -> bool:
             assert asyncio.get_running_loop() is owner_loop
@@ -2232,7 +2277,9 @@ def test_worker_preparation_uses_the_transcript_owner_loop_for_owned_operations(
                     sequence=1,
                     model=_model(api="test-api"),
                     context=Context(
-                        messages=[UserMessage(role="user", content="hello", timestamp=1.0)]
+                        messages=[
+                            UserMessage(role="user", content="hello", timestamp=1.0)
+                        ]
                     ),
                     options=CallOptions(),
                 )
@@ -2539,12 +2586,22 @@ def test_batched_compaction_records_ordered_history_and_merge_lineage() -> None:
     asyncio.run(scenario())
 
 
-def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
+def test_split_turn_compaction_retains_single_ordered_model_input() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
         source_id = session.get_entries()[0].record_id
         runtime = _model_call_runtime(session, is_current=lambda: True)
-        adapter = _PreparedAdapter()
+        adapter = _PreparedAdapter(
+            response_text=(
+                "## Goal\nContinue the task\n## Constraints & Preferences\n- c\n"
+                "## Progress\n### Done\n- [x] d\n### In Progress\n- [ ] i\n"
+                "### Blocked\n- none\n## Key Decisions\n- k\n"
+                "## Next Steps\n1. n\n## Critical Context\n- x\n\n---\n\n"
+                "**Turn Context (split turn):**\n\n"
+                "## Original Request\ncurrent turn\n## Early Progress\n- e\n"
+                "## Context for Suffix\n- s"
+            )
+        )
         registry = get_default_api_registry()
         adapter_source = "session-model-call-split-compaction-test"
         registry.register_api_adapter(adapter, source_id=adapter_source)
@@ -2565,16 +2622,17 @@ def test_split_turn_compaction_retains_both_ordered_model_inputs() -> None:
                 compaction_profile=CODING_COMPACTION_SUMMARY_PROFILE,
                 turn_prefix_profile=CODING_TURN_PREFIX_SUMMARY_PROFILE,
                 prepare_model_call=runtime.prepare,
+                strategy="local_combined",
             )
         finally:
             registry.unregister_api_adapters(adapter_source)
 
-        assert adapter.transport_calls == 2
-        assert len(result.model_input_snapshot_ids) == 2
+        assert adapter.transport_calls == 1
+        assert len(result.model_input_snapshot_ids) == 1
         assert [
             session.rebuild_model_input(snapshot_id).snapshot.purpose
             for snapshot_id in result.model_input_snapshot_ids
-        ] == ["compaction_history", "compaction_turn_prefix"]
+        ] == ["compaction_history"]
         await runtime.dispose()
 
     asyncio.run(scenario())

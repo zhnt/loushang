@@ -261,6 +261,10 @@ class SessionMaintenanceInputs:
     get_compaction_capability: (
         Callable[[], AgentTranscriptCompactionCapability] | None
     ) = None
+    single_call_capacity_probe: (
+        Callable[[CompactionPreparation, object, PreparedRequestLimits | None], bool]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -479,6 +483,7 @@ def _legacy_composition_inputs(
             "get_compaction_capability",
             None,
         ),
+        single_call_capacity_probe=remaining.pop("single_call_capacity_probe", None),
     )
     product = SessionProductInputs(
         model_registry=take("model_registry"),
@@ -845,6 +850,14 @@ def _build_maintenance_runtimes(
         current = current_compaction_capability()
         return current.prepare(entries, keep_recent_tokens)
 
+    capacity_probe = maintenance.single_call_capacity_probe
+
+    def check_single_call_capacity(
+        preparation: CompactionPreparation, model: object
+    ) -> bool:
+        assert capacity_probe is not None
+        return capacity_probe(preparation, model, agent.call_options.request_limits)
+
     compaction_runtime = AgentTranscriptCompactionRuntime(
         transcript=session,
         get_policy=get_compaction_policy,
@@ -860,6 +873,9 @@ def _build_maintenance_runtimes(
         ),
         dispatch_event=foundation.dispatch_event,
         has_queued_messages=agent.has_queued_messages,
+        single_call_capacity_probe=(
+            None if capacity_probe is None else check_single_call_capacity
+        ),
         before_compaction=maintenance.before_compaction,
         after_compaction=maintenance.after_compaction,
         record_runtime_exception=foundation.record_runtime_exception,
@@ -1161,6 +1177,11 @@ def _compaction_policy(
             "keep_recent_tokens",
             capability.keep_recent_tokens,
         ),
+        single_call_early_trigger=_bool_setting(
+            settings,
+            "single_call_early_trigger",
+            capability.single_call_early_trigger,
+        ),
     )
 
 
@@ -1293,6 +1314,12 @@ async def apply_agent_session_model_selection(
         resolved = selection_runtime.resolve_model(
             cast(Model | ModelSelection, selection)
         )
+        window = agent.state.provider_window
+        if window is not None and not window.matches(resolved):
+            raise ValueError(
+                "Selected model is incompatible with the active provider "
+                "compaction checkpoint"
+            )
         validate_image_input_compatibility(resolved, agent.state.messages)
         previous = agent.model
         await selection_runtime.apply_model(resolved)

@@ -140,6 +140,7 @@ async def run_agent_loop(
         system_prompt=context.system_prompt,
         messages=[*context.messages, *prompts],
         tools=context.tools,
+        provider_window=context.provider_window,
     )
 
     await _emit(emit, {"type": "agent_start"})
@@ -179,6 +180,7 @@ async def run_agent_loop_continue(
         system_prompt=context.system_prompt,
         messages=[*context.messages],
         tools=context.tools,
+        provider_window=context.provider_window,
     )
 
     await _emit(emit, {"type": "agent_start"})
@@ -512,6 +514,7 @@ async def _collect_assistant_response(
         system_prompt=context.system_prompt,
         messages=llm_messages,
         tools=_project_tools_for_llm(context.tools),
+        provider_window=context.provider_window,
     )
 
     call_stream = stream_fn or stream

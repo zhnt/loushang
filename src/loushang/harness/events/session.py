@@ -6,7 +6,7 @@ from typing import Literal, TypeAlias
 
 from loushang.harness.permissions import PermissionProfileId, PermissionProfileScope
 
-CompactionReason: TypeAlias = Literal["manual", "threshold", "overflow"]
+CompactionReason: TypeAlias = Literal["manual", "threshold", "capacity", "overflow"]
 CompactionStage: TypeAlias = Literal[
     "started",
     "aborted",

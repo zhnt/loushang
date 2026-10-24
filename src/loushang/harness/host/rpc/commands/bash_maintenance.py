@@ -62,9 +62,7 @@ class RpcBashMaintenanceCommands:
             ("set_auto_compaction", self.set_auto_compaction),
         )
 
-    async def bash(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    async def bash(self, command_id: str | None, payload: dict[str, Any]) -> None:
         self._ensure_no_active_bash(command="bash")
         command = require_string(payload, "command")
         task = asyncio.create_task(
@@ -84,9 +82,7 @@ class RpcBashMaintenanceCommands:
         self._active_bash_task = task
         self._task_tracker.track(task)
 
-    def abort_bash(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    def abort_bash(self, command_id: str | None, payload: dict[str, Any]) -> None:
         del payload
         self._get_session().abort_bash()
         self._output.success(
@@ -94,9 +90,7 @@ class RpcBashMaintenanceCommands:
             command="abort_bash",
         )
 
-    async def compact(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    async def compact(self, command_id: str | None, payload: dict[str, Any]) -> None:
         try:
             result = await self._operations.compact(payload)
         except Exception as error:
@@ -107,7 +101,12 @@ class RpcBashMaintenanceCommands:
             )
             return
         try:
-            data = camelize(project_json_value(result))
+            public_payload = getattr(result, "public_payload", None)
+            data = camelize(
+                project_json_value(
+                    public_payload() if callable(public_payload) else result
+                )
+            )
         except Exception as error:
             self._output.error(
                 request_id=command_id,
@@ -121,9 +120,7 @@ class RpcBashMaintenanceCommands:
             data=data,
         )
 
-    def set_auto_retry(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    def set_auto_retry(self, command_id: str | None, payload: dict[str, Any]) -> None:
         try:
             self._operations.set_auto_retry(payload)
         except Exception as error:
@@ -138,9 +135,7 @@ class RpcBashMaintenanceCommands:
             command="set_auto_retry",
         )
 
-    def abort_retry(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    def abort_retry(self, command_id: str | None, payload: dict[str, Any]) -> None:
         del payload
         self._operations.abort_retry()
         self._output.success(

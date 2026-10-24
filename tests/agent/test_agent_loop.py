@@ -13,6 +13,7 @@ from loushang.ai.options import CallOptions
 from loushang.ai.types import (
     AssistantMessage,
     Context,
+    ProviderCompactionWindow,
     TextPart,
     Tool,
     ToolCall,
@@ -220,6 +221,44 @@ def test_agent_loop_records_problem_when_provider_request_fails() -> None:
         reset_observability()
 
 
+def test_agent_loop_carries_provider_window_into_continuation_request() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    window = ProviderCompactionWindow.from_items(
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6",
+        items=[{"type": "compaction", "encrypted_content": "opaque"}],
+    )
+    observed: list[Context] = []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, options
+        observed.append(context)
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="continue", timestamp=1.0)],
+            AgentContext(
+                system_prompt=None,
+                messages=[],
+                tools=[],
+                provider_window=window,
+            ),
+            _config(stream_fn),
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+    assert len(observed) == 1
+    assert observed[0].provider_window == window
+    assert observed[0].system_prompt is None
+
+
 def test_agent_loop_preserves_preseeded_call_options_cancellation() -> None:
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -252,9 +291,7 @@ def test_agent_loop_preserves_preseeded_call_options_cancellation() -> None:
     assert captured_options[0].cancellation is marker
 
 
-def test_model_call_options_resolver_observes_final_context_before_transport() -> (
-    None
-):
+def test_model_call_options_resolver_observes_final_context_before_transport() -> None:
     from loushang.agent.agent_loop import run_agent_loop
 
     events: list[str] = []

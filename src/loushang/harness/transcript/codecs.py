@@ -16,6 +16,7 @@ from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
     Message,
+    ProviderCompactionWindow,
     TextPart,
     ToolResultMessage,
     UserMessage,
@@ -423,6 +424,8 @@ def _encode_compaction_checkpoint(payload: object) -> JSONValue:
     if checkpoint.model_input_snapshot_ids:
         encoded["lineageVersion"] = 2
         encoded["modelInputSnapshotIds"] = list(checkpoint.model_input_snapshot_ids)
+    if checkpoint.provider_window is not None:
+        encoded["providerWindow"] = checkpoint.provider_window.to_raw()
     return encoded
 
 
@@ -440,6 +443,7 @@ def _decode_compaction_checkpoint(
             "fromHook",
             "lineageVersion",
             "modelInputSnapshotIds",
+            "providerWindow",
         },
     )
     lineage = _decode_model_input_lineage(payload, name="context compaction checkpoint")
@@ -450,6 +454,13 @@ def _decode_compaction_checkpoint(
         details=_field(payload, "details"),
         from_hook=_optional_bool(payload, "fromHook"),
         model_input_snapshot_ids=lineage,
+        provider_window=(
+            ProviderCompactionWindow.from_raw(
+                require_json_mapping(payload["providerWindow"], name="providerWindow")
+            )
+            if "providerWindow" in payload
+            else None
+        ),
     )
 
 

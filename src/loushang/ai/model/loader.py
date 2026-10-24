@@ -73,6 +73,7 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
         "input",
         "maxTokens",
         "output",
+        "providerCompaction",
         "reasoning",
         "stream",
         "structuredOutput",
@@ -192,6 +193,16 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 _validate_modalities(
                     capabilities.get("output"), f"{model_path}.capabilities.output"
                 )
+                if "providerCompaction" in capabilities:
+                    value = capabilities["providerCompaction"]
+                    if (
+                        value != "openai-responses"
+                        or endpoint_api != "openai-responses"
+                    ):
+                        raise ValueError(
+                            "providerCompaction requires the openai-responses API: "
+                            f"{model_path}.capabilities.providerCompaction"
+                        )
                 for key in (
                     "reasoning",
                     "stream",

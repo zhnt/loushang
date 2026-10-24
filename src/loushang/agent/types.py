@@ -37,6 +37,7 @@ from loushang.ai.types import (
     Context,
     ImagePart,
     Message,
+    ProviderCompactionWindow,
     TextPart,
     ToolCall,
     ToolResultMessage,
@@ -550,9 +551,10 @@ def normalize_agent_tools(
 
 @dataclass(frozen=True)
 class AgentContext:
-    system_prompt: str
+    system_prompt: str | None
     messages: list[AgentMessage] = field(default_factory=list)
     tools: list[AgentTool[Any]] | None = None
+    provider_window: ProviderCompactionWindow | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tools", normalize_agent_tools(self.tools))
@@ -627,6 +629,7 @@ class AgentState:
         streaming_message: AgentMessage | None = None,
         pending_tool_calls: set[str] | None = None,
         error_message: str | None = None,
+        provider_window: ProviderCompactionWindow | None = None,
     ) -> None:
         self.system_prompt = system_prompt
         self.model = model
@@ -637,6 +640,7 @@ class AgentState:
         self.streaming_message = streaming_message
         self.pending_tool_calls = set(pending_tool_calls or set())
         self.error_message = error_message
+        self.provider_window = provider_window
 
     @property
     def tools(self) -> list[AgentTool[Any]]:

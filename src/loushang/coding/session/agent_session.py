@@ -3,14 +3,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loushang.agent import Agent, PrepareModelCallFn
-from loushang.ai import PreparedRequestLimits
+from loushang.ai import Context, PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.options import CallOptions, RetryOptions
-from loushang.ai.types import ImagePart, UserMessage
+from loushang.ai.types import ImagePart, Tool, UserMessage
 from loushang.coding._base_plugin import (
     CodingBasePluginAssembly,
     CodingBasePluginAssemblyError,
@@ -36,6 +37,7 @@ from loushang.coding.arch._plugin_tool_owner import (
     CodingArchToolRegistrationSlot,
 )
 from loushang.coding.compaction.adapter import (
+    coding_single_call_capacity_pressure,
     execute_coding_branch_summary,
 )
 from loushang.coding.compaction.adapter import (
@@ -217,7 +219,30 @@ async def _execute_coding_compaction_runtime(
     custom_instructions: str | None = None,
     prepare_model_call: PrepareModelCallFn | None = None,
     request_limits: PreparedRequestLimits | None = None,
+    settings_manager: SettingsManager | None = None,
+    agent: Agent | None = None,
 ) -> CompactionResult:
+    strategy = (
+        settings_manager.get_compaction_settings().strategy
+        if settings_manager is not None
+        else "local_separate"
+    )
+    provider_context = None
+    if strategy == "provider":
+        if agent is None:
+            raise RuntimeError("Provider compaction requires an Agent context")
+        provider_context = Context(
+            system_prompt=agent.state.system_prompt,
+            tools=[
+                Tool(
+                    name=tool.name,
+                    description=tool.description,
+                    parameters=tool.parameters,
+                )
+                for tool in agent.state.tools
+            ],
+            provider_window=agent.state.provider_window,
+        )
     return await _execute_coding_compaction(
         preparation=preparation,
         model=model,
@@ -226,6 +251,22 @@ async def _execute_coding_compaction_runtime(
         custom_instructions=custom_instructions,
         prepare_model_call=prepare_model_call,
         request_limits=request_limits,
+        strategy=strategy,
+        provider_context=provider_context,
+    )
+
+
+def _coding_single_call_capacity_probe(
+    preparation: CompactionPreparation,
+    model: object,
+    request_limits: PreparedRequestLimits | None,
+    *,
+    settings_manager: SettingsManager | None,
+) -> bool:
+    return bool(
+        settings_manager is not None
+        and settings_manager.get_compaction_settings().strategy == "local_combined"
+        and coding_single_call_capacity_pressure(preparation, model, request_limits)
     )
 
 
@@ -902,7 +943,15 @@ class AgentSession(AgentProductSession):
                 session_manager=session_manager,
                 capability_runtime=resolved_capability_runtime,
                 side_question_binding=side_question_binding,
-                execute_compaction=_execute_coding_compaction_runtime,
+                execute_compaction=partial(
+                    _execute_coding_compaction_runtime,
+                    settings_manager=settings_manager,
+                    agent=agent,
+                ),
+                single_call_capacity_probe=partial(
+                    _coding_single_call_capacity_probe,
+                    settings_manager=settings_manager,
+                ),
                 execute_branch_summary=_execute_coding_branch_summary,
                 get_changelog=read_changelog_for_cwd,
                 copy_to_clipboard=_copy_to_clipboard,

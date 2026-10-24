@@ -4,7 +4,16 @@ import asyncio
 
 import pytest
 
-from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.agent import Agent
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import (
+    AssistantMessage,
+    ProviderCompactionWindow,
+    TextPart,
+    Usage,
+    UserMessage,
+)
+from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.transcript import build_agent_transcript_session_context
 
@@ -42,6 +51,54 @@ def _context_text(messages: object) -> str:
         if isinstance(content, list):
             text.extend(part.text for part in content if isinstance(part, TextPart))
     return "\n".join(text)
+
+
+def test_provider_checkpoint_survives_persistent_session_reload(tmp_path) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path, cwd="/tmp/project", persist=True
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="old", timestamp=1.0)
+        )
+        kept_id = await manager.append_message(
+            UserMessage(role="user", content="kept", timestamp=2.0)
+        )
+        window = ProviderCompactionWindow.from_items(
+            provider="openai",
+            endpoint="responses",
+            model="gpt-6",
+            items=[{"type": "compaction", "encrypted_content": "opaque"}],
+        )
+        await manager.append_compaction(
+            "[Provider compaction state]", kept_id, 100, provider_window=window
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="next", timestamp=3.0)
+        )
+        assert manager.session_file is not None
+        reloaded = await SessionManager.load(manager.session_file)
+        context = reloaded.build_session_context()
+        assert context.provider_window == window
+        assert [message.content for message in context.messages] == ["kept", "next"]
+        model = Model(
+            id="gpt-6", provider="openai", endpoint="responses",
+            api="openai-responses",
+            capabilities=Capabilities(provider_compaction="openai-responses"),
+        )
+        resumed = AgentSession(
+            agent=Agent(initial_state={
+                "system_prompt": "project rules", "model": model,
+                "thinking_level": "off",
+            }),
+            session_manager=reloaded,
+        )
+        assert resumed.agent.state.provider_window == window
+        assert [message.content for message in resumed.agent.state.messages] == [
+            "kept", "next"
+        ]
+
+    asyncio.run(scenario())
 
 
 def test_build_session_context_uses_selected_native_branch(tmp_path) -> None:
