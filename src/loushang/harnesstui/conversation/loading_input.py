@@ -10,7 +10,7 @@ from loushang.harnesstui.conversation.input import (
 )
 from loushang.tui.input import InputEvent
 
-LOADING_MESSAGE = "Loading session — you can type; submission is disabled"
+LOADING_MESSAGE = "Loading session · type now; Enter disabled"
 
 
 class LoadingInputRouter(ConversationInputRouter):

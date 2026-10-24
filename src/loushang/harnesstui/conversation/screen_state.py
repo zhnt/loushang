@@ -53,6 +53,7 @@ class ScreenConversationState:
         default=None, kw_only=True
     )
     startup_pending: bool = False
+    sdk_preparing: bool = False
     model_label: str | None = None
     cwd: str = ""
     branch: str | None = None

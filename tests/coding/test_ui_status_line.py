@@ -60,3 +60,21 @@ def test_screen_app_real_status_bar_uses_shared_status_line_builder() -> None:
         "moonshot/kimi-for-coding · repo · main · abcd · idle · "
         "queued=0 steer=0 · no status · standard"
     )
+
+
+def test_model_preparation_uses_runtime_field_only_while_idle() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi-for-coding", cwd="/repo", branch="main", session_label="abcd"
+    )
+    app.state.sdk_preparing = True
+    idle = app._status_bar().render(RenderConstraints(width=80, max_height=1))
+    assert "idle · preparing model" in idle.lines[0].text
+    narrow = app._status_bar().render(RenderConstraints(width=60, max_height=1))
+    assert "idle · preparing model" in narrow.lines[0].text
+
+    app.start_prompt("hello")
+    running = app._status_bar().render(RenderConstraints(width=80, max_height=1))
+    assert "running" in running.lines[0].text
+    assert "preparing model" not in running.lines[0].text

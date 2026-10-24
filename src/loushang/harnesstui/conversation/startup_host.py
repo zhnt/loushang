@@ -217,6 +217,7 @@ class ScreenConversationStartup:
             self.app.state.startup_pending = False
             self.app.state.status_message = None
             self.app.request_render()
+            self.app.notify_session_ready()
             self._wake()
 
     @property
@@ -301,6 +302,7 @@ class ScreenConversationStartup:
                 self.app.state.startup_pending = False
                 self.app.state.status_message = None
             self.app.request_render()
+            self.app.notify_session_ready()
             self._wake()
             return await self.finished
 

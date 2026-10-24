@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from types import SimpleNamespace
 
@@ -126,7 +127,8 @@ def test_screen_app_uses_active_surface_preferred_height_for_bottom_frame() -> N
 def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     session = _Session()
     app = _app()
-    manager = _manager(app, session)
+    changed: list[ModelSelection] = []
+    manager = _manager(app, session, on_model_changed=lambda: changed.append(session.current_model))
 
     asyncio.run(manager.handle_text("/model"))
 
@@ -165,6 +167,7 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.active_surface is None
     assert app.state.status_message == "Model set: openai:test-endpoint:gpt-5.4"
     assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
+    assert changed and changed[-1] == session.current_model
 
 
 def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identity() -> (
@@ -816,7 +819,8 @@ def test_screen_surface_manager_settings_page_model_submit_uses_model_selection(
 ):
     session = _Session()
     app = _app()
-    manager = _manager(app, session)
+    changed: list[ModelSelection] = []
+    manager = _manager(app, session, on_model_changed=lambda: changed.append(session.current_model))
 
     asyncio.run(manager.handle_text("/settings"))
     asyncio.run(
@@ -832,6 +836,7 @@ def test_screen_surface_manager_settings_page_model_submit_uses_model_selection(
     assert isinstance(app.active_surface, ScreenSurfaceView)
     assert session.set_model_calls
     assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
+    assert changed and changed[-1] == session.current_model
 
 
 def test_screen_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> (
@@ -1600,11 +1605,13 @@ def _manager(
     session: _Session,
     *,
     settings_manager: object | None = None,
+    on_model_changed: Callable[[], None] | None = None,
 ) -> ScreenSurfaceManager:
     return ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=_status_provider(app, settings_manager=settings_manager),
+        on_model_changed=on_model_changed,
     )
 
 

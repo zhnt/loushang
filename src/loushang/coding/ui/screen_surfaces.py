@@ -49,10 +49,12 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             Callable[[], SessionApprovalInteractionPort | None] | None
         ) = None,
         command_catalog: ScreenSurfaceCommandCatalog | None = None,
+        on_model_changed: Callable[[], None] | None = None,
     ) -> None:
         self.session = session
         self.runtime = runtime
         self.status_provider = status_provider
+        self._on_model_changed = on_model_changed
         app.context_usage_provider = self._context_usage
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
@@ -60,14 +62,11 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             continuity_reference=continuity_reference,
             session_provider=self._current_session,
             approval_interaction_provider=approval_interaction_provider,
-            select_model=lambda value: select_available_model(
-                self._current_session(),
-                query=value,
+            select_model=lambda value: self._select_model(
+                value, on_model_changed=on_model_changed
             ),
-            set_model_label=lambda label: setattr(
-                app.state,
-                "model_label",
-                label,
+            set_model_label=lambda label: self._set_model_label(
+                label, on_model_changed=on_model_changed
             ),
             set_session_label=lambda label: setattr(
                 app.state,
@@ -114,6 +113,21 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             return self.session
         return current_agent_runtime_session(self.runtime, self.session)
 
+    async def _select_model(
+        self, value: str, *, on_model_changed: Callable[[], None] | None
+    ) -> str:
+        result = await select_available_model(self._current_session(), query=value)
+        if on_model_changed is not None:
+            on_model_changed()
+        return result
+
+    def _set_model_label(
+        self, label: str, *, on_model_changed: Callable[[], None] | None
+    ) -> None:
+        self.coding_app.state.model_label = label
+        if on_model_changed is not None:
+            on_model_changed()
+
     def _format_hotkeys(self) -> str:
         settings_manager = getattr(self._current_session(), "settings_manager", None)
         get_keybindings = getattr(settings_manager, "get_keybindings", None)
@@ -145,6 +159,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             usage_provider=self._usage_snapshot,
             settings_manager=getattr(session, "settings_manager", None),
             statusline_preview=self.coding_app.statusline_preview_snapshot,
+            on_model_changed=self._on_model_changed,
         )
 
 

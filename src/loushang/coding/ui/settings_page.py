@@ -23,6 +23,7 @@ async def build_coding_settings_page(
     usage_provider: Callable[[], object | None] | None = None,
     settings_manager: object | None = None,
     statusline_preview: Callable[[], StatusLinePreviewSnapshot] | None = None,
+    on_model_changed: Callable[[], None] | None = None,
 ) -> SettingsPageView:
     """Compose shared settings workflow with Coding-owned facts and actions."""
 
@@ -33,11 +34,14 @@ async def build_coding_settings_page(
     )
 
     async def _apply_model(value: str) -> str:
-        return await select_available_model(
+        result = await select_available_model(
             session,
             query=value,
             settings_manager=settings_manager,
         )
+        if on_model_changed is not None:
+            on_model_changed()
+        return result
 
     return await SettingsPageView.create(
         status_provider=status_provider,

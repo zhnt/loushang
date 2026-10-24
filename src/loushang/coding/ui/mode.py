@@ -183,6 +183,11 @@ async def _run_bound_screen_interactive_tui(
     def current_session():
         return current_agent_runtime_session(runtime, session)
 
+    from loushang.coding.ui.sdk_warmup import CodingSdkWarmup
+
+    sdk_warmup = CodingSdkWarmup(app=app, session_provider=current_session)
+    app.on_session_ready = sdk_warmup.after_ready
+
     action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
@@ -216,6 +221,7 @@ async def _run_bound_screen_interactive_tui(
                 event,
             ),
             approval_interaction_provider=current_approval_interaction,
+            on_model_changed=sdk_warmup.observe_current,
         )
 
     def report_rebind_problem(code: str, error: Exception) -> None:
@@ -271,13 +277,19 @@ async def _run_bound_screen_interactive_tui(
             next_session, base_path=Path(cwd)
         ),
         report_rebind_problem=report_rebind_problem,
+        on_session_rebound=sdk_warmup.observe_current,
     ).prepare()
-    return await run_prepared_screen_conversation(
-        prepared,
-        stdin=stdin,
-        stdout=stdout,
-        screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
-    )
+    app.notify_session_ready()
+    try:
+        return await run_prepared_screen_conversation(
+            prepared,
+            stdin=stdin,
+            stdout=stdout,
+            screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
+        )
+    finally:
+        sdk_warmup.close()
+        app.on_session_ready = None
 
 
 async def _run_plain_tui(

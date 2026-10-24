@@ -134,6 +134,9 @@ class ScreenConversationApp:
     keybindings: KeybindingManager | None = None
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
     context_usage_provider: Callable[[], object | None] | None = None
+    startup_phase_provider: Callable[[], str | None] | None = None
+    on_session_ready: Callable[[], None] | None = None
+    _session_ready_notified: bool = field(default=False, init=False, repr=False)
     _transcript_presentation: TranscriptPresentation = field(
         init=False,
         repr=False,
@@ -995,6 +998,7 @@ class ScreenConversationApp:
             active_surface=self.active_surface,
             elapsed_seconds=self.elapsed_seconds(),
             loading_indicator=self._loading_indicator(),
+            loading_phase=self._loading_phase(),
         )
 
     def _working_line(self) -> WorkingLine | None:
@@ -1008,8 +1012,21 @@ class ScreenConversationApp:
 
     def _status_bar(self) -> StatusBar:
         return self._frame_presentation.status_bar(
-            self.state, loading_indicator=self._loading_indicator()
+            self.state,
+            loading_indicator=self._loading_indicator(),
+            loading_phase=self._loading_phase(),
         )
+
+    def _loading_phase(self) -> str | None:
+        provider = self.startup_phase_provider
+        return provider() if provider is not None and self.state.startup_pending else None
+
+    def notify_session_ready(self) -> None:
+        if self.state.startup_pending or self._session_ready_notified:
+            return
+        self._session_ready_notified = True
+        if self.on_session_ready is not None:
+            self.on_session_ready()
 
     def _loading_indicator(self) -> str | None:
         loading_indicator = None
