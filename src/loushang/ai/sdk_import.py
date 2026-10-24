@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from importlib import import_module
 from threading import Lock
 from typing import Any
@@ -28,6 +29,15 @@ async def load_sdk_symbols(api: str) -> tuple[Any, Any] | None:
     package = sdk_package_for_api(api)
     if package is None:
         return None
+    constructor_name = "AsyncAnthropic" if package == "anthropic" else "AsyncOpenAI"
+    loaded = sys.modules.get(package)
+    if (
+        loaded is not None
+        and not getattr(getattr(loaded, "__spec__", None), "_initializing", False)
+        and hasattr(loaded, constructor_name)
+        and hasattr(loaded, "Omit")
+    ):
+        return getattr(loaded, constructor_name), loaded.Omit
     loop = asyncio.get_running_loop()
     key = (loop, package)
     with _lock:
@@ -37,10 +47,7 @@ async def load_sdk_symbols(api: str) -> tuple[Any, Any] | None:
             _inflight[key] = task
             task.add_done_callback(lambda finished: _forget(key, finished))
     module = await asyncio.shield(task)
-    constructor = (
-        module.AsyncAnthropic if package == "anthropic" else module.AsyncOpenAI
-    )
-    return constructor, module.Omit
+    return getattr(module, constructor_name), module.Omit
 
 
 def _forget(

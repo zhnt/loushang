@@ -8,6 +8,7 @@ from loushang.ai import sdk_import
 
 
 def test_selected_sdk_import_does_not_block_event_loop(monkeypatch) -> None:
+    monkeypatch.delitem(sdk_import.sys.modules, "anthropic", raising=False)
     entered = threading.Event()
     release = threading.Event()
     calls: list[str] = []
@@ -39,6 +40,7 @@ def test_selected_sdk_import_does_not_block_event_loop(monkeypatch) -> None:
 
 
 def test_sdk_import_maps_both_openai_apis_and_skips_unknown(monkeypatch) -> None:
+    monkeypatch.delitem(sdk_import.sys.modules, "openai", raising=False)
     calls: list[str] = []
     sdk = SimpleNamespace(AsyncOpenAI=object(), Omit=object())
 
@@ -61,3 +63,17 @@ def test_sdk_import_maps_both_openai_apis_and_skips_unknown(monkeypatch) -> None
 
     asyncio.run(run())
     assert calls == ["openai", "openai"]
+
+
+def test_loaded_sdk_symbols_are_available_without_thread_dispatch(monkeypatch) -> None:
+    sdk = SimpleNamespace(AsyncOpenAI=object(), Omit=object())
+    monkeypatch.setitem(sdk_import.sys.modules, "openai", sdk)
+
+    def unexpected_import(name: str) -> object:
+        raise AssertionError(f"unexpected import: {name}")
+
+    monkeypatch.setattr(sdk_import, "import_module", unexpected_import)
+    assert asyncio.run(sdk_import.load_sdk_symbols("openai-responses")) == (
+        sdk.AsyncOpenAI,
+        sdk.Omit,
+    )
