@@ -149,7 +149,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         levels = reasoning_choices(session)
         if len(levels) <= 1:
             return None
-        return command_surface_view(
+        view = command_surface_view(
             title="Select Reasoning",
             purpose="reasoning",
             items=(
@@ -164,6 +164,10 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             footer="Enter to select · Esc to keep current",
             presentation="bottom-exclusive",
         )
+        current = getattr(session, "thinking_level", None)
+        if current in levels:
+            view.content.selected_index = levels.index(current)
+        return view
 
     def _usage_snapshot(self) -> dict[str, object | None]:
         session = self._current_session()

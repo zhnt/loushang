@@ -998,6 +998,7 @@ class ScreenConversationApp:
             self.render_requester(kind)
 
     def _bottom_frame(self) -> BottomFrame:
+        self._refresh_reasoning_label()
         return self._frame_presentation.populate_bottom_frame(
             self._bottom_frame_component,
             composer=self.composer,

@@ -1636,6 +1636,7 @@ def test_model_surface_selects_reasoning_and_updates_statusline() -> None:
     assert surface.purpose == "reasoning"
     assert surface.title == "Select Reasoning"
     assert "off" not in [item.value for item in surface.content.items]
+    assert surface.content.selected_item().value == "high"
     assert app.statusline_preview_snapshot().reasoning_label == "high"
 
     asyncio.run(manager.handle_surface_intent(InputIntent(kind="select", text="xhigh")))
@@ -1647,6 +1648,22 @@ def test_model_surface_selects_reasoning_and_updates_statusline() -> None:
     assert snapshot.reasoning_label == "max"
     assert status_line_fields(snapshot, StatusLineSettings())[0].text.endswith(
         "gpt-5.4 max"
+    )
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "gpt-5.4 max |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
+    )
+
+
+def test_initial_screen_frame_shows_current_reasoning_level() -> None:
+    session = _ReasoningSession()
+    app = _app()
+    app.state.model_label = "kimi-code:openai-completions:k3.1-pro"
+    _manager(app, session)
+
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "k3.1-pro high |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
     )
 
 
