@@ -151,6 +151,21 @@ def test_model_loader_rejects_invalid_reasoning_efforts(
         validate_model_registry_raw(raw)
 
 
+@pytest.mark.parametrize("required", [True, "true"])
+def test_model_loader_rejects_reasoning_required_without_reasoning(
+    required: object,
+) -> None:
+    capabilities = _capabilities()
+    capabilities["reasoning"] = False
+    capabilities["reasoningRequired"] = required
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        model_extra={"capabilities": capabilities},
+    )
+    with pytest.raises(ValueError, match="reasoningRequired"):
+        validate_model_registry_raw(raw)
+
+
 @pytest.mark.parametrize("value", ["", "   "])
 def test_endpoint_rejects_empty_base_url(value: str) -> None:
     raw = _registry_raw(endpoint_extra={"baseUrl": value})

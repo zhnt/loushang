@@ -778,6 +778,7 @@ class Capabilities:
     context_window: int | None = None
     max_tokens: int | None = None
     reasoning: bool = False
+    reasoning_required: bool = False
     stream: bool = False
     tool_use: bool = False
     structured_output: bool = False
@@ -789,6 +790,7 @@ class Capabilities:
     def __post_init__(self) -> None:
         for attr in (
             "reasoning",
+            "reasoning_required",
             "stream",
             "tool_use",
             "structured_output",
@@ -804,6 +806,8 @@ class Capabilities:
             ):
                 raise ValueError(f"capability field must be a positive integer: {attr}")
         efforts = self.reasoning_efforts
+        if self.reasoning_required and not self.reasoning:
+            raise ValueError("capability field reasoning_required requires reasoning")
         if efforts is not None:
             if (
                 not isinstance(efforts, (list, tuple))
@@ -857,6 +861,7 @@ class Capabilities:
             context_window=_positive_int_from_raw(raw, "contextWindow"),
             max_tokens=_positive_int_from_raw(raw, "maxTokens"),
             reasoning=_capability_bool_from_raw(raw, "reasoning"),
+            reasoning_required=_capability_bool_from_raw(raw, "reasoningRequired"),
             reasoning_efforts=raw.get("reasoningEfforts"),  # type: ignore[arg-type]
             stream=_capability_bool_from_raw(raw, "stream"),
             tool_use=_capability_bool_from_raw(raw, "toolUse"),
@@ -881,6 +886,8 @@ class Capabilities:
         }
         if self.reasoning_efforts is not None:
             capabilities["reasoningEfforts"] = list(self.reasoning_efforts)
+        if self.reasoning_required:
+            capabilities["reasoningRequired"] = True
         if self.provider_compaction is not None:
             capabilities["providerCompaction"] = self.provider_compaction
         return {"capabilities": capabilities}

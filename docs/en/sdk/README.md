@@ -240,6 +240,8 @@ For Kimi K3.1 Pro, Kimi API uses `kimi-k3.1-pro` (or
 `k3.1-pro` (or `k3.1-pro-highspeed`) on its OpenAI and Anthropic endpoints.
 Both variants require reasoning. Kimi API defaults to `max` effort; Kimi Code
 defaults to `high`. Kimi Code's 1M context depends on the subscription tier.
+`capabilities.reasoningRequired: true` records models such as K3.1 that reject
+disabled reasoning. The SDK validates this before dispatching a request.
 
 ```json
 {

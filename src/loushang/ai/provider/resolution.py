@@ -23,6 +23,7 @@ from loushang.ai.model.domain import (
     OpenAIResponsesConfig,
     default_adapter_config,
 )
+from loushang.ai.model.reasoning import validate_reasoning_request
 from loushang.ai.options import (
     CallOptions,
     get_max_output_tokens,
@@ -123,6 +124,9 @@ def resolve_request_for_model(
     headers = dict(auth_view.headers)
     max_tokens = _resolve_max_tokens(options, defaults)
     reasoning_enabled, reasoning_effort = _resolve_reasoning(options, defaults)
+    validate_reasoning_request(
+        model, enabled=reasoning_enabled, effort=reasoning_effort
+    )
     temperature = _resolve_temperature(options, defaults)
     return ProviderRequest(
         model=model,

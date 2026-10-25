@@ -75,6 +75,7 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
         "output",
         "providerCompaction",
         "reasoning",
+        "reasoningRequired",
         "reasoningEfforts",
         "stream",
         "structuredOutput",
@@ -206,6 +207,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                         )
                 for key in (
                     "reasoning",
+                    "reasoningRequired",
                     "stream",
                     "toolUse",
                     "structuredOutput",
@@ -248,6 +250,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                             "model default reasoning effort must be supported: "
                             f"{model_path}.defaults.reasoningEffort"
                         )
+                if capabilities.get("reasoningRequired") is True and capabilities.get("reasoning") is not True:
+                    raise ValueError(
+                        "reasoningRequired requires reasoning: "
+                        f"{model_path}.capabilities.reasoningRequired"
+                    )
 
 
 def _require_mapping(value: object, path: str) -> dict[str, Any]:

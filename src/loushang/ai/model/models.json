@@ -423,12 +423,20 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "kimi-k3.1-pro-highspeed": {
@@ -457,12 +465,20 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "reasoningEffort": true,
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "kimi-k3": {
@@ -595,13 +611,21 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "k3.1-pro-highspeed": {
@@ -630,13 +654,21 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "k3": {
@@ -673,7 +705,14 @@
                 "reasoningEffort": true,
                 "maxOutputTokensField": "max_completion_tokens",
                 "assistantReasoningContent": true,
-                "reasoningFormat": "openai"
+                "reasoningFormat": "openai",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             }
           },
@@ -748,7 +787,8 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "thinkingMode": "adaptive",
@@ -787,7 +827,8 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": false
+                "temperature": false,
+                "reasoningRequired": true
               },
               "adapter": {
                 "thinkingMode": "adaptive",
@@ -835,7 +876,7 @@
                 "reasoningEffortMap": {
                   "minimal": "low",
                   "low": "low",
-                  "medium": "medium",
+                  "medium": "high",
                   "high": "high",
                   "xhigh": "max"
                 }

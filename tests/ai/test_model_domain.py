@@ -36,6 +36,8 @@ from loushang.ai.model import (
         {"reasoning_efforts": ("low", "low"), "reasoning": True},
         {"reasoning_efforts": (" ",), "reasoning": True},
         {"reasoning_efforts": ("low",)},
+        {"reasoning_required": True},
+        {"reasoning_required": "true", "reasoning": True},
     ],
 )
 def test_capabilities_reject_invalid_programmatic_values(
@@ -72,6 +74,9 @@ def test_reasoning_efforts_round_trip_and_unknown_state() -> None:
         ).reasoning_efforts
         == ()
     )
+    required = Capabilities.from_raw({"reasoning": True, "reasoningRequired": True})
+    assert required.reasoning_required is True
+    assert required.to_raw()["capabilities"]["reasoningRequired"] is True
 
 
 @pytest.mark.parametrize(

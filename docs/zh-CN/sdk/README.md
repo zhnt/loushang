@@ -222,6 +222,8 @@ Kimi K3.1 Pro 在 Kimi API 的 `moonshot/openai-completions` 下使用
 与 Anthropic 端点下使用 `k3.1-pro`（高速版为 `k3.1-pro-highspeed`）。两种版本
 都必须开启推理。Kimi API 默认 `max`，Kimi Code 默认 `high`；Kimi Code 的 1M
 上下文额度取决于订阅等级。
+`capabilities.reasoningRequired: true` 标记 K3.1 这类不接受关闭推理的模型；
+SDK 会在发送请求前校验。
 
 ```json
 {
