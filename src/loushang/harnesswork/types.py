@@ -27,7 +27,9 @@ WorkStepStatus: TypeAlias = Literal[
 ]
 
 DeliveryHint: TypeAlias = Literal["immediate", "coalesce", "final_only"]
-ArtifactStatus: TypeAlias = Literal["planned", "created", "updated", "deleted", "failed"]
+ArtifactStatus: TypeAlias = Literal[
+    "planned", "created", "updated", "deleted", "failed"
+]
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,27 @@ class WorkCancellationOutcome:
     @classmethod
     def failed(cls, error: BaseException) -> WorkCancellationOutcome:
         return cls(status="failed", error=error)
+
+
+@dataclass(frozen=True)
+class WorkCancellationRecord:
+    """Cancellation observed at a committed terminal, or a conservative snapshot.
+
+    A settled report describes the binding's report, not proof that all external
+    effects were undone. ``basis`` distinguishes journal evidence from live state.
+    """
+
+    operation_id: str
+    run_id: str
+    session_id: str
+    status: Literal[
+        "not_requested", "pending", "settled", "unsupported", "failed", "unknown"
+    ]
+    reason_code: str
+    reported_status: WorkCancellationStatus | None
+    basis: Literal["journal", "live"]
+    observed_sequence: int
+    source_event_id: str | None
 
 
 @dataclass(frozen=True)
@@ -193,6 +216,7 @@ __all__ = [
     "WorkEvent",
     "WorkEventFact",
     "WorkCancellationOutcome",
+    "WorkCancellationRecord",
     "WorkCancellationStatus",
     "WorkOperation",
     "WorkPlanRun",

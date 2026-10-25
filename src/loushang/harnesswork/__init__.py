@@ -8,6 +8,7 @@ from loushang.harnesswork.types import (
     ArtifactStatus,
     DeliveryHint,
     WorkCancellationOutcome,
+    WorkCancellationRecord,
     WorkCancellationStatus,
     WorkEvent,
     WorkEventFact,
@@ -23,6 +24,10 @@ from loushang.harnesswork.types import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harnesswork.cancellation_projection import (
+        WorkCancellationReplayError,
+        project_work_cancellations,
+    )
     from loushang.harnesswork.cli import (
         WorkLogInspectionError,
         create_work_event_log,
@@ -59,6 +64,7 @@ if TYPE_CHECKING:
         DuplicateWorkOperationError,
         UnknownWorkRunError,
         WorkCancellationFailedError,
+        WorkCancellationObservationUnavailable,
         WorkCancellationTimeoutError,
         WorkLifecycleOwnershipError,
         WorkRunTerminalError,
@@ -67,6 +73,18 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "WorkCancellationReplayError": (
+        "loushang.harnesswork.cancellation_projection",
+        "WorkCancellationReplayError",
+    ),
+    "project_work_cancellations": (
+        "loushang.harnesswork.cancellation_projection",
+        "project_work_cancellations",
+    ),
+    "WorkCancellationObservationUnavailable": (
+        "loushang.harnesswork.runtime",
+        "WorkCancellationObservationUnavailable",
+    ),
     "WorkLogInspectionError": (
         "loushang.harnesswork.cli",
         "WorkLogInspectionError",
@@ -188,6 +206,10 @@ __all__ = [
     "WorkCancelPort",
     "WorkCancellationFailedError",
     "WorkCancellationOutcome",
+    "WorkCancellationRecord",
+    "WorkCancellationReplayError",
+    "WorkCancellationObservationUnavailable",
+    "project_work_cancellations",
     "WorkCancellationStatus",
     "WorkCancellationTimeoutError",
     "WorkDomainCancellation",

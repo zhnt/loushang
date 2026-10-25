@@ -28,6 +28,11 @@ typed result 或 crash recovery 当作现有能力。
 
 ## Definition
 
+第一阶段独立增量候选：[HW-KD-001：取消结果记录、查询与回放](key-designs/cancellation-observation.md)
+及[专项评审](key-designs/cancellation-observation-review.md)。观察切片已实施，范围、验证与
+集成授权见[实施记录](key-designs/cancellation-observation-implementation.md)。
+该专项不改变本文已接受的强收尾目标，不关闭 unsupported/timeout 路径的已知差异。
+
 HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接受业务意图推进到可判定、
 可查询、可回放的终局，同时复用 Harness 的执行 scope、工具、审批、取消和 presentation
 机制。它不是每个 turn、tool call、agent invocation 或进程内 task 的别名。

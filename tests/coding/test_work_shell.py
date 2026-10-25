@@ -157,6 +157,7 @@ def test_session_work_runtime_logs_coding_operation_and_projected_events() -> No
             "kind": "SubmitCodingTurn",
             "domain": "coding",
             "payload": {"text": "fix this bug"},
+            "_harnesswork": {"cancellation_observation_version": 1},
         }
         assert [entry.payload["kind"] for entry in entries[1:]] == [
             "WorkRunStarted",

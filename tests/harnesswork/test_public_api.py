@@ -10,6 +10,7 @@ _MODULE_EXPORTS = {
         "ArtifactStatus",
         "DeliveryHint",
         "WorkCancellationOutcome",
+        "WorkCancellationRecord",
         "WorkCancellationStatus",
         "WorkEvent",
         "WorkEventFact",
@@ -47,6 +48,7 @@ _MODULE_EXPORTS = {
         "DuplicateWorkOperationError",
         "UnknownWorkRunError",
         "WorkCancellationFailedError",
+        "WorkCancellationObservationUnavailable",
         "WorkCancellationTimeoutError",
         "WorkLifecycleOwnershipError",
         "WorkRunTerminalError",
@@ -54,6 +56,10 @@ _MODULE_EXPORTS = {
         "WorkRuntimeError",
     ),
     "run_projection": ("WorkRunReplayError", "project_work_runs"),
+    "cancellation_projection": (
+        "WorkCancellationReplayError",
+        "project_work_cancellations",
+    ),
     "plan_projection": ("project_work_plan_runs",),
     "cli": (
         "WorkLogInspectionError",
