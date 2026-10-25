@@ -75,6 +75,8 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
         "output",
         "providerCompaction",
         "reasoning",
+        "reasoningRequired",
+        "reasoningEfforts",
         "stream",
         "structuredOutput",
         "temperature",
@@ -205,6 +207,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                         )
                 for key in (
                     "reasoning",
+                    "reasoningRequired",
                     "stream",
                     "toolUse",
                     "structuredOutput",
@@ -222,6 +225,36 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                             capabilities[key],
                             f"{model_path}.capabilities.{key}",
                         )
+                if "reasoningEfforts" in capabilities:
+                    efforts = capabilities["reasoningEfforts"]
+                    if (
+                        not isinstance(efforts, list)
+                        or any(
+                            not isinstance(effort, str)
+                            or not effort.strip()
+                            or effort != effort.strip()
+                            for effort in efforts
+                        )
+                        or len(set(efforts)) != len(efforts)
+                        or (efforts and capabilities.get("reasoning") is not True)
+                    ):
+                        raise ValueError(
+                            "models registry field has invalid reasoning efforts: "
+                            f"{model_path}.capabilities.reasoningEfforts"
+                        )
+                    default_effort = (model.get("defaults") or {}).get(
+                        "reasoningEffort"
+                    )
+                    if default_effort is not None and default_effort not in efforts:
+                        raise ValueError(
+                            "model default reasoning effort must be supported: "
+                            f"{model_path}.defaults.reasoningEffort"
+                        )
+                if capabilities.get("reasoningRequired") is True and capabilities.get("reasoning") is not True:
+                    raise ValueError(
+                        "reasoningRequired requires reasoning: "
+                        f"{model_path}.capabilities.reasoningRequired"
+                    )
 
 
 def _require_mapping(value: object, path: str) -> dict[str, Any]:

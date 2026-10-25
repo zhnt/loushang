@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from loushang.ai.model import Capabilities, Defaults, Model
+from loushang.coding.model_reasoning import (
+    effective_reasoning_label,
+    reasoning_choice_label,
+    reasoning_description,
+)
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -78,3 +86,44 @@ def test_model_preparation_uses_runtime_field_only_while_idle() -> None:
     running = app._status_bar().render(RenderConstraints(width=80, max_height=1))
     assert "running" in running.lines[0].text
     assert "preparing model" not in running.lines[0].text
+
+
+def test_statusline_projects_live_reasoning_level_beside_model() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="openai:openai-responses:gpt-6-sol",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+    )
+    level = "high"
+    app.reasoning_label_provider = lambda: level
+    app.set_statusline_settings(StatusLineSettings(style="plain"))
+
+    assert app.statusline_preview_snapshot().reasoning_label == "high"
+    assert app._status_bar().render(RenderConstraints(width=90, max_height=1)).lines[
+        0
+    ].text.startswith("gpt-6-sol high |")
+
+    level = "xhigh"
+    assert app._status_bar().render(RenderConstraints(width=90, max_height=1)).lines[
+        0
+    ].text.startswith("gpt-6-sol xhigh |")
+
+
+def test_unset_agent_effort_projects_model_default() -> None:
+    session = SimpleNamespace(
+        model=Model(
+            id="gpt-6-sol",
+            provider="openai",
+            endpoint="responses",
+            capabilities=Capabilities(reasoning=True),
+            defaults=Defaults({"reasoningEffort": "medium"}),
+        ),
+        thinking_level="off",
+    )
+
+    assert effective_reasoning_label(session) == "medium"
+    assert reasoning_choice_label("off") == "default"
+    assert reasoning_description(session, "off") == "current · model default: medium"

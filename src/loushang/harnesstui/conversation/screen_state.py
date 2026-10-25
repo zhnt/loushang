@@ -55,6 +55,7 @@ class ScreenConversationState:
     startup_pending: bool = False
     sdk_preparing: bool = False
     model_label: str | None = None
+    reasoning_label: str | None = None
     cwd: str = ""
     branch: str | None = None
     session_label: str | None = None

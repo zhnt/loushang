@@ -2694,6 +2694,48 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     }
 
 
+def test_agent_session_restores_selected_reasoning_level_after_resume(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+        )
+        await manager.append_message(_user_message("remember the reasoning level"))
+        await session.set_thinking_level("high")
+        assert manager.session_file is not None
+
+        restored_manager = await SessionManager.load(manager.session_file, persist=True)
+        restored = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=restored_manager,
+        )
+        assert restored.thinking_level == "high"
+        assert restored.get_state().thinking_level == "high"
+
+    asyncio.run(scenario())
+
+
 def test_agent_session_rejects_text_only_model_for_image_history_before_commit(
     tmp_path,
 ) -> None:

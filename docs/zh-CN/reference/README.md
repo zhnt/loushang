@@ -95,6 +95,10 @@ loushang --command <command-name> --command-result-format json
 
 `/new` 会在当前上下文中新建空会话，不接受参数。
 `/delete` 会打开带确认步骤的历史会话选择器；它不会删除当前活跃会话。
+`/model` 选定模型后可继续选择该模型支持的推理级别。纯文本模式也可用
+`/model <provider:endpoint:model> high` 同时指定两者。推理级别随会话保存，
+resume 后恢复；状态栏显示映射后的提供方级别（例如 Kimi 的 `xhigh` 显示为 `max`）。
+选择 `default` 表示沿用模型的默认推理设置。
 
 ## 认证迁移
 

@@ -56,7 +56,7 @@ def info_surface_view(
 def command_surface_view(
     *,
     title: str,
-    purpose: Literal["model", "command"],
+    purpose: Literal["model", "reasoning", "command"],
     items: Iterable[SelectItem],
     subtitle: str = "",
     footer: str = "Enter to select - Esc to close",
