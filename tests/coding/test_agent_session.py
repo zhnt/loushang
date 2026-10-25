@@ -1527,6 +1527,8 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
         "exit_code": 0,
         "cancelled": False,
         "truncated": False,
+        "stdio_complete": True,
+        "stdio_drain_reason": None,
         "full_output_path": None,
     }
     assert seen == ["printf remote"]

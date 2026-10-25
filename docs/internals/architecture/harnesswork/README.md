@@ -33,6 +33,11 @@ typed result 或 crash recovery 当作现有能力。
 集成授权见[实施记录](key-designs/cancellation-observation-implementation.md)。
 该专项不改变本文已接受的强收尾目标，不关闭 unsupported/timeout 路径的已知差异。
 
+下一项独立候选：[HW-KD-002：产物证据交接与读取](key-designs/evidence-handoff.md)，
+设计既有 Blob 与领域事实的关联；用户已授权首个本地 Coding SDK 私有消费切片，
+范围与实施验证见[交付记录](../../plans/2026-10-25-coding-sdk-evidence-loop.md)。
+该接受范围不扩展为公共证据 API，不改变本文的存储/领域边界。
+
 HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接受业务意图推进到可判定、
 可查询、可回放的终局，同时复用 Harness 的执行 scope、工具、审批、取消和 presentation
 机制。它不是每个 turn、tool call、agent invocation 或进程内 task 的别名。

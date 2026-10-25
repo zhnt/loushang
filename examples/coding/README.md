@@ -86,6 +86,29 @@ python examples/coding/21_switch_model_route.py
 
 ### 设计路线（online 优先 + 可复现）
 
+#### 本地验证与证据消费（私有集成示例）
+
+`26_verification_evidence.py` 通过真实 Coding Session 执行本地检查，利用原 Work
+完成报告与验证两步，再从日志及 Session Blob 重读证据。该示例不调用模型，无需 API key；
+当前直接运行，未加入统一运行器。私有适配尚非稳定公共 SDK 接口。
+
+从仓库根目录运行，使用新的、仅自己可写的本地输出目录；状态域与数据域分开：
+
+```bash
+export LOUSHANG_HOME="$(mktemp -d /tmp/loushang-verify-state.XXXXXX)"
+evidence_dir="$(mktemp -d /tmp/loushang-verify-evidence.XXXXXX)"
+uv run python examples/coding/26_verification_evidence.py \
+  --workspace "$PWD" --output-dir "$evidence_dir" \
+  --command 'uv run python scripts/ci/check_docs.py'
+uv run python examples/coding/26_verification_evidence.py \
+  --output-dir "$evidence_dir" --reopen
+```
+
+第二条命令只重开并消费原证据，不再次执行检查。成功输出包括 Work completed、
+verification_passed=true、材料健康状态和实际读取的报告/验证 JSON。
+短输出可保存为明确标注的 SDK 文本视图；缺失、损坏、不完整或失败均不能冒充验证通过。
+本例只验证一条命令，不能由材料可读或 Work completed 推断 Goal 完成。
+
 从 `coding` 侧这套路线继续往下走，采用三个锚点：  
 - 学习目标：每个例子先定义“验证哪个能力是否成立”。  
 - 运行形态：默认走 `online`，能离线验证的例子保留 `offline` fallback。  
@@ -111,7 +134,7 @@ python examples/coding/21_switch_model_route.py
 
 说明：当前生成型入口新增了 `model/skill/config`，用于补齐 pi-mono 组件齐全性；实际脚本先对齐现有 25 个（`legacy-*`）后再逐步迁移 id 命名。
 
-更完整的路线说明见 [EXAMPLE_DESIGN_ROADMAP_2026-05.md](/home/dev/workspace/loushang/examples/coding/EXAMPLE_DESIGN_ROADMAP_2026-05.md)。
+更完整的路线说明见 [EXAMPLE_DESIGN_ROADMAP_2026-05.md](EXAMPLE_DESIGN_ROADMAP_2026-05.md)。
 
 主题前缀（按生成+既有脚本）：
 - `sdk-*`：SDK 相关
@@ -131,7 +154,7 @@ python examples/coding/21_switch_model_route.py
 - `tools-*`：toolsets
 - `stepwise-*`：step_by_step_coding（无渲染）
 
-pi-mono 覆盖跟踪见 [PI_MONO_COVERAGE.toml](/home/dev/workspace/loushang/examples/coding/PI_MONO_COVERAGE.toml)。覆盖状态含义：
+pi-mono 覆盖跟踪见 [PI_MONO_COVERAGE.toml](PI_MONO_COVERAGE.toml)。覆盖状态含义：
 
 - `covered`：已有可运行 loushang example 验证同一学习目标。
 - `partial`：已有能力域覆盖，但缺少专门脚本或关键观测点。
@@ -302,7 +325,7 @@ python run.py run legacy-007
 
 ### Extension Path
 
-Extension-focused examples live in [extensions/README.md](/home/dev/workspace/loushang/examples/coding/extensions/README.md).
+Extension-focused examples live in [extensions/README.md](extensions/README.md).
 
 They are intentionally offline and self-contained:
 

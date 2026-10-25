@@ -291,6 +291,12 @@ def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
     for key in ("stdout_blob", "stderr_blob", "artifact_retention_error"):
         if details.get(key) is not None:
             result[key] = details[key]
+    # Preserve existing execution diagnostics. Preview truncation alone cannot
+    # establish that stdout/stderr drained completely; do not invent defaults
+    # for extension results that did not report these fields.
+    for key in ("stdio_complete", "stdio_drain_reason"):
+        if key in details:
+            result[key] = details[key]
     cleanup = artifact_cleanup_diagnostic(details)
     if cleanup is not None:
         result["artifact_cleanup_error"] = cleanup
