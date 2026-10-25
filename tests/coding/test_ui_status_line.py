@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from loushang.ai.model import Capabilities, Defaults, Model
 from loushang.coding.model_reasoning import (
     effective_reasoning_label,
+    reasoning_choice_label,
     reasoning_description,
 )
 from loushang.harnesstui.status.line import (
@@ -124,4 +125,5 @@ def test_unset_agent_effort_projects_model_default() -> None:
     )
 
     assert effective_reasoning_label(session) == "medium"
+    assert reasoning_choice_label("off") == "default"
     assert reasoning_description(session, "off") == "current · model default: medium"

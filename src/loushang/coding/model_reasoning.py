@@ -13,6 +13,10 @@ def reasoning_choices(session: object) -> tuple[str, ...]:
     return tuple(level for level in getter() if isinstance(level, str))
 
 
+def reasoning_choice_label(level: str) -> str:
+    return "default" if level == "off" else level
+
+
 def reasoning_description(session: object, level: str) -> str:
     details: list[str] = []
     if level == getattr(session, "thinking_level", None):
@@ -57,6 +61,7 @@ async def select_reasoning_level(session: object, level: str) -> str:
 
 __all__ = [
     "effective_reasoning_label",
+    "reasoning_choice_label",
     "reasoning_choices",
     "reasoning_description",
     "select_reasoning_level",

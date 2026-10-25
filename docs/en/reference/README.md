@@ -100,6 +100,7 @@ Built-in interactive commands include:
 `/model <provider:endpoint:model> high` selects both directly. The reasoning level
 is saved with the session and restored on resume. The status line shows the
 provider-native level (for example, Kimi `xhigh` appears as `max`).
+`default` leaves the model's reasoning default in effect.
 
 ## Authentication Migration
 

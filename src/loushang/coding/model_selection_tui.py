@@ -6,6 +6,7 @@ import inspect
 from collections.abc import Callable
 
 from loushang.coding.model_reasoning import (
+    reasoning_choice_label,
     reasoning_choices,
     reasoning_description,
     select_reasoning_level,
@@ -20,7 +21,7 @@ from loushang.harnesstui.selection.interaction import (
 )
 from loushang.tui import CommandPalette, CommandPaletteItem
 
-_REASONING_LEVELS = {"off", "minimal", "low", "medium", "high", "xhigh"}
+_REASONING_LEVELS = {"default", "off", "minimal", "low", "medium", "high", "xhigh"}
 
 
 async def select_available_model(
@@ -39,6 +40,8 @@ async def select_available_model(
     )
     if requested_level is not None:
         query = model_query
+        if requested_level == "default":
+            requested_level = "off"
 
     async def apply(selection: object) -> object:
         return await apply_model_selection(
@@ -68,7 +71,7 @@ async def select_available_model(
         items=tuple(
             CommandPaletteItem(
                 value=level,
-                label=level,
+                label=reasoning_choice_label(level),
                 description=reasoning_description(session, level),
             )
             for level in levels

@@ -5,6 +5,7 @@ from typing import Any
 
 from loushang.coding.model_reasoning import (
     effective_reasoning_label,
+    reasoning_choice_label,
     reasoning_choices,
     reasoning_description,
     select_reasoning_level,
@@ -153,7 +154,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             purpose="reasoning",
             items=(
                 SelectItem(
-                    label=level,
+                    label=reasoning_choice_label(level),
                     value=level,
                     description=reasoning_description(session, level),
                 )
