@@ -47,6 +47,7 @@ class ScreenFramePresentation:
     ) -> StatusLinePreviewSnapshot:
         return StatusLinePreviewSnapshot(
             model_label=state.model_label,
+            reasoning_label=state.reasoning_label,
             cwd=state.cwd,
             branch=state.branch,
             session_label=state.session_label,

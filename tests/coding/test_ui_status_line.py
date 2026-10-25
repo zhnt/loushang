@@ -78,3 +78,27 @@ def test_model_preparation_uses_runtime_field_only_while_idle() -> None:
     running = app._status_bar().render(RenderConstraints(width=80, max_height=1))
     assert "running" in running.lines[0].text
     assert "preparing model" not in running.lines[0].text
+
+
+def test_statusline_projects_live_reasoning_level_beside_model() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="openai:openai-responses:gpt-6-sol",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+    )
+    level = "high"
+    app.reasoning_label_provider = lambda: level
+    app.set_statusline_settings(StatusLineSettings(style="plain"))
+
+    assert app.statusline_preview_snapshot().reasoning_label == "high"
+    assert app._status_bar().render(RenderConstraints(width=90, max_height=1)).lines[
+        0
+    ].text.startswith("gpt-6-sol high |")
+
+    level = "xhigh"
+    assert app._status_bar().render(RenderConstraints(width=90, max_height=1)).lines[
+        0
+    ].text.startswith("gpt-6-sol xhigh |")
