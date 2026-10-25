@@ -3,13 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from loushang.coding.model_reasoning import (
-    effective_reasoning_label,
-    reasoning_choice_label,
-    reasoning_choices,
-    reasoning_description,
-    select_reasoning_level,
-)
+from loushang.coding.model_reasoning_tui import bind_reasoning_selection
 from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -26,14 +20,11 @@ from loushang.harnesstui.selection.binding import (
     SessionModelSelectorSurfaceProfile,
 )
 from loushang.harnesstui.status.provider import StatusProvider
-from loushang.harnesstui.surface.factory import command_surface_view
-from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
     STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
     ScreenSurfaceCommandCatalog,
     ScreenSurfaceWorkflow,
 )
-from loushang.tui import SelectItem
 
 _CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
     subtitle=(
@@ -66,8 +57,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.status_provider = status_provider
         self._on_model_changed = on_model_changed
         app.context_usage_provider = self._context_usage
-        app.reasoning_label_provider = lambda: effective_reasoning_label(
-            self._current_session()
+        build_reasoning, select_reasoning = bind_reasoning_selection(
+            app, self._current_session
         )
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
@@ -78,16 +69,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             select_model=lambda value: select_available_model(
                 self._current_session(), query=value, on_model_changed=on_model_changed
             ),
-            set_model_label=lambda label: setattr(
-                app.state,
-                "model_label",
-                label,
-            ),
-            set_session_label=lambda label: setattr(
-                app.state,
-                "session_label",
-                label,
-            ),
+            set_model_label=lambda label: setattr(app.state, "model_label", label),
+            set_session_label=lambda label: setattr(app.state, "session_label", label),
             set_permission_profile_label=lambda label: setattr(
                 app.state,
                 "permission_profile",
@@ -100,10 +83,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             on_approval=on_approval,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
-            build_reasoning_selector=self._build_reasoning_selector,
-            select_reasoning_level=lambda level: select_reasoning_level(
-                self._current_session(), level
-            ),
+            build_reasoning_selector=build_reasoning,
+            select_reasoning_level=select_reasoning,
         )
         self.command_catalog = ports.command_catalog
         super().__init__(
@@ -143,31 +124,6 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
     def _context_usage(self) -> object | None:
         getter = getattr(self._current_session(), "get_context_usage", None)
         return getter() if callable(getter) else None
-
-    def _build_reasoning_selector(self) -> ScreenSurfaceView | None:
-        session = self._current_session()
-        levels = reasoning_choices(session)
-        if len(levels) <= 1:
-            return None
-        view = command_surface_view(
-            title="Select Reasoning",
-            purpose="reasoning",
-            items=(
-                SelectItem(
-                    label=reasoning_choice_label(level),
-                    value=level,
-                    description=reasoning_description(session, level),
-                )
-                for level in levels
-            ),
-            subtitle="Choose a reasoning level for this session",
-            footer="Enter to select · Esc to keep current",
-            presentation="bottom-exclusive",
-        )
-        current = getattr(session, "thinking_level", None)
-        if current in levels:
-            view.content.selected_index = levels.index(current)
-        return view
 
     def _usage_snapshot(self) -> dict[str, object | None]:
         session = self._current_session()
