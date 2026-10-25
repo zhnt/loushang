@@ -33,6 +33,11 @@ from loushang.ai.model import (
         {"input": ()},
         {"input": ("text", "text")},
         {"output": ("audio",)},
+        {"reasoning_efforts": ("low", "low"), "reasoning": True},
+        {"reasoning_efforts": (" ",), "reasoning": True},
+        {"reasoning_efforts": ("low",)},
+        {"reasoning_required": True},
+        {"reasoning_required": "true", "reasoning": True},
     ],
 )
 def test_capabilities_reject_invalid_programmatic_values(
@@ -47,6 +52,31 @@ def test_capabilities_from_raw_rejects_lossy_coercion() -> None:
         Capabilities.from_raw({"stream": "false"})
     with pytest.raises(ValueError, match="invalid modalities"):
         Capabilities.from_raw({"input": ["text", "audio"]})
+
+
+def test_reasoning_efforts_round_trip_and_unknown_state() -> None:
+    assert Capabilities(reasoning=True).reasoning_efforts is None
+    capabilities = Capabilities.from_raw(
+        {"reasoning": True, "reasoningEfforts": ["low", "high", "max"]}
+    )
+    assert capabilities.reasoning_efforts == ("low", "high", "max")
+    assert capabilities.to_raw()["capabilities"]["reasoningEfforts"] == [
+        "low",
+        "high",
+        "max",
+    ]
+    assert Capabilities(
+        reasoning=True, reasoning_efforts=("small",)
+    ).reasoning_efforts == ("small",)
+    assert (
+        Capabilities.from_raw(
+            {"reasoning": True, "reasoningEfforts": []}
+        ).reasoning_efforts
+        == ()
+    )
+    required = Capabilities.from_raw({"reasoning": True, "reasoningRequired": True})
+    assert required.reasoning_required is True
+    assert required.to_raw()["capabilities"]["reasoningRequired"] is True
 
 
 @pytest.mark.parametrize(

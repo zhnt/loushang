@@ -134,6 +134,7 @@ class ScreenConversationApp:
     keybindings: KeybindingManager | None = None
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
     context_usage_provider: Callable[[], object | None] | None = None
+    reasoning_label_provider: Callable[[], str | None] | None = None
     startup_phase_provider: Callable[[], str | None] | None = None
     on_session_ready: Callable[[], None] | None = None
     _session_ready_notified: bool = field(default=False, init=False, repr=False)
@@ -404,7 +405,13 @@ class ScreenConversationApp:
 
     def statusline_preview_snapshot(self) -> StatusLinePreviewSnapshot:
         self._refresh_context_usage()
+        self._refresh_reasoning_label()
         return self._frame_presentation.statusline_preview_snapshot(self.state)
+
+    def _refresh_reasoning_label(self) -> None:
+        provider = self.reasoning_label_provider
+        if provider is not None:
+            self.state.reasoning_label = provider()
 
     def open_transcript_reader(self) -> bool:
         if self.surface_host is None:
@@ -991,6 +998,7 @@ class ScreenConversationApp:
             self.render_requester(kind)
 
     def _bottom_frame(self) -> BottomFrame:
+        self._refresh_reasoning_label()
         return self._frame_presentation.populate_bottom_frame(
             self._bottom_frame_component,
             composer=self.composer,
@@ -1011,6 +1019,7 @@ class ScreenConversationApp:
         return self._frame_presentation.pending_queue(self.state)
 
     def _status_bar(self) -> StatusBar:
+        self._refresh_reasoning_label()
         return self._frame_presentation.status_bar(
             self.state,
             loading_indicator=self._loading_indicator(),

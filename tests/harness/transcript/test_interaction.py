@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from loushang.agent.types import ThinkingLevel
-from loushang.ai.model import Capabilities, Model, ModelSelection
+from loushang.ai.model import (
+    Capabilities,
+    Model,
+    ModelSelection,
+    load_builtin_model_registry,
+)
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -285,5 +292,47 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
             "model_id": "two",
         }
         assert context.thinking_level == "high"
+
+    asyncio.run(scenario())
+
+
+def test_selection_runtime_uses_model_efforts_and_persists_required_default() -> None:
+    async def scenario() -> None:
+        session = await _session()
+        first = _model()
+        k31 = load_builtin_model_registry().get_model(
+            "kimi-code", "kimi-code-openai", "k3.1-pro"
+        )
+        active_model = first
+        active_thinking: ThinkingLevel = "off"
+
+        def set_model(model: Model) -> None:
+            nonlocal active_model
+            active_model = model
+
+        def set_thinking(level: ThinkingLevel) -> None:
+            nonlocal active_thinking
+            active_thinking = level
+
+        runtime = AgentTranscriptSelectionRuntime(
+            session=session,
+            get_model=lambda: active_model,
+            set_model=set_model,
+            get_thinking_level=lambda: active_thinking,
+            set_thinking_level_value=set_thinking,
+            get_model_catalog=lambda: None,
+        )
+
+        await runtime.apply_model(k31)
+        assert runtime.get_available_thinking_levels() == ["low", "high", "xhigh"]
+        assert active_thinking == "high"
+        assert session.build_context().thinking_level == "high"
+
+        with pytest.raises(ValueError, match="not available"):
+            await runtime.set_thinking_level("off")
+        assert session.build_context().thinking_level == "high"
+
+        await runtime.set_thinking_level("xhigh")
+        assert session.build_context().thinking_level == "xhigh"
 
     asyncio.run(scenario())

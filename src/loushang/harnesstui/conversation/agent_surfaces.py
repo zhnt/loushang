@@ -62,6 +62,8 @@ def build_standard_agent_screen_surface_workflow_ports(
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
         SessionModelSelectorSurfaceProfile()
     ),
+    build_reasoning_selector: Callable[[], ScreenSurfaceView | None] | None = None,
+    select_reasoning_level: Callable[[str], Awaitable[str]] | None = None,
 ) -> ScreenSurfaceWorkflowPorts:
     """Bind standard resume/delete/fork/rename/agents/question operations.
 
@@ -224,6 +226,8 @@ def build_standard_agent_screen_surface_workflow_ports(
         build_side_question_surface=build_side_question_surface,
         command_catalog=command_catalog,
         model_selector_profile=model_selector_profile,
+        build_reasoning_selector=build_reasoning_selector,
+        select_reasoning_level=select_reasoning_level,
     )
 
 

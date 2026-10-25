@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loushang.coding.model_reasoning_tui import bind_reasoning_selection
 from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -56,6 +57,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.status_provider = status_provider
         self._on_model_changed = on_model_changed
         app.context_usage_provider = self._context_usage
+        build_reasoning, select_reasoning = bind_reasoning_selection(
+            app, self._current_session
+        )
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
             runtime=runtime,
@@ -65,16 +69,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             select_model=lambda value: select_available_model(
                 self._current_session(), query=value, on_model_changed=on_model_changed
             ),
-            set_model_label=lambda label: setattr(
-                app.state,
-                "model_label",
-                label,
-            ),
-            set_session_label=lambda label: setattr(
-                app.state,
-                "session_label",
-                label,
-            ),
+            set_model_label=lambda label: setattr(app.state, "model_label", label),
+            set_session_label=lambda label: setattr(app.state, "session_label", label),
             set_permission_profile_label=lambda label: setattr(
                 app.state,
                 "permission_profile",
@@ -87,6 +83,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             on_approval=on_approval,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
+            build_reasoning_selector=build_reasoning,
+            select_reasoning_level=select_reasoning,
         )
         self.command_catalog = ports.command_catalog
         super().__init__(

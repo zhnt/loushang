@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from loushang.ai import Model
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Capabilities, ModelSelection, OpenAICompletionsConfig
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
@@ -29,6 +29,7 @@ from loushang.harnesstui.multiagent import AgentTreeSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
+from loushang.harnesstui.status.line import StatusLineSettings, status_line_fields
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
@@ -1588,6 +1589,82 @@ class _FailingModelSession(_Session):
             model="deepseek-v4-flash",
             details={"capability": "image_input"},
         )
+
+
+class _ReasoningSession(_Session):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = Model(
+            id="k3.1-pro",
+            provider="kimi-code",
+            endpoint="openai-completions",
+            capabilities=Capabilities(
+                reasoning=True,
+                reasoning_required=True,
+                reasoning_efforts=("low", "high", "max"),
+            ),
+            adapter=OpenAICompletionsConfig(
+                reasoning_effort_map={
+                    "low": "low",
+                    "high": "high",
+                    "xhigh": "max",
+                }
+            ),
+        )
+        self.thinking_level = "high"
+        self.thinking_changes: list[str] = []
+
+    def get_available_thinking_levels(self) -> list[str]:
+        return ["low", "high", "xhigh"]
+
+    async def set_thinking_level(self, level: str) -> None:
+        if level not in self.get_available_thinking_levels():
+            raise ValueError("unsupported reasoning level")
+        self.thinking_changes.append(level)
+        self.thinking_level = level
+
+
+def test_model_surface_selects_reasoning_and_updates_statusline() -> None:
+    session = _ReasoningSession()
+    app = _app()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/model openai:test-endpoint:gpt-5.4"))
+
+    surface = app.active_surface
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.purpose == "reasoning"
+    assert surface.title == "Select Reasoning"
+    assert "off" not in [item.value for item in surface.content.items]
+    assert surface.content.selected_item().value == "high"
+    assert app.statusline_preview_snapshot().reasoning_label == "high"
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="select", text="xhigh")))
+
+    assert session.thinking_changes == ["xhigh"]
+    assert app.active_surface is None
+    assert app.state.status_message == "Reasoning: max"
+    snapshot = app.statusline_preview_snapshot()
+    assert snapshot.reasoning_label == "max"
+    assert status_line_fields(snapshot, StatusLineSettings())[0].text.endswith(
+        "gpt-5.4 max"
+    )
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "gpt-5.4 max |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
+    )
+
+
+def test_initial_screen_frame_shows_current_reasoning_level() -> None:
+    session = _ReasoningSession()
+    app = _app()
+    app.state.model_label = "kimi-code:openai-completions:k3.1-pro"
+    _manager(app, session)
+
+    rendered = app.render(RenderConstraints(width=160, max_height=30))
+    assert "k3.1-pro high |" in "\n".join(
+        strip_control_sequences(line.text) for line in rendered.lines
+    )
 
 
 def _app() -> ScreenCodingTuiApp:

@@ -91,10 +91,22 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         ("moonshot", "openai-completions"): {
             "kimi-k2.6",
             "kimi-k2.7-code",
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed",
             "kimi-k3",
         },
-        ("kimi-code", "kimi-code-openai"): {"k3", "kimi-for-coding"},
-        ("kimi-code", "kimi-code-anthropic"): {"k3", "kimi-for-coding"},
+        ("kimi-code", "kimi-code-openai"): {
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
+            "k3",
+            "kimi-for-coding",
+        },
+        ("kimi-code", "kimi-code-anthropic"): {
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
+            "k3",
+            "kimi-for-coding",
+        },
         ("openai", "openai-responses"): {
             "gpt-5.5",
             "gpt-5.6-sol",
@@ -191,6 +203,46 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
         assert model.name == "Kimi Code K3"
         assert model.upstream_id is None
         assert model.defaults["reasoningEffort"] == "high"
+
+
+def test_kimi_k31_catalog_uses_distinct_api_ids_and_effort_defaults() -> None:
+    registry = _load_curated_registry()
+
+    for suffix in ("", "-highspeed"):
+        moonshot = registry.get_model(
+            "moonshot", "openai-completions", f"kimi-k3.1-pro{suffix}"
+        )
+        code_openai = registry.get_model(
+            "kimi-code", "kimi-code-openai", f"k3.1-pro{suffix}"
+        )
+        code_anthropic = registry.get_model(
+            "kimi-code", "kimi-code-anthropic", f"k3.1-pro{suffix}"
+        )
+        for model in (moonshot, code_openai, code_anthropic):
+            assert model.capabilities.context_window == 1048576
+            assert model.capabilities.reasoning_efforts == ("low", "high", "max")
+            assert model.capabilities.reasoning is True
+            assert model.capabilities.input == ("text", "image")
+            assert model.capabilities.max_tokens is None
+
+        assert moonshot.defaults["reasoningEffort"] == "max"
+        assert moonshot.pricing is None
+        assert isinstance(moonshot.adapter, OpenAICompletionsConfig)
+        assert moonshot.adapter.reasoning_effort is True
+        assert moonshot.adapter.reasoning_format == "openai"
+        assert moonshot.adapter.assistant_reasoning_content is True
+
+        assert code_openai.defaults["reasoningEffort"] == "high"
+        assert code_anthropic.defaults["reasoningEffort"] == "high"
+        assert code_openai.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert code_anthropic.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert isinstance(code_openai.adapter, OpenAICompletionsConfig)
+        assert code_openai.adapter.reasoning_effort is True
+        assert code_openai.adapter.reasoning_format == "openai"
+        assert isinstance(code_anthropic.adapter, AnthropicMessagesConfig)
+        assert code_anthropic.adapter.thinking_mode == "adaptive"
+        assert code_anthropic.adapter.reasoning_effort_map["medium"] == "high"
+        assert code_anthropic.adapter.reasoning_effort_map["xhigh"] == "max"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
