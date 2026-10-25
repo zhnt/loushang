@@ -96,6 +96,10 @@ Built-in interactive commands include:
 
 `/new` starts an empty session in the current context and accepts no arguments.
 `/delete` opens a confirmed picker for deleting a previous session; it never deletes the active session.
+`/model` lets you choose a model, then a supported reasoning level. In plain mode,
+`/model <provider:endpoint:model> high` selects both directly. The reasoning level
+is saved with the session and restored on resume. The status line shows the
+provider-native level (for example, Kimi `xhigh` appears as `max`).
 
 ## Authentication Migration
 

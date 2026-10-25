@@ -328,6 +328,20 @@ def test_model_selection_can_continue_into_reasoning_choice() -> None:
     assert state.statuses[-1] == "Reasoning: high"
 
 
+def test_cancel_reasoning_choice_keeps_selected_model() -> None:
+    workflow, state = _workflow()
+    workflow.ports = replace(
+        workflow.ports,
+        build_reasoning_selector=lambda: _surface("Choose reasoning", "reasoning"),
+    )
+
+    asyncio.run(workflow.handle_text("/model provider:model"))
+    asyncio.run(workflow.handle_surface_intent(InputIntent(kind="surface_close")))
+
+    assert workflow.current is None
+    assert state.model_values == ["provider:model"]
+
+
 def test_surface_workflow_confirms_before_deleting_a_continuity_item() -> None:
     workflow, state = _workflow()
 

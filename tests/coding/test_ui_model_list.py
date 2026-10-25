@@ -352,6 +352,64 @@ def test_select_available_model_uses_injected_palette_chooser() -> None:
     ]
 
 
+def test_plain_model_palette_selects_model_then_reasoning() -> None:
+    from loushang.coding.model_selection_tui import select_available_model
+    from loushang.tui import CommandPalette
+
+    class ReasoningSession(_Session):
+        thinking_level = "off"
+
+        def get_available_thinking_levels(self) -> list[str]:
+            return ["off", "low", "high"]
+
+        async def set_thinking_level(self, level: str) -> None:
+            assert level in self.get_available_thinking_levels()
+            self.thinking_level = level
+
+    session = ReasoningSession()
+    palettes: list[CommandPalette] = []
+
+    def choose(palette: CommandPalette) -> str:
+        palettes.append(palette)
+        return (
+            "openai:test-endpoint:gpt-5.4"
+            if len(palettes) == 1
+            else "high"
+        )
+
+    text = asyncio.run(select_available_model(session, choose=choose))
+
+    assert text == "Model set: openai:test-endpoint:gpt-5.4 · Reasoning: high"
+    assert [palette.title for palette in palettes] == ["Models", "Select Reasoning"]
+    assert session.thinking_level == "high"
+
+
+def test_plain_model_command_accepts_explicit_reasoning_level() -> None:
+    from loushang.coding.model_selection_tui import select_available_model
+
+    class ReasoningSession(_Session):
+        thinking_level = "off"
+
+        def get_available_thinking_levels(self) -> list[str]:
+            return ["off", "low", "high"]
+
+        async def set_thinking_level(self, level: str) -> None:
+            if level not in self.get_available_thinking_levels():
+                raise ValueError("unsupported reasoning level")
+            self.thinking_level = level
+
+    session = ReasoningSession()
+    text = asyncio.run(
+        select_available_model(
+            session,
+            query="openai:test-endpoint:gpt-5.4 high",
+        )
+    )
+
+    assert text == "Model set: openai:test-endpoint:gpt-5.4 · Reasoning: high"
+    assert session.thinking_level == "high"
+
+
 def test_select_available_model_reports_cancelled_palette_choice() -> None:
     from loushang.coding.model_selection_tui import select_available_model
 
