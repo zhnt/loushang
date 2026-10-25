@@ -75,6 +75,7 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
         "output",
         "providerCompaction",
         "reasoning",
+        "reasoningEfforts",
         "stream",
         "structuredOutput",
         "temperature",
@@ -221,6 +222,31 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                         _validate_positive_int(
                             capabilities[key],
                             f"{model_path}.capabilities.{key}",
+                        )
+                if "reasoningEfforts" in capabilities:
+                    efforts = capabilities["reasoningEfforts"]
+                    if (
+                        not isinstance(efforts, list)
+                        or any(
+                            not isinstance(effort, str)
+                            or not effort.strip()
+                            or effort != effort.strip()
+                            for effort in efforts
+                        )
+                        or len(set(efforts)) != len(efforts)
+                        or (efforts and capabilities.get("reasoning") is not True)
+                    ):
+                        raise ValueError(
+                            "models registry field has invalid reasoning efforts: "
+                            f"{model_path}.capabilities.reasoningEfforts"
+                        )
+                    default_effort = (model.get("defaults") or {}).get(
+                        "reasoningEffort"
+                    )
+                    if default_effort is not None and default_effort not in efforts:
+                        raise ValueError(
+                            "model default reasoning effort must be supported: "
+                            f"{model_path}.defaults.reasoningEffort"
                         )
 
 

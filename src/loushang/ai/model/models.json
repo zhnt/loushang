@@ -180,6 +180,12 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -207,6 +213,12 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -385,6 +397,74 @@
                 "cacheRead": 1.3
               }
             },
+            "kimi-k3.1-pro": {
+              "displayName": "Kimi K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
+              }
+            },
+            "kimi-k3.1-pro-highspeed": {
+              "displayName": "Kimi K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
+              }
+            },
             "kimi-k3": {
               "displayName": "Kimi K3",
               "family": "kimi-k3",
@@ -404,6 +484,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -467,6 +552,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -477,6 +567,76 @@
                 "streamingUsage": false,
                 "reasoningEffort": false,
                 "strictSchema": true
+              }
+            },
+            "k3.1-pro": {
+              "displayName": "Kimi Code K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
+              }
+            },
+            "k3.1-pro-highspeed": {
+              "displayName": "Kimi Code K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
               }
             },
             "k3": {
@@ -498,6 +658,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -545,11 +710,94 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
                 "temperature": false
+              }
+            },
+            "k3.1-pro": {
+              "displayName": "Kimi Code K3.1 Pro",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            },
+            "k3.1-pro-highspeed": {
+              "displayName": "Kimi Code K3.1 Pro Highspeed",
+              "family": "kimi-k3.1",
+              "defaults": {
+                "maxOutputTokens": 32768,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "high",
+                  "high": "high",
+                  "xhigh": "max"
+                }
               }
             },
             "k3": {
@@ -571,6 +819,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "high",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -631,6 +884,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -664,6 +924,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -697,6 +965,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -730,6 +1006,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -763,6 +1046,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -796,6 +1086,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -829,6 +1127,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -881,6 +1186,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -906,6 +1218,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -931,6 +1251,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -956,6 +1284,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -981,6 +1316,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1006,6 +1348,14 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1062,6 +1412,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1129,6 +1484,11 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
@@ -1392,6 +1752,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1433,6 +1800,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1474,6 +1848,13 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,
@@ -1515,6 +1896,7 @@
                   "text"
                 ],
                 "reasoning": true,
+                "reasoningEfforts": [],
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": false,

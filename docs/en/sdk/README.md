@@ -227,6 +227,20 @@ See
 The built-in catalog is `src/loushang/ai/model/models.json`. Custom files use the
 same strict shape:
 
+`capabilities.reasoningEfforts` optionally lists provider-native effort values
+in display order. Missing means the supported levels are unknown; `[]` means
+the model has no adjustable effort setting. This metadata does not by itself
+enable an adapter to send effort parameters. A model's `defaults.reasoningEffort`,
+when present, must be in the declared list. `none` is included only when the
+provider accepts it as an effort value; some providers handle disabling reasoning
+through a separate setting.
+
+For Kimi K3.1 Pro, Kimi API uses `kimi-k3.1-pro` (or
+`kimi-k3.1-pro-highspeed`) on `moonshot/openai-completions`. Kimi Code uses
+`k3.1-pro` (or `k3.1-pro-highspeed`) on its OpenAI and Anthropic endpoints.
+Both variants require reasoning. Kimi API defaults to `max` effort; Kimi Code
+defaults to `high`. Kimi Code's 1M context depends on the subscription tier.
+
 ```json
 {
   "providers": {

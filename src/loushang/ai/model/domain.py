@@ -784,6 +784,7 @@ class Capabilities:
     attachment: bool = False
     temperature: bool = False
     provider_compaction: ProviderCompaction | None = None
+    reasoning_efforts: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         for attr in (
@@ -802,6 +803,21 @@ class Capabilities:
                 isinstance(value, bool) or not isinstance(value, int) or value <= 0
             ):
                 raise ValueError(f"capability field must be a positive integer: {attr}")
+        efforts = self.reasoning_efforts
+        if efforts is not None:
+            if (
+                not isinstance(efforts, (list, tuple))
+                or any(
+                    not isinstance(effort, str)
+                    or not effort.strip()
+                    or effort != effort.strip()
+                    for effort in efforts
+                )
+                or len(set(efforts)) != len(efforts)
+                or (efforts and not self.reasoning)
+            ):
+                raise ValueError("capability field has invalid reasoning efforts")
+            object.__setattr__(self, "reasoning_efforts", tuple(efforts))
         for attr in ("input", "output"):
             value = getattr(self, attr)
             if not isinstance(value, (list, tuple)) or not value:
@@ -841,6 +857,7 @@ class Capabilities:
             context_window=_positive_int_from_raw(raw, "contextWindow"),
             max_tokens=_positive_int_from_raw(raw, "maxTokens"),
             reasoning=_capability_bool_from_raw(raw, "reasoning"),
+            reasoning_efforts=raw.get("reasoningEfforts"),  # type: ignore[arg-type]
             stream=_capability_bool_from_raw(raw, "stream"),
             tool_use=_capability_bool_from_raw(raw, "toolUse"),
             structured_output=_capability_bool_from_raw(raw, "structuredOutput"),
@@ -862,6 +879,8 @@ class Capabilities:
             "attachment": self.attachment,
             "temperature": self.temperature,
         }
+        if self.reasoning_efforts is not None:
+            capabilities["reasoningEfforts"] = list(self.reasoning_efforts)
         if self.provider_compaction is not None:
             capabilities["providerCompaction"] = self.provider_compaction
         return {"capabilities": capabilities}
