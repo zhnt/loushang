@@ -304,6 +304,30 @@ def _workflow(
     return workflow, state
 
 
+def test_model_selection_can_continue_into_reasoning_choice() -> None:
+    workflow, state = _workflow()
+    selected: list[str] = []
+
+    async def set_reasoning(value: str) -> str:
+        selected.append(value)
+        return f"Reasoning: {value}"
+
+    workflow.ports = replace(
+        workflow.ports,
+        build_reasoning_selector=lambda: _surface("Choose reasoning", "reasoning"),
+        select_reasoning_level=set_reasoning,
+    )
+    asyncio.run(workflow.handle_text("/model provider:model"))
+
+    assert state.model_values == ["provider:model"]
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.purpose == "reasoning"
+    asyncio.run(workflow.handle_surface_intent(InputIntent(kind="select", text="high")))
+    assert selected == ["high"]
+    assert workflow.current is None
+    assert state.statuses[-1] == "Reasoning: high"
+
+
 def test_surface_workflow_confirms_before_deleting_a_continuity_item() -> None:
     workflow, state = _workflow()
 

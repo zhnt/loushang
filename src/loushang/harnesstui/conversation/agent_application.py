@@ -480,6 +480,8 @@ def build_agent_screen_surface_workflow_ports(
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
         SessionModelSelectorSurfaceProfile()
     ),
+    build_reasoning_selector: Callable[[], ScreenSurfaceView | None] | None = None,
+    select_reasoning_level: Callable[[str], Awaitable[str]] | None = None,
 ) -> ScreenSurfaceWorkflowPorts:
     """Bind a structural Agent session to the existing screen-surface workflow."""
 
@@ -583,6 +585,8 @@ def build_agent_screen_surface_workflow_ports(
         build_permissions_surface=build_permissions_surface,
         apply_permission_action=apply_permission_action,
         build_side_question_surface=build_side_question_surface,
+        build_reasoning_selector=build_reasoning_selector,
+        select_reasoning_level=select_reasoning_level,
     )
 
 
