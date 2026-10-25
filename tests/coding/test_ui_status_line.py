@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from loushang.ai.model import Capabilities, Defaults, Model
+from loushang.coding.model_reasoning import (
+    effective_reasoning_label,
+    reasoning_description,
+)
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -102,3 +109,19 @@ def test_statusline_projects_live_reasoning_level_beside_model() -> None:
     assert app._status_bar().render(RenderConstraints(width=90, max_height=1)).lines[
         0
     ].text.startswith("gpt-6-sol xhigh |")
+
+
+def test_unset_agent_effort_projects_model_default() -> None:
+    session = SimpleNamespace(
+        model=Model(
+            id="gpt-6-sol",
+            provider="openai",
+            endpoint="responses",
+            capabilities=Capabilities(reasoning=True),
+            defaults=Defaults({"reasoningEffort": "medium"}),
+        ),
+        thinking_level="off",
+    )
+
+    assert effective_reasoning_label(session) == "medium"
+    assert reasoning_description(session, "off") == "current · model default: medium"

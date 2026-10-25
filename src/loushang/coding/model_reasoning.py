@@ -19,6 +19,13 @@ def reasoning_description(session: object, level: str) -> str:
         details.append("current")
     model = getattr(session, "model", None)
     if isinstance(model, Model):
+        if level == "off" and model.capabilities.reasoning:
+            default = model.defaults.get("reasoningEffort")
+            details.append(
+                f"model default: {default}"
+                if isinstance(default, str)
+                else "provider default"
+            )
         native = native_reasoning_effort(model, level)
         if native is not None and native != level:
             details.append(f"API: {native}")
@@ -31,7 +38,12 @@ def effective_reasoning_label(session: object) -> str | None:
         return None
     model = getattr(session, "model", None)
     if isinstance(model, Model):
-        return native_reasoning_effort(model, level) or "off"
+        if level == "off":
+            if not model.capabilities.reasoning:
+                return None
+            default = model.defaults.get("reasoningEffort")
+            return default if isinstance(default, str) else "default"
+        return native_reasoning_effort(model, level)
     return level
 
 
