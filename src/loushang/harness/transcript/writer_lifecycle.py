@@ -6,8 +6,9 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine, Iterator, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from copy import deepcopy
+from os import getpid
 from pathlib import Path
-from threading import Event
+from threading import Event, RLock
 from typing import Generic, TypeVar
 from uuid import uuid4
 
@@ -118,6 +119,7 @@ class TranscriptWriterPreparation(Generic[InputT, ProductT]):
             expected_root_identity=expected_root_identity, expected_parent_identity=expected_parent_identity,
         )
         self._lifecycle, self._product = lifecycle, product_id
+        self._writer_check_lock = RLock()
         self._leaf, self._defer = leaf_id, defer_materialization
         self._loop: asyncio.AbstractEventLoop | None = None
         self._driver: asyncio.Task[AgentTranscriptLifecycleSession[ProductT]] | None = None
@@ -378,9 +380,16 @@ class TranscriptWriterPreparation(Generic[InputT, ProductT]):
         )
 
     def _check_writers(self) -> None:
-        self._writer.check(product_id=self._product, conversation_id=self._context.header.conversation_id)
-        if self._blob_writer is not None:
-            self._blob_writer.check(owner_id=self._product, session_id=self._context.header.conversation_id)
+        # Reject fork children before touching a possibly inherited held mutex.
+        if getpid() != self._writer._pid:
+            raise TranscriptWriterError("unsupported")
+        # These are checks of the same admitted owner, not competing writers.
+        # Coordinate both async offloads and synchronous consumers, retaining
+        # every original lease fence. Never hold this lock across an operation.
+        with self._writer_check_lock:
+            self._writer.check(product_id=self._product, conversation_id=self._context.header.conversation_id)
+            if self._blob_writer is not None:
+                self._blob_writer.check(owner_id=self._product, session_id=self._context.header.conversation_id)
 
     def _close_blob_writer(self) -> None:
         assert self._blob_writer is not None
