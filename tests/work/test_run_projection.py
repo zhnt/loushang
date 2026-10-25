@@ -11,6 +11,224 @@ def _clock():
     return datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 
 
+def _cancellation_history(*, cancelling=True, terminal=True):
+    from loushang.harnesswork import EventLogEntry
+
+    operation = EventLogEntry(
+        entry_id="operation",
+        entry_type="operation",
+        operation_id="op-1",
+        event_id=None,
+        run_id="run-1",
+        session_id="session-1",
+        sequence=0,
+        payload={
+            "kind": "DoWork",
+            "domain": "test",
+            "payload": {},
+            "_harnesswork": {"cancellation_observation_version": 1},
+        },
+        created_at=_clock(),
+    )
+    entries = [operation]
+    kinds = ["WorkRunStarted"]
+    if cancelling:
+        kinds.append("WorkRunCancelling")
+    if terminal:
+        kinds.append("WorkRunCancelled" if cancelling else "WorkRunCompleted")
+    for sequence, kind in enumerate(kinds, 1):
+        entries.append(
+            replace(
+                operation,
+                entry_id=f"entry-{sequence}",
+                entry_type="event",
+                event_id=f"event-{sequence}",
+                sequence=sequence,
+                payload={
+                    "kind": kind,
+                    "payload": {},
+                    "_harnesswork": {
+                        "cancellation": {
+                            "version": 1,
+                            "status": "unsupported" if cancelling else "not_requested",
+                            "reason_code": "no_capability" if cancelling else "none",
+                            "reported_status": None,
+                        }
+                    },
+                },
+            )
+        )
+    return entries
+
+
+@pytest.mark.parametrize("cut", [1, 2, 3, 4])
+@pytest.mark.parametrize(
+    "mode,reason",
+    [
+        ("legacy", "legacy_unrecorded"),
+        ("empty_owner", "legacy_unrecorded"),
+        ("future", "unsupported_version"),
+        ("supported", "incomplete_history"),
+    ],
+)
+def test_cancellation_projection_versions_and_incomplete_evidence(cut, mode, reason):
+    from loushang.harnesswork import project_work_cancellations
+
+    entries = _cancellation_history()[:cut]
+    payload = dict(entries[0].payload)
+    if mode == "legacy":
+        payload.pop("_harnesswork")
+    elif mode == "empty_owner":
+        payload["_harnesswork"] = {}
+    elif mode == "future":
+        payload["_harnesswork"] = {"cancellation_observation_version": 2}
+        # A future operation must not decode an unfamiliar terminal shape.
+        if cut == 4:
+            entries[-1] = replace(
+                entries[-1],
+                payload={**entries[-1].payload, "_harnesswork": "future opaque data"},
+            )
+    entries[0] = replace(entries[0], payload=payload)
+    (record,) = project_work_cancellations(iter(entries))
+    if mode == "supported" and cut == 4:
+        assert record.status == "unsupported"
+        assert record.reason_code == "no_capability"
+    else:
+        assert (record.status, record.reason_code) == ("unknown", reason)
+    assert record.basis == "journal" and record.reported_status is None
+    assert (record.observed_sequence, record.source_event_id) == (
+        entries[-1].sequence,
+        entries[-1].event_id,
+    )
+
+
+@pytest.mark.parametrize(
+    "owner",
+    [
+        None,
+        False,
+        [],
+        "v1",
+        {"cancellation_observation_version": True},
+        {"cancellation_observation_version": 0},
+        {"cancellation_observation_version": -1},
+        {"cancellation_observation_version": "1"},
+        {"cancellation_observation_version": 1.0},
+    ],
+)
+def test_cancellation_projection_rejects_bad_operation_marker(owner):
+    from loushang.harnesswork import (
+        WorkCancellationReplayError,
+        project_work_cancellations,
+    )
+
+    entries = _cancellation_history()
+    entries[0] = replace(
+        entries[0], payload={**entries[0].payload, "_harnesswork": owner}
+    )
+    with pytest.raises(WorkCancellationReplayError):
+        project_work_cancellations(entries)
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        None,
+        {},
+        {"version": True},
+        {"version": 2},
+        {"version": 1, "status": "unsupported", "reason_code": "no_capability"},
+        {
+            "version": 1,
+            "status": "pending",
+            "reason_code": "in_progress",
+            "reported_status": None,
+        },
+        {
+            "version": 1,
+            "status": "unsupported",
+            "reason_code": "no_capability",
+            "reported_status": "settled",
+        },
+        {
+            "version": 1,
+            "status": "settled",
+            "reason_code": "domain_reported",
+            "reported_status": None,
+        },
+        {
+            "version": 1,
+            "status": "settled",
+            "reason_code": [],
+            "reported_status": "settled",
+        },
+        {
+            "version": 1,
+            "status": "unsupported",
+            "reason_code": "no_capability",
+            "reported_status": {},
+        },
+        {
+            "version": 1,
+            "status": "not_requested",
+            "reason_code": "none",
+            "reported_status": None,
+        },
+    ],
+)
+def test_cancellation_projection_rejects_bad_supported_terminal(record):
+    from loushang.harnesswork import (
+        WorkCancellationReplayError,
+        project_work_cancellations,
+    )
+
+    entries = _cancellation_history()
+    entries[-1] = replace(
+        entries[-1],
+        payload={**entries[-1].payload, "_harnesswork": {"cancellation": record}},
+    )
+    with pytest.raises(WorkCancellationReplayError):
+        project_work_cancellations(entries)
+
+
+def test_cancellation_projection_validates_lifecycle_first_and_keeps_run_local_positions():
+    from loushang.harnesswork import WorkRunReplayError, project_work_cancellations
+
+    first = _cancellation_history()[:1]
+    second = [
+        replace(entry, run_id="run-2", operation_id="op-2")
+        for entry in _cancellation_history(cancelling=False)
+    ]
+    records = project_work_cancellations([*first, *second])
+    assert [record.run_id for record in records] == ["run-1", "run-2"]
+    assert (records[0].observed_sequence, records[0].source_event_id) == (0, None)
+    assert records[1].status == "not_requested"
+    invalid_operation = replace(
+        first[0], payload={**first[0].payload, "_harnesswork": None}
+    )
+    with pytest.raises(WorkRunReplayError):
+        project_work_cancellations([invalid_operation, *second, second[-1]])
+    with pytest.raises(WorkRunReplayError, match="without an operation"):
+        project_work_cancellations(second[1:])
+
+
+@pytest.mark.parametrize(
+    "operation_kind", ["WorkRunCompleted", "WorkRunFailed", "WorkRunCancelled"]
+)
+def test_operation_kind_does_not_turn_operation_only_history_into_terminal(
+    operation_kind,
+):
+    from loushang.harnesswork import project_work_cancellations
+
+    operation = _cancellation_history()[0]
+    operation = replace(
+        operation, payload={**operation.payload, "kind": operation_kind}
+    )
+    (record,) = project_work_cancellations([operation])
+    assert (record.status, record.reason_code) == ("unknown", "incomplete_history")
+    assert (record.observed_sequence, record.source_event_id) == (0, None)
+
+
 def test_project_work_runs_rebuilds_historical_run_after_runtime_restart() -> None:
     from loushang.work import (
         InMemoryEventLogBackend,
