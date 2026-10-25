@@ -37,9 +37,25 @@
 及修订处置见[评审记录](support-capabilities-review.md)。用户评审仍待进行，
 本表不替代环境图和完整组件/接口设计。
 
+下一批讨论提纲：[Goal 最小闭环的三项待评审决定](minimum-loop-decisions.md)，
+覆盖目标身份/寿命、计划与工作批次、推进与用户输入交接；仍为候选。
+
+第三阶段候选设计：[Goal 最小业务闭环](minimum-loop-architecture.md)，对照
+[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md) 补齐本地 SDK
+范围、组件、状态、受测版本绑定及关键交互。该设计及重要图仍待用户评审，
+内部评审通过不自动启动 Goal 功能开发。
+固定修订三视角发现及关闭证据见[最小闭环设计评审](minimum-loop-review.md)。
+独立于实现的首个缺陷项目、原始测试及 Method 准备证据见
+[最小闭环场景与验收输入](minimum-loop-scenario.md)；不构成设计接受或 Goal 运行通过。
+
 分阶段候选：[HW-KD-001 取消观察专项](../harnesswork/key-designs/cancellation-observation.md)
 承接 SC-06/08 的独立底座增量。其 owner 为 HarnessWork，不引入 Goal 依赖；专项接受
 及实施不等于 Goal 整体架构或功能接受，原用户评审检查点继续有效。
+
+第二阶段专项候选：[HW-KD-002 产物证据交接](../harnesswork/key-designs/evidence-handoff.md)，
+复用已有 Artifact promotion、Session Blob 与 Work 领域事实；首个本地 Coding SDK
+消费切片已获用户授权，见[限定目标与实施记录](../../plans/2026-10-25-coding-sdk-evidence-loop.md)。
+此授权不等于接受或恢复完整 Goal 运行时开发。
 
 ## 用户评审检查点
 

@@ -5,7 +5,7 @@
 - Authority: descriptive Current + explicitly labeled candidate context。
 - Design status: draft；Implementation status: not-started for new Goal collaboration。
 - Owner: Loushang architecture / Product composition。
-- 基线：本地 main `11b854951125d3437fea9f43f65a9788af620933`。
+- 基线：本地 main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`；2026-10-25 对本地 SDK 最小闭环重新核查。
 - 证据：当前源码静态盘点；没有运行测试或验证部署，不等于功能通过。
 - 用户评审：pending。本文尚未成为 accepted Target，不能据此开始开发。
 
@@ -84,7 +84,7 @@ flowchart TB
     Product -->|绑定工作后调用 accept / submit_plan| Work
     Work -->|注入的领域执行器 / Session port| Harness
     Harness -->|事件与执行结果，经现有适配投影| Work
-    Work -->|运行 / 步骤 / 产物和终态事实| Product
+    Work -->|运行 / 步骤 / 终态及显式领域事实| Product
     Product -->|可核查的结果与证据；接口待设计| Goal
     Goal -->|目标状态 / 控制回执| Product
     Product -->|状态、结果和交互| Entry
@@ -96,6 +96,12 @@ flowchart TB
 
 此图只确认要研究的合作关系。目标控制的准确位置、Goal 与 Work 的一对多关系、
 规划端口和验收接口均待组件/领域设计及用户评审，不由箭头直接决定。
+
+2026-10-25 的首个实施范围候选为本地 SDK、显式 Method、调用方显式推进；组件、
+状态及交互见[最小闭环设计](minimum-loop-architecture.md)。该文件进一步限定一个
+原 WorkRuntime 的 Product 装配、受测版本绑定和 Goal 领域记录；仍待用户评审。
+图中的 hosted/TUI/CLI 关系保留为全系统环境，不代表本轮开放了这些入口的 Goal
+API。main 没有通用产物投影；本地未集成的 Coding 私有证据切片只是一项前置交接。
 
 ## 4. 环境接口与责任
 
