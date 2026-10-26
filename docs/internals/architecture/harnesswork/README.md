@@ -38,11 +38,13 @@ typed result 或 crash recovery 当作现有能力。
 范围与实施验证见[交付记录](../../plans/2026-10-25-coding-sdk-evidence-loop.md)。
 该接受范围不扩展为公共证据 API，不改变本文的存储/领域边界。
 
-拟新增的可选 Goal 扩展见[最小闭环 R3](../goal-method-work/minimum-loop-architecture.md)。
+拟新增的可选 Goal 扩展见[最小闭环 R3.2](../goal-method-work/minimum-loop-architecture.md)。
 用户已要求通用 Goal 控制归入 `harnesswork.goal`，Product 保留领域策略与装配；
 其身份、要求版本、状态、批次关联、通用记录/reducer 和完成提交检查为共享职责，
-具体方法准备、业务真值、存储根及 Session 资源 owner 仍属于 Product。该扩展正在
-重新三视角评审，尚无实现；不把本段算作既有 Phase 2 已交付内容。
+具体方法准备、业务真值、存储根及 Session 资源 owner 仍属于 Product。
+[Goal 环境与子组件](goal/README.md)明确内部保留 Controller 和记录组件，Codec/Reducer
+属于记录组件内部，外围按真实职责适配。R3.1 三视角技术复核已完成，本轮新工作件
+结论见最小闭环评审记录；尚无实现，不把本段算作既有 Phase 2 已交付内容。
 
 依赖保持单向：可选 Goal 使用原 Work，Work 不依赖 Goal，基础 Harness 不依赖
 HarnessWork。Goal 共享代码不 import Coding/Method 或 Harness 私有 I/O；物理

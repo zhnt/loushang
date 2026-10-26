@@ -1,12 +1,12 @@
-# Goal 最小业务闭环：架构设计 R3.1
+# Goal 最小业务闭环：架构设计 R3.2
 
 - Authority: proposed — 本地 SDK 首版候选，不是 Current 或已接受 Target。
 - Design status: draft；Implementation status: not-started。
 - Owner：Loushang architecture；HarnessWork 拥有通用 Goal，Coding Product 拥有策略、验收及装配。
 - 源码基线：本地证据切片提交 `d1f418de53c58040a590683a0c499ff3de50e50d`；main 基线仍为 `372cde4ade0fe026076c8fa5e8b4486774b09cc3`，未集成。
-- R2 原文、原独立报告及验收输入保留；R3 仅修订归属与直接受影响合同，生产源码未变。
+- R2/R3/R3.1 原文与报告保留；R3.2 按用户认可收束子组件粒度和适配责任，生产源码未变。
 - 方法：本地干净 `archmethod master` `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 用户评审：R2 除归属外其余部分已认可；2026-10-26 明确要求按共享 Goal 方案调整并再次三视角评审。R3.1 技术结论见评审记录，本轮不启动功能实现。
+- 用户评审：R2 除归属外其余部分已认可；2026-10-26 明确要求按共享 Goal 方案调整并再次三视角评审。R3.1 已完成技术复核；用户随后同意记录组件内含 Codec/Reducer、按真实职责保留适配。本次 R3.2 图及合同结论见评审记录，本轮不启动功能实现。
 - 需求：[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md) GM-01…08。
 
 ## 1. 目标与首个场景
@@ -86,13 +86,20 @@ Product 显式绑定可信数据根，与 workspace/平台状态域按已有规�
 记录、模型响应和工作区源码不选择物理库或新增权限。模型与命令仍走原授权和
 sandbox；Goal 完成决定不授予额外文件、进程、网络或 Session 控制权。
 
+### 3.1 以 harnesswork.goal 为黑盒的环境视图
+
+完整业务环境保持上图；进一步以 Goal 本身为研究对象的[系统环境图及子组件](../harnesswork/goal/README.md)
+是本轮 R3.2 新增固定工作件。它区分直接的五类协作者与经 Method/Session/Journal
+到达的间接环境，运行期合同调用不转成共享包对 Product 的 import。原 R3.1
+报告不自动覆盖该新图；组件粒度与直接/适配路径需按实际独立评审留证。
+
 ## 4. 功能映射、组件与依赖
 
 ```mermaid
 flowchart TB
     SDK["Coding SDK composition / handle<br/>专用原 Session、输入及资源生命周期"]
     Core["HarnessWork.goal GoalController<br/>身份 / 版本 / 状态 / epoch / 批次协调"]
-    Records["HarnessWork.goal records / reducer / codec<br/>通用记录语义与重放不变量"]
+    Records["HarnessWork.goal 记录组件<br/>内部：模型 / Reducer / Codec"]
     Next["Coding NextWorkPolicy<br/>阶段选择 / Method 准备 / 原 Work 绑定"]
     Assess["Coding GoalAcceptancePolicy<br/>项目约束 / 输入包 / driver / 领域证明"]
     Store["Coding GoalRecordStore 物理适配<br/>原 journal / lease / rooted I/O"]
@@ -114,6 +121,7 @@ flowchart TB
     Work --> Session
     Session --> Facts
     Assess --> Facts
+    Store -->|记录组件的窄编解码接口| Records
 ```
 
 这些是职责模块，不是独立服务、进程或第二个执行平台。建议新增可选
@@ -121,6 +129,12 @@ flowchart TB
 和三个最小协作合同；Coding 私有适配位于 `coding/adapters/`。普通 WorkRuntime
 不 import Goal；Harness 基础包仍不依赖 HarnessWork。首版不增加插件注册中心、
 通用调度服务或独立分发包，公共导出保持在显式可选模块而非根包强制加载。
+
+内部保留 GoalController 和 Goal 记录组件两个逻辑子组件；记录模型、Reducer、
+Codec 共同属于记录组件内部，不各自提升为组件。记录组件对物理适配提供窄的
+编解码接口，不暴露私有实现；重放/记录不变量仍只有一份。三个注入合同是
+接口定义，不额外算作运行组件。详细功能映射、内部图及直接/适配选择见上述
+子系统视图；本图保持跨组件协作层级，不复制内部模块图。
 
 | 职责 | Owner | 边界 |
 | --- | --- | --- |
@@ -130,7 +144,7 @@ flowchart TB
 | 要求是否满足、材料是否当前有效 | Product GoalAcceptancePolicy | 负责文件清单、Blob、测试/driver/源码、覆盖与权限判断；共享层不内置 calculator/AST 规则 |
 | 原 Work 受理、等待、查询、取消、executor 生命周期 | 原 WorkRuntime | Goal 借用，不修改 Work 终态集合或运行事实权威 |
 | SDK facade、原 Session/Work 资源、writer 取得及释放 | Product composition | 持有资源 owner；通用 Goal 借用能力，不能自行创建/关闭 Coding Session |
-| GoalRecordStore 的物理实现及 durable ACK | Product 存储适配，复用现有 Harness I/O | 使用共享记录类型/codec；路径、lease、事务及故障由该适配负责，不把私有 I/O 依赖带进共享控制 |
+| GoalRecordStore 的物理实现及 durable ACK | Product 存储适配，复用现有 Harness I/O | 使用记录组件提供的类型/编解码接口；路径、lease、事务及故障由该适配负责，不把私有 I/O 依赖带进共享控制 |
 
 ### 4.1 最小协作合同
 
@@ -614,9 +628,9 @@ Product 根据 Core 的只读当前 batch/operation 引用及原 Work running �
 - `_verification_work.py`：`43d95ceff62e98c7c5bc4bf179bba68332ce8afca73afae7d2a1bad89a0d42e3`。
 - `harness/session/bash.py`：`77dcd18dcfd89d8d28ccbd3fa63fe0269db7284fd26de4d7b9a043f69badff39`。
 
-本轮 R3 独立评审对象为本文件及同步更新的环境/父级关系。只复核归属变化及其
+R3/R3.1 原评审覆盖共享归属与交接。当前 R3.2 独立评审对象为新增 Goal 子系统视图及本文件/父级协同；收束记录组件内部模块和适配粒度，不将聊天中的派生图当作已审工作件。只复核归属变化及其
 直接影响：共享/领域准入和完成边界、记录权威与物理适配、输入/生命周期/异常
 交接，以及禁止依赖；保留 R2 已认可的业务范围、状态、真实场景与未知处理成本。
 原三项决策提纲是历史输入，不自动接受新共享合同。固定修订、原问题及关闭证据
 见[评审记录](minimum-loop-review.md)。用户已授权本归属方向与本轮设计评审，
-不据此声称功能代码或运行验收完成；R3 技术结论须由本轮独立评审实际留证。
+不据此声称功能代码或运行验收完成；R3.2 技术结论须由本轮独立评审实际留证。

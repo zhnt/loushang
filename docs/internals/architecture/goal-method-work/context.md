@@ -101,6 +101,10 @@ flowchart TB
 图中的 hosted/TUI/CLI 关系保留为全系统环境，不代表本轮开放了这些入口的 Goal
 API。main 没有通用产物投影；本地未集成的 Coding 私有证据切片只是一项前置交接。
 
+以 `harnesswork.goal` 为黑盒的直接环境与两子组件拆分见
+[Goal 子系统视图](../harnesswork/goal/README.md)。该新视图在 R3.2 固定评审，
+Codec 属于记录组件内部，不因环境边增加统一桥接层。
+
 ## 4. 环境接口与责任
 
 | 连接 | 交换什么 | 主线事实 / 本批限制 |

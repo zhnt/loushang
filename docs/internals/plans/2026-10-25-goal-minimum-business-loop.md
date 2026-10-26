@@ -8,7 +8,7 @@
 - 方法：本地干净 `archmethod master`，提交
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 架构依据：[Goal 最小闭环决策提纲](../architecture/goal-method-work/minimum-loop-decisions.md)。
-- 当前候选设计：[最小业务闭环架构 R3.1](../architecture/goal-method-work/minimum-loop-architecture.md)；共享归属方向已获授权，R3.1 技术结论见评审记录。
+- 当前候选设计：[最小业务闭环架构 R3.2](../architecture/goal-method-work/minimum-loop-architecture.md)；共享归属方向已获授权，R3.2 子系统环境、组件拆分及适配结论见评审记录。
 - 前置交付：[真实 Coding SDK 证据消费闭环](2026-10-25-coding-sdk-evidence-loop.md)。
   该切片目前只在本地功能分支完成限定验证，尚未集成 main；完整回归未完成。
 
