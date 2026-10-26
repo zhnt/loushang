@@ -4,7 +4,7 @@
 - Design status: draft；Implementation status: not-applicable for this input record。
 - Owner：Coding Product composition。
 - 需求：[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md)。
-- 设计：[架构 R2](minimum-loop-architecture.md)，其固定 hash 与用户 pending 状态不变。
+- 当前设计：[架构 R3.1](minimum-loop-architecture.md)。本材料按 R2 固定；R3 归属变化不改变项目/测试/Method 的原始指纹或实测结果。
 - 评审：[三视角设计记录](minimum-loop-review.md)。
 - 代码基线：`372cde4ade0fe026076c8fa5e8b4486774b09cc3`。
 
@@ -89,8 +89,11 @@ Method 的两步实际可由现有准备机制表达：inspect 读取当前要�
 | 正确旧报告用于新要求、不同 Goal 或后续被改动源码 | 依据过期或不匹配，不能完成当前要求 |
 | 准备中暂停，或运行中修订/撤回要求 | 原 epoch/版本不再准入或完成；旧事实仍可查询 |
 | 同 command id 重复或带不同内容重试 | 只读原回执或明确冲突，不重复产生 Work |
-| intent 已保存但原 Work 为空/orphaned/效果未知 | 保持会话级 unresolved；resume/replace/改 Goal id 不绕过 |
+| intent 后有严格有效 not_submitted、无 association/已受理证据且原 Work 不矛盾 | 不因空查询置 unknown；保留累计计数/控制状态，不重交原 operation，新命令重新准入 |
+| intent 已保存、无有效 not_submitted，原 Work 为空/orphaned/效果未知 | 保持会话级 unresolved；resume/replace/改 Goal id 不绕过 |
 | 必需 Blob 缺失、损坏、跨 authority，或 schema/stdio 不完整 | 阻止完成，保留原错误/诊断，不另选相同摘要材料绕过 |
+| 自有 intent 将序号 N 推到 N+1 | 原 basis 不重贴标签；仅同命令已 ACK 的 intent receipt 允许这次迁移，其他变化拒绝 |
+| 无 Work 但 prepare/assess/材料读取仍在途时 close | 先 fence 并等待回调及 finally 静止，再原 Work/Session 清理、retire、writer-last；失败保留 cleanup owner |
 | 完成后关闭/冷重开 | 原身份和证据可核验，模型调用与 Work 重执行均为 0 |
 
 ## 6. 状态与下一步
@@ -99,6 +102,6 @@ Method 的两步实际可由现有准备机制表达：inspect 读取当前要�
 新增固定输入、原始失败实测及原 Method 准备证据，改变了真实场景的准备状态。
 这些不代表 GM-01…08 的功能实现已完成，更不代表用户已接受 R2。
 
-当前仍待用户对 R2 重要工作件的评审。按目标中“设计接受后实施”的要求，接受前
-不写 Goal 运行时代码；已发出的评审问题继续有效，不把自动 continuation 或时间
-经过当作确认。接受后继续前置集成、完整 Goal 实现及真实场景验收。
+2026-10-26 用户已认可 R2 非归属部分，并明确要求按共享 Goal 分工调整设计、
+再次三视角评审。当前执行 R3.1 受影响再审，本材料仅为保留的验收输入；未启动
+Goal 运行时代码，也没有把用户的设计方向授权冒称实际运行通过。

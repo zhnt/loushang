@@ -2,13 +2,13 @@
 
 - Authority: proposed — 阶段目标与验收范围草案，不是已接受的组件或接口设计。
 - Design status: draft；Implementation status: not-started。
-- Owner：Loushang architecture / Coding Product composition。
-- 当前授权：用户已将本描述设为 active Goal；先完成架构、三视角评审及重要工作件的用户评审，再实施。功能实现尚未启动。
+- Owner：Loushang architecture / HarnessWork（通用 Goal）/ Coding Product（策略、验收及装配）。
+- 当前授权：用户已认可 R2 非归属部分，并于 2026-10-26 要求按 HarnessWork 可选 Goal 的分工更新架构、再次三视角评审。本轮执行设计修订和再审，功能实现尚未启动。
 - 源码基线：`372cde4ade0fe026076c8fa5e8b4486774b09cc3`。
 - 方法：本地干净 `archmethod master`，提交
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 架构依据：[Goal 最小闭环决策提纲](../architecture/goal-method-work/minimum-loop-decisions.md)。
-- 当前候选设计：[最小业务闭环架构](../architecture/goal-method-work/minimum-loop-architecture.md)，尚未接受。
+- 当前候选设计：[最小业务闭环架构 R3.1](../architecture/goal-method-work/minimum-loop-architecture.md)；共享归属方向已获授权，R3.1 技术结论见评审记录。
 - 前置交付：[真实 Coding SDK 证据消费闭环](2026-10-25-coding-sdk-evidence-loop.md)。
   该切片目前只在本地功能分支完成限定验证，尚未集成 main；完整回归未完成。
 

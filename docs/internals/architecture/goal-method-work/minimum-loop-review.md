@@ -2,17 +2,17 @@
 
 - Authority: descriptive — 固定修订评审、问题处置和用户评审入口。
 - Design status: draft；Implementation status: not-started for Goal。
-- Owner：Loushang architecture / Coding Product composition。
+- Owner：Loushang architecture / HarnessWork 通用 Goal / Coding Product 策略与装配。
 - 目标：[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md)。
-- 源码基线：`372cde4ade0fe026076c8fa5e8b4486774b09cc3`；前置未提交切片 hash 见设计 §12。
+- 源码基线：本地前置切片 `d1f418de53c58040a590683a0c499ff3de50e50d`；main 基线 `372cde4ade0fe026076c8fa5e8b4486774b09cc3`，未集成。生产源码 hash 见设计 §12。
 - 方法：本地干净 master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 用户接受：pending；不把内部评审等同于恢复 Goal 实现。
+- 用户接受：R2 非归属部分已认可；2026-10-26 用户明确要求按 HarnessWork 可选 Goal 方案更新架构并重新三视角评审。归属方向已获授权，R3.1 三视角技术复核完成、无剩余阻断；本轮未启动功能实现。
 
 ## 固定评审对象
 
 | 对象 | 修订及 SHA256 |
 | --- | --- |
-| [架构设计](minimum-loop-architecture.md) R1 | `ce70a42716d9894edd4c26fa3f7f7d9c6eb865b5199f49811f22c3eb0e20ba55` |
+| 原架构设计 R1（历史快照） | `ce70a42716d9894edd4c26fa3f7f7d9c6eb865b5199f49811f22c3eb0e20ba55` |
 | 架构设计 R2 | `b3afb190897116719f2b39ef3d2c3c269f5291e2bc6f4bb55acf34762ee300e5` |
 | [系统环境图](context.md) | `8eb9d3c04f56b9a2236d4342cf2a8d2baff47356e579057087f27f6d38e85d6d` |
 | 目标与验收范围 | `71544b34206305c9b7628279c1886479cc4d45e0e95d1a6aed7c606c1f620512` |
@@ -21,6 +21,8 @@
 `/home/dev/lsspace/architecture-analysis/goal-minimum-business-loop-20261025/`。
 R1 为 `review-r1-a/b/c.json`，R2 为 `review-r2-a/b/c.json`。评审者不读取本轮
 其他人的报告；作者在初审后综合修订，并分别请求受影响复核。
+当前修订见[架构 R3](minimum-loop-architecture.md)；上表保留旧修订身份，不将
+当前文件误指为 R1/R2 原文。
 
 本轮是架构源码核查和场景走查，未启动 Goal 实现或真实模型调用。旧证据切片的
 运行报告只是前置能力证据，不能充当本 Goal 的实现验收。文档规则/链接检查已
@@ -30,7 +32,8 @@ R1 为 `review-r1-a/b/c.json`，R2 为 `review-r2-a/b/c.json`。评审者不读�
 未包含本 Goal 的组件/状态/场景设计。三个冻结生产源文件及对应回归源的哈希与
 原验证记录完全一致，因此没有把版本固定误记为新运行验证。R2 文首“未提交”是
 其冻结时的前置状态；当前以前述本地提交定位相同字节，main 集成和完整检查仍
-未完成。R2 原文、环境图及目标范围的评审哈希保持不变，用户接受仍为 pending。
+未完成。R2 原文、环境图及目标范围的评审哈希保持不变；冻结时用户接受为 pending，
+2026-10-26 已收到后文记录的认可及归属修订指示。
 
 ## 三视角与处置
 
@@ -57,9 +60,9 @@ R2 三路受影响复核均已完成，R1 的 5 项阻断及 B-N1 澄清在设�
 owner/reducer 合同及整个多批模型修复路径。项目清单只证明所列检查点的状态，
 不能扩张为“任何瞬时越界写入从未发生”的文件监控保证。
 
-## 提交用户评审的重要决定
+## R2 当时提交用户评审的重要决定（历史）
 
-以下内容都来自候选 R2；此表不是接受记录。
+以下保留 R2 当时提交的内容；2026-10-26 用户反馈及 R3 修订另记于后文。
 
 1. **入口与生命周期**：首版 Linux 本地 SDK，内部创建/恢复专用原 Session，只向外
    暴露 Goal handle；同一会话一个活动 Goal，保留历史。不接任意外部执行 owner。
@@ -75,10 +78,9 @@ owner/reducer 合同及整个多批模型修复路径。项目清单只证明所
 6. **输入与兼容**：普通 SDK 不变；Goal 专用 handle 在修复 running 时转发原同步
    steer/follow-up/text/image，验证/完成窗口拒绝执行输入；目标变更走显式修订命令。
 
-用户可接受上述限定范围或指出需修改的决定/图。环境图、组件图、状态图及交接
-时序集中在 R2 §3/4/5/8，其他关键合同在 §7/9。未获接受前继续保持功能实现未启动；
-本轮 Goal 仍 active，后续须完成前置集成、实现、真实场景及逐项验收，不能因设计
-完成就宣告整个 Goal 完成。
+R2 当时将环境图、组件图、状态图及交接时序集中在 §3/4/5/8，其他关键合同在
+§7/9。当前用户已认可其中非归属内容，归属按后文 R3 调整；功能实现仍未启动。
+前置集成、实现、真实场景及逐项验收尚待完成，不能因设计完成就宣告整个 Goal 完成。
 
 ## 本轮进度与剩余工作
 
@@ -86,6 +88,125 @@ owner/reducer 合同及整个多批模型修复路径。项目清单只证明所
 progress：核对源码、补齐候选架构、独立评审并修订实质问题。没有将等待评审或
 只复述计划记作实现进度。
 
-下一步顺序为：关闭内部设计问题→用户评审接受范围→收束前置证据切片集成与
-相关检查→实施并验证原 Goal 全部要求。实现前必须固定真实项目、Method、模型
+R2 当时的推进顺序为：关闭内部设计问题→用户评审接受范围→收束前置证据切片集成与
+相关检查→实施并验证原 Goal 全部要求。当前处于按用户指示进行的 R3 归属修订与复核。实现前必须固定真实项目、Method、模型
 与权限配置；设计里列出的未来测试不是已执行证据。
+
+## 2026-10-26 用户反馈：Goal controller 的归属
+
+用户原话：“goal controller 为什么是product组件而不是harness里面的一个组件？
+或者harnesswork里面的一个组件？最优雅的是？”并表示“其它没有意见”。
+据此保留 R2 其余内容的认可，只收束组件归属及其直接影响；不重新开放全部架构，
+也不把问题本身记为用户已选择某个新归属。
+
+作者核对现有 Harness owner map、HarnessWork 边界及方法的职责/变化分解原则后，
+建议把通用目标控制归到可选 `harnesswork.goal`，Coding 保留领域策略与装配。
+R2 原因是先用单个 Coding 场景限制公共合同；它可以解释实施顺序，却不足以
+证明通用 Goal 状态、要求版本、控制与跨 Work 关联应长期属于 Coding。
+
+| 候选 | 关键判断 |
+| --- | --- |
+| 整体留在 Coding Product | 能快速验证首例，但容易把通用控制与 Coding 验收混在一起，未来 Product 复用需再抽取或复制 |
+| 整体放基础 Harness | 当前 Harness→HarnessWork 依赖被明确禁止；Goal 需要 Work 事实和持久履约，容易引入反向依赖或过多转发，增加基础执行层职责 |
+| 通用控制放 HarnessWork 可选 Goal 模块，领域策略/组装留 Product | 与已有持久履约及 Work 协作更一致；Goal 和 Work 各自保持状态权威，通用层不依赖 Coding/Method 类型，作为推荐候选 |
+
+候选职责调整：
+
+- `harnesswork.goal`：Goal 身份、要求版本、控制状态、epoch、批次意图与关联、
+  通用准入/完成提交不变量，以及相应记录语义和 reducer。调用原 Work 端口，
+  不合并进 WorkRuntime 的生命周期，也不建立第二执行器、消息队列或模型 loop。
+- Product：具体下一批工作策略、Method 准备或未来模型规划、领域要求/证据判断、
+  Coding 验收 driver，以及专用原 Session 的创建/关闭、数据根与存储配置。
+- 通用控制只调用注入的最小策略/验收/记录合同，不 import Coding 或 Method，
+  不自行创建 Coding Session，不把 calculator/AST 规则写入共享控制组件。
+- Goal 为可选扩展；普通 Harness 和不使用 Goal 的 Work 路径保持原依赖及行为。
+  此调整连带明确通用 record/reducer 与物理存储绑定的责任，不改变已认可的
+  要求版本、完成判据、控制、未知执行及首个场景的对外行为。
+
+依据：[Harness Current Owner Map](../harness/current-owner-map.md) 的 Scope/
+Dependency Direction 与 [HarnessWork 边界](../harnesswork/README.md) 的 Definition/
+Ownership。上述是新的归属推荐，不是已有实现；公共合同、依赖和生命周期的
+直接影响需在后续修订中做受影响复核。固定 R2 原文及原三视角报告保留，不把
+原报告自动扩张为这个新共享边界已经通过评审。
+
+## R3：按用户指示修订并重新三视角评审
+
+用户随后明确要求：“请按照这个更新、调整架构设计，然后再次开启三视角评审”。
+据此将前节推荐方向落实到 R3：通用 Goal controller、记录语义/reducer/codec 归
+`harnesswork.goal` 可选模块；Coding 保留下一工作策略、Method 准备、领域验收、
+原 Session 和物理存储适配。此处是用户选择的方向，不再作为尚未得到反馈的问题。
+
+本轮检查组件归属及其直接协作，不重做已认可业务范围或把 R2 原报告当新边界的
+接受证据。重点为：
+
+1. Core 不 import Coding/Method/私有 Harness I/O；原 Work/Harness 不反向依赖 Goal。
+2. 准入与完成分为通用 basis/身份/版本/事实检查和 Product 语义确认，不在 Core
+   内硬编码修复阶段、方法编译、AST 或 Blob authority 解释。
+3. 三个最小合同 NextWorkPolicy、GoalAcceptancePolicy、GoalRecordStore 的输入、
+   返回值、异步准备与同步最后确认责任，以及 command/basis 重试和失效处理。
+4. 通用记录/codec/reducer 与物理 root/lease/durable ACK 分开；Core 借用端口，
+   Product 仍按原 Work→Session→writer-last 顺序清理，失败时保留 cleanup owner。
+5. 冷读的通用历史状态与领域当前有效性区分；unknown 执行闸门和版本/跨记录
+   不变量不能因下沉共享代码而被绕过，正常非 Goal 路径仍不启用 Goal。
+
+R2 已认可的本地 SDK/显式 Method/逐批推进、专用 Session、完整项目约束和有限
+纯函数验证、控制状态、会话级 unknown 无解除 API 及真实模型交付要求保持。
+R3 没有现存生产 Goal 日志需要迁移，因为功能代码尚未实施。
+
+R3 固定快照、manifest 和独立报告位于产品树外
+`/home/dev/lsspace/architecture-analysis/goal-minimum-business-loop-20261026/`。
+新的三路评审仍由独立 xhigh agent 按职责与复用、运行与失败、数据与兼容组织；
+不得读其他本轮报告，不补造缺失机制。具体发现和最终结论完成后在此留证。
+本轮仅设计修订与复核，不将源代码静态可行性、旧切片测试或用户方向授权说成
+新共享 Goal 已实现、已运行或全目标已达成。
+
+
+### R3 初审与 R3.1 受影响修订
+
+固定 R3：架构 SHA256 `c5b755f596f91d21c1e48d19106aea52e176e23131280a23e37934a50457edf3`；
+`r3-manifest.json` 覆盖 6 份协同文档和 17 份既有源码，三位评审者独立重算均匹配。
+A 无阻断；B 提出 3 项阻断；C 的 1 项阻断与 B 的序号交接发现重合，共 3 个问题。
+原报告 `review-r3-a/b/c.json` 保留，不用修订后的结论覆写原初审结果。
+
+| 问题 | 直接影响 | R3.1 设计处置（已独立复核关闭） |
+| --- | --- | --- |
+| B-R3-01 | 合法 not_submitted 重开后可能被空 Work 查询错误归入不可解除 unknown | §8 为严格已确认未提交单列优先冷读，reducer 明确与 association/已受理互斥；冲突拒绝，计数/控制状态保留，不重交原 operation |
+| B-R3-02 / G3-C1 | 自有 intent 将 N 推到 N+1 后，旧 basis 精确比较与禁止重标存在歧义 | §4.1 保存原 basis_N，以同命令已 ACK 的唯一 intent 形成 dispatch receipt；只允许这次因果迁移，其他变动拒绝，Product 当前性确认不跳过 |
+| B-R3-03 | close 仅等待原 Work，未保证尚在 prepare/assess/reader 中的借用退出 | §9 先 fence 并阻止新协作，等待自有命令/回调/reader/finally 静止，再原 Work/Session 清理、retire、writer-last；异常保留 owner 和资源 |
+
+场景文档同步加入三项反例；本地记录端口明确同步短 I/O，不把此合同外推到异步
+远程后端；README 校正历史状态。R3.1 不改变已接受的业务范围、要求、领域测试、
+正常控制和保守 unknown 边界，也没有增加队列、恢复引擎、执行锁或 CI gate。
+当前固定架构 SHA256 `91783771114d1c9886478f89a0e7f356b2514eb022b9d433d33473c2ffa06c82`，
+6 份文档清单为 `r3.1-manifest.json`，快照位于同一分析目录 `r3.1/`。
+三位原评审者已分别收到固定修订，按各自职责复核关闭证据及组合影响。
+
+
+### R3.1 最终复核与综合结论
+
+三位独立 xhigh 评审者均已核对固定 manifest 的 6 份 live/快照文档及 17 份
+live/源码提交文件。作者逐份读取原报告与关闭依据，综合检查共享控制、Product
+领域/物理资源及原 Work 三方的职责和正常/失败时序，确认三项原问题在设计层关闭。
+复核没有以作者的修订说明代替工作件条款，也没有把重复发现当作额外独立问题。
+
+| 视角 | 固定 R3.1 结论 | 独立报告 SHA256 |
+| --- | --- | --- |
+| 职责与复用 | 0 剩余阻断、0 新发现 | `3d04fe4866a51249a4a23456133a254c68f4dc48e4e1e0f495bb87d424462cd2` |
+| 运行与失败 | 0 剩余阻断、0 新发现 | `36381e3491878becf457f03649f2aa38e39b789532ad93dd226a0566e0af5914` |
+| 数据与兼容 | 0 剩余阻断、0 新发现 | `d699a0665704c45dc9a3e57a7e9b7125f9a4df82b6371c09190aa153eb687eb1` |
+
+报告为分析目录内 `review-r3.1-a/b/c.json`，原 R3 报告及全部快照继续保留。
+作者作为本授权任务的架构责任执行者记录：共享 Goal 归属与受影响协作合同的
+内部技术复核已完成。用户对 R2 非归属部分及共享方向的认可照实保留；不制造
+用户已逐条确认 R3.1 新增交接细节的记录。环境图等重要工作件仍按用户要求展示
+供其评审，本轮授权仅设计修订/再审，不启动功能实现。
+
+已完成文档规则/链接检查（9 项）及 diff 空白检查；生产源码未改、未运行 pytest、
+异步 runtime、模型或工具验证。三视角结论不是运行通过：实现阶段仍需证明
+自有 intent 派发、未提交/unknown 重开、回调静止和原 Work 取消组合，以及所有
+GM 验收条件。特别是：不合作的回调会保持 fenced 资源，未承诺有限关闭延迟；
+本地同步 store/accept 的切点不能直接推广到异步远程后端。
+
+后续执行顺序保持：按用户反馈收束重要架构工作件 → 前置证据切片 main 集成与
+适当检查 → 实施共享 Goal 最小控制与 Coding 绑定 → 真实模型多批修复/冷重开及
+故障验收。尚未完成实现或真实场景，不给出没有依据的总体完成百分比。
