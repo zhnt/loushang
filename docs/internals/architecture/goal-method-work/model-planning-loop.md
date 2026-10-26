@@ -1,7 +1,8 @@
 # GMW-KD-PLAN-01：模型自主规划闭环专项 R2.1
 
-- Authority: proposed — 已有 Goal 架构上的候选增量。
-- Design status: draft，三视角技术复核通过，待用户评审；Implementation status: not-started。
+- Authority: accepted — 已有 Goal 架构上的已接受增量。
+- Design status: accepted；Implementation status: in-progress。
+- 用户接受：2026-10-26，在核心观点说明后用户明确“同意，请继续goal”，接受 R2.1 及配套 R1.1 场景范围并授权实施；不代表实现或真实验收已完成。
 - Owner：Loushang 协作架构；Coding 负责规划与领域适配，HarnessWork 保持通用控制与记录。
 - 需求：[G-GOAL-PLAN-01 / GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
 - 源码基线：`f3ee31319`，承接已接受的[最小闭环](minimum-loop-architecture.md)及[子系统结构](../harnesswork/goal/README.md)。

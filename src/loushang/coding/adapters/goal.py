@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loushang.coding import create_agent_session_runtime
 from loushang.coding.adapters._goal_calculator import (
@@ -23,13 +23,17 @@ from loushang.coding.adapters._goal_calculator import (
 from loushang.coding.adapters._goal_store import GoalJournal, goal_journal_path
 from loushang.coding.adapters._verification_work import CodingVerificationExecutor
 from loushang.harness.artifacts import SessionBlobStore
+from loushang.harness.policy import PolicyEvaluatorChain
 from loushang.harnesswork import JsonlEventLogBackend, WorkRuntime
 from loushang.harnesswork.cancellation_projection import project_work_cancellations
 from loushang.harnesswork.goal import GoalController, GoalError, GoalHeader, GoalState
 from loushang.harnesswork.goal.contracts import GoalBasis, GoalFacts
-from loushang.harnesswork.goal.records import replay
+from loushang.harnesswork.goal.records import plain, replay
 from loushang.harnesswork.ports import WorkExecutionBinding
 from loushang.harnesswork.run_projection import project_work_runs
+
+if TYPE_CHECKING:
+    from ._goal_planning_limits import PlanningCallAllowance
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,7 @@ class CodingGoalView:
     validity: str
     reason: str
     execution_unresolved: bool = False
+    planning: dict[str, object] | None = None
 
 
 def _view(state, assessment, *, unresolved=False, busy=False) -> CodingGoalView:
@@ -94,6 +99,8 @@ class CodingGoal:
         self._callbacks_quiet = self._work_settled = False
         self._session_retired = self._core_retired = self._writer_closed = False
         self._prepared: dict[str, WorkExecutionBinding] = {}
+        self._model_planning = False
+        self._allowance: PlanningCallAllowance | None = None
 
     @classmethod
     async def open(
@@ -106,9 +113,33 @@ class CodingGoal:
         stream_fn=None,
         approval_resolver=None,
         tool_policy_evaluator=None,
+        model_planning: bool = False,
     ) -> CodingGoal:
+        if type(model_planning) is not bool:
+            raise GoalError("model_planning must be an explicit boolean")
+        if model_planning and (stream_fn is not None or session_id is not None):
+            raise GoalError(
+                "model planning requires a fresh Session and the standard AI stream"
+            )
         owner = cls(workspace.resolve(), data_root.resolve())
+        owner._model_planning = model_planning
         try:
+            policy_id = POLICY_ID
+            if model_planning:
+                from ._goal_planning_limits import PlanningCallAllowance
+                from ._goal_planning_work import PlanningToolPolicy
+                from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+
+                owner._allowance = PlanningCallAllowance()
+                planning_tool_policy = PlanningToolPolicy(owner.workspace)
+                tool_policy_evaluator = PolicyEvaluatorChain(
+                    (planning_tool_policy, tool_policy_evaluator)
+                    if tool_policy_evaluator is not None
+                    else (planning_tool_policy,),
+                    strategy="most_restrictive",
+                )
+                stream_fn = owner._allowance.stream
+                policy_id = PLANNING_POLICY_ID
             owner._sdk = create_agent_session_runtime(
                 session_dir=owner.data_root / "sessions",
                 model=model,
@@ -120,7 +151,14 @@ class CodingGoal:
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 system_prompt=(
-                    "You repair a finite integer calculator using the supplied explicit Method. "
+                    "Pursue the supplied finite Coding Goal. In planning turns, choose "
+                    "a next action and revisable route using current evidence; return "
+                    "only the required JSON and do not call tools. In Method execution "
+                    "turns follow the explicit step, changing only calculator.py. "
+                    "Do not modify requirements, tests, Method or permissions. "
+                    "Only independent verification can establish Goal completion."
+                    if model_planning
+                    else "You repair a finite integer calculator using the supplied explicit Method. "
                     "Use read/edit/write file tools only. Change only calculator.py. "
                     "Do not change tests, Method or project paths. Do not claim Goal completion."
                 ),
@@ -141,6 +179,7 @@ class CodingGoal:
                 runner.has_handlers(name)
                 for name in [
                     "user_bash",
+                    *(["input", "context"] if model_planning else []),
                     "tool_call",
                     "tool_result",
                     "before_agent_start",
@@ -158,7 +197,17 @@ class CodingGoal:
                 raise GoalError(
                     "calculator Goal does not support replacement tool providers"
                 )
-            header = GoalHeader(owner.session_id, owner.session_id, POLICY_ID)
+            if model_planning:
+                owner._session.set_auto_retry_enabled(False)
+                owner._session.set_auto_compaction_enabled(False)
+                if (
+                    owner._session.auto_retry_enabled
+                    or owner._session.auto_compaction_enabled
+                ):
+                    raise GoalError(
+                        "model planning requires Session retry and compaction disabled"
+                    )
+            header = GoalHeader(owner.session_id, owner.session_id, policy_id)
             owner._store = GoalJournal(owner.data_root / "sessions", header)
             owner._store.open(create=session_id is None)
             blobs = SessionBlobStore(owner.data_root, owner.session_id)
@@ -169,8 +218,16 @@ class CodingGoal:
             executor = CodingVerificationExecutor(
                 session=owner._session, blobs=blobs, event_log=log
             )
+            verification_executor: Any = executor
+            if model_planning:
+                from ._goal_planning_work import ScopedVerificationWork
+
+                verification_executor = ScopedVerificationWork(
+                    executor, policy=planning_tool_policy
+                )
             owner._work = WorkRuntime(
-                event_log=log, resolver=_Resolver(executor, owner._prepared)
+                event_log=log,
+                resolver=_Resolver(verification_executor, owner._prepared),
             )
             owner._policy = CalculatorPolicy(
                 workspace=owner.workspace,
@@ -179,6 +236,19 @@ class CodingGoal:
                 event_log=log,
                 prepared=owner._prepared,
             )
+            if model_planning:
+                from ._goal_planning import ModelPlanningPolicy
+
+                owner._policy = ModelPlanningPolicy(
+                    workspace=owner.workspace,
+                    session=owner._session,
+                    blobs=blobs,
+                    event_log=log,
+                    prepared=owner._prepared,
+                    allowance=owner._allowance,
+                    tool_policy=planning_tool_policy,
+                    history=lambda: owner.controller.history,
+                )
             owner._core = GoalController(
                 header=header,
                 store=owner._store,
@@ -201,14 +271,26 @@ class CodingGoal:
             raise GoalError("Goal not open")
         return self._core
 
-    def create(self, goal_id: str, *, command_id: str, limit: int = 6):
+    def create(self, goal_id: str, *, command_id: str, limit: int | None = None):
         self._open_for_commands()
+        limit = (20 if self._model_planning else 6) if limit is None else limit
+        if self._model_planning and limit != 20:
+            raise GoalError("model-planning profile fixes the total Work limit at 20")
         prior = self.controller.history.commands.get(command_id)
         metadata = (
             json.loads(prior.request)["data"]["metadata"]
             if prior is not None
             else initial_metadata(self.workspace, self._policy.blobs)
         )
+        if self._model_planning and prior is None:
+            from ._goal_proposal import LIMITS
+            from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+
+            metadata = {
+                **metadata,
+                "profile": PLANNING_POLICY_ID,
+                "planning_limits": LIMITS,
+            }
         return self.controller.create(
             goal_id, REQUIREMENTS, command_id=command_id, limit=limit, metadata=metadata
         )
@@ -251,6 +333,17 @@ class CodingGoal:
     def steer(self, goal_id: str, text: str, *, images=None) -> None:
         self._input(goal_id, "steer", text, images)
 
+    def planning_trace(self, goal_id: str) -> dict[str, object]:
+        """Inspect original facts; never advance, call a model or authorize work."""
+        if not self._model_planning:
+            raise GoalError("this Goal does not use model planning")
+        self._open_for_commands()
+        core = self.controller
+        state, facts = core.query(goal_id), core.facts()
+        return self._policy.trace(
+            GoalBasis(core.header, state, core.history.sequence), facts
+        )
+
     def follow_up(self, goal_id: str, text: str, *, images=None) -> None:
         self._input(goal_id, "follow_up", text, images)
 
@@ -282,6 +375,8 @@ class CodingGoal:
     def _open_for_commands(self):
         if self._closing or self._closed or self.controller.fenced:
             raise GoalError("Coding Goal closing or fenced")
+        if self._allowance is not None and self._allowance.fenced:
+            raise GoalError("Coding Goal planning configuration fenced")
 
     async def close(self) -> None:
         self._closing = True
@@ -346,8 +441,19 @@ def inspect_goal(
         actual, records = store.load()
         history = replay(actual, records)
         state = history.goal(goal_id)
-        if actual != header:
+        from ._goal_proposal import LIMITS
+        from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+
+        supported = actual == header or actual == GoalHeader(
+            session_id, session_id, PLANNING_POLICY_ID
+        )
+        if not supported:
             return CodingGoalView(state, "not_checked", "unsupported_policy")
+        if actual.policy_id == PLANNING_POLICY_ID and (
+            plain(state.metadata.get("planning_limits")) != LIMITS
+            or state.limit != LIMITS["work_intents"]
+        ):
+            return CodingGoalView(state, "not_checked", "unsupported_planning_limits")
         path = goal_journal_path(
             data_root.resolve() / "sessions", session_id
         ).with_suffix(".work.jsonl")
@@ -389,11 +495,40 @@ def inspect_goal(
             blobs=blobs,
             event_log=log,
             prepared={},
+            policy_id=actual.policy_id,
         )
         assessment = policy.assess_now(
             GoalBasis(actual, state, history.sequence),
             GoalFacts(history.batches, runs, unresolved=unresolved),
         )
-        return _view(state, assessment, unresolved=unresolved)
+        view = _view(state, assessment, unresolved=unresolved)
+        if actual.policy_id != PLANNING_POLICY_ID:
+            return view
+        try:
+            from ._goal_planning import ModelPlanningPolicy
+            from ._goal_planning_history import PlanningHistory
+
+            manager = (
+                PlanningHistory(data_root.resolve() / "sessions", session_id, blobs)
+                if any(b.source.get("phase") == "planning" for b in history.batches)
+                else None
+            )
+            reader = ModelPlanningPolicy(
+                workspace=workspace.resolve(),
+                session=SimpleNamespace(session_id=session_id, session_manager=manager),
+                blobs=blobs,
+                event_log=log,
+                prepared={},
+                allowance=None,
+                tool_policy=None,
+                history=lambda: history,
+            )
+            trace = reader.trace(
+                GoalBasis(actual, state, history.sequence),
+                GoalFacts(history.batches, runs, unresolved=unresolved),
+            )
+        except (ValueError, OSError, KeyError) as error:
+            trace = {"status": "unknown", "reason": str(error)}
+        return replace(view, planning=trace)
     finally:
         store.close()

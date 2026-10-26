@@ -26,11 +26,11 @@ Method 的契约声明及 Skill 指导不自动构成权限授予或运行时强
 约束核验由既有 Product、Policy 和执行路径承担，目标完成还须有当前有效的验收证据。
 Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)。
 
-下一阶段需求草案：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
+当前阶段需求：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
 在已交付本地闭环上补模型候选、计划受理、证据驱动的调整与有限推进；当前仅生成
-需求和专项设计已形成，三视角技术复核完成，用户评审待提交，未启动产品实现。
-候选机制见[模型规划闭环专项](model-planning-loop.md)：规划作为原 Work，保持一次
-推进一批；该选择及其环境、组件、交互待用户评审，不改变已接受首版。
+需求和专项设计已形成，三视角技术复核完成；2026-10-26 用户接受专项及场景，实施已启动。
+已接受机制见[模型规划闭环专项](model-planning-loop.md)：规划作为原 Work，保持一次
+推进一批；该选择及其环境、组件、交互已获用户接受，旧显式 Method profile 保持不变。
 配套[场景合同](model-planning-scenario.md)与[独立三视角处置记录](model-planning-review.md)
 固定了动作含义、实质修订判据、原始材料及技术阻断关闭依据。
 
@@ -102,3 +102,6 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 [Method/Work 协作草稿](../../plans/2026-10-24-goal-method-work-design.md)
 和 [ARD-018 候选](../decisions/proposed/ARD-018-goal-reuse-existing-runtime.md)
 仅是输入材料；其未核实假设和首轮 findings 不直接升级为本包的现状或决定。
+
+模型规划当前实施、全部真实试验与验证边界见[实施记录](model-planning-implementation.md)。
+GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)仍待用户评审。

@@ -177,6 +177,8 @@ def initial_metadata(root: Path, blobs: SessionBlobStore) -> Mapping[str, object
 
 
 class CalculatorPolicy:
+    policy_id = POLICY_ID
+
     def __init__(
         self,
         *,
@@ -185,13 +187,19 @@ class CalculatorPolicy:
         blobs: SessionBlobStore,
         event_log: Any,
         prepared: dict[str, WorkExecutionBinding],
+        policy_id: str | None = None,
     ):
         self.root, self.session, self.blobs = workspace, session, blobs
         self.log, self.prepared = event_log, prepared
+        if policy_id is not None:
+            self.policy_id = policy_id
 
     def _current_inputs(self, basis: GoalBasis):
         meta = basis.goal.metadata
-        if basis.goal.requirements != REQUIREMENTS or meta.get("profile") != POLICY_ID:
+        if (
+            basis.goal.requirements != REQUIREMENTS
+            or meta.get("profile") != self.policy_id
+        ):
             raise GoalError("requirements need a supported domain acceptance mapping")
         snapshot = check_inventory(self.root, document(meta["baseline"]))
         tests = read(self.blobs, meta["tests_ref"])
@@ -247,79 +255,88 @@ class CalculatorPolicy:
                 )
             except (ValueError, OSError, KeyError):
                 return PolicyStop("verification_evidence_unavailable")
-        op_id = f"goal-op-{uuid4().hex}"
-        common = {
+        if repair:
+            return self.prepare_repair(basis, snapshot, previous)
+        return self.prepare_verification(basis, snapshot, source, tests, code)
+
+    def _operation_inputs(self, basis, snapshot):
+        return f"goal-op-{uuid4().hex}", {
             "inventory": snapshot,
             "method_sha256": basis.goal.metadata["method_sha256"],
         }
-        if repair:
-            request = (
-                "Repair calculator.py using these actual current verification failures. "
-                "Only calculator.py may change. Preserve exact function signatures. "
-                "Use only parameter reads, bounded integer constants, +/-, comparisons, "
-                "boolean conditions, if and return. No imports/calls/docstrings/annotations. "
-                "Use read/edit/write tools only. Do not create files, change tests or Method.\n"
-                + canonical(
-                    {
-                        "requirements": [
-                            {"id": r.id, "text": r.text}
-                            for r in basis.goal.requirements
-                        ],
-                        "revision": basis.goal.revision,
-                        "epoch": basis.goal.epoch,
-                        "evidence": previous,
-                    }
-                )
+
+    def prepare_repair(self, basis: GoalBasis, snapshot, previous):
+        """Bind the original Method after the caller has checked current failure evidence."""
+        op_id, common = self._operation_inputs(basis, snapshot)
+        request = (
+            "Repair calculator.py using these actual current verification failures. "
+            "Only calculator.py may change. Preserve exact function signatures. "
+            "Use only parameter reads, bounded integer constants, +/-, comparisons, "
+            "boolean conditions, if and return. No imports/calls/docstrings/annotations. "
+            "Use read/edit/write tools only. Do not create files, change tests or Method.\n"
+            + canonical(
+                {
+                    "requirements": [
+                        {"id": r.id, "text": r.text} for r in basis.goal.requirements
+                    ],
+                    "revision": basis.goal.revision,
+                    "epoch": basis.goal.epoch,
+                    "evidence": previous,
+                }
             )
-            prepared = MethodDomainRuntime(
-                profile=MethodDomainProfile(domain="coding")
-            ).prepare_turns(
-                MethodDomainRequest(
-                    request,
-                    self.root,
-                    method_policy=MethodPolicy.explicit("goal-calculator-repair"),
-                )
+        )
+        prepared = MethodDomainRuntime(
+            profile=MethodDomainProfile(domain="coding")
+        ).prepare_turns(
+            MethodDomainRequest(
+                request,
+                self.root,
+                method_policy=MethodPolicy.explicit("goal-calculator-repair"),
             )
-            if not prepared or any(
-                t.plan_mode != "fixed"
-                or t.method_id != basis.goal.metadata["method_id"]
-                for t in prepared
-            ):
-                return PolicyStop("unsupported Method or executor")
-            if any(
-                t.metadata.get("planned_constraint") or t.metadata.get("audit_policy")
-                for t in prepared
-            ):
-                return PolicyStop(
-                    "Method constraint/audit execution is unsupported by this profile"
-                )
-            turns = project_prepared_session_work_turns(
-                cast(Sequence[PreparedSessionWorkTurn], prepared),
-                images=None,
-                follow_up_messages=(),
+        )
+        if not prepared or any(
+            t.plan_mode != "fixed" or t.method_id != basis.goal.metadata["method_id"]
+            for t in prepared
+        ):
+            return PolicyStop("unsupported Method or executor")
+        if any(
+            t.metadata.get("planned_constraint") or t.metadata.get("audit_policy")
+            for t in prepared
+        ):
+            return PolicyStop(
+                "Method constraint/audit execution is unsupported by this profile"
             )
-            executor = SessionTurnExecutor(
-                session=self.session,
-                profile=CODING_WORK_PROFILE,
-                project_event_facts=project_coding_runtime_event,
-                turns=turns,
-            )
-            self.prepared[op_id] = WorkExecutionBinding(executor, executor)
-            first = turns[0]
-            operation = first.to_operation(
-                profile=CODING_WORK_PROFILE,
-                session_id=basis.header.session_id,
-                operation_id=op_id,
-            )
-            initial = first.to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
-            spec = WorkRunSpec(
-                method_id=first.method_id,
-                plan_id=first.plan_id,
-                run_event_payload=initial.run_event_payload,
-                scope_event_payload=initial.scope_event_payload,
-                steps=tuple(t.to_step_spec(profile=CODING_WORK_PROFILE) for t in turns),
-            )
-            return WorkCandidate(basis, operation, spec, {**common, "phase": "repair"})
+        turns = project_prepared_session_work_turns(
+            cast(Sequence[PreparedSessionWorkTurn], prepared),
+            images=None,
+            follow_up_messages=(),
+        )
+        executor = SessionTurnExecutor(
+            session=self.session,
+            profile=CODING_WORK_PROFILE,
+            project_event_facts=project_coding_runtime_event,
+            turns=turns,
+        )
+        self.prepared[op_id] = WorkExecutionBinding(executor, executor)
+        first = turns[0]
+        operation = first.to_operation(
+            profile=CODING_WORK_PROFILE,
+            session_id=basis.header.session_id,
+            operation_id=op_id,
+        )
+        initial = first.to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
+        spec = WorkRunSpec(
+            method_id=first.method_id,
+            plan_id=first.plan_id,
+            run_event_payload=initial.run_event_payload,
+            scope_event_payload=initial.scope_event_payload,
+            steps=tuple(t.to_step_spec(profile=CODING_WORK_PROFILE) for t in turns),
+        )
+        return WorkCandidate(basis, operation, spec, {**common, "phase": "repair"})
+
+    def prepare_verification(self, basis: GoalBasis, snapshot, source, tests, code):
+        """Prepare the original fixed verifier; preparation performs no execution."""
+        op_id, common = self._operation_inputs(basis, snapshot)
         identity = {
             "goal_id": basis.goal.id,
             "revision": basis.goal.revision,
@@ -389,11 +406,11 @@ class CalculatorPolicy:
         except (ValueError, OSError, KeyError):
             return False
 
-    def _verification(self, batch, basis: GoalBasis, snapshot):
+    def _verification(self, batch, basis: GoalBasis, snapshot, *, phase="verification"):
         if (
             batch.revision != basis.goal.revision
             or batch.epoch != basis.goal.epoch
-            or batch.source.get("phase") != "verification"
+            or batch.source.get("phase") != phase
             or plain(batch.source.get("inventory")) != snapshot
         ):
             return None

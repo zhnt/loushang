@@ -1,5 +1,6 @@
 """Real opt-in Goal: failing check -> Method/model repair -> independent check.
 
+Pass --model-planning for model-selected actions and revisable routes.
 Use a fresh output directory. --reopen only reads the stored result and evidence.
 """
 
@@ -30,6 +31,7 @@ def show(view):
         "epoch": view.goal.epoch,
         "validity": view.validity,
         "reason": view.reason,
+        "goal_reason": view.goal.reason,
         "execution_unresolved": view.execution_unresolved,
     }
 
@@ -74,6 +76,13 @@ async def main(args):
             goal_id="calculator",
         )
         print(json.dumps(show(view), ensure_ascii=False, sort_keys=True), flush=True)
+        if view.planning is not None:
+            print(
+                json.dumps(
+                    {"planning": view.planning}, ensure_ascii=False, sort_keys=True
+                ),
+                flush=True,
+            )
         return (
             0 if view.goal.status == "completed" and view.validity == "current" else 1
         )
@@ -84,7 +93,13 @@ async def main(args):
     output.mkdir(mode=0o700, parents=True)
     shutil.copytree(Path(__file__).with_name("goal_calculator"), workspace)
     model = build_kimi_model()
-    owner = await CodingGoal.open(workspace=workspace, data_root=data, model=model)
+    limit = 20 if args.model_planning else 6
+    owner = await CodingGoal.open(
+        workspace=workspace,
+        data_root=data,
+        model=model,
+        model_planning=args.model_planning,
+    )
     try:
         receipt_file.write_text(
             json.dumps(
@@ -93,23 +108,28 @@ async def main(args):
                     "model_id": model.id,
                     "provider": model.provider_id,
                     "goal_id": "calculator",
-                    "limit": 6,
+                    "limit": limit,
+                    "model_planning": args.model_planning,
                 },
                 indent=2,
             )
         )
-        owner.create("calculator", command_id="create", limit=6)
+        owner.create("calculator", command_id="create", limit=limit)
         print(
             json.dumps(
                 {
                     "event": "goal_started",
                     "output_dir": str(output),
-                    "note": "Initial verification is expected to fail; model repair follows, then independent verification.",
+                    "note": (
+                        "The model selects actions; each advance admits one planning or implementation Work."
+                        if args.model_planning
+                        else "Initial verification is expected to fail; model repair follows, then independent verification."
+                    ),
                 }
             ),
             flush=True,
         )
-        for number in range(6):
+        for number in range(limit):
             state = owner.controller.query("calculator")
             if state.status != "active":
                 break
@@ -130,6 +150,21 @@ async def main(args):
                 with suppress(asyncio.CancelledError):
                     await progress
             facts = owner.controller.facts()
+            if args.model_planning:
+                trace = owner.planning_trace("calculator")
+                (output / "planning-trace.json").write_text(json.dumps(trace, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "event": "planning_trace",
+                            "status": trace["status"],
+                            "planning_intents": trace.get("planning_intents"),
+                            "rejections": trace.get("rejections", []),
+                            "latest_route": trace.get("routes", [])[-1:],
+                        }
+                    ),
+                    flush=True,
+                )
             print(
                 json.dumps(
                     {
@@ -157,6 +192,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--reopen", action="store_true")
+    parser.add_argument(
+        "--model-planning",
+        action="store_true",
+        help="Let the model select the next bounded action and revise its route",
+    )
     args = parser.parse_args()
     try:
         raise SystemExit(asyncio.run(main(args)))

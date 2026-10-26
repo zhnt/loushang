@@ -1,7 +1,7 @@
 # 模型规划专项：三视角独立评审与处置
 
 - Authority: descriptive — 固定设计修订的技术评审证据，不代替用户接受。
-- Design status: technical-review-complete，用户评审待提交；Implementation status: not-started。
+- Design status: technical-review-complete，user-accepted（2026-10-26）；Implementation status: in-progress。
 - Owner：Loushang 协作架构；实施代理汇总，独立 reviewers 提供发现和复核。
 - 方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 需求：[G-GOAL-PLAN-01](../../plans/2026-10-26-goal-model-planning-loop.md)。
@@ -83,3 +83,29 @@ R1 三位 reviewer 均不建议按“阻断已关闭”提交用户接受；方�
 prepared-request/取消透传、第二次规划请求零 provider 调用、错误终态不可消费、工具
 配置恢复失败 fence、丢失 Transcript/Work/Blob 的冷读呈现，以及真实模型调整证据。
 这些由 Coding 实施 owner 关闭，不能以本轮技术评审代替。
+
+## 用户接受与实施启动
+
+2026-10-26，向用户列出 R2.1 核心观点后，用户明确回复“同意，请继续goal”。
+接受范围为专项 R2.1 与场景 R1.1，实施从 `3474940c2` 开始；技术复核记录仍对应
+上列固定修订，不将用户授权当作实现验证或真实模型验收的证据。
+
+## 实现三视角复核（2026-10-26）
+
+三位原独立 reviewer 分别检查基线 `3474940c2` 上的实施源码；首次固定输入与产品树外
+`implementation-r3-inputs.json` 对应，随后对修正作定点复核。未读取彼此结论、未运行
+真实模型；执行验证由主代理完成并单独记录。保留设计评审与实现验收的区别。
+
+| 发现 | 修正与关闭依据 |
+| --- | --- |
+| IO-01 Method 未知步骤可能在修复之后才失败 | 新 profile 受理前核验完整 inspect→repair 序列，透传原 PolicyStop；未知尾步、倒序、缺步和不支持 constraint/audit 的反例已覆盖 |
+| IO-02 / D-I02 只有 live trace，没有原记录冷读 | 新只读 Transcript 适配与 live/cold 共用投影；显示原提案、响应证明、intent 消费和原 run 受理；缺 Transcript/损坏 invocation 列表时 planning unknown，Goal 视图保留 |
+| D-I01 snapshot 外壳通过但组件未验证 | 调用原 rebuild_model_input，核验完整组件/root hash/origin；坏来源反例与真实 v1/v2 来源检查，不自建摘要算法 |
+| IR-RP01 context 扩展可改写可信输入 | 新 profile 禁 context，且核验重建实际末尾 user 和空 tools；构造拒绝反例 |
+| IR-RP02 阈值达到后多一次 advance 才暂停 | Product assessment 在同次 advance 收束；合法最终验收保持优先，不派发额外 Work |
+| IR-RP03 包装器取消与恢复失败证据不足 | 6 种确定性组合经过原 Work cancel、Session abort/idle 和包装器恢复；恢复异常或不一致 fence 并拒绝新 advance；不扩张为 live provider 全故障证明 |
+| IO-03 GP-03 真实调整未达成 | **未关闭**。三次原场景完整留证；不把 r2 沿原路线成功或 r3 未执行的计划尾部当作重规划成功 |
+
+实现和测试结果见[实施记录](model-planning-implementation.md)。新增分层 JSON profile
+候选因未证明优于原场景而撤回，不为验收另建框架。后续协作场景仍为待用户讨论的
+候选，内部评审不替代用户对其验收范围的确认。

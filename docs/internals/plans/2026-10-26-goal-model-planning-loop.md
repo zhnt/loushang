@@ -1,9 +1,9 @@
 # G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1
 
-- Authority: proposed — 下一阶段 Goal 需求草案，不是已接受的架构或实现合同。
-- Design status: draft；Implementation status: not-started。
+- Authority: accepted — 本阶段 Goal 需求；专项及场景接受记录见配套架构工作件。
+- Design status: accepted；Implementation status: in-progress。
 - Owner：Loushang architecture / HarnessWork（通用目标控制与记录）/ Coding Product（规划适配、领域验收与装配）。
-- 当前授权：用户要求生成本阶段 Goal 描述；本轮不启动产品代码开发。
+- 当前授权：2026-10-26 用户在审阅核心观点后明确“同意，请继续goal”，授权按专项 R2.1 实施。
 - 源码基线：本地 main `ec659f017c230cfb834234352532f89b1e58d6ee`；未据此宣称远程同步。
 - 方法咨询：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 前置交付：[Goal 最小业务闭环](2026-10-25-goal-minimum-business-loop.md)及其[实际实施记录](../architecture/harnesswork/goal/implementation.md)。
@@ -110,8 +110,12 @@
   可恢复控制的范围，不从“Goal 历史可读”推导“任意中断点可自动续跑”。
 
 专项按职责与复用、运行与失败、数据与兼容三个视角评审，固定评审对象修订并记录
-阻断项处置。系统环境图、组件关系、关键交互及重要决策仍须用户评审；本轮没有
-完成这些评审，不将本需求草案标为已接受设计。
+阻断项处置。系统环境图、组件关系、关键交互及重要决策仍须用户评审；专项 R2.1
+及配套场景已获用户接受，不能由此推导后续新增候选也已接受。
+
+实施进展见[实施与验证记录](../architecture/goal-method-work/model-planning-implementation.md)。
+真实模型规划、修复和独立完成已有一条成功轨迹；三次原场景均未证明 GP-03 的实质
+调整，整体保持 in-progress。原源码与场景证据保留，后续验证建议须明确业务范围。
 
 ## 范围与收敛原则
 

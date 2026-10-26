@@ -1556,6 +1556,1175 @@ def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
 _GOAL_FIXTURE = Path(__file__).resolve().parents[2] / "examples/coding/goal_calculator"
 
 
+def _planning_proposal(**changes):
+    return {
+        "next_action": "check",
+        "targets": ["subtraction"],
+        "requirement_ids": ["R-SUB"],
+        "rationale": "Measure the current implementation before choosing a repair.",
+        "expected_evidence": ["report", "validation"],
+        "remaining_route": [
+            {"action": "check", "targets": ["subtraction"]},
+            {"action": "repair", "targets": ["calculator"]},
+            {"action": "verify_all", "targets": []},
+        ],
+        "change_reason": "",
+        "evidence_refs": [],
+        **changes,
+    }
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"goal_id": "forged"},
+        {"version": True},
+        {"next_action": "bash"},
+        {"targets": ["../../calculator.py"]},
+        {"targets": ["subtraction", "subtraction"]},
+        {"targets": "subtraction"},
+        {"requirement_ids": []},
+        {"requirement_ids": ["R-SUB", "NEW-REQUIREMENT"]},
+        {"expected_evidence": []},
+        {"evidence_refs": ["foreign-run:report"]},
+        {"remaining_route": [{"action": "repair", "targets": ["calculator"]}]},
+        {"remaining_route": [{"action": "check", "targets": ["subtraction"]}] * 7},
+        {"next_action": "repair", "targets": ["subtraction"]},
+        {"next_action": "verify_all", "targets": ["subtraction"]},
+        {"rationale": "a" * 2049},
+        {"rationale": "\ud800"},
+        {"change_reason": float("nan")},
+    ],
+)
+def test_goal_planning_proposal_rejects_authority_and_contract_changes(changes):
+    from loushang.coding.adapters._goal_proposal import ProposalRejected, parse_proposal
+
+    with pytest.raises(ProposalRejected):
+        parse_proposal(
+            json.dumps(_planning_proposal(**changes)).encode(), known_evidence=()
+        )
+
+
+def test_goal_planning_proposal_strict_json_and_semantic_action_identity():
+    from loushang.coding.adapters._goal_proposal import (
+        Action,
+        ProposalRejected,
+        parse_proposal,
+    )
+
+    raw = json.dumps(_planning_proposal(evidence_refs=["op-1:report"])).encode()
+    proposal = parse_proposal(raw, known_evidence=("op-1:report",))
+    assert (
+        parse_proposal(
+            json.dumps(proposal.data()).encode(), known_evidence=proposal.evidence_refs
+        )
+        == proposal
+    )
+    assert proposal.action.effect == Action.parse("check", ["clamp"]).effect
+    assert proposal.action.effect == Action.parse("verify_all", []).effect
+    assert (
+        Action.parse("inspect", ["clamp"]).effect
+        != Action.parse("inspect", ["subtraction"]).effect
+    )
+    assert Action.parse("inspect", ["clamp", "subtraction"]) == Action.parse(
+        "inspect", ["subtraction", "clamp"]
+    )
+    for invalid in (
+        b'{"next_action":"repair",' + raw[1:],
+        b"```json\n" + raw + b"\n```",
+        raw + raw,
+        b" " * (16 * 1024 + 1),
+        b'{"x":' + b"[" * 1500 + b"0" + b"]" * 1500 + b"}",
+    ):
+        with pytest.raises(ProposalRejected):
+            parse_proposal(invalid, known_evidence=("op-1:report",))
+
+
+def test_goal_planning_stream_allowance_preserves_transport_and_bounds_continuation(
+    monkeypatch,
+):
+    from loushang.agent import is_prepared_request_conformant
+    from loushang.ai import CallOptions, RetryOptions
+    from loushang.coding.adapters import _goal_planning_limits as limits
+
+    async def scenario():
+        received = []
+        response = object()
+
+        async def original(model, context, options):
+            received.append((model, context, options))
+            return response
+
+        monkeypatch.setattr(limits, "stream", original)
+        allowance = limits.PlanningCallAllowance()
+        assert is_prepared_request_conformant(allowance.stream)
+        model, context, cancellation = object(), object(), object()
+        options = CallOptions(
+            cancellation=cancellation, retry=RetryOptions(max_attempts=3)
+        )
+        with pytest.raises(limits.PlanningCallLimit, match="outside"):
+            await allowance.stream(model, context, options)
+        assert received == []
+        allowance.enter("plan", "planning")
+        assert await allowance.stream(model, context, options) is response
+        assert (
+            received[0][0] is model
+            and received[0][1] is context
+            and received[0][2] is options
+        )
+        # A hallucinated tool continuation cannot make a second provider call.
+        with pytest.raises(limits.PlanningCallLimit, match="exhausted"):
+            await allowance.stream(model, context, options)
+        assert len(received) == 1 and allowance.failed
+        allowance.leave("plan")
+        with pytest.raises(limits.PlanningCallLimit, match="already failed"):
+            allowance.enter("plan", "planning")
+        allowance.enter("repair", "repair")
+        for _ in range(5):
+            await allowance.stream(model, context, options)
+        allowance.leave("repair")
+        allowance.enter("repair", "repair")
+        for _ in range(7):
+            await allowance.stream(model, context, options)
+        with pytest.raises(limits.PlanningCallLimit, match="exhausted"):
+            await allowance.stream(model, context, options)
+        assert len(received) == 13  # 1 planning + 12 over both Method steps.
+        allowance.leave("repair")
+        allowance.enter("new-plan", "planning")
+        with pytest.raises(limits.PlanningCallLimit, match="retry"):
+            await allowance.stream(
+                model, context, CallOptions(retry=RetryOptions(max_attempts=4))
+            )
+        assert len(received) == 13 and allowance.calls == 0
+
+    asyncio.run(scenario())
+
+
+def test_goal_planning_stream_cancellation_is_sticky_and_wrong_owner_fences(
+    monkeypatch,
+):
+    from loushang.coding.adapters import _goal_planning_limits as limits
+
+    async def cancelled(*args):
+        raise asyncio.CancelledError()
+
+    async def scenario():
+        monkeypatch.setattr(limits, "stream", cancelled)
+        allowance = limits.PlanningCallAllowance()
+        allowance.enter("op", "planning")
+        with pytest.raises(asyncio.CancelledError):
+            await allowance.stream(None, None)
+        assert allowance.failed and allowance.calls == 1
+        allowance.leave("op")
+        with pytest.raises(limits.PlanningCallLimit):
+            allowance.enter("op", "planning")
+        with pytest.raises(limits.PlanningCallLimit, match="ownership"):
+            allowance.leave("other-op")
+        with pytest.raises(limits.PlanningCallLimit):
+            allowance.enter("new-op", "planning")
+        assert allowance.fenced
+
+    asyncio.run(scenario())
+
+
+def _planning_response_fixture():
+    from types import SimpleNamespace
+
+    from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+    from loushang.harness.conversation.types import ConversationRecord
+    from loushang.harness.transcript.model_call import project_model_call_invocations
+    from loushang.harness.transcript.model_call_types import ModelCallOutcome
+    from loushang.harness.transcript.model_input_types import (
+        ModelInputComponent,
+        ModelInputComponentReference,
+        ModelInputSnapshot,
+        hash_model_input_json,
+    )
+
+    prompt = "planning operation op-1; input digest abc"
+    raw = json.dumps(_planning_proposal()).encode()
+    user = UserMessage("user", prompt, 0.0)
+    usage = Usage(1, 1, 0, 0, 2, None)
+    assistant = AssistantMessage(
+        "assistant",
+        [TextPart("text", raw.decode())],
+        "api",
+        "provider",
+        "endpoint",
+        "model",
+        None,
+        usage,
+        "stop",
+        None,
+        0.0,
+    )
+    from loushang.harness.transcript.kinds import (
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
+    from loushang.harness.transcript.model_input import rebuild_model_input
+
+    logical = {
+        "system_prompt": "plan",
+        "messages": [{"role": "user", "content": prompt}],
+        "tools": [],
+        "request_options": {},
+    }
+    prepared = {"messages": logical["messages"]}
+    components = []
+    refs = {}
+    for name, content in {**logical, "model_visible_headers": {}}.items():
+        digest = hash_model_input_json(content, name=name)
+        refs[name] = ModelInputComponentReference(name, f"component:{name}", digest)
+        components.append((f"component:{name}", ModelInputComponent(digest, content)))
+    snapshot = ModelInputSnapshot(
+        snapshot_id="snapshot",
+        invocation_id="invocation",
+        attempt=1,
+        purpose="main",
+        product_id="coding",
+        runtime_id="runtime",
+        mount_generation=1,
+        profile_fingerprint="a" * 64,
+        registration_revision="b" * 64,
+        conversation_id="session",
+        source_leaf_id="user",
+        source_revision=1,
+        commit_revision=2 + len(components),
+        provider_id="provider",
+        model_id="model",
+        api_id="api",
+        endpoint_id="endpoint",
+        logical_components=tuple(refs[name] for name in logical),
+        prepared_payload_components=(refs["messages"],),
+        model_visible_headers_component=refs["model_visible_headers"],
+        logical_input_hash=hash_model_input_json(logical, name="logical"),
+        prepared_payload_hash=hash_model_input_json(
+            {"model_visible_headers": {}, "payload": prepared}, name="prepared"
+        ),
+    )
+    outcome = ModelCallOutcome("invocation", ("snapshot",), "completed", "stop", usage)
+    records = []
+    parent = None
+    for record_id, payload in [
+        ("user", user),
+        *components,
+        ("snapshot", snapshot),
+        ("outcome", outcome),
+        ("assistant", assistant),
+    ]:
+        records.append(
+            ConversationRecord(
+                record_id,
+                parent,
+                MODEL_INPUT_PREPARED_KIND
+                if record_id == "snapshot"
+                else MODEL_INPUT_COMPONENT_KIND
+                if record_id.startswith("component:")
+                else "fixture",
+                1,
+                "2026-10-26T00:00:00Z",
+                payload,
+            )
+        )
+        parent = record_id
+
+    class Manager:
+        def rebuild_model_input(self, snapshot_id):
+            return rebuild_model_input(
+                SimpleNamespace(
+                    records=tuple(records),
+                    records_to=self.get_branch,
+                    header=SimpleNamespace(conversation_id="session"),
+                ),
+                snapshot_id,
+            )
+
+        def get_active_entries(self):
+            return list(records)
+
+        def get_model_call_invocations(self):
+            return project_model_call_invocations(records)
+
+        def get_branch(self, leaf):
+            for index, record in enumerate(records):
+                if record.record_id == leaf:
+                    return records[: index + 1]
+            raise ValueError("record missing")
+
+    events = [
+        RuntimeEvent(
+            event_id=f"event-{index}",
+            kind="agent.message_end",
+            stream_id="stream",
+            sequence=index + 1,
+            occurred_at=datetime.now(UTC),
+            payload={"type": "message_end", "message": record.payload},
+            session_id="session",
+            source_record_id=record.record_id,
+        )
+        for index, record in enumerate((records[0], records[-1]))
+    ]
+    return Manager(), records, events, prompt, raw
+
+
+def test_goal_planning_response_rechecks_original_records_not_last_message():
+    from loushang.coding.adapters._goal_planning_response import (
+        ResponseBoundary,
+        capture_response,
+        verify_response,
+    )
+    from loushang.coding.adapters._goal_proposal import ProposalRejected
+
+    manager, _, events, prompt, raw = _planning_response_fixture()
+    returned, proof = capture_response(
+        manager,
+        ResponseBoundary((), ()),
+        session_id="session",
+        prompt=prompt,
+        events=events,
+    )
+    assert returned == raw and proof["invocation_id"] == "invocation"
+    verify_response(manager, proof, session_id="session", prompt=prompt, raw=raw)
+    with pytest.raises(ProposalRejected, match="provenance"):
+        verify_response(
+            manager,
+            {**proof, "invocation_id": "other"},
+            session_id="session",
+            prompt=prompt,
+            raw=raw,
+        )
+    with pytest.raises(ProposalRejected, match="trusted input"):
+        verify_response(
+            manager, proof, session_id="session", prompt="other-op", raw=raw
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "length",
+        "tool_block",
+        "missing_outcome",
+        "wrong_snapshot_session",
+        "snapshot_without_user",
+        "extra_user",
+        "changed_parent",
+        "foreign_event",
+        "duplicate_event",
+        "missing_event",
+        "conflicting_event",
+        "changed_prefix",
+    ],
+)
+def test_goal_planning_response_refuses_ambiguous_or_unsuccessful_provenance(change):
+    from dataclasses import replace
+
+    from loushang.ai.types import ToolCall, UserMessage
+    from loushang.coding.adapters._goal_planning_response import (
+        ResponseBoundary,
+        capture_response,
+    )
+    from loushang.coding.adapters._goal_proposal import ProposalRejected
+
+    manager, records, events, prompt, _ = _planning_response_fixture()
+    boundary = ResponseBoundary((), ())
+    snap_index = next(i for i, r in enumerate(records) if r.record_id == "snapshot")
+    outcome_index = next(i for i, r in enumerate(records) if r.record_id == "outcome")
+    if change == "length":
+        records[-1] = replace(
+            records[-1], payload=replace(records[-1].payload, stop_reason="length")
+        )
+        records[outcome_index] = replace(
+            records[outcome_index],
+            payload=replace(records[outcome_index].payload, stop_reason="length"),
+        )
+    elif change == "tool_block":
+        records[-1] = replace(
+            records[-1],
+            payload=replace(
+                records[-1].payload, content=[ToolCall("toolCall", "tc", "unknown", {})]
+            ),
+        )
+    elif change == "missing_outcome":
+        records[-1] = replace(records[-1], parent_id="snapshot")
+        records.pop(outcome_index)
+    elif change == "wrong_snapshot_session":
+        records[snap_index] = replace(
+            records[snap_index],
+            payload=replace(records[snap_index].payload, conversation_id="foreign"),
+        )
+    elif change == "snapshot_without_user":
+        records[snap_index] = replace(
+            records[snap_index],
+            payload=replace(records[snap_index].payload, source_leaf_id="unknown"),
+        )
+    elif change == "extra_user":
+        records[-1] = replace(records[-1], parent_id="extra")
+        records.insert(
+            -1,
+            replace(
+                records[0],
+                record_id="extra",
+                parent_id="outcome",
+                payload=UserMessage("user", "steer", 0.0),
+            ),
+        )
+    elif change == "changed_parent":
+        records[-1] = replace(records[-1], parent_id="user")
+    elif change == "foreign_event":
+        events[-1] = replace(events[-1], session_id="foreign")
+    elif change == "duplicate_event":
+        events[-1] = events[0]
+    elif change == "missing_event":
+        events.pop()
+    elif change == "conflicting_event":
+        events[-1] = replace(events[-1], payload={"message": "different content"})
+    elif change == "changed_prefix":
+        boundary = ResponseBoundary(("missing-prefix",), ())
+    with pytest.raises(ProposalRejected):
+        capture_response(
+            manager, boundary, session_id="session", prompt=prompt, events=events
+        )
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["missing_component", "component_hash", "snapshot_hash", "origin_revision"],
+)
+def test_goal_planning_response_rejects_incomplete_actual_model_input(damage):
+    from dataclasses import replace
+
+    from loushang.coding.adapters._goal_planning_response import (
+        ResponseBoundary,
+        capture_response,
+    )
+    from loushang.coding.adapters._goal_proposal import ProposalRejected
+
+    manager, records, events, prompt, _ = _planning_response_fixture()
+    index = next(i for i, r in enumerate(records) if r.record_id == "snapshot")
+    if damage == "missing_component":
+        records[2] = replace(records[2], parent_id=records[0].record_id)
+        records.pop(1)
+    elif damage == "component_hash":
+        snapshot = records[index].payload
+        refs = snapshot.logical_components
+        records[index] = replace(
+            records[index],
+            payload=replace(
+                snapshot,
+                logical_components=(replace(refs[0], content_hash="0" * 64), *refs[1:]),
+            ),
+        )
+    elif damage == "snapshot_hash":
+        records[index] = replace(
+            records[index],
+            payload=replace(records[index].payload, logical_input_hash="0" * 64),
+        )
+    else:
+        records[index] = replace(
+            records[index], payload=replace(records[index].payload, commit_revision=99)
+        )
+    with pytest.raises(ProposalRejected, match="reconstruction"):
+        capture_response(
+            manager,
+            ResponseBoundary((), ()),
+            session_id="session",
+            prompt=prompt,
+            events=events,
+        )
+
+
+def test_goal_planning_refuses_context_replacement_before_model_or_writer(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters import goal as module
+
+    calls = []
+
+    class SDK:
+        async def create_session(self, **kwargs):
+            return SimpleNamespace(
+                session_id="session",
+                session_manager=SimpleNamespace(get_cwd=lambda: str(tmp_path)),
+                extension_runner=SimpleNamespace(
+                    has_handlers=lambda name: name == "context"
+                ),
+            )
+
+        async def dispose_session_runtime(self):
+            calls.append("disposed")
+
+    monkeypatch.setattr(module, "create_agent_session_runtime", lambda **kwargs: SDK())
+    with pytest.raises(GoalError, match="execution-replacing hooks"):
+        asyncio.run(
+            CodingGoal.open(
+                workspace=tmp_path, data_root=tmp_path / "data", model_planning=True
+            )
+        )
+    assert calls == ["disposed"] and not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "  - inspect\n  - repair\n  - audit",
+        "  - repair\n  - inspect",
+        "  - repair",
+        "step_constraints",
+        "step_audit",
+    ],
+)
+def test_goal_planning_refuses_unsupported_method_before_admission(tmp_path, steps):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters._goal_calculator import REQUIREMENTS, initial_metadata
+    from loushang.coding.adapters._goal_planning import ModelPlanningPolicy
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harnesswork.goal import GoalBasis, GoalHeader
+    from loushang.harnesswork.goal.records import GoalState
+
+    root = _goal_project(tmp_path)
+    method = root / "methods/task/goal-calculator-repair/SKILL.md"
+    content = method.read_text()
+    if steps.startswith("step_"):
+        content = content.replace(
+            "plan_mode: fixed",
+            f"plan_mode: fixed\n{steps}:\n  repair:\n    unsupported: true",
+        )
+    else:
+        content = content.replace("  - inspect\n  - repair", steps)
+    method.write_text(content)
+    blobs = SessionBlobStore(tmp_path / "data", "session")
+    metadata = initial_metadata(root, blobs)
+    policy = ModelPlanningPolicy(
+        workspace=root,
+        session=SimpleNamespace(),
+        blobs=blobs,
+        event_log=None,
+        prepared={},
+        allowance=None,
+        tool_policy=None,
+        history=None,
+    )
+    state = GoalState("g", REQUIREMENTS, limit=20, metadata=metadata)
+    basis = GoalBasis(GoalHeader("session", "session", policy.policy_id), state, 1)
+    before = inventory(root)
+    if steps.startswith("step_"):
+        from loushang.harnesswork.goal import PolicyStop
+
+        result = policy.prepare_repair(basis, before, {})
+        assert isinstance(result, PolicyStop) and "constraint/audit" in result.reason
+        assert policy.prepared == {} and inventory(root) == before
+        return
+    with pytest.raises(GoalError, match="supported inspect/repair"):
+        policy.prepare_repair(
+            basis, before, {"failures": "actual report supplied by caller"}
+        )
+    assert policy.prepared == {} and inventory(root) == before
+
+
+def test_goal_planning_work_uses_original_runtime_and_publishes_bound_evidence(
+    tmp_path, monkeypatch
+):
+    from loushang.coding.adapters import _goal_planning_limits as limits
+    from loushang.coding.adapters._goal_planning_work import (
+        PlanningToolPolicy,
+        PlanningWork,
+        ScopedSessionWork,
+    )
+    from loushang.coding.adapters._work_evidence import project_work_evidence
+    from loushang.coding.adapters.harnesswork import (
+        CODING_WORK_PROFILE,
+        project_coding_runtime_event,
+    )
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkRunSpec,
+        WorkRuntime,
+        WorkStepSpec,
+    )
+    from loushang.harnesswork.integrations.session import SessionTurnExecutor
+    from loushang.harnesswork.ports import WorkExecutionBinding
+
+    async def scenario():
+        manager, records, events, prompt, raw = _planning_response_fixture()
+        completed = list(records)
+        records.clear()
+        listeners = []
+        allowance = limits.PlanningCallAllowance()
+
+        async def original(*args):
+            return object()
+
+        monkeypatch.setattr(limits, "stream", original)
+
+        class Session:
+            session_id = "session"
+            session_manager = manager
+            active = ["read", "edit", "write"]
+
+            def subscribe_runtime_events(self, listener):
+                listeners.append(listener)
+                return lambda: listeners.remove(listener)
+
+            def get_active_tool_names(self):
+                return list(self.active)
+
+            async def set_active_tools(self, tools):
+                self.active = list(tools)
+
+            async def prompt(self, text, **kwargs):
+                assert text == prompt and self.active == []
+                await allowance.stream(None, None)
+                records.extend(completed)
+                for event in events:
+                    for listener in tuple(listeners):
+                        await listener(event)
+
+            async def wait_for_idle(self):
+                pass
+
+        session = Session()
+        tools = PlanningToolPolicy(tmp_path)
+        original_executor = SessionTurnExecutor(
+            session=session,
+            profile=CODING_WORK_PROFILE,
+            project_event_facts=project_coding_runtime_event,
+            turn=SessionWorkTurn(prompt),
+        )
+        scoped = ScopedSessionWork(
+            original_executor,
+            session=session,
+            allowance=allowance,
+            policy=tools,
+            phase="planning",
+        )
+        blobs = SessionBlobStore(tmp_path / "blobs", "session")
+        executor = PlanningWork(
+            scoped,
+            session=session,
+            blobs=blobs,
+            allowance=allowance,
+            prompt=prompt,
+            input_ref={},
+            known_evidence=(),
+        )
+
+        class Resolver:
+            def resolve(self, operation, spec):
+                return WorkExecutionBinding(executor, executor)
+
+        log = InMemoryEventLogBackend()
+        runtime = WorkRuntime(event_log=log, resolver=Resolver())
+        operation = SessionWorkTurn(prompt).to_operation(
+            profile=CODING_WORK_PROFILE, session_id="session", operation_id="op-1"
+        )
+        run = await runtime.accept(
+            operation,
+            spec=WorkRunSpec(
+                plan_id="planning:op-1", steps=(WorkStepSpec("planning"),)
+            ),
+        )
+        settled = await runtime.wait(run.run_id)
+        assert settled.status == "completed"
+        reports = project_work_evidence(log.query())
+        assert len(reports) == 1 and reports[0].operation_id == "op-1"
+        report = json.loads(blobs.read_bytes(reports[0].blob))
+        assert report["rejection"] is None
+        assert report["proposal"]["next_action"] == "check"
+        assert report["response_proof"]["response_sha256"] == driver.digest(raw)
+        assert session.active == ["read", "edit", "write"]
+        assert allowance.phase is None and tools.step is None and listeners == []
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("phase", ["planning", "repair"])
+@pytest.mark.parametrize("restore", ["okay", "raises", "mismatch"])
+def test_goal_planning_original_work_cancel_retains_scope_until_idle(
+    tmp_path, phase, restore
+):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters._goal_planning_limits import (
+        PlanningCallAllowance,
+        PlanningCallLimit,
+    )
+    from loushang.coding.adapters._goal_planning_work import (
+        PlanningToolPolicy,
+        ScopedSessionWork,
+    )
+    from loushang.coding.adapters.harnesswork import (
+        CODING_WORK_PROFILE,
+        project_coding_runtime_event,
+    )
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkRunSpec,
+        WorkRuntime,
+        WorkStepSpec,
+    )
+    from loushang.harnesswork.integrations.session import SessionTurnExecutor
+    from loushang.harnesswork.ports import WorkExecutionBinding
+
+    async def scenario():
+        entered, aborted, idle_waiting, idle = (asyncio.Event() for _ in range(4))
+        prior = ["read", "edit", "write"]
+
+        class Session:
+            active = list(prior)
+            selections = 0
+
+            def get_active_tool_names(self):
+                return list(self.active)
+
+            async def set_active_tools(self, names):
+                self.selections += 1
+                if self.selections > 1 and restore == "raises":
+                    raise RuntimeError("restoration failed")
+                self.active = (
+                    [] if self.selections > 1 and restore == "mismatch" else list(names)
+                )
+
+            def subscribe_runtime_events(self, listener):
+                return lambda: None
+
+            async def prompt(self, *args, **kwargs):
+                entered.set()
+                await aborted.wait()
+
+            async def abort(self):
+                aborted.set()
+
+            async def wait_for_idle(self):
+                idle_waiting.set()
+                await idle.wait()
+
+        session = Session()
+        allowance, policy = PlanningCallAllowance(), PlanningToolPolicy(tmp_path)
+        delegate = SessionTurnExecutor(
+            session=session,
+            profile=CODING_WORK_PROFILE,
+            project_event_facts=project_coding_runtime_event,
+            turn=SessionWorkTurn("execute"),
+        )
+        scoped = ScopedSessionWork(
+            delegate, session=session, allowance=allowance, policy=policy, phase=phase
+        )
+
+        class Resolver:
+            def resolve(self, operation, spec):
+                return WorkExecutionBinding(scoped, scoped)
+
+        runtime = WorkRuntime(event_log=InMemoryEventLogBackend(), resolver=Resolver())
+        operation = SessionWorkTurn("execute").to_operation(
+            profile=CODING_WORK_PROFILE, session_id="session", operation_id="op"
+        )
+        run = await runtime.accept(
+            operation,
+            spec=WorkRunSpec(
+                plan_id="cancel-plan",
+                steps=(WorkStepSpec("repair" if phase == "repair" else "planning"),),
+            ),
+        )
+        await entered.wait()
+        cancel = asyncio.create_task(runtime.cancel(run.run_id))
+        await idle_waiting.wait()
+        assert allowance.phase == phase and not cancel.done()
+        assert runtime.get_run(run.run_id).status == "cancelling"
+        idle.set()
+        await cancel
+        assert allowance.phase is None and policy.step is None
+        assert runtime.get_cancellation(run.run_id).status == "settled"
+        if restore == "okay":
+            assert not allowance.fenced and session.active == prior
+        else:
+            assert allowance.fenced
+            with pytest.raises(PlanningCallLimit):
+                allowance.enter("another-op", "planning")
+            owner = CodingGoal(tmp_path, tmp_path / "data")
+            owner._core = SimpleNamespace(fenced=False)
+            owner._allowance = allowance
+            with pytest.raises(GoalError, match="configuration fenced"):
+                await owner.advance("g", command_id="next", revision=1, epoch=1)
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_goal_planning_tool_scope_uses_resolved_effects_and_preserves_caller_denial(
+    tmp_path,
+):
+    from loushang.coding.adapters._goal_planning_work import PlanningToolPolicy
+    from loushang.harness.effects import FilesystemEffect, ProcessEffect
+    from loushang.harness.policy import (
+        PathPolicySubject,
+        PolicyDecision,
+        PolicyEvaluatorChain,
+        ToolPolicySubject,
+    )
+
+    policy = PlanningToolPolicy(tmp_path)
+
+    def subject(name, path, effects=None):
+        return ToolPolicySubject(
+            name,
+            {"path": str(path)},
+            cwd=str(tmp_path),
+            paths=(PathPolicySubject(str(path), str(path)),),
+            effects=effects
+            or (FilesystemEffect("read" if name == "read" else "write", (str(path),)),),
+        )
+
+    source = tmp_path / "calculator.py"
+    assert policy.evaluate(subject("read", source)).disposition == "deny"
+    policy.step = "inspect"
+    assert policy.evaluate(subject("read", source)).disposition == "allow"
+    assert policy.evaluate(subject("write", source)).disposition == "deny"
+    policy.step = "repair"
+    assert policy.evaluate(subject("edit", source)).disposition == "allow"
+    assert (
+        policy.evaluate(subject("write", tmp_path / "TESTS.json")).disposition == "deny"
+    )
+    assert (
+        policy.evaluate(subject("read", tmp_path.parent / "outside")).disposition
+        == "deny"
+    )
+    assert (
+        policy.evaluate(subject("read", source, (ProcessEffect(("sh",)),))).disposition
+        == "deny"
+    )
+    assert (
+        policy.evaluate(
+            subject(
+                "write",
+                source,
+                (FilesystemEffect("write", (str(tmp_path / "TESTS.json"),)),),
+            )
+        ).disposition
+        == "deny"
+    )
+
+    class Caller:
+        def evaluate(self, subject):
+            return PolicyDecision.deny("caller denied")
+
+    chain = PolicyEvaluatorChain((policy, Caller()), strategy="most_restrictive")
+    assert asyncio.run(chain.evaluate(subject("write", source))).disposition == "deny"
+
+
+def test_goal_model_planning_sdk_bounds_failed_calls_without_implementation(
+    tmp_path, monkeypatch
+):
+    from loushang.coding.adapters import _goal_planning_limits as limits
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    calls = []
+
+    async def fail_model(model, context, options):
+        calls.append(context)
+        raise RuntimeError("offline model failure")
+
+    monkeypatch.setattr(limits, "stream", fail_model)
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            model_planning=True,
+        )
+        try:
+            owner.create("g", command_id="create")
+            assert owner.controller.query("g").limit == 20
+            assert (
+                not owner._session.auto_retry_enabled
+                and not owner._session.auto_compaction_enabled
+            )
+            assert calls == []
+            for number in range(3):
+                state = owner.controller.query("g")
+                receipt = await owner.advance(
+                    "g",
+                    command_id=f"advance-{number}",
+                    revision=state.revision,
+                    epoch=state.epoch,
+                )
+                if number < 2:
+                    assert receipt.outcome == "work_finished", (
+                        receipt,
+                        owner.controller.last_error,
+                    )
+                else:
+                    assert receipt.outcome == "paused"
+            assert owner.controller.query("g").status == "paused"
+            assert owner.controller.query("g").reason == "planning_invalid_limit"
+            assert len(calls) == 3
+            assert len(owner.controller.history.batches) == 3
+            assert all(
+                batch.source["phase"] == "planning"
+                for batch in owner.controller.history.batches
+            )
+            assert owner._allowance.phase is None
+            with pytest.raises(GoalError, match="outside running repair"):
+                owner.steer("g", "do not queue this")
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.requires_host_runtime
+def test_goal_planning_fixed_verifier_scope_executes_without_model_authority(
+    tmp_path, monkeypatch
+):
+    from loushang.coding.adapters._verification_work import inspect_verification
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            model_planning=True,
+        )
+        try:
+            owner.create("g", command_id="create")
+
+            async def verification(basis, facts):
+                snapshot, source, tests, code = owner._policy._current_inputs(basis)
+                return owner._policy.prepare_verification(
+                    basis, snapshot, source, tests, code
+                )
+
+            monkeypatch.setattr(owner._policy, "prepare", verification)
+            receipt = await owner.advance("g", command_id="verify", revision=1, epoch=1)
+            assert receipt.outcome == "work_finished", owner.controller.last_error
+            run = owner.controller.facts().runs[-1]
+            assert run.status == "failed"
+            view = inspect_verification(
+                owner._policy.log.query(), run_id=run.run_id, blobs=owner._policy.blobs
+            )
+            assert view.passed is False and not view.issues, view
+            assert owner._allowance.calls == 0
+            assert owner._policy.tool_policy.verification is None
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("pause_while_planning", [False, True])
+def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
+    tmp_path, monkeypatch, pause_while_planning
+):
+    from loushang.ai.api_registry import get_default_api_registry
+    from loushang.ai.json_codec import serialize_message
+    from loushang.ai.model import Auth
+    from loushang.ai.prepared_request import PreparedModelRequest
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+        if not pause_while_planning:
+            release.set()
+        raw = json.dumps(
+            _planning_proposal(
+                next_action="inspect",
+                expected_evidence=["goal_inspection_report"],
+                remaining_route=[{"action": "inspect", "targets": ["subtraction"]}],
+            )
+        )
+
+        class Adapter:
+            api = "goal-planning-offline-contract"
+            calls = 0
+
+            def prepare_request(self, request):
+                return PreparedModelRequest.from_provider_request(
+                    request,
+                    payload={
+                        "system": request.context.system_prompt,
+                        "messages": [
+                            serialize_message(m) for m in request.context.messages
+                        ],
+                        "tools": [t.name for t in request.context.tools or ()],
+                        "model": request.model.id,
+                    },
+                )
+
+            async def invoke_prepared_raw(self, request, prepared):
+                self.calls += 1
+                assert not request.context.tools
+                prepared.payload_for_transport()
+                entered.set()
+                await release.wait()
+                yield {
+                    "type": "response_start",
+                    "response_id": f"response-{self.calls}",
+                }
+                yield {"type": "text_delta", "text": raw}
+                yield {"type": "stop_reason", "stop_reason": "stop"}
+                yield {"type": "response_done"}
+
+            async def invoke_raw(self, request):
+                async for part in self.invoke_prepared_raw(
+                    request, self.prepare_request(request)
+                ):
+                    yield part
+
+        adapter = Adapter()
+        registry = get_default_api_registry()
+        registry.register_api_adapter(adapter, source_id=adapter.api)
+        owner = None
+        task = None
+        try:
+            model = Model(
+                id="goal-offline",
+                provider="goal-offline",
+                endpoint="goal-offline",
+                api=adapter.api,
+                base_url="https://unused.invalid",
+                auth=Auth(kind="none"),
+                capabilities=Capabilities(
+                    input=("text",),
+                    output=("text",),
+                    context_window=128000,
+                    stream=True,
+                    tool_use=True,
+                ),
+            )
+            owner = await CodingGoal.open(
+                workspace=_goal_project(tmp_path),
+                data_root=tmp_path / "data",
+                model=model,
+                model_planning=True,
+            )
+            owner.create("g", command_id="create")
+            task = asyncio.create_task(
+                owner.advance("g", command_id="first-plan", revision=1, epoch=1)
+            )
+            await asyncio.wait_for(entered.wait(), 10)
+            with pytest.raises(GoalError, match="outside running repair"):
+                owner.follow_up("g", "must not enter planning input")
+            if pause_while_planning:
+                owner.controller.control(
+                    "g",
+                    "pause",
+                    command_id="pause",
+                    revision=1,
+                    epoch=1,
+                    reason="user pause",
+                )
+            release.set()
+            first = await task
+            assert first.outcome == (
+                "stale" if pause_while_planning else "work_finished"
+            ), owner.controller.last_error
+            first_op = owner.controller.history.batches[0].operation_id
+            trace = owner.planning_trace("g")
+            assert trace["status"] == "known" and len(trace["routes"]) == 1, trace
+            if pause_while_planning:
+                state = owner.controller.query("g")
+                owner.controller.control(
+                    "g",
+                    "resume",
+                    command_id="resume",
+                    revision=state.revision,
+                    epoch=state.epoch,
+                    reason="continue",
+                )
+            state = owner.controller.query("g")
+            second = await owner.advance(
+                "g", command_id="second", revision=state.revision, epoch=state.epoch
+            )
+            assert second.outcome == "work_finished", owner.controller.last_error
+            batches = owner.controller.history.batches
+            assert len(batches) == 2
+            if pause_while_planning:
+                assert batches[-1].source["phase"] == "planning"
+                assert all(b.source.get("proposal_id") != first_op for b in batches)
+                assert adapter.calls == 2
+            else:
+                assert batches[-1].source["phase"] == "inspect"
+                assert batches[-1].source["proposal_id"] == first_op
+                assert adapter.calls == 1
+                repeated = await owner.advance(
+                    "g", command_id="second", revision=state.revision, epoch=state.epoch
+                )
+                assert repeated == second and len(owner.controller.history.batches) == 2
+                assert len(owner.planning_trace("g")["evidence"]) == 1
+        finally:
+            release.set()
+            if task is not None and not task.done():
+                await task
+            if owner is not None:
+                await owner.close()
+            registry.unregister_api_adapters(adapter.api)
+        assert owner is not None
+        before = {
+            str(p.relative_to(tmp_path)): driver.digest(p.read_bytes())
+            for p in tmp_path.rglob("*")
+            if p.is_file()
+        }
+        cold = inspect_goal(
+            workspace=owner.workspace,
+            data_root=owner.data_root,
+            session_id=owner.session_id,
+            goal_id="g",
+        )
+        assert cold.planning["status"] == "known", cold.planning
+        assert len(cold.planning["routes"]) == (2 if pause_while_planning else 1)
+        if not pause_while_planning:
+            assert cold.planning["routes"][0]["consumed_by"] == [
+                batches[-1].operation_id
+            ]
+            assert cold.planning["batches"][-1]["admission"] == "admitted"
+        after = {
+            str(p.relative_to(tmp_path)): driver.digest(p.read_bytes())
+            for p in tmp_path.rglob("*")
+            if p.is_file()
+        }
+        assert before == after
+        # Missing original Transcript is unknown, regardless of exported trace copies.
+        transcript = next(
+            p
+            for p in (owner.data_root / "sessions").glob("*.jsonl")
+            if p.name.startswith("20")
+        )
+        original_transcript = transcript.read_bytes()
+        rows = [json.loads(line) for line in original_transcript.splitlines()]
+        outcome = next(row for row in rows if row.get("kind") == "model.call.outcome")
+        outcome["payload"]["modelInputSnapshotIds"] = ["foreign-snapshot"]
+        transcript.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        inconsistent = inspect_goal(
+            workspace=owner.workspace,
+            data_root=owner.data_root,
+            session_id=owner.session_id,
+            goal_id="g",
+        )
+        assert inconsistent.goal == cold.goal
+        assert inconsistent.planning["status"] == "unknown"
+        transcript.write_bytes(original_transcript)
+        transcript.unlink()
+        damaged = inspect_goal(
+            workspace=owner.workspace,
+            data_root=owner.data_root,
+            session_id=owner.session_id,
+            goal_id="g",
+        )
+        assert damaged.planning["status"] == "unknown"
+        assert "Transcript" in damaged.planning["reason"]
+
+    asyncio.run(scenario())
+
+
 def _goal_project(tmp_path):
     root = tmp_path / "_goal_project"
     shutil.copytree(_GOAL_FIXTURE, root)
