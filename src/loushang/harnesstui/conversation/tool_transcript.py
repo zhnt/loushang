@@ -134,7 +134,9 @@ class ToolTranscriptProjector:
                 max_lines=self.max_body_lines,
             ),
             command=self.command_resolver(tool_name, args, title),
-            expanded_body=_expanded_body(view) if body_visible else None,
+            expanded_body=(
+                _expanded_body(view) if body_visible or view.status == "error" else None
+            ),
             expanded_command=self.expanded_command_resolver(
                 tool_name,
                 args,

@@ -879,7 +879,13 @@ def _agent_error_summary(result: object) -> str | None:
         text = getattr(part, "text", None)
         if not isinstance(text, str):
             continue
-        for line in text.splitlines():
+        lines = text.splitlines()
+        if lines and lines[0].startswith('Validation failed for tool "'):
+            for line in lines[1:]:
+                if line.startswith("  - "):
+                    summary = line[4:].strip()
+                    return summary if len(summary) <= 160 else summary[:157] + "..."
+        for line in lines:
             summary = line.strip()
             if summary:
                 return summary if len(summary) <= 160 else summary[:157] + "..."

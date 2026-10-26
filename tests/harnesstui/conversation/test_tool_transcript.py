@@ -317,6 +317,29 @@ def test_neutral_result_details_project_edit_and_write_stats() -> None:
     assert write.detail == "overwrote, 2.0 KiB"
 
 
+def test_validation_error_keeps_full_result_available_on_expansion() -> None:
+    projector = ToolTranscriptProjector()
+    full_error = (
+        'Validation failed for tool "read":\n'
+        "  - path: is required\n\nReceived arguments:\n{}"
+    )
+
+    block = projector.project_result(
+        ToolResultView(
+            tool_call_id="read-1",
+            tool_name="read",
+            status="error",
+            error_summary="path: is required",
+            expanded_text=full_error,
+        )
+    )
+
+    assert block.detail == "failed: path: is required"
+    assert block.body is None
+    assert block.expanded_body == full_error
+    assert tool_block_to_record(block).expanded_output == full_error
+
+
 def test_tool_result_view_is_immutable() -> None:
     view = ToolResultView(tool_call_id="tc1", tool_name="tool", status="ok")
 
