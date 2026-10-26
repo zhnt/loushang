@@ -3,15 +3,22 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
+import shutil
 import sys
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
+from loushang.ai.model import Capabilities, Model
+from loushang.coding.adapters import _goal_driver as driver
+from loushang.coding.adapters._goal_calculator import inventory
+from loushang.coding.adapters.goal import CodingGoal, inspect_goal
 from loushang.coding.adapters.harnesswork import create_coding_work_runtime
 from loushang.harness.events import RuntimeEvent
 from loushang.harnesswork.event_log import EventLogBackend
+from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.integrations.session import (
     SessionWorkRuntime,
     SessionWorkTurn,
@@ -1541,5 +1548,530 @@ def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
         ]
         assert kinds.count("WorkRunStarted") == 1
         assert kinds.count("WorkRunCompleted") == 1
+
+    asyncio.run(scenario())
+
+
+# Reviewed optional Goal contracts and finite Coding acceptance.
+_GOAL_FIXTURE = Path(__file__).resolve().parents[2] / "examples/coding/goal_calculator"
+
+
+def _goal_project(tmp_path):
+    root = tmp_path / "_goal_project"
+    shutil.copytree(_GOAL_FIXTURE, root)
+    return root
+
+
+def _goal_offline_model():
+    return Model(
+        id="offline-goal",
+        name="Offline Goal",
+        provider="offline",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            input=("text",), context_window=128000, max_tokens=4096
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import os\ndef subtract(a,b): return a-b\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return print(a)\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return a.__class__\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b):\n while a: a-1\n return a\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return 2**a\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return [a][0]\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b=0): return a-b\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return True\ndef clamp(value,lower,upper): return value",
+        "def subtract(a,b): return 1001\ndef clamp(value,lower,upper): return value",
+    ],
+)
+def test_driver_rejects_outside_language_without_execution(source):
+    with pytest.raises(ValueError):
+        driver.validate_source(source.encode())
+
+
+def test_original_fixture_bytes_and_actual_driver_failures(tmp_path):
+    root = _goal_project(tmp_path)
+    source, tests = (
+        (root / "calculator.py").read_bytes(),
+        (root / "TESTS.json").read_bytes(),
+    )
+    assert (
+        driver.digest(source)
+        == "4d47897f8b404b3b22dd4616658ee9e30aea0719b4617ec48487cd6fad8bccfb"
+    )
+    assert (
+        driver.digest(tests)
+        == "1fd53db853feb6f499777566d4226d102010ffd902d0424569cd4d43a1de12fe"
+    )
+    value = {
+        "version": 1,
+        "identity": {"goal_id": "g", "revision": 1, "epoch": 1, "operation_id": "op"},
+        "source": driver.content_entry(source),
+        "tests": driver.content_entry(tests),
+        "driver_sha256": driver.digest(Path(driver.__file__).read_bytes()),
+    }
+    result = driver.verify(json.dumps(value).encode())
+    assert (
+        result["tests_run"],
+        result["failures"],
+        result["errors"],
+        result["skipped"],
+    ) == (23, 13, 0, 0)
+
+
+def test_inventory_detects_unlisted_files_and_links(tmp_path):
+    from loushang.coding.adapters._goal_calculator import check_inventory
+
+    root = _goal_project(tmp_path)
+    baseline = inventory(root)
+    (root / "new.txt").write_text("unrelated")
+    with pytest.raises(GoalError, match="paths changed"):
+        check_inventory(root, baseline)
+    (root / "new.txt").unlink()
+    (root / "TESTS.json").unlink()
+    (root / "TESTS.json").symlink_to("/dev/null")
+    with pytest.raises(GoalError, match="unsupported project entry"):
+        check_inventory(root, baseline)
+
+
+@pytest.mark.requires_host_runtime
+def test_real_sdk_initial_failure_persistence_and_read_only_reopen(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    root, data = _goal_project(tmp_path), tmp_path / "data"
+
+    async def scenario():
+        goal = await CodingGoal.open(
+            workspace=root, data_root=data, model=_goal_offline_model()
+        )
+        try:
+            receipt = goal.create("g", command_id="create")
+            assert goal.create("g", command_id="create") == receipt
+            first = await goal.advance("g", command_id="initial", revision=1, epoch=1)
+            assert first.outcome == "work_finished", (first, goal.controller.last_error)
+            batches = goal.controller.history.batches
+            assert len(batches) == 1 and batches[0].source["phase"] == "verification"
+            view = await goal.query("g")
+            assert view.goal.status == "active" and view.validity == "not_satisfied"
+            assert view.reason == "actual_tests_failed"
+            return goal.session_id
+        finally:
+            await goal.close()
+
+    sid = asyncio.run(scenario())
+    before = {p: p.read_bytes() for p in (data / "sessions").glob("*.goal.jsonl")}
+    cold = inspect_goal(workspace=root, data_root=data, session_id=sid, goal_id="g")
+    assert cold.goal.status == "active" and cold.reason == "actual_tests_failed"
+    assert all(p.read_bytes() == content for p, content in before.items())
+
+
+def test_goal_writer_excludes_second_product_owner_and_rejects_bad_tail(tmp_path):
+    from loushang.coding.adapters._goal_store import GoalJournal
+    from loushang.harness.journal._directory_lease import DirectoryWriterError
+    from loushang.harnesswork.goal import GoalHeader
+
+    root = tmp_path.resolve()
+    header = GoalHeader("s", "s", "test")
+    first = GoalJournal(root, header)
+    second = GoalJournal(root, header)
+    try:
+        first.open(create=True)
+        with pytest.raises(DirectoryWriterError, match="busy"):
+            second.open()
+        with first.path.open("ab") as stream:
+            stream.write(b'{"partial":')
+        with pytest.raises(Exception):
+            first.load()
+    finally:
+        second.close()
+        first.close()
+
+
+def test_goal_driver_rejects_unreachable_nested_definition():
+    source = (
+        b"def subtract(a,b):\n return a-b\n def hidden(a=1) -> a: return a\n"
+        b"def clamp(value,lower,upper):\n if value < lower: return lower\n"
+        b" if value > upper: return upper\n return value\n"
+    )
+    with pytest.raises(ValueError, match="top-level"):
+        driver.validate_source(source)
+
+
+@pytest.mark.requires_host_runtime
+def test_goal_resume_checks_protected_inputs_before_active(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    root = _goal_project(tmp_path)
+
+    async def scenario():
+        goal = await CodingGoal.open(
+            workspace=root, data_root=tmp_path / "data", model=_goal_offline_model()
+        )
+        try:
+            goal.create("g", command_id="create")
+            goal.controller.control(
+                "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+            )
+            (root / "README.md").write_text("changed protected file")
+            with pytest.raises(GoalError, match="protected project"):
+                goal.controller.control(
+                    "g",
+                    "resume",
+                    command_id="resume",
+                    revision=1,
+                    epoch=2,
+                    reason="user",
+                )
+            assert goal.controller.query("g").status == "paused"
+            assert not goal.controller.history.batches
+        finally:
+            await goal.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.requires_host_runtime
+def test_goal_cold_completion_validity_and_original_work_binding(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    root, data = _goal_project(tmp_path), tmp_path / "data"
+    source = (
+        (root / "calculator.py")
+        .read_text()
+        .replace("return a + b", "return a - b")
+        .replace(
+            "if value < lower:\n        return upper",
+            "if value < lower:\n        return lower",
+        )
+        .replace(
+            "if value > upper:\n        return lower",
+            "if value > upper:\n        return upper",
+        )
+    )
+    (root / "calculator.py").write_text(source)
+
+    async def scenario():
+        goal = await CodingGoal.open(
+            workspace=root, data_root=data, model=_goal_offline_model()
+        )
+        try:
+            goal.create("g", command_id="create")
+            assert (
+                await goal.advance("g", command_id="verify", revision=1, epoch=1)
+            ).outcome == "completed"
+            return goal.session_id
+        finally:
+            await goal.close()
+
+    sid = asyncio.run(scenario())
+    assert (
+        inspect_goal(
+            workspace=root, data_root=data, session_id=sid, goal_id="g"
+        ).validity
+        == "current"
+    )
+    (root / "calculator.py").write_text(source.replace("return a - b", "return a + b"))
+    assert (
+        inspect_goal(
+            workspace=root, data_root=data, session_id=sid, goal_id="g"
+        ).validity
+        == "outdated"
+    )
+    (root / "calculator.py").write_text(source)
+    journal = next((data / "sessions").glob("*.goal.jsonl"))
+    original = journal.read_bytes()
+    rows = [json.loads(line) for line in original.splitlines()]
+    for row in rows:
+        if row.get("kind") == "batch_associated":
+            row["data"]["run_id"] = "foreign-run"
+    journal.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    with pytest.raises(GoalError, match="association mismatch"):
+        inspect_goal(workspace=root, data_root=data, session_id=sid, goal_id="g")
+    journal.write_bytes(original)
+    from loushang.harness.artifacts import SessionBlobStore
+
+    store = SessionBlobStore(data, sid, read_only=True)
+    created = next(row for row in rows if row.get("kind") == "created")
+    ref = created["data"]["metadata"]["tests_ref"]
+    blob = store.objects_root / ref["blobId"]
+    contents = blob.read_bytes()
+    blob.write_bytes(b"corrupted fixed test bytes")
+    assert (
+        inspect_goal(
+            workspace=root, data_root=data, session_id=sid, goal_id="g"
+        ).validity
+        == "corrupt"
+    )
+    blob.unlink()
+    assert (
+        inspect_goal(
+            workspace=root, data_root=data, session_id=sid, goal_id="g"
+        ).validity
+        == "missing"
+    )
+    blob.write_bytes(contents)
+    assert (
+        inspect_goal(
+            workspace=root, data_root=data, session_id=sid, goal_id="g"
+        ).validity
+        == "current"
+    )
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.parametrize("field", ["step_constraints", "step_audit"])
+def test_goal_rejects_real_method_metadata_it_cannot_enforce(
+    tmp_path, monkeypatch, field
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    root = _goal_project(tmp_path)
+    method = root / "methods/task/goal-calculator-repair/SKILL.md"
+    original = method.read_text()
+    method.write_text(
+        original.replace(
+            "plan_mode: fixed",
+            f"plan_mode: fixed\n{field}:\n  repair:\n    must_execute_unavailable_check: true",
+        )
+    )
+
+    async def scenario():
+        goal = await CodingGoal.open(
+            workspace=root, data_root=tmp_path / "data", model=_goal_offline_model()
+        )
+        try:
+            goal.create("g", command_id="create")
+            assert (
+                await goal.advance("g", command_id="initial", revision=1, epoch=1)
+            ).outcome == "work_finished"
+            rejected = await goal.advance("g", command_id="repair", revision=1, epoch=1)
+            assert rejected.outcome == "paused"
+            assert "constraint/audit" in rejected.details["reason"]
+            assert len(goal.controller.history.batches) == 1
+            assert all(
+                b.source["phase"] == "verification"
+                for b in goal.controller.history.batches
+            )
+        finally:
+            await goal.close()
+
+    asyncio.run(scenario())
+
+
+def test_goal_writer_last_retry_does_not_reenter_retired_core(tmp_path):
+    calls = []
+
+    class Core:
+        retired = False
+
+        def fence(self):
+            calls.append("fence")
+
+        def begin_close(self):
+            self.fence()
+
+        async def quiesce(self):
+            assert not self.retired
+            calls.append("quiet")
+
+        async def settle_work(self):
+            assert not self.retired
+            calls.append("work")
+
+        def retire(self):
+            calls.append("retire")
+            self.retired = True
+
+    class SDK:
+        async def dispose_session_runtime(self):
+            calls.append("session")
+
+    class Store:
+        failed = False
+
+        def close(self):
+            calls.append("writer")
+            if not self.failed:
+                self.failed = True
+                raise OSError("writer close pending")
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        owner._core, owner._sdk, owner._store = Core(), SDK(), Store()
+        with pytest.raises(OSError, match="writer close pending"):
+            await owner.close()
+        assert not owner._closed and owner._core.retired
+        await owner.close()
+        await owner.close()
+        assert owner._closed
+        assert (
+            calls.count("quiet")
+            == calls.count("work")
+            == calls.count("session")
+            == calls.count("retire")
+            == 1
+        )
+        assert calls.count("writer") == 2
+
+    asyncio.run(scenario())
+
+
+def test_goal_query_cleanup_error_is_retained_without_disposing_resources(tmp_path):
+    disposed = []
+
+    class SDK:
+        async def dispose_session_runtime(self):
+            disposed.append("session")
+
+    class Store:
+        def close(self):
+            disposed.append("writer")
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        owner._sdk, owner._store = SDK(), Store()
+        started = asyncio.Event()
+
+        async def query():
+            task = asyncio.current_task()
+            owner._queries.add(task)
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                owner._queries.discard(task)
+                raise OSError("query reader cleanup pending")
+
+        task = asyncio.create_task(query())
+        await started.wait()
+        with pytest.raises(OSError, match="reader cleanup pending"):
+            await owner.close()
+        assert task.done() and not disposed and not owner._closed
+        with pytest.raises(OSError, match="reader cleanup pending"):
+            await owner.close()
+        assert not disposed
+
+    asyncio.run(scenario())
+
+
+def test_goal_original_input_forwarding_preserves_images_and_terminal_window(tmp_path):
+    from types import SimpleNamespace
+
+    seen = []
+    phase, status = "repair", "running"
+    batch = SimpleNamespace(
+        goal_id="g", not_submitted=False, operation_id="op", source={"phase": phase}
+    )
+
+    class Core:
+        fenced = False
+        history = SimpleNamespace(batches=(batch,))
+
+        def query(self, goal_id):
+            return SimpleNamespace(status="active")
+
+    class Work:
+        def get_run_for_operation(self, operation_id):
+            return SimpleNamespace(status=status)
+
+    class Session:
+        def steer(self, text, images):
+            seen.append(("steer", text, images))
+
+        def follow_up(self, text, images):
+            seen.append(("follow_up", text, images))
+
+    owner = CodingGoal(tmp_path, tmp_path / "data")
+    owner._core, owner._work, owner._session = Core(), Work(), Session()
+    images = [object()]
+    owner.steer("g", "steer text", images=images)
+    owner.follow_up("g", "follow text", images=images)
+    assert [row[0] for row in seen] == ["steer", "follow_up"]
+    assert all(row[2] is images for row in seen)
+    status = "completed"
+    with pytest.raises(GoalError, match="outside running repair"):
+        owner.steer("g", "late", images=images)
+    assert len(seen) == 2
+
+
+@pytest.mark.parametrize("matching_bytes", [True, False])
+def test_goal_verifier_nonzero_uses_last_cumulative_preview_not_exception_text(
+    tmp_path, matching_bytes
+):
+    from loushang.coding.adapters._verification_work import (
+        CodingVerificationFailed,
+        CodingVerificationWork,
+        inspect_verification,
+    )
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.workspace.exec import ExecOutputChunk
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkOperation,
+        WorkRunSpec,
+        WorkStepSpec,
+    )
+
+    class Session:
+        session_id = "s"
+
+        async def execute_bash(self, command, **options):
+            options["on_output"](ExecOutputChunk(stream="stdout", text="partial"))
+            options["on_output"](
+                ExecOutputChunk(stream="stdout", text="actual failure\n")
+            )
+            error = RuntimeError("THIS ERROR TEXT IS NOT OUTPUT")
+            error.tool_result_details = {
+                "exit_code": 1,
+                "cancelled": False,
+                "timed_out": False,
+                "truncated": False,
+                "stdio_complete": True,
+                "stdio_drain_reason": None,
+                "stdout_total_bytes": len(b"actual failure\n") if matching_bytes else 1,
+                "stderr_total_bytes": 0,
+            }
+            raise error
+
+    async def scenario():
+        log = InMemoryEventLogBackend()
+        blobs = SessionBlobStore(tmp_path / "data", "s")
+        work = CodingVerificationWork(session=Session(), blobs=blobs, event_log=log)
+        run = await work.runtime.accept(
+            WorkOperation(
+                "op",
+                "VerifyCodingCommand",
+                "s",
+                "coding",
+                {"command": "check", "execution": {"stdin": "input"}},
+            ),
+            spec=WorkRunSpec(
+                plan_id="verify",
+                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
+            ),
+        )
+        with pytest.raises(
+            CodingVerificationFailed if matching_bytes else RuntimeError
+        ):
+            await work.runtime.wait(run.run_id)
+        view = inspect_verification(log.query(), run_id=run.run_id, blobs=blobs)
+        assert view.run.status == "failed"
+        if matching_bytes:
+            assert view.passed is False
+            report = json.loads(
+                blobs.read_bytes(
+                    next(r.blob for r in view.records if r.role == "report")
+                )
+            )
+            from loushang.harness.artifacts import SessionBlobRef
+
+            output = blobs.read_bytes(
+                SessionBlobRef.from_manifest_entry(report["outputs"][0])
+            )
+            assert output == b"actual failure\n"
+        else:
+            assert view.passed is None and not view.records
 
     asyncio.run(scenario())

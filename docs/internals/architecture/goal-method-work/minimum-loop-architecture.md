@@ -1,12 +1,12 @@
 # Goal 最小业务闭环：架构设计 R3.2
 
-- Authority: proposed — 本地 SDK 首版候选，不是 Current 或已接受 Target。
-- Design status: draft；Implementation status: not-started。
+- Authority: normative — 用户认可并授权实施的本地 SDK 首版范围；不是 main 已交付事实。
+- Design status: accepted for local SDK scope；Implementation status: partial on local feature branch。
 - Owner：Loushang architecture；HarnessWork 拥有通用 Goal，Coding Product 拥有策略、验收及装配。
 - 源码基线：本地证据切片提交 `d1f418de53c58040a590683a0c499ff3de50e50d`；main 基线仍为 `372cde4ade0fe026076c8fa5e8b4486774b09cc3`，未集成。
 - R2/R3/R3.1 原文与报告保留；R3.2 按用户认可收束子组件粒度和适配责任，生产源码未变。
 - 方法：本地干净 `archmethod master` `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 用户评审：R2 除归属外其余部分已认可；2026-10-26 明确要求按共享 Goal 方案调整并再次三视角评审。R3.1 已完成技术复核；用户随后同意记录组件内含 Codec/Reducer、按真实职责保留适配。本次 R3.2 图及合同结论见评审记录，本轮不启动功能实现。
+- 用户评审：R2 除归属外其余部分已认可；2026-10-26 明确要求按共享 Goal 方案调整并再次三视角评审。R3.1 已完成技术复核；用户随后同意记录组件内含 Codec/Reducer、按真实职责保留适配。本次 R3.2 图及合同结论见评审记录，用户随后明确“请你开始开发”，当前按此实施；实际验证和限定范围见实现记录。
 - 需求：[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md) GM-01…08。
 
 ## 1. 目标与首个场景
@@ -154,7 +154,7 @@ Codec 共同属于记录组件内部，不各自提升为组件。记录组件�
 
 | 合同 | 交换内容及责任 |
 | --- | --- |
-| NextWorkPolicy | `prepare(basis, work_facts)` 返回原 WorkOperation/WorkRunSpec 的候选或 needs_user/rejected；`confirm_candidate` 在受理前同步重核实际方法/能力/领域输入，并返回绑定原 basis 的确认。它不调用 Work accept 或执行模型工具来完成所提修复 |
+| NextWorkPolicy | `confirm_resume(basis, work_facts)` 同步只读核对恢复所需的当前方法/项目/材料，不准备或执行 Work；`prepare(basis, work_facts)` 返回原 WorkOperation/WorkRunSpec 的候选或 needs_user/rejected；`confirm_candidate` 在受理前同步重核实际方法/能力/领域输入，并返回绑定原 basis 的确认。它不调用 Work accept 或执行模型工具来完成所提修复 |
 | GoalAcceptancePolicy | `assess(basis, work_facts)` 返回满足/未满足/需要更多证据/需用户决定及理由、覆盖和 proof 引用；`confirm_current` 在完成提交前同步重核当前领域输入，不能只复用旧布尔值 |
 | GoalRecordStore | `load` 返回绑定 scope 的头及共享记录；`append(expected_sequence, record)` 在相同 writer scope 下核对序号并返回 durable ACK 或原错误。物理适配调用共享 codec，通用 reducer 校验领域历史；端口不含 Session/Blob 的路径查找或资源 close。本地首版 load/append 为同步短 I/O，不跨 await；不据此支持异步远程记录后端 |
 
@@ -169,7 +169,7 @@ epoch、当前记录序号及绑定的策略/验收 policy identity/version。�
 保持不变。旧候选不能仅更换 basis 标签便变成有效；发生控制/要求或来源变化时
 必须重新准备/评估，旧命令也不能自动切换到替换后的 Goal。
 
-`confirm_candidate/confirm_current` 是 Product 只读、同步、无副作用的有限核对，
+`confirm_resume/confirm_candidate/confirm_current` 是 Product 只读、同步、无副作用的有限核对，
 不得重入 Goal 命令；共享层在其返回后仍重核 epoch/sequence，再提交记录。异步
 准备/材料读取均发生在此之前，期间的暂停/修订会使 basis 过期。核心无法自行
 读取源码或判定测试通过；Product 也不能绕过核心直接提交 completed。
@@ -620,6 +620,11 @@ Product 根据 Core 的只读当前 batch/operation 引用及原 Work running �
 规则，不添加 PR gate 或新平台/矩阵。模型与工具可用性在实际任务执行前按已有
 配置核对，不能仅凭配置名声称真实模型路径通过。
 
+恢复确认是实现复核中对原 resume 合同的窄接口补齐，仍属于原 NextWorkPolicy，
+没有第四个协作端口。Core 先核对已知/空闲 Work 和剩余批次，再调用 Product 的
+同步 confirm_resume，返回后重核原 basis 才写 active；失败不恢复、不执行一批。
+此补齐及实现反例与父级合同一起复核，见[实现与验证](../harnesswork/goal/implementation.md)。
+
 ## 12. 固定输入及评审接受
 
 前置本地提交中的生产源码 SHA256（与 R2 相同）：
@@ -634,3 +639,8 @@ R3/R3.1 原评审覆盖共享归属与交接。当前 R3.2 独立评审对象为
 原三项决策提纲是历史输入，不自动接受新共享合同。固定修订、原问题及关闭证据
 见[评审记录](minimum-loop-review.md)。用户已授权本归属方向与本轮设计评审，
 不据此声称功能代码或运行验收完成；R3.2 技术结论须由本轮独立评审实际留证。
+
+
+实现状态更新：用户已于本轮明确恢复开发，旧修订中“未启动”保留为冻结时事实。
+共享 Goal、Coding 适配及实际验证状态以[实现记录](../harnesswork/goal/implementation.md)
+为准；旧静态设计评审不自动证明新代码通过。Main 集成状态与本地实现验证分开记录。

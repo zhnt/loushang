@@ -353,3 +353,19 @@ Current stabilized pieces:
 - CLI command listing keeps the default TSV output and supports `--list-commands-format json` for structured consumers
 - CLI command execution keeps raw result output by default and supports `--command-result-format json`
 - CLI session export supports bare `--export`, `--export-format html|jsonl`, and `--export-result-format json`
+
+### 本地 Goal 最小修复闭环
+
+`27_goal_calculator.py` 复制固定缺陷项目，通过原 Coding SDK 和真实 Kimi 模型，
+完成“初始失败验证 → 显式 Method 修复 → 独立再验证”，再读取 Goal 完成依据。
+模型只使用原 read/edit/write；验证使用原 SDK 命令路径。需要现有 Kimi 凭据。
+
+```bash
+uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator-goal-demo
+uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator-goal-demo --reopen
+```
+
+首次选择不存在的输出目录；`--reopen` 只读取原身份和材料，不创建模型 Session
+或重新执行工作。若继承的 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 指向旧目录，
+可清空该变量使用内置模型目录。支持范围和失败约束见
+[Goal 实现记录](../../docs/internals/architecture/harnesswork/goal/implementation.md)。

@@ -1,7 +1,7 @@
 # Goal 最小业务闭环：设计评审记录
 
 - Authority: descriptive — 固定修订评审、问题处置和用户评审入口。
-- Design status: draft；Implementation status: not-started for Goal。
+- Design status: accepted for reviewed R3.2 local SDK scope；Implementation status: see the local implementation record。
 - Owner：Loushang architecture / HarnessWork 通用 Goal / Coding Product 策略与装配。
 - 目标：[G-GOAL-MIN-01](../../plans/2026-10-25-goal-minimum-business-loop.md)。
 - 源码基线：本地前置切片 `d1f418de53c58040a590683a0c499ff3de50e50d`；main 基线 `372cde4ade0fe026076c8fa5e8b4486774b09cc3`，未集成。生产源码 hash 见设计 §12。
@@ -269,3 +269,11 @@ GM 验收条件。特别是：不合作的回调会保持 fenced 资源，未承
 检查按本地 HEAD 的文档变更计划选择文档规则/链接检查，9 项通过，diff 空白
 检查通过；无生产源码、测试或 CI gate 改动，未运行 pytest/async/模型。图及
 静态源可承载的结论不等于 Goal 已实现、真实修复已完成或平台支持已扩展。
+
+
+## 实施授权与新源码证据
+
+用户在以上固定环境/组件评审完成后明确“请你开始开发”。该授权替代先前暂停，
+不再把历史冻结版本的“未启动”当作当前开发障碍。共享 Goal、Coding 适配和真实
+三批修复的源码复核/反例/运行结果见[实施记录](../harnesswork/goal/implementation.md)。
+本设计评审记录不替代新源码验收，实施记录也不把本地通过扩张为 main 或远程发布。

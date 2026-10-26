@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import uuid4
 
+from loushang.agent.types import AgentToolResult, TextPart
 from loushang.coding.adapters._work_evidence import (
     EvidenceRecord,
     SupportReference,
@@ -26,6 +27,7 @@ from loushang.harness.artifacts import (
     SessionBlobStore,
 )
 from loushang.harness.artifacts.references import session_blob_authority_id
+from loushang.harness.session.bash import bash_result_from_tool_result
 from loushang.harnesswork.event_log import EventLogBackend, EventLogEntry
 from loushang.harnesswork.ports import WorkExecutionContext
 from loushang.harnesswork.run_projection import project_work_runs
@@ -43,7 +45,9 @@ class _CodingSession(Protocol):
     @property
     def session_id(self) -> str: ...
 
-    async def execute_bash(self, command: str) -> dict[str, object]: ...
+    async def execute_bash(
+        self, command: str, **options: object
+    ) -> dict[str, object]: ...
 
 
 def _json_bytes(value: Mapping[str, object]) -> bytes:
@@ -218,7 +222,7 @@ def inspect_verification(
     )
 
 
-class CodingVerificationWork:
+class CodingVerificationExecutor:
     """One explicitly bound Session/Blob authority and single Work log writer."""
 
     def __init__(
@@ -233,33 +237,6 @@ class CodingVerificationWork:
         self._session = session
         self._blobs = blobs
         self._log = event_log
-        self.runtime = WorkRuntime(executor=self, event_log=event_log)
-
-    async def run(
-        self,
-        command: str,
-        *,
-        operation_id: str | None = None,
-        run_id: str | None = None,
-    ) -> WorkRun:
-        if not isinstance(command, str) or not command.strip():
-            raise ValueError("verification command must be non-empty")
-        operation_id = operation_id or f"coding-verification-{uuid4().hex}"
-        run = await self.runtime.accept(
-            WorkOperation(
-                operation_id,
-                _OPERATION,
-                self._session.session_id,
-                "coding",
-                {"command": command},
-            ),
-            spec=WorkRunSpec(
-                run_id=run_id,
-                plan_id=f"verification:{operation_id}",
-                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-            ),
-        )
-        return await self.runtime.wait(run.run_id)
 
     async def execute(
         self, operation: WorkOperation, context: WorkExecutionContext
@@ -274,7 +251,54 @@ class CodingVerificationWork:
             command = operation.payload["command"]
             if not isinstance(command, str):
                 raise ValueError("invalid verification command")
-            result = await self._session.execute_bash(command)
+            options = operation.payload.get("execution", {})
+            if not isinstance(options, Mapping) or set(options) - {
+                "stdin",
+                "cwd",
+                "env",
+            }:
+                raise ValueError("invalid verification execution options")
+            preview = ""
+
+            def observe(chunk):
+                nonlocal preview
+                # The original SDK forwards cumulative tool previews, not raw
+                # byte deltas. Never concatenate them or parse exception text.
+                preview = chunk.text
+
+            try:
+                result = await self._session.execute_bash(
+                    command,
+                    **dict(options),
+                    **({"on_output": observe} if options else {}),
+                )
+            except RuntimeError as error:
+                details = getattr(error, "tool_result_details", None)
+                if not options or not isinstance(details, Mapping):
+                    raise
+                counts = [
+                    details.get("stdout_total_bytes"),
+                    details.get("stderr_total_bytes"),
+                ]
+                if (
+                    type(details.get("exit_code")) is not int
+                    or details["exit_code"] == 0
+                    or details.get("timed_out") is not False
+                    or details.get("cancelled") is not False
+                    or details.get("truncated") is not False
+                    or details.get("stdio_complete") is not True
+                    or details.get("stdio_drain_reason") is not None
+                    or details.get("artifact_retention_error") is not None
+                    or any(type(n) is not int or n < 0 for n in counts)
+                    or sum(cast(list[int], counts)) != len(preview.encode("utf-8"))
+                ):
+                    raise
+                result = bash_result_from_tool_result(
+                    AgentToolResult(
+                        content=[TextPart(type="text", text=preview)],
+                        details=dict(details),
+                    )
+                )
             if operation.session_id != self._session.session_id:
                 raise ValueError("verification Session changed during command")
             truncated = result.get("truncated")
@@ -396,3 +420,43 @@ class CodingVerificationWork:
         fact = work_evidence_fact(blob, role=role, reported_step_id=context.step_id)
         validate_evidence_fact(fact, session_id=operation.session_id)
         context.publish(fact)
+
+
+class CodingVerificationWork(CodingVerificationExecutor):
+    """Standalone convenience wrapper; shared compositions borrow only executor."""
+
+    def __init__(
+        self,
+        *,
+        session: _CodingSession,
+        blobs: SessionBlobStore,
+        event_log: EventLogBackend,
+    ) -> None:
+        super().__init__(session=session, blobs=blobs, event_log=event_log)
+        self.runtime = WorkRuntime(executor=self, event_log=event_log)
+
+    async def run(
+        self,
+        command: str,
+        *,
+        operation_id: str | None = None,
+        run_id: str | None = None,
+    ) -> WorkRun:
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("verification command must be non-empty")
+        operation_id = operation_id or f"coding-verification-{uuid4().hex}"
+        run = await self.runtime.accept(
+            WorkOperation(
+                operation_id,
+                _OPERATION,
+                self._session.session_id,
+                "coding",
+                {"command": command},
+            ),
+            spec=WorkRunSpec(
+                run_id=run_id,
+                plan_id=f"verification:{operation_id}",
+                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
+            ),
+        )
+        return await self.runtime.wait(run.run_id)

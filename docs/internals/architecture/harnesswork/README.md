@@ -44,7 +44,8 @@ typed result 或 crash recovery 当作现有能力。
 具体方法准备、业务真值、存储根及 Session 资源 owner 仍属于 Product。
 [Goal 环境与子组件](goal/README.md)明确内部保留 Controller 和记录组件，Codec/Reducer
 属于记录组件内部，外围按真实职责适配。R3.1 三视角技术复核已完成，本轮新工作件
-结论见最小闭环评审记录；尚无实现，不把本段算作既有 Phase 2 已交付内容。
+结论见最小闭环评审记录；首版本地实现及实际验证见[实施记录](goal/implementation.md)，
+未合入 main，不把它算作既有 Phase 2 已交付内容。
 
 依赖保持单向：可选 Goal 使用原 Work，Work 不依赖 Goal，基础 Harness 不依赖
 HarnessWork。Goal 共享代码不 import Coding/Method 或 Harness 私有 I/O；物理

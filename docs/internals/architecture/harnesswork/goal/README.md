@@ -1,12 +1,12 @@
 # HarnessWork Goal：环境与子组件 R1
 
-- Authority: proposed — 最小业务闭环 R3.2 的子系统设计视图。
-- Design status: draft；Implementation status: not-started。
+- Authority: normative — 用户认可并授权实施的最小业务闭环 R3.2 子系统视图。
+- Design status: accepted for reviewed local SDK scope；Implementation status: partial locally。
 - Owner: HarnessWork；Product 拥有领域策略、验收和物理装配。
 - 依据：[最小业务闭环架构](../../goal-method-work/minimum-loop-architecture.md)；需求 GM-01…08 不变。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 设计父提交：`93c8b9e45671682fad1ccc72645520e1624faf92`；源码基线 `d1f418de53c58040a590683a0c499ff3de50e50d`。
-- 用户已同意 Codec 属于记录组件内部、按真实适配职责决定桥接；本轮落盘环境/白盒视图并做受影响评审，不启动实现。
+- 用户已同意 Codec 属于记录组件内部、按真实适配职责决定桥接；环境/白盒专项评审已完成，用户随后要求开始开发；实现及复核结果见[实施记录](implementation.md)。
 
 ## 1. 研究对象及范围
 
@@ -160,3 +160,8 @@ Product 适配各有现存的领域/存储差异，不合并为一个笼统“�
 不能自动当作本图已审。三视角关注职责/粒度与复用、运行/失败交接、数据/演进。
 不重开用户已接受的业务与首例领域范围，不声称实施、真实模型或故障验证通过。
 固定对象及实际结论见[评审记录](../../goal-method-work/minimum-loop-review.md)。
+
+
+实现补充：NextWorkPolicy 的同步只读 confirm_resume 落实父级已接受的恢复前
+方法/项目/材料复核；不增加运行组件或新端口。原 Work 运行事实、纯记录语义与
+Product 物理/业务责任保持，具体源码和证据见实施记录，main 状态另行说明。

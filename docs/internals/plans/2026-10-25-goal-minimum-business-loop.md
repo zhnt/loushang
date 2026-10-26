@@ -1,9 +1,9 @@
 # G-GOAL-MIN-01：Goal 最小业务闭环
 
-- Authority: proposed — 阶段目标与验收范围草案，不是已接受的组件或接口设计。
-- Design status: draft；Implementation status: not-started。
+- Authority: normative — 用户授权的最小业务闭环交付范围。
+- Design status: accepted for reviewed R3.2 scope；Implementation status: implemented and verified locally for the accepted profile；integration pending。
 - Owner：Loushang architecture / HarnessWork（通用 Goal）/ Coding Product（策略、验收及装配）。
-- 当前授权：用户已认可 R2 非归属部分，并于 2026-10-26 要求按 HarnessWork 可选 Goal 的分工更新架构、再次三视角评审。本轮执行设计修订和再审，功能实现尚未启动。
+- 当前授权：用户已认可 R2 非归属部分，并于 2026-10-26 要求按 HarnessWork 可选 Goal 的分工更新架构、再次三视角评审。随后明确“请你开始开发”，本轮按已评审范围实施。
 - 源码基线：`372cde4ade0fe026076c8fa5e8b4486774b09cc3`。
 - 方法：本地干净 `archmethod master`，提交
   `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -82,3 +82,12 @@
 适用性和推进交接等关键决定。三视角按职责与复用、运行与失败、数据与兼容组织，
 保留固定修订及问题处置证据。重要架构工作件仍由用户评审，本描述生成不等于
 架构接受或实施启动。
+
+
+## 2026-10-26 实施授权与范围
+
+用户在环境/子组件专项三视角复核完成后明确要求开始开发；本授权替代此前暂停。
+实现分支 `feat/goal-minimum-loop` 继承固定设计 `102869927` 与前置证据 `d1f418de5`。
+本地实现、真实模型轨迹、评审修正及仍未完成的集成检查见
+[实施记录](../architecture/harnesswork/goal/implementation.md)。不得以旧“未启动”表述
+继续阻塞本次授权，也不得将本地证据升级为远程发布或全部平台已验证。
