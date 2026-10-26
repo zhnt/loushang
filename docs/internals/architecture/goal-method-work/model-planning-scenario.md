@@ -1,7 +1,7 @@
 # 模型规划首例：有限 Coding 动作与验收合同 R1.1
 
 - Authority: proposed — GMW-KD-PLAN-01 的候选业务 profile。
-- Design status: draft，待独立复核和用户评审；Implementation status: not-started。
+- Design status: draft，独立技术复核通过，待用户评审；Implementation status: not-started。
 - Owner：Coding Product；继承[专项 R2.1](model-planning-loop.md)和[GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
 - 基线：`f3ee31319`；本文件固定设计输入和验收口径，不声称真实模型已经执行。
 

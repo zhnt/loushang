@@ -1,7 +1,7 @@
 # GMW-KD-PLAN-01：模型自主规划闭环专项 R2.1
 
 - Authority: proposed — 已有 Goal 架构上的候选增量。
-- Design status: draft，三视角复核修订中，用户评审待提交；Implementation status: not-started。
+- Design status: draft，三视角技术复核通过，待用户评审；Implementation status: not-started。
 - Owner：Loushang 协作架构；Coding 负责规划与领域适配，HarnessWork 保持通用控制与记录。
 - 需求：[G-GOAL-PLAN-01 / GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
 - 源码基线：`f3ee31319`，承接已接受的[最小闭环](minimum-loop-architecture.md)及[子系统结构](../harnesswork/goal/README.md)。
@@ -330,6 +330,6 @@ Skill 可作为用户指定的指导输入，无需为展示概念强行添加 S
 旧只读工具只能展示其能解释的原 Goal/Work 事实，不能宣称理解新规划证据或新领域验收。
 不扩 CI gate、平台或测试矩阵。没有运行本专项的测试或真实模型，以上均为计划验证。
 
-R1 的来源、调用上限、输入窗口和消费语义缺口已在 R2 给出候选合同；独立复核仍待
-完成，不能自报关闭。尚待实施证明：真实模型能产生合格调整，委托器保持 prepared
+R1 的来源、调用上限、输入窗口和消费语义缺口已给出候选合同，最终固定修订的
+三视角关闭证据见[评审记录](model-planning-review.md)。尚待实施证明：真实模型能产生合格调整，委托器保持 prepared
 协议与取消，原事件/提交交接在故障切点符合规定；这些是计划验证，不冒称已执行。
