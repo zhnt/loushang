@@ -116,7 +116,7 @@ _ROLE_PROMPTS: Mapping[str, str] = {
 def coding_read_only_agent_types(
     *,
     default_model: str | None = None,
-    maximum_children: int = 3,
+    maximum_children: int = 4,
 ) -> AgentTypeRegistry:
     """Return Coding's initial admitted, non-writing analysis roles."""
 
@@ -147,7 +147,7 @@ def coding_read_only_agent_types(
 def coding_agent_types(
     *,
     default_model: str | None = None,
-    maximum_children: int = 3,
+    maximum_children: int = 4,
 ) -> AgentTypeRegistry:
     """Return Coding's complete phase-two type catalog."""
 

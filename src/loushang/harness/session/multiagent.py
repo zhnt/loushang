@@ -59,6 +59,7 @@ class AgentInputActivity:
     sequence: int
     kind: InputActivityKind
     message_id: str | None
+    sender_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,11 +111,20 @@ class AgentInputFacade(Generic[PayloadT]):
 
     def enqueue_message(self, message: AgentInputMessage) -> AgentInputActivity:
         payload = self._build_payload(message)
+        sender_path = (
+            str(message.sender.ref.path)
+            if isinstance(message.sender, AgentCaller)
+            else None
+        )
         if message.kind == "mailbox":
             self._enqueue_mailbox(payload)
-            return self._publish_activity("completion_notice", message.message_id)
+            return self._publish_activity(
+                "completion_notice", message.message_id, sender_path=sender_path
+            )
         self._queue.enqueue(message.kind, text=message.text, payload=payload)
-        return self._publish_activity("message", message.message_id)
+        return self._publish_activity(
+            "message", message.message_id, sender_path=sender_path
+        )
 
     def enqueue_notice(
         self,
@@ -165,9 +175,13 @@ class AgentInputFacade(Generic[PayloadT]):
         self,
         kind: InputActivityKind,
         message_id: str | None,
+        *,
+        sender_path: str | None = None,
     ) -> AgentInputActivity:
         self._sequence += 1
-        activity = AgentInputActivity(self._sequence, kind, message_id)
+        activity = AgentInputActivity(
+            self._sequence, kind, message_id, sender_path=sender_path
+        )
         self._last_activity = activity
         for waiter in tuple(self._waiters):
             if not waiter.done():
