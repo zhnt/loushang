@@ -1,8 +1,8 @@
-# 模型规划首例：有限 Coding 动作与验收合同 R1
+# 模型规划首例：有限 Coding 动作与验收合同 R1.1
 
 - Authority: proposed — GMW-KD-PLAN-01 的候选业务 profile。
 - Design status: draft，待独立复核和用户评审；Implementation status: not-started。
-- Owner：Coding Product；继承[专项 R2](model-planning-loop.md)和[GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
+- Owner：Coding Product；继承[专项 R2.1](model-planning-loop.md)和[GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
 - 基线：`f3ee31319`；本文件固定设计输入和验收口径，不声称真实模型已经执行。
 
 ## 1. 固定材料与用户目标
@@ -64,7 +64,9 @@ clamp 是整文件合同允许的结果，不能拿它证明函数级调度。�
 ## 4. 真实规划与实质修订的判据
 
 路线第一项必须与 next_action 相同；尾部不是执行授权，也不要求当前已满足其前提。
-对比时以动作种类及规范化 targets 为身份，忽略理由文案和 operation id，扣除已执行
+对比时以实际执行语义为身份：check 的 targets 仅为关注标签，全部归一为 check_all；
+同输入的 check/verify_all 仅报告角色改变不能单独计作调整。inspect 的不同 targets
+对应真实不同源段/用例，保留其读取范围身份。忽略理由文案和 operation id，扣除已执行
 前缀后判断是否改变。必须有以下完整链才能关闭 GP-03：
 
 1. 原候选路线留存，第一动作经原 Work 受理并产生实际检查/执行事实。
@@ -81,6 +83,8 @@ check 的完整真实报告暴露两类失败后，模型改变原剩余路线�
 反向走查：模型交换两个尾部建议，后续在执行它们前又恢复原顺序，实际行动未变；
 或仅计划列表去掉已完成第一项；或新候选改变路线却被拒绝/not_submitted。这些都
 不计作已交付的实质修订。不得强迫错误补丁、运行中改测试或裁剪报告来制造正例。
+另一反例：inspect 后模型把 check(subtraction) 改成 check(clamp)，且新 check 已执行；
+两者实际都执行完整 23 项并公开相同结果，只变关注标签，仍不计作 GP-03。
 
 真实运行前固定模型/provider 配置标识和本文件材料清单；不保存凭据。本阶段真实
 验收最多先尝试三次独立、可还原的场景运行并保留全部结果，不能只选成功片段。
@@ -98,11 +102,14 @@ Session 自动 retry/compaction 在此新 profile 关闭；不会改用户全局
 | planning invalid 连续 3 次 | 第三次事实可知后暂停，第四次不派发；合法但未实施的提案不清零 |
 | planning→首次 inspect(subtraction)→planning→重复 inspect(subtraction)→planning→再次重复 | 首次知识增量清零，重复累计 1/2，达到 2 停止 |
 | 已 inspect A/B 后交替重复 A/B | 不因目标交替或新 op id 清零，两个无新增信息的实施结果后停止 |
+| check(subtraction)→planning→check(clamp)，源码和结果相同 | 第一次完整报告已建立两目标检查知识；第二次无新知识，不能因为首次请求 clamp 清零 |
 | failed check→repair（源码变了）→verify_all 失败集合未缩小 | repair 暂记一个未证明进展的实施尝试；验证未改善再加一，到 2 停止；只改字节不清零 |
 | failed check→repair→verify_all 失败集合严格缩小 | 验证产生实际改善时清零；仍未全部满足则可再规划 |
 | not_submitted / pause→resume | 不释放已预约候选，不清空规划失败或无进展计数；重新规划仍受累计额度约束 |
 
-首次知识按固定要求/材料基线下的动作种类与逻辑目标去重；源码变化不把相同 inspect
+首次知识按报告实际公开的事实覆盖去重，不按请求标签计数；完整 check 一次就标记
+两目标结果已知。相同材料的 verify_all 也不会因证据角色不同重新获得知识增量。
+源码变化不把相同 inspect
 变成新的“首次”。验证进展按固定全部用例的失败集合比较：严格子集才算改善，失败
 交换或总数相同不算。缺完整可比报告则 unknown/停止，不推断改善。revision 改变后
 不能直接比较旧要求的失败集；首版 profile 不支持新验收映射时 needs_user。

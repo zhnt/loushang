@@ -1,7 +1,7 @@
-# GMW-KD-PLAN-01：模型自主规划闭环专项 R2
+# GMW-KD-PLAN-01：模型自主规划闭环专项 R2.1
 
 - Authority: proposed — 已有 Goal 架构上的候选增量。
-- Design status: draft，R1 独立三视角已发现阻断，R2 待关闭复核及用户评审；Implementation status: not-started。
+- Design status: draft，三视角复核修订中，用户评审待提交；Implementation status: not-started。
 - Owner：Loushang 协作架构；Coding 负责规划与领域适配，HarnessWork 保持通用控制与记录。
 - 需求：[G-GOAL-PLAN-01 / GP-01…10](../../plans/2026-10-26-goal-model-planning-loop.md)。
 - 源码基线：`f3ee31319`，承接已接受的[最小闭环](minimum-loop-architecture.md)及[子系统结构](../harnesswork/goal/README.md)。
@@ -87,7 +87,7 @@ CalculatorPolicy 的整段执行和验收。共享 Core 如确需变化，须先
 ### 5.1 可信输入与模型候选
 
 Product 构造只读输入快照：Goal id/revision/epoch、当前序列、要求与固定约束、可用动作、
-已受理路线摘要、最近检查/执行证据引用及摘要、当前工作区材料摘要、剩余额度。
+已受理行动及历史路线建议摘要、最近检查/执行证据引用及摘要、当前工作区材料摘要、剩余额度。
 内容经原 Blob 留存，规划 batch.source 记录快照引用和摘要。工作区文字、Skill 内容和
 模型响应都是材料，不能修改允许动作集合、测试、Method 身份或额度。原始提示和输出
 在 Transcript/Blob 可追溯，默认查询只返回摘要与引用，沿原访问边界读取。
@@ -267,7 +267,7 @@ revision/epoch 核验覆盖 prompt 返回后到 Work 终结/下次派发之间�
 | --- | --- |
 | JSON/动作/引用无效 | 不执行模型提案；下一次 advance 可规划一次修正，原错误进入输入；每次占规划与总批次额度；达到上限暂停 |
 | 规划模型调用失败 | 保留原失败 Work；只在终态和效果可判定后允许显式重试；未知则停止 |
-| 无进展 | 忽略交错 planning；首次取得某目标的 inspect/check 可信结果算知识增量，重复或 A/B 交替已有结果不算；repair 本身既不清零也不制造进展，随后的固定验证只有失败集合严格缩小时才算改善；纯源码 hash 变化不清零 |
+| 无进展 | 忽略交错 planning；按报告实际内容标记已知知识，完整 check 同时建立两目标的检查知识，重复或 A/B 交替已有结果不算；repair 本身既不清零也不制造进展，随后的固定验证只有失败集合严格缩小时才算改善；纯源码 hash 变化不清零 |
 | 用户暂停/修订发生于规划等待 | 原 Work 可继续或被显式取消，但输出旧 epoch/revision 不派发；恢复重新规划 |
 | 在确认和 accept 之间失效 | 沿原同步 accept 窗口与 not_submitted 合同；已调用 accept 的异常不能冒称未提交 |
 | 证据写入/Work 日志回执未知 | 原 Goal 意图留存，缺原 Work 或取消未收尾则 unresolved；不恢复成新调用 |
@@ -288,7 +288,7 @@ revision/epoch 核验覆盖 prompt 返回后到 Work 终结/下次派发之间�
 ## 9. 首个业务 profile 与真实验收
 
 候选先复用 calculator 两个逻辑目标与固定 23 项用例，提供可信有限动作：
-`inspect(target)` 获取当前源码/测试材料、`check(target)` 获取目标子集检查结果、
+`inspect(target)` 获取当前源码/测试材料、`check(target)` 完整检查并标注关注目标、
 `repair` 采用原显式修复 Method、`verify_all` 执行原完整验收、`stop(reason)`
 请求停止。inspect/check 的 targets 只能是 subtraction/clamp；repair 的范围固定为整个
 calculator.py，不允许模型声称只授权修改其中一个函数。inspect/check 的结果也由原 Work 与 Blob
@@ -301,8 +301,11 @@ calculator.py，不允许模型声称只授权修改其中一个函数。inspect
 前提，不能替模型依据失败内容选择这些行动。
 
 实质修订判据：比较两份已留存的路线建议，扣除实际执行的共同前缀后，出现
-行动种类/检查目标/顺序的变化，并能引用其间新增的真实检查或执行事实解释；其中
+实际行动语义/读取范围/顺序的变化，并能引用其间新增的真实检查或执行事实解释；其中
 至少一个变化必须进入后续 admitted 行动并有实际执行结果，不能只比较未来建议。
+比较实际效果身份：所有 check(targets) 归一为 check_all；同输入的 check 与 verify_all
+仅报告角色不同也不能单独证明实质调整。不同 inspect 读取范围、读取与实际检查切换、
+或整文件修复在路线中的实际插入/顺序变化，才进一步核对新增事实和已执行证据。
 仅消耗原计划一步、换措辞、重复检查、改了尾部又撤销或更新状态不算 GP-03。验收记录保存原响应、
 规范化路线差异和支撑事实，独立复核，不只采用模型自己的 change_reason。
 若真实轨迹只一次修好、没有实质调整，只能证明执行成功，不能关闭 GP-03；此时
