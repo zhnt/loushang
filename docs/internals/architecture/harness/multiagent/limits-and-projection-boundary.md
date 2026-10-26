@@ -65,7 +65,7 @@ LifecycleProjection 决定"**现在是什么状态、发生了什么**"（事实
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `max_open_agents` | 保守小值（如 6，含 root） | 树级 open agent 上限；终态 child 在显式 close 前仍计入 |
+| `max_open_agents` | 8（含 root） | 树级 open agent 上限；终态 child 在显式 close 前仍计入 |
 | `max_spawn_depth` | 保守小值（如 3） | 递归防护兜底 |
 | `idle_eviction_timeout` | 二期 | 驻留超时 |
 | `wait_timeouts` | min 10s / max 1h / default 30s | wait 边界（Codex v2 同量级） |
