@@ -160,6 +160,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         )
         assert waited.details["wait_expired"] is False
         assert waited.details["activity"]["kind"] == "completion_notice"
+        assert waited.details["activity"]["sender_path"] == "/root/reviewer-1"
         assert root_input.queue.texts("steering") == []
         assert root_input.queue.texts("follow_up") == []
         first_mailbox = root_input.queue.drain_next_turn()

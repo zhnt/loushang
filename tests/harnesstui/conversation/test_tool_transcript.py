@@ -205,6 +205,47 @@ def test_spawn_agent_transcript_shows_name_and_returned_path() -> None:
     assert _standard_tool_title(snapshot) == "spawn_agent pipeline_review"
 
 
+def test_agent_tool_transcript_shows_close_target_and_wait_sender() -> None:
+    projector = ToolTranscriptProjector()
+    close_call = projector.remember_call(
+        ToolCallView(
+            tool_call_id="close-1",
+            tool_name="close_agent",
+            args={"target": "/root/pipeline_review"},
+        )
+    )
+    closed = projector.project_result(
+        ToolResultView(tool_call_id="close-1", tool_name="close_agent", status="ok"),
+        close_call,
+    )
+    waited = projector.project_result(
+        ToolResultView(
+            tool_call_id="wait-1",
+            tool_name="wait_agent",
+            status="ok",
+            details={
+                "activity": {
+                    "kind": "completion_notice",
+                    "sender_path": "/root/pipeline_review",
+                }
+            },
+        )
+    )
+    steered = projector.project_result(
+        ToolResultView(
+            tool_call_id="wait-2",
+            tool_name="wait_agent",
+            status="ok",
+            details={"activity": {"kind": "steered", "sender_path": None}},
+        )
+    )
+
+    assert _standard_tool_title(close_call) == "close_agent /root/pipeline_review"
+    assert closed.title == "close_agent /root/pipeline_review"
+    assert waited.title == "wait_agent /root/pipeline_review"
+    assert steered.title == "wait_agent"
+
+
 def test_neutral_projector_defaults_do_not_assume_product_policy() -> None:
     projector = ToolTranscriptProjector()
 
