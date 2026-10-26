@@ -26,6 +26,10 @@ Method 的契约声明及 Skill 指导不自动构成权限授予或运行时强
 约束核验由既有 Product、Policy 和执行路径承担，目标完成还须有当前有效的验收证据。
 Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)。
 
+下一阶段需求草案：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
+在已交付本地闭环上补模型候选、计划受理、证据驱动的调整与有限推进；当前仅生成
+Goal 描述，专项设计和评审尚未完成，未启动产品实现。
+
 ## 需求和工作件
 
 来源为用户附件中的六项要求，以及
