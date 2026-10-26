@@ -108,3 +108,57 @@ R2.1 的 driver 仅有类型标注变化也改变字节 SHA，因此旧运行未
 也没有宣称整个 `check-changed`、暂停门禁或 Windows/hosted/native 矩阵已执行。
 验证使用既有隔离环境避免共享 editable 指向旧工作树，没有放宽来源校验或
 改动用户共享环境。尚未合入 main、创建远程 PR 或 push；这些与首版功能验证分开。
+
+## 2026-10-26 用户手工验证与交付收尾
+
+用户使用示例 27 和真实 Kimi 模型完成手工验证，结果位于本机临时目录
+`/tmp/loushang-goal-manual.4ZhrwD/run`。原始 JSONL 与 Blob 保留实际执行事实；
+独立只读复核结果保存于产品树外
+`/home/dev/lsspace/architecture-analysis/goal-delivery-closeout-20261026/manual-result.json`。
+
+| 核验项 | 结果 |
+| --- | --- |
+| 三批原 Work | 初始验证 failed、显式 Method 修复 completed、独立再验证 completed |
+| 固定测试 | 初始 23 项、13 failures；最终 23 项、0 failures/0 errors/0 skipped |
+| 目标结果 | completed/current，execution_unresolved=false |
+| 只读重开 | 用户实际执行 --reopen 后结果保持；独立复核的 22 个数据文件集合和摘要未变 |
+| 等待可见性 | 用户真实执行期间每五秒显示原 Work 状态和 inspect/repair 步骤；修复 Work 实际约 47.8 秒，提示间隔不构成超时或进展保证 |
+
+示例补充初始失败的预期说明、advance 开始及等待提示、Ctrl+C 简洁提示；观察任务
+在每次 advance 的 finally 中收束，原 Work/Session 的取消和关闭路径不改。
+用户早先中断的另一份运行保留 settled 取消观察；源码虽已修改，冷读仍为 active、
+not_satisfied，理由为 verification_after_repair_required，没有冒称目标完成。
+原 r2.1 固定生产源未改；新示例/文档修改与该固定评审对象分开记录。
+
+## 已知基线问题：新 Session 存储准入
+
+手工启动暴露的 transcript_writer:unavailable 在创建 Session 时发生，早于 Goal
+构造和执行。问题归原 Transcript 存储准入机制，不是 Goal 独立配置或执行队列。
+
+共享 GoalController 不创建 Session，也不要求每个 Goal 使用独立会话库。首版
+CodingGoal.open 在未提供 session_id 时创建专用 Session，提供身份时恢复该 Session；
+其数据根由 Product 选择。示例使用新输出目录，因而首次初始化独立会话库。
+这个已评审的专用 owner 装配不等于普通 prompt 的当前 Session 已能直接附加 Goal；
+后者涉及输入、活动 Work 和关闭所有权，需要单独明确交接，不能仅取消一行创建代码。
+
+admission.json 由底座生成，保存存储根、父目录、锁等物理身份及初始化阶段；共享
+存储版本还记录 family/member 关系。它不是用户配置，空文件或通用默认值不能
+证明原身份。全新且经检查可初始化的库会自动生成记录；旧登记或初始化残留
+不能仅凭缺文件推导成全新空库。
+
+本机全局状态目录存在一个只有锁目录、没有 admission.json 的旧条目。创建新的
+独立会话库时，共享 family 的历史检查扫描到该条目，FileNotFoundError 被包装为
+unavailable。已登记的默认会话库保有完整 v1 记录，可走原身份校验路径；所以普通
+prompt 使用该库时可正常准入，新独立库却失败。同一代码的离线对照结果如下，
+不是通过真实 prompt 或模型调用推测：
+
+| 选择的存储 | 结果 |
+| --- | --- |
+| 已登记默认库，只读 inspect | 原 v1 身份校验成功 |
+| 新独立库，复用全局状态 | 失败，底层为缺失 admission.json |
+| 新独立库，隔离状态 | 自动初始化并成功准入 |
+
+诊断结果为产品树外同一收尾目录的 admission-probe-result.json；原全局 83 个文件
+内容未变，没有清理残留或改写用户会话。本轮没有修复该存储问题。错误应可定位
+具体准入阶段及条目；恢复方案还须区分未完成初始化、登记丢失与原身份替换，
+保持既有历史和物理排他保证，不能以跳过检查或默认补身份充当修复。

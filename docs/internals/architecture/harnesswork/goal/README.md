@@ -1,7 +1,7 @@
 # HarnessWork Goal：环境与子组件 R1
 
 - Authority: normative — 用户认可并授权实施的最小业务闭环 R3.2 子系统视图。
-- Design status: accepted for reviewed local SDK scope；Implementation status: partial locally。
+- Design status: accepted for reviewed local SDK scope；Implementation status: implemented and verified locally for the stated profile。
 - Owner: HarnessWork；Product 拥有领域策略、验收和物理装配。
 - 依据：[最小业务闭环架构](../../goal-method-work/minimum-loop-architecture.md)；需求 GM-01…08 不变。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -18,6 +18,9 @@
 首版是 Linux 本地 SDK、显式 Method、每次 advance 最多一批；组件同处已有 SDK
 进程。图中按逻辑责任划界，不表示独立部署、线程、安全隔离或已有产品实现。
 模型服务和工具进程通过原执行域参与，Goal 没有直接模型/工具调用边。
+
+下图及内部模块说明保留设计时的“拟新增”标签；本地首版的实际 API、执行及
+用户手工验证状态以[实施记录](implementation.md)为准，未实施范围不因此升级。
 
 ## 2. Goal 系统环境图
 

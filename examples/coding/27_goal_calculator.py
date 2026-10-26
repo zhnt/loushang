@@ -10,6 +10,7 @@ import asyncio
 import json
 import shutil
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +32,33 @@ def show(view):
         "reason": view.reason,
         "execution_unresolved": view.execution_unresolved,
     }
+
+
+async def report_progress(owner, number):
+    """Observe the original Work; this task never advances or cancels it."""
+    started = asyncio.get_running_loop().time()
+    while True:
+        await asyncio.sleep(5)
+        facts = owner.controller.facts()
+        print(
+            json.dumps(
+                {
+                    "event": "advance_in_progress",
+                    "advance": number,
+                    "elapsed_seconds": int(asyncio.get_running_loop().time() - started),
+                    "work": [
+                        {
+                            "operation_id": run.operation_id,
+                            "status": run.status,
+                            "step_id": run.current_step_id,
+                        }
+                        for run in facts.runs
+                    ],
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
 
 
 async def main(args):
@@ -71,16 +99,36 @@ async def main(args):
             )
         )
         owner.create("calculator", command_id="create", limit=6)
+        print(
+            json.dumps(
+                {
+                    "event": "goal_started",
+                    "output_dir": str(output),
+                    "note": "Initial verification is expected to fail; model repair follows, then independent verification.",
+                }
+            ),
+            flush=True,
+        )
         for number in range(6):
             state = owner.controller.query("calculator")
             if state.status != "active":
                 break
-            receipt = await owner.advance(
-                "calculator",
-                command_id=f"advance-{number}",
-                revision=state.revision,
-                epoch=state.epoch,
+            print(
+                json.dumps({"event": "advance_started", "advance": number}),
+                flush=True,
             )
+            progress = asyncio.create_task(report_progress(owner, number))
+            try:
+                receipt = await owner.advance(
+                    "calculator",
+                    command_id=f"advance-{number}",
+                    revision=state.revision,
+                    epoch=state.epoch,
+                )
+            finally:
+                progress.cancel()
+                with suppress(asyncio.CancelledError):
+                    await progress
             facts = owner.controller.facts()
             print(
                 json.dumps(
@@ -109,4 +157,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--reopen", action="store_true")
-    raise SystemExit(asyncio.run(main(parser.parse_args())))
+    args = parser.parse_args()
+    try:
+        raise SystemExit(asyncio.run(main(args)))
+    except KeyboardInterrupt:
+        print(
+            "Interrupted. The Goal has not been declared completed. "
+            f"Records are retained in {args.output_dir.expanduser().resolve()}; "
+            "use --reopen to inspect them without executing work.",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(130) from None

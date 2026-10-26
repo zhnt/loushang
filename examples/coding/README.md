@@ -369,3 +369,9 @@ uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator
 或重新执行工作。若继承的 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 指向旧目录，
 可清空该变量使用内置模型目录。支持范围和失败约束见
 [Goal 实现记录](../../docs/internals/architecture/harnesswork/goal/implementation.md)。
+
+首次 Work 的 `failed` 是固定缺陷项目的预期检查结果，不代表 Goal 失败。
+后续模型修复期间每五秒输出 `advance_in_progress`，包含当前 Work 状态和步骤；
+这只是等待进度提示，不代表步骤已完成。最终以 `status: completed` 且
+`validity: current` 为成功。按 Ctrl+C 会通过原关闭路径取消工作，保留记录；
+`--reopen` 只读检查，不会续跑，也不会把已修改的源码直接判为 Goal 完成。

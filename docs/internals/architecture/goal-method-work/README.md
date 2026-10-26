@@ -3,7 +3,8 @@
 ## 状态
 
 - Authority: proposed — cross-scope design package。
-- Design status: draft；Implementation status: not-started。
+- Design status: accepted for reviewed local SDK minimum-loop scope；其余扩展为 draft。
+- Implementation status: 本地首版已实现并经真实 SDK 与用户手工验证；main 集成待完成。
 - Owner: Loushang architecture，涉及 Harness、Method、HarnessWork 及 Product composition。
 - Current 基线：本地 main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`；未集成的证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 单独标注。
 - 方法咨询：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -14,6 +15,16 @@
 
 本目录是协作设计包，不声明新增顶层运行时或 Python 包。旧实现仅作产品树外
 历史素材，不作为本设计的结构前提。本地最小闭环已获用户实施授权；其余扩展范围仍仅为设计。
+
+## 概念与职责定位
+
+> Goal 保存目标和完成依据；模型提出实施计划；Method 规定所选工作的契约；Skill 提供局部专业指导；Work 执行并记录实际结果。
+
+这句话记录用户确认采用的协作职责定位，不代表各项能力均已实现。当前本地最小闭环
+由固定领域策略选择工作，使用显式 Method 执行修复；模型自主规划仍属于后续扩展。
+Method 的契约声明及 Skill 指导不自动构成权限授予或运行时强制保证；实际执行与
+约束核验由既有 Product、Policy 和执行路径承担，目标完成还须有当前有效的验收证据。
+Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)。
 
 ## 需求和工作件
 
@@ -26,7 +37,7 @@
 | GMW-R1 | 概念、需求、边界；Method 指导和模型规划共用执行能力 | 概念/需求、领域关系 | 主线事实已核；本地最小闭环的概念及边界见 R3.2 |
 | GMW-R2 | 系统环境、入口、既有系统关系和可信边界 | [系统环境图与关系](context.md) | 本地首版按用户反馈调整；全入口扩展仍是候选 |
 | GMW-R3 | 功能发现→组件→映射→拆分/合并/保留 | 功能映射和组件模型 | 本地首版组件/三合同见 R3.2；未宣称全入口完成 |
-| GMW-R4 | 接口和正常/失败/控制/恢复交互 | 合同、状态和交互时序 | 本地首版交互见 R3.2；实现证据尚缺 |
+| GMW-R4 | 接口和正常/失败/控制/恢复交互 | 合同、状态和交互时序 | 本地首版见 R3.2 及实现记录；首版之外的入口/恢复承诺仍待设计 |
 | GMW-R5 | 关键决策、备选方案和影响 | 共同父级 ARD 和关键设计 | R2 非归属内容已认可；R3.2 明确共享归属及直接合同 |
 | GMW-R6 | 固定修订三视角评审、阻断处置、接受证据 | 追溯/验证与评审记录 | 各固定修订三视角结果见评审记录；设计不等于功能验收 |
 
@@ -75,9 +86,9 @@
 
 ## Current 与候选的区分
 
-当前 main 已有 Method、HarnessWork、Harness/Session/Agent/AI 和相关入口；
-不存在已核实可用的统一 Goal 协作实现。框图中的 Goal、通用规划与目标验收
-关系是本次候选，不声称已组装、已运行或已满足全部入口和兼容需求。
+本包启动时的 main 基线已有 Method、HarnessWork、Harness/Session/Agent/AI 和相关
+入口。当前功能分支已实现并验证本地 SDK 最小闭环，详见实现记录；通用模型规划、
+全入口协作和跨进程自动续跑仍属扩展，历史框图不表示这些能力已经实现。
 
 旧 `2de1359c` 基线上的
 [Method/Work 协作草稿](../../plans/2026-10-24-goal-method-work-design.md)
