@@ -4,9 +4,9 @@
 
 - Authority: proposed — cross-scope design package。
 - Design status: accepted for reviewed local SDK minimum-loop scope；其余扩展为 draft。
-- Implementation status: 本地首版已实现并经真实 SDK 与用户手工验证；main 集成待完成。
+- Implementation status: 本地首版已实现并经真实 SDK 与用户手工验证，已集成本地 main；远程发布待完成。
 - Owner: Loushang architecture，涉及 Harness、Method、HarnessWork 及 Product composition。
-- Current 基线：本地 main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`；未集成的证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 单独标注。
+- 设计起始基线：本地 main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`；前置证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 与本地首版已随 `e0031f273` 集成本地 main。
 - 方法咨询：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 用户要求系统环境图等重要工作件亲自评审；内部评审不能代替用户评审。
 
@@ -87,7 +87,7 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 ## Current 与候选的区分
 
 本包启动时的 main 基线已有 Method、HarnessWork、Harness/Session/Agent/AI 和相关
-入口。当前功能分支已实现并验证本地 SDK 最小闭环，详见实现记录；通用模型规划、
+入口。当前本地 main 已实现并验证本地 SDK 最小闭环，详见实现记录；通用模型规划、
 全入口协作和跨进程自动续跑仍属扩展，历史框图不表示这些能力已经实现。
 
 旧 `2de1359c` 基线上的

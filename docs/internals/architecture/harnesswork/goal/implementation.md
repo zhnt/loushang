@@ -1,12 +1,12 @@
 # Goal 最小闭环：本地实现与验证
 
 - Authority: descriptive — 实施授权、源码边界、复核及实际验证记录。
-- Design status: accepted for reviewed R3.2 local SDK scope；Implementation status: implemented and verified locally for the stated profile；main integration pending。
+- Design status: accepted for reviewed R3.2 local SDK scope；Implementation status: implemented and verified locally for the stated profile；integrated into local main；remote publication pending。
 - Owner: HarnessWork 通用 Goal / Coding Product 领域与物理适配。
 - 授权：用户明确“请你开始开发”，替代此前暂停；保持 [GM-01…08](../../../plans/2026-10-25-goal-minimum-business-loop.md) 范围。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 分支：`feat/goal-minimum-loop`；固定设计父提交 `102869927ec98794e4b1ad00a147ac15a795cd97`。
-- 前置证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 已包含在本分支；main 仍为 `372cde4ad`，尚未集成本切片或 Goal。
+- 前置证据切片 `d1f418de53c58040a590683a0c499ff3de50e50d` 与 Goal 已于 2026-10-26 随 `e0031f273` 快进集成本地 main；原集成基线为 `372cde4ad`，尚未发布远程。
 
 ## 实现边界
 
@@ -107,7 +107,8 @@ R2.1 的 driver 仅有类型标注变化也改变字节 SHA，因此旧运行未
 936 passed/7 deselected，覆盖率 90.77%，原覆盖目标通过；没有新增/扩展路由，
 也没有宣称整个 `check-changed`、暂停门禁或 Windows/hosted/native 矩阵已执行。
 验证使用既有隔离环境避免共享 editable 指向旧工作树，没有放宽来源校验或
-改动用户共享环境。尚未合入 main、创建远程 PR 或 push；这些与首版功能验证分开。
+改动用户共享环境。上述验证完成时尚未集成 main；后续本地集成见收尾记录，
+没有创建远程 PR 或 push。
 
 ## 2026-10-26 用户手工验证与交付收尾
 
@@ -129,6 +130,11 @@ R2.1 的 driver 仅有类型标注变化也改变字节 SHA，因此旧运行未
 用户早先中断的另一份运行保留 settled 取消观察；源码虽已修改，冷读仍为 active、
 not_satisfied，理由为 verification_after_repair_required，没有冒称目标完成。
 原 r2.1 固定生产源未改；新示例/文档修改与该固定评审对象分开记录。
+
+收尾提交为 e0031f273，本地 main 已从 372cde4ad 快进集成。文档规则、示例 Ruff
+及格式检查通过，原固定 9 份生产源码摘要全部匹配。本轮没有重跑真实模型或把
+静态/只读复核冒称完整回归；前述实现测试证据继续适用于未改变的生产源码。
+当前处于工作日 18:30 中国标准时间之前的远程推送静默时段，未发布远程。
 
 ## 已知基线问题：新 Session 存储准入
 

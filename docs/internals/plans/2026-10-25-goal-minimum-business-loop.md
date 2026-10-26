@@ -1,7 +1,7 @@
 # G-GOAL-MIN-01：Goal 最小业务闭环
 
 - Authority: normative — 用户授权的最小业务闭环交付范围。
-- Design status: accepted for reviewed R3.2 scope；Implementation status: implemented and verified locally for the accepted profile；integration pending。
+- Design status: accepted for reviewed R3.2 scope；Implementation status: implemented and verified locally for the accepted profile；integrated into local main；remote publication pending。
 - Owner：Loushang architecture / HarnessWork（通用 Goal）/ Coding Product（策略、验收及装配）。
 - 当前授权：用户已认可 R2 非归属部分，并于 2026-10-26 要求按 HarnessWork 可选 Goal 的分工更新架构、再次三视角评审。随后明确“请你开始开发”，本轮按已评审范围实施。
 - 源码基线：`372cde4ade0fe026076c8fa5e8b4486774b09cc3`。
@@ -10,7 +10,7 @@
 - 架构依据：[Goal 最小闭环决策提纲](../architecture/goal-method-work/minimum-loop-decisions.md)。
 - 当前候选设计：[最小业务闭环架构 R3.2](../architecture/goal-method-work/minimum-loop-architecture.md)；共享归属方向已获授权，R3.2 子系统环境、组件拆分及适配结论见评审记录。
 - 前置交付：[真实 Coding SDK 证据消费闭环](2026-10-25-coding-sdk-evidence-loop.md)。
-  该切片目前只在本地功能分支完成限定验证，尚未集成 main；完整回归未完成。
+  该切片已随用户另行授权的最小 Goal 实现集成本地 main；已执行检查和未覆盖范围见实施记录，不宣称完整平台回归。
 
 ## 可直接交给执行 agent 的 Goal 描述
 
