@@ -29,6 +29,8 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 下一阶段需求草案：[G-GOAL-PLAN-01：模型自主规划的最小 Goal 闭环 R1](../../plans/2026-10-26-goal-model-planning-loop.md)。
 在已交付本地闭环上补模型候选、计划受理、证据驱动的调整与有限推进；当前仅生成
 Goal 描述，专项设计和评审尚未完成，未启动产品实现。
+候选机制见[模型规划闭环专项](model-planning-loop.md)：规划作为原 Work，保持一次
+推进一批；该选择及其环境、组件、交互仍待评审，不改变已接受首版。
 
 ## 需求和工作件
 
