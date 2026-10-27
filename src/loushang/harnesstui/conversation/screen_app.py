@@ -11,6 +11,9 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from typing import Any, overload
 
+from loushang.harnesstui.conversation.history import (
+    project_command_execution_payload,
+)
 from loushang.harnesstui.conversation.input_policy import ConversationCapabilities
 from loushang.harnesstui.conversation.loading_input import LOADING_MESSAGE
 from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
@@ -445,6 +448,13 @@ class ScreenConversationApp:
     def add_status(self, message: str) -> None:
         self.state.add_status(message)
         self._request_render("product")
+
+    def append_command_execution_record(self, payload: object) -> None:
+        record = project_command_execution_payload(payload)
+        if record is not None:
+            self.state.records.append(record)
+            self.state.mark_records_changed()
+            self._request_render("product")
 
     def replace_transcript_window(
         self,

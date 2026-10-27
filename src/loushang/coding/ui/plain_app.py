@@ -17,6 +17,9 @@ from loushang.harnesstui.conversation.agent_plain_app import (
     build_agent_plain_conversation_app,
     build_agent_plain_conversation_ports,
 )
+from loushang.harnesstui.conversation.history import (
+    bind_command_record_presenter,
+)
 from loushang.harnesstui.conversation.info import InfoPanelPresenter
 from loushang.harnesstui.conversation.plain_app import PlainConversationApp
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
@@ -50,6 +53,7 @@ def build_plain_coding_tui_app(
         session=session,
         verbose=verbose,
         plugin_workspace=cwd,
+        on_bash_record=bind_command_record_presenter(lambda: renderer.render_display_record),
     )
 
     def current_hotkeys() -> str:

@@ -179,6 +179,7 @@ async def _run_bound_screen_interactive_tui(
         session=session,
         verbose=verbose,
         plugin_workspace=snapshot.cwd,
+        on_bash_record=app.append_command_execution_record,
     )
 
     def current_session():

@@ -539,6 +539,32 @@ def test_screen_coding_tui_cache_distinguishes_expanded_commands() -> None:
     assert "  │ beta" in plain
 
 
+def test_screen_coding_tui_shows_completed_user_shell_result() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.tui.transcript import ToolExecutionRecord
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 1.0,
+    )
+    app.append_command_execution_record(
+        CommandExecutionRecord(
+            command="printf hello",
+            output="hello\n",
+            exit_code=0,
+            cancelled=False,
+            exclude_from_context=False,
+        )
+    )
+
+    assert isinstance(app.state.records[-1], ToolExecutionRecord)
+    assert app.state.records[-1].output == "hello\n"
+
+
 def test_screen_coding_tui_previews_materialized_multiline_command() -> None:
     from types import SimpleNamespace
 

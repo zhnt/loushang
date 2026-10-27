@@ -232,36 +232,49 @@ class BashCommandExecutionRuntime:
         result: Mapping[str, object],
         exclude_from_context: bool,
     ) -> None:
-        exit_code = result.get("exit_code")
-        stdout_blob = _session_blob_from_result(result.get("stdout_blob"))
-        stderr_blob = _session_blob_from_result(result.get("stderr_blob"))
-        retention_error = result.get("artifact_retention_error")
         await self.append_record(
-            CommandExecutionRecord(
-                command=command,
-                output=str(result.get("output") or ""),
-                exit_code=exit_code if type(exit_code) is int else None,
-                cancelled=bool(result.get("cancelled", False)),
-                truncated=bool(result.get("truncated", False)),
-                full_output_path=(
-                    str(result["full_output_path"])
-                    if isinstance(result.get("full_output_path"), str)
-                    and result.get("full_output_path")
-                    and stdout_blob is None
-                    and stderr_blob is None
-                    else None
-                ),
-                stdout_blob=stdout_blob,
-                stderr_blob=stderr_blob,
-                exclude_from_context=exclude_from_context,
-                metadata=(
-                    {"artifactRetentionError": retention_error}
-                    if isinstance(retention_error, str) and retention_error
-                    else {}
-                ),
+            command_execution_record_from_result(
+                command, result, exclude_from_context=exclude_from_context
             )
         )
         self.refresh_context()
+
+
+def command_execution_record_from_result(
+    command: str,
+    result: Mapping[str, object],
+    *,
+    exclude_from_context: bool,
+) -> CommandExecutionRecord:
+    """Build the same portable record for persistence and live presentation."""
+
+    exit_code = result.get("exit_code")
+    stdout_blob = _session_blob_from_result(result.get("stdout_blob"))
+    stderr_blob = _session_blob_from_result(result.get("stderr_blob"))
+    retention_error = result.get("artifact_retention_error")
+    return CommandExecutionRecord(
+        command=command,
+        output=str(result.get("output") or ""),
+        exit_code=exit_code if type(exit_code) is int else None,
+        cancelled=bool(result.get("cancelled", False)),
+        truncated=bool(result.get("truncated", False)),
+        full_output_path=(
+            str(result["full_output_path"])
+            if isinstance(result.get("full_output_path"), str)
+            and result.get("full_output_path")
+            and stdout_blob is None
+            and stderr_blob is None
+            else None
+        ),
+        stdout_blob=stdout_blob,
+        stderr_blob=stderr_blob,
+        exclude_from_context=exclude_from_context,
+        metadata=(
+            {"artifactRetentionError": retention_error}
+            if isinstance(retention_error, str) and retention_error
+            else {}
+        ),
+    )
 
 
 def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
@@ -422,5 +435,6 @@ __all__ = [
     "UserCommandHookResult",
     "UserCommandRequest",
     "bash_result_from_tool_result",
+    "command_execution_record_from_result",
     "command_result_from_tool_result",
 ]

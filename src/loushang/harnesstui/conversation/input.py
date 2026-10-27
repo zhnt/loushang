@@ -98,6 +98,15 @@ class ConversationPromptResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ConversationShellResult:
+    """Run or queue an explicit user shell command."""
+
+    text: str
+    kind: Literal["shell"] = field(default="shell", init=False)
+    render_requested: bool = field(default=True, init=False)
+
+
+@dataclass(frozen=True, slots=True)
 class ConversationLocalResult:
     """Dispatch one product-local command."""
 
@@ -174,6 +183,7 @@ ConversationInputResult: TypeAlias = (
     ConversationInputHandled
     | ConversationInputIgnored
     | ConversationPromptResult
+    | ConversationShellResult
     | ConversationLocalResult
     | ConversationSteerResult
     | ConversationFollowupResult
@@ -565,6 +575,17 @@ class ConversationInputRouter:
                 self.app.composer.clear()
                 self._clear_prompt_attachments()
             return ConversationExitResult(exit_code=0)
+        stripped = text.strip()
+        if stripped.startswith("!"):
+            if not stripped.lstrip("!").strip():
+                self.app.state.set_status("Enter a shell command after ! or !!")
+                return ConversationInputHandled()
+            if self.draft_store.select_for_text(text):
+                self.app.state.set_status("Shell commands do not accept image attachments")
+                return ConversationInputHandled()
+            if self.submission_presentation == "optimistic":
+                self.app.composer.clear()
+            return ConversationShellResult(text=stripped)
         if self.is_local_command(text.strip()):
             if self.submission_presentation == "optimistic":
                 self.app.composer.clear()
@@ -821,6 +842,7 @@ __all__ = [
     "ConversationInputPolicy",
     "ConversationLocalResult",
     "ConversationPromptResult",
+    "ConversationShellResult",
     "ConversationScreenInputPort",
     "ConversationSteerResult",
     "ConversationSurfaceResult",

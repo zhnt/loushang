@@ -16,6 +16,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputRouter,
     ConversationLocalResult,
     ConversationPromptResult,
+    ConversationShellResult,
     ConversationSteerResult,
     ConversationSurfaceResult,
 )
@@ -79,6 +80,8 @@ def default_conversation_result_payload(
     if isinstance(result, ConversationPromptResult):
         payload["prompt_text"] = result.text
         payload["prompt_attachment_count"] = _attachment_count(result.attachments)
+    elif isinstance(result, ConversationShellResult):
+        payload["shell_text"] = result.text
     elif isinstance(result, ConversationLocalResult):
         payload["local_text"] = result.text
     elif isinstance(result, ConversationSteerResult):
