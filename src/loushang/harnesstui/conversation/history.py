@@ -140,6 +140,19 @@ def project_command_execution_payload(
     )
 
 
+def bind_command_record_presenter(
+    get_render: Callable[[], Callable[[DisplayRecord], None]],
+) -> Callable[[object], None]:
+    """Bind a lazy plain renderer to the shared command history projection."""
+
+    def present(payload: object) -> None:
+        record = project_command_execution_payload(payload)
+        if record is not None:
+            get_render()(record)
+
+    return present
+
+
 def structural_message_text(content: object) -> str:
     """Return visible text from a structural string-or-parts message content."""
 
@@ -162,6 +175,7 @@ __all__ = [
     "ToolMessageProjector",
     "project_agent_message_payload",
     "project_command_execution_payload",
+    "bind_command_record_presenter",
     "project_context_branch_summary_payload",
     "project_context_compaction_payload",
     "structural_message_text",

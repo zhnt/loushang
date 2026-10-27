@@ -30,7 +30,6 @@ from loushang.harness.session import (
     SessionControlPort,
     SessionOperationAvailability,
     SessionOperationResolver,
-    command_execution_record_from_result,
     current_session_operation_resolver,
     require_active_session,
     session_operation_resolver,
@@ -46,6 +45,7 @@ from loushang.harnesstui.conversation.agent_binding import (
 )
 from loushang.harnesstui.conversation.controller import (
     ConversationUiController,
+    bind_user_bash_executor,
     build_standard_conversation_ui_controller,
 )
 from loushang.harnesstui.conversation.intents import (
@@ -294,22 +294,6 @@ def build_coding_ui_controller(
             invocation_name=invocation_name,
         )
 
-    async def execute_bash(command: str, exclude_from_context: bool) -> None:
-        execution = current_session().execute_bash(
-            command,
-            exclude_from_context=exclude_from_context,
-        )
-        if inspect.isawaitable(execution):
-            execution = await execution
-        if on_bash_record is not None and isinstance(execution, dict):
-            on_bash_record(
-                command_execution_record_from_result(
-                    command,
-                    execution,
-                    exclude_from_context=exclude_from_context,
-                )
-            )
-
     def abort_command() -> None:
         current = current_session()
         command_execution = getattr(current, "command_execution", None)
@@ -322,7 +306,9 @@ def build_coding_ui_controller(
     return build_standard_conversation_ui_controller(
         get_operations=get_operations,
         dispatch_session_command=dispatch_session_command,
-        execute_bash=execute_bash,
+        execute_bash=bind_user_bash_executor(
+            current_session, on_record=on_bash_record
+        ),
         abort_command=abort_command,
         verbose=verbose,
         problem_code_prefix="coding_ui",

@@ -18,7 +18,7 @@ from loushang.harnesstui.conversation.agent_plain_app import (
     build_agent_plain_conversation_ports,
 )
 from loushang.harnesstui.conversation.history import (
-    project_command_execution_payload,
+    bind_command_record_presenter,
 )
 from loushang.harnesstui.conversation.info import InfoPanelPresenter
 from loushang.harnesstui.conversation.plain_app import PlainConversationApp
@@ -48,17 +48,12 @@ def build_plain_coding_tui_app(
 ) -> PlainConversationApp:
     """Bind Coding content to the standard Agent plain conversation app."""
 
-    def present_bash_record(payload: object) -> None:
-        record = project_command_execution_payload(payload)
-        if record is not None:
-            renderer.render_display_record(record)
-
     controller = build_coding_ui_controller(
         runtime=runtime,
         session=session,
         verbose=verbose,
         plugin_workspace=cwd,
-        on_bash_record=present_bash_record,
+        on_bash_record=bind_command_record_presenter(lambda: renderer.render_display_record),
     )
 
     def current_hotkeys() -> str:
