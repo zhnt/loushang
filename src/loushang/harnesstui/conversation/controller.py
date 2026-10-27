@@ -27,18 +27,13 @@ ImageParts = tuple[object, ...] | list[object] | None
 SessionCommandDispatcher = Callable[
     [object], Awaitable[HostActionResult | None]
 ]
-BashExecutor = Callable[[str], Awaitable[None]]
+BashExecutor = Callable[[str, bool], Awaitable[None]]
 CommandAbort = Callable[[], None | Awaitable[None]]
 
 
 class _TextIntent(Protocol):
     @property
     def text(self) -> str: ...
-
-
-class _BashIntent(Protocol):
-    @property
-    def command(self) -> str: ...
 
 
 @dataclass
@@ -94,7 +89,11 @@ class ConversationUiController:
             ):
                 if self.execute_bash is None:
                     raise RuntimeError("Session does not support bash execution")
-                await self.execute_bash(cast(_BashIntent, intent).command)
+                bash_intent = cast(BashIntent, intent)
+                await self.execute_bash(
+                    bash_intent.command,
+                    bash_intent.exclude_from_context,
+                )
                 return HostActionResult()
             if self.follow_up_intent_type is not None and isinstance(
                 intent, self.follow_up_intent_type

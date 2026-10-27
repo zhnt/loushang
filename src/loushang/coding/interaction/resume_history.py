@@ -101,6 +101,7 @@ class _HistoryActions:
             presenter=app,
             controller=build_coding_ui_controller(
                 session=None, runtime=runtime, plugin_workspace=app.state.cwd,
+                on_bash_record=app.append_command_execution_record,
             ), stderr=stderr, verbose=False,
         )
 

@@ -24,6 +24,7 @@ from loushang.coding.plugin_management_ui import (
 from loushang.coding.plugin_operation_guidance import coding_desired_repair_command
 from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
+from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
     SessionControlPort,
@@ -80,6 +81,7 @@ def build_coding_ui_controller(
     plugin_operation_explanation: Callable[[str], dict[str, object]] | None = None,
     plugin_command: Callable[[str], HostActionResult] | None = None,
     plugin_package_repair_command: Callable[[str], HostActionResult] | None = None,
+    on_bash_record: Callable[[CommandExecutionRecord], None] | None = None,
 ) -> ConversationUiController:
     get_operations = build_coding_session_operation_resolver(
         session=session,
@@ -291,13 +293,25 @@ def build_coding_ui_controller(
             invocation_name=invocation_name,
         )
 
-    async def execute_bash(command: str) -> None:
+    async def execute_bash(command: str, exclude_from_context: bool) -> None:
         execution = current_session().execute_bash(
             command,
-            exclude_from_context=True,
+            exclude_from_context=exclude_from_context,
         )
         if inspect.isawaitable(execution):
-            await execution
+            execution = await execution
+        if on_bash_record is not None and isinstance(execution, dict):
+            exit_code = execution.get("exit_code")
+            on_bash_record(
+                CommandExecutionRecord(
+                    command=command,
+                    output=str(execution.get("output") or ""),
+                    exit_code=exit_code if type(exit_code) is int else None,
+                    cancelled=bool(execution.get("cancelled", False)),
+                    truncated=bool(execution.get("truncated", False)),
+                    exclude_from_context=exclude_from_context,
+                )
+            )
 
     def abort_command() -> None:
         current = current_session()

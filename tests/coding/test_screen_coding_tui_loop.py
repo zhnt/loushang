@@ -160,6 +160,67 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
     assert rendered.rfind("Working") < rendered.rfind("Worked for")
 
 
+def test_screen_loop_queues_shell_behind_active_prompt_instead_of_steering() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    submitted: list[str] = []
+    steered: list[str] = []
+    read_count = 0
+
+    async def read_input(_stdin: StringIO) -> str:
+        nonlocal read_count
+        read_count += 1
+        if read_count == 1:
+            return "hello\r"
+        if read_count == 2:
+            await started.wait()
+            return "!! echo hi\r"
+        return ""
+
+    async def submit(text: str) -> None:
+        submitted.append(text)
+        if text == "hello":
+            started.set()
+            await release.wait()
+
+    async def release_after_queue() -> None:
+        await started.wait()
+        while app.state.pending_shell_commands != ["!! echo hi"]:
+            await asyncio.sleep(0)
+        release.set()
+
+    async def scenario() -> int:
+        release_task = asyncio.create_task(release_after_queue())
+        try:
+            return await asyncio.wait_for(
+                run_coding_test_screen(
+                    app=app,
+                    stdin=StringIO(),
+                    stdout=StringIO(),
+                    action_host=_action_host(submit=submit, steer=steered.append),
+                    input_chunk_reader=read_input,
+                    should_exit=lambda _text: False,
+                ),
+                timeout=2,
+            )
+        finally:
+            release_task.cancel()
+            await asyncio.gather(release_task, return_exceptions=True)
+
+    assert asyncio.run(scenario()) == 0
+    assert submitted == ["hello", "!! echo hi"]
+    assert steered == []
+    assert app.state.pending_shell_commands == []
+
+
 def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> None:
     from loushang.harnesstui.conversation.host import (
         bind_action_host_to_screen_runner,

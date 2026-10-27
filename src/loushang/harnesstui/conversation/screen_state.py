@@ -43,6 +43,7 @@ class ScreenConversationState:
     stopping: bool = field(default=False, kw_only=True)
     pending_followups: list[str] = field(default_factory=list)
     pending_steers: list[str] = field(default_factory=list)
+    pending_shell_commands: list[str] = field(default_factory=list)
     input_capabilities: ConversationInputCapabilities = field(
         default_factory=ConversationInputCapabilities
     )
@@ -188,6 +189,11 @@ class ScreenConversationState:
         stripped = text.strip()
         if stripped:
             self.pending_followups.append(stripped)
+
+    def queue_shell_command(self, text: str) -> None:
+        stripped = text.strip()
+        if stripped:
+            self.pending_shell_commands.append(stripped)
 
     def queue_steer(self, text: str) -> None:
         stripped = text.strip()

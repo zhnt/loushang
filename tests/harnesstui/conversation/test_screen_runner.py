@@ -315,6 +315,7 @@ class _RunnerState:
         self.records: list[object] = []
         self.active_started_at: float | None = None
         self.pending_steers: list[str] = []
+        self.pending_shell_commands: list[str] = []
         self.assistant_draft_buffer = None
         self.aborts: list[tuple[str, float]] = []
         self._calls = calls
