@@ -114,6 +114,7 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
             "gpt-6-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
+            "gpt-6.1-terra",
             "gpt-6-luna",
         },
         ("openai", "coding-responses"): {
@@ -122,6 +123,7 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
             "gpt-6-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
+            "gpt-6.1-terra",
             "gpt-6-luna",
         },
         ("stepfun", "openai-completions"): {"step-3.7-flash"},
@@ -288,6 +290,7 @@ def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
         "gpt-6-sol": (2, 10, 0.2),
         "gpt-6-astra": (10, 50, 1),
         "gpt-6.1-sol": (2, 10, 0.1),
+        "gpt-6.1-terra": (1, 5, 0.05),
         "gpt-6-luna": (0.1, 0.5, 0.01),
     }
 
@@ -309,6 +312,17 @@ def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:
         assert coding.capabilities.context_window == 1050000
         assert coding.pricing is None
         assert coding.adapter.max_output_tokens is False
+
+    terra = registry.get_model("openai", "openai-responses", "gpt-6.1-terra")
+    assert terra.knowledge == "2026-06-01"
+    assert terra.capabilities.reasoning_efforts == (
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    )
 
 
 def test_curated_catalog_keeps_corrected_base_pricing() -> None:
