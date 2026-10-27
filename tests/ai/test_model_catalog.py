@@ -129,7 +129,7 @@ def test_provider_compaction_is_scoped_to_verified_openai_responses_models() -> 
     )
     assert (
         registry.get_model(
-            "deepseek", "openai-completions", "deepseek-v4-flash"
+            "deepseek", "openai-completions", "deepseek-flash"
         ).provider_compaction
         is None
     )

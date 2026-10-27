@@ -84,6 +84,7 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         ("baidu-qianfan", "openai-completions-cn"): {"ernie-5.1"},
         ("dashscope", "openai-responses"): {"qwen3.7-max", "qwen3.7-plus"},
         ("deepseek", "openai-completions"): {
+            "deepseek-flash",
             "deepseek-v4-flash",
             "deepseek-v4-pro",
         },
@@ -109,7 +110,6 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         },
         ("openai", "openai-responses"): {
             "gpt-5.5",
-            "gpt-5.6-sol",
             "gpt-5.4-mini",
             "gpt-6-sol",
             "gpt-6-astra",
@@ -119,7 +119,6 @@ def test_curated_catalog_tracks_current_primary_model_roster() -> None:
         },
         ("openai", "coding-responses"): {
             "gpt-5.5",
-            "gpt-5.6-sol",
             "gpt-6-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
@@ -265,9 +264,7 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
     minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
     gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
-    sol = registry.get_model("openai", "openai-responses", "gpt-5.6-sol")
     coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    coding_sol = registry.get_model("openai", "coding-responses", "gpt-5.6-sol")
     claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
 
     assert kimi.supports_temperature is False
@@ -275,13 +272,31 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     assert kimi_code.defaults["reasoningEffort"] == "medium"
     assert minimax.pricing is None
     assert gpt.capabilities.context_window == 1050000
-    assert sol.capabilities.context_window == 1050000
     assert coding.capabilities.context_window == 400000
     assert coding.defaults["reasoningEffort"] == "medium"
     assert coding.pricing is None
-    assert coding_sol.pricing is None
     assert claude.pricing is not None
     assert claude.pricing.output == 15
+
+
+def test_deepseek_flash_current_and_legacy_ids_share_vision_capability() -> None:
+    registry = _load_curated_registry()
+    current = registry.get_model("deepseek", "openai-completions", "deepseek-flash")
+    legacy = registry.get_model("deepseek", "openai-completions", "deepseek-v4-flash")
+
+    assert current.alias == "fast-chat"
+    assert legacy.alias is None
+    for model in (current, legacy):
+        assert model.capabilities.context_window == 1048576
+        assert model.capabilities.max_tokens == 393216
+        assert model.capabilities.input == ("text", "image")
+        assert model.capabilities.reasoning_efforts == ("none", "low", "high", "max")
+        assert model.pricing is not None
+        assert (model.pricing.input, model.pricing.output, model.pricing.cache_read) == (
+            0.3,
+            1.2,
+            0.006,
+        )
 
 
 def test_gpt_6_models_resolve_on_both_openai_responses_routes() -> None:

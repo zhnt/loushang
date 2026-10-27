@@ -166,15 +166,16 @@
           "preferred": true,
           "docs": "https://api-docs.deepseek.com/",
           "models": {
-            "deepseek-v4-flash": {
-              "displayName": "DeepSeek V4 Flash",
-              "family": "deepseek-v4",
+            "deepseek-flash": {
+              "displayName": "DeepSeek V4.1 Flash",
+              "family": "deepseek-v4.1",
               "alias": "fast-chat",
               "capabilities": {
-                "contextWindow": 1000000,
-                "maxTokens": 384000,
+                "contextWindow": 1048576,
+                "maxTokens": 393216,
                 "input": [
-                  "text"
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -194,9 +195,42 @@
               },
               "pricing": {
                 "currency": "USD",
-                "input": 0.14,
-                "output": 0.28,
-                "cacheRead": 0.0028
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.006
+              }
+            },
+            "deepseek-v4-flash": {
+              "displayName": "DeepSeek V4.1 Flash (legacy ID)",
+              "family": "deepseek-v4.1",
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 393216,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "reasoningEfforts": [
+                  "none",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.3,
+                "output": 1.2,
+                "cacheRead": 0.006
               }
             },
             "deepseek-v4-pro": {
@@ -946,47 +980,6 @@
                 "cacheRead": 0.5
               }
             },
-            "gpt-5.6-sol": {
-              "displayName": "GPT-5.6 Sol",
-              "family": "gpt-5.6",
-              "knowledge": "2026-02-16",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true,
-                "providerCompaction": "openai-responses"
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 5,
-                "output": 30,
-                "cacheRead": 0.5
-              }
-            },
             "gpt-6-sol": {
               "displayName": "GPT-6 Sol",
               "family": "gpt-6",
@@ -1274,39 +1267,6 @@
                   "medium",
                   "high",
                   "xhigh"
-                ],
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
-              }
-            },
-            "gpt-5.6-sol": {
-              "displayName": "GPT-5.6 Sol oauth",
-              "family": "gpt-5.6",
-              "defaults": {
-                "maxOutputTokens": 32000,
-                "reasoningEffort": "medium"
-              },
-              "capabilities": {
-                "contextWindow": 1050000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "reasoningEfforts": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
                 ],
                 "stream": true,
                 "toolUse": true,
