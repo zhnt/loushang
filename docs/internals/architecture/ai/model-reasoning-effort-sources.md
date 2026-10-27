@@ -1,6 +1,6 @@
 # Model reasoning effort catalog sources
 
-Checked on 2026-10-24. `models.json` records native effort values in
+Checked on 2026-10-24; Terra checked on 2026-10-27. `models.json` records native effort values in
 `capabilities.reasoningEfforts`. It omits the field when the provider's available
 levels were not established from its own documentation. An empty list records a
 confirmed lack of adjustable effort; it does not mean the model cannot reason.
@@ -11,6 +11,7 @@ alias, or protocol behavior.
 | --- | --- |
 | OpenAI `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.4-mini` | [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol), [GPT-5.4 Mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
 | OpenAI `gpt-6-sol`, `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna` | [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol), [GPT-6 deployment checklist](https://developers.openai.com/api/docs/guides/deployment-checklist) |
+| OpenAI `gpt-6.1-terra` | [GPT-6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra) |
 | DeepSeek V4 Flash and Pro | [Thinking mode](https://api-docs.deepseek.com/guides/thinking_mode/), [models response](https://api-docs.deepseek.com/api/list-models/) |
 | Kimi Code `kimi-for-coding` and `k3` | [Model configuration](https://www.kimi.com/code/docs/en/kimi-code/models) |
 | Kimi Code `k3.1-pro` and `k3.1-pro-highspeed` | [Model configuration](https://www.kimi.com/code/docs/en/kimi-code/models) |
