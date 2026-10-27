@@ -61,7 +61,7 @@ ROUTES: dict[str, Route] = {
     "deepseek-completions": Route(
         provider="deepseek",
         endpoint="openai-completions",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         api_key_envs=("DEEPSEEK_API_KEY",),
     ),
 }

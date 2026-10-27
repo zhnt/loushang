@@ -334,7 +334,7 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
     expected_error = (
-        "Error: Cannot switch to 'deepseek-v4-flash': this conversation contains "
+        "Error: Cannot switch to 'deepseek-v4-pro': this conversation contains "
         "images, but the model does not support image input"
     )
     assert app.state.status_message == expected_error
@@ -1584,9 +1584,9 @@ class _Session:
 class _FailingModelSession(_Session):
     async def set_model(self, selection: object) -> None:
         raise UnsupportedCapabilityError(
-            "Cannot switch to 'deepseek-v4-flash': this conversation contains images, "
+            "Cannot switch to 'deepseek-v4-pro': this conversation contains images, "
             "but the model does not support image input",
-            model="deepseek-v4-flash",
+            model="deepseek-v4-pro",
             details={"capability": "image_input"},
         )
 
