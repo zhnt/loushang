@@ -30,6 +30,7 @@ from loushang.harness.session import (
     SessionControlPort,
     SessionOperationAvailability,
     SessionOperationResolver,
+    command_execution_record_from_result,
     current_session_operation_resolver,
     require_active_session,
     session_operation_resolver,
@@ -301,14 +302,10 @@ def build_coding_ui_controller(
         if inspect.isawaitable(execution):
             execution = await execution
         if on_bash_record is not None and isinstance(execution, dict):
-            exit_code = execution.get("exit_code")
             on_bash_record(
-                CommandExecutionRecord(
-                    command=command,
-                    output=str(execution.get("output") or ""),
-                    exit_code=exit_code if type(exit_code) is int else None,
-                    cancelled=bool(execution.get("cancelled", False)),
-                    truncated=bool(execution.get("truncated", False)),
+                command_execution_record_from_result(
+                    command,
+                    execution,
                     exclude_from_context=exclude_from_context,
                 )
             )
