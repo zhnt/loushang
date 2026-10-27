@@ -334,9 +334,7 @@ class AgentInputMessage:
         if not self.text.strip():
             raise ValueError("agent message text must be non-empty")
         if self.kind not in {"follow_up", "steering", "mailbox"}:
-            raise ValueError(
-                "agent input kind must be follow_up, steering, or mailbox"
-            )
+            raise ValueError("agent input kind must be follow_up, steering, or mailbox")
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,7 +348,7 @@ class DeliveryIntent:
 
 @dataclass(frozen=True, slots=True)
 class ControlLimits:
-    max_open_agents: int = 6
+    max_open_agents: int = 8
     max_spawn_depth: int = 3
 
     def __post_init__(self) -> None:
@@ -389,9 +387,7 @@ class MultiAgentError(ValueError):
         super().__init__(message)
         self.code = code
         self.details = MappingProxyType(dict(details or {}))
-        self.tool_result_details = MappingProxyType(
-            {"code": code, **self.details}
-        )
+        self.tool_result_details = MappingProxyType({"code": code, **self.details})
 
 
 __all__ = [

@@ -731,9 +731,10 @@ def cooperative_agent_screen_event_listener(
         target.prepare_assistant_markdown_render(markdown, spec, result)
 
     def handle(event: dict[str, Any]) -> Awaitable[None] | None:
-        if event.get("type") == "message_end" and getattr(
-            event.get("message"), "role", None
-        ) == "assistant":
+        if (
+            event.get("type") == "message_end"
+            and getattr(event.get("message"), "role", None) == "assistant"
+        ):
             target = projection.projector.target
             if (
                 isinstance(target, ScreenConversationProjectionTarget)
@@ -781,9 +782,7 @@ def cooperative_agent_screen_event_listener(
 
         async def project_large_markdown() -> None:
             target = projection.projector.target
-            analysis = await asyncio.to_thread(
-                analyze_large_markdown_delta, delta
-            )
+            analysis = await asyncio.to_thread(analyze_large_markdown_delta, delta)
             if analysis.chunks is None:
                 rendered = None
                 spec = (
@@ -807,9 +806,8 @@ def cooperative_agent_screen_event_listener(
                     else:
                         rendered = (spec, result)
                 projection.handle(event)
-                if (
-                    analysis.prepared_table_blocks is not None
-                    and isinstance(target, ScreenConversationProjectionTarget)
+                if analysis.prepared_table_blocks is not None and isinstance(
+                    target, ScreenConversationProjectionTarget
                 ):
                     target.prepare_assistant_markdown(
                         delta, analysis.prepared_table_blocks, rendered=rendered
@@ -881,7 +879,13 @@ def _agent_error_summary(result: object) -> str | None:
         text = getattr(part, "text", None)
         if not isinstance(text, str):
             continue
-        for line in text.splitlines():
+        lines = text.splitlines()
+        if lines and lines[0].startswith('Validation failed for tool "'):
+            for line in lines[1:]:
+                if line.startswith("  - "):
+                    summary = line[4:].strip()
+                    return summary if len(summary) <= 160 else summary[:157] + "..."
+        for line in lines:
             summary = line.strip()
             if summary:
                 return summary if len(summary) <= 160 else summary[:157] + "..."
@@ -920,6 +924,10 @@ def _standard_tool_title(snapshot: ToolCallSnapshot) -> str:
         name = snapshot.args.get("name")
         if isinstance(name, str) and name:
             return f"spawn_agent {name}"
+    if snapshot.tool_name == "close_agent" and isinstance(snapshot.args, Mapping):
+        target = snapshot.args.get("target")
+        if isinstance(target, str) and target:
+            return f"close_agent {target}"
     if snapshot.rendered_call_text:
         return snapshot.rendered_call_text.splitlines()[0].strip()
     return snapshot.tool_name

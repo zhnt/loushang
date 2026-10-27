@@ -32,6 +32,7 @@ from loushang.coding.multiagent import (
 from loushang.coding.tool_pack import coding_workspace_tool_profile
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.multiagent import (
+    AgentCaller,
     AgentInputMessage,
     AgentPath,
     AgentTypeRegistry,
@@ -41,6 +42,7 @@ from loushang.harness.multiagent import (
     ForkTier,
     HostCaller,
     MultiAgentControl,
+    MultiAgentError,
     SubagentContextPlan,
     WorkspaceLease,
     WorkspaceLeaseRequest,
@@ -336,6 +338,35 @@ def test_coding_analysis_agent_types_are_bounded_and_have_no_write_tools() -> No
             2 if spec.name in {"explorer", "reviewer"} else 1
         )
         assert spec.can_spawn is False
+
+
+def test_default_capacity_admits_follow_up_analysis_after_five_open_children() -> None:
+    control = MultiAgentControl(agent_types=coding_agent_types())
+    caller = AgentCaller(control.root_ref)
+    for name, agent_type in (
+        ("research_a", "explorer"),
+        ("research_b", "explorer"),
+        ("research_c", "explorer"),
+        ("implementation", "shared_implementation_worker"),
+        ("review", "reviewer"),
+        ("follow_up_research", "explorer"),
+        ("critique", "critic"),
+    ):
+        control.spawn(
+            caller=caller,
+            parent_path=AgentPath.root(),
+            name=name,
+            agent_type=agent_type,
+        )
+
+    assert control.registry.open_count == 8
+    with pytest.raises(MultiAgentError, match="agent tree already has"):
+        control.spawn(
+            caller=caller,
+            parent_path=AgentPath.root(),
+            name="one_more",
+            agent_type="reviewer",
+        )
 
 
 def test_coding_phase_two_types_offer_isolated_and_shared_write_workers() -> None:

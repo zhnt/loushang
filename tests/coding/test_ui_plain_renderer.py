@@ -566,7 +566,10 @@ def test_event_renderer_includes_failed_tool_error_summary() -> None:
         content=[
             TextPart(
                 type="text",
-                text='Validation failed for tool "write":\n  - path: is required',
+                text=(
+                    'Validation failed for tool "write":\n'
+                    "  - path: is required\n\nReceived arguments:\n{}"
+                ),
             )
         ],
         details={},
@@ -590,10 +593,7 @@ def test_event_renderer_includes_failed_tool_error_summary() -> None:
         }
     )
 
-    assert (
-        stdout.getvalue()
-        == '• Edited write failed: Validation failed for tool "write":\n'
-    )
+    assert stdout.getvalue() == "• Edited write failed: path: is required\n"
 
 
 def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> None:

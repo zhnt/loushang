@@ -44,7 +44,10 @@ def test_builtin_tool_renderers_format_call_headers() -> None:
     cases = [
         ("bash", {"command": "echo hi", "timeout": 2}, "$ echo hi (timeout 2s)"),
         ("read", {"path": "README.md"}, "read README.md"),
+        ("read", {"file_path": "README.md"}, "read README.md"),
         ("read", {"path": "README.md", "offset": 3, "limit": 2}, "read README.md:3-4"),
+        ("read", {}, "read [missing path]"),
+        ("read", {"path": 42}, "read [invalid path]"),
         (
             "grep",
             {"pattern": "needle", "path": "src", "glob": "*.py", "limit": 5},

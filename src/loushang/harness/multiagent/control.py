@@ -211,9 +211,9 @@ class MultiAgentControl:
                     "limit": self._limits.max_open_agents,
                     "open_count": self._registry.open_count,
                     "reserved_count": self._registry.reserved_count,
-                    "open_agents": tuple(
+                    "open_agents": [
                         _capacity_occupant(record) for record in open_agents
-                    ),
+                    ],
                     "recovery": (
                         "Use list_agents, then reuse an existing child with "
                         "send_message or close an unneeded child before retrying "
@@ -238,9 +238,9 @@ class MultiAgentControl:
                     "agent_type": agent_type,
                     "limit": spec.maximum_children,
                     "open_count": len(same_type_children),
-                    "open_children": tuple(
+                    "open_children": [
                         _capacity_occupant(record) for record in same_type_children
-                    ),
+                    ],
                     "recovery": (
                         "Use list_agents, then reuse an existing child with "
                         "send_message or close an unneeded child before retrying "
