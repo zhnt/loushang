@@ -104,4 +104,5 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 仅是输入材料；其未核实假设和首轮 findings 不直接升级为本包的现状或决定。
 
 模型规划当前实施、全部真实试验与验证边界见[实施记录](model-planning-implementation.md)。
-GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)仍待用户评审。
+2026-10-27 用户选择先交付当前模型逐批规划切片，再用真实开发任务验证动态重规划。
+GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)暂不执行。

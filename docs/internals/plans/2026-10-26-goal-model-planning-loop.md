@@ -9,6 +9,10 @@
 - 前置交付：[Goal 最小业务闭环](2026-10-25-goal-minimum-business-loop.md)及其[实际实施记录](../architecture/harnesswork/goal/implementation.md)。
 - 架构约束：[已接受的最小闭环架构](../architecture/goal-method-work/minimum-loop-architecture.md)和[harnesswork.goal 环境与子组件](../architecture/harnesswork/goal/README.md)。
 
+2026-10-27 用户批准分阶段交付：先交付当前“模型逐批规划”能力，再用真实开发任务
+验证动态重规划。当前切片可独立合入；GP-03 保持待验证，完整原 Goal 不标完成。
+交付范围、限定 profile 与后续适配边界见[实施记录](../architecture/goal-method-work/model-planning-implementation.md)。
+
 ## 可直接交给执行 agent 的 Goal 描述
 
 在楼上已经交付的本地 Coding SDK Goal 闭环上，增加模型自主规划能力，使系统能够

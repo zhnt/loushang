@@ -5,6 +5,30 @@
 - 授权：2026-10-26 用户接受[专项 R2.1](model-planning-loop.md)及[场景 R1.1](model-planning-scenario.md)，明确“同意，请继续goal”。
 - **完整 G-GOAL-PLAN-01 未完成：GP-03 的真实实质重规划证据未达成。**
 
+## 2026-10-27 分阶段交付决定
+
+用户明确要求：“收尾并交付当前‘模型逐批规划’能力，再用真实开发任务验证动态
+重规划”。据此交付已实现并验证的逐批规划切片，GP-03 保持待验证，不再作为此次
+切片合入的前置条件；完整原 Goal 仍不标为完成，也不降低 GP-03 的判据。
+
+当前范围为本地 Coding SDK、单活动 Goal、显式 advance 和既有有限 calculator
+profile；不是接受任意自然语言任务的通用 Coding Goal。模型选择下一动作及路线，
+原 Work/Method 执行，当前独立证据裁决完成。默认显式 Method 模式保持兼容。
+
+后续优先从真实待修缺陷或兼容性需求中选任务，固定要求、权限和独立验收，再设计
+任务所需的最小领域适配。只有它暴露必要缺口时才补底座；不预建新队列、计划树或
+调度器。计算器试验不再追加，[外部协作候选](model-planning-followup-scenario.md)
+暂不执行，不当作用户已经接受的 GP-03 替代场景。
+
+入口与使用说明见[示例 README](../../../../examples/coding/README.md)。源码检查点
+`307d1fb0b` 已保留；本次收尾同步远程 main `d495fdca6`，交付到本地 main。远程发布
+遵守工作日北京时间 18:30 前不推送的规则，Git 推送/PR 状态与功能实现分开报告。
+
+集成验证：合入上述远程 main 后再次执行 Goal/Work 定向回归，218 passed、7 skipped；
+文档轻检查 9 项、架构依赖及 diff 检查通过。收尾新增改动仅为文档，未增加 CI gate。
+远程 main 尚不包含本地主线原有的 SDK 证据交接、共享 Goal 和 Transcript admission
+修复前置提交；发布 PR 必须展示完整依赖范围，不能只描述最后一个规划实现提交。
+
 ## 已实现的增量
 
 `CodingGoal.open(model_planning=True)` 显式开启新 profile；缺省仍是原显式 Method。
@@ -44,7 +68,8 @@ read/edit/write，因此不能把该说法当作权限切换缺陷。第二、�
 
 三次试验额度已用完，不再重复 calculator 碰运气。新增业务 profile 的 JSON 配置
 建议经评审后撤回；[R2 后续验证建议](model-planning-followup-scenario.md)保留现有
-profile，提出协作场景，**待用户确认是否符合本阶段 GP-03 的业务意图**。
+profile，提出协作场景。2026-10-27 用户选择先交付当前能力、再用真实开发任务验证；
+该协作候选暂不执行，不视为用户接受。
 
 ## 实现复核与本地检查
 

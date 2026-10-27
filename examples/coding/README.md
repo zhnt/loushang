@@ -375,3 +375,29 @@ uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator
 这只是等待进度提示，不代表步骤已完成。最终以 `status: completed` 且
 `validity: current` 为成功。按 Ctrl+C 会通过原关闭路径取消工作，保留记录；
 `--reopen` 只读检查，不会续跑，也不会把已修改的源码直接判为 Goal 完成。
+
+### 模型逐批规划（当前限定计算器任务）
+
+同一个例子加 `--model-planning`，由模型基于当前材料与实际结果选择下一批工作。
+系统核验候选后，通过原 Work 执行 inspect、check、Method repair 或 verify_all。
+模型提出的后续路线只是建议，不能直接完成 Goal、修改要求或扩大权限。
+
+```bash
+goal_demo="$(mktemp -d /tmp/loushang-model-goal.XXXXXX)"
+uv run python examples/coding/27_goal_calculator.py --output-dir "$goal_demo/run" --model-planning
+uv run python examples/coding/27_goal_calculator.py --output-dir "$goal_demo/run" --reopen
+```
+
+需要现有 Kimi 凭据，第一条执行命令会调用真实模型。SDK 对应入口为
+`CodingGoal.open(workspace=..., data_root=..., model=..., model_planning=True)`；
+默认 `False` 保留显式 Method 方式。当前仅支持这一固定业务 profile，尚不接受任意
+Coding 目标；首版不支持跨进程恢复控制，`--reopen` 是只读复核。
+
+推进中输出规划和原 Work 关联，并导出 `planning-trace.json` 供观察；重开从原始
+Goal/Work/Transcript/Blob 重建规划轨迹，不把导出文件当作事实权威。完成有效性与
+规划来源健康分别显示，缺来源时 planning 为 unknown。暂停时查看 `goal_reason`，
+不把 Work completed 当作 Goal 完成。
+
+此模式固定最多 20 个 Work 意图、10 次规划，连续 3 次无效提案或 2 次无进展后停止；
+不是 token、费用或时间硬上限。真实模型规划→修复→独立验证已有成功记录；实际
+改变路线后完成的动态重规划证据仍待真实开发任务补齐，见[实施记录](../../docs/internals/architecture/goal-method-work/model-planning-implementation.md)。
