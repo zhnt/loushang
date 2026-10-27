@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.harness.conversation.types import ConversationRecord
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -34,6 +33,9 @@ class ConversationHistoryProjector:
     fallback_projector: HistoryPayloadProjector
 
     def project_item(self, item: object) -> DisplayRecord | None:
+        # Keep the conversation screen import path independent of Harness.
+        from loushang.harness.conversation.types import ConversationRecord
+
         if not isinstance(item, ConversationRecord):
             return self.fallback_projector(item)
         if self.dispositions.get(item.kind) != "render":
