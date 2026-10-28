@@ -86,6 +86,29 @@ python examples/coding/21_switch_model_route.py
 
 ### 设计路线（online 优先 + 可复现）
 
+#### 本地验证与证据消费（私有集成示例）
+
+`26_verification_evidence.py` 通过真实 Coding Session 执行本地检查，利用原 Work
+完成报告与验证两步，再从日志及 Session Blob 重读证据。该示例不调用模型，无需 API key；
+当前直接运行，未加入统一运行器。私有适配尚非稳定公共 SDK 接口。
+
+从仓库根目录运行，使用新的、仅自己可写的本地输出目录；状态域与数据域分开：
+
+```bash
+export LOUSHANG_HOME="$(mktemp -d /tmp/loushang-verify-state.XXXXXX)"
+evidence_dir="$(mktemp -d /tmp/loushang-verify-evidence.XXXXXX)"
+uv run python examples/coding/26_verification_evidence.py \
+  --workspace "$PWD" --output-dir "$evidence_dir" \
+  --command 'uv run python scripts/ci/check_docs.py'
+uv run python examples/coding/26_verification_evidence.py \
+  --output-dir "$evidence_dir" --reopen
+```
+
+第二条命令只重开并消费原证据，不再次执行检查。成功输出包括 Work completed、
+verification_passed=true、材料健康状态和实际读取的报告/验证 JSON。
+短输出可保存为明确标注的 SDK 文本视图；缺失、损坏、不完整或失败均不能冒充验证通过。
+本例只验证一条命令，不能由材料可读或 Work completed 推断 Goal 完成。
+
 从 `coding` 侧这套路线继续往下走，采用三个锚点：  
 - 学习目标：每个例子先定义“验证哪个能力是否成立”。  
 - 运行形态：默认走 `online`，能离线验证的例子保留 `offline` fallback。  
@@ -111,7 +134,7 @@ python examples/coding/21_switch_model_route.py
 
 说明：当前生成型入口新增了 `model/skill/config`，用于补齐 pi-mono 组件齐全性；实际脚本先对齐现有 25 个（`legacy-*`）后再逐步迁移 id 命名。
 
-更完整的路线说明见 [EXAMPLE_DESIGN_ROADMAP_2026-05.md](/home/dev/workspace/loushang/examples/coding/EXAMPLE_DESIGN_ROADMAP_2026-05.md)。
+更完整的路线说明见 [EXAMPLE_DESIGN_ROADMAP_2026-05.md](EXAMPLE_DESIGN_ROADMAP_2026-05.md)。
 
 主题前缀（按生成+既有脚本）：
 - `sdk-*`：SDK 相关
@@ -131,7 +154,7 @@ python examples/coding/21_switch_model_route.py
 - `tools-*`：toolsets
 - `stepwise-*`：step_by_step_coding（无渲染）
 
-pi-mono 覆盖跟踪见 [PI_MONO_COVERAGE.toml](/home/dev/workspace/loushang/examples/coding/PI_MONO_COVERAGE.toml)。覆盖状态含义：
+pi-mono 覆盖跟踪见 [PI_MONO_COVERAGE.toml](PI_MONO_COVERAGE.toml)。覆盖状态含义：
 
 - `covered`：已有可运行 loushang example 验证同一学习目标。
 - `partial`：已有能力域覆盖，但缺少专门脚本或关键观测点。
@@ -302,7 +325,7 @@ python run.py run legacy-007
 
 ### Extension Path
 
-Extension-focused examples live in [extensions/README.md](/home/dev/workspace/loushang/examples/coding/extensions/README.md).
+Extension-focused examples live in [extensions/README.md](extensions/README.md).
 
 They are intentionally offline and self-contained:
 
@@ -330,3 +353,51 @@ Current stabilized pieces:
 - CLI command listing keeps the default TSV output and supports `--list-commands-format json` for structured consumers
 - CLI command execution keeps raw result output by default and supports `--command-result-format json`
 - CLI session export supports bare `--export`, `--export-format html|jsonl`, and `--export-result-format json`
+
+### 本地 Goal 最小修复闭环
+
+`27_goal_calculator.py` 复制固定缺陷项目，通过原 Coding SDK 和真实 Kimi 模型，
+完成“初始失败验证 → 显式 Method 修复 → 独立再验证”，再读取 Goal 完成依据。
+模型只使用原 read/edit/write；验证使用原 SDK 命令路径。需要现有 Kimi 凭据。
+
+```bash
+uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator-goal-demo
+uv run python examples/coding/27_goal_calculator.py --output-dir /tmp/calculator-goal-demo --reopen
+```
+
+首次选择不存在的输出目录；`--reopen` 只读取原身份和材料，不创建模型 Session
+或重新执行工作。若继承的 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 指向旧目录，
+可清空该变量使用内置模型目录。支持范围和失败约束见
+[Goal 实现记录](../../docs/internals/architecture/harnesswork/goal/implementation.md)。
+
+首次 Work 的 `failed` 是固定缺陷项目的预期检查结果，不代表 Goal 失败。
+后续模型修复期间每五秒输出 `advance_in_progress`，包含当前 Work 状态和步骤；
+这只是等待进度提示，不代表步骤已完成。最终以 `status: completed` 且
+`validity: current` 为成功。按 Ctrl+C 会通过原关闭路径取消工作，保留记录；
+`--reopen` 只读检查，不会续跑，也不会把已修改的源码直接判为 Goal 完成。
+
+### 模型逐批规划（当前限定计算器任务）
+
+同一个例子加 `--model-planning`，由模型基于当前材料与实际结果选择下一批工作。
+系统核验候选后，通过原 Work 执行 inspect、check、Method repair 或 verify_all。
+模型提出的后续路线只是建议，不能直接完成 Goal、修改要求或扩大权限。
+
+```bash
+goal_demo="$(mktemp -d /tmp/loushang-model-goal.XXXXXX)"
+uv run python examples/coding/27_goal_calculator.py --output-dir "$goal_demo/run" --model-planning
+uv run python examples/coding/27_goal_calculator.py --output-dir "$goal_demo/run" --reopen
+```
+
+需要现有 Kimi 凭据，第一条执行命令会调用真实模型。SDK 对应入口为
+`CodingGoal.open(workspace=..., data_root=..., model=..., model_planning=True)`；
+默认 `False` 保留显式 Method 方式。当前仅支持这一固定业务 profile，尚不接受任意
+Coding 目标；首版不支持跨进程恢复控制，`--reopen` 是只读复核。
+
+推进中输出规划和原 Work 关联，并导出 `planning-trace.json` 供观察；重开从原始
+Goal/Work/Transcript/Blob 重建规划轨迹，不把导出文件当作事实权威。完成有效性与
+规划来源健康分别显示，缺来源时 planning 为 unknown。暂停时查看 `goal_reason`，
+不把 Work completed 当作 Goal 完成。
+
+此模式固定最多 20 个 Work 意图、10 次规划，连续 3 次无效提案或 2 次无进展后停止；
+不是 token、费用或时间硬上限。真实模型规划→修复→独立验证已有成功记录；实际
+改变路线后完成的动态重规划证据仍待真实开发任务补齐，见[实施记录](../../docs/internals/architecture/goal-method-work/model-planning-implementation.md)。

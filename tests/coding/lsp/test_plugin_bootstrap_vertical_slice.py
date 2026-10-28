@@ -23,6 +23,7 @@ from loushang.coding.lsp import (
     INSPECT_SYMBOL_TOOL_NAME,
     LspServerDefinition,
 )
+from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
@@ -31,6 +32,7 @@ from loushang.harness.plugin_management.package_product import (
     PackageProductRuntimeReadError,
 )
 from loushang.harness.sandbox import SandboxSettings
+from loushang.harness.session.agent_product import AgentProductSession
 
 _FAKE_LSP_SERVER = Path(__file__).parent / "fixtures" / "fake_lsp_server.py"
 _LSP_TOOL_NAMES = {DOCUMENT_OUTLINE_TOOL_NAME, INSPECT_SYMBOL_TOOL_NAME}
@@ -181,6 +183,83 @@ def test_private_plugin_executes_real_lsp_tools_and_retires_exact_generation(
             "shutdown",
             "exit",
         ]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure_after_retirement", [False, True])
+def test_session_close_preserves_parent_until_deferred_lsp_retry_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_after_retirement: bool,
+) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={"coding.lsp": "on_demand"},
+                        sandbox=SandboxSettings(enabled=False),
+                    )
+                )
+            ),
+        )
+        attempts: list[CodingDeferredLspGeneration] = []
+        order: list[str] = []
+        original_child_dispose = CodingDeferredLspGeneration.dispose
+        original_parent_dispose = AgentProductSession._dispose_session_runtime_profile
+
+        async def dispose_child(candidate: CodingDeferredLspGeneration) -> None:
+            attempts.append(candidate)
+            order.append("child")
+            if len(attempts) == 1:
+                if failure_after_retirement:
+                    await original_child_dispose(candidate)
+                raise RuntimeError("injected child retirement failure")
+            await original_child_dispose(candidate)
+
+        async def dispose_parent(owner: AgentProductSession) -> None:
+            order.append("parent")
+            await original_parent_dispose(owner)
+
+        try:
+            await session.set_active_tools([INSPECT_SYMBOL_TOOL_NAME])
+            slot = session._deferred_lsp_slot
+            assert slot is not None and slot.active is not None
+            candidate = slot.active
+            parent = session._capability_graph_runtime
+            assert not parent.is_closed
+            with monkeypatch.context() as patch:
+                patch.setattr(CodingDeferredLspGeneration, "dispose", dispose_child)
+                patch.setattr(
+                    AgentProductSession, "_dispose_session_runtime_profile", dispose_parent
+                )
+                with pytest.raises(RuntimeError, match="injected child retirement"):
+                    await session.dispose()
+                assert order == ["child"]
+                assert not parent.is_closed
+                assert slot.state == "closing"
+                assert slot._candidate is candidate
+                with pytest.raises(RuntimeError, match="closing"):
+                    await slot.activate(retry=True)
+                with pytest.raises(RuntimeError):
+                    await session.set_active_tools([INSPECT_SYMBOL_TOOL_NAME])
+                assert not parent.is_closed
+
+                await session.dispose()
+                assert order == ["child", "child", "parent"]
+                assert attempts == [candidate, candidate]
+                assert slot.state == "closed"
+                assert slot._candidate is None
+                assert parent.is_closed
+                assert candidate.graph is not None and candidate.graph.is_closed
+        finally:
+            await session.dispose()
 
     asyncio.run(scenario())
 

@@ -1,10 +1,28 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 import pytest
+
+from loushang.harnesswork import InMemoryEventLogBackend, WorkRuntime
+from loushang.harnesswork.goal import (
+    GoalAssessment,
+    GoalController,
+    GoalError,
+    GoalHeader,
+    Requirement,
+    WorkCandidate,
+)
+from loushang.harnesswork.goal.records import (
+    GoalRecord,
+    UnsupportedGoalVersion,
+    decode_record,
+    encode_record,
+    replay,
+)
+from loushang.harnesswork.types import WorkOperation, WorkRunSpec, WorkStepSpec
 
 
 def _operation():
@@ -1194,3 +1212,544 @@ def test_work_runtime_allocates_unique_run_ids_and_rejects_duplicate_operations(
             raise AssertionError("expected duplicate operation rejection")
 
     asyncio.run(scenario())
+
+
+# Reviewed optional Goal contracts and finite Coding acceptance.
+def _run_goal_scenario(function):
+    def test():
+        asyncio.run(function())
+
+    test.__name__ = function.__name__
+    return test
+
+
+class _GoalStore:
+    def __init__(self, header):
+        self.header, self.records = header, []
+        self.fail = False
+
+    def load(self):
+        return self.header, tuple(self.records)
+
+    def append(self, expected_sequence, record):
+        assert expected_sequence == len(self.records)
+        self.records.append(record)
+        if self.fail:
+            raise OSError("after append")
+        return record.sequence
+
+
+class _GoalPolicy:
+    def confirm_resume(self, basis, facts):
+        return True
+
+    def __init__(self):
+        self.calls = 0
+        self.gate = None
+        self.began = asyncio.Event()
+        self.cleaned = False
+
+    async def prepare(self, basis, facts):
+        self.began.set()
+        if self.gate:
+            try:
+                await self.gate.wait()
+            finally:
+                self.cleaned = True
+        return WorkCandidate(
+            basis,
+            WorkOperation(f"op-{self.calls}", "task", "s", "test", {}),
+            WorkRunSpec(plan_id="plan", steps=(WorkStepSpec("step"),)),
+            {"version": 1},
+        )
+
+    def confirm_candidate(self, candidate):
+        return True
+
+    async def assess(self, basis, facts):
+        current = [r for r in facts.runs if r.status == "completed"]
+        return GoalAssessment(
+            basis,
+            "satisfied" if current else "more_evidence",
+            "tests",
+            ("R",) if current else (),
+            tuple(r.operation_id for r in current),
+            {"test": "proof"} if current else {},
+        )
+
+    def confirm_current(self, assessment):
+        return True
+
+    async def execute(self, operation, context):
+        self.calls += 1
+
+
+def _goal_setup():
+    header = GoalHeader("scope", "s", "test-policy")
+    store, policy = _GoalStore(header), _GoalPolicy()
+    work = WorkRuntime(event_log=InMemoryEventLogBackend(), executor=policy)
+    goal = GoalController(
+        header=header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    goal.create("g", [Requirement("R", "requirement")], command_id="create", limit=3)
+    return goal, store, work, policy
+
+
+@_run_goal_scenario
+async def test_real_work_once_completion_and_reopen_without_execution():
+    goal, store, work, policy = _goal_setup()
+    receipt = await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    assert receipt.outcome == "completed"
+    assert policy.calls == 1
+    assert goal.query("g").status == "completed"
+    assert await goal.advance("g", command_id="advance", revision=1, epoch=1) == receipt
+    reopened = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    assert reopened.query("g") == goal.query("g")
+    assert policy.calls == 1
+
+
+@_run_goal_scenario
+async def test_pause_during_prepare_rejects_late_candidate():
+    goal, store, work, policy = _goal_setup()
+    policy.gate = asyncio.Event()
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await policy.began.wait()
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    policy.gate.set()
+    assert (await task).outcome == "stale"
+    assert not work.query_runs()
+    assert goal.query("g").status == "paused"
+
+
+@_run_goal_scenario
+async def test_close_waits_for_callback_finally_before_retire():
+    goal, store, work, policy = _goal_setup()
+    policy.gate = asyncio.Event()
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await policy.began.wait()
+    await goal.quiesce()
+    assert task.cancelled() and policy.cleaned
+    await goal.settle_work()
+    goal.retire()
+    assert goal.fenced
+    assert policy.calls == 0
+
+
+@_run_goal_scenario
+async def test_append_error_after_bytes_fences_without_execution_or_false_ack():
+    goal, store, work, policy = _goal_setup()
+    store.fail = True
+    with pytest.raises(OSError):
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    assert goal.fenced and policy.calls == 0
+    with pytest.raises(GoalError, match="fenced"):
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+    assert replay(store.header, store.records).commands["advance"].outcome == "pending"
+
+
+def test_command_conflict_and_revised_requirement_invalidate_old_control():
+    goal, _, _, _ = _goal_setup()
+    receipt = goal.revise(
+        "g",
+        [Requirement("R", "new")],
+        command_id="revise",
+        revision=1,
+        epoch=1,
+        reason="change",
+    )
+    assert goal.query("g").revision == 2
+    assert goal.query("g").epoch == 2
+    assert (
+        goal.revise(
+            "g",
+            [Requirement("R", "new")],
+            command_id="revise",
+            revision=1,
+            epoch=1,
+            reason="change",
+        )
+        == receipt
+    )
+    with pytest.raises(GoalError, match="different content"):
+        goal.revise(
+            "g",
+            [Requirement("R", "other")],
+            command_id="revise",
+            revision=1,
+            epoch=1,
+            reason="change",
+        )
+    with pytest.raises(GoalError, match="stale"):
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+
+
+@_run_goal_scenario
+async def test_not_submitted_cold_replay_does_not_infer_unknown_from_empty_work():
+    goal, store, work, policy = _goal_setup()
+    checks = 0
+
+    def confirm(candidate):
+        nonlocal checks
+        checks += 1
+        return checks == 1
+
+    policy.confirm_candidate = confirm
+    assert (
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    ).outcome == "not_submitted"
+    reopened = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    assert reopened.facts().unresolved is False
+    assert reopened.history.batches[0].not_submitted
+    assert policy.calls == 0
+
+
+@_run_goal_scenario
+async def test_unknown_intent_blocks_resume_and_replacement_cannot_bypass():
+    goal, store, work, policy = _goal_setup()
+    original = work.accept
+
+    async def lost(*args, **kwargs):
+        raise OSError("outcome unknown")
+
+    work.accept = lost
+    assert (
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    ).outcome == "paused"
+    assert goal.facts().unresolved
+    state = goal.query("g")
+    with pytest.raises(GoalError, match="unresolved"):
+        goal.control(
+            "g",
+            "resume",
+            command_id="resume",
+            revision=1,
+            epoch=state.epoch,
+            reason="user",
+        )
+    goal.replace(
+        "g",
+        "g2",
+        [Requirement("R", "replacement")],
+        command_id="replace",
+        revision=1,
+        epoch=state.epoch,
+        reason="user",
+        limit=3,
+    )
+    with pytest.raises(GoalError, match="unresolved"):
+        await goal.advance("g2", command_id="advance2", revision=1, epoch=1)
+    work.accept = original
+
+
+@pytest.mark.parametrize("bad", [True, 0, -1, 2])
+def test_schema_version_is_exact_and_known(bad):
+    record = {
+        "version": bad,
+        "sequence": 1,
+        "scope_id": "scope",
+        "goal_id": "g",
+        "kind": "command_received",
+        "command_id": "cmd",
+        "data": {},
+    }
+    with pytest.raises(GoalError):
+        decode_record(record)
+
+
+def test_optional_fields_preserved_unknown_semantics_rejected_and_data_immutable():
+    record = GoalRecord(1, "scope", "g", "command_received", "c", {"x": [1]})
+    encoded = dict(encode_record(record), future_optional={"value": 1})
+    assert encode_record(decode_record(encoded)) == encoded
+    with pytest.raises(TypeError):
+        record.data["x"] = 2
+    with pytest.raises(UnsupportedGoalVersion):
+        decode_record(dict(encoded, required_features=["new"]))
+    with pytest.raises(UnsupportedGoalVersion):
+        decode_record(dict(encoded, kind="unknown"))
+
+
+def test_history_rejects_gaps_cross_scope_and_active_goal_duplication():
+    goal, store, _, _ = _goal_setup()
+    with pytest.raises(GoalError):
+        replay(store.header, [replace(store.records[0], sequence=2)])
+    with pytest.raises(GoalError):
+        replay(store.header, [replace(store.records[0], scope_id="other")])
+    with pytest.raises(GoalError, match="active"):
+        goal.create("g2", [Requirement("R", "another")], command_id="create2", limit=3)
+
+
+@_run_goal_scenario
+async def test_goal_current_basis_cannot_reuse_old_epoch_success():
+    from loushang.harnesswork.goal import GoalAssessment
+    from loushang.harnesswork.goal.records import basis_data
+
+    goal, store, work, policy = _goal_setup()
+
+    async def no_completion(basis, facts):
+        return GoalAssessment(basis, "more_evidence", "not_yet")
+
+    policy.assess = no_completion
+    await goal.advance("g", command_id="first", revision=1, epoch=1)
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    goal.control("g", "resume", command_id="resume", revision=1, epoch=2, reason="user")
+
+    async def stale_success(basis, facts):
+        return GoalAssessment(
+            basis, "satisfied", "old", ("R",), ("op-0",), {"proof": "old"}
+        )
+
+    policy.assess = stale_success
+    with pytest.raises(GoalError, match="old Goal basis"):
+        await goal.advance("g", command_id="second", revision=1, epoch=3)
+    state = goal.query("g")
+    record = GoalRecord(
+        goal.history.sequence + 1,
+        "scope",
+        "g",
+        "acceptance_decided",
+        "second",
+        {
+            "basis": basis_data(goal.header, state, goal.history.sequence),
+            "coverage": ["R"],
+            "operations": ["op-0"],
+            "proof": {"old": True},
+        },
+    )
+    with pytest.raises(GoalError, match="old operation"):
+        replay(goal.header, [*store.records, record])
+
+
+@_run_goal_scenario
+async def test_goal_cleanup_failure_keeps_borrowed_owner_fenced():
+    goal, _, _, policy = _goal_setup()
+    began = asyncio.Event()
+
+    async def broken_finally(basis, facts):
+        began.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            raise OSError("reader cleanup still pending")
+
+    policy.prepare = broken_finally
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await began.wait()
+    with pytest.raises(OSError, match="cleanup still pending"):
+        await goal.quiesce()
+    assert task.done() and goal.fenced
+    with pytest.raises(OSError, match="cleanup still pending"):
+        goal.retire()
+    with pytest.raises(OSError, match="cleanup still pending"):
+        await goal.quiesce()
+
+
+def test_goal_replay_rejects_changed_effect_and_repeated_revision():
+    from loushang.harnesswork.goal.records import canonical
+
+    goal, store, _, _ = _goal_setup()
+    seq = goal.history.sequence
+    command = GoalRecord(
+        seq + 1,
+        "scope",
+        "g",
+        "command_received",
+        "revise",
+        {
+            "request": canonical(
+                {
+                    "action": "revise",
+                    "goal_id": "g",
+                    "revision": 1,
+                    "epoch": 1,
+                    "data": {
+                        "requirements": [{"id": "R", "text": "new"}],
+                        "reason": "user",
+                    },
+                }
+            )
+        },
+    )
+    event = GoalRecord(
+        seq + 2,
+        "scope",
+        "g",
+        "requirements_revised",
+        "revise",
+        {"requirements": [{"id": "R", "text": "new"}], "reason": "user"},
+    )
+    with pytest.raises(GoalError, match="duplicate command effect"):
+        replay(
+            goal.header,
+            [*store.records, command, event, replace(event, sequence=seq + 3)],
+        )
+    with pytest.raises(GoalError, match="differs from accepted"):
+        replay(
+            goal.header,
+            [
+                *store.records,
+                command,
+                replace(
+                    event,
+                    data={
+                        "requirements": [{"id": "R", "text": "forged"}],
+                        "reason": "user",
+                    },
+                ),
+            ],
+        )
+
+
+@_run_goal_scenario
+async def test_goal_failed_cancellation_is_not_an_ordinary_retryable_failed_work():
+    from loushang.harnesswork import WorkCancellationOutcome
+
+    goal, store, _, policy = _goal_setup()
+    started = asyncio.Event()
+
+    class FailedCancellation:
+        async def cancel_and_wait(self, operation, context):
+            return WorkCancellationOutcome.failed(RuntimeError("domain did not settle"))
+
+    async def blocked(operation, context):
+        started.set()
+        await asyncio.Event().wait()
+
+    policy.execute = blocked
+    work = WorkRuntime(
+        event_log=InMemoryEventLogBackend(),
+        executor=policy,
+        cancellation=FailedCancellation(),
+    )
+    goal = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    advance = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await started.wait()
+    with pytest.raises(RuntimeError, match="did not settle"):
+        await goal.request_cancel("g")
+    await asyncio.gather(advance, return_exceptions=True)
+    assert goal.facts().unresolved is True
+    assert work.query_runs()[0].status == "failed"
+    if goal.query("g").status == "active":
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+    state = goal.query("g")
+    with pytest.raises(GoalError, match="unresolved"):
+        goal.control(
+            "g",
+            "resume",
+            command_id="resume",
+            revision=state.revision,
+            epoch=state.epoch,
+            reason="user",
+        )
+
+
+@_run_goal_scenario
+async def test_goal_retired_controller_never_calls_cancel_port():
+    goal, _, _, _ = _goal_setup()
+    await goal.quiesce()
+    await goal.settle_work()
+    goal.retire()
+    goal.retire()  # Idempotent without consulting retired borrowed ports.
+    with pytest.raises(GoalError, match="retired"):
+        await goal.request_cancel("g")
+
+
+def test_goal_header_optional_extensions_roundtrip_without_changing_authority():
+    from loushang.harnesswork.goal.records import decode_header, encode_header
+
+    header = GoalHeader("scope", "s", "test-policy")
+    encoded = dict(encode_header(header), ui_label={"color": "blue"})
+    restored = decode_header(encoded)
+    assert encode_header(restored) == encoded
+    assert restored == header
+    with pytest.raises(GoalError):
+        decode_header(dict(encoded, required_features=["future-semantics"]))
+
+
+@_run_goal_scenario
+async def test_goal_resume_requires_remaining_allowance_and_fresh_confirmation():
+    goal, _, _, policy = _goal_setup()
+
+    async def no_completion(basis, facts):
+        from loushang.harnesswork.goal import GoalAssessment
+
+        return GoalAssessment(basis, "more_evidence", "not_yet")
+
+    policy.assess = no_completion
+    await goal.advance("g", command_id="first", revision=1, epoch=1)
+    goal.control(
+        "g", "pause", command_id="pause", revision=1, epoch=1, reason="user", limit=1
+    )
+    with pytest.raises(GoalError, match="batch_limit"):
+        goal.control(
+            "g", "resume", command_id="resume", revision=1, epoch=2, reason="user"
+        )
+    assert goal.query("g").status == "paused"
+    goal.control(
+        "g",
+        "pause",
+        command_id="raise-limit",
+        revision=1,
+        epoch=2,
+        reason="explicit new allowance",
+        limit=3,
+    )
+    policy.confirm_resume = lambda basis, facts: False
+    with pytest.raises(GoalError, match="resume_not_ready"):
+        goal.control(
+            "g", "resume", command_id="resume2", revision=1, epoch=3, reason="user"
+        )
+    assert goal.query("g").status == "paused"
+    policy.confirm_resume = lambda basis, facts: True
+    assert (
+        goal.control(
+            "g", "resume", command_id="resume3", revision=1, epoch=3, reason="user"
+        ).outcome
+        == "resume"
+    )
+
+
+def test_goal_invalid_primary_command_does_not_leave_a_pending_admission():
+    goal, store, _, _ = _goal_setup()
+    count = len(store.records)
+    with pytest.raises(GoalError):
+        goal.revise("g", [], command_id="empty", revision=1, epoch=1, reason="bad")
+    assert len(store.records) == count
+    assert "empty" not in goal.history.commands
+
+
+@_run_goal_scenario
+async def test_goal_fence_blocks_resume_readers_and_close_blocks_external_cancel_admission():
+    goal, _, _, policy = _goal_setup()
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    calls = []
+    policy.confirm_resume = lambda basis, facts: calls.append("reader") or True
+    goal.fence()
+    with pytest.raises(GoalError, match="fenced"):
+        goal.control(
+            "g", "resume", command_id="resume", revision=1, epoch=2, reason="user"
+        )
+    assert calls == []
+    goal.begin_close()
+    with pytest.raises(GoalError, match="closing"):
+        await goal.request_cancel("g")
+    assert calls == []

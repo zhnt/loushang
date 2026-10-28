@@ -40,6 +40,16 @@ family. Repeated call sites within tests are not separate authorities.
 Counts are per attempted Session construction unless the row says otherwise.
 They record current post-CLA8 behavior.
 
+The counts below describe the parent Session graph. On-demand Coding LSP may
+later construct one separately sealed child per activation attempt, retained by
+the Session through `DeferredCapabilitySlot`. It does not replace the parent
+graph or create another model-input authority. The user accepted this ownership
+and child-before-parent retirement scope in
+[ARD-010](../decisions/draft/ARD-010-deferred-capability-provider-slot.md#accepted-session-owned-retirement-contract-2026-10-28).
+If child cleanup fails, parent dependency cleanup waits for a successful retry
+of the same child. The combined Session regression is
+`tests/coding/lsp/test_plugin_bootstrap_vertical_slice.py::test_session_close_preserves_parent_until_deferred_lsp_retry_succeeds`.
+
 | ID | Entrypoint family | Current composition count | Current Graph / Extension count | Failure behavior |
 | --- | --- | --- | --- | --- |
 | ENTRY-01 | Runtime-managed Product with final Extension profile resolution | one `StagedResourceCompositionCandidate`, built before discovery and final-selected in place | one Session-owned Capability Graph; one stable Extension runner | Construction failure disposes the single root candidate; successful graph claim transfers it exactly once. |
@@ -101,7 +111,11 @@ reuse must remain root-owned and be disposed by that root.
 The executable authority gates freeze these production construction sites:
 
 - `RuntimeCapabilityGraphRuntime`, `RuntimeCapabilityGraphBinder`, and
-  `RuntimeCapabilityGraphProjector`: `AgentProductSession.__init__` only;
+  `RuntimeCapabilityGraphProjector`: the parent owner is
+  `AgentProductSession.__init__`; the additional private LSP graph constructor is
+  `CodingDeferredLspGeneration.prepare`. Its Binder uses a dataclass
+  `default_factory=RuntimeCapabilityGraphBinder`, which is recorded here but
+  not enumerated by the existing direct-call AST assertion;
 - `RuntimeProfileBinder`: focused construction in
   `_compose_coding_continuity_base`,
   `stage_resource_composition_candidate`,

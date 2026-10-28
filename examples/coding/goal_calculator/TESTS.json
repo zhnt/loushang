@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "domain_policy": "python-pure-functions-v1",
+  "requirements": {
+    "R-SUB": "Return the integer difference for the agreed subtract cases.",
+    "R-CLAMP": "Return the nearest value in the agreed closed interval.",
+    "R-FILES": "Change only calculator.py content; preserve the full project contract."
+  },
+  "cases": [
+    {"id": "sub-positive", "requirement": "R-SUB", "function": "subtract", "args": [7, 2], "expected": 5},
+    {"id": "sub-reverse", "requirement": "R-SUB", "function": "subtract", "args": [2, 7], "expected": -5},
+    {"id": "sub-negative-left", "requirement": "R-SUB", "function": "subtract", "args": [-7, 2], "expected": -9},
+    {"id": "sub-both-negative", "requirement": "R-SUB", "function": "subtract", "args": [-7, -2], "expected": -5},
+    {"id": "sub-zero-pair", "requirement": "R-SUB", "function": "subtract", "args": [0, 0], "expected": 0},
+    {"id": "sub-zero-left", "requirement": "R-SUB", "function": "subtract", "args": [0, 8], "expected": -8},
+    {"id": "sub-zero-right", "requirement": "R-SUB", "function": "subtract", "args": [8, 0], "expected": 8},
+    {"id": "sub-input-upper", "requirement": "R-SUB", "function": "subtract", "args": [1000, -1000], "expected": 2000},
+    {"id": "sub-input-lower", "requirement": "R-SUB", "function": "subtract", "args": [-1000, 1000], "expected": -2000},
+    {"id": "clamp-below", "requirement": "R-CLAMP", "function": "clamp", "args": [-2, 0, 10], "expected": 0},
+    {"id": "clamp-above", "requirement": "R-CLAMP", "function": "clamp", "args": [12, 0, 10], "expected": 10},
+    {"id": "clamp-inside", "requirement": "R-CLAMP", "function": "clamp", "args": [5, 0, 10], "expected": 5},
+    {"id": "clamp-lower-edge", "requirement": "R-CLAMP", "function": "clamp", "args": [0, 0, 10], "expected": 0},
+    {"id": "clamp-upper-edge", "requirement": "R-CLAMP", "function": "clamp", "args": [10, 0, 10], "expected": 10},
+    {"id": "clamp-input-lower", "requirement": "R-CLAMP", "function": "clamp", "args": [-1000, -100, 100], "expected": -100},
+    {"id": "clamp-input-upper", "requirement": "R-CLAMP", "function": "clamp", "args": [1000, -100, 100], "expected": 100},
+    {"id": "clamp-zero-inside", "requirement": "R-CLAMP", "function": "clamp", "args": [0, -100, 100], "expected": 0},
+    {"id": "clamp-singleton", "requirement": "R-CLAMP", "function": "clamp", "args": [7, 7, 7], "expected": 7},
+    {"id": "clamp-singleton-below", "requirement": "R-CLAMP", "function": "clamp", "args": [6, 7, 7], "expected": 7},
+    {"id": "clamp-singleton-above", "requirement": "R-CLAMP", "function": "clamp", "args": [8, 7, 7], "expected": 7},
+    {"id": "clamp-negative-below", "requirement": "R-CLAMP", "function": "clamp", "args": [-10, -5, -1], "expected": -5},
+    {"id": "clamp-negative-above", "requirement": "R-CLAMP", "function": "clamp", "args": [0, -5, -1], "expected": -1},
+    {"id": "clamp-negative-inside", "requirement": "R-CLAMP", "function": "clamp", "args": [-3, -5, -1], "expected": -3}
+  ]
+}

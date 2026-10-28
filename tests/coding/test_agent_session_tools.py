@@ -1740,6 +1740,8 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
             "exit_code": 0,
             "cancelled": False,
             "truncated": False,
+            "stdio_complete": True,
+            "stdio_drain_reason": None,
             "full_output_path": None,
         }
 
@@ -1918,6 +1920,8 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
             "exit_code": None,
             "cancelled": True,
             "truncated": False,
+            "stdio_complete": True,
+            "stdio_drain_reason": None,
             "full_output_path": None,
         }
 

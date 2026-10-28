@@ -448,3 +448,349 @@ def test_two_actual_initializers_have_one_exclusive_creator(tmp_path):
     finally:
         admission.close()
     assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_witness_is_published_with_record_before_data_admission(tmp_path, monkeypatch, legacy):
+    from loushang.harness.transcript import _admission_publication as publication
+
+    selected = owner(tmp_path, create=True)
+    if legacy:
+        selected.root.parent.mkdir(mode=0o700)
+        selected.root.mkdir(mode=0o700)
+    rename = publication._rename_noreplace
+    observed = []
+    initial = {}
+
+    def publish(parent, source, target):
+        stage = selected.witness_root.parent / source
+        destination = selected.witness_root.parent / target
+        assert not destination.exists()
+        record = json.loads((stage / "admission.json").read_bytes())
+        assert record["phase"] == "initializing"
+        assert record["witness"] == [stage.stat().st_dev, stage.stat().st_ino]
+        observed.append(record["version"])
+        initial[destination] = record
+        rename(parent, source, target)
+        assert (destination / "admission.json").exists()
+
+    monkeypatch.setattr(publication, "_rename_noreplace", publish)
+    try:
+        selected.open()
+        assert observed == (["transcript-store-admission/v1"] if legacy else [
+            "transcript-store-family/v1", "transcript-store-admission/v2"
+        ])
+        for destination, first in initial.items():
+            completed = json.loads((destination / "admission.json").read_bytes())
+            identity = "operation" if "operation" in first else "incarnation"
+            assert first[identity] == completed[identity]
+        assert not list(selected.witness_root.parent.glob(".admission-stage-*"))
+    finally:
+        selected.close()
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_exact_initialized_backup_restores_only_missing_record(tmp_path, legacy):
+    if legacy:
+        (tmp_path / "data").mkdir(mode=0o700)
+        (tmp_path / "data/sessions").mkdir(mode=0o700)
+    original = owner(tmp_path, create=True)
+    try:
+        expected = original.open()
+        record = original.witness_root / "admission.json"
+        backup = record.read_bytes()
+    finally:
+        original.close()
+    record.unlink()
+    before = snapshot(tmp_path)
+    recovery = owner(tmp_path)
+    try:
+        assert recovery.restore_record_from_backup(backup) == expected
+        recovery.check()
+        assert record.read_bytes() == backup
+    finally:
+        recovery.close()
+    after = snapshot(tmp_path)
+    # Only the missing leaf and its parent directory mtime may change.
+    for name, metadata in before.items():
+        assert (after[name][:3], after[name][4]) == (metadata[:3], metadata[4])
+        if name != str(record.parent):
+            assert after[name] == metadata
+    assert set(after) == set(before) | {str(record)}
+    assert not recovery.cleanup_pending
+    restored = owner(tmp_path)
+    try:
+        assert restored.inspect() == expected
+    finally:
+        restored.close()
+
+
+@pytest.mark.parametrize("loss", ["root", "parent", "lock", "witness", "family", "backup", "phase", "incarnation", "member"])
+def test_backup_restore_rejects_changed_or_unproven_identity_without_writes(tmp_path, loss):
+    original = owner(tmp_path, create=True)
+    try:
+        original.open()
+        record = original.witness_root / "admission.json"
+        backup = record.read_bytes()
+    finally:
+        original.close()
+    record.unlink()
+    if loss == "root":
+        original.root.rename(tmp_path / "saved-root")
+        original.root.mkdir(mode=0o700)
+    elif loss == "parent":
+        original.root.parent.rename(tmp_path / "saved-data")
+        original.root.parent.mkdir(mode=0o700)
+        (tmp_path / "saved-data/sessions").rename(original.root)
+    elif loss == "lock":
+        path = next((original.witness_root / ".store-admission-locks").iterdir())
+        path.rename(tmp_path / "saved-lock")
+        path.write_bytes(b"")
+        path.chmod(0o600)
+    elif loss == "witness":
+        original.witness_root.rename(tmp_path / "saved-witness")
+        original.witness_root.mkdir(mode=0o700)
+    elif loss == "family":
+        original._family.root.rename(tmp_path / "saved-family")
+    elif loss == "backup":
+        value = json.loads(backup)
+        value["store"] = "0" * 64
+        backup = json.dumps(value).encode()
+    elif loss == "phase":
+        value = json.loads(backup)
+        value["phase"] = "initializing"
+        backup = json.dumps(value).encode()
+    elif loss in {"incarnation", "member"}:
+        value = json.loads(backup)
+        value["family" if loss == "incarnation" else "member"] = "0" * 32
+        backup = json.dumps(value).encode()
+    before = snapshot(tmp_path)
+    recovery = owner(tmp_path)
+    try:
+        with pytest.raises(TranscriptWriterError):
+            recovery.restore_record_from_backup(backup)
+    finally:
+        recovery.close()
+    assert snapshot(tmp_path) == before
+
+
+def test_restore_never_overwrites_record_created_during_validation(tmp_path, monkeypatch):
+    original = owner(tmp_path, create=True)
+    try:
+        original.open()
+        path = original.witness_root / "admission.json"
+        backup = path.read_bytes()
+    finally:
+        original.close()
+    path.unlink()
+    recovery = owner(tmp_path)
+    check = recovery.check
+
+    def competing_record():
+        check()
+        path.write_bytes(b"keep concurrent record")
+        path.chmod(0o600)
+
+    monkeypatch.setattr(recovery, "check", competing_record)
+    try:
+        with pytest.raises(TranscriptWriterError):
+            recovery.restore_record_from_backup(backup)
+        assert path.read_bytes() == b"keep concurrent record"
+    finally:
+        recovery.close()
+
+
+def test_old_missing_record_remains_blocking_with_local_diagnostics(tmp_path):
+    from loushang.harness.transcript.writer_lease import TranscriptStoreAdmissionError
+
+    broken = owner(tmp_path, create=True)
+    (tmp_path / "state").mkdir(mode=0o700)
+    broken.witness_root.parent.mkdir(mode=0o700)
+    broken.witness_root.mkdir(mode=0o700)
+    (broken.witness_root / ".store-admission-locks").mkdir(mode=0o700)
+    before = snapshot(tmp_path)
+    unrelated = TranscriptStoreAdmission(tmp_path / "new/data/sessions",
+                                         state_root=broken.witness_root.parent,
+                                         create_if_missing=True)
+    try:
+        with pytest.raises(TranscriptStoreAdmissionError) as caught:
+            unrelated.open()
+        assert caught.value.record_path == broken.witness_root / "admission.json"
+        assert caught.value.stage == "read_record"
+        assert str(caught.value) == "transcript_writer:incomplete"
+        assert str(broken.witness_root) in caught.value.__notes__[0]
+    finally:
+        unrelated.close()
+        broken.close()
+    assert snapshot(tmp_path) == before
+
+
+_STAGE_CRASH = """
+import os,sys
+from pathlib import Path
+from loushang.harness.transcript.store_admission import TranscriptStoreAdmission
+from loushang.harness.transcript import _admission_publication as publication
+base=Path(sys.argv[1])
+publication._rename_noreplace=lambda *args: os._exit(24)
+selected=TranscriptStoreAdmission(base/'data/sessions',state_root=base/'state/session-stores',create_if_missing=True)
+selected.open()
+"""
+
+
+def test_process_exit_before_publication_never_leaves_formal_identity_or_blocks_new_store(tmp_path):
+    result = subprocess.run([sys.executable, "-c", _STAGE_CRASH, str(tmp_path)],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 24, result.stderr
+    selected = owner(tmp_path, create=True)
+    assert not selected.root.exists()
+    stages = list(selected.witness_root.parent.glob(".admission-stage-*"))
+    assert len(stages) == 1
+    before = snapshot(stages[0])
+    try:
+        selected.open()
+        assert selected.root.exists()
+        assert snapshot(stages[0]) == before
+    finally:
+        selected.close()
+
+
+def test_publication_never_replaces_empty_target_directory(tmp_path, monkeypatch):
+    from loushang.harness.transcript import _admission_publication as publication
+
+    selected = owner(tmp_path, create=True)
+    rename = publication._rename_noreplace
+    identity = []
+
+    def competing_directory(parent, source, target):
+        final = selected.witness_root.parent / target
+        final.mkdir(mode=0o700)
+        identity.append(final.stat().st_ino)
+        rename(parent, source, target)
+
+    monkeypatch.setattr(publication, "_rename_noreplace", competing_directory)
+    try:
+        with pytest.raises(TranscriptWriterError, match="conflict"):
+            selected.open()
+        assert selected._family.root.stat().st_ino == identity[0]
+        assert not selected.root.exists()
+    finally:
+        selected.close()
+
+
+@pytest.mark.parametrize("effect", [False, True])
+def test_unknown_publication_receipt_never_grants_data_creation(tmp_path, monkeypatch, effect):
+    from loushang.harness.transcript import _admission_publication as publication
+
+    selected = owner(tmp_path, create=True)
+    rename = publication._rename_noreplace
+
+    def lost_receipt(parent, source, target):
+        if effect:
+            rename(parent, source, target)
+        raise OSError("test publication acknowledgement lost")
+
+    monkeypatch.setattr(publication, "_rename_noreplace", lost_receipt)
+    try:
+        with pytest.raises(TranscriptWriterError, match="unavailable"):
+            selected.open()
+        assert not selected.root.parent.exists()
+        assert (selected._family.root / "admission.json").exists() == effect
+    finally:
+        selected.close()
+    assert not selected.cleanup_pending
+
+
+def test_published_witness_sync_failure_is_retained_without_data_admission(tmp_path, monkeypatch):
+    from loushang.harness.transcript import _admission_publication as publication
+
+    selected = owner(tmp_path, create=True)
+    rename, fsync = publication._rename_noreplace, os.fsync
+    failed = []
+    published = []
+
+    def record_publication(parent, source, target):
+        rename(parent, source, target)
+        published.append(parent)
+
+    def fail_parent_once(fd):
+        if published and fd == published[-1] and not failed:
+            failed.append(fd)
+            raise OSError("test parent durability acknowledgement lost")
+        fsync(fd)
+
+    monkeypatch.setattr(publication, "_rename_noreplace", record_publication)
+    monkeypatch.setattr(os, "fsync", fail_parent_once)
+    try:
+        with pytest.raises(TranscriptWriterError, match="unavailable"):
+            selected.open()
+        assert not selected.root.parent.exists()
+        assert selected.cleanup_pending
+        assert "publication_parent" in selected._family._fresh._sync_pending
+    finally:
+        selected.close()
+    assert not selected.cleanup_pending
+    retry = owner(tmp_path, create=True)
+    try:
+        with pytest.raises(TranscriptWriterError, match="incomplete"):
+            retry.open()
+    finally:
+        retry.close()
+
+
+def test_backup_restore_refuses_present_record_and_family_downgrade(tmp_path):
+    original = owner(tmp_path, create=True)
+    try:
+        original.open()
+        path = original.witness_root / "admission.json"
+        backup = path.read_bytes()
+    finally:
+        original.close()
+    same = owner(tmp_path)
+    before = snapshot(tmp_path)
+    try:
+        with pytest.raises(TranscriptWriterError, match="conflict"):
+            same.restore_record_from_backup(backup)
+    finally:
+        same.close()
+    assert snapshot(tmp_path) == before
+    path.unlink()
+    value = json.loads(backup)
+    value.pop("family")
+    value.pop("member")
+    value["version"] = "transcript-store-admission/v1"
+    downgrade = owner(tmp_path)
+    before = snapshot(tmp_path)
+    try:
+        with pytest.raises(TranscriptWriterError, match="conflict"):
+            downgrade.restore_record_from_backup(json.dumps(value).encode())
+    finally:
+        downgrade.close()
+    assert snapshot(tmp_path) == before
+
+
+def test_failed_restore_does_not_leave_backup_as_a_live_record_authority(tmp_path, monkeypatch):
+    from loushang.harness.journal._rooted_io import RootedFile
+
+    original = owner(tmp_path, create=True)
+    try:
+        original.open()
+        path = original.witness_root / "admission.json"
+        backup = path.read_bytes()
+    finally:
+        original.close()
+    path.unlink()
+    before = snapshot(tmp_path)
+    recovery = owner(tmp_path)
+
+    def fail_publication(*args, **kwargs):
+        raise OSError("test restore never published")
+
+    monkeypatch.setattr(RootedFile, "atomic_write", fail_publication)
+    try:
+        with pytest.raises(TranscriptWriterError, match="unavailable"):
+            recovery.restore_record_from_backup(backup)
+        with pytest.raises(TranscriptWriterError, match="incomplete"):
+            recovery.check()
+    finally:
+        recovery.close()
+    assert snapshot(tmp_path) == before

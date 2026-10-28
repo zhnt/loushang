@@ -1,5 +1,10 @@
 # Goal 推进所需支撑能力与复用边界
 
+本表的 Current 和评审结论固定于下述 R3 基线，不是当前功能分支的未完成清单。
+后续取消观察、证据消费和本地 Goal 最小闭环的实际交付范围见
+[实现与验证记录](../harnesswork/goal/implementation.md)。保留原盘点与评审记录，
+不把已交付切片重新列为待建设底座；模型自主规划等扩展仍未实现。
+
 ## 状态与评审范围
 
 - Authority: proposed — capability allocation and gap analysis。

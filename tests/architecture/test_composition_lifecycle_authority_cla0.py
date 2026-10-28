@@ -55,6 +55,11 @@ REQUIRED_ROWS = {
 
 EXPECTED_CONSTRUCTION_SITES = {
     "RuntimeCapabilityGraphRuntime": {
+        # ARD-010 accepted Session-owned child lifetime; parent stays sealed.
+        (
+            Path("src/loushang/coding/lsp/_deferred_generation.py"),
+            "CodingDeferredLspGeneration.prepare",
+        ),
         (
             Path("src/loushang/harness/session/agent_product.py"),
             "AgentProductSession.__init__",

@@ -62,13 +62,23 @@ No combined mutable authority is added. In particular, a Model Input snapshot
 references Profile, Mount, and registration clocks; it does not publish or
 repair those clocks.
 
-The Session composition root is the sole live graph owner. It creates one
+The Session composition root owns the published model-call graph. It creates one
 `RuntimeCapabilityGraphRuntime`, one existing Binder, and one read-only
 Projector for the Session runtime ID. It also owns the bind lock, captured
 model-input Consumer, and final graph disposal. `SessionModelCallRuntime` is a
 non-owning adapter: it receives one typed, idempotent Consumer-acquisition port
 and the read-only Projector. It cannot plan, bind, dispose, or obtain the graph
 runtime itself.
+
+A Session may also retain an on-demand LSP child through the Harness
+`DeferredCapabilitySlot`, as clarified in
+[ARD-010](../decisions/draft/ARD-010-deferred-capability-provider-slot.md#accepted-session-owned-retirement-contract-2026-10-28).
+The Coding generation constructs its private graph and Binder, borrows Workspace
+without disposal ownership, and supplies no second model-input Consumer or
+parent-plan mutation. Session shutdown closes the child before parent cleanup;
+failed child retirement retains the original candidate and parent dependencies
+for a subsequent close attempt. The published model-call graph remains the one
+authority described above.
 
 Both lifecycle `prepare_session` and the direct first-sampling path converge on
 that same Consumer-acquisition port. Successful preparation installs one
@@ -184,6 +194,23 @@ The only direct AI stream/complete imports below the Product layer remain the
 standalone Agent defaults and the shared transcript summarizer. The architecture
 gate inventories those source modules so a new direct entrypoint cannot bypass
 this table silently.
+
+At the Coding Product boundary, MC-07 also includes
+`src/loushang/coding/adapters/_goal_planning_limits.py::PlanningCallAllowance._delegate`.
+The [accepted model-planning design, §7](../goal-method-work/model-planning-loop.md)
+and its [review record](../goal-method-work/model-planning-review.md) authorize this
+bounded delegate at the existing `stream_fn` injection seam. It consumes the
+current Work's logical-call allowance before forwarding the exact
+model/context/options and original response to/from `loushang.ai.stream`.
+The prepared-request committer, cancellation signal, provider attempt records,
+and Transcript usage remain owned by their original components. This is an
+MC-07 adapter, not an additional sampling purpose or an independent transport.
+
+The direct-import inventory therefore records this exact Product module in
+addition to the three shared modules. Existing checks in
+`tests/coding/test_work_shell.py` cover transparent delegation, Work-level
+allowance exhaustion, sticky cancellation, and the original Work/Session
+pipeline. Registering this adapter does not authorize other Product call sites.
 
 ## Commit-Before-Sample Invariants
 

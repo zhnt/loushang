@@ -15,15 +15,16 @@ from typing import TYPE_CHECKING, Any
 
 from loushang.harness.journal._rooted_io import RootedFileIO
 
+from ._admission_publication import is_unpublished_stage
 from .store_admission import (
     TranscriptStoreBinding,
     _identity,
     _missing,
+    _read_record,
     _StoreRoot,
-    _unique,
     _WitnessLease,
 )
-from .writer_lease import TranscriptWriterError
+from .writer_lease import TranscriptStoreAdmissionError, TranscriptWriterError
 
 if TYPE_CHECKING:
     from .store_admission import TranscriptStoreAdmission
@@ -42,7 +43,8 @@ class _SharedFamily:
         self.key = hashlib.sha256(f"{_VERSION}\0{os.geteuid()}\0{self.data_root}".encode()).hexdigest()
         self.root = state_root / f"family-{self.key}"
         self._existing = _WitnessLease(self.root, _VERSION, self.key, create_lock=False)
-        self._fresh = _WitnessLease(self.root, _VERSION, self.key, create_root=True, exclusive_root=True)
+        self._fresh = _WitnessLease(self.root, _VERSION, self.key, create_root=True, exclusive_root=True,
+                                    initial_record_factory=self._initial_record)
         self._data_existing = _StoreRoot(self.data_root, _VERSION, self.key)
         self._data_fresh = _StoreRoot(self.data_root, _VERSION, self.key, create_root=True, exclusive_root=True)
         self._state = _StoreRoot(state_root, _VERSION, self.key)
@@ -96,10 +98,11 @@ class _SharedFamily:
                     raise TranscriptWriterError("unavailable")
                 families, members = {}, []
                 for name in names:
+                    if is_unpublished_stage(name):
+                        continue  # No data creation is allowed before publication.
                     # v1 protects its exact member key, not an inferred global
                     # mapping of every future path to a vanished parent.
-                    raw = json.loads(port.read_bytes(self._state._root / name / "admission.json", max_bytes=_MAX_BYTES),
-                                     object_pairs_hook=_unique)
+                    raw = _read_record(port, self._state._root / name / "admission.json", max_bytes=_MAX_BYTES)
                     if name.startswith("family-"):
                         self._validate_record(raw)
                         if name != "family-" + raw["family"]:
@@ -144,7 +147,7 @@ class _SharedFamily:
             witness = state.child(name)
             status = witness.stat()
             lock = witness.child(".store-admission-locks").file(lock_name).stat()
-            reread = json.loads(witness.file("admission.json").read_bytes(max_bytes=4096), object_pairs_hook=_unique)
+            reread = _read_record(port, port.root / name / "admission.json")
             if (reread != record or record["witness"] != [status.st_dev, status.st_ino]
                     or record["lock"] != [lock.st_dev, lock.st_ino]):
                 raise TranscriptWriterError("conflict")
@@ -152,8 +155,7 @@ class _SharedFamily:
     def _read(self) -> dict[str, Any]:
         assert self._io is not None and self._lease is not None
         self._lease.check_binding(owner_id=_VERSION, authority_id=self.key)
-        record = json.loads(self._io.read_bytes(self.root / "admission.json", max_bytes=_MAX_BYTES),
-                            object_pairs_hook=_unique)
+        record = _read_record(self._io, self.root / "admission.json", max_bytes=_MAX_BYTES)
         self._validate_record(record)
         if (record["family"] != self.key or record["data_path"] != str(self.data_root)
                 or record["witness"] != list(_identity(self._lease._fds["root"]))
@@ -240,7 +242,7 @@ class _SharedFamily:
                 raise TranscriptWriterError("unavailable")
             self._freshness()
         elif _missing(self.root / "admission.json"):
-            raise TranscriptWriterError("incomplete")
+            raise TranscriptStoreAdmissionError("incomplete", stage="open_family", record_path=self.root / "admission.json")
         self._lease = self._existing if existing else self._fresh
         self._lease.acquire()
         if self._lease._canonical != self.root:
@@ -253,9 +255,8 @@ class _SharedFamily:
             self._data = self._data_existing
             self._data.acquire()
         else:
-            self._record = dict(version=_VERSION, family=self.key, incarnation=token_hex(16), phase="initializing",
-                                revision=0, data_path=str(self.data_root), witness=list(_identity(self._lease._fds["root"])),
-                                lock=list(_identity(self._lease._fds["lock"])), data=None, shared=None, members={})
+            self._record = self._fresh.initial_record
+            assert self._record is not None
             self._write()
             if self._data is None:
                 self._data = self._data_fresh
@@ -294,8 +295,8 @@ class _SharedFamily:
             if admission._witness._canonical != admission.witness_root:
                 raise TranscriptWriterError("conflict")
             admission._io = RootedFileIO(admission.witness_root, admission._witness._fds["root"])
-            record = admission._record()
-            record.update(version=_MEMBER, family=self._record["incarnation"], member=member["id"])
+            record = admission._fresh.initial_record
+            assert record is not None
             admission._write(record)
             if not admission._may_create():
                 raise TranscriptWriterError("unavailable")
@@ -310,8 +311,9 @@ class _SharedFamily:
         else:
             if member["phase"] != "initialized" or member["name"] != admission.root.name:
                 raise TranscriptWriterError("incomplete")
-            if _missing(admission.witness_root / "admission.json"):
-                raise TranscriptWriterError("incomplete")
+            if _missing(admission.witness_root / "admission.json") and admission._recovery_record is None:
+                raise TranscriptStoreAdmissionError("incomplete", stage="open_member",
+                                                   record_path=admission.witness_root / "admission.json")
             admission._witness = admission._existing
             admission._witness.acquire()
             if admission._witness._canonical != admission.witness_root:
@@ -326,6 +328,12 @@ class _SharedFamily:
                     or record["witness"] != member["witness"] or record["lock"] != member["lock"]):
                 raise TranscriptWriterError("conflict")
         return TranscriptStoreBinding(physical.root_identity, data_id, self._record["incarnation"], member["id"], shared)
+
+    def _initial_record(self) -> dict[str, Any]:
+        assert self._lease is not None
+        return dict(version=_VERSION, family=self.key, incarnation=token_hex(16), phase="initializing",
+                    revision=0, data_path=str(self.data_root), witness=list(_identity(self._lease._fds["root"])),
+                    lock=list(_identity(self._lease._fds["lock"])), data=None, shared=None, members={})
 
     def validate_member(self, record: dict[str, Any]) -> dict[str, Any]:
         admission = self.admission

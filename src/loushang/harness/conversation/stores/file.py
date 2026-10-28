@@ -290,6 +290,15 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         self._head_cache: dict[ConversationKey, _CachedStoreHead] = {}
         self._head_cache_lock = threading.Lock()
         self._background_head_updates = background_head_updates
+        # Rooted locks deliberately fail fast, including between threads in this
+        # process. Serialize this Store's advisory worker with its foreground IO
+        # so our own cache maintenance cannot reject an authoritative operation.
+        # Other Store instances still use the original native lock admission.
+        self._advisory_io_lock = (
+            threading.RLock()
+            if background_head_updates and file_io is not None
+            else None
+        )
         self._pending_head_updates: set[asyncio.Task[None]] = set()
         self._queued_head_updates: dict[ConversationKey, tuple[Path, _StoreHead]] = {}
         self._head_update_workers: dict[ConversationKey, asyncio.Task[None]] = {}
@@ -392,9 +401,17 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         **kwargs: Any,
     ) -> ResultT:
         if self._operation_scope is None:
-            return await _settled_io(operation, *args, **kwargs)
+            return await _settled_io(self._run_native_io, operation, *args, **kwargs)
         async with self._operation_scope(target):
-            return await _settled_io(operation, *args, **kwargs)
+            return await _settled_io(self._run_native_io, operation, *args, **kwargs)
+
+    def _run_native_io(
+        self, operation: Callable[..., ResultT], *args: Any, **kwargs: Any
+    ) -> ResultT:
+        # Acquire only in a native worker, never while holding the event loop.
+        # Keep the existing settled-IO cancellation contract around this wait.
+        with self._advisory_io_lock or nullcontext():
+            return operation(*args, **kwargs)
 
     async def create(
         self,
@@ -469,7 +486,11 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     if pending is not None:
                         with suppress(Exception):
                             await asyncio.to_thread(
-                                self._write_head_if_current, key, *pending
+                                self._run_native_io,
+                                self._write_head_if_current,
+                                key,
+                                pending[0],
+                                pending[1],
                             )
             finally:
                 self._head_update_workers.pop(key, None)

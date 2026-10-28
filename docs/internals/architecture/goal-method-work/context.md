@@ -5,13 +5,12 @@
 - Authority: descriptive Current + explicitly labeled candidate context。
 - Design status: draft；Implementation status: not-started for new Goal collaboration。
 - Owner: Loushang architecture / Product composition。
-- 基线：本地 main `11b854951125d3437fea9f43f65a9788af620933`。
+- 基线：main `372cde4ade0fe026076c8fa5e8b4486774b09cc3`，本地前置切片 `d1f418de53c58040a590683a0c499ff3de50e50d`；2026-10-26 同步 R3 Goal 归属修订。
 - 证据：当前源码静态盘点；没有运行测试或验证部署，不等于功能通过。
-- 用户评审：pending。本文尚未成为 accepted Target，不能据此开始开发。
+- 用户评审：R2 本地首版的非归属内容已认可；用户明确要求按 HarnessWork 可选 Goal 归属调整并再次三视角评审。R3.1 技术结论见评审记录，不据此声称功能已实现。
 
 本批请评审三件事：研究范围是否准确，系统外部角色/协作者是否完整，本地与
-hosted 的责任划分是否符合预期。Goal 内部组件、存储表示和控制协议尚未定型，
-将在后续重要工作件中单独提交，不能由本图推导为已接受方案。
+hosted 的责任划分是否符合预期。当前 Goal 组件、存储表示及控制交接见 R3；本图表达环境与合作关系，不把逻辑箭头当作 import、部署或权限授予。
 
 ## 1. 研究对象与环境层级
 
@@ -59,14 +58,13 @@ MCP 目前只能确证到部分命令标记，未核实完整 transport；本图
 
 ## 3. Goal 黑盒与既有协作者
 
-下图中 Goal 为拟新增；其余是可复用的既有责任域。产品适配表示意图/方法/
-工作/执行之间的装配责任，不在本批预定一个新的大型适配组件。
+下图中 Goal 为拟新增；其余是可复用的既有责任域。通用目标控制归属候选已按用户要求调整到 HarnessWork.goal；Product 保留方法、领域策略和资源装配，不在本批新增大型适配平台。
 
 ```mermaid
 flowchart TB
     Entry[用户 / 产品入口]
-    Product["Product composition / 领域适配（已有）"]
-    Goal["Goal 黑盒（拟新增）<br/>目标控制、推进决策、目标验收"]
+    Product["Product composition / 领域适配<br/>已有组装；新增 Goal 策略/验收绑定"]
+    Goal["HarnessWork.goal（拟新增可选扩展）<br/>通用控制 / 记录 / 完成提交不变量"]
     Method["Method（已有）<br/>定义、选择、编译和投影"]
     Work["HarnessWork（已有）<br/>受理、run/step、事件与取消"]
     Harness["Harness / Session / Agent / AI（已有）<br/>模型与工具执行、原输入及用量事实"]
@@ -75,27 +73,37 @@ flowchart TB
 
     Entry -->|用户意图 / 控制 / 追加要求| Product
     Product -->|调用目标控制；接口待设计| Goal
-    Goal -->|下一工作 / 规划 / 验收需求| Product
+    Goal -.->|调用注入的策略 / 领域验收合同| Product
     Product -->|显式选择、编译 / 投影| Method
     Resource -->|方法内容与资源数据| Method
     Method -->|MethodPlan / guidance / constraints| Product
     Product -->|模型规划请求；现有调用机制| Harness
     Harness -->|模型响应和原执行事实| Product
-    Product -->|绑定工作后调用 accept / submit_plan| Work
+    Product -->|既有普通工作路径 / executor 装配| Work
+    Goal -->|原 accept / wait / query / cancel| Work
     Work -->|注入的领域执行器 / Session port| Harness
     Harness -->|事件与执行结果，经现有适配投影| Work
-    Work -->|运行 / 步骤 / 产物和终态事实| Product
-    Product -->|可核查的结果与证据；接口待设计| Goal
+    Work -->|运行 / 步骤 / 终态及显式领域事实| Product
+    Product -->|同 basis 的覆盖 / proof / 当前确认| Goal
     Goal -->|目标状态 / 控制回执| Product
     Product -->|状态、结果和交互| Entry
     Method -->|资源读取| Store
     Work -->|调用方提供的 EventLogBackend| Store
     Harness -->|原 Transcript / Blob / usage| Store
-    Goal -.->|目标控制 / 验收记录；owner与表示待决策| Store
+    Goal -.->|共享记录语义；借用 Product 物理适配| Store
 ```
 
-此图只确认要研究的合作关系。目标控制的准确位置、Goal 与 Work 的一对多关系、
-规划端口和验收接口均待组件/领域设计及用户评审，不由箭头直接决定。
+通用 Goal→Work 是 HarnessWork 内的单向依赖，Work kernel 不依赖 Goal；Goal 与 Product 间的策略调用是注入接口，不构成共享包 import Coding/Method。目标与多批 Work 的关系、最小合同及源数据责任已在 R3 明确；仍须按实际复核结果留证，不由图推导为已实现。
+
+2026-10-26 保留用户已认可的本地 SDK、显式 Method、调用方显式推进范围；组件、
+状态及交互见[最小闭环设计](minimum-loop-architecture.md)。该文件进一步限定一个
+原 WorkRuntime 的 Product 装配、受测版本绑定及共享 Goal 记录语义；本轮重新复核归属和直接协作边界。
+图中的 hosted/TUI/CLI 关系保留为全系统环境，不代表本轮开放了这些入口的 Goal
+API。main 没有通用产物投影；本地未集成的 Coding 私有证据切片只是一项前置交接。
+
+以 `harnesswork.goal` 为黑盒的直接环境与两子组件拆分见
+[Goal 子系统视图](../harnesswork/goal/README.md)。该新视图在 R3.2 固定评审，
+Codec 属于记录组件内部，不因环境边增加统一桥接层。
 
 ## 4. 环境接口与责任
 
@@ -108,7 +116,7 @@ flowchart TB
 | 执行域↔模型 | 消息、工具 schema、推理/压缩调用、usage/outcome | provider 压缩和普通模型调用路径不同；不能假定一个现有 commit hook 已覆盖全部消费 |
 | 执行域↔工具/OS | 文件、进程或其他动作及结果 | DirectExecution 和 AuthorizedExecution 不同；只对实际绑定路径说明审批，取消不承诺撤回外部效果 |
 | 事实 owner↔存储 | 各自记录、Blob bytes、查询及转移 | Work event log 与 Transcript 是不同事实/耐久边界，不把一种 ACK 当成另一种保证 |
-| Goal↔协作者 | 目标控制、推进意图、输入/执行/验收证据 | 本次拟新增合同；没有已核实的统一 Goal API 或默认完成机制 |
+| Goal↔协作者 | 通用 Goal 核对 basis/版本/Work，Product 给出候选与领域 proof | R3 拟新增最小合同；没有当前可用的统一 Goal API，Product 领域验收与 Core 完成提交分开 |
 
 模型和方法内容都提供数据或建议，不自行授予权限。工具审批、sandbox、文件根和
 网络约束仍由既有执行域及产品配置拥有；Goal 不替代这些机制。

@@ -36,15 +36,16 @@ startup-issued decision for later use.
 | Keep eager composition and tune evidence reads | Small local change | Cannot deliver requested Provider deferral; startup retains LSP admission work. |
 | Put a Coding-only lazy tool proxy outside the graph | Fast startup | Loses Capability graph ownership and atomic Provider/tool publication. |
 | Predeclare a Harness-owned deferred slot in the sealed plan, then activate a child generation on demand | Preserves graph authority while moving Plugin work out of startup | Requires a new graph-owned lifecycle and exact rollback, cancellation, and retirement rules. |
+| Session retains the Harness slot alongside the parent graph, then closes child before parent | Reuses the existing slot and sealed child graph without changing parent planning or model-input authority | Session must retain parent dependencies when child retirement fails and retry the same candidate. Selected for this bounded ownership/retirement scope. |
 
 ## Recommended contract
 
-Use a **Harness-owned deferred Provider slot** declared before parent graph
-publication. The slot records a Product-owned capability identity, expected
+Use a **Session-owned Harness deferred Provider slot**, retained alongside the
+parent graph. The slot records a Product-owned capability identity, expected
 facets and tool identities, an activation factory, and a retirement owner. It
 does not contain a Plugin selection, Provider value, approval decision, or open
-revision handle while dormant. The parent graph owns the slot for its whole
-Session lifetime; activation binds a separately sealed child generation and
+revision handle while dormant. The Session owns both parent and child lifetimes;
+the slot is not a node in the parent plan. Activation binds a separately sealed child generation and
 publishes its Provider facets and admitted Tool registrations together. The
 parent graph's provider map and sealed plan are never mutated.
 
@@ -67,6 +68,12 @@ The slot states are `DORMANT`, `ACTIVATING`, `ACTIVE`, `FAILED`, `CLOSING`, and
 `CLOSED`. Concurrent callers await one owned activation task. Cancelling one
 waiter does not cancel that task. Session close joins activation,
 then retires active Tool and Provider generations in reverse dependency order.
+If child retirement fails, Session close raises and retains the original child
+cleanup handles and parent dependencies. A subsequent close retries the same
+candidate before releasing the parent; it never replaces a failed retirement
+with a fresh activation. The closing slot rejects activation. Session work is
+already stopped by the existing shutdown owner even while resource cleanup
+remains incomplete.
 `FAILED` is terminal until an explicit retry creates a fresh attempt and fresh
 approval. Demand after a long idle period performs the same fresh transaction.
 
@@ -100,7 +107,7 @@ generation-pinned (`require_current_capability_component_activations`). Adding
 LSP to that published graph later through the Binder's generic rebind operation
 would invalidate the active Session Consumer and violate its one-time
 publication contract. The child graph therefore needs its own runtime and
-generation, retained by the parent-owned slot; the original Session graph must
+generation, retained by the Session-owned slot; the original Session graph must
 stay unchanged.
 
 `CodingLspToolOwner._stage` already stages Tool registrations through a
@@ -170,3 +177,130 @@ In an isolated local A/B, the previous default `on_demand` path took
 0.72–0.86 seconds. The disabled path was about 0.73 seconds in the same run.
 These measurements are startup-only and do not claim to reduce the first LSP
 activation cost.
+
+## Acceptance audit finding: actual slot ownership (2026-10-27)
+
+This section records the pre-fix finding; its ownership and close-order issue is
+resolved by the bounded acceptance below, not by acceptance of the whole ARD. The
+implementation agent compared revision `7cc4a76b36aaf62ebe831a0d999a392ef819bcb9`
+with the existing CLA0 construction gate using local archmethod master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`. One reviewer covered ownership,
+runtime/failure, and compatibility; this was not an independent multi-agent review.
+
+The difference is more than an omitted constructor in a test. The recommended
+contract above puts the slot in the sealed parent plan and makes the parent
+graph its owner. Current code keeps the slot on
+`src/loushang/coding/session/agent_session.py::AgentSession.install_deferred_lsp_slot`.
+`AgentSession._dispose_session_runtime_profile` closes it before invoking parent
+Session cleanup. The graph planner/runtime does not register a deferred slot in
+the parent plan. The Harness `DeferredCapabilitySlot` owns activation and
+candidate retention, while the Coding candidate constructs and disposes its own
+private graph. In particular, `CodingDeferredLspGeneration.prepare` is an extra
+`RuntimeCapabilityGraphRuntime` construction site compared with the existing
+CLA0 rule. The Binder is also supplied by a dataclass `default_factory`; a
+call-site-only inventory does not establish a complete factory inventory.
+
+Observed ownership (Current, not accepted Target):
+
+```mermaid
+flowchart TD
+  session["Coding Session"] -->|owns| parent["Published Session graph"]
+  session -->|retains and closes| slot["Harness DeferredCapabilitySlot"]
+  slot -->|retains before preparation| candidate["Coding LSP generation"]
+  candidate -->|constructs and disposes| child["Private LSP graph"]
+  child -.->|borrows binding without disposal ownership| workspace["Existing Workspace Provider"]
+```
+
+The review disposition is:
+
+| View | Finding and required closure |
+| --- | --- |
+| Ownership/reuse | Retaining the original parent graph avoids a second Session model-input authority, but Session ownership and parent-graph ownership are different contracts. Select one explicitly before registering this construction site as accepted. |
+| Runtime/failure | The slot retains the candidate before `prepare`, owns one activation task, and joins it before disposal. The candidate stages Tool generations and disposes them before its graph. Reuse the existing concurrency, rollback, expired-approval, and close tests; audit partial publication and failed child cleanup together with parent cleanup before acceptance. |
+| Data/compatibility | The existing dormant receipt and eager-history routes must remain distinguishable. Native Product/resume evidence cited above is useful, but does not by itself settle ownership or every failure path. |
+
+One concrete failure-order question remains: the current Session disposer catches
+a failure from `deferred_lsp.close()` and still invokes
+`super()._dispose_session_runtime_profile()`. The child can retain a failed
+retirement while borrowing the Workspace binding. The isolated slot tests prove
+cleanup retention/retry, but do not establish whether parent cleanup in this
+combined failure can invalidate that borrowed dependency. Resolve and verify
+this interaction before accepting either ownership option.
+
+The proposed clarification for review is **Session-owned parent and child
+lifetimes**: keep the sealed parent graph unchanged; let the Session retain the
+Harness slot and close its child generation before the parent; let Coding supply
+the LSP selection/admission policy without introducing another shared graph
+manager. Compare this against implementing the originally proposed parent-plan
+slot before accepting it. If selected, update the recommended contract, the
+Session/model-call ownership description, and the exact parent/child construction
+inventory together. Preserve an explicit answer for child-retirement failure
+and parent disposal; do not infer it from the happy-path diagram.
+
+For this option, the proposed failure contract is: Session close fences new
+work through its existing lifecycle owner, joins child activation, and retires
+the child before releasing the parent Workspace dependency. If child retirement
+fails, retain both its original cleanup handles and the parent dependency; report
+an incomplete close without claiming the Session is disposed. A subsequent close
+retries that same retirement, then releases the parent. It must not create a new
+child generation or discard the retained failure. Before acceptance, a combined
+Session test must prove parent disposal is not invoked after an injected child
+retirement failure, new activation remains refused, and a successful close retry
+retires the original child and parent exactly once. This is a proposed contract
+and verification condition, not a new test gate or an implemented guarantee.
+
+The six existing `tests/harness/capabilities/test_deferred_slot.py` cases and the
+two deferred-generation cases in `tests/coding/lsp/test_plugin_opt_in.py` passed
+in this audit. They support the slot and generation mechanics above; they do not
+close the combined parent/child failure question.
+
+At this audit baseline the CLA0 constructor assertion remained unchanged and this finding was open.
+Adding the Coding constructor to its allowlist alone would hide this design
+discrepancy. The proposed clarification is an architecture workpiece for user
+review under the current task's reserved review requirement; it does not change
+default activation, lifecycle code, or ARD status.
+
+## Accepted Session-owned retirement contract (2026-10-28)
+
+The user accepted: “LSP 还没清理完，就先保留它依赖的资源；下一次关闭时接着清理”.
+This confirms the reviewed Session-owned parent/child lifetime option and its
+failure/retry behavior. Acceptance is limited to that scope: the broader
+publication, freshness, performance, and supported-platform audit remains
+draft/partial. It is not acceptance of all ARD-010 claims.
+
+The implementation removes the catch-and-continue path around the deferred
+child close in `AgentSession._dispose_session_runtime_profile`. Failure now
+propagates before Worker Tool, parent graph, Plugin evidence, or sandbox cleanup
+can release the child's dependencies. The original Harness slot already keeps
+the candidate on failure, rejects activation while closing, and retries its
+retirement. No new slot state, journal, graph manager, or automatic retry is
+introduced. Retry means calling `Session.dispose()` again on the retained owner
+in this process; this does not promise recovery of live objects after process exit.
+
+The implementer reviewed the bounded change from three views (one reviewer,
+not an independent multi-agent review):
+
+| View | Resolution |
+| --- | --- |
+| Ownership/reuse | Session retains the existing slot and parent graph; Coding owns LSP policy and candidate; Harness owns slot mechanics. The parent remains sealed, with one model-input authority. CLA0 records the exact existing child constructor; its direct-call AST scope is unchanged, and the Binder default factory is documented separately. |
+| Runtime/failure | Close errors propagate before parent cleanup. The retained candidate, including already-retired partial progress, is reused on retry. New activation is refused, and successful child close precedes parent cleanup. Existing cancellation-atomic slot/Session owners are reused. |
+| Data/compatibility | No persistent format or receipt changes. `always`, `disabled`, dormant resume, and eager-history behavior retain their existing routes. A failed close reports incomplete cleanup rather than successful disposal. |
+
+The regression
+`tests/coding/lsp/test_plugin_bootstrap_vertical_slice.py::test_session_close_preserves_parent_until_deferred_lsp_retry_succeeds`
+uses a real Coding Session and deferred LSP generation through public
+`Session.dispose()`. Both injected failures (before child retirement and after
+retirement but before successful return) fail against the original source,
+which still invokes parent cleanup. With the fix they preserve the parent,
+reject activation, retry the identical candidate, and then close the parent.
+The synchronized ownership descriptions live in the CLA0 baseline and the
+Session model-call closure boundary; registering this constructor does not
+authorize any other Product graph constructor or expand a PR gate.
+
+Validation after the fix: 259 cases passed across the Coding LSP suite, Coding
+AgentSession suite, Harness deferred-slot and Session-operations suites, and the
+three affected architecture inventory modules. This includes the two new
+failure/retry cases and existing close-cancellation and dormant-resume coverage.
+Documentation (9 checks), Ruff, generated package dependency freshness, and
+`git diff --check` passed. Tests ran outside the managed sandbox with `not live`
+and `--skip-host-runtime`; no live model calls or full repository rerun occurred.
