@@ -72,6 +72,7 @@ class ScreenFramePresentation:
             or state.running
             or bool(state.pending_steers)
             or bool(state.pending_followups)
+            or bool(state.pending_shell_commands)
             or bool(state.interruption_message)
         )
 
@@ -159,6 +160,13 @@ class ScreenFramePresentation:
                     label=self.copy.followup_label,
                     items=tuple(state.pending_followups),
                     hint=self.copy.followup_hint,
+                )
+            )
+        if state.pending_shell_commands:
+            sections.append(
+                PendingSection(
+                    label="Queued shell commands",
+                    items=tuple(state.pending_shell_commands),
                 )
             )
         if not sections:

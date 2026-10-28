@@ -27,6 +27,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationLocalResult,
     ConversationPromptResult,
     ConversationScreenInputPort,
+    ConversationShellResult,
     ConversationSteerResult,
     ConversationSurfaceResult,
 )
@@ -233,6 +234,19 @@ async def run_conversation_screen(
         screen_exit_code = exit_code
         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
 
+    def start_or_queue_shell(text: str) -> None:
+        nonlocal active_task, active_prompt_started_at
+        if active_task is not None or aborting_task is not None:
+            app.state.queue_shell_command(text)
+            return
+        app.start_pending_prompt(text)
+        active_prompt_started_at = app.state.active_started_at
+        active_task = asyncio.create_task(run_prompt_handler(handle_prompt, text))
+
+    def start_next_queued_shell() -> None:
+        if app.state.pending_shell_commands:
+            start_or_queue_shell(app.state.pending_shell_commands.pop(0))
+
     try:
         reader = continuation.parser if continuation is not None else InputReader()
         pending_idle_deadline = (
@@ -398,6 +412,8 @@ async def run_conversation_screen(
                             stdout=stdout,
                             exit_code=resumed.exit_code,
                         )
+                    elif isinstance(resumed, ConversationShellResult):
+                        start_or_queue_shell(resumed.text)
                     elif isinstance(resumed, ConversationLocalResult):
                         if handle_local is not None:
                             exit_code = await run_text_handler(
@@ -457,6 +473,7 @@ async def run_conversation_screen(
                             stdout=stdout,
                             exit_code=exit_code,
                         )
+                    start_next_queued_shell()
 
                 if (
                     continuation is not None
@@ -528,12 +545,16 @@ async def run_conversation_screen(
                             started_at=active_prompt_started_at,
                             cancellation_message=cancellation_message,
                         )
+                        active_task = None
+                        active_prompt_started_at = None
                         runtime.render_now()
-                        return finish(
-                            runtime=runtime,
-                            stdout=stdout,
-                            exit_code=exit_code if exit_code is not None else 0,
-                        )
+                        if exit_code is not None:
+                            return finish(
+                                runtime=runtime, stdout=stdout, exit_code=exit_code
+                            )
+                    if app.state.pending_shell_commands:
+                        start_next_queued_shell()
+                        continue
                     runtime.render_now()
                     return finish(
                         runtime=runtime,
@@ -589,6 +610,7 @@ async def run_conversation_screen(
                         if aborting_task is not None:
                             continue
                         interrupt_pending_steer = pop_interrupt_pending_steer(app)
+                        app.state.pending_shell_commands.clear()
                         # Show acknowledgement before the Product waits for a
                         # tool process and the active turn to settle.
                         begin_stopping = getattr(app, "begin_stopping", None)
@@ -620,6 +642,8 @@ async def run_conversation_screen(
                                 attachments=result.attachments,
                             )
                         )
+                    elif isinstance(result, ConversationShellResult):
+                        start_or_queue_shell(result.text)
                     elif isinstance(result, ConversationLocalResult):
                         if handle_local is not None:
                             exit_code = await run_text_handler(

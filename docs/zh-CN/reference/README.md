@@ -93,6 +93,11 @@ loushang --command <command-name> --command-result-format json
 /new /compact /resume /delete /reload /quit
 ```
 
+输入 `!<命令>` 可执行 Shell 命令并显示结果，结果不进入模型上下文。输入
+`!!<命令>` 则会显示结果，并把经过现有长度限制的结果放进下一次模型请求。
+两者都不会自动触发模型回复。Agent 正在运行时，Shell 命令会排队等待；执行
+仍遵循当前会话的 Shell 权限与沙箱设置。
+
 `/new` 会在当前上下文中新建空会话，不接受参数。
 `/delete` 会打开带确认步骤的历史会话选择器；它不会删除当前活跃会话。
 `/model` 选定模型后可继续选择该模型支持的推理级别。纯文本模式也可用

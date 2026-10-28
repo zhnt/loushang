@@ -94,6 +94,12 @@ Built-in interactive commands include:
 /new /compact /resume /delete /reload /quit
 ```
 
+Enter `!<command>` to run a shell command and show its result without adding it
+to model context. Enter `!!<command>` to show the result and include the bounded
+result in the next model request. Neither form starts a model response. While a
+turn is running, shell commands wait until it finishes. Both forms use the
+session's existing shell permissions and sandbox.
+
 `/new` starts an empty session in the current context and accepts no arguments.
 `/delete` opens a confirmed picker for deleting a previous session; it never deletes the active session.
 `/model` lets you choose a model, then a supported reasoning level. In plain mode,

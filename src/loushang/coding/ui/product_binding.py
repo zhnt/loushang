@@ -24,6 +24,7 @@ from loushang.coding.plugin_management_ui import (
 from loushang.coding.plugin_operation_guidance import coding_desired_repair_command
 from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
+from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
     SessionControlPort,
@@ -44,6 +45,7 @@ from loushang.harnesstui.conversation.agent_binding import (
 )
 from loushang.harnesstui.conversation.controller import (
     ConversationUiController,
+    bind_user_bash_executor,
     build_standard_conversation_ui_controller,
 )
 from loushang.harnesstui.conversation.intents import (
@@ -80,6 +82,7 @@ def build_coding_ui_controller(
     plugin_operation_explanation: Callable[[str], dict[str, object]] | None = None,
     plugin_command: Callable[[str], HostActionResult] | None = None,
     plugin_package_repair_command: Callable[[str], HostActionResult] | None = None,
+    on_bash_record: Callable[[CommandExecutionRecord], None] | None = None,
 ) -> ConversationUiController:
     get_operations = build_coding_session_operation_resolver(
         session=session,
@@ -291,14 +294,6 @@ def build_coding_ui_controller(
             invocation_name=invocation_name,
         )
 
-    async def execute_bash(command: str) -> None:
-        execution = current_session().execute_bash(
-            command,
-            exclude_from_context=True,
-        )
-        if inspect.isawaitable(execution):
-            await execution
-
     def abort_command() -> None:
         current = current_session()
         command_execution = getattr(current, "command_execution", None)
@@ -311,7 +306,9 @@ def build_coding_ui_controller(
     return build_standard_conversation_ui_controller(
         get_operations=get_operations,
         dispatch_session_command=dispatch_session_command,
-        execute_bash=execute_bash,
+        execute_bash=bind_user_bash_executor(
+            current_session, on_record=on_bash_record
+        ),
         abort_command=abort_command,
         verbose=verbose,
         problem_code_prefix="coding_ui",

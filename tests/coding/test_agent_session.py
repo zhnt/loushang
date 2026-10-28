@@ -1418,7 +1418,10 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     ]
 
 
-def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) -> None:
+@pytest.mark.parametrize("exclude_from_context", [True, False])
+def test_agent_session_execute_bash_uses_extension_user_bash_result(
+    tmp_path, exclude_from_context: bool
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -1432,7 +1435,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
         seen.append((event.command, event.exclude_from_context, ctx.cwd))
         return {"result": {"output": "handled by extension\n", "exitCode": 0}}
 
-    async def scenario() -> dict[str, object]:
+    async def scenario() -> tuple[dict[str, object], tuple[object, ...]]:
         session = AgentSession(
             agent=Agent(),
             session_manager=await SessionManager.new(
@@ -1448,9 +1451,12 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
                 ]
             ),
         )
-        return await session.execute_bash("pwd", exclude_from_context=True)
+        result = await session.execute_bash(
+            "pwd", exclude_from_context=exclude_from_context
+        )
+        return result, tuple(session.get_session_context().messages)
 
-    result = asyncio.run(scenario())
+    result, messages = asyncio.run(scenario())
 
     assert result == {
         "output": "handled by extension\n",
@@ -1459,7 +1465,13 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
         "truncated": False,
         "full_output_path": None,
     }
-    assert seen == [("pwd", True, "/tmp/project")]
+    assert seen == [("pwd", exclude_from_context, "/tmp/project")]
+    assert bool(messages) is not exclude_from_context
+    if messages:
+        assert isinstance(messages[0], UserMessage)
+        assert "handled by extension" in "".join(
+            part.text for part in messages[0].content if isinstance(part, TextPart)
+        )
 
 
 def test_agent_session_execute_bash_uses_extension_user_bash_operations(

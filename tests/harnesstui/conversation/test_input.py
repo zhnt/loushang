@@ -19,6 +19,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputRouter,
     ConversationLocalResult,
     ConversationPromptResult,
+    ConversationShellResult,
     ConversationSurfaceResult,
 )
 from loushang.harnesstui.conversation.input_policy import (
@@ -506,6 +507,31 @@ def test_conversation_input_router_handles_local_command_while_run_is_active() -
     assert app.state.pending_steers == []
     assert app.state.pending_followups == []
     assert app.composer.value == ""
+
+
+def test_conversation_input_router_routes_shell_before_active_steer() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    app.composer.set_text("!! printf hi")
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationShellResult(text="!! printf hi")
+    assert app.state.pending_steers == []
+    assert app.composer.value == ""
+
+
+def test_conversation_input_router_reports_empty_shell_without_starting_prompt() -> None:
+    app = _ConversationApp()
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    app.composer.set_text("!!")
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationInputHandled()
+    assert app.state.status_message == "Enter a shell command after ! or !!"
+    assert app.state.running is False
 
 
 def test_conversation_input_router_restores_pending_messages() -> None:
