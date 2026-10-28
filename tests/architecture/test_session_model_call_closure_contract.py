@@ -25,6 +25,10 @@ EXPECTED_DIRECT_AI_IMPORTS = {
     Path("src/loushang/harness/transcript/summarization.py"): frozenset(
         {"complete", "stream"}
     ),
+    # MC-07: accepted Coding Goal allowance delegates the original prepared call.
+    Path("src/loushang/coding/adapters/_goal_planning_limits.py"): frozenset(
+        {"stream"}
+    ),
 }
 
 MODEL_CALL_RUNTIME_PATH = Path("src/loushang/harness/session/model_call.py")

@@ -2242,14 +2242,15 @@ class AgentSession(AgentProductSession):
         primary_error: BaseException | None = None
         deferred_lsp = getattr(self, "_deferred_lsp_slot", None)
         if deferred_lsp is not None:
-            try:
-                await deferred_lsp.close()
-                self._lsp_access = None
-                deferred_cleanup = self._deferred_lsp_management_cleanup
-                if deferred_cleanup is not None:
-                    deferred_cleanup()
-            except BaseException as exc:
-                primary_error = exc
+            # The child borrows parent Workspace/Resource capabilities. Keep
+            # those owners and the original retirement handles alive if close
+            # fails; the slot fences activation and retries the same candidate.
+            # Session disposal has already stopped new work before this hook.
+            await deferred_lsp.close()
+            self._lsp_access = None
+            deferred_cleanup = self._deferred_lsp_management_cleanup
+            if deferred_cleanup is not None:
+                deferred_cleanup()
         worker_tool_lease = getattr(self, "_coding_worker_turn_tool_lease", None)
         if worker_tool_lease is not None:
             try:
