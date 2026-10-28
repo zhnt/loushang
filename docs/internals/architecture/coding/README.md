@@ -166,6 +166,12 @@ They are not a second Current Coding topology.
 
 ## Current-To-Target Gaps
 
+The [repository Goal review-feedback design](key-designs/goal-review-feedback.md)
+is an accepted local SDK slice (user confirmation, 2026-10-28), with focused offline
+implementation checks passing. Coding interprets trusted
+review findings through existing Goal-linked Work and Blob evidence; it does not
+add a shared execution loop or establish generic repository Goal availability.
+
 - `coding.lsp` and `coding.arch` are production-mounted live Graph nodes when
   their selected composition and mount policy enable them;
 - LSP has an initial evidence matrix, while external-mutation and broader
