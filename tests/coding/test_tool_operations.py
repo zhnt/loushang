@@ -107,7 +107,6 @@ def _missing_read_message(runtime_tool, *, call_id: str, path: str) -> str:
 
 
 def test_read_tool_missing_native_file_includes_path_and_hint(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -127,7 +126,6 @@ def test_read_tool_missing_native_file_includes_path_and_hint(tmp_path) -> None:
 
 
 def test_read_tool_missing_virtual_file_does_not_probe_local_fs(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -156,7 +154,6 @@ def test_read_tool_missing_virtual_file_does_not_probe_local_fs(tmp_path) -> Non
 
 
 def test_read_tool_pi_style_missing_file_includes_hint(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -184,7 +181,6 @@ def test_read_tool_pi_style_missing_file_includes_hint(tmp_path) -> None:
 def test_read_tool_disappearing_file_still_reports_missing_with_hint(
     tmp_path,
 ) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -213,7 +209,6 @@ def test_read_tool_disappearing_file_still_reports_missing_with_hint(
 
 
 def test_read_tool_missing_error_when_exists_raises(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -242,7 +237,6 @@ def test_read_tool_missing_error_when_exists_raises(tmp_path) -> None:
 
 
 def test_read_tool_missing_error_when_is_file_raises(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -271,7 +265,6 @@ def test_read_tool_missing_error_when_is_file_raises(tmp_path) -> None:
 
 
 def test_read_tool_file_vanishing_between_exists_and_is_file(tmp_path) -> None:
-    import asyncio
 
     from loushang.harness.tools.workspace import create_read_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition

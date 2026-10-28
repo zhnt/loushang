@@ -3,7 +3,7 @@
 ## 状态与范围
 
 - Revision: R1，2026-10-28。
-- Authority: normative for this local SDK slice；Design status: accepted；Implementation status: in-progress。
+- Authority: normative for this local SDK slice；Design status: accepted；Implementation status: implemented for bounded local SDK slice。
 - Owner: Coding Product；与 `harnesswork.goal` 协同，不改变共享 Goal/Work 合同。
 - 源码基线：`5eadeb91ccee4e69618d99cf531f94739c76a453`。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
@@ -12,7 +12,7 @@
 承接[模型逐批规划交付](../../goal-method-work/model-planning-implementation.md)与
 [Goal 协作职责](../../goal-method-work/README.md)。用户已授权准备并实施本任务，但仍
 保留对重要架构工作件的评审：用户于 2026-10-28 在审阅本 R1 后明确“确认，继续”，接受本 R1 的环境、交互和数据合同，实施已启动。
-既有逐批规划可用，不等于已完成 GP-03 实质动态重规划验证。
+本轮真实 #125 任务已完成实质重规划、实际修复、独立验收与冷读验证；详细证据与限制见执行计划，不能外推为通用任务可靠性。
 
 本次只支持本地 SDK、一个仓库/分支、一个活动 Goal、显式逐批推进，以及可信宿主
 提交的评审。首个任务为真实 [issue #125](https://github.com/zhnt/loushang/issues/125)。
