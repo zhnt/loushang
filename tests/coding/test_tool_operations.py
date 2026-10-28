@@ -94,6 +94,278 @@ def test_read_tool_accepts_pi_style_operations(tmp_path) -> None:
     assert operations.read_paths == [str(tmp_path / "remote.txt")]
 
 
+def _missing_read_message(runtime_tool, *, call_id: str, path: str) -> str:
+    import asyncio
+
+    try:
+        result = asyncio.run(runtime_tool.execute(call_id, {"path": path}))
+    except FileNotFoundError as exc:
+        return str(exc)
+    # Some hosts surface tool errors as error results; the hint must be visible
+    # to the caller either way.
+    return result.content[0].text
+
+
+def test_read_tool_missing_native_file_includes_path_and_hint(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-missing", path="missing.txt"
+    )
+
+    assert str(tmp_path / "missing.txt") in message
+    assert "rg --files" in message
+    assert str(tmp_path) in message
+
+
+def test_read_tool_missing_virtual_file_does_not_probe_local_fs(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class VirtualOperations:
+        async def exists(self, path):
+            return False
+
+        async def is_file(self, path):
+            raise AssertionError("is_file must not run when exists is false")
+
+        async def read_bytes(self, path):
+            raise AssertionError("read_bytes must not run when exists is false")
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=VirtualOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-virtual-missing", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_pi_style_missing_file_includes_hint(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class PiReadOperations:
+        async def access(self, absolute_path: str) -> None:
+            raise FileNotFoundError(absolute_path)
+
+        async def readFile(self, absolute_path: str) -> bytes:
+            raise AssertionError("readFile must not run when access fails")
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=PiReadOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-pi-read-missing", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_disappearing_file_still_reports_missing_with_hint(
+    tmp_path,
+) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class VanishingOperations:
+        async def exists(self, path):
+            return True
+
+        async def is_file(self, path):
+            return True
+
+        async def read_bytes(self, path):
+            raise FileNotFoundError(str(path))
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=VanishingOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-vanishing", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_missing_error_when_exists_raises(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class RaisingExistsOperations:
+        async def exists(self, path):
+            raise FileNotFoundError("gone")
+
+        async def is_file(self, path):
+            raise AssertionError("is_file must not run when exists raises")
+
+        async def read_bytes(self, path):
+            raise AssertionError("read_bytes must not run when exists raises")
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=RaisingExistsOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-exists-raises", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_missing_error_when_is_file_raises(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class RaisingIsFileOperations:
+        async def exists(self, path):
+            return True
+
+        async def is_file(self, path):
+            raise FileNotFoundError("gone")
+
+        async def read_bytes(self, path):
+            raise AssertionError("read_bytes must not run when is_file raises")
+
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=RaisingIsFileOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-is-file-raises", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_file_vanishing_between_exists_and_is_file(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class VanishingBetweenStages:
+        def __init__(self) -> None:
+            self.exists_calls = 0
+
+        async def exists(self, path):
+            self.exists_calls += 1
+            # Present for the first check, gone by the re-check.
+            return self.exists_calls == 1
+
+        async def is_file(self, path):
+            return False
+
+        async def read_bytes(self, path):
+            raise AssertionError("read_bytes must not run once the file vanished")
+
+    operations = VanishingBetweenStages()
+    runtime_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=operations),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    message = _missing_read_message(
+        runtime_tool, call_id="call-read-vanished-mid-check", path="remote.txt"
+    )
+
+    assert str(tmp_path / "remote.txt") in message
+    assert "rg --files" in message
+
+
+def test_read_tool_preserves_directory_and_permission_errors(tmp_path) -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    def _error_type_and_message(runtime_tool, *, call_id: str) -> tuple[type | None, str]:
+        try:
+            result = asyncio.run(runtime_tool.execute(call_id, {"path": "remote.txt"}))
+        except (IsADirectoryError, PermissionError) as exc:
+            return type(exc), str(exc)
+        # Hosts that convert tool errors into error results lose the exception
+        # type, so require at least that the failure is not relabeled as a
+        # missing file.
+        return None, result.content[0].text
+
+    class DirectoryOperations:
+        async def exists(self, path):
+            return True
+
+        async def is_file(self, path):
+            return False
+
+        async def read_bytes(self, path):
+            raise AssertionError("read_bytes must not run for a directory")
+
+    directory_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=DirectoryOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    error_type, message = _error_type_and_message(
+        directory_tool, call_id="call-read-dir"
+    )
+
+    assert error_type in (None, IsADirectoryError)
+    assert "rg --files" not in message
+
+    class LockedOperations:
+        async def exists(self, path):
+            return True
+
+        async def is_file(self, path):
+            return True
+
+        async def read_bytes(self, path):
+            raise PermissionError(str(path))
+
+    locked_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=LockedOperations()),
+        context_provider=_tool_context_provider(cwd=str(tmp_path)),
+    )
+
+    error_type, message = _error_type_and_message(
+        locked_tool, call_id="call-read-locked"
+    )
+
+    assert error_type in (None, PermissionError)
+    assert "rg --files" not in message
+
+
 def test_per_tool_operations_and_options_are_public_api() -> None:
     from loushang.harness.tools.workspace import (
         BashToolOptions,
