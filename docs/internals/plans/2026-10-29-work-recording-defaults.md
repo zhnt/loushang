@@ -67,14 +67,19 @@ Product 的持久要求可在构造时配置；单 Work 的强化要求由 `Work
 | --- | --- |
 | Work 原测试路由 | 第一轮 181 项通过；追加两个领域事实写入故障用例后，受影响的 runtime 与 canonical API 复测 117 项通过；相关集合共 183 项 Work 测试 |
 | HarnessWork、Method、Coding Work/Goal | 首轮 202 项通过，1 项公共 API 清单需同步；修订后该文件全部通过（含在 117 项复测中），7 项按非 live/非 host 选择器排除 |
-| 基线 reader 兼容实验 | 使用 `5eadeb91c` 的原 JSONL reader 及 Run/Plan/取消 projector，读取旧→v1→回退旧的 3 个 run、每 run 两步骤；与当前投影一致，无重执行。探针与临时日志在产品树外 `/tmp/work-recording-compatibility/` |
+| 基线 reader 兼容实验 | 使用 `5eadeb91c` 的原 JSONL reader 及 Run/Plan/取消 projector，读取旧→v1→回退旧的 3 个 run、每 run 两步骤；与当前投影一致，无重执行。原临时日志在产品树外；可复现探针已保存至 `scripts/dev/probe_work_recording_compatibility.py`，固定基线 SHA、临时生成输入并比较全部事件及三个投影 |
 | Ruff / 修改源码类型 | Ruff 通过；本次修改的 6 个源码文件 mypy 通过 |
 | 文档与架构 | 既有 9 项文档不变量、架构依赖图检查通过；本轮文档同步后另行复核链接 |
-| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；在 AI typecheck 因共享 venv 的 mypy 启动脚本指向已删除目录而停止，后续全仓项未执行。未改检查触发器或新增路由 |
+| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；初次因共享 venv 的 mypy 启动脚本指向已删除目录而停止；修复本机启动脚本后 AI 全检查通过（937 passed）、Agent 154 passed。Coding 首轮 3382 passed / 565 failed，失败起点为 164 MiB runtime tmpfs ENOSPC，正在使用既有 LOUSHANG_RUNTIME_DIR 在私有磁盘目录重跑失败项；不将环境失败计为产品通过。后续广泛检查尚待完成。未改检查触发器或新增路由 |
 | 包级 mypy 补充检查 | 完整 HarnessWork 检查另有 cli / agent_session 共 20 项既有错误；与 main 同命令输出逐字相同。本次 6 文件检查通过，不声称整个包类型检查全绿 |
 
 全部 pytest 在沙箱外运行，不调用在线模型。热查询测试禁止 backend.query 后仍可按 run 获取确认状态；这是访问范围证据，不是吞吐/延迟 benchmark。受理、领域事实、终态各自覆盖写前/写后异常，后续成功写入不能解除原 owner 的不可确认状态。
 
-实施者按职责与复用、运行与失败、数据与兼容三方面自查：通用机制在 HarnessWork；追加确认不覆盖原执行/取消权威；旧 reader 实测可读 v1 的完整事实。没有把本次自查冒充新增三名独立 agent 评审，独立架构评审仍以 R3.1 原记录为准。
+初始实施自查之后，已完成三名独立 xhigh agent 的实现评审。发现并修复 ACK 后 observer 普通异常隔离缺口，115 项 runtime 回归通过，原 reviewer 确认关闭；同时补 API 冷读前提和可复现兼容探针。详见[评审与关闭记录](../architecture/harnesswork/key-designs/fact-retention-replay-review.md)。
 
 当前可交付范围是显式启用的底座切片。尚无新合同的 Coding 默认装配交付；完整审计、稳定来源绑定、来源等待与取消组合、引用读取及流式裁剪仍为后续实施义务。
+
+
+收尾复现命令：`PYTHONPATH=src /home/dev/lsspace/loushang/.venv/bin/python scripts/dev/probe_work_recording_compatibility.py`。按仓库异步验证规则在沙箱外运行；只产生临时日志，不访问网络或重放工具副作用。
+
+观察器内部普通异常的最终合同：backend 已 ACK 后，原控制必须照常收尾；新确认视图持续不可用。不能把观察器错误伪装成 append 失败，也不能返回旧 running 截点冒充完整确认。BaseException 系统退出/中断不在这个普通错误隔离承诺内。

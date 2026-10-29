@@ -59,3 +59,20 @@
 仍须在实施前冻结：默认/策略与来源 API/schema、旧 reader 能力矩阵、持久来源绑定与留存承诺、消费者迁移范围、读取入口映射。不能因“无架构语义阻断”把这些事项自动标为完成。后续若改变默认捕获、确认失效规则、取消组合或数据归属，需重查相关视角。
 
 文档验证采用现有静态检查与仓库链接检查；产品代码未改，不以运行产品测试替代架构评审。
+
+
+## 第一切片实现评审与收尾（2026-10-29）
+
+与上述 R3.1 架构评审分开，本轮三名独立 xhigh agent 对 `ea4a4ad568fd2a17b4f23638cab4c8f10d5dc3df` 做源码评审；未互读其他 reviewer 报告。方法仍为本地干净 `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。评审范围限默认完整事实合同、策略冻结、ACK/loaded 确认查询，不要求第二切片来源交接已经实现。
+
+| reviewer / 视角 | 发现 | 处置与结果 |
+| --- | --- | --- |
+| recording_ownership_review / 职责与复用 | 无阻断；OWN-01：ARD-019 一处仍称整体尚未实现 | 修正为局部实现；机制在 HarnessWork，复用原 reducer，不改变 Goal/取消权威 |
+| recording_runtime_review / 运行与失败 | RF-01 阻断：ACK 后 observer 未预期普通异常可打断 terminal bookkeeping，后续 cancel 可造成第二终态 | Runtime 隔离 observer 普通异常，仅使确认不可用，继续原收尾；新增受理/领域事实/终态三个注入用例。115 项 runtime 测试通过；原 reviewer 已复核关闭 |
+| recording_data_review / 数据与兼容 | 无阻断；D1 loaded 使用前提应写入 API；D2 临时兼容探针不可长期复现 | get_recording docstring 补 sole-writer/停写/新开后端；探针保存至 scripts/dev/probe_work_recording_compatibility.py，完整事件与 Run/Plan/取消投影均比较 |
+
+运行 reviewer 独立执行 156 项原 runtime/projection 测试、7 种取消结果与 30 种追加异常组合；数据 reviewer 独立核对 baseline 模块逐字匹配 `5eadeb91c`、完整事件和三种投影相等，并走查 11 种非法合同的 run 级错误范围。上述为各 reviewer 报告的独立证据；主实施者另完成修复后的 runtime 回归和保存探针的实际执行。
+
+RF-02：冷启动仍会全量加载并进行两轮投影，热读不扫描的证据不能推导冷启动性能。该项在大历史默认激活前单列测量，非本切片阻断，不提前增加缓存/索引。
+
+接受角色：主实施 agent，按用户“收尾第一切片”的授权接受上述修复后实现范围。三视角无剩余阻断；不把此验收扩为来源引用、Product 默认切换或全仓检查全绿。完整检查结果与剩余限制记录于[交付记录](../../../plans/2026-10-29-work-recording-defaults.md)。

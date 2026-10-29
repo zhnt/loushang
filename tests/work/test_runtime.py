@@ -2147,3 +2147,37 @@ async def test_new_recording_preserves_cancellation_evidence_and_subscriptions()
         await stream.aclose()
     assert record.source_event_id == entries[-1].event_id
     assert replace(record.run, status="cancelled") == runtime.get_run(run.run_id)
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("kind", ["Execute", "CustomResult", "WorkRunCompleted"])
+async def test_recording_observer_failure_does_not_interrupt_acknowledged_execution(
+    kind,
+):
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    original = runtime._recording._projector.apply
+
+    def broken_observer(entry):
+        if entry.payload["kind"] == kind:
+            raise RuntimeError("injected derived observer failure")
+        original(entry)
+
+    runtime._recording._projector.apply = broken_observer
+    events = []
+    runtime.subscribe_events(events.append)
+    run = await runtime.accept(_recording_operation())
+    assert (await runtime.wait(run.run_id)).status == "completed"
+    assert runtime.active_runs() == ()
+    assert (await runtime.cancel(run.run_id)).status == "completed"
+    assert runtime.get_cancellation(run.run_id).status == "not_requested"
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording(run.run_id)
+    assert [e.kind for e in events].count("WorkRunCompleted") == 1
+    assert "WorkRunCancelled" not in [e.kind for e in events]
+    cold = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    assert cold.get_recording(run.run_id).run.status == "completed"

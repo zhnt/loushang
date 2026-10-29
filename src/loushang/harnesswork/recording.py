@@ -16,7 +16,7 @@ from loushang.harnesswork.types import WorkRecordingPolicy, WorkRun
 
 
 class WorkRecordingUnavailable(RuntimeError):
-    """An append failed; this owner's confirmation boundary is unknown."""
+    """An append or observer failed; this owner cannot confirm its records."""
 
 
 class WorkRecordingFormatError(ValueError):

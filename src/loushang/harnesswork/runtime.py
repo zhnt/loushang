@@ -326,6 +326,10 @@ class WorkRuntime:
 
         One append exception disables this owner's confirmation view, even when
         later appends succeed. The existing get_run remains a live observation.
+        The Runtime must exclusively own appends to its backend. ``loaded``
+        means supplied history, not proof of a disk read or a stopped writer.
+        After an uncertain append, stop the writer and reopen the persistent
+        backend before constructing a cold reader; reusing its cache is unsafe.
         """
         if self._recording is None:
             raise ValueError("get_recording requires recording_version=1")
@@ -897,7 +901,12 @@ class WorkRuntime:
                 self._recording.invalidate()
             raise
         if self._recording is not None:
-            self._recording.observe(entry)
+            try:
+                self._recording.observe(entry)
+            except Exception:
+                # Append has already succeeded. A broken derived observer must
+                # not interrupt terminal bookkeeping or permit a second terminal.
+                self._recording.invalidate()
         return position
 
     def _lifecycle_payload(
