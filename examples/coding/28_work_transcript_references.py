@@ -1,4 +1,4 @@
-"""Offline real Coding SDK → Work references → separate-process cold read.
+"""Linux offline Coding SDK → Work references → separate-process cold read.
 
 Run with --output-dir pointing to a fresh private directory. --reopen consumes
 only the saved Product binding and original stores; it creates no SDK Session.

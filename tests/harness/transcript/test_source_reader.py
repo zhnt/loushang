@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sys
 import threading
 
 import pytest
@@ -16,6 +17,8 @@ from loushang.harness.transcript.source_reader import (
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 
 from .test_owned_session_factory import factory, new
+
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux admitted source reader")
 
 
 async def source(tmp_path):
