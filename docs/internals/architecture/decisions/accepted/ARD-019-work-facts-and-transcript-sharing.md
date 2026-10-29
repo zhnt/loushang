@@ -4,7 +4,7 @@
 
 - Authority: normative — accepted cross-scope design
 - Design status: accepted
-- Implementation status: not-started
+- Implementation status: partial
 - Revision: R3.1, 2026-10-28
 - Owner: Loushang architecture；参与责任：HarnessWork、Harness Transcript/Session、Product composition、Goal 领域消费。
 - Current baseline: `5eadeb91ccee4e69618d99cf531f94739c76a453`
@@ -61,7 +61,7 @@ R3 替换 R2 将默认合同交给 Product 的候选分工，落实用户明确�
 ## 验证、再考虑条件与评审
 
 静态源码核查与 EV-01…16 见 HW-KD-003；固定 R3 独立三视角及 R3.1 关闭复核已完成，两项运行语义阻断关闭，数据风险保留实施前条件，详见[评审记录](../../harnesswork/key-designs/fact-retention-replay-review.md)。用户现已接受设计，不是实施验收；本轮未验证并发或性能收益。
-默认合同/策略 schema、Product 持久来源绑定、消费者迁移和读取入口映射未冻结，当前不是实施就绪规格。
+第一切片已冻结 v1 完整事实合同、策略 API 与旧 reader 矩阵并完成局部实施，见[交付记录](../../../plans/2026-10-29-work-recording-defaults.md)。Product 持久来源绑定、消费者迁移和来源读取入口仍须先冻结再实施。
 
 若出现不依赖原 Session 也必须独立携带全部审计内容的真实需求，应重新比较离线导出/保留快照与方案 B；
 若出现跨用户/跨机器共享或多个会话写入者需求，应重新界定部署与信任合同，而不是放宽原 writer lease。
@@ -72,4 +72,4 @@ R3 替换 R2 将默认合同交给 Product 的候选分工，落实用户明确�
 - 技术依据：三名独立 xhigh reviewer 对固定 R3 的评审及 R3.1 关闭复核，哈希与逐项处置见评审记录；RT-01/02 在语义层关闭。
 - 接受范围：本决定第 1–8 条与 HW-KD-003 R3.1 的架构语义，包括共享默认处理、Product 策略配置、事实归属/留存、三种读取用途、确认失败及交接取消语义、同机单 writer 共享、兼容激活与验证义务。范围仍为本地 Linux SDK、同一 OS 用户与授权存储。
 - 保留条件：API/schema、旧 reader/混合历史能力矩阵、持久来源绑定和留存承诺、消费者迁移与读取入口映射须在实施前细化并按原要求验证。该接受不表示这些细节已冻结，不扩大为跨用户/远程共享、自动恢复或性能收益承诺。
-- 当前交付：完成接受登记、路径/索引和差异台账同步；Implementation status 仍为 not-started，本轮未启动产品代码开发或新格式激活。
+- 当前交付：接受登记后，用户授权继续实施；显式 opt-in 的默认记录合同及确认查询已在独立分支实现并完成相关离线验证，尚未合入 main。Implementation status 为 partial，来源交接和共享 Transcript 未实施，不提前切换 Product 默认路径。

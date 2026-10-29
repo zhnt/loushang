@@ -19,6 +19,14 @@ from loushang.harnesswork.ports import (
     WorkExecutionBinding,
     WorkExecutionContext,
 )
+from loushang.harnesswork.recording import (
+    WorkRecording,
+    WorkRecordingContract,
+    _encode_contract,
+    _freeze_contract,
+    _RecordingObserver,
+    _require_version,
+)
 from loushang.harnesswork.types import (
     DeliveryHint,
     WorkCancellationOutcome,
@@ -27,6 +35,7 @@ from loushang.harnesswork.types import (
     WorkEvent,
     WorkEventFact,
     WorkOperation,
+    WorkRecordingPolicy,
     WorkRun,
     WorkRunSpec,
     WorkStepSpec,
@@ -90,6 +99,7 @@ class _RunState:
     run: WorkRun
     executor: WorkDomainExecutor
     cancellation: WorkDomainCancellation | None
+    recording_contract: WorkRecordingContract | None = None
     sequence: int = 0
     task: asyncio.Task[None] | None = None
     cancellation_task: asyncio.Task[WorkCancellationOutcome] | None = None
@@ -152,6 +162,8 @@ class WorkRuntime:
         cancellation: WorkDomainCancellation | None = None,
         resolver: WorkDomainExecutionResolver | None = None,
         cancellation_timeout: float | None = None,
+        recording_version: int | None = None,
+        recording_policy: WorkRecordingPolicy | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         if (executor is None) == (resolver is None):
@@ -160,6 +172,11 @@ class WorkRuntime:
             raise ValueError("resolver owns the per-operation cancellation capability")
         if cancellation_timeout is not None and cancellation_timeout <= 0:
             raise ValueError("cancellation_timeout must be positive")
+        if recording_version is not None:
+            _require_version(recording_version)
+        elif recording_policy is not None:
+            raise ValueError("recording_policy requires recording_version=1")
+        self._recording_policy = recording_policy or WorkRecordingPolicy()
         self._executor = executor
         self._cancellation = cancellation
         self._resolver = resolver
@@ -169,8 +186,10 @@ class WorkRuntime:
         self._replay_checkpoint = event_log.checkpoint()
         from loushang.harnesswork.run_projection import project_work_runs
 
-        historical_runs = project_work_runs(
-            event_log.query(), mark_incomplete_orphaned=True
+        history = event_log.query()
+        historical_runs = project_work_runs(history, mark_incomplete_orphaned=True)
+        self._recording = (
+            _RecordingObserver(history) if recording_version is not None else None
         )
         self._historical_runs = {run.run_id: run for run in historical_runs}
         self._historical_operation_runs = {
@@ -193,6 +212,15 @@ class WorkRuntime:
             )
         resolved_spec = spec or WorkRunSpec()
         _validate_spec(resolved_spec)
+        if self._recording is None and resolved_spec.recording_policy is not None:
+            raise ValueError("recording_policy requires recording_version=1")
+        recording_contract = (
+            _freeze_contract(
+                self._event_log, self._recording_policy, resolved_spec.recording_policy
+            )
+            if self._recording is not None
+            else None
+        )
         binding = self._resolve_execution(operation, resolved_spec)
         run_id = resolved_spec.run_id or f"run-{uuid4().hex}"
         if self._find_run(run_id) is not None:
@@ -215,6 +243,7 @@ class WorkRuntime:
             run=run,
             executor=binding.executor,
             cancellation=binding.cancellation,
+            recording_contract=recording_contract,
         )
         self._append_operation(state)
         self._states[run_id] = state
@@ -291,6 +320,19 @@ class WorkRuntime:
         if run is None:
             raise UnknownWorkRunError(f"unknown work run: {run_id}")
         return run
+
+    def get_recording(self, run_id: str) -> WorkRecording:
+        """Read append-confirmed or loaded facts, without business revalidation.
+
+        One append exception disables this owner's confirmation view, even when
+        later appends succeed. The existing get_run remains a live observation.
+        """
+        if self._recording is None:
+            raise ValueError("get_recording requires recording_version=1")
+        record = self._recording.get(run_id)
+        if record is None:
+            raise UnknownWorkRunError(f"unknown work run: {run_id}")
+        return record
 
     def get_cancellation(self, run_id: str) -> WorkCancellationRecord:
         """Read committed terminal evidence or an explicitly live snapshot.
@@ -762,6 +804,9 @@ class WorkRuntime:
 
     def _append_operation(self, state: _RunState) -> EventPosition:
         operation = state.operation
+        metadata: dict[str, object] = {"cancellation_observation_version": 1}
+        if state.recording_contract is not None:
+            metadata["recording"] = _encode_contract(state.recording_contract)
         return self._append_entry(
             EventLogEntry(
                 entry_id=f"{state.run.run_id}-operation-0",
@@ -775,7 +820,7 @@ class WorkRuntime:
                     "kind": operation.kind,
                     "domain": operation.domain,
                     "payload": dict(operation.payload),
-                    "_harnesswork": {"cancellation_observation_version": 1},
+                    "_harnesswork": metadata,
                 },
                 created_at=self._clock(),
             )
@@ -845,10 +890,15 @@ class WorkRuntime:
 
     def _append_entry(self, entry: EventLogEntry) -> EventPosition:
         try:
-            return self._event_log.append(entry)
+            position = self._event_log.append(entry)
         except BaseException:
             self._cancellation_observation_unavailable = True
+            if self._recording is not None:
+                self._recording.invalidate()
             raise
+        if self._recording is not None:
+            self._recording.observe(entry)
+        return position
 
     def _lifecycle_payload(
         self, state: _RunState, payload: Mapping[str, object]

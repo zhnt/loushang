@@ -125,6 +125,17 @@ class WorkStepSpec:
 
 
 @dataclass(frozen=True)
+class WorkRecordingPolicy:
+    """Retention requirement; all published facts remain mandatory in v1."""
+
+    require_persistence: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.require_persistence) is not bool:
+            raise ValueError("require_persistence must be a bool")
+
+
+@dataclass(frozen=True)
 class WorkRunSpec:
     """Work-owned lifecycle metadata supplied when an operation is accepted."""
 
@@ -135,6 +146,7 @@ class WorkRunSpec:
     run_event_payload: Mapping[str, object] = field(default_factory=dict)
     scope_event_payload: Mapping[str, object] = field(default_factory=dict)
     steps: tuple[WorkStepSpec, ...] = ()
+    recording_policy: WorkRecordingPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -223,6 +235,7 @@ __all__ = [
     "WorkRun",
     "WorkRunStatus",
     "WorkRunSpec",
+    "WorkRecordingPolicy",
     "WorkStepSpec",
     "WorkStepDeviation",
     "WorkStepRun",

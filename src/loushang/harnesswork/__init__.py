@@ -14,6 +14,7 @@ from loushang.harnesswork.types import (
     WorkEventFact,
     WorkOperation,
     WorkPlanRun,
+    WorkRecordingPolicy,
     WorkRun,
     WorkRunSpec,
     WorkRunStatus,
@@ -56,6 +57,13 @@ if TYPE_CHECKING:
         WorkSubscribePort,
         WorkWaitPort,
     )
+    from loushang.harnesswork.recording import (
+        WorkRecording,
+        WorkRecordingContract,
+        WorkRecordingFormatError,
+        WorkRecordingUnavailable,
+        WorkRecordingVersionError,
+    )
     from loushang.harnesswork.run_projection import (
         WorkRunReplayError,
         project_work_runs,
@@ -73,6 +81,23 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "WorkRecording": ("loushang.harnesswork.recording", "WorkRecording"),
+    "WorkRecordingContract": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingContract",
+    ),
+    "WorkRecordingFormatError": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingFormatError",
+    ),
+    "WorkRecordingUnavailable": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingUnavailable",
+    ),
+    "WorkRecordingVersionError": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingVersionError",
+    ),
     "WorkCancellationReplayError": (
         "loushang.harnesswork.cancellation_projection",
         "WorkCancellationReplayError",
@@ -191,6 +216,12 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "WorkRecording",
+    "WorkRecordingContract",
+    "WorkRecordingFormatError",
+    "WorkRecordingUnavailable",
+    "WorkRecordingVersionError",
+    "WorkRecordingPolicy",
     "ArtifactRef",
     "ArtifactStatus",
     "DeliveryHint",

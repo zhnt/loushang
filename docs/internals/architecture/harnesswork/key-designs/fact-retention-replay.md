@@ -2,12 +2,12 @@
 
 ## 状态与范围
 
-- Authority: normative — focused design；Design status: accepted；Implementation status: not-started。
+- Authority: normative — focused design；Design status: accepted；Implementation status: partial。
 - 修订：R3.1，2026-10-28。Owner：HarnessWork 事实合同；共同父级 Loushang architecture 协调 Harness、Coding/Product 与 Goal 的义务。
-- Current 基线：本地 main `5eadeb91ccee4e69618d99cf531f94739c76a453`。本文新增记录策略与引用交接尚未实现；具体 API/schema 仍待实施前冻结。
+- Current 基线：本地 main `5eadeb91ccee4e69618d99cf531f94739c76a453`。§2 保留该基线的盘点；2026-10-29 第一切片已实现默认记录合同及确认查询，来源交接仍未实现，见 §11。
 - 方法咨询：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。本文不复制方法规范。
 - 共同父级决定：[ARD-019](../../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。继承 [HarnessWork](../README.md)、[Harness owner map](../../harness/current-owner-map.md)、[Goal 组件](../goal/README.md)、[证据交接](evidence-handoff.md)与[升级兼容](../../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)的既有边界。
-- 用户于 2026-10-29 回复“可以，需要更新文档吗？”，接受已评审 R3.1 的架构语义及所列实施前条件。接受范围与证据见 ARD-019 的接受记录；本轮只同步文档，Implementation status 仍为 not-started。
+- 用户于 2026-10-29 回复“可以，需要更新文档吗？”，接受已评审 R3.1 的架构语义及所列实施前条件。接受范围与证据见 ARD-019 的接受记录；接受登记后用户授权继续实施；第一切片及验证见[实施记录](../../../plans/2026-10-29-work-recording-defaults.md)，尚未合入 main。
 
 ## 1. 需求与非目标
 
@@ -354,13 +354,13 @@ Goal 当前验收仍是独立的业务操作，使用后两类读取能力核查
 
 ## 11. 已接受 Target 与 Current 的差异
 
-以下只比较 ARD-019 于 2026-10-29 接受的语义，不把待冻结 API 名称或未选择方案列为已接受要求。Current 仍按 §2 的源码基线；本次文档接受没有改变代码。
+以下只比较 ARD-019 于 2026-10-29 接受的语义，不把待冻结 API 名称或未选择方案列为已接受要求。§2 为原源码盘点；以下 Current 另纳入 2026-10-29 `feat/work-recording-defaults` 的第一切片，尚未合入 main。
 
 | 能力 | Acceptance / 分类 | Current | 已接受 Target 与关闭依据 | Owner |
 | --- | --- | --- | --- | --- |
-| 共享缺省处理与策略冻结 | accepted / partial | 已有受理、运行、取消及事实记录；无新增有效合同合成与策略下限校验 | HarnessWork 默认可用，Product 可配置差异；EV-02/13/14 | HarnessWork |
+| 共享缺省处理与策略冻结 | accepted / partial | 已有 v1 published_facts 默认合同、Product 持久要求及单 Work 下限校验；Session 新来源默认仍待实施 | HarnessWork 默认可用，Product 可配置差异；EV-02/13/14 | HarnessWork |
 | 来源交接与同机复用 | accepted / partial | Transcript/Blob、单会话 writer、只读路径已有；Work 桥接仍复制正文，无标准持久来源合同 | 默认桥接与通用 reader 归共享层，内联回退、原授权和保留义务明确；EV-01/04/05/06/15/16 | HarnessWork 集成、Harness、Product |
-| 新合同记录确认视图 | accepted / missing | 旧 get_run 是活体观察；追加错误只使取消观察不可确认 | §6.5 的 ACK/受控冷读依据及错误后不可确认；EV-03 | HarnessWork 记录机制 |
-| 读取用途与兼容激活 | accepted / partial | 已有状态、query/subscribe 和领域验收；新合同读取用途、版本/reader 协商与访问成本尚未验证 | §6.3/6.4 与 §8；旧入口不降级，EV-07/08/10/11/12 | HarnessWork、Product 消费方 |
+| 新合同记录确认视图 | accepted / implemented（v1 切片） | 新 get_recording 按 ACK/loaded 返回记录状态，追加错误持续使 owner 确认不可用；旧 get_run 保持活体观察 | §6.5 的 ACK/受控冷读依据及错误后不可确认；EV-03 | HarnessWork 记录机制 |
+| 读取用途与兼容激活 | accepted / partial | v1 混合格式及旧 reader 已验证，热确认读取不扫描日志；来源追溯、完整审计和桥接迁移待实施 | §6.3/6.4 与 §8；旧入口不降级，EV-07/08/10/11/12 | HarnessWork、Product 消费方 |
 
-共通实施前义务仍见 §9；关闭以上差异需要实现与对应证据，不以本接受记录代替测试。该专项的新实现状态保持 not-started，与原有底座已实现部分分别记账。
+共通实施前义务仍见 §9；关闭以上差异需要实现与对应证据，不以本接受记录代替测试。第一切片的 API/schema、旧 reader/混合历史矩阵与离线验证已落实于[实施记录](../../../plans/2026-10-29-work-recording-defaults.md)。整体保持 partial；§9 的来源持久绑定、迁移和读取义务未因此关闭。
