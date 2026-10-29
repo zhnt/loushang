@@ -70,14 +70,14 @@ Product 的持久要求可在构造时配置；单 Work 的强化要求由 `Work
 | 基线 reader 兼容实验 | 使用 `5eadeb91c` 的原 JSONL reader 及 Run/Plan/取消 projector，读取旧→v1→回退旧的 3 个 run、每 run 两步骤；与当前投影一致，无重执行。原临时日志在产品树外；可复现探针已保存至 `scripts/dev/probe_work_recording_compatibility.py`，固定基线 SHA、临时生成输入并比较全部事件及三个投影 |
 | Ruff / 修改源码类型 | Ruff 通过；本次修改的 6 个源码文件 mypy 通过 |
 | 文档与架构 | 既有 9 项文档不变量、架构依赖图检查通过；本轮文档同步后另行复核链接 |
-| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；初次因共享 venv 的 mypy 启动脚本指向已删除目录而停止；修复本机启动脚本后 AI 全检查通过（937 passed）、Agent 154 passed。Coding 首轮 3382 passed / 565 failed，失败起点为 164 MiB runtime tmpfs ENOSPC，使用既有 LOUSHANG_RUNTIME_DIR 在私有磁盘目录重跑，565 项全部通过（382 deselected）；与首轮已通过的 3382 项合计 3947 项 Coding 用例通过。后续广泛检查尚待完成。未改检查触发器或新增路由 |
+| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；初次因共享 venv 的 mypy 启动脚本指向已删除目录而停止；修复本机启动脚本后 AI 全检查通过（937 passed）、Agent 154 passed。Coding 首轮 3382 passed / 565 failed，失败起点为 164 MiB runtime tmpfs ENOSPC，使用既有 LOUSHANG_RUNTIME_DIR 在私有磁盘目录重跑，565 项全部通过（382 deselected）；与首轮已通过的 3382 项合计 3947 项 Coding 用例通过。剩余路由结果已记录于 Transcript 引用切片交付文档；AppHost / AppService 有失败及未完成项，不宣称全绿。未改检查触发器或新增路由 |
 | 包级 mypy 补充检查 | 完整 HarnessWork 检查另有 cli / agent_session 共 20 项既有错误；与 main 同命令输出逐字相同。本次 6 文件检查通过，不声称整个包类型检查全绿 |
 
 全部 pytest 在沙箱外运行，不调用在线模型。热查询测试禁止 backend.query 后仍可按 run 获取确认状态；这是访问范围证据，不是吞吐/延迟 benchmark。受理、领域事实、终态各自覆盖写前/写后异常，后续成功写入不能解除原 owner 的不可确认状态。
 
 初始实施自查之后，已完成三名独立 xhigh agent 的实现评审。发现并修复 ACK 后 observer 普通异常隔离缺口，115 项 runtime 回归通过，原 reviewer 确认关闭；同时补 API 冷读前提和可复现兼容探针。详见[评审与关闭记录](../architecture/harnesswork/key-designs/fact-retention-replay-review.md)。
 
-当前可交付范围是显式启用的底座切片。尚无新合同的 Coding 默认装配交付；完整审计、稳定来源绑定、来源等待与取消组合、引用读取及流式裁剪仍为后续实施义务。
+当前可交付范围是显式启用的底座切片。后续[Transcript 引用切片](2026-10-29-work-transcript-references.md)已落实来源绑定、等待与取消、独立进程引用读取；普通 Coding 默认入口迁移、完整审计及流式裁剪仍未交付。广泛检查最终结果及尚未关闭的 Hosted 基线失败统一见该交付记录，不能据专项通过宣称全仓检查全绿。
 
 
 收尾复现命令：`PYTHONPATH=src /home/dev/lsspace/loushang/.venv/bin/python scripts/dev/probe_work_recording_compatibility.py`。按仓库异步验证规则在沙箱外运行；只产生临时日志，不访问网络或重放工具副作用。
