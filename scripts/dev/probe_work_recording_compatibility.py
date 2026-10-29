@@ -45,6 +45,32 @@ def baseline(name):
 class Executor:
     async def execute(self, operation, context):
         context.publish(WorkEventFact("CustomResult", {"step": context.step_id}))
+        if operation.operation_id == "v1":
+            identity = dict(
+                version=1,
+                binding_id="probe",
+                store_identity="probe-store",
+                conversation_id="probe-session",
+                handoff_id=f"{context.step_index}:0",
+            )
+            context.publish(
+                WorkEventFact(
+                    "WorkTranscriptReferenced",
+                    {
+                        "transcript_source": {
+                            **identity,
+                            "record_id": "probe-record",
+                            "branch_digest": "a" * 64,
+                        }
+                    },
+                )
+            )
+            context.publish(
+                WorkEventFact(
+                    "WorkTranscriptHandoffCompleted",
+                    {"handoff": {**identity, "record_ids": ["probe-record"]}},
+                )
+            )
 
 
 async def probe(path):
@@ -82,7 +108,7 @@ async def probe(path):
         old = getattr(baseline(name), function.__name__)(old_entries)
         assert old == function(new_entries), name
     print(
-        "baseline reader: 3 mixed runs, 2 steps each; run/plan/cancellation projections equal; no executor replay"
+        "baseline reader: 3 mixed runs, 2 steps each; run/plan/cancellation projections equal; including additive Transcript source facts; no executor replay"
     )
 
 

@@ -1,6 +1,6 @@
 # Work 默认记录与确认查询：第一交付切片
 
-- 状态：第一切片已实施，相关离线验证通过；尚未合入 main。分支 `feat/work-recording-defaults`。
+- 状态：第一切片已实施，相关离线验证通过；已本地合入 main（收尾提交 `d1bfefcea`）。分支 `feat/work-recording-defaults`。
 - 依据：[HW-KD-003 R3.1](../architecture/harnesswork/key-designs/fact-retention-replay.md)、[ARD-019](../architecture/decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。用户已授权继续实施；本切片不改变已接受语义。
 - 基线：产品 `5eadeb91c`，已接受设计提交 `a253869fc`。
 
@@ -70,7 +70,7 @@ Product 的持久要求可在构造时配置；单 Work 的强化要求由 `Work
 | 基线 reader 兼容实验 | 使用 `5eadeb91c` 的原 JSONL reader 及 Run/Plan/取消 projector，读取旧→v1→回退旧的 3 个 run、每 run 两步骤；与当前投影一致，无重执行。原临时日志在产品树外；可复现探针已保存至 `scripts/dev/probe_work_recording_compatibility.py`，固定基线 SHA、临时生成输入并比较全部事件及三个投影 |
 | Ruff / 修改源码类型 | Ruff 通过；本次修改的 6 个源码文件 mypy 通过 |
 | 文档与架构 | 既有 9 项文档不变量、架构依赖图检查通过；本轮文档同步后另行复核链接 |
-| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；初次因共享 venv 的 mypy 启动脚本指向已删除目录而停止；修复本机启动脚本后 AI 全检查通过（937 passed）、Agent 154 passed。Coding 首轮 3382 passed / 565 failed，失败起点为 164 MiB runtime tmpfs ENOSPC，正在使用既有 LOUSHANG_RUNTIME_DIR 在私有磁盘目录重跑失败项；不将环境失败计为产品通过。后续广泛检查尚待完成。未改检查触发器或新增路由 |
+| 全仓 change-aware 入口 | 已实际运行，文档/架构/AI lint 通过；初次因共享 venv 的 mypy 启动脚本指向已删除目录而停止；修复本机启动脚本后 AI 全检查通过（937 passed）、Agent 154 passed。Coding 首轮 3382 passed / 565 failed，失败起点为 164 MiB runtime tmpfs ENOSPC，使用既有 LOUSHANG_RUNTIME_DIR 在私有磁盘目录重跑，565 项全部通过（382 deselected）；与首轮已通过的 3382 项合计 3947 项 Coding 用例通过。后续广泛检查尚待完成。未改检查触发器或新增路由 |
 | 包级 mypy 补充检查 | 完整 HarnessWork 检查另有 cli / agent_session 共 20 项既有错误；与 main 同命令输出逐字相同。本次 6 文件检查通过，不声称整个包类型检查全绿 |
 
 全部 pytest 在沙箱外运行，不调用在线模型。热查询测试禁止 backend.query 后仍可按 run 获取确认状态；这是访问范围证据，不是吞吐/延迟 benchmark。受理、领域事实、终态各自覆盖写前/写后异常，后续成功写入不能解除原 owner 的不可确认状态。

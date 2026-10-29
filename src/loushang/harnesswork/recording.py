@@ -169,7 +169,19 @@ class _RecordingObserver:
         return record
 
 
+def project_work_recording(entries: Iterable[EventLogEntry], run_id: str) -> WorkRecording | None:
+    """Project one loaded run without constructing an executor or opening files.
+
+    Stop the writer and open a fresh backend before calling this for cold disk
+    evidence. A live backend cache does not establish append acknowledgement.
+    The caller owns this precondition; this pure projection grants no write or
+    replay permission and marks incomplete historical runs orphaned.
+    """
+    return _RecordingObserver(entries).get(run_id)
+
+
 __all__ = [
+    "project_work_recording",
     "WorkRecording",
     "WorkRecordingContract",
     "WorkRecordingFormatError",

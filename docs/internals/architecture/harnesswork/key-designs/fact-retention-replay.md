@@ -354,13 +354,13 @@ Goal 当前验收仍是独立的业务操作，使用后两类读取能力核查
 
 ## 11. 已接受 Target 与 Current 的差异
 
-以下只比较 ARD-019 于 2026-10-29 接受的语义，不把待冻结 API 名称或未选择方案列为已接受要求。§2 为原源码盘点；以下 Current 另纳入 2026-10-29 `feat/work-recording-defaults` 的第一切片，尚未合入 main。
+以下只比较 ARD-019 于 2026-10-29 接受的语义，不把待冻结 API 名称或未选择方案列为已接受要求。§2 为原源码盘点；以下 Current 另纳入 2026-10-29 `feat/work-recording-defaults` 的第一切片及 `feat/work-transcript-references` 的引用切片。第一切片已本地合入 main。
 
 | 能力 | Acceptance / 分类 | Current | 已接受 Target 与关闭依据 | Owner |
 | --- | --- | --- | --- | --- |
-| 共享缺省处理与策略冻结 | accepted / partial | 已有 v1 published_facts 默认合同、Product 持久要求及单 Work 下限校验；Session 新来源默认仍待实施 | HarnessWork 默认可用，Product 可配置差异；EV-02/13/14 | HarnessWork |
-| 来源交接与同机复用 | accepted / partial | Transcript/Blob、单会话 writer、只读路径已有；Work 桥接仍复制正文，无标准持久来源合同 | 默认桥接与通用 reader 归共享层，内联回退、原授权和保留义务明确；EV-01/04/05/06/15/16 | HarnessWork 集成、Harness、Product |
+| 共享缺省处理与策略冻结 | accepted / partial | 已有 v1 published_facts 默认合同、Product 持久要求及单 Work 下限校验；标准 Session 来源绑定已支持；旧装配默认不切换 | HarnessWork 默认可用，Product 可配置差异；EV-02/13/14 | HarnessWork |
+| 来源交接与同机复用 | accepted / partial | Transcript/Blob、单会话 writer、只读路径已有；标准桥接已增量交接版本化引用、冻结期限和预期 prompt 集合，共享 reader 可受控冷读；仍保留原正文 | 默认桥接与通用 reader 归共享层，内联回退、原授权和保留义务明确；EV-01/04/05/06/15/16 | HarnessWork 集成、Harness、Product |
 | 新合同记录确认视图 | accepted / implemented（v1 切片） | 新 get_recording 按 ACK/loaded 返回记录状态，追加错误持续使 owner 确认不可用；旧 get_run 保持活体观察 | §6.5 的 ACK/受控冷读依据及错误后不可确认；EV-03 | HarnessWork 记录机制 |
-| 读取用途与兼容激活 | accepted / partial | v1 混合格式及旧 reader 已验证，热确认读取不扫描日志；来源追溯、完整审计和桥接迁移待实施 | §6.3/6.4 与 §8；旧入口不降级，EV-07/08/10/11/12 | HarnessWork、Product 消费方 |
+| 读取用途与兼容激活 | accepted / partial | v1 混合格式及旧 reader 已验证，热确认读取不扫描日志；来源追溯及新增事实旧 reader 已验证；完整审计与正文裁剪/入口迁移待实施 | §6.3/6.4 与 §8；旧入口不降级，EV-07/08/10/11/12 | HarnessWork、Product 消费方 |
 
-共通实施前义务仍见 §9；关闭以上差异需要实现与对应证据，不以本接受记录代替测试。第一切片的 API/schema、旧 reader/混合历史矩阵与离线验证已落实于[实施记录](../../../plans/2026-10-29-work-recording-defaults.md)。整体保持 partial；§9 的来源持久绑定、迁移和读取义务未因此关闭。
+共通实施前义务仍见 §9；关闭以上差异需要实现与对应证据，不以本接受记录代替测试。第一切片的 API/schema、旧 reader/混合历史矩阵与离线验证已落实于[实施记录](../../../plans/2026-10-29-work-recording-defaults.md)。整体保持 partial；第二切片已关闭原库绑定、逐 prompt 交接和同机冷读的本轮范围，详见 [HW-KD-004](transcript-references.md)；正文裁剪、完整审计、其他 Product 清理接入与入口迁移仍待真实场景验证。

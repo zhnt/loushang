@@ -30,7 +30,8 @@ typed result 或 crash recovery 当作现有能力。
 
 已接受的新设计：[HW-KD-003：Work 事实留存、重放与 Transcript 共享合同](key-designs/fact-retention-replay.md)。
 R3.1 于 2026-10-29 获用户接受：HarnessWork 提供默认处理、Product 按需配置策略，事实权威与三种读取用途明确；跨 scope 决定见
-[ARD-019](../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。第一切片已实施显式启用的默认记录合同与确认查询，见[实施记录](../../plans/2026-10-29-work-recording-defaults.md)；尚未合入 main。
+[ARD-019](../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。第一切片已实施显式启用的默认记录合同与确认查询，见[实施记录](../../plans/2026-10-29-work-recording-defaults.md)，已本地合入 main。
+第二切片已实现增量来源引用，见 [HW-KD-004](key-designs/transcript-references.md) 与[交付记录](../../plans/2026-10-29-work-transcript-references.md)。真实 Coding SDK 的三次 prompt 已交接，另进程可冷读原记录；未裁剪旧正文。
 旧默认捕获、Product 保留策略 owner 和已接受 Goal 组件保持原合同；来源交接等剩余差异见专项 §9/§11。
 独立三视角及两项运行语义问题的关闭复核见[评审记录](key-designs/fact-retention-replay-review.md)；
 无剩余架构语义阻断，格式兼容与持久绑定等实施前条件仍保留。

@@ -63,6 +63,7 @@ if TYPE_CHECKING:
         WorkRecordingFormatError,
         WorkRecordingUnavailable,
         WorkRecordingVersionError,
+        project_work_recording,
     )
     from loushang.harnesswork.run_projection import (
         WorkRunReplayError,
@@ -81,6 +82,7 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "project_work_recording": ("loushang.harnesswork.recording", "project_work_recording"),
     "WorkRecording": ("loushang.harnesswork.recording", "WorkRecording"),
     "WorkRecordingContract": (
         "loushang.harnesswork.recording",
@@ -222,6 +224,7 @@ __all__ = [
     "WorkRecordingUnavailable",
     "WorkRecordingVersionError",
     "WorkRecordingPolicy",
+    "project_work_recording",
     "ArtifactRef",
     "ArtifactStatus",
     "DeliveryHint",

@@ -131,6 +131,11 @@ class _ExecutionContext(WorkExecutionContext):
         return self.state.run.run_id
 
     @property
+    def cancellation_requested(self) -> bool:
+        """Optional observation of the original synchronous cancellation admission."""
+        return self.state.cancellation_requested
+
+    @property
     def step_id(self) -> str | None:
         step = self.state.current_step
         return step.step_id if step is not None else None
