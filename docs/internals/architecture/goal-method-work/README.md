@@ -18,10 +18,12 @@
 
 ## 概念与职责定位
 
+2026-10-30 新接入专项（候选、待用户评审）：[Goal 执行上下文与 Work 来源记录](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent，第一切片仅设计 Coding Goal 对已交付记录/来源机制的接入，不新增执行器或控制树。
+
 Work 记录与 Goal 完成依据的已接受协同设计见
 [HW-KD-003：事实留存、重放与 Transcript 共享](../harnesswork/key-designs/fact-retention-replay.md)。
 其 R3.1 明确共享默认处理与 Product 策略配置，并提出来源/留存及读取合同：Goal 继续声明并核验所需依据，Work 记录合同不能静默删去这些依据；
-原文与用量仍由 Transcript 保存。便宜的状态快照不等于当前验收。用户于 2026-10-29 接受 R3.1 的架构语义及所列实施前条件；底座的默认记录合同/确认查询[第一切片](../../plans/2026-10-29-work-recording-defaults.md)已局部实施，尚未合入 main；不改变本目录既有 Goal 状态机与已交付范围。
+原文与用量仍由 Transcript 保存。便宜的状态快照不等于当前验收。用户于 2026-10-29 接受 R3.1 的架构语义及所列实施前条件；底座的默认记录合同/确认查询[第一切片](../../plans/2026-10-29-work-recording-defaults.md)及[Transcript 引用切片](../../plans/2026-10-29-work-transcript-references.md)已本地合入 main；Coding Goal 接入仍为上述新专项，不改变既有 Goal 状态机与已交付范围。
 
 > Goal 保存目标和完成依据；模型提出实施计划；Method 规定所选工作的契约；Skill 提供局部专业指导；Work 执行并记录实际结果。
 
