@@ -287,7 +287,10 @@ def _recovery_interaction(driver, *, create, historical=None):
 def _run_observation(tmp_path, case, *, timeout=90):
     repository = Path(__file__).resolve().parents[2]
     root = tmp_path / "observation"
-    root.mkdir()
+    # This directory is also the shared Session Blob data root. The native
+    # writer requires it not to be group/world writable; do not let a caller's
+    # cooperative umask turn the test-owned root into an unsafe Product input.
+    root.mkdir(mode=0o700)
     probe = tmp_path / "test_entry_probe.py"
     probe.write_text(
         "from pathlib import Path\n"

@@ -35,3 +35,7 @@ Embedded 回归额外覆盖 legacy / dormant / empty 历史，以及 on_demand /
 登记复用既有 HarnessWork 模块检查及 Ubuntu runner，不新增 workflow、job、平台、触发器或 targeted route。该文件单独变更时，计划只选择既有 HarnessWork 单分片模块检查和文档检查，不触发 E2E；模块命令中该测试只执行一次。它与现有 Session bridge 测试共享装配合同范围，但新增文件已有的断言专门覆盖 Transcript 引用交接，不额外重复安排来源存储或 SDK 场景。
 
 验证：普通及 PR-fast 检查计划均生成成功；既有 CI 回归 144 项及引用合同 19 项共 163 项通过，用时 4.02 秒（本机合计观察，不是 CI 时延保证）。Actions 语法检查（actionlint v1.7.12，使用本地缓存离线构建，参数与现有 CI 一致）、9 项文档不变量及变更文档链接检查通过。完整性校验保持启用，其他未登记文件仍会被拒绝。若撤回该引用测试，应同步撤回对应分类；单独删除分类会恢复本次错误，不应关闭完整性校验来规避。
+
+## 2026-10-30 后续：终端与恢复样本复核
+
+原 cwd / user_home 进程退出恢复用例均通过。剩余首次创建和样本日志预期问题已分别定位为测试目录权限与 eager-only 断言，并在测试侧修正；没有改变恢复参与集合规则或放宽 Product 校验。定向和广泛离线检查结果见 [Hosted 恢复检查收尾](2026-10-30-hosted-recovery-validation.md)。

@@ -1529,13 +1529,25 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         and (sys.platform != "win32" or parts[4] == "product-private")
         and parts[-1] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
     }
-    assert len({path.parent for path in decision_files}) == 1, (
-        "Coding startup decision roots changed: "
-        + repr(sorted(str(path.relative_to(root)) for path in decision_files))
+    from loushang.coding._capability_plugin_specs import CODING_CAPABILITY_PLUGIN_IDS
+
+    capability_selected = any(
+        revision["pluginId"] in CODING_CAPABILITY_PLUGIN_IDS
+        for revision in startup_data["selectedRevisions"]
     )
-    assert {path.name for path in decision_files} == {
-        "activation-decisions.jsonl", "definition-decisions.jsonl"
-    }, "Coding startup decision workload changed"
+    # A dormant on-demand capability has no startup effects to journal.
+    # Derive the expected workload from the validated receipt, not today's
+    # configuration, and retain the exact inventory for eager startup.
+    if capability_selected:
+        assert len({path.parent for path in decision_files}) == 1, (
+            "Coding startup decision roots changed: "
+            + repr(sorted(str(path.relative_to(root)) for path in decision_files))
+        )
+        assert {path.name for path in decision_files} == {
+            "activation-decisions.jsonl", "definition-decisions.jsonl"
+        }, "Coding startup decision workload changed"
+    else:
+        assert not decision_files, "dormant startup has unexpected capability decisions"
     allowed = {application, session_path, index_path, store_path} | decision_files
     checked = (
         [
@@ -1581,6 +1593,7 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
             "restoration_index": "complete-current",
             "store_head": "complete-current",
             "session_directory_index": "absent",
+            "capability_decisions": "eager" if capability_selected else "dormant",
             "header_version": header.version,
             "header_metadata": metadata,
             "asset_lock_count": sum(

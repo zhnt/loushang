@@ -71,7 +71,7 @@ pytest / 异步 SDK 探针均按项目规则在沙箱外运行。没有新增 CI
 | AppHost（引用切片之前的基线） | 473 passed、1 skipped、2 failed；发现失败后主动中断，余项未完成 |
 | AppService（引用切片之前的基线） | 1154 passed、5 skipped、10 failed；发现失败后主动中断，余项未完成 |
 
-因此本次专项交付通过，不宣称全仓检查全绿。AppHost / AppService 未完成部分、其他平台和在线模型路径不在已验证范围。广泛检查日志分别保存在本机 `/tmp/work-closeout-<scope>.log`，机器临时日志不作为长期交付保证。
+当时专项交付通过，但未宣称全仓检查全绿。AppHost / AppService 未完成部分已在下述 2026-10-30 收尾中补跑通过；其他平台和在线模型路径仍不在已验证范围。前次广泛检查日志分别保存在本机 `/tmp/work-closeout-<scope>.log`，机器临时日志不作为长期交付保证。
 
 失败后续项（不放宽恢复校验来绕过）：
 
@@ -81,5 +81,7 @@ pytest / 异步 SDK 探针均按项目规则在沙箱外运行。没有新增 CI
 3. **恢复样本检查的 startup decision roots 预期。** `test_measure_g18_native.py` 六项失败，表现为根集合为空及解包失败；发生在引用切片之前的检查中，尚未完成根因分析，不归类为容量故障。
 
 第一切片 Coding 的 ENOSPC 已经通过磁盘目录重跑关闭；不能用那次环境故障解释上述失败。引用功能仍为显式接入，未修改 Hosted 恢复装配路径。
+
+2026-10-30 收尾：上述第 2、3 项已定位并修正。cwd / user_home 进程退出恢复用例通过，确认受益于 LSP 参与判定修复；首次创建失败来自测试自建 Blob 根在 `umask=0002` 下可被同组用户写入，已将该测试目录明确设为 `0700`；恢复样本改为按原 startup receipt 区分 dormant / eager，同时保留 eager 缺日志拒绝检查。完整新建/取消恢复/再次启动用例及 18 项恢复样本检查通过。合并去重后的既有 AppHost / AppService 离线路由完整补跑：2662 passed、16 skipped、零失败，遗留检查关闭。详见[Hosted 恢复检查收尾](2026-10-30-hosted-recovery-validation.md)；以上表格保留前次检查的历史结果。
 
 边界：来源消息可读不等于附件字节可读，不等于完整审计，也不等于 Goal 当前验收通过。附件继续由原 Blob reader 核验；后续删除来源不会使历史完成自动变成当前有效。
