@@ -76,6 +76,7 @@ pytest / 异步 SDK 探针均按项目规则在沙箱外运行。没有新增 CI
 失败后续项（不放宽恢复校验来绕过）：
 
 1. **V2 Resume 的 dormant LSP owner 集合不一致。** stdio 恢复实测捕获 `CodingResourceCatalogAdmissionError(reasons=["resume_plugin_participation_changed"])`，且不含引用切片的 main 可复现失败。`embedded_resume._capability_plugins_enabled` 将 on-demand LSP 计入参与者，Hosted 据此冻结两项插件 owner；bootstrap 按历史 startup receipt 将未选中 LSP 的会话延迟装配，期望集合为空，严格比较拒绝。应在独立修复中统一 Hosted / Embedded 与 bootstrap 的 receipt 判定，保留严格匹配，覆盖 dormant、历史 eager/无 receipt、disabled、输入只提交一次及清理。比较依据变化来自已有提交 `1f5d9d129`（#798）。
+   2026-10-30 后续：本项的参与判定已由共享代码规则修复，原 stdio 恢复失败用例通过；范围和验证见[修复记录](2026-10-30-resume-dormant-lsp.md)。以下两项并未据此关闭。
 2. **终端恢复与首次创建异常。** `test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch` 在首次创建时遇到 `snapshot_required`；`test_G16_PRODUCT_TERMINAL_process_death_recovers_history_not_execution` 的 cwd/user_home 两项恢复等待超时。首次创建也在 main 重现；这些失败尚未证明与上项同因。
 3. **恢复样本检查的 startup decision roots 预期。** `test_measure_g18_native.py` 六项失败，表现为根集合为空及解包失败；发生在引用切片之前的检查中，尚未完成根因分析，不归类为容量故障。
 
