@@ -35,6 +35,25 @@ def test_workspace_read_tool_executes_without_product_adapter(tmp_path: Path) ->
     assert result.details["path"] == str(target.resolve())
 
 
+def test_workspace_read_missing_file_suggests_recovery(tmp_path: Path) -> None:
+    """[#125] The failure must name the path and tell the model how to recover."""
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    tool = wrap_tool_definition(
+        create_read_tool_definition(),
+        context_provider=_context_provider(tmp_path),
+    )
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        asyncio.run(tool.execute("read-missing", {"path": "missing.py"}))
+
+    message = str(exc_info.value)
+    assert "missing.py" in message
+    assert "list the parent directory" in message
+    assert "rg --files" in message
+
+
 def test_workspace_read_prefers_the_session_consumer_without_overriding_explicit_ops(
     tmp_path: Path,
 ) -> None:

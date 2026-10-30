@@ -322,13 +322,24 @@ def _resolve_image_resizer(options: ReadToolOptions | None) -> ReadImageResizer:
     return PillowReadImageResizer()
 
 
+_MISSING_FILE_HINT = (
+    "Before retrying this path, list the parent directory or search for the "
+    "actual file (for example `rg --files`); do not retry the same guess."
+)
+
+
+def _missing_file_message(path: Path) -> str:
+    """A missing-file error with the recovery step the model should take next."""
+    return f"File not found: {path}\n{_MISSING_FILE_HINT}"
+
+
 async def _read_file_payload(
     resolved: Path,
     *,
     operations: ReadOperations,
 ) -> bytes:
     if not await resolve_operation(operations.exists(resolved)):
-        raise FileNotFoundError(str(resolved))
+        raise FileNotFoundError(_missing_file_message(resolved))
     if not await resolve_operation(operations.is_file(resolved)):
         raise IsADirectoryError(str(resolved))
     return await resolve_operation(operations.read_bytes(resolved))
