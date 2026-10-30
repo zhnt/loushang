@@ -43,6 +43,8 @@ loushang -p "Inspect this repository and summarize what it does."
 
 You can also run `make bootstrap`, which creates `.venv/` with `uv` and installs the project in editable development mode. The Makefile does not currently provide a `make install` target; use `make bootstrap` for local development or `make install-binary` for a local binary install.
 
+Before the first online run, set a provider API key in the environment; [Getting Started](./docs/en/getting-started/#configure-a-provider-credential) lists the variable for each built-in provider.
+
 For local development in this repository, use the project virtual environment in `.venv/`.
 
 ## Core Concepts
