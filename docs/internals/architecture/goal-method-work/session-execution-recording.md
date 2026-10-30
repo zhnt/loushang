@@ -1,7 +1,7 @@
 # GMW-KD-SESSION-01：Goal 执行上下文与 Work 来源记录接入
 
 - Authority: proposed；Design status: draft；Implementation status: not-started。
-- Revision: R1，2026-10-30。Owner：Coding 装配；共同父级：Loushang architecture；协作方：HarnessWork Session 集成、Harness Session/Transcript/Multiagent。
+- Revision: R2.1，2026-10-30。Owner：Coding 装配；共同父级：Loushang architecture；协作方：HarnessWork Session 集成、Harness Session/Transcript/Multiagent。
 - 源码基线：`2d6ed6d64`；方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 用户已同意三种执行需求、区分执行者与上下文、优先复用原 Session，再扩展子 agent；明确要求尽可能复用已有能力。本稿细化机制，重要工作件仍按[本包评审约定](README.md#用户评审检查点)交用户评审，不将原则认可扩大为全部接口接受。
 - 继承 [Goal 最小闭环](minimum-loop-architecture.md)、[Goal 组件边界](../harnesswork/goal/README.md)、[HW-KD-003](../harnesswork/key-designs/fact-retention-replay.md)、[HW-KD-004](../harnesswork/key-designs/transcript-references.md) 及 [Multiagent 边界](../harness/multiagent/README.md)。不改变这些组件的状态权威。
@@ -76,9 +76,13 @@ flowchart LR
 
 候选接口为 `CodingGoal.open(..., transcript_retained_until: datetime | None = None)`，UTC-aware 截止时间显式提供；None 保持无来源绑定。新装配的 WorkRuntime 使用原 `recording_version=1` 和持久要求，所有实际发布事实仍保留。共享机制有缺省处理，Product 不必为每批 Work 写分类器或合同。
 
+持久要求设置在 Product 的 WorkRuntime recording_policy 上；现有 Goal 候选/dispatch 重建 spec 不透传逐批 recording_policy，本轮不依赖它，也不为接入而改 Goal core 的 spec 合同。
+
 有期限时，Product 从原 Session manager 获取实际 session_file，从同一 SDK 平台装配取得原 store_state_root；创建原 TranscriptSourceReader，再用 WorkTranscriptSource.bind 冻结身份。binding_id 固定由本 Product 命名空间和 session_id 派生，不使用模型输入。reader 一经创建即登记在 owner，后续构造失败也能经原 GoalConstructionError 保留并清理。
 
-任务专属 data_root 的 Session、原 admission 和必要 Blob 必须在承诺截止前保留；关闭 owner 只关闭句柄，不删除文件。不接入普通 Session 自动清理，不默认永久保留。过期后禁止新受理有来源合同的工作；在已受理执行中到期沿原交接错误失败，不自动延长、不重新执行。更长的新期限只能用于后续 Work，不能修改历史冻结承诺；无期限的新装配不得把旧来源 Work 声称为仍有来源保证。
+任务专属 data_root 的 Session、原 admission 和必要 Blob 必须在承诺截止前保留；关闭 owner 只关闭句柄，不删除文件。不接入普通 Session 自动清理，不默认永久保留。Coding 仅对本候选绑定了来源的模型工作，在准备及原两次 confirm_candidate 中对同一冻结来源调用 source.check：准备时过期返回原 PolicyStop；intent 前确认不通过走原 candidate_outdated 暂停；intent 后确认不通过写原 batch_not_submitted，不 accept。静态 InspectionWork / VerifyCodingCommand 无来源合同，不受这项检查限制；Product 不因全局 source 到期而拒绝它们。更长的新期限只能用于后续 Work，不能修改历史冻结承诺；无期限的新装配不得把旧来源 Work 声称为仍有来源保证。
+
+以上是明确检查点的保证，不承诺时钟与 Work accept 原子化。确认后仍可能在受理/调度期间跨过截止；共享 SessionTurnExecutor 在每轮 before_turn 返回并检查取消之后、调用 prompt 之前再次调用已有 source.check（仅来源已绑定时）。执行前发现过期使本次已受理 Work 失败，不调用该轮模型；已开始 prompt 后到期沿原 report/read 检查失败，不自动延长、不重执行，也不回滚已发生的模型/工具动作。此通用执行前检查属于原 Session 来源职责，不放进 Goal core 或 Product 私有循环；未绑定路径保持原行为。
 
 旧记录和原 Goal 格式不重写；同一日志可有 legacy 和 v1。无来源的新 Work 与旧 Work 都不得因为没有引用而标为来源完整。现有模型规划拒绝 reopen 的限制保持；固定 Method profile 的既有 reopen 按原规则处理。
 
@@ -87,6 +91,8 @@ flowchart LR
 在 `harnesswork.integrations.session` 抽取 `prepare_session_work_source`（候选名称），输入原 operation、spec、原 Session 对象、标准 SessionTurnExecutor 和已绑定 WorkTranscriptSource，返回替换后的 operation/executor。沿用现有检查：精确标准 executor、同一 Session 对象、匹配 session_id、保留键冲突、steps 与 turns 逐项对应、完整 follow-up 数量。调用 source.contract 冻结原 v1 handoffs；不读取文件、受理 Work 或执行 prompt。
 
 `SessionWorkRuntime.accept_operation` 调用同一函数，保留其活动 Work 闸门。Coding Goal 在构造 WorkCandidate **之前** 调用它，再组装 ScopedSessionWork / PlanningWork 等包装，把最终绑定放入原 prepared 表。Goal 写入意图前所见 operation 就包含来源合同；resolver 不临时修改 payload，也不在 accept 之后补合同。包装器必须将原 operation/context 交给内层，不改变实际 prompt/steps。
+
+规划装配有一项必需的表示适配：当前 executor 使用 `turn=turn`，spec 却包含一个 `planning` step，原 _expected_handoffs 会拒绝。本轮将其改为 `turns=(turn,)`，与原单步 spec 对齐，预期组为 `0:0`、step_id 为 `planning`；原 prompt、plan_id、工具/预算包装及响应证明保持。不得通过删掉 planning step 或放宽共享检查来接通。Goal journal 的 batch_intent 仍只保存原批次关联及 Product source，不宣称它持久复制了完整 operation；来源合同持久权威仍是随后原 Work 的受理记录。
 
 不通过鸭子类型追踪 `delegate` 来自动发现执行器；Product 在装配标准 executor 的位置显式调用。无法提前冻结的动态 prompt 不纳入来源保证，若以后需要须另定合同，不能伪装为已覆盖。本轮沿原 profile 的受控输入边界；异步 steer/follow 输入不自动算作冻结清单内独立 prompt，来源交接只证明该清单中捕获并验证的记录。
 
@@ -103,13 +109,17 @@ flowchart LR
 
 ### 5.4 冷读与资源关闭
 
-沿现有 inspect_goal 的“停止 writer 后只读”使用前提增加异步来源读取入口（候选 `read_goal_work_sources`），不改其同步业务验收接口。调用方提供原 data_root、session_id 和原 store_state_root 的可信 Product 配置；从原 Goal 批次、Work 日志及现有 Session 文件布局解析匹配，不从日志中的路径选库，不新写 binding.json 或来源索引。唯一文件选择和 conversation 核验失败时报告未知/不可验证，不搜索其他库兜底。
+沿现有 inspect_goal 的“停止 writer 后只读”使用前提增加异步来源读取入口（候选 `read_goal_work_sources`），不改其同步业务验收接口。调用方提供原 data_root、session_id、goal_id，并持有/注入原 TranscriptSourceReader。reader 使用调用方可信 Product 配置中的实际 session_file、conversation_id 和原 store_state_root；文件名来自原 Session manager / 现有布局读取，不从 Work 日志中的路径选库，不新写 binding.json 或来源索引。函数核对 Goal/Work 关联及配置的会话，再由共享 reader 验证实际库、header、固定记录及父链；不搜索其他库兜底。
 
 对每批复用 project_work_recording → project_work_transcript → resolve_work_transcript。以原冻结 binding_id/期限重建 reader 绑定并比较实际 store identity；Work 合同不能授予读取权限。不产生来源合同的批次统一报告 `not_declared`，由原 phase 说明其是否为静态检查/命令验证；不能把未知 phase 或少合同标成“完整”。已有合同缺组返回原 missing_handoffs；格式、身份、期限、来源读取错误均明确失败，不能吞掉后返回完整。
 
-首版来源读取返回原共享投影/解析对象及批次关联，不另发持久视图格式。每个 Work 的解析沿原实现批量读同一来源；多 Work 仍可能多次读完整文件，本轮不声称一次全 Goal 扫描或消除写放大，不为此新建缓存/索引。
+`not_declared` 只用于已成功读取并核实关联的有效 Work：找不到原 Work、关联冲突、日志损坏必须报告 unresolved/错误，不能降级成未声明。原 batch_not_submitted 单独表示未提交，并核对没有相矛盾的 Work；不制造缺省 run。复用现有 inspect_goal 的关联规则，若需共享则抽取 Product 私有纯核对函数供两入口调用，不维护第二份批次状态或映射。
 
-关闭顺序：原 begin_close → 查询/策略回调静止 → Work executor 与交接 settled → 关闭来源 reader → 关闭原 SDK/Session → retire Goal → 原 Goal writer 最后关闭。reader 关闭失败保留 owner、依赖及清理凭据，后续 close 重试；不提前释放 Session。冷读入口自身在 finally 关闭 reader，取消仍沿原 settled I/O；关闭失败保留可重试 owner，不把异常隐藏为成功。无第二套取消驱动或固定等待时间。
+首版来源读取返回原共享投影/解析对象及批次关联，不另发持久视图格式。每个有合同的 Work 分别按其原冻结期限构造 WorkTranscriptSource（复用同一个注入 reader），不得将最新 Work 的期限套到所有历史。bind 只核库身份，实际 resolve 必须 read 后才能声称记录可验证。每个 Work 的解析沿原实现批量读同一来源；多 Work 仍可能多次读完整文件，本轮不声称一次全 Goal 扫描或消除写放大，不为此新建缓存/索引。
+
+关闭顺序：原 begin_close → 查询/策略回调静止 → Work executor 与交接 settled → 关闭来源 reader → 关闭原 SDK/Session → retire Goal → 原 Goal writer 最后关闭。reader 关闭失败保留 owner、依赖及清理凭据，后续 close 重试；不提前释放 Session。
+
+冷读函数只借用调用方持有的 reader，不创建隐藏 reader，也不取得其关闭权。调用方在读取成功、失败或取消后统一 await reader.aclose；若清理失败，继续保留该 reader 及所需资源，后续对同一对象重试。读取错误与清理错误均须保留，清理异常不得伪装为读取成功；复现脚本不得只依赖函数局部临时对象或吞掉 finally 错误。函数本身关闭自己打开的原 Goal 只读 owner；不能将这个 owner 与借用 reader 混为同一寿命。取消仍由共享 settled I/O 收敛，无第二套取消驱动或固定等待时间。
 
 ```mermaid
 sequenceDiagram
@@ -141,15 +151,17 @@ sequenceDiagram
 | --- | --- | --- |
 | GS-01 | 同一真实 SDK Session，多批规划/Method/验证 Work；不同 operation/run、相同会话，记录确认可读 | 现有 Coding Goal 与 Work 测试；真实离线 SDK 纵向场景 |
 | GS-02 | 普通 SessionWorkRuntime 与直接 WorkRuntime 使用同一准备规则；错 Session、保留键和缺步骤受理前拒绝 | 现有 HarnessWork Session 集成测试 |
-| GS-03 | 模型规划与 Method 包装保留权限、取消、回复证明及所有交接；原验证不生成伪消息 | 现有 Goal planning/Method/verification 回归，不改变允许工具 |
-| GS-04 | 写入成功后追加失败、取消发生于交接、部分引用、少最后一组：不得返回完整；关闭重试保留依赖 | 原注入故障与取消测试加装配回归 |
+| GS-03 | 规划使用单元素 turns 保持 planning step 和 `0:0` 交接；Method 包装保留权限、取消、回复证明及全部预期组；原验证不生成伪消息 | 现有 Goal planning/Method/verification 回归，不改变允许工具 |
+| GS-04 | 写入成功后追加失败、取消发生于交接、部分引用、少最后一组：不得返回完整；关闭重试保留依赖。分别覆盖准备时、准备后intent前、intent追加期间、确认后/下一prompt前和prompt内到期 | 原注入故障与取消测试加装配回归；按§5.1分别断言 PolicyStop、candidate_outdated、not_submitted、已受理failed及未重复执行；无来源静态/验证工作不被期限拦截 |
 | GS-05 | 停 writer 后，新进程通过原授权读取全部有合同批次；错库/缺失/损坏/过期拒绝且没有模型或工具执行 | 原共享 reader 与 SDK 进程测试；不新增独立 decoder |
 | GS-06 | legacy / 无绑定 / 绑定 v1 混合历史；新 Work 不修改旧合同或 Goal 业务完成记录；旧读者仍可读原事实 | 已有兼容 probe 与定向 Goal 检查 |
 | GS-07 | 无 prompt 的验证保持原证据；来源可读与目标 current 独立，代码变化仍使业务验收过期 | 原 Goal 当前性/证据回归 |
 | GS-08 | 首版不启用 child；设计明确 none/all/last、临时子 Session、权限和 workspace 的复用边界 | 源码及三视角设计评审；不宣称已完成 Goal 子执行集成 |
+| GS-09 | 冷读成功/失败/取消后 aclose 失败，调用方仍持有同一 reader 可重试；原读取异常不丢失、依赖不先释放 | 原 reader 清理故障注入与 Product 装配检查 |
+| GS-10 | repair 中 prompt 内消费输入、handoff 中新输入、残留 pending input；不生成额外虚构交接组，不宣称动态输入完整审计 | 原 steer/follow 与 Goal 受控输入回归，加来源观察断言 |
 
 本次工作为设计与静态取证，未运行上述测试、未调用在线模型、未新增 PR gate。首版可用离线流验证记录与真实 SDK 资源路径；若现有模型规划 profile 禁止注入离线流，应在其已有测试接缝替换传输，不放宽产品 profile；真实模型运行另按用户已授权的实际验证范围进行。
 
 ## 7. 评审与接受
 
-待三视角独立核查：职责与复用、运行与失败、数据与兼容；包含 Coding、HarnessWork、Harness 协作及共同父级视角。评审必须区分设计闭合和实际测试，不能替缺失机制补造解释。内部评审结果落在配套记录；本稿系统环境及资源/接口决定需用户评审后，才实施第一切片。
+三视角独立核查：职责与复用、运行与失败、数据与兼容；包含 Coding、HarnessWork、Harness 协作及共同父级视角。R1 的期限判定、冷读 owner 交付及规划 step/turn 装配问题已在 R2 明确机制；R2.1 进一步明确仅有来源合同的候选检查期限，并补全到期结果断言。评审必须区分设计闭合和实际测试，不能替缺失机制补造解释。固定修订的评审结果见配套记录；本稿系统环境及资源/接口决定需用户评审后，才实施第一切片。

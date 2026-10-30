@@ -22,6 +22,12 @@ acceptance does not establish writable release or performance readiness.
 
 ## Scope
 
+Candidate integration, pending user architecture review:
+[Goal execution context and Work source recording](../goal-method-work/session-execution-recording.md).
+It reuses the existing Session, Work and Multiagent boundaries; its first slice
+only connects the local Coding Goal to shared recording and Transcript sources.
+It does not enable child execution or change normal CLI/TUI defaults.
+
 Coding is the installed Loushang Product composition root. It turns Harness,
 Agent, AI, Method, HarnessWork, Channel, HarnessTUI and TUI contracts into a
 coding-specific CLI, SDK and terminal experience.
