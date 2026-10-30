@@ -22,7 +22,7 @@ acceptance does not establish writable release or performance readiness.
 
 ## Scope
 
-Accepted local SDK integration, implementation in progress:
+Implemented and offline-verified local SDK integration (same-Session slice):
 [Goal execution context and Work source recording](../goal-method-work/session-execution-recording.md).
 It reuses the existing Session, Work and Multiagent boundaries; its first slice
 only connects the local Coding Goal to shared recording and Transcript sources.

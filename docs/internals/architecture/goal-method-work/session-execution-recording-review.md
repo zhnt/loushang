@@ -1,6 +1,6 @@
 # GMW-KD-SESSION-01：三视角独立设计评审
 
-- Authority: descriptive — review evidence；Design acceptance: accepted by user (2026-10-30)；Implementation status: in-progress。
+- Authority: descriptive — review evidence；Design acceptance: accepted by user (2026-10-30)；Implementation status: implemented — same-Session slice。
 - 对象：[Goal 执行上下文与 Work 来源记录](session-execution-recording.md)，最终固定 R2.1。
 - R2.1 SHA-256：`685db572c9b771d5f033dc7eb064ff5d5e24948de16be2576ee82d980aa3533e`。
 - 源码基线：`2d6ed6d64469abe4e3e65453205be9b56ecf8119`；R1 草案保存于 `41d72625c`，SHA-256 `f10de5d511b3d1ecf447d07a053dcdc981eaa988bcb26e29ccd41f03a89e8221`。
@@ -43,4 +43,17 @@
 
 此次接受的具体内容：§3 三种需求与第一切片范围；§4 黑盒环境及组件协作；§5 默认 recording v1、可选显式期限、共享准备接缝和 caller-owned 冷读 reader。两种子 agent Goal 接入仍后排，不默认为已接受的持久执行扩展。上面的 SHA 指用户审阅的固定正文；后续接受/实施状态登记不重写历史评审对象。
 
-文档校验记录：9 项既有文档不变量及变更文档链接检查通过；仅文档变更，产品源码未修改。设计变更保存在本地 `docs/goal-session-recording` 分支，未发布远程。
+设计阶段文档校验记录：9 项既有文档不变量及变更文档链接检查通过；当时仅文档变更，产品源码未修改。下节分别记录获准后的实施及复核，不用设计评审代替实现证据。
+
+## 同 Session 第一切片实施复核
+
+源码基线 `2d6ed6d64`；首个实现固定于 `00bee2be6`。仍由上述三个独立 reviewer 分别检查职责/复用、运行/失败、数据/兼容，复核只读、无运行测试；主实施方执行的测试另列于[交付记录](../../plans/2026-10-30-goal-session-recording.md)。
+
+| 发现 / 视角 | 修订与关闭 |
+| --- | --- |
+| IMP-OWN-01 / IR-RT-01：冷读函数借用 reader 的责任已清晰，但其自有 GoalJournal 关闭失败会隐藏仍占锁的原 owner | `2f257ca2e53277d65e387f7dd510608cfe18bb8f` 添加 GoalWorkSourceCleanupError，保留同一 owner、读取错误（含取消）、清理错误。三场景注入检查对象身份、原锁保持、同 owner 重试后可重开。职责与运行 reviewer 均在固定提交上确认关闭 |
+| 数据与兼容 | 首轮无阻断；同一修正增量复核无新增问题。历史格式、来源身份、逐 Work 冻结期限、冷读分类及业务完成边界保持 |
+
+三视角确认无需扩大组件设计：复用原 WorkRuntime、SessionTurnExecutor、TranscriptSourceReader、GoalJournal 及原输入队列；关闭失败只是将已有资源 owner 交还调用方，不新建清理协调器。来源完整仍不能代替 Goal 验收，也不能解除 orphaned/执行未决状态。
+
+实现验证包含真实离线 SDK 的标准规划通路、多批 Method、独立进程读取、旧/v1 混合历史、缺失/篡改/到期、候选确认与资源清理。GS-10 另以 `205c683cf` 补充真实 repair 输入测试：prompt 内消费使用原来源组，最后交接期间输入留在原队列并使 Goal 暂停；运行 reviewer 对该测试提交复核通过。`f586a51cb` 补齐 GS-04 的 prompt 内到期断言，产品源码未再变化。所有检查范围与最终计数见交付记录；不将本静态评审当作在线模型、Hosted 或全平台验收。

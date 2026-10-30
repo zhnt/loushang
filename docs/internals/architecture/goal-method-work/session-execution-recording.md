@@ -1,9 +1,9 @@
 # GMW-KD-SESSION-01：Goal 执行上下文与 Work 来源记录接入
 
-- Authority: normative；Design status: accepted；Implementation status: in-progress。
+- Authority: normative；Design status: accepted；Implementation status: implemented — same-Session slice。
 - Revision: R2.1，2026-10-30。Owner：Coding 装配；共同父级：Loushang architecture；协作方：HarnessWork Session 集成、Harness Session/Transcript/Multiagent。
 - 源码基线：`2d6ed6d64`；方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 用户已同意三种执行需求、区分执行者与上下文、优先复用原 Session，再扩展子 agent；明确要求尽可能复用已有能力。本稿细化机制，重要工作件仍按[本包评审约定](README.md#用户评审检查点)交用户评审，不将原则认可扩大为全部接口接受。
+- 用户已同意三种执行需求、区分执行者与上下文、优先复用原 Session，再扩展子 agent；明确要求尽可能复用已有能力。本稿已按[本包评审约定](README.md#用户评审检查点)完成用户接受，范围仅限 §7 记载的同 Session 第一切片。
 - 继承 [Goal 最小闭环](minimum-loop-architecture.md)、[Goal 组件边界](../harnesswork/goal/README.md)、[HW-KD-003](../harnesswork/key-designs/fact-retention-replay.md)、[HW-KD-004](../harnesswork/key-designs/transcript-references.md) 及 [Multiagent 边界](../harness/multiagent/README.md)。不改变这些组件的状态权威。
 
 ## 1. 结果与范围
@@ -109,7 +109,7 @@ flowchart LR
 
 ### 5.4 冷读与资源关闭
 
-沿现有 inspect_goal 的“停止 writer 后只读”使用前提增加异步来源读取入口（候选 `read_goal_work_sources`），不改其同步业务验收接口。调用方提供原 data_root、session_id、goal_id，并持有/注入原 TranscriptSourceReader。reader 使用调用方可信 Product 配置中的实际 session_file、conversation_id 和原 store_state_root；文件名来自原 Session manager / 现有布局读取，不从 Work 日志中的路径选库，不新写 binding.json 或来源索引。函数核对 Goal/Work 关联及配置的会话，再由共享 reader 验证实际库、header、固定记录及父链；不搜索其他库兜底。
+沿现有 inspect_goal 的“停止 writer 后只读”使用前提增加异步来源读取入口 `read_goal_work_sources`，不改其同步业务验收接口。调用方提供原 data_root、session_id、goal_id，并持有/注入原 TranscriptSourceReader。reader 使用调用方可信 Product 配置中的实际 session_file、conversation_id 和原 store_state_root；文件名来自原 Session manager / 现有布局读取，不从 Work 日志中的路径选库，不新写 binding.json 或来源索引。函数核对 Goal/Work 关联及配置的会话，再由共享 reader 验证实际库、header、固定记录及父链；不搜索其他库兜底。
 
 对每批复用 project_work_recording → project_work_transcript → resolve_work_transcript。以原冻结 binding_id/期限重建 reader 绑定并比较实际 store identity；Work 合同不能授予读取权限。不产生来源合同的批次统一报告 `not_declared`，由原 phase 说明其是否为静态检查/命令验证；不能把未知 phase 或少合同标成“完整”。已有合同缺组返回原 missing_handoffs；格式、身份、期限、来源读取错误均明确失败，不能吞掉后返回完整。
 
@@ -149,7 +149,7 @@ sequenceDiagram
 
 高优先风险是包装前后的执行一致性、来源交接取消时的资源寿命和历史未声明合同。多 agent 持久记录、跨工作区产物合并和跨进程自动执行不在本轮承诺内，因此本轮不修改其状态机或部署方式。需求变为独立子 Work / 持久子历史时必须重新评审，不能只切换 persist 参数。
 
-| 验收 ID | 场景与断言 | 复用位置 / 验证方式（待实施） |
+| 验收 ID | 场景与断言 | 复用位置 / 验证方式 |
 | --- | --- | --- |
 | GS-01 | 同一真实 SDK Session，多批规划/Method/验证 Work；不同 operation/run、相同会话，记录确认可读 | 现有 Coding Goal 与 Work 测试；真实离线 SDK 纵向场景 |
 | GS-02 | 普通 SessionWorkRuntime 与直接 WorkRuntime 使用同一准备规则；错 Session、保留键和缺步骤受理前拒绝 | 现有 HarnessWork Session 集成测试 |
@@ -162,7 +162,7 @@ sequenceDiagram
 | GS-09 | 冷读成功/失败/取消后 aclose 失败，调用方仍持有同一 reader 可重试；原读取异常不丢失、依赖不先释放 | 原 reader 清理故障注入与 Product 装配检查 |
 | GS-10 | repair 中 prompt 内消费输入、handoff 中新输入、残留 pending input；不生成额外虚构交接组，不宣称动态输入完整审计 | 原 steer/follow 与 Goal 受控输入回归，加来源观察断言 |
 
-本次工作为设计与静态取证，未运行上述测试、未调用在线模型、未新增 PR gate。首版可用离线流验证记录与真实 SDK 资源路径；若现有模型规划 profile 禁止注入离线流，应在其已有测试接缝替换传输，不放宽产品 profile；真实模型运行另按用户已授权的实际验证范围进行。
+设计阶段只进行了静态取证。用户接受后的同 Session 第一切片已实现并验证上述边界；运行计数、真实 SDK 与新进程证据、使用方式见[交付记录](../../plans/2026-10-30-goal-session-recording.md)。验证使用已有离线传输接缝，未放宽模型规划 profile，未调用在线模型或新增 PR gate；两种子 agent 执行仍为后续范围。
 
 ## 7. 评审与接受
 

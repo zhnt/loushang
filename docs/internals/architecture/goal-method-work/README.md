@@ -18,7 +18,7 @@
 
 ## 概念与职责定位
 
-2026-10-30 新接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent，第一切片仅接入 Coding Goal 的记录/来源机制，不新增执行器或控制树。[三视角独立评审](session-execution-recording-review.md)已关闭设计阻断，用户回复“同意，请继续”后进入同 Session 切片实施；两种子 agent 接入仍为后续范围。
+2026-10-30 接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent。[三视角独立评审](session-execution-recording-review.md)及用户接受后，同 Session 第一切片已实现并通过离线验证，见[交付记录](../../plans/2026-10-30-goal-session-recording.md)；两种子 agent 接入仍为后续范围。
 
 Work 记录与 Goal 完成依据的已接受协同设计见
 [HW-KD-003：事实留存、重放与 Transcript 共享](../harnesswork/key-designs/fact-retention-replay.md)。
