@@ -2812,6 +2812,103 @@ def _goal_text_transport():
     return stream
 
 
+@pytest.mark.parametrize("arrival", ["steer_in_prompt", "follow_in_prompt", "handoff"])
+def test_goal_repair_input_preserves_original_source_groups(
+    tmp_path, monkeypatch, arrival
+):
+    from loushang.agent import synthetic_model_transport
+    from loushang.harnesswork.goal import GoalBasis, PolicyStop
+    from loushang.harnesswork.integrations.transcript import resolve_work_transcript
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        transport = _goal_text_transport()
+        calls = 0
+        text = "Keep the existing calculator requirements unchanged."
+
+        @synthetic_model_transport
+        async def stream(model, context, options=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1 and arrival != "handoff":
+                send = owner.steer if arrival == "steer_in_prompt" else owner.follow_up
+                send("g", text)
+            return await transport(model, context, options)
+
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=stream,
+            transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
+        )
+        try:
+            owner.create("g", command_id="create")
+            original_prepare = owner._policy.prepare
+
+            async def method_work(basis, facts):
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                return owner._policy.prepare_repair(basis, snapshot, {})
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            if arrival == "handoff":
+                reader = owner._source_reader
+                original_read = reader.read
+                reads = 0
+
+                async def read(ids=()):
+                    nonlocal reads
+                    if ids:
+                        reads += 1
+                        if reads == 2:
+                            # The last prompt has returned; input belongs to the
+                            # original queue, not this already-frozen handoff.
+                            owner.follow_up("g", text)
+                    return await original_read(ids)
+
+                monkeypatch.setattr(reader, "read", read)
+            receipt = await owner.advance("g", command_id="repair", revision=1, epoch=1)
+            assert receipt.outcome == (
+                "paused" if arrival == "handoff" else "work_finished"
+            ), owner.controller.last_error
+            facts = owner.controller.facts()
+            run = facts.runs[-1]
+            assert run.status == "completed"
+            result = await resolve_work_transcript(
+                owner._work.get_recording(run.run_id),
+                owner._work.query(),
+                source=owner._policy.transcript_source,
+            )
+            assert result.handoffs.complete
+            assert {r.handoff_id for r in result.handoffs.references} == {"0:0", "1:0"}
+            consumed = any(text in str(r.record.payload) for r in result.records)
+            assert consumed is (arrival != "handoff")
+            if arrival == "handoff":
+                assert owner._session.pending_message_count == 1
+                basis = GoalBasis(
+                    owner.controller.header,
+                    owner.controller.query("g"),
+                    owner.controller.history.sequence,
+                )
+                stop = await original_prepare(basis, facts)
+                assert isinstance(stop, PolicyStop) and stop.reason == "pending_input"
+                assessment = await owner._policy.assess(basis, facts)
+                assert assessment.status == "needs_user"
+                assert assessment.reason == "pending_input"
+                owner.clear_queue()
+                assert owner._session.pending_message_count == 0
+            else:
+                assert owner._session.pending_message_count == 0
+            assert owner.controller.query("g").status == (
+                "paused" if arrival == "handoff" else "active"
+            )
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
 def test_goal_method_batches_record_original_sources_and_cold_read_in_new_process(
     tmp_path, monkeypatch
 ):
