@@ -121,6 +121,8 @@ flowchart LR
 
 冷读函数只借用调用方持有的 reader，不创建隐藏 reader，也不取得其关闭权。调用方在读取成功、失败或取消后统一 await reader.aclose；若清理失败，继续保留该 reader 及所需资源，后续对同一对象重试。读取错误与清理错误均须保留，清理异常不得伪装为读取成功；复现脚本不得只依赖函数局部临时对象或吞掉 finally 错误。函数本身关闭自己打开的原 Goal 只读 owner；不能将这个 owner 与借用 reader 混为同一寿命。取消仍由共享 settled I/O 收敛，无第二套取消驱动或固定等待时间。
 
+实现补充：若函数自有 GoalJournal 关闭失败，`GoalWorkSourceCleanupError` 携带原 `owner`、`read_error` 和 `cleanup_error`。调用方保留该异常，对同一个 `owner.close()` 重试后再重开日志；读取成功时 `read_error` 为 None，读取失败或取消时保留原异常。借用 reader 的关闭责任仍属于调用方，不因该异常转移。
+
 ```mermaid
 sequenceDiagram
   participant P as Coding 装配/策略

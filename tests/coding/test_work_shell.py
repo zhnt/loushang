@@ -3112,6 +3112,79 @@ def test_goal_source_close_failure_keeps_session_dependencies_for_retry(tmp_path
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+def test_goal_cold_journal_close_failure_returns_original_owner(
+    tmp_path, monkeypatch, outcome
+):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters import _goal_work_sources as module
+    from loushang.coding.adapters._goal_store import GoalJournal
+    from loushang.coding.adapters.goal import GoalWorkSourceCleanupError
+    from loushang.harness.journal._directory_lease import DirectoryWriterError
+    from loushang.harnesswork.goal import GoalHeader
+
+    root = tmp_path / "sessions"
+    root.mkdir(mode=0o700)
+    header = GoalHeader("session", "session", module.POLICY_ID)
+    journal = GoalJournal(root, header)
+    journal.open(create=True)
+    journal.close()
+    # Real journal/lease, with only the unrelated Goal history and source read
+    # replaced so each error path reaches the same owned cleanup boundary.
+    history = SimpleNamespace(goal=lambda _: object(), batches=())
+    monkeypatch.setattr(module, "replay", lambda *_: history)
+    read_error = (
+        OSError("source unavailable")
+        if outcome == "failure"
+        else asyncio.CancelledError()
+        if outcome == "cancelled"
+        else None
+    )
+
+    def facts(*args):
+        if read_error is not None:
+            raise read_error
+        return (), False
+
+    monkeypatch.setattr(module, "_goal_work_facts", facts)
+    original_close = GoalJournal.close
+    failed_owners = []
+
+    def fail_close(owner):
+        failed_owners.append(owner)
+        raise OSError("journal cleanup failed")
+
+    monkeypatch.setattr(GoalJournal, "close", fail_close)
+
+    async def scenario():
+        with pytest.raises(GoalWorkSourceCleanupError) as caught:
+            await module.read_goal_work_sources(
+                data_root=tmp_path,
+                session_id="session",
+                goal_id="g",
+                reader=SimpleNamespace(conversation_id="session"),
+            )
+        error = caught.value
+        assert error.owner is failed_owners[0]
+        assert error.read_error is read_error
+        assert isinstance(error.cleanup_error, OSError)
+        # A new owner cannot replace cleanup of the original lease.
+        second = GoalJournal(root, header, read_only=True)
+        with pytest.raises(DirectoryWriterError, match="busy"):
+            second.open()
+        monkeypatch.setattr(GoalJournal, "close", original_close)
+        error.owner.close()
+        second.close()
+        replacement = GoalJournal(root, header, read_only=True)
+        try:
+            replacement.open()
+        finally:
+            replacement.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     "source",
     [

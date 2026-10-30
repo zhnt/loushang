@@ -23,6 +23,9 @@ from loushang.coding.adapters._goal_calculator import (
 )
 from loushang.coding.adapters._goal_store import GoalJournal, goal_journal_path
 from loushang.coding.adapters._goal_work_sources import (
+    GoalWorkSourceCleanupError as GoalWorkSourceCleanupError,
+)
+from loushang.coding.adapters._goal_work_sources import (
     GoalWorkSourceView as GoalWorkSourceView,
 )
 from loushang.coding.adapters._goal_work_sources import (

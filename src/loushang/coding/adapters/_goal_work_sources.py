@@ -76,6 +76,26 @@ class GoalWorkSourceView:
     resolution: WorkTranscriptResolution | None = None
 
 
+class GoalWorkSourceCleanupError(GoalError):
+    """Retain the owned Goal journal when its close needs an explicit retry.
+
+    Call owner.close() again on this same object. The injected Transcript reader
+    is still caller-owned; read_error preserves a failure or cancellation which
+    preceded cleanup_error, and is None if the read itself succeeded.
+    """
+
+    def __init__(
+        self,
+        owner: GoalJournal,
+        read_error: BaseException | None,
+        cleanup_error: BaseException,
+    ):
+        super().__init__("Goal source journal cleanup pending")
+        self.owner = owner
+        self.read_error = read_error
+        self.cleanup_error = cleanup_error
+
+
 async def read_goal_work_sources(
     *,
     data_root: Path,
@@ -88,6 +108,8 @@ async def read_goal_work_sources(
     The caller owns the authorized reader and must await its aclose(), retaining
     it and its dependencies for retry if cleanup fails. This function neither
     creates nor closes that reader, and never starts a Session or executor.
+    GoalWorkSourceCleanupError retains this function's own journal if closing
+    that separate owner fails; its owner.close() must be retried before reopening.
     """
     if reader.conversation_id != session_id:
         raise GoalError("Goal source reader conversation mismatch")
@@ -95,6 +117,7 @@ async def read_goal_work_sources(
     store = GoalJournal(
         root, GoalHeader(session_id, session_id, POLICY_ID), read_only=True
     )
+    read_error: BaseException | None = None
     try:
         store.open()
         header, records = store.load()
@@ -149,5 +172,13 @@ async def read_goal_work_sources(
                 )
             )
         return tuple(views)
+    except BaseException as error:
+        read_error = error
+        raise
     finally:
-        store.close()
+        try:
+            store.close()
+        except BaseException as cleanup_error:
+            raise GoalWorkSourceCleanupError(
+                store, read_error, cleanup_error
+            ) from cleanup_error
