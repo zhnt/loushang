@@ -436,8 +436,15 @@ class ModelPlanningPolicy(CalculatorPolicy):
             session=self.session,
             profile=CODING_WORK_PROFILE,
             project_event_facts=project_coding_runtime_event,
-            turn=turn,
+            turns=(turn,),
         )
+        operation = turn.to_operation(
+            profile=CODING_WORK_PROFILE,
+            session_id=basis.header.session_id,
+            operation_id=operation_id,
+        )
+        spec = WorkRunSpec(plan_id=turn.plan_id, steps=(WorkStepSpec("planning"),))
+        operation, original = self._bind_source(operation, spec, original)
         scoped = ScopedSessionWork(
             original,
             session=self.session,
@@ -457,12 +464,8 @@ class ModelPlanningPolicy(CalculatorPolicy):
         self.prepared[operation_id] = WorkExecutionBinding(executor, executor)
         return WorkCandidate(
             basis,
-            turn.to_operation(
-                profile=CODING_WORK_PROFILE,
-                session_id=basis.header.session_id,
-                operation_id=operation_id,
-            ),
-            WorkRunSpec(plan_id=turn.plan_id, steps=(WorkStepSpec("planning"),)),
+            operation,
+            spec,
             {
                 "phase": "planning",
                 "inventory": snapshot,

@@ -6,7 +6,7 @@ import shlex
 import shutil
 import sys
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -2520,8 +2520,9 @@ def test_goal_planning_fixed_verifier_scope_executes_without_model_authority(
 
 
 @pytest.mark.parametrize("pause_while_planning", [False, True])
+@pytest.mark.parametrize("source_binding", [False, True])
 def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
-    tmp_path, monkeypatch, pause_while_planning
+    tmp_path, monkeypatch, pause_while_planning, source_binding
 ):
     from loushang.ai.api_registry import get_default_api_registry
     from loushang.ai.json_codec import serialize_message
@@ -2605,6 +2606,9 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
                 data_root=tmp_path / "data",
                 model=model,
                 model_planning=True,
+                transcript_retained_until=(
+                    datetime.now(UTC) + timedelta(days=1) if source_binding else None
+                ),
             )
             owner.create("g", command_id="create")
             task = asyncio.create_task(
@@ -2692,6 +2696,41 @@ def test_goal_planning_standard_pipeline_admits_once_and_discards_late_proposal(
             if p.is_file()
         }
         assert before == after
+        from loushang.coding.adapters.goal import read_goal_work_sources
+        from loushang.harness.transcript.source_reader import TranscriptSourceReader
+
+        source_reader = TranscriptSourceReader(
+            session_file=next(
+                p for p in (owner.data_root / "sessions").glob("20*.jsonl")
+            ),
+            conversation_id=owner.session_id,
+            store_state_root=tmp_path / "platform/state/session-stores",
+        )
+        try:
+            sources = await read_goal_work_sources(
+                data_root=owner.data_root,
+                session_id=owner.session_id,
+                goal_id="g",
+                reader=source_reader,
+            )
+            assert len(sources) == 2
+            for view, batch in zip(sources, batches, strict=True):
+                assert view.operation_id == batch.operation_id
+                assert view.recording.contract.require_persistence
+                expected = (
+                    "complete"
+                    if source_binding and batch.source["phase"] == "planning"
+                    else "not_declared"
+                )
+                assert view.status == expected
+                if expected == "complete":
+                    assert {
+                        r.handoff_id for r in view.resolution.handoffs.references
+                    } == {"0:0"}
+            # A borrowed reader stays usable after the adapter returns.
+            await source_reader.inspect_identity()
+        finally:
+            await source_reader.aclose()
         # Missing original Transcript is unknown, regardless of exported trace copies.
         transcript = next(
             p
@@ -2741,6 +2780,336 @@ def _goal_offline_model():
             input=("text",), context_window=128000, max_tokens=4096
         ),
     )
+
+
+def _goal_text_transport():
+    from loushang.agent import synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+
+    @synthetic_model_transport
+    async def stream(model, context, options=None):
+        message = AssistantMessage(
+            role="assistant",
+            endpoint="anthropic-messages",
+            api="anthropic-messages",
+            provider="offline",
+            model=model.id,
+            response_id=None,
+            content=[TextPart(type="text", text="Inspected the supplied task.")],
+            usage=Usage(
+                input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0,
+        )
+        output = AssistantMessageEventStream()
+        output.push({"type": "start", "partial": message})
+        output.push({"type": "done", "reason": "stop", "message": message})
+        return output
+
+    return stream
+
+
+def test_goal_method_batches_record_original_sources_and_cold_read_in_new_process(
+    tmp_path, monkeypatch
+):
+    import subprocess
+
+    from loushang.coding.adapters.goal import read_goal_work_sources
+    from loushang.harness.transcript.source_reader import TranscriptSourceReader
+    from loushang.harnesswork.integrations.transcript import WorkTranscriptExpired
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=_goal_text_transport(),
+            transcript_retained_until=deadline,
+        )
+        try:
+            owner.create("g", command_id="create")
+
+            async def method_work(basis, facts):
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                # This test selects actual Method work to exercise the source
+                # boundary; it does not simulate independent business acceptance.
+                return owner._policy.prepare_repair(basis, snapshot, {})
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            for number in range(2):
+                receipt = await owner.advance(
+                    "g", command_id=f"method-{number}", revision=1, epoch=1
+                )
+                assert receipt.outcome == "work_finished", owner.controller.last_error
+                run = owner.controller.facts().runs[-1]
+                assert owner._work.get_recording(run.run_id).run.status == "completed"
+            session_file = Path(owner._session.session_manager.get_session_file())
+            assert owner.controller.query("g").status == "active"
+        finally:
+            await owner.close()
+
+        reader = TranscriptSourceReader(
+            session_file=session_file,
+            conversation_id=owner.session_id,
+            store_state_root=tmp_path / "platform/state/session-stores",
+        )
+
+        async def read_sources():
+            return await read_goal_work_sources(
+                data_root=owner.data_root,
+                session_id=owner.session_id,
+                goal_id="g",
+                reader=reader,
+            )
+
+        try:
+            views = await read_sources()
+            assert len({v.recording.run.run_id for v in views}) == 2
+            assert {v.status for v in views} == {"complete"}
+            assert {v.recording.run.session_id for v in views} == {owner.session_id}
+            assert all(
+                {r.handoff_id for r in v.resolution.handoffs.references}
+                == {"0:0", "1:0"}
+                for v in views
+            )
+            assert all(v.resolution.handoffs.retained_until == deadline for v in views)
+
+            script = """
+import asyncio, json, sys
+from pathlib import Path
+from loushang.coding.adapters.goal import read_goal_work_sources
+from loushang.harness.transcript.source_reader import TranscriptSourceReader
+async def main():
+    root, sid, path, state = sys.argv[1:]
+    reader = TranscriptSourceReader(session_file=Path(path), conversation_id=sid, store_state_root=Path(state))
+    try:
+        views = await read_goal_work_sources(data_root=Path(root), session_id=sid, goal_id="g", reader=reader)
+        print(json.dumps([v.status for v in views]))
+        await reader.inspect_identity()
+    finally:
+        await reader.aclose()
+asyncio.run(main())
+"""
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(owner.data_root),
+                    owner.session_id,
+                    str(session_file),
+                    str(reader.store_state_root),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+            assert json.loads(result.stdout) == ["complete", "complete"]
+
+            # Removing the whole Work log is unresolved, not undeclared.
+            work_path = next((owner.data_root / "sessions").glob("*.work.jsonl"))
+            original_work = work_path.read_bytes()
+            work_path.unlink()
+            assert {v.status for v in await read_sources()} == {"unresolved"}
+            work_path.write_bytes(original_work)
+
+            # Keep old/default capture readable without inventing a source contract.
+            rows = [json.loads(line) for line in original_work.splitlines()]
+            first_run = views[0].recording.run.run_id
+            for row in rows:
+                if row["run_id"] == first_run and row["entry_type"] == "operation":
+                    row["payload"].pop("_harnesswork", None)
+                    row["payload"]["payload"].pop("_harnesswork_transcript", None)
+            # Source facts with no contract must still be rejected; no silent legacy fallback.
+            work_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            with pytest.raises(ValueError, match="without admission contract"):
+                await read_sources()
+            legacy = [
+                row
+                for row in rows
+                if not (
+                    row["run_id"] == first_run
+                    and row["payload"].get("kind")
+                    in {
+                        "WorkTranscriptReferenced",
+                        "WorkTranscriptHandoffCompleted",
+                    }
+                )
+            ]
+            work_path.write_text("".join(json.dumps(row) + "\n" for row in legacy))
+            mixed = await read_sources()
+            assert [v.status for v in mixed] == ["not_declared", "complete"]
+            assert mixed[0].recording.contract is None
+            assert mixed[1].recording.contract.version == 1
+            work_path.write_bytes(original_work)
+
+            original_check = WorkTranscriptSource.check
+
+            def expired(source):
+                raise WorkTranscriptExpired("retention_expired")
+
+            monkeypatch.setattr(WorkTranscriptSource, "check", expired)
+            with pytest.raises(WorkTranscriptExpired):
+                await read_sources()
+            monkeypatch.setattr(WorkTranscriptSource, "check", original_check)
+
+            # A failed native cleanup remains on the caller's borrowed reader.
+            from loushang.harness.transcript import source_reader as source_module
+
+            close = source_module._ReadOwner.close
+
+            def fail_close(self):
+                raise OSError("cold reader cleanup pending")
+
+            monkeypatch.setattr(source_module._ReadOwner, "close", fail_close)
+            with pytest.raises(OSError, match="cleanup pending"):
+                await read_sources()
+            pending = reader._owner
+            assert pending is not None
+            with pytest.raises(OSError, match="cleanup pending"):
+                await reader.aclose()
+            assert reader._owner is pending
+            monkeypatch.setattr(source_module._ReadOwner, "close", close)
+            await reader.aclose()
+            assert reader._owner is None
+            reader = TranscriptSourceReader(
+                session_file=session_file,
+                conversation_id=owner.session_id,
+                store_state_root=tmp_path / "platform/state/session-stores",
+            )
+
+            content = session_file.read_bytes()
+            session_file.write_bytes(
+                content.replace(
+                    b"Inspected the supplied task.", b"Changed the supplied reply."
+                )
+            )
+            with pytest.raises(ValueError, match="digest"):
+                await read_sources()
+            session_file.write_bytes(content)
+            session_file.unlink()
+            with pytest.raises((ValueError, OSError)):
+                await read_sources()
+        finally:
+            await reader.aclose()
+
+    from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("stage", ["before_intent", "after_intent"])
+def test_goal_bound_candidate_expiry_preserves_original_dispatch_outcome(
+    tmp_path, monkeypatch, stage
+):
+    from loushang.harnesswork.integrations.transcript import (
+        WorkTranscriptExpired,
+        WorkTranscriptSource,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path),
+            data_root=tmp_path / "data",
+            model=_goal_offline_model(),
+            stream_fn=_goal_text_transport(),
+            transcript_retained_until=datetime.now(UTC) + timedelta(days=1),
+        )
+        expired = False
+        check = WorkTranscriptSource.check
+
+        def check_deadline(source):
+            if expired:
+                raise WorkTranscriptExpired("retention_expired")
+            check(source)
+
+        monkeypatch.setattr(WorkTranscriptSource, "check", check_deadline)
+        try:
+            owner.create("g", command_id="create")
+
+            async def method_work(basis, facts):
+                nonlocal expired
+                snapshot, *_ = owner._policy._current_inputs(basis)
+                candidate = owner._policy.prepare_repair(basis, snapshot, {})
+                if stage == "before_intent":
+                    expired = True
+                return candidate
+
+            monkeypatch.setattr(owner._policy, "prepare", method_work)
+            append = owner._store.append
+
+            def append_and_expire(sequence, record):
+                nonlocal expired
+                result = append(sequence, record)
+                if stage == "after_intent" and record.kind == "batch_intent":
+                    expired = True
+                return result
+
+            monkeypatch.setattr(owner._store, "append", append_and_expire)
+            receipt = await owner.advance("g", command_id="expire", revision=1, epoch=1)
+            assert not owner.controller.facts().runs and not owner._prepared
+            if stage == "before_intent":
+                assert receipt.outcome == "paused"
+                assert owner.controller.query("g").reason == "candidate_outdated"
+                assert not owner.controller.history.batches
+            else:
+                assert receipt.outcome == "not_submitted"
+                assert owner.controller.history.batches[-1].not_submitted
+            # The same Product's verifier has no message source obligation.
+            from loushang.harnesswork.goal import GoalBasis
+
+            basis = GoalBasis(
+                owner.controller.header,
+                owner.controller.query("g"),
+                owner.controller.history.sequence,
+            )
+            snapshot, source, tests, code = owner._policy._current_inputs(basis)
+            verification = owner._policy.prepare_verification(
+                basis, snapshot, source, tests, code
+            )
+            assert owner._policy.confirm_candidate(verification)
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_goal_source_close_failure_keeps_session_dependencies_for_retry(tmp_path):
+    calls = []
+
+    class Reader:
+        async def aclose(self):
+            calls.append("reader")
+            if calls.count("reader") == 1:
+                raise OSError("source cleanup pending")
+
+    class SDK:
+        async def dispose_session_runtime(self):
+            calls.append("session")
+
+    class Store:
+        def close(self):
+            calls.append("writer")
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        owner._source_reader, owner._sdk, owner._store = Reader(), SDK(), Store()
+        with pytest.raises(OSError, match="source cleanup"):
+            await owner.close()
+        assert calls == ["reader"] and not owner._closed
+        await owner.close()
+        assert calls == ["reader", "reader", "session", "writer"] and owner._closed
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize(

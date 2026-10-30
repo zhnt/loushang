@@ -12,11 +12,18 @@ from loushang.harness.transcript.source_reader import (
     TranscriptSourceBatch,
     TranscriptSourceRecord,
 )
-from loushang.harnesswork import InMemoryEventLogBackend
+from loushang.harnesswork import (
+    InMemoryEventLogBackend,
+    WorkRunSpec,
+    WorkRuntime,
+    WorkStepSpec,
+)
 from loushang.harnesswork.integrations.session import (
+    SessionTurnExecutor,
     SessionWorkProfile,
     SessionWorkRuntime,
     SessionWorkTurn,
+    prepare_session_work_source,
 )
 from loushang.harnesswork.integrations.transcript import (
     HANDOFF_KIND,
@@ -158,6 +165,94 @@ def test_two_steps_followup_handoffs_cold_resolution_and_missing_whole_group():
                     source, retained_until=source.retained_until - timedelta(hours=1)
                 ),
             )
+
+    asyncio.run(scenario())
+
+
+def test_direct_runtime_source_uses_same_preparation_and_rejects_wrong_executor():
+    async def scenario():
+        reader, session, source, log, runtime = await prepare()
+        turn = SessionWorkTurn("plan", plan_id="p", step_id="planning")
+        operation = turn.to_operation(
+            profile=runtime.profile, session_id="session", operation_id="direct"
+        )
+        spec = WorkRunSpec(plan_id="p", steps=(WorkStepSpec("planning"),))
+        original = SessionTurnExecutor(
+            session=session,
+            profile=runtime.profile,
+            project_event_facts=lambda event: (),
+            turn=turn,
+        )
+        with pytest.raises(WorkTranscriptError, match="explicit turns"):
+            prepare_session_work_source(
+                operation, spec=spec, session=session, executor=original, source=source
+            )
+        original = replace(original, turn=None, turns=(turn,))
+        with pytest.raises(WorkTranscriptError, match="standard executor"):
+            prepare_session_work_source(
+                operation,
+                spec=spec,
+                session=Session(),
+                executor=original,
+                source=source,
+            )
+        operation, executor = prepare_session_work_source(
+            operation,
+            spec=spec,
+            session=session,
+            executor=original,
+            source=source,
+        )
+        with pytest.raises(WorkTranscriptError, match="reserved"):
+            prepare_session_work_source(
+                operation, spec=spec, session=session, executor=original, source=source
+            )
+        work = WorkRuntime(executor=executor, event_log=log, recording_version=1)
+        run = await work.accept(operation, spec=spec)
+        await work.wait(run.run_id)
+        record = work.get_recording(run.run_id)
+        resolved = await resolve_work_transcript(record, log.query(), source=source)
+        assert record.run.status == "completed"
+        assert session.prompts == ["plan"] and reader.calls == 3
+        assert resolved.handoffs.complete
+        assert {r.handoff_id for r in resolved.handoffs.references} == {"0:0"}
+
+    asyncio.run(scenario())
+
+
+def test_source_expiring_in_turn_hook_prevents_prompt_after_admission(monkeypatch):
+    async def scenario():
+        _, session, source, log, runtime = await prepare()
+        expired = False
+        check = WorkTranscriptSource.check
+
+        def check_deadline(self):
+            if expired:
+                raise WorkTranscriptExpired("retention_expired")
+            check(self)
+
+        def before_turn(*args):
+            nonlocal expired
+            expired = True
+
+        monkeypatch.setattr(WorkTranscriptSource, "check", check_deadline)
+        turn = SessionWorkTurn("must not call the model")
+        executor = SessionTurnExecutor(
+            session=session,
+            profile=runtime.profile,
+            project_event_facts=lambda event: (),
+            turn=turn,
+            before_turn=before_turn,
+        )
+        operation = turn.to_operation(
+            profile=runtime.profile, session_id="session", operation_id="expires"
+        )
+        run = await runtime.accept_operation(operation, executor=executor)
+        with pytest.raises(WorkTranscriptExpired):
+            await runtime.work_runtime.wait(run.run_id)
+        record = runtime.work_runtime.get_recording(run.run_id)
+        assert record.run.status == "failed" and not session.prompts
+        assert project_work_transcript(record, log.query()).missing_handoffs == ("0:0",)
 
     asyncio.run(scenario())
 

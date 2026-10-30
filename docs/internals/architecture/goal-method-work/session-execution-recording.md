@@ -1,6 +1,6 @@
 # GMW-KD-SESSION-01：Goal 执行上下文与 Work 来源记录接入
 
-- Authority: proposed；Design status: draft；Implementation status: not-started。
+- Authority: normative；Design status: accepted；Implementation status: in-progress。
 - Revision: R2.1，2026-10-30。Owner：Coding 装配；共同父级：Loushang architecture；协作方：HarnessWork Session 集成、Harness Session/Transcript/Multiagent。
 - 源码基线：`2d6ed6d64`；方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 用户已同意三种执行需求、区分执行者与上下文、优先复用原 Session，再扩展子 agent；明确要求尽可能复用已有能力。本稿细化机制，重要工作件仍按[本包评审约定](README.md#用户评审检查点)交用户评审，不将原则认可扩大为全部接口接受。
@@ -164,4 +164,6 @@ sequenceDiagram
 
 ## 7. 评审与接受
 
-三视角独立核查：职责与复用、运行与失败、数据与兼容；包含 Coding、HarnessWork、Harness 协作及共同父级视角。R1 的期限判定、冷读 owner 交付及规划 step/turn 装配问题已在 R2 明确机制；R2.1 进一步明确仅有来源合同的候选检查期限，并补全到期结果断言。评审必须区分设计闭合和实际测试，不能替缺失机制补造解释。固定修订的评审结果见配套记录；本稿系统环境及资源/接口决定需用户评审后，才实施第一切片。
+三视角独立核查：职责与复用、运行与失败、数据与兼容；包含 Coding、HarnessWork、Harness 协作及共同父级视角。R1 的期限判定、冷读 owner 交付及规划 step/turn 装配问题已在 R2 明确机制；R2.1 进一步明确仅有来源合同的候选检查期限，并补全到期结果断言。固定修订的评审结果见[评审记录](session-execution-recording-review.md)。
+
+2026-10-30 用户在收到固定 R2.1、系统环境图、接口边界和三视角结论后回复“同意，请继续”，接受并授权实施本稿同 Session 第一切片。接受不扩大为子 agent Goal 接入、持久子会话或其它入口默认迁移；实现与实际验证另行记录。

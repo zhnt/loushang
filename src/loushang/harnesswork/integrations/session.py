@@ -292,6 +292,8 @@ class SessionTurnExecutor:
                 )
                 if self._is_cancelled(context):
                     raise asyncio.CancelledError
+                if self.transcript_source is not None:
+                    self.transcript_source.check()
                 collecting = True
                 try:
                     await _prompt_turn(self.session, active_turn)
@@ -427,6 +429,38 @@ class SessionOperationInProgressError(RuntimeError):
     """Raised when one session attempts to own multiple active Work runs."""
 
 
+def prepare_session_work_source(
+    operation: WorkOperation,
+    *,
+    spec: WorkRunSpec,
+    session: SessionPromptPort,
+    executor: SessionTurnExecutor,
+    source: WorkTranscriptSource,
+) -> tuple[WorkOperation, SessionTurnExecutor]:
+    """Freeze source handoffs before admission, without executing or reading.
+
+    Product wrappers must be assembled around the returned standard executor;
+    this function never inspects arbitrary wrapper chains or owns a runtime.
+    """
+    if type(executor) is not SessionTurnExecutor or executor.session is not session:
+        raise WorkTranscriptError(
+            "source requires the standard executor for this Session"
+        )
+    if (
+        operation.session_id != source.conversation_id
+        or CONTRACT_KEY in operation.payload
+    ):
+        raise WorkTranscriptError("source session mismatch or reserved contract key")
+    handoffs = _expected_handoffs(executor, operation, spec)
+    return (
+        replace(
+            operation,
+            payload={**operation.payload, CONTRACT_KEY: source.contract(handoffs)},
+        ),
+        replace(executor, transcript_source=source),
+    )
+
+
 class SessionWorkRuntime:
     """Session-scoped adapter over the canonical :class:`WorkRuntime`."""
 
@@ -486,30 +520,13 @@ class SessionWorkRuntime:
                 "the active session already has a Work operation"
             )
         if self.transcript_source is not None:
-            executor = executor or self._executor()
-            if (
-                type(executor) is not SessionTurnExecutor
-                or executor.session is not self.session
-            ):
-                raise WorkTranscriptError(
-                    "source requires the standard executor for this Session"
-                )
-            if (
-                operation.session_id != self.transcript_source.conversation_id
-                or CONTRACT_KEY in operation.payload
-            ):
-                raise WorkTranscriptError(
-                    "source session mismatch or reserved contract key"
-                )
-            handoffs = _expected_handoffs(executor, operation, spec or WorkRunSpec())
-            operation = replace(
+            operation, executor = prepare_session_work_source(
                 operation,
-                payload={
-                    **operation.payload,
-                    CONTRACT_KEY: self.transcript_source.contract(handoffs),
-                },
+                spec=spec or WorkRunSpec(),
+                session=self.session,
+                executor=executor or self._executor(),
+                source=self.transcript_source,
             )
-            executor = replace(executor, transcript_source=self.transcript_source)
         if executor is not None:
             self._resolver.prepare(operation.operation_id, executor)
         try:
@@ -797,6 +814,7 @@ __all__ = [
     "project_prepared_session_work_turns",
     "require_session_work_turn",
     "submit_session_turn",
+    "prepare_session_work_source",
 ]
 
 

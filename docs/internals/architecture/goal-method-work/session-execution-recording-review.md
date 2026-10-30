@@ -1,6 +1,6 @@
 # GMW-KD-SESSION-01：三视角独立设计评审
 
-- Authority: descriptive — review evidence；Design acceptance: pending user review；Implementation status: not-started。
+- Authority: descriptive — review evidence；Design acceptance: accepted by user (2026-10-30)；Implementation status: in-progress。
 - 对象：[Goal 执行上下文与 Work 来源记录](session-execution-recording.md)，最终固定 R2.1。
 - R2.1 SHA-256：`685db572c9b771d5f033dc7eb064ff5d5e24948de16be2576ee82d980aa3533e`。
 - 源码基线：`2d6ed6d64469abe4e3e65453205be9b56ecf8119`；R1 草案保存于 `41d72625c`，SHA-256 `f10de5d511b3d1ecf447d07a053dcdc981eaa988bcb26e29ccd41f03a89e8221`。
@@ -39,8 +39,8 @@
 
 ## 接受边界与交付
 
-主 agent 已完成内部技术评审及 findings 收敛，**未记录设计接受或实施开始**。用户此前明确：“系统环境图等重要工作件需要我评审”，本包 [用户评审检查点](README.md#用户评审检查点)保留此要求。用户已认可总体方向，不据此假定本次新增的资源/接口细节已经评审。
+主 agent 完成内部技术评审及 findings 收敛后，已按用户“系统环境图等重要工作件需要我评审”的要求提交固定 R2.1、环境图、接口边界及评审结论。用户于 2026-10-30 回复“同意，请继续”，接受并授权实施同 Session 第一切片；该记录基于本次实际回复，不追认此前草案为已接受。
 
-待用户评审的具体内容：§3 三种需求与第一切片范围；§4 黑盒环境及组件协作；§5 默认 recording v1、可选显式期限、共享准备接缝和 caller-owned 冷读 reader。确认后可按这份固定设计实施同 Session 第一切片；两种子 agent Goal 接入仍后排，不默认为已接受的持久执行扩展。
+此次接受的具体内容：§3 三种需求与第一切片范围；§4 黑盒环境及组件协作；§5 默认 recording v1、可选显式期限、共享准备接缝和 caller-owned 冷读 reader。两种子 agent Goal 接入仍后排，不默认为已接受的持久执行扩展。上面的 SHA 指用户审阅的固定正文；后续接受/实施状态登记不重写历史评审对象。
 
 文档校验记录：9 项既有文档不变量及变更文档链接检查通过；仅文档变更，产品源码未修改。设计变更保存在本地 `docs/goal-session-recording` 分支，未发布远程。

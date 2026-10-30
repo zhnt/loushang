@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -21,16 +22,27 @@ from loushang.coding.adapters._goal_calculator import (
     initial_metadata,
 )
 from loushang.coding.adapters._goal_store import GoalJournal, goal_journal_path
+from loushang.coding.adapters._goal_work_sources import (
+    GoalWorkSourceView as GoalWorkSourceView,
+)
+from loushang.coding.adapters._goal_work_sources import (
+    _goal_work_facts,
+)
+from loushang.coding.adapters._goal_work_sources import (
+    read_goal_work_sources as read_goal_work_sources,
+)
 from loushang.coding.adapters._verification_work import CodingVerificationExecutor
+from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobStore
 from loushang.harness.policy import PolicyEvaluatorChain
+from loushang.harness.transcript.source_reader import TranscriptSourceReader
 from loushang.harnesswork import JsonlEventLogBackend, WorkRuntime
-from loushang.harnesswork.cancellation_projection import project_work_cancellations
 from loushang.harnesswork.goal import GoalController, GoalError, GoalHeader, GoalState
 from loushang.harnesswork.goal.contracts import GoalBasis, GoalFacts
 from loushang.harnesswork.goal.records import plain, replay
+from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
 from loushang.harnesswork.ports import WorkExecutionBinding
-from loushang.harnesswork.run_projection import project_work_runs
+from loushang.harnesswork.types import WorkRecordingPolicy
 
 if TYPE_CHECKING:
     from ._goal_planning_limits import PlanningCallAllowance
@@ -101,6 +113,8 @@ class CodingGoal:
         self._prepared: dict[str, WorkExecutionBinding] = {}
         self._model_planning = False
         self._allowance: PlanningCallAllowance | None = None
+        self._source_reader: TranscriptSourceReader | None = None
+        self._source_retired = False
 
     @classmethod
     async def open(
@@ -114,9 +128,15 @@ class CodingGoal:
         approval_resolver=None,
         tool_policy_evaluator=None,
         model_planning: bool = False,
+        transcript_retained_until: datetime | None = None,
     ) -> CodingGoal:
         if type(model_planning) is not bool:
             raise GoalError("model_planning must be an explicit boolean")
+        if transcript_retained_until is not None and (
+            not isinstance(transcript_retained_until, datetime)
+            or transcript_retained_until.utcoffset() is None
+        ):
+            raise GoalError("Transcript retention requires a timezone-aware datetime")
         if model_planning and (stream_fn is not None or session_id is not None):
             raise GoalError(
                 "model planning requires a fresh Session and the standard AI stream"
@@ -210,6 +230,23 @@ class CodingGoal:
             header = GoalHeader(owner.session_id, owner.session_id, policy_id)
             owner._store = GoalJournal(owner.data_root / "sessions", header)
             owner._store.open(create=session_id is None)
+            transcript_source = None
+            if transcript_retained_until is not None:
+                session_file = owner._session.session_manager.get_session_file()
+                if session_file is None:
+                    raise GoalError(
+                        "Goal Transcript source requires a persistent Session"
+                    )
+                owner._source_reader = TranscriptSourceReader(
+                    session_file=Path(session_file),
+                    conversation_id=owner.session_id,
+                    store_state_root=resolve_platform_home() / "state/session-stores",
+                )
+                transcript_source = await WorkTranscriptSource.bind(
+                    owner._source_reader,
+                    binding_id=f"coding-goal:{owner.session_id}",
+                    retained_until=transcript_retained_until,
+                )
             blobs = SessionBlobStore(owner.data_root, owner.session_id)
             work_path = goal_journal_path(
                 owner.data_root / "sessions", owner.session_id
@@ -228,6 +265,8 @@ class CodingGoal:
             owner._work = WorkRuntime(
                 event_log=log,
                 resolver=_Resolver(verification_executor, owner._prepared),
+                recording_version=1,
+                recording_policy=WorkRecordingPolicy(require_persistence=True),
             )
             owner._policy = CalculatorPolicy(
                 workspace=owner.workspace,
@@ -235,6 +274,7 @@ class CodingGoal:
                 blobs=blobs,
                 event_log=log,
                 prepared=owner._prepared,
+                transcript_source=transcript_source,
             )
             if model_planning:
                 from ._goal_planning import ModelPlanningPolicy
@@ -245,6 +285,7 @@ class CodingGoal:
                     blobs=blobs,
                     event_log=log,
                     prepared=owner._prepared,
+                    transcript_source=transcript_source,
                     allowance=owner._allowance,
                     tool_policy=planning_tool_policy,
                     history=lambda: owner.controller.history,
@@ -415,6 +456,10 @@ class CodingGoal:
                 await self._core.settle_work()
             self._work_settled = True
         if not self._session_retired:
+            if not self._source_retired:
+                if self._source_reader is not None:
+                    await self._source_reader.aclose()
+                self._source_retired = True
             if self._sdk is not None:
                 await self._sdk.dispose_session_runtime()
             self._session_retired = True
@@ -458,36 +503,7 @@ def inspect_goal(
             data_root.resolve() / "sessions", session_id
         ).with_suffix(".work.jsonl")
         log = JsonlEventLogBackend(path)
-        runs = tuple(project_work_runs(log.query(), mark_incomplete_orphaned=True))
-        unresolved = any(
-            not b.not_submitted
-            and not any(
-                r.operation_id == b.operation_id and r.status != "orphaned"
-                for r in runs
-            )
-            for b in history.batches
-        )
-        cancellations = {r.run_id: r for r in project_work_cancellations(log.query())}
-        for b in history.batches:
-            if b.not_submitted:
-                continue
-            found = next((r for r in runs if r.operation_id == b.operation_id), None)
-            if found is not None:
-                if found.session_id != session_id or (
-                    b.run_receipt and b.run_receipt != found.run_id
-                ):
-                    raise GoalError("Goal/Work association mismatch")
-                observation = cancellations.get(found.run_id)
-                if observation is None or observation.status not in {
-                    "not_requested",
-                    "settled",
-                }:
-                    unresolved = True
-        if any(
-            b.not_submitted and any(r.operation_id == b.operation_id for r in runs)
-            for b in history.batches
-        ):
-            raise GoalError("not_submitted contradicts original Work")
+        runs, unresolved = _goal_work_facts(history, log.query(), session_id)
         blobs = SessionBlobStore(data_root.resolve(), session_id, read_only=True)
         policy = CalculatorPolicy(
             workspace=workspace.resolve(),
