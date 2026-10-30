@@ -220,7 +220,8 @@ def test_direct_runtime_source_uses_same_preparation_and_rejects_wrong_executor(
     asyncio.run(scenario())
 
 
-def test_source_expiring_in_turn_hook_prevents_prompt_after_admission(monkeypatch):
+@pytest.mark.parametrize("phase", ["before_prompt", "during_prompt"])
+def test_source_expiring_after_admission_never_completes_handoff(monkeypatch, phase):
     async def scenario():
         _, session, source, log, runtime = await prepare()
         expired = False
@@ -233,10 +234,18 @@ def test_source_expiring_in_turn_hook_prevents_prompt_after_admission(monkeypatc
 
         def before_turn(*args):
             nonlocal expired
+            expired = phase == "before_prompt"
+
+        prompt = session.prompt
+
+        async def expiring_prompt(*args, **kwargs):
+            nonlocal expired
+            await prompt(*args, **kwargs)
             expired = True
 
         monkeypatch.setattr(WorkTranscriptSource, "check", check_deadline)
-        turn = SessionWorkTurn("must not call the model")
+        monkeypatch.setattr(session, "prompt", expiring_prompt)
+        turn = SessionWorkTurn("bounded model work")
         executor = SessionTurnExecutor(
             session=session,
             profile=runtime.profile,
@@ -251,7 +260,8 @@ def test_source_expiring_in_turn_hook_prevents_prompt_after_admission(monkeypatc
         with pytest.raises(WorkTranscriptExpired):
             await runtime.work_runtime.wait(run.run_id)
         record = runtime.work_runtime.get_recording(run.run_id)
-        assert record.run.status == "failed" and not session.prompts
+        assert record.run.status == "failed"
+        assert len(session.prompts) == (0 if phase == "before_prompt" else 1)
         assert project_work_transcript(record, log.query()).missing_handoffs == ("0:0",)
 
     asyncio.run(scenario())
