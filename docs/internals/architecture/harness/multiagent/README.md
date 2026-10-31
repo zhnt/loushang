@@ -11,6 +11,10 @@
 
 ## Reading Order
 
+通用子 Session 的创建、驱动与清理下沉见
+[子 Session 装配与清理](child-session-composition.md)。Coding 保留产品配置，
+Harness 复用原 Session 和多 agent 控制机制；清理失败保留同一 owner 重试。
+
 1. [System Context](system-context.md)
    黑盒边界：直接上游（产品装配层）、直接下游（harness prepared run）、
    逻辑 actor（parent agent、user/host）；明确不在边界上的子系统。

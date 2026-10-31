@@ -1211,6 +1211,11 @@ standard diagnostic contract without relocating Product callbacks.
 
 ### Wave 7, Slice Y: Standard Agent Leaf Mechanics (Complete)
 
+后续范围修订（2026-10-31）：[通用子 Session 收敛](multiagent/child-session-composition.md)
+已将下表当时保留在 Coding 的通用 factory/driver 流程移至 Harness；Coding
+继续保留角色、工具/模型、沙箱及持久策略。下表记录本历史切片的边界，
+当前创建、驱动和清理归属以该专项及 current owner map 为准。
+
 This slice moves four already-proven Agent or lifecycle leaf mechanisms into
 their existing shared owners. It does not move Coding's child-session factory,
 role prompts, sandbox/worktree policy, model selection, approval construction,

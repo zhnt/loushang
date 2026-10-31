@@ -5,6 +5,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
 from loushang.harness.multiagent import (
     AgentCaller,
@@ -16,9 +18,12 @@ from loushang.harness.multiagent import (
     ForkTier,
     HostCaller,
     MultiAgentControl,
+    MultiAgentError,
     SubagentContextPlan,
     SubagentDisposeResult,
     SubagentRoundResult,
+    WorkspaceLease,
+    WorkspaceLeaseSnapshot,
 )
 from loushang.harness.multiagent.run_handle import RoundMode
 from loushang.harness.runtime import HostInputQueue
@@ -28,6 +33,7 @@ from loushang.harness.session.multiagent import (
     AgentInputWaitOutcome,
     SessionMultiAgentRuntime,
     SessionSubagentBinding,
+    SessionSubagentCreationError,
     SessionSubagentDriver,
     SessionSubagentRequest,
     agent_input_application_message,
@@ -36,6 +42,7 @@ from loushang.harness.session.multiagent import (
     install_agent_forked_history,
     project_agent_round_result,
 )
+from loushang.harness.session.subagent import AgentSessionSubagentFactory
 from loushang.harness.transcript import ApplicationMessage
 
 NOW = datetime(2026, 7, 26, tzinfo=UTC)
@@ -851,3 +858,368 @@ def test_standard_agent_history_and_round_projection_are_product_neutral() -> No
     assert result.latest_input_tokens == 10
     assert result.output_tokens == 3
     assert result.tool_uses == 1
+
+
+class _ChildRuntime:
+    """A second, non-Coding consumer of the shared Agent Session factory."""
+
+    def __init__(self):
+        self.queue = HostInputQueue()
+        self.state = SimpleNamespace(messages=[])
+        self.state.set_messages = lambda messages: setattr(
+            self.state, "messages", messages
+        )
+        self.session = SimpleNamespace(
+            agent=SimpleNamespace(state=self.state),
+            runtime=SimpleNamespace(queue=SimpleNamespace(input_queue=self.queue)),
+            prompt=self.prompt,
+            continue_run=self.continue_run,
+            abort=lambda: None,
+        )
+        self.close_calls = 0
+        self.create_error = None
+        self.close_error = None
+        self.close_started = asyncio.Event()
+        self.close_release = None
+
+    async def create_session(self, *, cwd):
+        self.cwd = cwd
+        if self.create_error:
+            raise self.create_error
+        return self.session
+
+    async def prompt(self, text, *, source):
+        self.source = source
+        self.state.messages.extend(
+            [
+                UserMessage(role="user", content=text, timestamp=0),
+                AssistantMessage(
+                    role="assistant",
+                    endpoint="test",
+                    api="test",
+                    provider="test",
+                    model="test",
+                    response_id=None,
+                    content=[TextPart(type="text", text=text)],
+                    usage=Usage(
+                        input=1,
+                        output=1,
+                        cache_read=0,
+                        cache_write=0,
+                        total_tokens=2,
+                        cost=None,
+                    ),
+                    stop_reason="stop",
+                    error_message=None,
+                    timestamp=0,
+                ),
+            ]
+        )
+
+    async def continue_run(self):
+        text = self.queue.texts("follow_up")[-1]
+        self.queue.clear()
+        await self.prompt(text, source="continued")
+
+    async def dispose_session_runtime(self):
+        self.close_calls += 1
+        self.close_started.set()
+        if self.close_release is not None:
+            await self.close_release.wait()
+        if self.close_error:
+            raise self.close_error
+
+
+class _ChildWorkspace:
+    def __init__(self, root):
+        self.root = root
+        self.lease = WorkspaceLease("test-workspace", str(root))
+        self.release_calls = 0
+        self.release_error = None
+
+    async def acquire(self, request):
+        assert request.mode == "isolated"
+        return self.lease
+
+    async def snapshot(self, lease):
+        assert lease is self.lease
+        return WorkspaceLeaseSnapshot("test-workspace")
+
+    async def release(self, lease):
+        assert lease is self.lease
+        self.release_calls += 1
+        if self.release_error:
+            raise self.release_error
+        return await self.snapshot(lease)
+
+
+def _child_factory(root, child, workspace):
+    def build(request, cwd, approval, lease):
+        assert lease is workspace.lease
+        assert approval.actor_id == str(request.record.ref)
+        assert cwd == root
+        return child
+
+    return AgentSessionSubagentFactory(
+        cwd=root, runtime_builder=build, workspace_leases=workspace
+    )
+
+
+def _isolated_control():
+    return MultiAgentControl(
+        agent_types=AgentTypeRegistry(
+            (AgentTypeSpec(name="reviewer", workspace_mode="isolated"),)
+        )
+    )
+
+
+@pytest.mark.parametrize("failure", ["runtime", "workspace"])
+def test_shared_child_factory_reuses_session_and_retains_dependencies(
+    tmp_path, failure
+):
+    async def scenario():
+        child, workspace = _ChildRuntime(), _ChildWorkspace(tmp_path)
+        control = _isolated_control()
+        runtime = SessionMultiAgentRuntime(
+            control=control, child_factory=_child_factory(tmp_path, child, workspace)
+        )
+        record = await runtime.spawn_child(
+            caller=HOST,
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="First",
+        )
+        first = await runtime.await_terminal(caller=HOST, target=record.path)
+        assert first.status == "completed"
+        assert (
+            control.completion_notice(
+                first.ref, round_id=first.round_id
+            ).terminal.final_message
+            == "First"
+        )
+        assert child.source.startswith("multiagent:")
+        await runtime.send_message(caller=HOST, target=record.path, text="Second")
+        second = await runtime.await_terminal(caller=HOST, target=record.path)
+        assert second.round_id == 2
+        assert (
+            control.completion_notice(
+                second.ref, round_id=second.round_id
+            ).terminal.final_message
+            == "Second"
+        )
+        assert child.queue.pending_count == 0
+        if failure == "runtime":
+            child.close_error = OSError("runtime cleanup")
+        else:
+            workspace.release_error = OSError("workspace cleanup")
+        failed = await runtime.close_agent(caller=HOST, target=record.path)
+        assert not failed.closed and len(failed.dispose_errors) == 1
+        assert control.registry.open_count == 2
+        assert workspace.release_calls == (0 if failure == "runtime" else 1)
+        with pytest.raises(MultiAgentError, match="closing or closed"):
+            await runtime.send_message(
+                caller=HOST, target=record.path, text="No third round"
+            )
+        child.close_error = workspace.release_error = None
+        closed = await runtime.close_agent(caller=HOST, target=record.path)
+        assert closed.closed[0].status == "closed" and not closed.dispose_errors
+        assert child.close_calls == (2 if failure == "runtime" else 1)
+        assert workspace.release_calls == (1 if failure == "runtime" else 2)
+        assert control.registry.open_count == 1
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_child_creation_failure_keeps_original_owner_in_parent_runtime(
+    tmp_path, cancelled
+):
+    async def scenario():
+        child, workspace = _ChildRuntime(), _ChildWorkspace(tmp_path)
+        child.create_error = (
+            asyncio.CancelledError() if cancelled else ValueError("create failed")
+        )
+        child.close_error = OSError("cleanup failed")
+        control = _isolated_control()
+        runtime = SessionMultiAgentRuntime(
+            control=control, child_factory=_child_factory(tmp_path, child, workspace)
+        )
+        with pytest.raises(SessionSubagentCreationError) as raised:
+            await runtime.spawn_child(
+                caller=HOST,
+                parent_path=AgentPath.root(),
+                name="reviewer",
+                agent_type="reviewer",
+                initial_prompt="Unused",
+            )
+        assert raised.value.error is child.create_error
+        assert raised.value.cleanup_error is child.close_error
+        record = control.registry.current(AgentPath.root().child("reviewer"))
+        assert record is not None and control.registry.open_count == 2
+        assert workspace.release_calls == 0
+        with pytest.raises(ExceptionGroup, match="still require cleanup"):
+            await runtime.dispose()
+        assert workspace.release_calls == 0
+        child.close_error = None
+        await runtime.dispose()
+        assert workspace.release_calls == 1 and control.registry.open_count == 1
+        assert not (await raised.value.owner.dispose()).dispose_error
+        assert workspace.release_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_child_dispose_waiter_cancellation_does_not_release_workspace_early(tmp_path):
+    async def scenario():
+        child, workspace = _ChildRuntime(), _ChildWorkspace(tmp_path)
+        control = _isolated_control()
+        record = control.spawn(
+            caller=HOST,
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+        )
+        request = SessionSubagentRequest(
+            record,
+            control.registry.get(control.root_ref),
+            control.agent_type("reviewer"),
+        )
+        binding = await _child_factory(tmp_path, child, workspace).create(request)
+        child.close_release = asyncio.Event()
+        waiter = asyncio.create_task(binding.driver.dispose())
+        await child.close_started.wait()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert workspace.release_calls == 0
+        child.close_release.set()
+        assert (await binding.driver.dispose()).dispose_error is None
+        assert child.close_calls == 1 and workspace.release_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_failed_descendant_close_preserves_parent_and_before_release_hook():
+    async def scenario():
+        control, factory = _control(), _Factory()
+        runtime = SessionMultiAgentRuntime(control=control, child_factory=factory)
+        parent = await runtime.spawn_child(
+            caller=HOST,
+            parent_path=AgentPath.root(),
+            name="coordinator",
+            agent_type="coordinator",
+            initial_prompt="Parent",
+        )
+        child = await runtime.spawn_child(
+            caller=AgentCaller(parent.ref),
+            parent_path=parent.path,
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="Child",
+        )
+        await _yield_until(
+            lambda: all(driver.pending for driver in factory.drivers.values())
+        )
+        original_dispose = factory.drivers[child.path].dispose
+
+        async def fail():
+            return SubagentDisposeResult(dispose_error=OSError("child cleanup"))
+
+        factory.drivers[child.path].dispose = fail
+        called = []
+
+        async def after(*args):
+            called.append("parent released")
+
+        hook = compose_multiagent_before_release(
+            resolve_runtime=lambda session: runtime, existing=after
+        )
+        with pytest.raises(ExceptionGroup, match="still require cleanup"):
+            await hook(None, None, None)
+        assert not called and factory.drivers[parent.path].dispose_calls == 0
+        assert control.registry.open_count == 3
+        factory.drivers[child.path].dispose = original_dispose
+        await hook(None, None, None)
+        assert called == ["parent released"] and control.registry.open_count == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("entry", ["close_agent", "close_tree", "failed_spawn"])
+def test_cancelled_cleanup_waiter_retires_original_incarnation(entry):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class Factory(_Factory):
+            async def create(self, request):
+                binding = await super().create(request)
+                if len(self.requests) == 1:
+                    driver = binding.driver
+
+                    async def dispose():
+                        started.set()
+                        await release.wait()
+                        return SubagentDisposeResult()
+
+                    driver.dispose = dispose
+                    if entry == "failed_spawn":
+
+                        def fail(message):
+                            raise RuntimeError("first delivery failed")
+
+                        driver.deliver = fail
+                    return SessionSubagentBinding(driver, _InputActivity())
+                return binding
+
+        control, factory = _control(), Factory()
+        runtime = SessionMultiAgentRuntime(control=control, child_factory=factory)
+
+        async def spawn_parent():
+            return await runtime.spawn_child(
+                caller=HOST,
+                parent_path=AgentPath.root(),
+                name="coordinator",
+                agent_type="coordinator",
+                initial_prompt="Parent",
+            )
+
+        waiter = asyncio.create_task(spawn_parent())
+        if entry != "failed_spawn":
+            parent = await waiter
+            await _yield_until(lambda: bool(factory.drivers[parent.path].pending))
+            waiter = asyncio.create_task(
+                runtime.close_agent(caller=HOST, target=parent.path)
+                if entry == "close_agent"
+                else runtime.close_owned_children()
+            )
+        await started.wait()
+        old_ref = factory.requests[0].record.ref
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert control.registry.get(old_ref) is not None
+        release.set()
+        await _yield_until(lambda: not runtime._cleanup_tasks)
+        assert old_ref not in runtime._handles and old_ref not in runtime._inputs
+        assert control.registry.get(old_ref, include_closed=True).status == "closed"
+
+        replacement = await spawn_parent()
+        assert replacement.ref.incarnation > old_ref.incarnation
+        child = await runtime.spawn_child(
+            caller=AgentCaller(replacement.ref),
+            parent_path=replacement.path,
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="Review",
+        )
+        await _yield_until(
+            lambda: all(
+                factory.drivers[path].pending for path in (replacement.path, child.path)
+            )
+        )
+        await runtime.dispose()
+        assert not runtime._handles and not runtime._inputs
+
+    asyncio.run(scenario())

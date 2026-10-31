@@ -25,6 +25,7 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `runtime` | cancellation, retry/scheduling primitives, owner-scoped exact registration lifecycle, runtime-profile declarations, admission, resolution, binding, refresh, disposal | live registry conflict policy, Product capability selection policy, or provider behavior |
 | `config` | layered/scoped configuration mechanics and optional Agent settings types, patch commands, schema codec, and manager lifecycle | Product-only fields, paths, activation effects, credentials, or presentation |
 | `session` | optional Agent-session profile, Product-neutral assembly, turn/lifecycle coordination, command and maintenance bindings, Session facade and inspection | Product prompt content, domain operations, UI state, Work persistence |
+| `multiagent` / `session.subagent` | existing agent tree, run handles and input routing; shared Agent child Session creation, round adaptation and retryable cleanup | Product runtime configuration, roles, tool selection, workspace implementation or persistent child policy |
 | `conversation` | Product-neutral conversation identity, records, repository/catalog and replay contracts | Agent/AI message schema or Product-specific payload meaning |
 | `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms, and hidden reconstructable Model Input facts | Product compaction prompts, semantic summary policy, Product store selection, or provider transport outcomes |
 | `context` | context items, packing, deterministic budget/accounting records, summary evaluation foundations | Product salience policy or model-specific estimation decisions |
@@ -32,6 +33,11 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, staged Extension/resource generations with exact live-registration retirement, capability composition, and coarse Capability graph contracts, planning, transactional Mount binding, live state, and read-only projection | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
+
+The bounded [child Session consolidation](multiagent/child-session-composition.md)
+keeps Coding configuration in its Product adapter and uses the original Session
+Host and queues. Failed child cleanup retains its handle and dependencies until
+an explicit retry succeeds; parent release does not run ahead of the child.
 
 ## Accepted Capability Graph Target (Mount Runtime Implemented)
 
