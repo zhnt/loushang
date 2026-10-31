@@ -1,6 +1,6 @@
 # Goal 批次执行 Session：集成准备与实施检查点
 
-- Authority: descriptive；状态：R3 修订待三视角评审，用户工作件接受待确认；新模式实现未开始。
+- Authority: descriptive；状态：R3 独立三视角技术评审完成，用户工作件接受待确认；新模式实现未开始。
 - 设计：[GMW-KD-SESSION-02 R3](../architecture/goal-method-work/delegated-session-execution.md)；[三视角关闭记录](../architecture/goal-method-work/delegated-session-execution-review.md)。
 - 工作分支：feat/goal-child-session；代码 lane：.worktrees/code。未修改有历史脏资料的 Harness lane。
 

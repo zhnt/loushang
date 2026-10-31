@@ -30,6 +30,24 @@
 
 评审后仅更新底座 caaff3945 已本地合入的状态和一个措辞（子 Session 的原队列）；上述 R2 身份、交互、证据和验收合同未变，不据此记录新模式实施或用户接受。
 
-## R3 新一轮评审
+## R3 新一轮独立评审
 
-用户明确要求解除固定单 child 约束，支持按需复用、新鲜 Session 和继承上下文。R3 更新了环境、组件责任、逐批选择冻结、多 child 生命周期、继承来源与记录/验收。R2 的技术通过不覆盖这些语义变化；本轮另以固定 R3 提交开启职责与复用、运行与失败、数据与兼容三视角独立评审，结果待登记。源码基线 a19e5173f，仓库 profile 对照 f024cb734；设计 proposed，实现 not-started。
+用户明确要求解除固定单 child 约束，支持按需复用、新鲜 Session 和继承上下文。R3 更新了环境、组件责任、逐批选择冻结、多 child 生命周期、继承来源与记录/验收。R2 的技术通过不覆盖这些语义变化。
+
+- 固定设计修订：`7e56befce75740633890edcd4d5f915a832654ab`，R3；源码基线 `a19e5173f`，仓库 profile 仅对照独立分支 `f024cb734`。
+- 方法：三位 reviewer 均核实干净本地 master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，读取方法入口及 architecture-review。
+- 三个全新、独立 xhigh agent 分别只读固定文档和源码；未读取本文件中的 R1/R2 结论或其他 agent 评审，没有补造缺失机制，也没有运行测试/模型或修改产品代码。
+
+| Reviewer / 视角 | 关键核查与结论 |
+| --- | --- |
+| goal_context_ownership_r3 / 职责与复用 | AgentRef、Session、历史来源分开；Goal 可关联多个 child，Product 冻结选择，Harness 保持创建/历史/轮次/清理权威。A→A→B 与固定父截点继承的职责路径完整；原仓库分支、同 Session 接缝及未实现范围标注准确。没有重复建设树、队列、生命周期或执行内核；无阻断，可提交用户评审 |
+| goal_context_runtime_r3 / 运行与失败 | 对照 GoalController.advance 的两次确认、RunHandle.deliver 先入队事实、共享 factory 的先持有后 await、control 容量与关闭失败保留行为。投递前核验、创建回执/取消交接、多 child 清理、额度与兼容性合同能够组合，未发现等待环或新增调度权威；无阻断，可提交用户评审 |
+| goal_context_data_r3 / 数据与兼容 | intent/operation/report 的 execution_context 一致性、多 child 创建与 reuse 关联、固定来源 Session/库/watermark、requested/effective tier 及附件/model 限制明确；live/detached 共用读投影，失败报告缺失与成功坏损分别处理，旧 kind 不回写。子原文未持久化与父来源核验没有混同；无阻断，可提交用户评审 |
+
+评审的源码依据包括：共享 subagent.py 的创建/历史安装与失败保留；multiagent/context.py 的 source/mapper、all/last、空集降级和模型限制；session/multiagent.py 的首次与后续投递、关闭保守次序；control.py 的原容量约束；transcript/profile.py 的持久图片 hydration 要求；独立仓库 profile 的 Method binding、allowance、RepositoryReport 与 observations。静态核查不等于这些分支已集成或新接入已运行。
+
+综合复核：三视角均无技术阻断，职责、运行和证据合同未发现相互冲突。执行 agent 作为本轮授权内 Coding 架构责任承担者，接受“R3 已具备提交用户评审条件”的技术结论。R3 继续 proposed / not-started，未记录用户尚未作出的工作件接受，不据此启动实现。
+
+实施验证保留 DS-01—10：尤其 DS-03/06 的跨 child 权限和额度、创建/投递取消竞争及多 child 关闭重试，DS-05/07 的错绑/缺失/旧 kind 混读，以及 DS-09/10 的固定历史、附件/工具消息、空集降级和未支持模式拒绝。第一切片接 reuse/fresh，inherit 完成对应验证后才开放。三位 reviewer 都将这些明确标为实施证据要求，而不是宣称设计通过即实现通过。
+
+本轮文档变更通过既有文档检查，未触发产品回归路由，未新增门禁。重要工作件仍按 README 的用户检查点办理。
