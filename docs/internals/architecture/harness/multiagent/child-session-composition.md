@@ -1,7 +1,7 @@
 # 子 Session 创建、驱动与清理收敛
 
 - Authority: normative — bounded implementation design。
-- Design status: accepted；Implementation status: in-progress。
+- Design status: accepted；Implementation status: implemented。
 - 基线：`64d035620`；方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 接受范围：用户明确授权“梳理并收敛通用子 Session 的创建、驱动和清理机制到 Harness，复用已有能力”。实施 agent 在该范围内完成下述职责、运行、兼容检查并接受具体接缝；不将其记为用户逐项评审接口，也不授权 Goal 子执行或持久化扩展。
 
@@ -63,4 +63,4 @@ close_agent 保留原成功结果格式，失败时额外报告 cleanup_errors�
 | 运行与失败 | 创建失败/取消、runtime 关闭失败、workspace 释放失败、关闭等待方取消、后代失败阻止祖先和 before_release；同 owner 重试、不复执行 |
 | 数据与兼容 | 角色、权限、平台工具、首轮 source、上下文继承、消息/结果与 workspace 引用维持；不修改旧记录格式、不启用持久子 Session |
 
-验证复用既有 Harness Session / Multiagent / Tools、Coding Multiagent 与架构检查路由，新增断言进入原测试文件；不新增 PR gate、平台或 live 模型检查。实际结果与交付提交在完成后登记。
+验证复用既有 Harness Session / Multiagent / Tools、Coding Multiagent 与架构检查路由，新增断言进入原测试文件；不新增 PR gate、平台或 live 模型检查。实现提交、分段回归结果及一次 lmux busy 后复核通过的局限见[交付记录](../../../plans/2026-10-31-child-session-consolidation.md)。

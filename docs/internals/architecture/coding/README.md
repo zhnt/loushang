@@ -28,6 +28,11 @@ It reuses the existing Session, Work and Multiagent boundaries; its first slice
 only connects the local Coding Goal to shared recording and Transcript sources.
 It does not enable child execution or change normal CLI/TUI defaults.
 
+The [shared child Session composition](../harness/multiagent/child-session-composition.md)
+moves child creation, round adaptation and cleanup into Harness. Coding keeps
+roles, model/tool selection, sandbox configuration and its current non-persistent
+child policy; the existing Coding factory entrypoint delegates to that mechanism.
+
 Coding is the installed Loushang Product composition root. It turns Harness,
 Agent, AI, Method, HarnessWork, Channel, HarnessTUI and TUI contracts into a
 coding-specific CLI, SDK and terminal experience.
