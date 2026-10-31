@@ -207,6 +207,7 @@ class CodingGoal:
         owner = cls(workspace.resolve(), data_root.resolve())
         owner._model_planning = model_planning
         owner._profile = profile
+        additional_tool_policy = tool_policy_evaluator
         try:
             policy_id = POLICY_ID
             if model_planning:
@@ -296,6 +297,7 @@ class CodingGoal:
                     owner._source_reader,
                     identity.store_identity,
                     approval_resolver,
+                    additional_tool_policy,
                 )
             work_path = goal_journal_path(
                 owner.data_root / "sessions", owner.session_id
@@ -342,6 +344,7 @@ class CodingGoal:
                 )
             if owner._delegation is not None:
                 owner._policy.delegation = owner._delegation
+                owner._policy.source_reader = owner._source_reader
             owner._core = GoalController(
                 header=header,
                 store=owner._store,

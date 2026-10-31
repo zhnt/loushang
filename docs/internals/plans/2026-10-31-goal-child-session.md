@@ -27,3 +27,11 @@
 5. 完成独立评审、现有变更路由和交付记录；不扩 CI 门禁，不以设计完成声称实现完成。
 
 2026-10-31 用户明确要求“请你开发实施R3”，随后补充“开发实施完毕R3后启动三视角评审代码”。已合入原仓库 profile f024cb734，合并提交 f410f10ce；原仓库 Goal 19 项离线测试通过。上述集成事实不代表新模式验收通过。
+
+## 实施与代码评审进展
+
+- `82864e9ad` 已实现私有仓库 profile 的 reuse/fresh/inherit，仍由原 Harness factory/runtime 驱动子 Session，由原 Method/Work/Blob 完成交接与验收。原公开默认同 Session 路径保留。
+- 三位独立 xhigh 代码评审发现容量前置检查、取消释放的清理凭据、实际来源库身份、步骤证据关联、未知私有 schema 五类问题，已修正并增加回归，待原 reviewer 复核；见代码评审记录。
+- 同步来源观察是现有 TranscriptSourceReader 的调用形式补充；同步冷读使用独立 reader，close 失败以保留 reader 的异常返回；活跃 Goal 仍由 owner 关闭 reader 后释放父 Session。没有另一套库身份算法或历史读取实现。
+- 初轮目标兼容回归 175 passed / 7 skipped，修正回归 28 passed，取消释放和多 Session/冷读末轮 2 passed。尚未以此声称在线动态重规划已验证。
+- 真实 #125 验证另建短期 worktree/分支 `validation/goal-r3-issue125`，从原缺陷基线 `5eadeb91c` 创建。任务包与运行资料置于产品树外；不回填旧成功记录。

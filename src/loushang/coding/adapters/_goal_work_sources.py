@@ -153,7 +153,16 @@ async def read_goal_work_sources(
             recording = project_work_recording(entries, run.run_id)
             if recording is None:
                 raise GoalError("Goal Work recording disappeared")
+            from ._goal_delegation_report import decode_selection
+
+            selected = decode_selection(
+                batch, run, [e for e in entries if e.operation_id == batch.operation_id]
+            )
             handoffs = project_work_transcript(recording, entries)
+            if selected is not None and handoffs is not None:
+                raise GoalError(
+                    "delegated child cannot declare a parent Transcript source"
+                )
             if handoffs is None:
                 views.append(GoalWorkSourceView(*identity, "not_declared", recording))
                 continue

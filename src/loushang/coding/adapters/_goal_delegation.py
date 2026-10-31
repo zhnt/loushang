@@ -13,11 +13,14 @@ from loushang.coding.bootstrap import _create_agent_session_runtime
 from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.multiagent import CodingSubagentFactory
 from loushang.harness.multiagent import (
+    AgentRef,
     AgentTypeRegistry,
     AgentTypeSpec,
     HostCaller,
     MultiAgentControl,
+    MultiAgentError,
 )
+from loushang.harness.policy import PolicyEvaluatorChain
 from loushang.harness.session.model_selection import model_identity_data
 from loushang.harness.session.multiagent import SessionMultiAgentRuntime
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -41,7 +44,7 @@ WORKER = "shared_implementation_worker"
 
 @dataclass(frozen=True)
 class ExecutionContextView:
-    ref: object
+    ref: AgentRef
     session_id: str
     status: str
     round_id: int
@@ -73,9 +76,17 @@ class _ChildRuntime:
 
 class DelegatedSessions:
     def __init__(
-        self, owner, profile, blobs, reader, source_identity, approval_resolver
+        self,
+        owner,
+        profile,
+        blobs,
+        reader,
+        source_identity,
+        approval_resolver,
+        additional_tool_policy=None,
     ):
         self.owner, self.profile, self.blobs = owner, profile, blobs
+        self.additional_tool_policy = additional_tool_policy
         self.reader, self.source_identity = reader, source_identity
         self.selection = profile.execution_policy.choice
         self.revision = 0
@@ -129,7 +140,13 @@ class DelegatedSessions:
             composition_set=resolve_coding_composition_set("coding-standard"),
             enable_multiagent=False,
             stream_fn=self.owner._allowance.stream,
-            tool_policy_evaluator=policy,
+            tool_policy_evaluator=(
+                PolicyEvaluatorChain(
+                    (policy, self.additional_tool_policy), strategy="most_restrictive"
+                )
+                if self.additional_tool_policy is not None
+                else policy
+            ),
         )
         sdk = _create_agent_session_runtime(**kwargs)
         ref = kwargs["delegated_execution_profile"].actor_ref
@@ -214,6 +231,8 @@ class DelegatedSessions:
                 else SessionChoice("fresh")
             )
         child = self._reusable(choice.target) if choice.mode == "reuse" else None
+        if choice.mode != "reuse":
+            self._check_creation()
         plan, history = build_context(
             session=self.owner._session,
             blobs=self.blobs,
@@ -248,6 +267,13 @@ class DelegatedSessions:
             frozen,
         )
 
+    def _check_creation(self):
+        self.control.check_spawn(
+            caller=HostCaller(),
+            parent_path=self.control.root_ref.path,
+            agent_type=WORKER,
+        )
+
     def confirm(self, value):
         try:
             self._available()
@@ -260,8 +286,10 @@ class DelegatedSessions:
                     if ref_data(c.ref) == value["reuse"]["ref"]
                 )
                 self._reusable(child.ref, value["reuse"])
+            else:
+                self._check_creation()
             return True
-        except (ValueError, KeyError, StopIteration):
+        except (ValueError, KeyError, StopIteration, MultiAgentError):
             return False
 
     async def release(self, ref):
@@ -269,10 +297,18 @@ class DelegatedSessions:
             if self.active is not None or self.closing:
                 raise GoalError("delegated execution busy")
             record = self.control.registry.get(ref)
-            if record is None or ref not in self.children:
+            if ref not in self.children:
                 raise GoalError("unknown exact child identity")
+            if record is None:
+                # The original shielded close may have finished after its caller
+                # was cancelled. Registry retirement is the authority for that.
+                self.cleanup_pending.discard(ref)
+                if self.last_ref == ref:
+                    self.last_ref = None
+                return
             if record.status == "running":
                 raise GoalError("cannot release an active child")
+            self.cleanup_pending.add(ref)
             result = await self.runtime.close_agent(
                 caller=HostCaller(), target=ref.path
             )

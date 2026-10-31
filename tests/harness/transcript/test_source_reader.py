@@ -18,7 +18,9 @@ from loushang.harness.transcript.writer_lease import TranscriptWriterError
 
 from .test_owned_session_factory import factory, new
 
-pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux admitted source reader")
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux", reason="Linux admitted source reader"
+)
 
 
 async def source(tmp_path):
@@ -225,6 +227,44 @@ def test_identity_binding_does_not_materialize_lazy_session_file(tmp_path):
             await lazy.read(["not-yet-committed"])
         await lazy.aclose()
         await reader.aclose()
+        await session.dispose()
+        await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_sync_reader_shares_identity_records_and_retained_cleanup(
+    tmp_path, monkeypatch
+):
+    from loushang.harness.transcript import source_reader as module
+
+    async def scenario():
+        owner, session, _, reader, ids = await source(tmp_path)
+        expected = await reader.read(ids)
+        assert reader.read_sync(ids) == expected
+        async with reader._lock:
+            with pytest.raises(TranscriptSourceError, match="busy"):
+                reader.read_sync(ids)
+        original = module._ReadOwner.close
+        attempts = 0
+
+        def fail_once(resource):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("injected synchronous cleanup failure")
+            original(resource)
+
+        monkeypatch.setattr(module._ReadOwner, "close", fail_once)
+        with pytest.raises(RuntimeError, match="cleanup failure"):
+            reader.read_sync(ids)
+        assert reader._owner is not None
+        with pytest.raises(TranscriptSourceError, match="cleanup pending"):
+            reader.read_sync(ids)
+        reader.close()
+        assert reader._owner is None and attempts == 2
+        with pytest.raises(TranscriptSourceError, match="closed"):
+            reader.read_sync(ids)
         await session.dispose()
         await owner.close()
 

@@ -42,7 +42,11 @@ class SessionChoice:
     reason: str = "host_policy"
 
     def __post_init__(self):
-        if self.mode not in {"reuse", "fresh", "inherit"}:
+        if not isinstance(self.mode, str) or self.mode not in {
+            "reuse",
+            "fresh",
+            "inherit",
+        }:
             raise GoalError("unsupported Goal Session choice")
         if not isinstance(self.tier, ForkTier) or type(self.allow_empty) is not bool:
             raise GoalError("invalid Goal history selection")

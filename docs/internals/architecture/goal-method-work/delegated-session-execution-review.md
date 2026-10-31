@@ -51,3 +51,18 @@
 实施验证保留 DS-01—10：尤其 DS-03/06 的跨 child 权限和额度、创建/投递取消竞争及多 child 关闭重试，DS-05/07 的错绑/缺失/旧 kind 混读，以及 DS-09/10 的固定历史、附件/工具消息、空集降级和未支持模式拒绝。第一切片接 reuse/fresh，inherit 完成对应验证后才开放。三位 reviewer 都将这些明确标为实施证据要求，而不是宣称设计通过即实现通过。
 
 本轮文档变更通过既有文档检查，未触发产品回归路由，未新增门禁。重要工作件仍按 README 的用户检查点办理。
+
+## R3 实施后独立三视角代码评审
+
+用户于 2026-10-31 明确授权“开发实施R3”，并要求实现后开展三视角代码评审。实现初版固定为 `82864e9ad`；新建三位独立 xhigh reviewer，方法仍为干净本地 master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。报告保留于产品树外的本轮架构分析目录；以下为去除环境细节后的结论。
+
+| 视角 / 发现 | 判断与修正 | 复核状态 |
+| --- | --- | --- |
+| r3_code_ownership OWN-01 / r3_code_runtime F-RUN-02 | 已知容量不足仍受理 Work。把 Harness control 原检查抽为只读 check_spawn，由 prepare/confirm 和实际 spawn 共用；不复制容量算法，不预留 child | 修正完成，待独立复核 |
+| r3_code_runtime F-RUN-01 | 取消 release 的等待者后，底座后台清理失败未阻止新业务。调用原 close_agent 前登记 exact ref 的清理凭据；取消/异常保留，原 owner 重试收敛后解除 | 离线 SDK 复现旧缺陷；修正与回归完成，待独立复核 |
+| r3_code_data DATA-01 | 同内容替换物理 Transcript 库仍被冷读接受。原 TranscriptSourceReader 增加同步调用形式，复用同一 admission、IO owner、解码与身份规则；live/cold 比较实际库身份和固定分支记录，不把报告中声明的身份当观察结果 | 修正完成；替换目录回归通过，待独立复核 |
+| r3_code_data DATA-02 | 委派成功证据未核对唯一 repair 步骤。消费原 plan projection，核对实际唯一 completed repair、run/Method/plan，并要求两份 role 的 reported_step_id 均匹配 | 修正完成，待独立复核 |
+| r3_code_data DATA-03 | 来源查询将未知私有委派 schema 归为 not_declared。业务投影和来源查询共用 decode_selection；只有已识别合同才报告子原文未声明，不把父 Transcript 绑定为子来源 | 修正完成，待独立复核 |
+| r3_code_ownership OWN-02 非阻断 | 公开 helper 不暴露额外 evaluator，但私有 _open 的组合应保持约束。子侧独立阶段策略与调用方额外策略采用原 most_restrictive PolicyEvaluatorChain，不共享父阶段可变状态 | 修正完成，待独立复核 |
+
+验证记录：初版完整 repository Goal + Coding Work 套件 175 passed / 7 skipped；修正后的容量、原库来源、固定历史与既有来源兼容等 28 passed；最后的取消释放重试与多 Session/来源冷读链路 2 passed。测试为离线真实 SDK 与固定 provider，不能充当在线模型实质重规划证据。独立复核与真实任务验证尚在进行；不把初轮有阻断的评审记作通过。

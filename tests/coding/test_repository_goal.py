@@ -966,6 +966,41 @@ def test_delegated_goal_reuse_fresh_inherit_and_cold_proof(tmp_path, monkeypatch
             task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
         )
         assert cold.validity == "current", cold
+        from loushang.coding.adapters._goal_store import goal_journal_path
+        from loushang.coding.adapters.goal import read_goal_work_sources
+        from loushang.harness.transcript.source_reader import TranscriptSourceReader
+
+        reader = TranscriptSourceReader(
+            session_file=Path(owner._session.session_manager.get_session_file()),
+            conversation_id=sid,
+            store_state_root=tmp_path / "platform/state/session-stores",
+        )
+        work_file = goal_journal_path(tmp_path / "data/sessions", sid).with_suffix(
+            ".work.jsonl"
+        )
+        original_work = work_file.read_bytes()
+        try:
+            views = await read_goal_work_sources(
+                data_root=tmp_path / "data", session_id=sid, goal_id="g", reader=reader
+            )
+            assert all(v.status == "not_declared" for v in views)
+            lines = [json.loads(line) for line in original_work.splitlines()]
+            for line in lines:
+                payload = line.get("payload", {}).get("payload", {})
+                if "coding_goal_context" in payload:
+                    payload["coding_goal_context"]["version"] = 999
+                    break
+            work_file.write_text("".join(json.dumps(line) + "\n" for line in lines))
+            with pytest.raises(GoalError, match="delegated"):
+                await read_goal_work_sources(
+                    data_root=tmp_path / "data",
+                    session_id=sid,
+                    goal_id="g",
+                    reader=reader,
+                )
+        finally:
+            work_file.write_bytes(original_work)
+            await reader.aclose()
         blobs = owner._policy.blobs
         evidence = next(
             r
@@ -980,6 +1015,20 @@ def test_delegated_goal_reuse_fresh_inherit_and_cold_proof(tmp_path, monkeypatch
         )
         assert missing.validity == "unknown"
         path.write_bytes(content)
+        # Unchanged bytes at a replacement physical store are not the source
+        # admitted for inheritance; no Goal/Work/report content is modified.
+        root = tmp_path / "data/sessions"
+        saved = tmp_path / "data/original-sessions"
+        root.rename(saved)
+        shutil.copytree(saved, root)
+        try:
+            replaced = inspect_repository_goal(
+                task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+            )
+            assert replaced.validity == "unknown", replaced
+        finally:
+            shutil.rmtree(root)
+            saved.rename(root)
 
     try:
         asyncio.run(scenario())
@@ -1347,8 +1396,9 @@ def test_inherited_images_are_preserved_or_rejected(tmp_path):
         build_context(**kwargs, blobs=SessionBlobStore(tmp_path, "other"))
 
 
+@pytest.mark.parametrize("failure", ["preflight", "dispatch"])
 def test_delegated_capacity_failure_keeps_partial_facts_and_existing_child(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, failure
 ):
     from loushang.coding.adapters._goal_execution_context import (
         SessionChoice,
@@ -1366,7 +1416,7 @@ def test_delegated_capacity_failure_keeps_partial_facts_and_existing_child(
             data_root=tmp_path / "data",
             model=model(adapter),
             execution_policy=SessionExecutionPolicy(
-                limits=ControlLimits(max_open_agents=2)
+                limits=ControlLimits(max_open_agents=2 if failure == "preflight" else 3)
             ),
         )
         try:
@@ -1383,22 +1433,45 @@ def test_delegated_capacity_failure_keeps_partial_facts_and_existing_child(
                 family._reusable(ref)
             child.session.clear_queue()
             owner.set_execution_context(SessionChoice("fresh"))
+            original_spawn = family.runtime.spawn_child
+            if failure == "dispatch":
+
+                async def fail_spawn(**kwargs):
+                    raise RuntimeError("injected dispatch failure after admission")
+
+                monkeypatch.setattr(family.runtime, "spawn_child", fail_spawn)
             for n in range(2, 4):
                 receipt = await owner.advance(
                     "g", command_id=f"a-{n}", revision=1, epoch=1
                 )
-                assert receipt.outcome == "work_finished", (
-                    receipt,
-                    owner.controller.last_error,
-                )
-            assert owner.controller.facts().runs[-1].status == "failed"
             assert adapter.writes == 1
-            trace = owner.planning_trace("g")
-            assert trace["status"] == "known", trace
-            assert trace["evidence"][-1]["result"]["status"] == "partial"
+            epoch = 1
+            if failure == "preflight":
+                assert receipt.outcome == "paused"
+                assert len(owner.controller.facts().runs) == 3
+                assert (
+                    owner.controller.query("g").reason
+                    == "child_session_admission:agent_limit_reached"
+                )
+                owner.controller.control(
+                    "g",
+                    "resume",
+                    command_id="resume",
+                    revision=1,
+                    epoch=2,
+                    reason="reuse existing child",
+                )
+                epoch = 3
+            else:
+                assert receipt.outcome == "work_finished"
+                assert owner.controller.facts().runs[-1].status == "failed"
+                trace = owner.planning_trace("g")
+                assert trace["status"] == "known", trace
+                assert trace["evidence"][-1]["result"]["status"] == "partial"
+                monkeypatch.setattr(family.runtime, "spawn_child", original_spawn)
             owner.set_execution_context(SessionChoice("reuse", target=ref))
             for n in range(4, 8):
-                await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+                await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=epoch)
             assert (await owner.query("g")).reason == "review_required", (
                 owner.planning_trace("g")
             )
@@ -1415,6 +1488,80 @@ def test_delegated_capacity_failure_keeps_partial_facts_and_existing_child(
             with pytest.raises(GoalError, match="unavailable"):
                 family._reusable(ref)
         finally:
+            await owner.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+def test_cancelled_release_retains_cleanup_debt_until_original_owner_settles(
+    tmp_path, monkeypatch
+):
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        SessionExecutionPolicy,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    adapter = DelegatingAdapter(task, repairs=3)
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            model=model(adapter),
+            execution_policy=SessionExecutionPolicy(),
+        )
+        started, fail_now = asyncio.Event(), asyncio.Event()
+        child = original = None
+        try:
+            owner.create("g", command_id="create")
+            for n in range(4):
+                if n == 2:
+                    owner.set_execution_context(SessionChoice("fresh"))
+                assert (
+                    await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+                ).outcome == "work_finished"
+            first, second = owner.execution_contexts()
+            family = owner._delegation
+            child = family.children[second.ref]
+            original = child.sdk.dispose_session_runtime
+
+            async def fail_close():
+                started.set()
+                await fail_now.wait()
+                raise RuntimeError("cleanup failed after waiting caller was cancelled")
+
+            monkeypatch.setattr(child.sdk, "dispose_session_runtime", fail_close)
+            release = asyncio.create_task(owner.release_execution_context(second.ref))
+            await asyncio.wait_for(started.wait(), 15)
+            release.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await release
+            cleanup = tuple(family.runtime._cleanup_tasks)
+            fail_now.set()
+            results = await asyncio.gather(*cleanup)
+            assert any(r.dispose_errors for r in results)
+            assert family.cleanup_pending == {second.ref}
+            with pytest.raises(GoalError, match="unavailable"):
+                owner.set_execution_context(SessionChoice("reuse", target=first.ref))
+            assert (await owner.query("g")).validity == "unknown"
+            monkeypatch.setattr(child.sdk, "dispose_session_runtime", original)
+            await owner.release_execution_context(second.ref)
+            assert not family.cleanup_pending
+            owner.set_execution_context(SessionChoice("reuse", target=first.ref))
+            for n in range(4, 6):
+                assert (
+                    await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+                ).outcome == "work_finished"
+            assert adapter.writes == 3
+        finally:
+            fail_now.set()
+            if original is not None:
+                monkeypatch.setattr(child.sdk, "dispose_session_runtime", original)
             await owner.close()
 
     try:

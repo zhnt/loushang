@@ -148,6 +148,36 @@ class TranscriptSourceReader:
             raise TranscriptSourceError("record IDs must be nonempty strings")
         return cast(TranscriptSourceBatch, await self._observe(requested))
 
+    def read_sync(self, record_ids: Sequence[str] = ()) -> TranscriptSourceBatch:
+        """Blocking counterpart for synchronous inspection APIs.
+
+        Uses the same admission, decoder and retained IO owner as read(). Do not
+        call concurrently from another thread; an active async observation is
+        rejected instead of waiting on its event loop. close() settles this owner.
+        """
+        requested = tuple(dict.fromkeys(record_ids))
+        if any(type(value) is not str or not value for value in requested):
+            raise TranscriptSourceError("record IDs must be nonempty strings")
+        if self._lock.locked() or self._closing or self._owner is not None:
+            raise TranscriptSourceError("source reader busy, closed or cleanup pending")
+        self._owner = _ReadOwner(
+            TranscriptStoreAdmission(
+                self.session_file.parent, state_root=self.store_state_root
+            )
+        )
+        return cast(TranscriptSourceBatch, self._read(self._owner, requested))
+
+    def close(self) -> None:
+        """Synchronous cleanup, retaining the same owner if cleanup fails."""
+        self._closing = True
+        if self._lock.locked():
+            raise TranscriptSourceError(
+                "async source observation still active; await aclose"
+            )
+        if self._owner is not None:
+            self._owner.close()
+            self._owner = None
+
     async def inspect_identity(self) -> TranscriptSourceIdentity:
         """Inspect the existing store, without requiring a lazy Session file.
 

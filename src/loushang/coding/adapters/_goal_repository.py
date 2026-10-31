@@ -9,7 +9,9 @@ from functools import partial
 from types import SimpleNamespace
 from uuid import uuid4
 
+from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobRef
+from loushang.harness.transcript.source_reader import TranscriptSourceReader
 from loushang.harnesswork import WorkOperation, WorkRunSpec, WorkStepSpec
 from loushang.harnesswork.goal import (
     GoalAssessment,
@@ -245,11 +247,34 @@ class RepositoryProfile:
             GoalBasis(header, state, history.sequence),
             GoalFacts(history.batches, runs, unresolved=unresolved),
         )
-        assessment = policy.assess_now(basis, facts)
-        return replace(
-            _view(state, assessment, unresolved=unresolved),
-            planning=policy.trace(basis, facts),
-        )
+        reader = None
+        if manager is not None:
+            reader = TranscriptSourceReader(
+                session_file=manager.session_file,
+                conversation_id=session_id,
+                store_state_root=resolve_platform_home() / "state/session-stores",
+            )
+            policy.source_reader = reader
+        try:
+            assessment = policy.assess_now(basis, facts)
+            return replace(
+                _view(state, assessment, unresolved=unresolved),
+                planning=policy.trace(basis, facts),
+            )
+        finally:
+            if reader is not None:
+                try:
+                    reader.close()
+                except BaseException as error:
+                    raise RepositorySourceCleanupError(reader, error) from error
+
+
+class RepositorySourceCleanupError(RuntimeError):
+    """Retain the independent cold reader; retry owner.close() on this object."""
+
+    def __init__(self, owner, error):
+        super().__init__("repository source reader cleanup pending")
+        self.owner, self.error = owner, error
 
 
 class RepositoryDomain:
@@ -275,6 +300,7 @@ class RepositoryDomain:
         self.pending_review = None
         self.transcript_source = transcript_source
         self.delegation = None
+        self.source_reader = None
 
     def _bind_source(self, operation, spec, executor):
         if self.transcript_source is None:
@@ -288,6 +314,8 @@ class RepositoryDomain:
         )
 
     def _current_inputs(self, basis):
+        if self.delegation is not None:
+            self.delegation._available()
         if (
             basis.header.policy_id != self.task.policy_id
             or basis.goal.limit != LIMITS["work_intents"]
@@ -767,11 +795,16 @@ class RepositoryDomain:
             )
             spec = prepared[0].to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
             if self.delegation is not None:
+                from loushang.harness.multiagent import MultiAgentError
+
                 from ._goal_delegation import KEY
 
-                operation, scoped, selection = self.delegation.prepare(
-                    basis, operation, spec, prepared[0]
-                )
+                try:
+                    operation, scoped, selection = self.delegation.prepare(
+                        basis, operation, spec, prepared[0]
+                    )
+                except MultiAgentError as error:
+                    return PolicyStop("child_session_admission:" + error.code)
                 common[KEY] = selection
             else:
                 operation, original = self._bind_source(operation, spec, original)
