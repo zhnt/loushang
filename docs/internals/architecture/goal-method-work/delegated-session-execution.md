@@ -3,7 +3,8 @@
 - Authority: normative candidate；Design status: proposed；Implementation status: not-started。
 - Revision: R2，2026-10-31。Owner：Coding；共同父级：Loushang architecture；协作：Harness Multiagent/Session、HarnessWork、Method。
 - 方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 基线：main `64d035620`；待合入子 Session 底座 `3aac81d8e`；已完成的仓库适配分支 `f024cb734`。三者尚未作为一个集成版本通过验证，不将分支能力写成 main 的 Current。
+- 评审基线：main `64d035620`；评审时待合入子 Session 底座 `3aac81d8e`；已完成的仓库适配分支 `f024cb734`。三者尚未作为一个集成版本通过验证，不将分支能力写成 main 的 Current。
+- 集成更新：底座已随 `caaff3945` 本地合入 main，见[交付记录](../../plans/2026-10-31-child-session-consolidation.md)。本稿的设计合同未因合入而改变；原仓库 profile 与新委派模式仍未完成集成。
 - 用户已同意推进“一个 Goal 专属子 Session，多批 Work 复用”；按[本包检查点](README.md#用户评审检查点)，下述环境、交互和记录边界仍须以具体工作件提交用户评审。内部评审不替代该检查点。
 
 ## 1. 目标、事实与前置工作
@@ -13,7 +14,7 @@
 | Current 事实 | 本切片复用 / 尚需接通 |
 | --- | --- |
 | main 已有同 Session 记录与来源接入，[GMW-KD-SESSION-01](session-execution-recording.md)已实现 | 保留默认调用与冻结来源合同；不改为自动委派 |
-| Harness 子 Session 工厂已抽取，当前在独立分支；Coding 只选角色、模型、工具、沙箱和 persist=False | 先关闭独立评审并合入底座；沿原工厂与 SessionMultiAgentRuntime 建立执行 child |
+| Harness 子 Session 工厂已抽取，评审时在独立分支、现已本地合入；Coding 只选角色、模型、工具、沙箱和 persist=False | 底座评审及本地合入已完成；沿原工厂与 SessionMultiAgentRuntime 建立执行 child |
 | `feat/goal-review-replanning@f024cb734` 已有私有 RepositoryTask、RepositoryProfile、真实仓库 Goal 适配、独立验证及持久评审；main 尚无这些模块 | 接续原分支，协调其公共规划抽取与后来同 Session 来源接入；不另写 RepositoryGoal。旧验收只证明旧版本，集成后须复核 |
 | SessionMultiAgentRuntime.spawn_child 会直接启动首个 prompt；send_message 可在终态 child 上开始下一轮 | 在已受理 Work 的步骤回调 execute(operation, context) 内首次创建，后续步骤使用原 send_message；不在 Goal 准备候选时启动模型 |
 | Work Session 来源准备要求 operation 与真实 Session 一致；现有 child persist=False | 不把父来源绑定到子执行；首版保存父 Work/业务证据，子原始 Transcript 不作持久保证 |
@@ -69,7 +70,7 @@ GoalHeader.session_id 与 WorkOperation.session_id 仍指父逻辑 owner。子�
 
 1. 宿主固定任务源码基线、允许修改文件、受保护要求/Method/验证器、检查选择器、模型及调用额度；用原 RepositoryTask 校验。父规划不得修改这些约束。
 2. 原策略用 MethodDomainRuntime 准备步骤和原 WorkRunSpec。委派 Work 使用独立的 Product operation kind，不能伪装为父 SessionTurnExecutor 的直接执行。原 Goal 写意图、两次确认及 Work accept 次序不变。
-3. 已受理 Work 首个实施步骤调用原 spawn_child，所发初始 prompt 就是该步骤的冻结 prompt；不增加“先热身一轮”。后续批次通过原 send_message。Product 适配拥有一个短投递/取消交接临界区：调用前核对绑定的 Goal ID、exact AgentRef、上轮确已收敛、原子 Session 无残留输入、取消尚未受理；从检查到取得投递回执期间禁止另一驱动或取消切换。只有该私有适配可驱动 child，不开放其它输入来源。现有 deliver 先入队再返回 triggered_new_round，故返回的 ref/round/triggered 标记仅作一致性复核，不能作为投递前拒绝的替代；不一致即封住后续步骤并收敛可能已受理的动作，不盲重发。临界区不跨越模型运行或整个创建过程；创建 task 的登记、取消标记与实际交付结果的交接由同一临界区串行处理，创建本身在区外等待。
+3. 已受理 Work 首个实施步骤调用原 spawn_child，所发初始 prompt 就是该步骤的冻结 prompt；不增加“先热身一轮”。后续批次通过原 send_message。Product 适配拥有一个短投递/取消交接临界区：调用前核对绑定的 Goal ID、exact AgentRef、上轮确已收敛、子 Session 的原队列无残留输入、取消尚未受理；从检查到取得投递回执期间禁止另一驱动或取消切换。只有该私有适配可驱动 child，不开放其它输入来源。现有 deliver 先入队再返回 triggered_new_round，故返回的 ref/round/triggered 标记仅作一致性复核，不能作为投递前拒绝的替代；不一致即封住后续步骤并收敛可能已受理的动作，不盲重发。临界区不跨越模型运行或整个创建过程；创建 task 的登记、取消标记与实际交付结果的交接由同一临界区串行处理，创建本身在区外等待。
 4. 每次等待绑定确切 AgentRef 和已受理 round_id，并核对原完成通知，而非仅按路径读“最新完成”。只有当前步骤对应轮次 settled 后才能进入下个步骤。子结果声明、Work 完成与 Goal 满足是三层不同事实。
 5. Product 使用原 allowance 为已受理 repair Work 包裹子模型调用，同一 operation 的多步骤共用额度，不因创建 child 重置；父规划与子实施串行。child 保持原 profile 的 retry/compaction 限制；额度不是 token/金额硬保证。
 6. 子运行的工具上下文由原 Coding factory、context plan 的权限收窄和任务自己的原 PlanningToolPolicy 共同配置。实施 child 仅获任务允许的 read/edit/write；没有可信评审工具、验证命令权限或进一步派生权限。父阶段的临时策略切换不会自动授予子权限，子策略实例必须独立装配并校验。
@@ -145,7 +146,7 @@ sequenceDiagram
 
 ## 7. 交付顺序与用户评审事项
 
-1. 关闭底座独立评审，合入本次边界明确的 Harness 抽取；保留旧 lane/harness 中无关历史和脏工作树。
+1. 已关闭底座独立评审并本地合入本次边界明确的 Harness 抽取；保留旧 lane/harness 中无关历史和脏工作树。
 2. 核验并接续 f024cb734 的已完成仓库 profile，协调后来同 Session 来源接入；保留原真实证据和历史，修正入口文档把“分支已验证”与“main 已交付”分开。
 3. 本 R2 经过独立三视角并关闭技术阻断后，提交用户评审环境、身份/交互、记录及场景；未接受前保持 proposed，不启动新模式产品代码。
 4. 接受后实现最小 Product 委派适配，先离线合同与真实 SDK 验证，再执行冻结的真实任务；保存全部尝试与未通过项，不外推通用可靠性。
