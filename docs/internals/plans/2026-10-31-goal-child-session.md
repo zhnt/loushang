@@ -1,6 +1,6 @@
 # Goal 批次执行 Session：集成准备与实施检查点
 
-- Authority: descriptive；状态：R3 独立三视角技术评审完成，用户工作件接受待确认；新模式实现未开始。
+- Authority: descriptive；状态：R3 独立三视角设计评审完成，用户已明确授权实施 R3；实现与离线验证进行中，代码三视角评审待实现后启动。
 - 设计：[GMW-KD-SESSION-02 R3](../architecture/goal-method-work/delegated-session-execution.md)；[三视角关闭记录](../architecture/goal-method-work/delegated-session-execution-review.md)。
 - 工作分支：feat/goal-child-session；代码 lane：.worktrees/code。未修改有历史脏资料的 Harness lane。
 
@@ -22,8 +22,8 @@
 
 1. 已完成：底座以 caaff3945 本地合入 main，并同步此任务分支；源代码修订为三视角复核的 3aac81d8e。Coding 3991、Harness 5959、TUI 单元 1322、render contract 317 项通过；详见[底座交付记录](2026-10-31-child-session-consolidation.md)。
 2. 接续并协调原仓库 profile 与同 Session 来源记录，先验证旧公开入口、默认路径、原真实任务合同和冷读。历史 #125 修正不得再次作为新缺陷修复交付。
-3. 待接受 R3 后实现 Product 私有委派适配，调用原 Harness/Method/Work；先接 reuse/fresh，验证 A→A→B，再接固定来源 inherit。按 DS-01—10 分别验证多 Session 身份、输入、取消、容量/清理、历史及证据，未启用模式明确拒绝。
+3. 按已接受 R3 实现 Product 私有委派适配，调用原 Harness/Method/Work；先接 reuse/fresh，验证 A→A→B，再接固定来源 inherit。按 DS-01—10 分别验证多 Session 身份、输入、取消、容量/清理、历史及证据，未启用模式明确拒绝。
 4. 对冻结的原始缺陷工作树执行新模式验证；新模式需要自己的真实运行证据，不沿用旧成功结果。没有发生实质调整就如实保留未证明状态。
 5. 完成独立评审、现有变更路由和交付记录；不扩 CI 门禁，不以设计完成声称实现完成。
 
-具体新模式产品修改须等待用户对 R3 重要工作件的接受。这里只记录已核实的集成差异，未替用户作出接受。
+2026-10-31 用户明确要求“请你开发实施R3”，随后补充“开发实施完毕R3后启动三视角评审代码”。已合入原仓库 profile f024cb734，合并提交 f410f10ce；原仓库 Goal 19 项离线测试通过。上述集成事实不代表新模式验收通过。

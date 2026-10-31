@@ -26,6 +26,7 @@ class PlanningHistory:
         header, records = load_agent_transcript_file(paths[0], read_only=True)
         if header.conversation_id != session_id:
             raise GoalError("planning Transcript identity changed")
+        self.header = header
         self.repository = create_agent_transcript_repository(
             header=header, records=records
         )

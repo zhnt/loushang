@@ -1,6 +1,7 @@
 # GMW-KD-SESSION-02：Goal 批次的执行 Session 与上下文选择
 
-- Authority: normative candidate；Design status: proposed；Implementation status: not-started。
+- Authority: normative；Design status: accepted；Implementation status: in-progress。
+- 用户接受：2026-10-31 用户明确要求“请你开发实施R3”，并要求实施完毕后进行三视角代码评审；该授权覆盖 R3 的 reuse/fresh/inherit 两个实施切片。代码评审和交付验证仍未完成。
 - Revision: R3，2026-10-31。Owner：Coding；共同父级：Loushang architecture；协作：Harness Multiagent/Session、HarnessWork、Method。
 - 方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 源码基线：本地 main `a19e5173f`，含已交付 Harness 子 Session 底座；已验证仓库 profile 仍在 `f024cb734` 独立分支，尚未集成，不冒称 main 已有。
@@ -145,7 +146,7 @@ Product runtime_builder 的薄对象继续只做原 SDK 创建、产品配置及
 
 ## 6. 记录、读取与兼容
 
-原 recording v1、WorkEvidenceReported 嵌套 evidence、父 Session Blob 和业务报告继续使用；不修改共享事件或 Goal 状态格式。新私有 delegated_method_report v1 尚未实现或落盘，R3 在首次实现前完善其字段；不需要迁移不存在的 R2 记录。
+原 recording v1、WorkEvidenceReported 嵌套 evidence、父 Session Blob 和业务报告继续使用；不修改共享事件或 Goal 状态格式。新私有 delegated_method_report v1 实施中；字段冻结为 version、operation_id、run_id、session_id（父）、context（冻结选择）、child_ref（path/incarnation）、child_session_id、origin_operation_id、round_id、terminal。context 同时保存在原 Goal intent source 与原 Work operation payload，读取时交叉核对；没有独立登记日志。不需要迁移不存在的 R2 记录。
 
 成功委派 run 仍恰好一个 repair step、恰好一份 delegated_method_report，外层原 RepositoryReport 随后交接一份 repository_report。报告包含 Goal/revision/epoch、operation/run/Method/step、冻结 execution_context、实际 child AgentRef/Session ID/round_id、上下文创建来源及宿主观察的结果；不平铺成 Work 的保留键。inherit 的 requested/effective/source/watermark/诊断与候选一致；reuse 引用原已成功交接的创建/上下文报告，不重新声称每批都 fork 一次。
 

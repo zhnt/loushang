@@ -168,7 +168,14 @@ class RepositoryProfile:
         "Do not run commands, alter tests to hide failures, change requirements or claim Goal completion."
     )
 
-    def __init__(self, task):
+    def __init__(self, task, execution_policy=None):
+        from ._goal_execution_context import SessionExecutionPolicy
+
+        if execution_policy is not None and not isinstance(
+            execution_policy, SessionExecutionPolicy
+        ):
+            raise GoalError("invalid repository Session policy")
+        self.execution_policy = execution_policy
         self.task, self.requirements = task, task.requirements
 
     def tool_policy(self, root):
@@ -267,6 +274,7 @@ class RepositoryDomain:
         self.allowance, self.tool_policy, self.history = allowance, tool_policy, history
         self.pending_review = None
         self.transcript_source = transcript_source
+        self.delegation = None
 
     def _bind_source(self, operation, spec, executor):
         if self.transcript_source is None:
@@ -297,7 +305,16 @@ class RepositoryDomain:
         return self.task.snapshot(), None, None, None
 
     def confirm_candidate(self, candidate):
+        from ._goal_delegation import KEY
+
         try:
+            if KEY in candidate.source and (
+                self.delegation is None
+                or plain(candidate.source[KEY])
+                != plain(candidate.operation.payload.get(KEY))
+                or not self.delegation.confirm(plain(candidate.source[KEY]))
+            ):
+                return False
             if CONTRACT_KEY in candidate.operation.payload:
                 if self.transcript_source is None:
                     return False
@@ -394,6 +411,9 @@ class RepositoryDomain:
         evidence, routes, rejections = [], [], []
         planning = invalid = stalled = 0
         knowledge = set()
+        delegated_reports = {}
+        from ._goal_delegation_report import observe_delegation
+
         for batch in facts.batches:
             if batch.goal_id != basis.goal.id:
                 continue
@@ -402,6 +422,7 @@ class RepositoryDomain:
             run = self._run(batch, facts)
             if run is None:
                 continue
+            delegated = observe_delegation(self, batch, run, delegated_reports)
             if phase == "planning":
                 if run.status == "cancelled":
                     continue
@@ -449,6 +470,14 @@ class RepositoryDomain:
                 )
                 progress = key not in knowledge
             elif phase in {"inspect", "repair"}:
+                if delegated and run.status != "completed":
+                    item["result"] = {
+                        "status": "partial",
+                        "reason": "delegated_work_not_completed",
+                    }
+                    evidence.append(item)
+                    stalled += 1
+                    continue
                 result = self._report(batch, run, "repository_report")
                 if result["before"] != plain(batch.source["inventory"]):
                     raise GoalError("repository execution input mismatch")
@@ -718,7 +747,12 @@ class RepositoryDomain:
             prepared = project_prepared_session_work_turns(
                 turns, images=None, follow_up_messages=()
             )
-            if len(prepared) != 1 or prepared[0].step_id != "repair":
+            if (
+                len(prepared) != 1
+                or prepared[0].step_id != "repair"
+                or prepared[0].planned_constraint
+                or prepared[0].audit_policy
+            ):
                 raise GoalError("protected repository Method changed")
             original = SessionTurnExecutor(
                 session=self.session,
@@ -732,14 +766,22 @@ class RepositoryDomain:
                 operation_id=op_id,
             )
             spec = prepared[0].to_run_spec(profile=CODING_WORK_PROFILE, run_id=None)
-            operation, original = self._bind_source(operation, spec, original)
-            scoped = ScopedSessionWork(
-                original,
-                session=self.session,
-                allowance=self.allowance,
-                policy=self.tool_policy,
-                phase="repair",
-            )
+            if self.delegation is not None:
+                from ._goal_delegation import KEY
+
+                operation, scoped, selection = self.delegation.prepare(
+                    basis, operation, spec, prepared[0]
+                )
+                common[KEY] = selection
+            else:
+                operation, original = self._bind_source(operation, spec, original)
+                scoped = ScopedSessionWork(
+                    original,
+                    session=self.session,
+                    allowance=self.allowance,
+                    policy=self.tool_policy,
+                    phase="repair",
+                )
             executor = RepositoryReport(self, snapshot, scoped)
         self.prepared[op_id] = WorkExecutionBinding(
             executor, executor if action.name == "implement" else None
@@ -809,6 +851,26 @@ class RepositoryReport:
 
 class _RepositoryGoal(CodingGoal):
     _repository_busy = False
+
+    def execution_contexts(self):
+        self._open_for_commands()
+        return self._delegation.views() if self._delegation is not None else ()
+
+    def set_execution_context(self, choice):
+        self._open_for_commands()
+        if self._repository_busy or self._delegation is None:
+            raise GoalError("delegated context selection unavailable")
+        self._delegation.select(choice)
+
+    async def release_execution_context(self, ref):
+        self._open_for_commands()
+        if self._repository_busy or self._delegation is None:
+            raise GoalError("delegated context release unavailable")
+        self._repository_busy = True
+        try:
+            await self._delegation.release(ref)
+        finally:
+            self._repository_busy = False
 
     def review_basis(self, goal_id):
         self._open_for_commands()
@@ -932,14 +994,19 @@ class _RepositoryGoal(CodingGoal):
 
 
 async def open_repository_goal(
-    *, task, data_root, model=None, transcript_retained_until=None
+    *,
+    task,
+    data_root,
+    model=None,
+    transcript_retained_until=None,
+    execution_policy=None,
 ):
     return await _RepositoryGoal._open(
         workspace=task.root,
         data_root=data_root,
         model=model,
         model_planning=True,
-        profile=RepositoryProfile(task),
+        profile=RepositoryProfile(task, execution_policy),
         transcript_retained_until=transcript_retained_until,
     )
 

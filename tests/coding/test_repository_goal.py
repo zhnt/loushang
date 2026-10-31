@@ -816,3 +816,608 @@ def test_verifier_settles_descendant_after_parent_exits():
     finally:
         driver.terminate_group(child)
         child.stdout.close()
+
+
+class DelegatingAdapter(Adapter):
+    """Real SDK file tools, deterministic provider; no network calls."""
+
+    def __init__(self, task, repairs=4):
+        self.task, self.repairs = task, repairs
+        self.writes = 0
+        self.in_tool = False
+        self.contexts = []
+
+    async def invoke_prepared_raw(self, request, prepared):
+        if not request.context.tools:
+            async for part in super().invoke_prepared_raw(request, prepared):
+                if self.writes < self.repairs and part["type"] == "text_delta":
+                    proposal = json.loads(part["text"])
+                    proposal.update(
+                        next_action="implement",
+                        targets=["reader"],
+                        expected_evidence=["method_execution"],
+                        remaining_route=[
+                            {"action": "implement", "targets": ["reader"]},
+                            {"action": "verify_all", "targets": []},
+                        ],
+                    )
+                    part = {**part, "text": json.dumps(proposal)}
+                yield part
+            return
+        self.calls += 1
+        self.contexts.append(prepared.payload_for_transport())
+        assert {t.name for t in request.context.tools} == {"read", "edit", "write"}
+        yield {"type": "response_start", "response_id": f"delegate-{self.calls}"}
+        if not self.in_tool:
+            self.in_tool = True
+            self.writes += 1
+            yield {
+                "type": "tool_call_start",
+                "id": f"write-{self.writes}",
+                "name": "write",
+            }
+            yield {
+                "type": "tool_call_args_delta",
+                "delta": json.dumps(
+                    {
+                        "path": str(self.task.root / "target.py"),
+                        "content": f"VALUE = 1\n# change {self.writes}\n",
+                    }
+                ),
+            }
+            yield {"type": "tool_call_done"}
+        else:
+            self.in_tool = False
+            yield {
+                "type": "text_delta",
+                "text": "Implementation ready for independent verification.",
+            }
+            yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
+
+
+def test_delegated_goal_reuse_fresh_inherit_and_cold_proof(tmp_path, monkeypatch):
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        SessionExecutionPolicy,
+    )
+    from loushang.harness.multiagent import ForkTier
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    adapter = DelegatingAdapter(task)
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            model=model(adapter),
+            execution_policy=SessionExecutionPolicy(),
+        )
+        try:
+            owner.create("g", command_id="create")
+            with pytest.raises(GoalError, match="fresh owner"):
+                owner.create("other", command_id="other")
+            for action in (owner.steer, owner.follow_up):
+                with pytest.raises(GoalError, match="direct input"):
+                    action("g", "unadmitted input")
+            with pytest.raises(GoalError, match="direct input"):
+                owner.clear_queue()
+            for n in range(10):
+                if n == 4:
+                    owner.set_execution_context(SessionChoice("fresh"))
+                if n == 6:
+                    owner.set_execution_context(
+                        SessionChoice("inherit", tier=ForkTier.last(1))
+                    )
+                result = await owner.advance(
+                    "g", command_id=f"a-{n}", revision=1, epoch=1
+                )
+                assert result.outcome == "work_finished", (
+                    result,
+                    owner.controller.last_error,
+                    owner.planning_trace("g"),
+                )
+                assert all(
+                    r.status == "completed" for r in owner.controller.facts().runs
+                ), [(r.status, r.operation_id) for r in owner.controller.facts().runs]
+            contexts = owner.execution_contexts()
+            assert len(contexts) == 3
+            assert [c.round_id for c in contexts] == [2, 1, 1]
+            assert len({c.session_id for c in contexts}) == 3
+            assert owner._session.pending_message_count == 0
+            view = await owner.query("g")
+            assert view.reason == "review_required", (view, owner.planning_trace("g"))
+            await submit(
+                owner,
+                "g",
+                expected_inventory=task.snapshot(),
+                approved=True,
+                reviewer="offline reviewer",
+                reason="checked frozen requirements",
+            )
+            assert (await owner.query("g")).validity == "current"
+            from loushang.harness.artifacts import SessionBlobStore
+
+            original_read = SessionBlobStore.read_bytes
+            for field, invalid in (
+                ("version", True),
+                ("round_id", 99),
+                ("origin_operation_id", "wrong-origin"),
+                ("child_session_id", owner.session_id),
+            ):
+
+                def damaged(store, ref, field=field, invalid=invalid):
+                    content = original_read(store, ref)
+                    if ref.logical_name.endswith("/delegated_method_report.json"):
+                        value = json.loads(content)
+                        value[field] = invalid
+                        return json.dumps(value).encode()
+                    return content
+
+                with monkeypatch.context() as patch:
+                    patch.setattr(SessionBlobStore, "read_bytes", damaged)
+                    assert (await owner.query("g")).validity == "unknown"
+            sid = owner.session_id
+        finally:
+            await owner.close()
+        assert all(v.status == "closed" for v in owner._delegation.views())
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+        )
+        assert cold.validity == "current", cold
+        blobs = owner._policy.blobs
+        evidence = next(
+            r
+            for r in blobs.records
+            if r.logical_name.endswith("/delegated_method_report.json")
+        )
+        path = blobs.objects_root / evidence.blob_id
+        content = path.read_bytes()
+        path.unlink()
+        missing = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+        )
+        assert missing.validity == "unknown"
+        path.write_bytes(content)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize("stage", ["create", "round", "reuse"])
+def test_delegated_cancellation_joins_actual_child(tmp_path, monkeypatch, stage):
+    from loushang.coding.adapters import _goal_delegation as delegation
+    from loushang.coding.adapters._goal_execution_context import SessionExecutionPolicy
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+
+    async def scenario():
+        started, stopped = asyncio.Event(), asyncio.Event()
+
+        class WaitingAdapter(DelegatingAdapter):
+            async def invoke_prepared_raw(self, request, prepared):
+                if request.context.tools and (
+                    stage != "reuse" or (self.writes >= 1 and not self.in_tool)
+                ):
+                    started.set()
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        stopped.set()
+                async for chunk in super().invoke_prepared_raw(request, prepared):
+                    yield chunk
+
+        adapter = WaitingAdapter(task)
+        owner = await open_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            model=model(adapter),
+            execution_policy=SessionExecutionPolicy(),
+        )
+        original_create = delegation._ChildRuntime.create_session
+        if stage == "create":
+
+            async def wait_create(self, *, cwd):
+                await original_create(self, cwd=cwd)
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    stopped.set()
+
+            monkeypatch.setattr(delegation._ChildRuntime, "create_session", wait_create)
+        try:
+            owner.create("g", command_id="create")
+            count = 3 if stage == "reuse" else 1
+            for n in range(count):
+                assert (
+                    await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+                ).outcome == "work_finished"
+            running = asyncio.create_task(
+                owner.advance("g", command_id="cancel-work", revision=1, epoch=1)
+            )
+            await asyncio.wait_for(started.wait(), 15)
+            owner.controller.control(
+                "g",
+                "pause",
+                command_id="pause",
+                revision=1,
+                epoch=1,
+                reason="stop actual child",
+            )
+            await asyncio.wait_for(owner.controller.request_cancel("g"), 15)
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(running, 15)
+            await owner.controller.settle_work()
+            assert stopped.is_set()
+            runs = owner.controller.facts().runs
+            assert runs[-1].status == "cancelled", runs[-1]
+            assert owner._work.get_cancellation(runs[-1].run_id).status == "settled"
+            assert not any(c.status == "running" for c in owner.execution_contexts())
+            assert owner._allowance.phase is None
+        finally:
+            await owner.close()
+            get_default_api_registry().unregister_api_adapters(adapter.api)
+
+    asyncio.run(scenario())
+
+
+def test_delegated_close_retains_parent_until_child_retry(tmp_path, monkeypatch):
+    from loushang.coding.adapters._goal_execution_context import SessionExecutionPolicy
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    adapter = DelegatingAdapter(task)
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            model=model(adapter),
+            execution_policy=SessionExecutionPolicy(),
+        )
+        owner.create("g", command_id="create")
+        for n in range(2):
+            assert (
+                await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+            ).outcome == "work_finished"
+        child = next(iter(owner._delegation.children.values()))
+        original = child.sdk.dispose_session_runtime
+        attempts = 0
+
+        async def fail_once():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("injected child cleanup failure")
+            await original()
+
+        monkeypatch.setattr(child.sdk, "dispose_session_runtime", fail_once)
+        with pytest.raises(ExceptionGroup):
+            await owner.close()
+        assert (
+            not owner._session_retired
+            and not owner._source_retired
+            and not owner._writer_closed
+        )
+        assert not owner._closed
+        await owner.close()
+        assert attempts == 2 and owner._closed
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize("tier", ["all", "last"])
+def test_goal_inherited_context_fixed_watermark_and_original_codecs(tier):
+    from types import SimpleNamespace
+
+    from loushang.ai.types import (
+        AssistantMessage,
+        TextPart,
+        ToolCall,
+        ToolResultMessage,
+        Usage,
+        UserMessage,
+    )
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        build_context,
+    )
+    from loushang.harness.conversation.types import ConversationRecord
+    from loushang.harness.multiagent import ForkTier
+    from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
+
+    def assistant(content):
+        return AssistantMessage(
+            role="assistant",
+            content=content,
+            api="test",
+            provider="test",
+            endpoint="test",
+            model="test",
+            response_id=None,
+            usage=Usage(0, 0, 0, 0, 0, None),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0,
+        )
+
+    messages = [
+        UserMessage(role="user", timestamp=0, content="earlier"),
+        assistant(content=[TextPart(type="text", text="earlier answer")]),
+        UserMessage(role="user", timestamp=0, content="current"),
+        assistant(
+            content=[
+                ToolCall(type="toolCall", id="t1", name="read", arguments={"path": "a"})
+            ]
+        ),
+        ToolResultMessage(
+            role="toolResult",
+            is_error=False,
+            timestamp=0,
+            tool_call_id="t1",
+            tool_name="read",
+            content=[TextPart(type="text", text="contents")],
+        ),
+        assistant(content=[TextPart(type="text", text="current answer")]),
+    ]
+    records = tuple(
+        ConversationRecord(
+            str(n),
+            str(n - 1) if n else None,
+            AGENT_MESSAGE_KIND,
+            1,
+            "2026-10-31T00:00:00Z",
+            msg,
+        )
+        for n, msg in enumerate(messages)
+    )
+    manager = SimpleNamespace(
+        header=SimpleNamespace(conversation_id="parent"),
+        get_leaf_id=lambda: "5",
+        get_branch=lambda leaf: records[: int(leaf) + 1],
+    )
+    session = SimpleNamespace(session_id="parent", session_manager=manager)
+    choice = SessionChoice(
+        "inherit", tier=ForkTier.all() if tier == "all" else ForkTier.last(1)
+    )
+    plan, material = build_context(
+        session=session,
+        blobs=None,
+        choice=choice,
+        system_prompt="bounded",
+        source_identity="trusted",
+        watermark="5",
+    )
+    assert list(plan.history.messages) == (messages if tier == "all" else messages[2:])
+    messages[3].content[0].arguments["path"] = "changed"
+    assert plan.history.messages[-3].content[0].arguments["path"] == "a"
+    _, changed = build_context(
+        session=session,
+        blobs=None,
+        choice=choice,
+        system_prompt="bounded",
+        source_identity="trusted",
+        watermark="5",
+    )
+    assert material["messages_sha256"] != changed["messages_sha256"]
+    # A subsequent parent append is outside the explicitly selected watermark.
+    records += (
+        ConversationRecord(
+            "6",
+            "5",
+            AGENT_MESSAGE_KIND,
+            1,
+            "2026-10-31T00:00:00Z",
+            UserMessage(role="user", timestamp=0, content="later"),
+        ),
+    )
+    manager.get_leaf_id = lambda: "6"
+    _, fixed = build_context(
+        session=session,
+        blobs=None,
+        choice=choice,
+        system_prompt="bounded",
+        source_identity="trusted",
+        watermark="5",
+    )
+    assert fixed == changed
+
+
+def test_goal_inherited_history_refuses_orphans_unknown_versions_and_empty_fallback():
+    from types import SimpleNamespace
+
+    from loushang.ai.types import TextPart, ToolResultMessage
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        build_context,
+    )
+    from loushang.harness.conversation.types import ConversationRecord
+    from loushang.harness.multiagent import ForkTier
+    from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
+
+    records = (
+        ConversationRecord(
+            "r",
+            None,
+            AGENT_MESSAGE_KIND,
+            1,
+            "2026-10-31T00:00:00Z",
+            ToolResultMessage(
+                role="toolResult",
+                is_error=False,
+                timestamp=0,
+                tool_call_id="orphan",
+                tool_name="read",
+                content=[TextPart(type="text", text="unknown")],
+            ),
+        ),
+    )
+    manager = SimpleNamespace(
+        header=SimpleNamespace(conversation_id="p"),
+        get_leaf_id=lambda: "r",
+        get_branch=lambda leaf: records,
+    )
+    kwargs = dict(
+        session=SimpleNamespace(session_id="p", session_manager=manager),
+        blobs=None,
+        system_prompt="bounded",
+        source_identity="trusted",
+    )
+    with pytest.raises(GoalError, match="repair"):
+        build_context(**kwargs, choice=SessionChoice("inherit", tier=ForkTier.all()))
+    from dataclasses import replace
+
+    records = (replace(records[0], payload_version=999),)
+    with pytest.raises(GoalError, match="unsupported"):
+        build_context(**kwargs, choice=SessionChoice("inherit", tier=ForkTier.all()))
+    from loushang.harness.transcript.kinds import CONVERSATION_METADATA_PATCH_KIND
+    from loushang.harness.transcript.types import ConversationMetadataPatch
+
+    records = (
+        replace(
+            records[0],
+            payload_version=1,
+            kind=CONVERSATION_METADATA_PATCH_KIND,
+            payload=ConversationMetadataPatch(),
+        ),
+    )
+    # An entirely non-context branch cannot silently mean fresh.
+    with pytest.raises(GoalError, match="empty"):
+        build_context(**kwargs, choice=SessionChoice("inherit", tier=ForkTier.last(1)))
+    plan, material = build_context(
+        **kwargs,
+        choice=SessionChoice("inherit", tier=ForkTier.last(1), allow_empty=True),
+    )
+    assert (
+        plan.history.effective_tier.mode == "none" and material["allow_empty"] is True
+    )
+
+
+def test_inherited_images_are_preserved_or_rejected(tmp_path):
+    from types import SimpleNamespace
+
+    from loushang.ai.types import ImagePart, UserMessage
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        build_context,
+    )
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.conversation.types import ConversationRecord
+    from loushang.harness.multiagent import ForkTier
+    from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
+    from loushang.harness.transcript.types import SessionImagePart
+
+    blobs = SessionBlobStore(tmp_path, "p")
+    ref = blobs.put_bytes(
+        b"image-bytes", logical_name="image.png", kind="image", media_type="image/png"
+    )
+    msg = UserMessage(
+        role="user", content=[SessionImagePart(type="image", blob=ref)], timestamp=0
+    )
+    records = (
+        ConversationRecord(
+            "r", None, AGENT_MESSAGE_KIND, 1, "2026-10-31T00:00:00Z", msg
+        ),
+    )
+    session = SimpleNamespace(
+        session_id="p",
+        session_manager=SimpleNamespace(
+            header=SimpleNamespace(conversation_id="p"),
+            get_leaf_id=lambda: "r",
+            get_branch=lambda leaf: records,
+        ),
+    )
+    kwargs = dict(
+        session=session,
+        choice=SessionChoice("inherit", tier=ForkTier.all()),
+        system_prompt="bounded",
+        source_identity="trusted",
+    )
+    plan, _ = build_context(**kwargs, blobs=blobs)
+    assert isinstance(plan.history.messages[0].content[0], ImagePart)
+    with pytest.raises(GoalError, match="image could not be preserved"):
+        build_context(**kwargs, blobs=SessionBlobStore(tmp_path, "other"))
+
+
+def test_delegated_capacity_failure_keeps_partial_facts_and_existing_child(
+    tmp_path, monkeypatch
+):
+    from loushang.coding.adapters._goal_execution_context import (
+        SessionChoice,
+        SessionExecutionPolicy,
+    )
+    from loushang.harness.multiagent import AgentRef, ControlLimits
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    adapter = DelegatingAdapter(task, repairs=2)
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            model=model(adapter),
+            execution_policy=SessionExecutionPolicy(
+                limits=ControlLimits(max_open_agents=2)
+            ),
+        )
+        try:
+            owner.create("g", command_id="create")
+            for n in range(2):
+                await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+            ref = owner.execution_contexts()[0].ref
+            family = owner._delegation
+            with pytest.raises(GoalError, match="unavailable"):
+                family._reusable(AgentRef(ref.path, ref.incarnation + 1))
+            child = family.children[ref]
+            child.session.follow_up("not an admitted Work")
+            with pytest.raises(GoalError, match="not idle"):
+                family._reusable(ref)
+            child.session.clear_queue()
+            owner.set_execution_context(SessionChoice("fresh"))
+            for n in range(2, 4):
+                receipt = await owner.advance(
+                    "g", command_id=f"a-{n}", revision=1, epoch=1
+                )
+                assert receipt.outcome == "work_finished", (
+                    receipt,
+                    owner.controller.last_error,
+                )
+            assert owner.controller.facts().runs[-1].status == "failed"
+            assert adapter.writes == 1
+            trace = owner.planning_trace("g")
+            assert trace["status"] == "known", trace
+            assert trace["evidence"][-1]["result"]["status"] == "partial"
+            owner.set_execution_context(SessionChoice("reuse", target=ref))
+            for n in range(4, 8):
+                await owner.advance("g", command_id=f"a-{n}", revision=1, epoch=1)
+            assert (await owner.query("g")).reason == "review_required", (
+                owner.planning_trace("g")
+            )
+            await submit(
+                owner,
+                "g",
+                expected_inventory=task.snapshot(),
+                approved=True,
+                reviewer="test",
+                reason="partial failure did not invent evidence",
+            )
+            assert (await owner.query("g")).validity == "current"
+            await owner.release_execution_context(ref)
+            with pytest.raises(GoalError, match="unavailable"):
+                family._reusable(ref)
+        finally:
+            await owner.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
