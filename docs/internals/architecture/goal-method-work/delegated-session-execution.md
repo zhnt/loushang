@@ -1,12 +1,12 @@
 # GMW-KD-SESSION-02：Goal 批次的执行 Session 与上下文选择
 
-- Authority: normative；Design status: accepted；Implementation status: in-progress。
-- 用户接受：2026-10-31 用户明确要求“请你开发实施R3”，并要求实施完毕后进行三视角代码评审；该授权覆盖 R3 的 reuse/fresh/inherit 两个实施切片。代码评审和交付验证仍未完成。
+- Authority: normative；Design status: accepted；Implementation status: implemented；离线验证与代码评审通过，在线完整验收 partial。
+- 用户接受：2026-10-31 用户明确要求“请你开发实施R3”，并要求实施完毕后进行三视角代码评审；该授权覆盖 R3 的 reuse/fresh/inherit 两个实施切片。三视角代码复核已关闭；交付验证见末节与实施检查点。
 - Revision: R3，2026-10-31。Owner：Coding；共同父级：Loushang architecture；协作：Harness Multiagent/Session、HarnessWork、Method。
 - 方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 源码基线：本地 main `a19e5173f`，含已交付 Harness 子 Session 底座；已验证仓库 profile 仍在 `f024cb734` 独立分支，尚未集成，不冒称 main 已有。
+- 设计时源码基线：本地 main `a19e5173f`，含已交付 Harness 子 Session 底座；仓库 profile 当时位于 `f024cb734` 独立分支。实施时已由 `f410f10ce` 合入任务分支；不冒称 main 已有本轮实现。
 - 用户要求修订 R2 的“一 Goal 一个新鲜 child，多批必须复用”，容纳按需复用、新建独立上下文、新建并继承上下文。R3 替换候选 R2 的该项限制，不改变已接受的 [SESSION-01 同 Session 切片](session-execution-recording.md)。
-- [用户工作件检查点](README.md#用户评审检查点)继续有效；三视角技术评审不代替用户对本修订的接受。本轮仅设计，不启动产品实现。
+- [用户工作件检查点](README.md#用户评审检查点)继续有效；三视角技术评审不代替用户对本修订的接受。设计阶段与后续授权实施记录分列；当前实现与验证状态见末节。
 
 ## 1. 目标、取舍与 Current
 
@@ -182,6 +182,16 @@ Blob 成功而事件交接失败，沿原证据合同保留不明状态，不盲
 
 真实验证继续使用 #125 原始缺陷与原固定 RC-01—06，在独立 worktree 上验证新执行模式；这是已有真实问题的模式回归，不把旧补丁再次作为新修复合入。冻结任务包、参考修正、调用次数/批次额度和运维上限，保存全部尝试。不能制造验证失败或评审拒绝；模型一次修好只证明执行闭环，不能冒称实质动态重规划。离线模式切换验证与真实模型重规划验证分别结论，不强迫一次试验同时展示所有模式。
 
-本稿未运行新模式测试或真实模型。继承的映射装配与多 Session 生命周期尚待实现验证，不从原语存在外推性能或可靠性；不新增 CI gate、强行超时矩阵或上下文缓存系统。
+设计评审时未运行新模式测试或真实模型；后续实施证据见末节，不从原语存在外推性能或可靠性；不新增 CI gate、强行超时矩阵或上下文缓存系统。
 
-待用户评审的选择：一个 Goal 可关联多个实施 Session；Product 按批选择并冻结 reuse/fresh/inherit，Harness 提供共享机制；首版先做 reuse/fresh、随后接继承；仍保留父证据而不承诺子 Transcript 持久化。R2 的三视角结论仅作历史，不自动覆盖本修订。
+用户已授权实施的选择：一个 Goal 可关联多个实施 Session；Product 按批选择并冻结 reuse/fresh/inherit，Harness 提供共享机制；首版先做 reuse/fresh、随后接继承；仍保留父证据而不承诺子 Transcript 持久化。R2 的三视角结论仅作历史，不自动覆盖本修订。
+
+## 本轮实现入口与使用边界
+
+实现位于 Coding 的私有仓库 profile；普通 `CodingGoal.open` 和未传 `execution_policy` 的 `open_repository_goal` 保持原同 Session 行为。显式传入 `_goal_execution_context.SessionExecutionPolicy()` 时，第一批实施使用 fresh，后续缺省复用最近一份成功交接对应的存活 child。可信调用方可在批次之间使用 `set_execution_context(SessionChoice(...))` 选择 fresh、指定 exact AgentRef 的 reuse，或 `inherit` 配合原 `ForkTier.all()/last(n)`；`execution_contexts()` 只返回身份与状态，不暴露可写 Session。
+
+选择由 Product 冻结，模型规划 schema 未新增生命周期控制权；inherit 来源限当前父 Session 的已提交固定截点。权限、Method、调用额度、独立验收和可信评审均不因切换而扩大。直接 steer/follow_up/clear_queue 在委派 profile 明确拒绝。容量不足在受理前暂停，释放闲置 child 或选择已有 child 后使用原 Goal resume 合同继续。取消仍调用原 request_cancel；单独 pause 不暗含取消。
+
+原 Harness control 提供与实际 spawn 共用的只读 check_spawn；原 TranscriptSourceReader 提供同步 read_sync/close 供既有同步冷读 API 使用，仍沿同一 admission、文件读取、身份与清理 owner。异步观察活动期间不允许同步观察；同步 close 失败保留 reader 供重试。子原文不持久化：父 Work 与双 role 报告可读，来源查询报告 not_declared 之前必须先识别有效私有 context 合同。
+
+实现初版 `82864e9ad`，评审修正 `2a046fa3b`；三视角代码复核均无剩余阻断，具体运行证据与交付状态见实施检查点。

@@ -1,6 +1,6 @@
 # Goal 批次执行 Session：集成准备与实施检查点
 
-- Authority: descriptive；状态：R3 独立三视角设计评审完成，用户已明确授权实施 R3；实现与离线验证进行中，代码三视角评审待实现后启动。
+- Authority: descriptive；状态：R3 独立三视角设计评审完成，用户已明确授权实施 R3；实现与离线验证完成，实施后三视角代码评审及修正复核均已完成；真实任务已按原规划额度暂停；在线完整验收未通过。
 - 设计：[GMW-KD-SESSION-02 R3](../architecture/goal-method-work/delegated-session-execution.md)；[三视角关闭记录](../architecture/goal-method-work/delegated-session-execution-review.md)。
 - 工作分支：feat/goal-child-session；代码 lane：.worktrees/code。未修改有历史脏资料的 Harness lane。
 
@@ -31,7 +31,38 @@
 ## 实施与代码评审进展
 
 - `82864e9ad` 已实现私有仓库 profile 的 reuse/fresh/inherit，仍由原 Harness factory/runtime 驱动子 Session，由原 Method/Work/Blob 完成交接与验收。原公开默认同 Session 路径保留。
-- 三位独立 xhigh 代码评审发现容量前置检查、取消释放的清理凭据、实际来源库身份、步骤证据关联、未知私有 schema 五类问题，已修正并增加回归，待原 reviewer 复核；见代码评审记录。
+- 三位独立 xhigh 代码评审发现容量前置检查、取消释放的清理凭据、实际来源库身份、步骤证据关联、未知私有 schema 五类问题，已在 `2a046fa3b` 修正并增加回归，原三位 reviewer 独立复核全部关闭；见代码评审记录。
 - 同步来源观察是现有 TranscriptSourceReader 的调用形式补充；同步冷读使用独立 reader，close 失败以保留 reader 的异常返回；活跃 Goal 仍由 owner 关闭 reader 后释放父 Session。没有另一套库身份算法或历史读取实现。
 - 初轮目标兼容回归 175 passed / 7 skipped，修正回归 28 passed，取消释放和多 Session/冷读末轮 2 passed。尚未以此声称在线动态重规划已验证。
 - 真实 #125 验证另建短期 worktree/分支 `validation/goal-r3-issue125`，从原缺陷基线 `5eadeb91c` 创建。任务包与运行资料置于产品树外；不回填旧成功记录。
+
+## 固定实现的本地检查
+
+以下检查针对 `2a046fa3b` 的代码，后续仅修改交付文档：
+
+| 检查 | 结果 |
+| --- | --- |
+| repository Goal + Coding Work 初轮完整回归 | 175 passed / 7 skipped |
+| 评审修正专项：容量、实际来源、固定历史及兼容 | 28 passed |
+| 最后 SDK 合同：取消释放重试、多 Session 与冷读 | 2 passed |
+| 既有 make check-harness（保留 not live / skip-host-runtime） | lint、778 个源码文件类型检查通过；6382 passed / 124 skipped，1302.83 秒 |
+| 合入既有 read 修正的 Coding 集成回归 | 163 passed，21.92 秒 |
+| 生成式架构依赖清单 | --check 通过 |
+
+没有扩展 CI gate，也没有把跳过项写成通过。当前源码位于任务分支，尚未合入 main 或远程发布。三视角评审接受范围为本轮实现；真实模型的执行、计划变化和独立验收另按实际结果记录。
+
+## 本轮真实 Kimi Coding 验证
+
+运行固定在代码 `2a046fa3b`，隔离任务工作树使用 #125 原始缺陷基线 `5eadeb91c`。使用 Kimi Coding 认证；RC-01—06、允许修改的两个文件、独立 verifier、Method 和 8 次规划额度均在运行前冻结。模型没有修改验收器或额度。
+
+1. 第一批 fresh A 实施后，独立检查发现 3 个合同失败；315 项原回归通过。
+2. 模型根据失败，把剩余检查路线改成 reader/tests 修复；第二批 reuse A 实际执行，随后 21 项合同与 318 项回归通过，原 verify_all 也通过。
+3. 可信宿主评审发现：已知 `is_file=False` 的分支仍调用 read_bytes，使原 IsADirectoryError 变成其他异常并增加副作用。以原 RC-03/05 拒绝候选，有独立反例，不是为了展示重规划而制造拒绝。
+4. 模型据此新增 inspect，再安排修复；Product 选择 fresh B，第三批实施在新子 Session 完成。独立反例复测变为 IsADirectoryError、零次字节读取；范围审查确认只改约定两个文件，原有测试定义全部保留。
+5. 第 8 次规划选择 check(regression)，该批成功。模型仍计划后续检查与 verify_all，但规划额度已用尽；第 18 次 advance 返回 paused，未再受理第 9 次规划；没有增加额度或补写完成证明。
+
+这轮证明了真实 A→A→B、真实测试失败和评审拒绝进入后续规划并驱动修改。尚不能据这些局部成功声明本轮 Goal completed；尤其早一次 verify_all 针对被拒绝旧候选，不覆盖第三次修改后的新候选。在线 inherit 未在这轮执行，其证据来自离线 SDK 的固定父截点、多 Session、附件与损坏/错绑验证。
+
+收敛结果：运行已退出并关闭 owner；冷读返回 `paused / not_satisfied / repository_verification_required`，planning_intents 为 8。最后 check 为 21 项合同和 318 项回归通过。该退出代表有界试验未达到完成条件，不是 R3 代码评审重新出现阻断。实验工作树和完整运行证据保留，后续若要继续在线验收，应先设计剩余额度如何约束计划收尾，不能在本轮悄悄提高固定预算。现有默认规划额度及提示合同不是本次 R3 Session 选择的改动范围。
+
+本轮不重跑已验证的整个主线所有平台；本地结果仅限上表、专项回归和文档检查。变更路由已检查，跨平台/真实 LSP/host runtime 等未在本轮执行，不据此声明整个远程 CI 已通过。

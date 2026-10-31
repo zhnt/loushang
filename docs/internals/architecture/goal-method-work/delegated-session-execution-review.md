@@ -58,11 +58,19 @@
 
 | 视角 / 发现 | 判断与修正 | 复核状态 |
 | --- | --- | --- |
-| r3_code_ownership OWN-01 / r3_code_runtime F-RUN-02 | 已知容量不足仍受理 Work。把 Harness control 原检查抽为只读 check_spawn，由 prepare/confirm 和实际 spawn 共用；不复制容量算法，不预留 child | 修正完成，待独立复核 |
-| r3_code_runtime F-RUN-01 | 取消 release 的等待者后，底座后台清理失败未阻止新业务。调用原 close_agent 前登记 exact ref 的清理凭据；取消/异常保留，原 owner 重试收敛后解除 | 离线 SDK 复现旧缺陷；修正与回归完成，待独立复核 |
-| r3_code_data DATA-01 | 同内容替换物理 Transcript 库仍被冷读接受。原 TranscriptSourceReader 增加同步调用形式，复用同一 admission、IO owner、解码与身份规则；live/cold 比较实际库身份和固定分支记录，不把报告中声明的身份当观察结果 | 修正完成；替换目录回归通过，待独立复核 |
-| r3_code_data DATA-02 | 委派成功证据未核对唯一 repair 步骤。消费原 plan projection，核对实际唯一 completed repair、run/Method/plan，并要求两份 role 的 reported_step_id 均匹配 | 修正完成，待独立复核 |
-| r3_code_data DATA-03 | 来源查询将未知私有委派 schema 归为 not_declared。业务投影和来源查询共用 decode_selection；只有已识别合同才报告子原文未声明，不把父 Transcript 绑定为子来源 | 修正完成，待独立复核 |
-| r3_code_ownership OWN-02 非阻断 | 公开 helper 不暴露额外 evaluator，但私有 _open 的组合应保持约束。子侧独立阶段策略与调用方额外策略采用原 most_restrictive PolicyEvaluatorChain，不共享父阶段可变状态 | 修正完成，待独立复核 |
+| r3_code_ownership OWN-01 / r3_code_runtime F-RUN-02 | 已知容量不足仍受理 Work。把 Harness control 原检查抽为只读 check_spawn，由 prepare/confirm 和实际 spawn 共用；不复制容量算法，不预留 child | 修正完成，独立复核关闭 |
+| r3_code_runtime F-RUN-01 | 取消 release 的等待者后，底座后台清理失败未阻止新业务。调用原 close_agent 前登记 exact ref 的清理凭据；取消/异常保留，原 owner 重试收敛后解除 | 离线 SDK 复现旧缺陷；修正、回归与独立复核关闭 |
+| r3_code_data DATA-01 | 同内容替换物理 Transcript 库仍被冷读接受。原 TranscriptSourceReader 增加同步调用形式，复用同一 admission、IO owner、解码与身份规则；live/cold 比较实际库身份和固定分支记录，不把报告中声明的身份当观察结果 | 修正完成；替换目录回归与独立复核通过 |
+| r3_code_data DATA-02 | 委派成功证据未核对唯一 repair 步骤。消费原 plan projection，核对实际唯一 completed repair、run/Method/plan，并要求两份 role 的 reported_step_id 均匹配 | 修正完成，独立复核关闭 |
+| r3_code_data DATA-03 | 来源查询将未知私有委派 schema 归为 not_declared。业务投影和来源查询共用 decode_selection；只有已识别合同才报告子原文未声明，不把父 Transcript 绑定为子来源 | 修正完成，独立复核关闭 |
+| r3_code_ownership OWN-02 非阻断 | 公开 helper 不暴露额外 evaluator，但私有 _open 的组合应保持约束。子侧独立阶段策略与调用方额外策略采用原 most_restrictive PolicyEvaluatorChain，不共享父阶段可变状态 | 修正完成，独立复核关闭 |
 
-验证记录：初版完整 repository Goal + Coding Work 套件 175 passed / 7 skipped；修正后的容量、原库来源、固定历史与既有来源兼容等 28 passed；最后的取消释放重试与多 Session/来源冷读链路 2 passed。测试为离线真实 SDK 与固定 provider，不能充当在线模型实质重规划证据。独立复核与真实任务验证尚在进行；不把初轮有阻断的评审记作通过。
+验证记录：初版完整 repository Goal + Coding Work 套件 175 passed / 7 skipped；修正后的容量、原库来源、固定历史与既有来源兼容等 28 passed；最后的取消释放重试与多 Session/来源冷读链路 2 passed。测试为离线真实 SDK 与固定 provider，不能充当在线模型实质重规划证据。独立复核已按下节关闭；真实任务证据另记，不把初轮有阻断的评审记作通过。
+
+### 固定修正复核结论
+
+三位原 reviewer 对 `2a046fa3b352e6175ee3916cfd1d509902234690` 分别独立复核，确认各自 findings 全部关闭、未发现新的实质阻断。职责视角为静态复核；运行视角另亲自验证取消等待后原关闭成功、重试只清除凭据且 dispose 仅一次；数据视角另亲自验证同字节物理库替换拒绝、错误步骤/双 role 错绑/未知版本拒绝和合法 repair 正例。未把主 agent 的测试冒称 reviewer 独立运行。
+
+执行 agent 作为本次授权内实现与集成负责人，接受代码技术评审通过；该结论仅覆盖固定实现，不代替完整底座检查、在线实验结果或后续远程交付。
+
+本轮后续验证已收敛：完整 `make check-harness` 为 6382 passed / 124 skipped；合入 read 的 Coding 集成回归 163 passed。真实 Kimi 运行完成 A→A→B 及失败/评审事实驱动的修复，但在新候选最终 verify_all 前达到原 8 次规划额度，停止为 paused；关闭后冷读一致。该实验不作在线完整验收通过结论，详见[实施检查点](../../plans/2026-10-31-goal-child-session.md)。三视角固定代码结论保持；本轮没有扩大预算或修改冻结验收合同。
