@@ -40,4 +40,25 @@
 Coding 后续检查从该测试所在文件继续，保留原路由的选择器与 deselection；
 首段已完整通过的前置文件不重复运行，不修改 CI 门禁。
 
-本轮评审为实施 agent 按职责/复用、运行/失败、数据/兼容三视角自查，未派遣独立 reviewer，不宣称完成独立三视角评审。共享工厂抽取与关闭失败保留容量的旧取舍已在设计及原边界文档中明确调整。
+初始交付为实施 agent 三视角自查。用户随后同意补充独立评审；三位 xhigh reviewer 发现一项关闭取消阻断及消费者诊断缺口，已由 b70c5a32e / 3aac81d8e 修正，并经原 reviewer 全部关闭复核，见[独立评审记录](../architecture/harness/multiagent/child-session-composition-review.md)。共享工厂抽取与关闭失败保留容量的旧取舍已在设计及原边界文档中明确调整。
+
+## 独立评审修正后的验证
+
+固定产品修订为 `3aac81d8e`，此后只更新交付文档。主实施方子 Session/Coding 定向 84 passed（15.93 秒），随后 CLI/Recipe 19 passed（34.88 秒）；五个修订源码 mypy、Ruff、生成架构事实及文档检查通过。
+
+| 本轮既有路由 | 结果 |
+| --- | --- |
+| Coding 离线完整清单 | 3991 passed、20 skipped、62 deselected，1882.54 秒；本轮未复现原 lmux busy |
+| TUI 离线单元清单 | 1322 passed、241 deselected，34.76 秒 |
+| TUI render contract | 317 passed、7865 deselected，61.74 秒 |
+| Harness 离线完整清单 | 5959 passed、121 skipped、3 deselected，388.69 秒；36 条既有显式工具选择提醒 |
+| 两项离线 E2E | 已包含于本轮 Coding 命令；test_pr_smoke.py 被实际列入，e2e_smoke 未被排除，不重复运行 |
+| CLI 定向 integration | 上述 19 项中已覆盖整个 test_cli_multiagent.py；不重复运行 |
+
+本地 check_changed 调度器会先执行 coding，再执行 unit_coding。静态比较两条原命令确认唯一区别为后者增加 `and not e2e_smoke`，其余参数完全一致，因此已通过的前者覆盖后者。重复进程刚启动时主动中断，调度器随之退出 2；这是执行去重，不是完整脚本首次退出 0，也不是一个产品测试失败。未修改任何 CI 路由、选择器或门禁；Harness 未完成项按原 run_checks.py unit_harness 命令继续。日志分别为 /tmp/child-session-reviewed-checks.log 与 /tmp/child-session-reviewed-harness.log。
+
+原生终端的运行用例带 requires_host_runtime；本轮继续排除该组，未运行 host-runtime 与 Windows 平台 workflow，不把上述本地离线结果称为全部平台通过。TUI render 使用仓库原 make 目标，工具为工作树建立开发环境；没有调用在线模型。
+
+## 有界集成
+
+按用户接受的“补独立三视角评审、收尾底座后合并”推进。本任务基于 main 的独立分支只包含此有界交付，原 lane/harness 尚含未接受历史，故不以合入整个旧 lane 的方式集成。保留原 lane 及其资料，主线仅接收已评审的任务提交。新 Goal 子 Session 专项另有待用户评审工作件，不随底座实现开放。
