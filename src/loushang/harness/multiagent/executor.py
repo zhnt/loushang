@@ -171,7 +171,10 @@ class ImmediateRecipeExecutor:
                 else:
                     cleanup_exception = RecipeExecutionError(
                         "recipe_cleanup_failed",
-                        "recipe completed but child cleanup failed",
+                        "recipe completed but child cleanup failed: "
+                        + "; ".join(
+                            f"{ref}: {failure}" for ref, failure in cleanup_failures
+                        ),
                     )
                     _report_cleanup_failures(cleanup_exception, cleanup_failures)
                     raise cleanup_exception
