@@ -20,7 +20,7 @@
 
 2026-10-30 接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent。[三视角独立评审](session-execution-recording-review.md)及用户接受后，同 Session 第一切片已实现并通过离线验证，见[交付记录](../../plans/2026-10-30-goal-session-recording.md)；两种子 agent 接入仍为后续范围。
 
-2026-10-31 候选专项：[Goal 专属子 Session 多批执行 R2](delegated-session-execution.md)及[独立三视角评审](delegated-session-execution-review.md)。技术阻断已关闭，系统环境、交互与证据范围待用户评审；新模式尚未实现，不把仓库 profile 独立分支的既有验证写成 main 或新模式能力。
+2026-10-31 候选专项：[Goal 批次执行 Session 与上下文选择 R3](delegated-session-execution.md)及[独立三视角评审](delegated-session-execution-review.md)。R3 按用户要求解除固定单 child 限制，三视角重新评审；系统环境、交互与证据范围待用户评审，新模式尚未实现，不把仓库 profile 独立分支的既有验证写成 main 或新模式能力。
 
 Work 记录与 Goal 完成依据的已接受协同设计见
 [HW-KD-003：事实留存、重放与 Transcript 共享](../harnesswork/key-designs/fact-retention-replay.md)。
