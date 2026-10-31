@@ -264,3 +264,39 @@ def test_recipe_reports_structured_child_cleanup_failure():
         assert runtime.control.registry.open_count > 1
 
     asyncio.run(scenario())
+
+
+def test_recipe_primary_failure_preserves_cleanup_errors_and_retry_identity():
+    from types import SimpleNamespace
+
+    async def scenario():
+        runtime = _Runtime(failed_agents=frozenset({"proposer"}))
+        original_close = runtime.close_agent
+        failure = OSError("workspace still owned")
+
+        async def close(*, caller, target):
+            record = runtime.control.registry.current(target)
+            return SimpleNamespace(closed=(), dispose_errors=((record.ref, failure),))
+
+        runtime.close_agent = close
+        executor = ImmediateRecipeExecutor(runtime)
+        with pytest.raises(RecipeExecutionError) as caught:
+            await executor.run(_recipe("debate"), RecipeRunRequest(prompt="Decide"))
+        error = caught.value
+        assert error.code == "recipe_agent_failed"
+        ref, cleanup_error = error.cleanup_failures[0]
+        assert cleanup_error is failure
+        assert error.tool_result_details["cleanup_errors"] == [
+            {"agent_ref": str(ref), "error": "workspace still owned"}
+        ]
+        assert "retry close_agent" in error.__notes__[0]
+        assert runtime.control.registry.open_count == 2
+        runtime.close_agent = original_close
+        await runtime.close_agent(caller=HOST, target=ref.path)
+        runtime.failed_agents = frozenset()
+        result = await executor.run(
+            _recipe("debate"), RecipeRunRequest(prompt="Decide")
+        )
+        assert result.status == "completed" and runtime.control.registry.open_count == 1
+
+    asyncio.run(scenario())

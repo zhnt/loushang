@@ -1145,3 +1145,81 @@ def test_failed_descendant_close_preserves_parent_and_before_release_hook():
         assert called == ["parent released"] and control.registry.open_count == 1
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("entry", ["close_agent", "close_tree", "failed_spawn"])
+def test_cancelled_cleanup_waiter_retires_original_incarnation(entry):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class Factory(_Factory):
+            async def create(self, request):
+                binding = await super().create(request)
+                if len(self.requests) == 1:
+                    driver = binding.driver
+
+                    async def dispose():
+                        started.set()
+                        await release.wait()
+                        return SubagentDisposeResult()
+
+                    driver.dispose = dispose
+                    if entry == "failed_spawn":
+
+                        def fail(message):
+                            raise RuntimeError("first delivery failed")
+
+                        driver.deliver = fail
+                    return SessionSubagentBinding(driver, _InputActivity())
+                return binding
+
+        control, factory = _control(), Factory()
+        runtime = SessionMultiAgentRuntime(control=control, child_factory=factory)
+
+        async def spawn_parent():
+            return await runtime.spawn_child(
+                caller=HOST,
+                parent_path=AgentPath.root(),
+                name="coordinator",
+                agent_type="coordinator",
+                initial_prompt="Parent",
+            )
+
+        waiter = asyncio.create_task(spawn_parent())
+        if entry != "failed_spawn":
+            parent = await waiter
+            await _yield_until(lambda: bool(factory.drivers[parent.path].pending))
+            waiter = asyncio.create_task(
+                runtime.close_agent(caller=HOST, target=parent.path)
+                if entry == "close_agent"
+                else runtime.close_owned_children()
+            )
+        await started.wait()
+        old_ref = factory.requests[0].record.ref
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert control.registry.get(old_ref) is not None
+        release.set()
+        await _yield_until(lambda: not runtime._cleanup_tasks)
+        assert old_ref not in runtime._handles and old_ref not in runtime._inputs
+        assert control.registry.get(old_ref, include_closed=True).status == "closed"
+
+        replacement = await spawn_parent()
+        assert replacement.ref.incarnation > old_ref.incarnation
+        child = await runtime.spawn_child(
+            caller=AgentCaller(replacement.ref),
+            parent_path=replacement.path,
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="Review",
+        )
+        await _yield_until(
+            lambda: all(
+                factory.drivers[path].pending for path in (replacement.path, child.path)
+            )
+        )
+        await runtime.dispose()
+        assert not runtime._handles and not runtime._inputs
+
+    asyncio.run(scenario())

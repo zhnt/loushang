@@ -48,14 +48,17 @@ factory 先取得必要的隔离 workspace，再绑定审批、构造 runtime、
 2. 原 RunHandle interrupt 并等待现有轮次结束，之后调用同一 driver.dispose。
 3. driver 结束该 actor 的审批，关闭原 Product runtime，成功后才释放 workspace。每阶段只在成功后登记完成，重试不重复已完成阶段。
 4. driver 的清理 task 被 owner 保留并 shield；一个等待方取消不取消实际清理。创建失败时同样交付 owner，不依靠局部变量存活。
+   Session 的树关闭 task 同样由该 Session 保留并 shield；operation lock、关闭计划、精确 AgentRef 的移除及 drain 均在该 task 内完成。创建后首条投递失败的关闭与移除也由 owner task 完成，避免只关闭资源却遗留旧 incarnation。
 5. dispose 失败不 commit_closed、不释放路径或容量、不删除 handle；下一次 close 重试。停止释放尚有未清理后代的祖先，保留其依赖。中断失败但轮次已经收敛且资源关闭成功时可关闭记录，并保留中断错误报告。
 6. 根 Session dispose 遇到子清理错误抛出异常，原 before_release 后续步骤不运行。修复故障后同一入口继续清理；成功后才退订与标记 runtime disposed。
 
-close_agent 保留原成功结果格式，失败时额外报告 cleanup_errors，避免“关闭零个”冒充清理成功。新的错误不会触发自动重发任务或后台无限重试。旧控制状态枚举、事件存储和持久格式不变；关闭失败后保留容量是纠正原资源归属的有意行为变化。
+close_agent 保留原成功结果格式，失败时额外报告 cleanup_errors，避免“关闭零个”冒充清理成功。创建失败不证明存在可运行任务，但可能留下待清理节点；原工具错误投影提供实际 AgentRef、创建/清理两项原因及关闭指引。重试前按 list_agents 核对原 incarnation；路径接口不提供跨 incarnation 的自动重试保证。Recipe 保留原业务异常类型、对象及原因链，同时在 cleanup_failures、异常 notes 和原 tool_result_details 中保留清理错误及 ref。新的错误不会触发自动重发任务或后台无限重试。旧控制状态枚举、事件存储和持久格式不变；关闭失败后保留容量是纠正原资源归属的有意行为变化。
 
 ## 三视角检查与验证
 
 本节为实施 agent 的三视角自查，不宣称独立 agent 评审。
+
+后续独立三视角发现、修正与复核见[独立评审记录](child-session-composition-review.md)；不覆盖或冒充上面的初始自查。
 
 | 视角 | 判断与验证义务 |
 | --- | --- |

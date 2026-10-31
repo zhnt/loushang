@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, Literal, Protocol, TypeVar, cast
 
@@ -48,6 +48,7 @@ from loushang.harness.transcript.types import ApplicationMessage
 
 PayloadT = TypeVar("PayloadT")
 SessionT = TypeVar("SessionT")
+CleanupT = TypeVar("CleanupT")
 
 NoticeWakePolicy = Literal["queue_only", "wake_if_idle", "discard"]
 InputActivityKind = Literal["message", "completion_notice", "steered", "cleared"]
@@ -272,9 +273,27 @@ class SessionSubagentCreationError(RuntimeError):
         owner: SubagentRoundDriver,
         error: BaseException,
         cleanup_error: BaseException,
+        *,
+        ref: AgentRef | None = None,
     ):
-        super().__init__("child session construction cleanup pending")
+        super().__init__(
+            f"child session construction cleanup pending{f' for {ref}' if ref else ''}; "
+            "inspect list_agents and retry close_agent for the retained child"
+        )
         self.owner, self.error, self.cleanup_error = owner, error, cleanup_error
+        self.ref = ref
+        self.tool_result_details = {
+            "code": "agent_creation_cleanup_pending",
+            "agent_ref": str(ref) if ref else None,
+            "creation_error": {"type": type(error).__name__, "message": str(error)},
+            "cleanup_error": {
+                "type": type(cleanup_error).__name__,
+                "message": str(cleanup_error),
+            },
+            "retry": {"tool": "close_agent", "arguments": {"target": str(ref.path)}}
+            if ref
+            else {"tool": "list_agents"},
+        }
 
 
 class RootAgentInput(Protocol):
@@ -319,6 +338,7 @@ class SessionMultiAgentRuntime:
             self._inputs[control.root_ref] = root_input
         self._operation_lock = asyncio.Lock()
         self._notice_tasks: set[asyncio.Task[None]] = set()
+        self._cleanup_tasks: set[asyncio.Task[Any]] = set()
         self._closed = False
         self._disposing = False
         self._unsubscribe_notices = control.subscribe_notices(self._on_notice)
@@ -339,6 +359,7 @@ class SessionMultiAgentRuntime:
             self._require_open_runtime()
             if any(
                 handle.is_closing
+                and self.control.registry.get(ref) is not None
                 and (parent_path == ref.path or parent_path.is_descendant_of(ref.path))
                 for ref, handle in self._handles.items()
             ):
@@ -400,6 +421,13 @@ class SessionMultiAgentRuntime:
                         driver=error.owner,
                         cleanup_only=True,
                     )
+                    if error.ref != record.ref:
+                        raise SessionSubagentCreationError(
+                            error.owner,
+                            error.error,
+                            error.cleanup_error,
+                            ref=record.ref,
+                        ) from error
                     raise
                 cleanup_handle = self._handles.get(record.ref)
                 if cleanup_handle is None and driver is not None:
@@ -413,14 +441,16 @@ class SessionMultiAgentRuntime:
                 if cleanup_handle is None:
                     self.control.commit_closed(record.ref)
                 else:
-                    result = await cleanup_handle.close()
-                    if result.record.status == "closed":
-                        self._handles.pop(record.ref, None)
-                        self._inputs.pop(record.ref, None)
-                    elif result.dispose_error is not None:
+                    result = await self._await_cleanup(
+                        self._close_registered_handle(record.ref, cleanup_handle)
+                    )
+                    if (
+                        result.record.status != "closed"
+                        and result.dispose_error is not None
+                    ):
                         assert driver is not None
                         raise SessionSubagentCreationError(
-                            driver, error, result.dispose_error
+                            driver, error, result.dispose_error, ref=record.ref
                         ) from error
                 raise
 
@@ -559,25 +589,59 @@ class SessionMultiAgentRuntime:
                 "root_lifecycle_owned",
                 "the root agent is closed by its Product session",
             )
-        async with self._operation_lock:
-            plan = self.control.plan_close_tree(caller=caller, target=target)
-            return await self._close_plan(plan)
+        return await self._await_cleanup(self._close_tree(caller, target))
 
     async def close_owned_children(self) -> SessionTreeCloseResult:
         """Release every child before /new, /resume, or session disposal."""
 
+        return await self._await_cleanup(
+            self._close_tree(HostCaller(), AgentPath.root())
+        )
+
+    async def _close_tree(
+        self,
+        caller: ControlCaller,
+        target: AgentPath,
+    ) -> SessionTreeCloseResult:
+        # The owner task holds the lock, plan and bookkeeping. Cancellation of
+        # an external waiter must not detach a closed incarnation from cleanup.
         async with self._operation_lock:
             plan = tuple(
                 record
                 for record in self.control.plan_close_tree(
-                    caller=HostCaller(),
-                    target=AgentPath.root(),
+                    caller=caller,
+                    target=target,
                 )
                 if record.path != AgentPath.root()
             )
             result = await self._close_plan(plan)
-            await self.drain_notice_deliveries()
+            if target == AgentPath.root():
+                await self.drain_notice_deliveries()
             return result
+
+    async def _await_cleanup(
+        self, operation: Coroutine[Any, Any, CleanupT]
+    ) -> CleanupT:
+        task = asyncio.create_task(operation, name="session-children:cleanup")
+        self._cleanup_tasks.add(task)
+        task.add_done_callback(self._cleanup_finished)
+        return await asyncio.shield(task)
+
+    def _cleanup_finished(self, task: asyncio.Task[Any]) -> None:
+        self._cleanup_tasks.discard(task)
+        if not task.cancelled():
+            task.exception()
+
+    async def _close_registered_handle(
+        self,
+        ref: AgentRef,
+        handle: SubagentRunHandle,
+    ) -> HandleCloseResult:
+        result = await handle.close()
+        if result.record.status == "closed":
+            self._handles.pop(ref, None)
+            self._inputs.pop(ref, None)
+        return result
 
     async def dispose(self) -> SessionTreeCloseResult:
         if self._closed:
@@ -623,10 +687,8 @@ class SessionMultiAgentRuntime:
                 if transition.record is not None:
                     closed.append(transition.record)
                 continue
-            result: HandleCloseResult = await handle.close()
+            result = await self._close_registered_handle(planned.ref, handle)
             if result.record.status == "closed":
-                self._handles.pop(planned.ref, None)
-                self._inputs.pop(planned.ref, None)
                 closed.append(result.record)
             if result.dispose_error is not None:
                 errors.append((planned.ref, result.dispose_error))

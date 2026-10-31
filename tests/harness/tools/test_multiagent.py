@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentInputMessage,
@@ -19,6 +21,7 @@ from loushang.harness.session.multiagent import (
     AgentInputFacade,
     SessionMultiAgentRuntime,
     SessionSubagentBinding,
+    SessionSubagentCreationError,
     SessionSubagentRequest,
 )
 from loushang.harness.tools.multiagent import (
@@ -135,7 +138,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         tools = {
             name: registry.materialize_tool(name) for name in MULTIAGENT_TOOL_NAMES
         }
-        assert "failed call creates no child" in definitions["spawn_agent"].description
+        assert "cleanup-only child" in definitions["spawn_agent"].description
         assert "free open-agent capacity" in definitions["close_agent"].description
         assert "remain open until explicitly closed" in (
             definitions["close_agent"].description
@@ -372,6 +375,66 @@ def test_close_tool_reports_cleanup_failure_and_allows_original_handle_retry():
         result = await tool.execute("retry", {"target": str(record.path)}, None, None)
         assert result.details["agents"][0]["status"] == "closed"
         assert "cleanup_errors" not in result.details
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_spawn_cleanup_failure_projects_original_ref_and_errors_to_agent():
+    from loushang.agent.agent_loop import _create_error_tool_result
+
+    async def scenario():
+        driver = _Driver()
+        original_dispose = driver.dispose
+        creation_error, cleanup_error = (
+            ValueError("cannot create"),
+            OSError("still owned"),
+        )
+
+        async def fail_close():
+            return SubagentDisposeResult(dispose_error=cleanup_error)
+
+        driver.dispose = fail_close
+
+        class Factory:
+            async def create(self, request):
+                # Also exercise a legacy factory omitting ref: Session owns
+                # the canonical incarnation and supplies it to error projection.
+                raise SessionSubagentCreationError(
+                    driver, creation_error, cleanup_error
+                )
+
+        control = MultiAgentControl(
+            agent_types=AgentTypeRegistry((AgentTypeSpec(name="reviewer"),))
+        )
+        runtime = SessionMultiAgentRuntime(control=control, child_factory=Factory())
+        registry = MultiAgentToolPack(
+            runtime=runtime, caller=AgentCaller(control.root_ref)
+        ).register(WorkspaceToolRegistry())
+        spawn = registry.materialize_tool("spawn_agent")
+        with pytest.raises(SessionSubagentCreationError) as caught:
+            await spawn.execute(
+                "spawn",
+                {"name": "reviewer", "agent_type": "reviewer", "prompt": "Review"},
+                None,
+                None,
+            )
+        error = caught.value
+        result = _create_error_tool_result(str(error), error)
+        record = control.registry.current(AgentPath.root().child("reviewer"))
+        assert error.owner is driver and error.error is creation_error
+        assert error.cleanup_error is cleanup_error
+        assert result.details["agent_ref"] == str(record.ref)
+        assert result.details["creation_error"]["message"] == "cannot create"
+        assert result.details["cleanup_error"]["message"] == "still owned"
+        assert control.registry.open_count == 2
+        driver.dispose = original_dispose
+        retry = result.details["retry"]
+        closed = await registry.materialize_tool(retry["tool"]).execute(
+            "retry", retry["arguments"], None, None
+        )
+        assert closed.details["agents"][0]["status"] == "closed"
+        assert control.registry.open_count == 1
         await runtime.dispose()
 
     asyncio.run(scenario())

@@ -184,7 +184,9 @@ class MultiAgentToolPack:
             label="Spawn agent",
             description=(
                 "Create a bounded child agent for one focused task. A successful "
-                "call returns its canonical path; a failed call creates no child."
+                "call returns its canonical path. A failed call may retain a "
+                "cleanup-only child; inspect its error and list_agents, then retry "
+                "close_agent on that original child before reusing its capacity."
             ),
             properties={
                 "name": {

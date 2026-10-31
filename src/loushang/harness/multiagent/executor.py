@@ -14,6 +14,7 @@ from .types import (
     AgentCompletionNotice,
     AgentPath,
     AgentRecord,
+    AgentRef,
     ControlCaller,
     HostCaller,
 )
@@ -108,8 +109,28 @@ class RecipeExecutionError(RuntimeError):
         self.code = code
 
 
+def _report_cleanup_failures(
+    error: BaseException, failures: tuple[tuple[AgentRef | AgentPath, Exception], ...]
+) -> None:
+    """Preserve the primary exception and original cleanup objects for callers."""
+    details = getattr(error, "tool_result_details", {})
+    entries = [
+        {"agent_ref": str(ref), "error": str(failure)} for ref, failure in failures
+    ]
+    error.add_note(
+        "Child cleanup also failed; inspect list_agents and retry close_agent "
+        "for the retained children: "
+        + "; ".join(f"{ref}: {failure}" for ref, failure in failures)
+    )
+    error.cleanup_failures = failures  # type: ignore[attr-defined]
+    error.tool_result_details = {  # type: ignore[attr-defined]
+        **(dict(details) if isinstance(details, Mapping) else {}),
+        "cleanup_errors": entries,
+    }
+
+
 class ImmediateRecipeExecutor:
-    """Execute bounded phase-one topologies and always release their children."""
+    """Execute bounded topologies and report any retained child cleanup debt."""
 
     def __init__(
         self,
@@ -143,13 +164,17 @@ class ImmediateRecipeExecutor:
             primary_error = error
             raise
         finally:
-            cleanup_errors = await self._close_owned(owned)
-            if cleanup_errors and primary_error is None:
-                joined = "; ".join(str(error) for error in cleanup_errors)
-                raise RecipeExecutionError(
-                    "recipe_cleanup_failed",
-                    f"recipe completed but child cleanup failed: {joined}",
-                )
+            cleanup_failures = await self._close_owned(owned)
+            if cleanup_failures:
+                if primary_error is not None:
+                    _report_cleanup_failures(primary_error, cleanup_failures)
+                else:
+                    cleanup_exception = RecipeExecutionError(
+                        "recipe_cleanup_failed",
+                        "recipe completed but child cleanup failed",
+                    )
+                    _report_cleanup_failures(cleanup_exception, cleanup_failures)
+                    raise cleanup_exception
 
     async def _parallel_review(
         self,
@@ -327,19 +352,17 @@ class ImmediateRecipeExecutor:
     async def _close_owned(
         self,
         owned: list[AgentPath],
-    ) -> tuple[Exception, ...]:
-        errors: list[Exception] = []
+    ) -> tuple[tuple[AgentRef | AgentPath, Exception], ...]:
+        errors: list[tuple[AgentRef | AgentPath, Exception]] = []
         for path in reversed(owned):
             try:
                 result = await self._runtime.close_agent(
                     caller=self._caller,
                     target=path,
                 )
-                errors.extend(
-                    error for _, error in getattr(result, "dispose_errors", ())
-                )
+                errors.extend(getattr(result, "dispose_errors", ()))
             except Exception as error:
-                errors.append(error)
+                errors.append((path, error))
         return tuple(errors)
 
     @staticmethod

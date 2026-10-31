@@ -109,11 +109,11 @@ class AgentSessionSubagentFactory:
                 result = await owner.dispose()
             except BaseException as cleanup_error:
                 raise SessionSubagentCreationError(
-                    owner, error, cleanup_error
+                    owner, error, cleanup_error, ref=request.record.ref
                 ) from error
             if result.dispose_error is not None:
                 raise SessionSubagentCreationError(
-                    owner, error, result.dispose_error
+                    owner, error, result.dispose_error, ref=request.record.ref
                 ) from error
             raise
 
