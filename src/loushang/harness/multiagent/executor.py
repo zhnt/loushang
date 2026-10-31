@@ -331,9 +331,12 @@ class ImmediateRecipeExecutor:
         errors: list[Exception] = []
         for path in reversed(owned):
             try:
-                await self._runtime.close_agent(
+                result = await self._runtime.close_agent(
                     caller=self._caller,
                     target=path,
+                )
+                errors.extend(
+                    error for _, error in getattr(result, "dispose_errors", ())
                 )
             except Exception as error:
                 errors.append(error)

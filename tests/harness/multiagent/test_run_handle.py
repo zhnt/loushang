@@ -14,6 +14,7 @@ from loushang.harness.multiagent import (
     AgentTypeSpec,
     HostCaller,
     MultiAgentControl,
+    MultiAgentError,
     SubagentDisposeResult,
     SubagentRoundResult,
     SubagentRunHandle,
@@ -295,7 +296,7 @@ def test_close_survives_cancellation_of_one_waiting_caller() -> None:
     asyncio.run(scenario())
 
 
-def test_dispose_failure_is_reported_but_does_not_leave_the_path_open() -> None:
+def test_dispose_failure_retains_the_incarnation_for_close_retry() -> None:
     async def scenario() -> None:
         control = _control()
         record = _record(control)
@@ -305,9 +306,19 @@ def test_dispose_failure_is_reported_but_does_not_leave_the_path_open() -> None:
 
         closed = await handle.close()
 
-        assert closed.record.status == "closed"
+        assert closed.record.status != "closed"
         assert isinstance(closed.dispose_error, RuntimeError)
         assert str(closed.dispose_error) == "dispose failed"
+        assert handle.is_closing
+        assert control.registry.get(record.ref) is not None
+        with pytest.raises(MultiAgentError, match="closing or closed"):
+            await handle.deliver(_message(control, record.path, "Do not run."))
+        driver.dispose_error = None
+        closed = await handle.close()
+        assert closed.record.status == "closed" and closed.dispose_error is None
+        assert driver.dispose_calls == 2
+        assert await handle.close() == closed
+        assert driver.dispose_calls == 2
 
     asyncio.run(scenario())
 

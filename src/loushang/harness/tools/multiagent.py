@@ -423,6 +423,19 @@ class MultiAgentToolPack:
                 target=path,
             )
             closed = tuple(getattr(outcome, "closed", ()))
+            errors = tuple(getattr(outcome, "dispose_errors", ()))
+            if errors:
+                return _result(
+                    f"Closed {len(closed)} agents; cleanup failed for {len(errors)}. "
+                    "Inspect the errors; retry close_agent for retained children.",
+                    {
+                        "agents": [_record(record) for record in closed],
+                        "cleanup_errors": [
+                            {"agent_ref": str(ref), "error": str(error)}
+                            for ref, error in errors
+                        ],
+                    },
+                )
             return _result(
                 f"Closed {len(closed)} agents.",
                 {"agents": [_record(record) for record in closed]},

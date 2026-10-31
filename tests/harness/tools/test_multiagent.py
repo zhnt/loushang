@@ -335,3 +335,43 @@ def test_parallel_completion_reports_can_be_retrieved_without_loss() -> None:
         await runtime.dispose()
 
     asyncio.run(scenario())
+
+
+def test_close_tool_reports_cleanup_failure_and_allows_original_handle_retry():
+    async def scenario():
+        control = MultiAgentControl(
+            agent_types=AgentTypeRegistry((AgentTypeSpec(name="reviewer"),))
+        )
+        factory = _Factory()
+        runtime = SessionMultiAgentRuntime(control=control, child_factory=factory)
+        record = await runtime.spawn_child(
+            caller=HostCaller(),
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="Review",
+        )
+        await runtime.await_terminal(caller=HostCaller(), target=record.path)
+        driver = factory.drivers[record.path]
+        original_dispose = driver.dispose
+
+        async def fail():
+            return SubagentDisposeResult(dispose_error=OSError("cleanup pending"))
+
+        driver.dispose = fail
+        pack = MultiAgentToolPack(runtime=runtime, caller=AgentCaller(control.root_ref))
+        registry = pack.register(WorkspaceToolRegistry())
+        tool = registry.materialize_tool("close_agent")
+        result = await tool.execute("close", {"target": str(record.path)}, None, None)
+        assert result.details["agents"] == []
+        assert result.details["cleanup_errors"] == [
+            {"agent_ref": str(record.ref), "error": "cleanup pending"}
+        ]
+        assert control.registry.open_count == 2
+        driver.dispose = original_dispose
+        result = await tool.execute("retry", {"target": str(record.path)}, None, None)
+        assert result.details["agents"][0]["status"] == "closed"
+        assert "cleanup_errors" not in result.details
+        await runtime.dispose()
+
+    asyncio.run(scenario())

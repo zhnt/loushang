@@ -745,7 +745,6 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     assert delegated.approval_actor_id == bound.actor_id
     assert delegated.execution_profile_ceiling.readable_roots == (tmp_path.resolve(),)
     assert delegated.execution_profile_ceiling.writable_roots == ()
-    assert driver.delegated_execution_profile is delegated
     grant = root_resolver.grant_store.issue(
         ApprovalRequest(
             tool_name="bash",

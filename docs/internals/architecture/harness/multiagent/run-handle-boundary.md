@@ -261,6 +261,8 @@ round 2: deliver(消息)  ──run_agent(continue)──► ...
 - `close` 幂等：重复 close 返回当前状态。
 - dispose 返回显式 `SubagentDisposeResult`；workspace 释放快照在提交
   closed 前投影到 Control。结构化 `dispose_error` 或意外抛错最终都随
-  `HandleCloseResult.dispose_error` 返回；不得因为资源收尾异常让逻辑
-  path 永久占用名额。
+  `HandleCloseResult.dispose_error` 返回。清理失败时保留原句柄、path 和名额，
+  禁止新投递；下一次 close 重试同一资源 owner，成功后才 commit_closed。
+  这项[子 Session 清理修订](child-session-composition.md)替代此前“即使清理
+  失败也释放名额”的取舍，避免仍运行的资源失去清理归属。
 - `interrupt` 对 idle 实体是 no-op，返回当前状态。

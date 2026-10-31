@@ -242,3 +242,25 @@ def test_debate_stops_after_a_failed_required_role() -> None:
         assert runtime.closed == [AgentPath.root().child("proposer")]
 
     asyncio.run(scenario())
+
+
+def test_recipe_reports_structured_child_cleanup_failure():
+    from types import SimpleNamespace
+
+    async def scenario():
+        runtime = _Runtime()
+        error = OSError("child still owns its workspace")
+
+        async def close(*, caller, target):
+            record = runtime.control.registry.current(target)
+            return SimpleNamespace(closed=(), dispose_errors=((record.ref, error),))
+
+        runtime.close_agent = close
+        with pytest.raises(RecipeExecutionError, match="child cleanup failed"):
+            await ImmediateRecipeExecutor(runtime).run(
+                _recipe("debate"),
+                RecipeRunRequest(prompt="Review this."),
+            )
+        assert runtime.control.registry.open_count > 1
+
+    asyncio.run(scenario())
