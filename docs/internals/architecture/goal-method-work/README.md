@@ -114,4 +114,12 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 
 模型规划当前实施、全部真实试验与验证边界见[实施记录](model-planning-implementation.md)。
 2026-10-27 用户选择先交付当前模型逐批规划切片，再用真实开发任务验证动态重规划。
-GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)暂不执行。
+当次 GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)暂不执行。
+
+2026-10-28 已从 PR #826 合并后的 main 建立独立工作树，启动真实 #125 任务的
+[评审反馈专项 R1](../coding/key-designs/goal-review-feedback.md)与
+[固定验收及执行计划](../../plans/2026-10-28-goal-review-replanning.md)。专项候选由
+Coding 私有适配承接，复用原 Goal/Work/Blob，系统环境和关键交互已于 2026-10-28 获用户明确确认；
+旧试验保留。本轮反馈集成离线验证通过；真实 Kimi 运行在测试失败后新增并执行修复，
+完整验证、宿主评审与关闭后冷读均通过，GP-03 在该有界仓库任务中已证明。
+实际运行采用 7 次规划、15 个 Work；历史读取成本较高，性能与全入口扩展仍待后续工作。

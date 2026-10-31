@@ -122,10 +122,12 @@ async def read_goal_work_sources(
         store.open()
         header, records = store.load()
         from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+        from ._goal_repository_task import RepositoryTask
 
         if header not in (
             GoalHeader(session_id, session_id, POLICY_ID),
             GoalHeader(session_id, session_id, PLANNING_POLICY_ID),
+            GoalHeader(session_id, session_id, RepositoryTask.policy_id),
         ):
             raise GoalError("unsupported Goal source policy")
         history = replay(header, records)

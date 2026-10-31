@@ -3,7 +3,7 @@
 - Authority: descriptive；Implementation status: partial；Owner：Coding Product。
 - 实施基线：`3474940c2d7b84d1733af462c736dcfc32ebfbb8`，分支 `feat/goal-model-planning`。
 - 授权：2026-10-26 用户接受[专项 R2.1](model-planning-loop.md)及[场景 R1.1](model-planning-scenario.md)，明确“同意，请继续goal”。
-- **完整 G-GOAL-PLAN-01 未完成：GP-03 的真实实质重规划证据未达成。**
+- 本文原切片的 GP-03 当时未达成；2026-10-28 的[真实仓库后续验证](../../plans/2026-10-28-goal-review-replanning.md#真实运行结果2026-10-28)已在有界 #125 任务中证明实质重规划、执行和完成。下文原试验事实不变，不外推通用任务能力。
 
 ## 2026-10-27 分阶段交付决定
 

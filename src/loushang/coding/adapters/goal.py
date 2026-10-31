@@ -115,6 +115,7 @@ class CodingGoal:
         self._session_retired = self._core_retired = self._writer_closed = False
         self._prepared: dict[str, WorkExecutionBinding] = {}
         self._model_planning = False
+        self._profile = None
         self._allowance: PlanningCallAllowance | None = None
         self._source_reader: TranscriptSourceReader | None = None
         self._source_retired = False
@@ -133,6 +134,33 @@ class CodingGoal:
         model_planning: bool = False,
         transcript_retained_until: datetime | None = None,
     ) -> CodingGoal:
+        return await cls._open(
+            workspace=workspace,
+            data_root=data_root,
+            model=model,
+            session_id=session_id,
+            stream_fn=stream_fn,
+            approval_resolver=approval_resolver,
+            tool_policy_evaluator=tool_policy_evaluator,
+            model_planning=model_planning,
+            transcript_retained_until=transcript_retained_until,
+        )
+
+    @classmethod
+    async def _open(
+        cls,
+        *,
+        workspace: Path,
+        data_root: Path,
+        model=None,
+        session_id: str | None = None,
+        stream_fn=None,
+        approval_resolver=None,
+        tool_policy_evaluator=None,
+        model_planning: bool = False,
+        profile=None,
+        transcript_retained_until: datetime | None = None,
+    ) -> CodingGoal:
         if type(model_planning) is not bool:
             raise GoalError("model_planning must be an explicit boolean")
         if transcript_retained_until is not None and (
@@ -146,6 +174,7 @@ class CodingGoal:
             )
         owner = cls(workspace.resolve(), data_root.resolve())
         owner._model_planning = model_planning
+        owner._profile = profile
         try:
             policy_id = POLICY_ID
             if model_planning:
@@ -154,7 +183,11 @@ class CodingGoal:
                 from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
 
                 owner._allowance = PlanningCallAllowance()
-                planning_tool_policy = PlanningToolPolicy(owner.workspace)
+                planning_tool_policy = (
+                    profile.tool_policy(owner.workspace)
+                    if profile is not None
+                    else PlanningToolPolicy(owner.workspace)
+                )
                 tool_policy_evaluator = PolicyEvaluatorChain(
                     (planning_tool_policy, tool_policy_evaluator)
                     if tool_policy_evaluator is not None
@@ -162,7 +195,9 @@ class CodingGoal:
                     strategy="most_restrictive",
                 )
                 stream_fn = owner._allowance.stream
-                policy_id = PLANNING_POLICY_ID
+                policy_id = (
+                    profile.policy_id if profile is not None else PLANNING_POLICY_ID
+                )
             owner._sdk = create_agent_session_runtime(
                 session_dir=owner.data_root / "sessions",
                 model=model,
@@ -173,7 +208,9 @@ class CodingGoal:
                 enable_multiagent=False,
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
-                system_prompt=(
+                system_prompt=profile.system_prompt
+                if profile is not None
+                else (
                     "Pursue the supplied finite Coding Goal. In planning turns, choose "
                     "a next action and revisable route using current evidence; return "
                     "only the required JSON and do not call tools. In Method execution "
@@ -282,7 +319,8 @@ class CodingGoal:
             if model_planning:
                 from ._goal_planning import ModelPlanningPolicy
 
-                owner._policy = ModelPlanningPolicy(
+                factory = profile.policy if profile is not None else ModelPlanningPolicy
+                owner._policy = factory(
                     workspace=owner.workspace,
                     session=owner._session,
                     blobs=blobs,
@@ -324,19 +362,28 @@ class CodingGoal:
         metadata = (
             json.loads(prior.request)["data"]["metadata"]
             if prior is not None
-            else initial_metadata(self.workspace, self._policy.blobs)
+            else (
+                self._profile.initial_metadata(self.workspace, self._policy.blobs)
+                if self._profile is not None
+                else initial_metadata(self.workspace, self._policy.blobs)
+            )
         )
         if self._model_planning and prior is None:
             from ._goal_proposal import LIMITS
-            from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
 
             metadata = {
                 **metadata,
-                "profile": PLANNING_POLICY_ID,
-                "planning_limits": LIMITS,
+                "profile": self.controller.header.policy_id,
+                "planning_limits": self._profile.limits
+                if self._profile is not None
+                else LIMITS,
             }
         return self.controller.create(
-            goal_id, REQUIREMENTS, command_id=command_id, limit=limit, metadata=metadata
+            goal_id,
+            (self._profile.requirements if self._profile is not None else REQUIREMENTS),
+            command_id=command_id,
+            limit=limit,
+            metadata=metadata,
         )
 
     async def advance(
@@ -481,8 +528,16 @@ class CodingGoal:
 def inspect_goal(
     *, workspace: Path, data_root: Path, session_id: str, goal_id: str
 ) -> CodingGoalView:
+    return _inspect_goal(
+        workspace=workspace, data_root=data_root, session_id=session_id, goal_id=goal_id
+    )
+
+
+def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None):
     """Cold read without creating a model Session, dispatching or writing events."""
-    header = GoalHeader(session_id, session_id, POLICY_ID)
+    header = GoalHeader(
+        session_id, session_id, profile.policy_id if profile is not None else POLICY_ID
+    )
     store = GoalJournal(data_root.resolve() / "sessions", header, read_only=True)
     try:
         store.open()
@@ -508,6 +563,19 @@ def inspect_goal(
         log = JsonlEventLogBackend(path)
         runs, unresolved = _goal_work_facts(history, log.query(), session_id)
         blobs = SessionBlobStore(data_root.resolve(), session_id, read_only=True)
+        if profile is not None:
+            return profile.inspect(
+                workspace,
+                data_root,
+                session_id,
+                goal_id,
+                actual,
+                history,
+                log,
+                runs,
+                unresolved,
+                blobs,
+            )
         policy = CalculatorPolicy(
             workspace=workspace.resolve(),
             session=SimpleNamespace(pending_message_count=0),

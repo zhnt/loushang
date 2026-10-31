@@ -327,11 +327,42 @@ async def _read_file_payload(
     *,
     operations: ReadOperations,
 ) -> bytes:
-    if not await resolve_operation(operations.exists(resolved)):
-        raise FileNotFoundError(str(resolved))
-    if not await resolve_operation(operations.is_file(resolved)):
+    try:
+        exists = await resolve_operation(operations.exists(resolved))
+    except FileNotFoundError as exc:
+        # Custom/Pi-compatible operations may signal a missing file by
+        # raising instead of returning False.
+        raise _missing_file_error(resolved) from exc
+    if not exists:
+        raise _missing_file_error(resolved)
+    try:
+        is_file = await resolve_operation(operations.is_file(resolved))
+    except FileNotFoundError as exc:
+        raise _missing_file_error(resolved) from exc
+    if not is_file:
+        # The file may have vanished between exists() and is_file().
+        # Distinguish that from a genuine directory by re-checking existence
+        # through the same operations abstraction (no local filesystem
+        # probing for remote/virtual operations).
+        try:
+            still_exists = await resolve_operation(operations.exists(resolved))
+        except FileNotFoundError as exc:
+            raise _missing_file_error(resolved) from exc
+        if not still_exists:
+            raise _missing_file_error(resolved)
         raise IsADirectoryError(str(resolved))
-    return await resolve_operation(operations.read_bytes(resolved))
+    try:
+        return await resolve_operation(operations.read_bytes(resolved))
+    except FileNotFoundError as exc:
+        # The file may have disappeared between exists/is_file and read_bytes.
+        raise _missing_file_error(resolved) from exc
+
+
+def _missing_file_error(path: Path) -> FileNotFoundError:
+    return FileNotFoundError(
+        f"{path}: No such file. List the parent directory ({path.parent}) "
+        "or use `rg --files` to locate the file, then retry."
+    )
 
 
 def _decode_text_payload(path: Path, payload: bytes) -> str:
