@@ -114,3 +114,18 @@ flowchart LR
 四条路径均校验最终事实与冷读投影一致，无未收敛执行。宿主路径额外核对：实施前的旧 inventory 被拒绝且不新增 Work；验证依据绑定到实际修复后的 inventory、同一 Goal/Session 以及准确的 verification operation/run；验证成功仍等待宿主评审，不能提前完成或继续规划；重复验证命令返回原回执，保留原 Work/规划计数。原 profile 的总 Work 额度仍为 20，没有重置目标、修改 epoch 或清空历史；本轮证明上述实际消耗，额度临界值合同仍由原 host_verification_capacity_and_source_contract 覆盖。
 
 验证结果：4 passed、39 deselected（53.20 秒）；既有额度/来源合同复验 1 passed、42 deselected（4.88 秒）；Ruff 与 9 项文档检查通过。该证据验证既有能力在同一 Goal 内的衔接及失败语义，不是在线模型表现或实质动态重规划成功的证明。没有新增在线模型调用，没有启动新的真实仓库试验。
+
+
+## 9. 有界真实任务试验：未进入实施
+
+2026-11-01，用户授权交付上一节离线验证并进行一次小型真实任务试验。离线验证已由 PR #834 合并。真实任务选取新的窄缺陷：read 超长行提示的 Bash 命令未引用路径，特殊文件名无法按提示读取。未复用旧 #125/#121 的完成候选；仅允许修改 read.py 的 imports 与 _first_line_too_large_notice。
+
+独立合同在干净主线基线 `f5277c3d8` 上为 14 failed、3 passed，覆盖空格、单引号、分号、变量符号、反引号、中文、换行及两个 offset。任务包冻结摘要 `38736b418fc98d60675e389f42fcc257f3598bc2c1dcfbeef1291ff40dccaf72`，运行源码 `3ee6f0edd`。为避免给新任务错误背景，原规划提示移除写死的旧 issue 编号与“两文件”数量，改为引用当前任务及 allowed_files；未改变动作、权限或受理合同。已有四条离线集成路径在修订上复验通过（52.56 秒）。
+
+试验驱动上限为 2 个 planning、1 个 repair、1 个 verification、1 个 review，总数最多 5 Work；单次模型输出上限 2048，保留原 Work 内调用/重试上限，试验总时长上限 600 秒。该局部驱动只允许有效计划直接进入 implement；不把这些局部约束冒称共享 Goal 的预算合同。
+
+实际 Kimi Coding 首次提出 inspect(reader)，其 planning Work 正常完成。驱动因没有给 inspect 留位置而停止，没有执行检查、实施、验证或评审，没有重新发起付费试验。冷读为 active/not_satisfied，reason=repository_verification_required，execution_unresolved=false。候选源码完全未变。原 Transcript 记录 1 次 invocation、1 次 provider attempt：input=7847、output=588、cacheRead=0、cacheWrite=0、totalTokens=8435。
+
+此结果不是闭环成功，也不是运行时异常。原 planning_material 提供要求、允许路径和检查目标，不提供源码正文；源码通过 inspect 或后续实施材料取得，因此模型先选择检查合理。本轮驱动预算未覆盖这条正常路线，且其局部动作限制未完整进入原模型的 limits/remaining（仍为 profile 的 20 Work/8 planning）。这是试验设置与现有规划输入之间的缺口，不能据此判模型违规或新增底座调度器。
+
+下一轮需先明确初始证据及局部预算如何向规划者表达，并给允许的 inspect 路径分配名额，或明确已有实施材料足以直接开工；本次未批准或开展第二次在线试验，也未声称实质动态重规划已证明。原始任务包、来源切点、日志和用量记录归档在产品树外，临时干净工作树可在归档后移除，冷读结论作为移除前的时点证据保留。

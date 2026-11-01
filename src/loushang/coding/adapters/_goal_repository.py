@@ -218,7 +218,7 @@ def _host_intent(batch, history):
 
 def prompt(operation_id, content):
     return (
-        "Choose one next action and a revisable route for issue #125 from the supplied facts. "
+        "Choose one next action and a revisable route for the supplied repository task from its frozen requirements and current facts. "
         "Return ONE JSON object, no fences/tools. Keys exactly: next_action, targets, "
         "requirement_ids, rationale, expected_evidence, remaining_route, change_reason, evidence_refs. "
         "rationale/change_reason are strings <=2048 UTF-8 bytes; change_reason may be empty. "
@@ -227,7 +227,7 @@ def prompt(operation_id, content):
         "inspect targets: nonempty subset of reader,operations,tests. implement targets: reader,tests. "
         "check targets: exactly one of reader,regression. All checks include the independent contract. "
         "verify_all and stop targets: []. Every non-stop action covers RC-01 through RC-06. "
-        "An implement Work may edit any of the two allowed files; targets describe focus. "
+        "An implement Work may edit only the files declared in allowed_files; targets describe focus. "
         "Use actual failures to adjust the plan. The initial defect is established; implementation need not wait "
         "for another failed test. Only verify_all and independent human review can support completion. "
         "Do not change requirements, protected verifier, Method, paths, permissions or limits. "
