@@ -1,15 +1,15 @@
-# Coding 仓库 Goal：有界收尾预算候选
+# Coding 仓库 Goal：有界收尾预算
 
-- Authority: proposed；Design status: draft；Implementation status: prototype。
+- Authority: normative；Design status: accepted；Implementation status: implemented。
 - Owner：Coding；基线 `a77595735`；2026-11-01。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 范围：用户“继续”授权的最小方案与离线验证。延续[已有收尾设计](goal-low-token-closeout.md)，本轮不开展在线试验；此私有任务合同增量保留[用户评审检查点](../../goal-method-work/README.md#用户评审检查点)，离线原型不等于接受为共享或公开接口。
+- 范围：Coding 私有仓库任务的有界收尾预算，延续[已有收尾设计](goal-low-token-closeout.md)。用户于 2026-11-01 明确“确认并交付当前方案”，接受三视角发现关闭后的 `3614c1e0a86daab191876eda8e741c7557f1dcad` 方案并授权 PR、合并和本地同步；本次不开展在线试验，不接受为共享或公开接口。
 
 ## 问题与选择
 
 上次驱动只接受直接实施；模型看到原 profile 的 20 Work / 8 planning，且首次规划无源码正文，先选择 inspect 是合理的。仅把脚本循环从 5 调到 6 或追加提示，仍不能使实际准入与模型额度一致。
 
-候选方案：在已冻结、带摘要的 RepositoryTask 中显式选择 `closeout_budget`；原 Coding profile 将它编译为更小的限制，原 GoalController 记录总额度，原 RepositoryPolicy 同时负责规划输入和准入。没有新运行组件、队列、调度器、用量账本或 Goal/Work 记录 schema。已有私有批次策略仅提取剩余额度投影方法，默认计算不变。
+采用方案：在已冻结、带摘要的 RepositoryTask 中显式选择 `closeout_budget`；原 Coding profile 将它编译为更小的限制，原 GoalController 记录总额度，原 RepositoryPolicy 同时负责规划输入和准入。没有新运行组件、队列、调度器、用量账本或 Goal/Work 记录 schema。已有私有批次策略仅提取剩余额度投影方法，默认计算不变。
 
 ## 私有配置及责任
 

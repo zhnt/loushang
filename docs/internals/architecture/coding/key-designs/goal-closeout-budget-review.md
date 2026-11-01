@@ -1,6 +1,6 @@
 # Coding 有界收尾预算：独立三视角评审
 
-- Authority: descriptive；Design status: draft；Implementation status: prototype。
+- Authority: descriptive；Design status: accepted；Implementation status: implemented。
 - 对象：[候选设计](goal-closeout-budget.md)及原型 `75904658b38436bde6909bf184047cc7fdc62444`，相对 `a775957356bb6bc78f141b784babcb0af5064204` 的六文件增量。
 - 原设计 SHA256：`4930500e2239d9063e1aad248df8d7cb4b37a9370b7132ab96e27dca0c509a65`。
 - 方法：本地干净 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`；2026-11-01，未核验方法远端版本。
@@ -30,7 +30,7 @@
 
 修复后预算专项 **20 passed**（80.35 秒）。随后把闭环冷读改为从路径与摘要重新构造 RepositoryTask，复验六条有界路径、旧默认暂停恢复及宿主失败路径，共 **14 passed**（169.87 秒）；其中六条是专项复验，不累计为新增用例。Ruff、格式检查、架构依赖检查、9 项文档检查及 diff whitespace 检查通过。没有重跑整个 Coding/host_runtime 或线上矩阵；使用既有原型证据并补充受本次修订影响的路径，没有扩展 PR gate。
 
-三个原独立评审者分别复核修订，职责视角无新增问题，运行视角关闭 RUNTIME-01/02，数据视角确认 D1 源码修复；最后的全新任务冷读通过补齐 D1 关闭证据。**三项发现均关闭，内部三视角复审通过；用户接受仍未发生。** 复审输入以文件指纹固定：
+三个原独立评审者分别复核修订，职责视角无新增问题，运行视角关闭 RUNTIME-01/02，数据视角确认 D1 源码修复；最后的全新任务冷读通过补齐 D1 关闭证据。**三项发现均关闭，内部三视角复审通过；该评审时点尚未发生用户接受。** 复审输入以文件指纹固定：
 
 - `_goal_repository.py`：`b3cc3aae5f77db86c4bb4ca785662115cbecc06c257eef4be6cc7c7a1a7a84db`。
 - `test_repository_goal.py`：`0257ffc6aa1ba4cbc56c50af771d5dfb9d7e106f6a2a6e008b7d3a2fcf4eb89b`。
@@ -41,6 +41,8 @@
 
 ## 接受边界
 
-本记录不构成用户对候选合同的接受。[重要架构工作件用户评审检查点](../../goal-method-work/README.md#用户评审检查点)仍有效。即使内部复审通过，也只表示可提交用户评审，不自动允许在线试验，不表示真实 Coding 任务已完成动态重规划闭环。
+上述独立评审本身不构成用户接受。2026-11-01，用户在获知三项问题关闭及内部复审结果后明确“确认并交付当前方案”，接受 `3614c1e0a86daab191876eda8e741c7557f1dcad` 所载修订，满足本切片的[重要架构工作件用户评审检查点](../../goal-method-work/README.md#用户评审检查点)。
+
+接受范围为 Coding 私有任务的冻结预算、直接实施或先 inspect 的路线、一次实施后完整验证与独立评审、失败不自动扩预算，以及原任务默认行为保持。交付授权包括 PR、合并和本地同步。它不扩大为通用预算 API、多次实施、token 硬限或在线试验授权，也不表示真实 Coding 任务已完成动态重规划闭环。初审及复审的历史结论和证据保持原样。
 
 预算约束的是 Work intent 与阶段名额，未改变模型调用/provider 重试上限，不是 token 硬限。旧 reader 可将新记录判为不匹配；不能把这扩大为旧 writer 一定拒绝带新字段的任务包，降级执行未受支持。
