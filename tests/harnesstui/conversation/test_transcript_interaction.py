@@ -4,11 +4,19 @@ import asyncio
 from contextlib import nullcontext
 from io import StringIO
 
+import pytest
+
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.harnesstui.conversation.input import ConversationCopyTextResult
 from loushang.harnesstui.conversation.screen_runner import run_conversation_screen
-from loushang.tui import RenderConstraints, strip_control_sequences
+from loushang.tui import (
+    FakeTerminalPort,
+    RenderConstraints,
+    RenderLoop,
+    TuiRuntime,
+    strip_control_sequences,
+)
 from loushang.tui.input import InputEvent
 from loushang.tui.keybindings import KeybindingManager
 from loushang.tui.terminal import TerminalSize
@@ -42,6 +50,69 @@ def _render(app: ScreenCodingTuiApp) -> tuple[str, ...]:
         strip_control_sequences(line.text)
         for line in app.render(RenderConstraints(width=80, max_height=24)).lines
     )
+
+
+def test_wheel_routes_to_transcript_viewport() -> None:
+    app = _app()
+    router = build_screen_input_router(app, should_exit=lambda _text: False)
+    movements: list[int] = []
+    renders: list[str] = []
+    app.render_requester = renders.append
+    router.set_transcript_scroll_handler(lambda rows: movements.append(rows) or True)
+
+    up = router.handle(InputEvent(kind="mouse", mouse_action="scroll_up", mouse_button=0))
+    down = router.handle(InputEvent(kind="mouse", mouse_action="scroll_down", mouse_button=1))
+
+    assert not up.render_requested and not down.render_requested
+    assert movements == [-3, 3]
+    assert renders == ["product", "product"]
+
+
+def test_mouse_selection_uses_scrolled_conversation_viewport() -> None:
+    app = _app()
+    app.state.records.insert(
+        0, AssistantMessageRecord("\n".join(f"older line {index}" for index in range(40)))
+    )
+    app.state.mark_records_changed()
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(app),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)),
+    )
+    runtime.render_now()
+    router = build_screen_input_router(app, should_exit=lambda _text: False)
+    router.set_transcript_scroll_handler(runtime.render_loop.scroll_viewport)
+
+    assert not router.handle(InputEvent(kind="mouse", mouse_action="scroll_up", mouse_button=0)).render_requested
+    runtime.render_now()
+    top = runtime.render_loop.previous_viewport_top
+    visible = runtime.render_loop.previous_rendered_lines[top : top + 24]
+    physical_row = next(index for index, line in enumerate(visible) if "older line" in line)
+    line = strip_control_sequences(visible[physical_row])
+    column = line.index("older line")
+    router.set_transcript_viewport_top(top)
+    for action, end in (("press", 0), ("drag", 5)):
+        router.handle(InputEvent(kind="mouse", mouse_action=action, mouse_button=0, mouse_row=physical_row, mouse_column=column + end))
+    copied = router.handle(InputEvent(kind="mouse", mouse_action="release", mouse_button=0, mouse_row=physical_row, mouse_column=column + 5))
+    assert copied == ConversationCopyTextResult("older")
+
+
+def test_drag_selection_coalesces_repaints_and_ignores_same_cell() -> None:
+    app = _app()
+    router = build_screen_input_router(app, should_exit=lambda _text: False)
+    renders: list[str] = []
+    app.render_requester = renders.append
+    lines = _render(app)
+    row = next(index for index, line in enumerate(lines) if "answer" in line)
+
+    router.handle(InputEvent(kind="mouse", mouse_action="press", mouse_button=0, mouse_row=row, mouse_column=0))
+    renders.clear()
+    drag = InputEvent(kind="mouse", mouse_action="drag", mouse_button=0, mouse_row=row, mouse_column=3)
+    first = router.handle(drag)
+    second = router.handle(drag)
+
+    assert not first.render_requested
+    assert not second.render_requested
+    assert renders == ["product"]
 
 
 def test_detail_control_click_and_keyboard_focus() -> None:
@@ -210,6 +281,44 @@ def test_screen_runner_maps_sgr_click_from_terminal_viewport() -> None:
         )
     ) == 0
     assert any("Show Less" in line for line in _render(app))
+
+
+def test_screen_runner_routes_sgr_wheel_to_viewport(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = _app()
+    app.state.records.insert(
+        0, AssistantMessageRecord("\n".join(f"older line {index}" for index in range(40)))
+    )
+    app.state.mark_records_changed()
+    calls: list[int] = []
+    original_scroll = RenderLoop.scroll_viewport
+
+    def record_scroll(self: RenderLoop, rows: int) -> bool:
+        calls.append(rows)
+        return original_scroll(self, rows)
+
+    monkeypatch.setattr(RenderLoop, "scroll_viewport", record_scroll)
+    chunks = iter(("\x1b[<64;1;1M", ""))
+
+    async def read(_stdin: object) -> str:
+        return next(chunks)
+
+    assert asyncio.run(
+        run_conversation_screen(
+            app=app,
+            stdin=StringIO(),
+            stdout=StringIO(),
+            handle_prompt=lambda _text: None,
+            on_abort=lambda: None,
+            should_exit=lambda _text: False,
+            input_router_factory=build_screen_input_router,
+            input_chunk_reader=read,
+            terminal_mode_factory=lambda _stdin, _stdout: nullcontext(object()),
+            terminal_size_provider=lambda: TerminalSize(columns=80, rows=24),
+            interruption_message="Interrupted",
+            cancellation_message="Cancelled",
+        )
+    ) == 0
+    assert calls == [-3]
 
 
 def test_drag_selection_copies_displayed_text_and_ctrl_c_precedes_interrupt() -> None:

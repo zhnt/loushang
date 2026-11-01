@@ -27,7 +27,13 @@ def probe(env: Mapping[str, str]) -> TmuxMouseState:
     if result.returncode != 0:
         return "unknown"
     value = result.stdout.strip().lower()
-    return {"on": "on", "1": "on", "off": "off", "0": "off"}.get(value, "unknown")
+    states: dict[str, TmuxMouseState] = {
+        "on": "on",
+        "1": "on",
+        "off": "off",
+        "0": "off",
+    }
+    return states.get(value, "unknown")
 
 
 __all__ = ["probe"]
