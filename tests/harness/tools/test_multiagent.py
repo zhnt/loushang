@@ -199,6 +199,25 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
             None,
             None,
         )
+        model_agents = json.loads(listed.content[0].text)["agents"]
+        assert model_agents == [
+            {
+                "path": "/root",
+                "incarnation": 1,
+                "parent": None,
+                "agent_type": "root",
+                "status": "idle",
+                "round_id": 0,
+            },
+            {
+                "path": "/root/reviewer-1",
+                "incarnation": 1,
+                "parent": "/root",
+                "agent_type": "reviewer",
+                "status": "completed",
+                "round_id": 2,
+            },
+        ]
         assert [item["path"] for item in listed.details["agents"]] == [
             "/root",
             "/root/reviewer-1",

@@ -375,9 +375,24 @@ class MultiAgentToolPack:
             _update: object | None,
         ) -> AgentToolResult[dict[str, object]]:
             records = self._runtime.list_agents(caller=self._caller)
+            agents = [_record(record) for record in records]
+            model_agents = [
+                {
+                    key: agent[key]
+                    for key in (
+                        "path",
+                        "incarnation",
+                        "parent",
+                        "agent_type",
+                        "status",
+                        "round_id",
+                    )
+                }
+                for agent in agents
+            ]
             return _result(
-                f"Listed {len(records)} agents.",
-                {"agents": [_record(record) for record in records]},
+                json.dumps({"agents": model_agents}, ensure_ascii=False),
+                {"agents": agents},
             )
 
         return _definition(
