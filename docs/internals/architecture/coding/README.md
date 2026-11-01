@@ -82,6 +82,9 @@ mandatory UI dependencies.
 ## Target
 
 Accepted #824 first slice: [hosted Method execution and Work queries](key-designs/hosted-method-work.md).
+Proposed #824 second slice: [hosted Goal minimum loop](key-designs/hosted-goal-loop.md),
+with [three-view review](key-designs/hosted-goal-loop-review.md); technical review
+closed, awaiting the user's architecture review before implementation.
 The user accepted R2 after three-view review on 2026-11-01. The implementation
 connects one authorized application-local SDK entry to the original AppHost
 Session and HarnessWork execution; see the [delivery evidence](../../plans/2026-11-01-hosted-method-work.md).
