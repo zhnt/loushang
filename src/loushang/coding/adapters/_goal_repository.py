@@ -139,6 +139,78 @@ parse_repository_proposal = partial(
 )
 
 
+def _host_request(goal_id, command_id, revision, epoch, expected_inventory):
+    if (
+        any(not isinstance(v, str) or not v.strip() for v in (goal_id, command_id))
+        or any(type(v) is not int or v < 1 for v in (revision, epoch))
+        or not isinstance(expected_inventory, dict)
+        or not expected_inventory
+        or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in expected_inventory.items()
+        )
+    ):
+        raise GoalError("invalid host verification request")
+    return {
+        "version": 1,
+        "goal_id": goal_id,
+        "command_id": command_id,
+        "revision": revision,
+        "epoch": epoch,
+        "expected_inventory": dict(expected_inventory),
+    }
+
+
+def _host_intent(batch):
+    if "host_verification" not in batch.source:
+        return None
+    value = plain(batch.source["host_verification"])
+    if (
+        not isinstance(value, dict)
+        or set(value)
+        != {
+            "version",
+            "goal_id",
+            "command_id",
+            "revision",
+            "epoch",
+            "expected_inventory",
+        }
+        or type(value["version"]) is not int
+        or value["version"] != 1
+    ):
+        raise GoalError("unsupported host verification request")
+    _host_request(
+        value["goal_id"],
+        value["command_id"],
+        value["revision"],
+        value["epoch"],
+        value["expected_inventory"],
+    )
+    expected = _host_request(
+        batch.goal_id,
+        batch.command_id,
+        batch.revision,
+        batch.epoch,
+        plain(batch.source.get("inventory")),
+    )
+    basis = plain(batch.source.get("basis", {}))
+    if (
+        value != expected
+        or not isinstance(basis, dict)
+        or batch.source.get("phase") != "verification"
+        or batch.source.get("check") != "all"
+        or "proposal_id" in batch.source
+        or basis.get("goal_id") != batch.goal_id
+        or basis.get("revision") != batch.revision
+        or basis.get("epoch") != batch.epoch
+        or any(type(basis.get(k)) is not int for k in ("revision", "epoch", "sequence"))
+        or basis["sequence"] != batch.intent_sequence - 1
+    ):
+        raise GoalError("host verification intent mismatch")
+    return value
+
+
 def prompt(operation_id, content):
     return (
         "Choose one next action and a revisable route for issue #125 from the supplied facts. "
@@ -298,6 +370,7 @@ class RepositoryDomain:
         self.log, self.prepared = event_log, prepared
         self.allowance, self.tool_policy, self.history = allowance, tool_policy, history
         self.pending_review = None
+        self.pending_verification = None
         self.transcript_source = transcript_source
         self.delegation = None
         self.source_reader = None
@@ -336,6 +409,18 @@ class RepositoryDomain:
         from ._goal_delegation import KEY
 
         try:
+            if "host_verification" in candidate.source:
+                value = candidate.source["host_verification"]
+                if (
+                    self.session.pending_message_count
+                    or self.pending_verification is None
+                    or plain(value) != self.pending_verification
+                    or value["expected_inventory"] != candidate.source["inventory"]
+                    or not self._host_capacity(
+                        candidate.basis, candidate.operation.operation_id
+                    )
+                ):
+                    return False
             if KEY in candidate.source and (
                 self.delegation is None
                 or plain(candidate.source[KEY])
@@ -352,6 +437,18 @@ class RepositoryDomain:
             )
         except (ValueError, OSError, KeyError):
             return False
+
+    def _host_capacity(self, basis, own_operation=None):
+        batches = [b for b in self.history().batches if b.goal_id == basis.goal.id]
+        own = [b for b in batches if b.operation_id == own_operation]
+        if own and (
+            len(own) != 1
+            or _host_intent(own[0]) != self.pending_verification
+            or own[0].source.get("basis") != basis.identity
+            or own[0].intent_sequence != basis.sequence + 1
+        ):
+            return False
+        return basis.goal.limit - len(batches) + len(own) >= 2
 
     def confirm_resume(self, basis, work_facts):
         try:
@@ -445,6 +542,7 @@ class RepositoryDomain:
         for batch in facts.batches:
             if batch.goal_id != basis.goal.id:
                 continue
+            _host_intent(batch)
             phase = batch.source.get("phase")
             planning += phase == "planning"
             run = self._run(batch, facts)
@@ -688,6 +786,56 @@ class RepositoryDomain:
         except (ValueError, OSError, KeyError):
             return False
 
+    def _verification_candidate(self, basis, snapshot, check, op_id):
+        request = {
+            "package": str(self.task.path),
+            "package_sha256": self.task.digest,
+            "inventory": snapshot,
+            "check": check,
+            "identity": {
+                "goal_id": basis.goal.id,
+                "revision": basis.goal.revision,
+                "epoch": basis.goal.epoch,
+                "operation_id": op_id,
+            },
+        }
+        command = shlex.join(
+            [
+                self.task.config["python"],
+                "-I",
+                "-S",
+                str(self.task.path.parent / "driver.py"),
+            ]
+        )
+        operation = WorkOperation(
+            op_id,
+            "VerifyCodingCommand",
+            basis.header.session_id,
+            "coding",
+            {
+                "command": command,
+                "execution": {
+                    "stdin": canonical(request),
+                    "cwd": str(self.root),
+                    "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
+                },
+            },
+        )
+        return WorkCandidate(
+            basis,
+            operation,
+            WorkRunSpec(
+                plan_id="verification:" + op_id,
+                steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
+            ),
+            {
+                "inventory": snapshot,
+                "basis": basis.identity,
+                "phase": "verification" if check == "all" else "check",
+                "check": check,
+            },
+        )
+
     def _implementation(self, basis, proposal, snapshot, source, tests, code, evidence):
         action = proposal.action
         if action.name == "stop":
@@ -696,53 +844,7 @@ class RepositoryDomain:
         common = {"inventory": snapshot, "basis": basis.identity}
         if action.name in {"check", "verify_all"}:
             check = "all" if action.name == "verify_all" else action.targets[0]
-            request = {
-                "package": str(self.task.path),
-                "package_sha256": self.task.digest,
-                "inventory": snapshot,
-                "check": check,
-                "identity": {
-                    "goal_id": basis.goal.id,
-                    "revision": basis.goal.revision,
-                    "epoch": basis.goal.epoch,
-                    "operation_id": op_id,
-                },
-            }
-            command = shlex.join(
-                [
-                    self.task.config["python"],
-                    "-I",
-                    "-S",
-                    str(self.task.path.parent / "driver.py"),
-                ]
-            )
-            operation = WorkOperation(
-                op_id,
-                "VerifyCodingCommand",
-                basis.header.session_id,
-                "coding",
-                {
-                    "command": command,
-                    "execution": {
-                        "stdin": canonical(request),
-                        "cwd": str(self.root),
-                        "env": [["PYTHONDONTWRITEBYTECODE", "1"]],
-                    },
-                },
-            )
-            return WorkCandidate(
-                basis,
-                operation,
-                WorkRunSpec(
-                    plan_id="verification:" + op_id,
-                    steps=(WorkStepSpec("report"), WorkStepSpec("validation")),
-                ),
-                {
-                    **common,
-                    "phase": "verification" if check == "all" else "check",
-                    "check": check,
-                },
-            )
+            return self._verification_candidate(basis, snapshot, check, op_id)
         if action.name == "inspect":
             operation = WorkOperation(
                 op_id, "InspectRepository", basis.header.session_id, "coding", {}
@@ -836,6 +938,22 @@ class RepositoryPolicy(BatchPlanningPolicy, RepositoryDomain):
     async def prepare(self, basis, work_facts):
         if self.pending_review is not None:
             return review_candidate(self, basis, self.pending_review)
+        if self.pending_verification is not None:
+            snapshot = self._current_inputs(basis)[0]
+            if snapshot != self.pending_verification[
+                "expected_inventory"
+            ] or not self._host_capacity(basis):
+                raise GoalError("host verification basis or capacity changed")
+            candidate = self._verification_candidate(
+                basis, snapshot, "all", "goal-op-" + uuid4().hex
+            )
+            return replace(
+                candidate,
+                source={
+                    **candidate.source,
+                    "host_verification": self.pending_verification,
+                },
+            )
         reason = self.assess_now(basis, work_facts).reason
         if reason == "review_required":
             raise GoalError("review_required")
@@ -934,6 +1052,11 @@ class _RepositoryGoal(CodingGoal):
         try:
             command_id = kwargs.get("command_id")
             if any(
+                b.command_id == command_id and "host_verification" in b.source
+                for b in self.controller.history.batches
+            ):
+                raise GoalError("command belongs to host verification")
+            if any(
                 b.command_id == command_id and b.source.get("phase") == "review"
                 for b in self.controller.history.batches
             ):
@@ -944,6 +1067,58 @@ class _RepositoryGoal(CodingGoal):
                     raise GoalError("review_required: supply a trusted review")
             return await super().advance(goal_id, **kwargs)
         finally:
+            self._repository_busy = False
+
+    async def verify_current(
+        self,
+        goal_id,
+        *,
+        command_id,
+        revision,
+        epoch,
+        expected_inventory,
+    ):
+        """Trusted host selection of original full verification; never plans."""
+        self._open_for_commands()
+        if self._repository_busy:
+            raise GoalError("repository Goal busy")
+        self._repository_busy = True
+        try:
+            value = _host_request(
+                goal_id, command_id, revision, epoch, expected_inventory
+            )
+            core = self.controller
+            old = [b for b in core.history.batches if b.command_id == command_id]
+            if old:
+                if len(old) != 1 or _host_intent(old[0]) != value:
+                    raise GoalError("command has no matching host verification intent")
+                return await super().advance(
+                    goal_id, command_id=command_id, revision=revision, epoch=epoch
+                )
+            if command_id in core.history.commands:
+                raise GoalError("command has no matching host verification intent")
+            state = core.query(goal_id)
+            if state.status != "active" or (state.revision, state.epoch) != (
+                revision,
+                epoch,
+            ):
+                raise GoalError("host verification requires current active Goal")
+            facts = core.facts()
+            if facts.busy or facts.unresolved or self._session.pending_message_count:
+                raise GoalError("host verification execution unresolved")
+            basis = GoalBasis(core.header, state, core.history.sequence)
+            if self._policy._current_inputs(basis)[0] != value["expected_inventory"]:
+                raise GoalError("host verification inventory changed")
+            if not self._policy._host_capacity(basis):
+                raise GoalError("host verification requires two Work slots")
+            if self._policy.assess_now(basis, facts).reason == "review_required":
+                raise GoalError("review_required: supply a trusted review")
+            self._policy.pending_verification = value
+            return await super().advance(
+                goal_id, command_id=command_id, revision=revision, epoch=epoch
+            )
+        finally:
+            self._policy.pending_verification = None
             self._repository_busy = False
 
     async def submit_review(

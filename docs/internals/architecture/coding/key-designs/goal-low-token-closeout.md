@@ -1,9 +1,9 @@
 # CODING-KD-GOAL-04：低 token 的 Goal 收尾
 
-- Authority: proposed；Design status: draft；Implementation status: not-started。
+- Authority: normative；Design status: accepted；Implementation status: in-progress。
 - Revision: R2，2026-11-01。Owner：Coding；协作：HarnessWork Goal/Work、Harness Transcript/Blob；不改变共享组件边界。
 - 源码基线：`06a8033d6620efe2effba4c3a87eac9cb8384025`；方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
-- 用户目标：控制有限预算，安排花费 token 小的 Goal 收尾闭环。实施前按既有重要工作件检查点提交用户评审。
+- 用户目标：控制有限预算，安排花费 token 小的 Goal 收尾闭环。用户于 2026-11-01 明确“确认，请继续”，接受已评审 R2 并授权实施及固定预算收尾试验。
 
 ## 1. 本次 Goal 与成功条件
 
@@ -39,7 +39,7 @@ flowchart LR
 
 没有新增运行组件。Product 拥有验证选择和固定任务包；GoalController 仍拥有目标状态与受理；Work 拥有执行及事实；原 verifier 产生验证结果；可信宿主拥有评审决定。模型、子 Session 和 Method 不参与本次收尾执行，已有能力不被移除。
 
-## 4. 最小接口与交互候选
+## 4. 最小接口与交互
 
 私有仓库 SDK 增加 `verify_current(goal_id, *, command_id, revision, epoch, expected_inventory)`。调用方先取得当前候选清单，明确授权对此清单执行完整验证。该入口不接任意命令、check 类型、验收规则或模型计划。
 
@@ -72,4 +72,10 @@ flowchart LR
 
 三视角：职责与复用；运行与失败；数据与兼容。每位 reviewer 仅核查本稿与必要源码，限制输出为阻断、关闭条件及结论；不运行模型、不扩散任务。具体 findings 与固定修订记在相邻评审记录。
 
-用户需评审的关键决定：可信宿主可直接请求原完整验证，无需消耗模型规划次数；Goal 完成仍要求独立评审且受原 Work 总额度限制。本次只验收新 Goal，不恢复或改写上轮暂停的 Goal。
+用户已接受的关键决定：可信宿主可直接请求原完整验证，无需消耗模型规划次数；Goal 完成仍要求独立评审且受原 Work 总额度限制。本次只验收新 Goal，不恢复或改写上轮暂停的 Goal。
+
+## 7. 实施与验证记录
+
+实现仅在原 `_goal_repository.py` 增加可信宿主入口、短命请求和来源核对；将原 verification 候选构造提取为同一私有方法供两入口复用。共享 GoalController/Work、队列、Session 生命周期和完成规则均未修改。原 Work.wait 的取消路径会取消并收敛原 run；宿主重复请求保留原回执，不补发。
+
+完整仓库 Goal 离线回归 40 passed（309.59 秒），覆盖新入口及原模型规划、同 Session、reuse/fresh/inherit、冷读；Ruff 与原生成式架构依赖检查通过。最后严格类型、来源序号与零模型 SDK 冷读定向复验 2 passed（15.02 秒）；文档检查 9 项通过。固定候选真实验收结果另记，尚未据此宣称试验完成。
