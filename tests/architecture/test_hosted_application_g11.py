@@ -126,6 +126,9 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_resume.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/_hosted_execution_work.py"),
+        # COD-KD-HMW-001: original guard/registry, no second execution owner.
+        Path("src/loushang/coding/hosted_method.py"),
+        Path("src/loushang/coding/_hosted_method_work.py"),
         Path("src/loushang/apphost/managed/bootstrap.py"),
         Path("src/loushang/apphost/managed/mux_creation.py"),
         Path("src/loushang/apphost/managed/mux_management.py"),
@@ -271,7 +274,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # state lock/atomic continuity authority; all four core files still count.
         # LMUX M0 §72 keeps close coordination on the same state/continuity
         # owner; reviewed core is 1876 lines, including original core files.
-        "appservice-core": 1_900,
+        # COD-KD-HMW-001 adds capability/legacy-input routing on the same
+        # core owner; reviewed complete group is 1908 lines (no excluded file).
+        "appservice-core": 1_908,
         # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
         # same continuity schema/recovery boundary; no owner split or activation.
         # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
