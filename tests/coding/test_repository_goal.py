@@ -410,16 +410,24 @@ def test_provider_failure_stops_without_invalid_plan_retry_and_can_resume(
         get_default_api_registry().unregister_api_adapters(adapter.api)
 
 
+@pytest.mark.parametrize(
+    "closeout", ["model", "host", "host_failed_check", "host_rejected_review"]
+)
 def test_repository_method_executes_original_write_tool_then_independent_verifier(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, closeout
 ):
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
     task = task_package(tmp_path, initial="VALUE = 0\n")
 
+    host = closeout != "model"
+    content = "VALUE = 2\n" if closeout == "host_failed_check" else "VALUE = 1\n"
+
     class ImplementAdapter(Adapter):
         wrote = False
+        sealed = False
 
         async def invoke_prepared_raw(self, request, prepared):
+            assert not self.sealed, "host closeout must not call the model"
             if not request.context.tools:
                 initial = self.calls == 0
                 async for part in super().invoke_prepared_raw(request, prepared):
@@ -449,7 +457,7 @@ def test_repository_method_executes_original_write_tool_then_independent_verifie
                     "delta": json.dumps(
                         {
                             "path": str(task.root / "target.py"),
-                            "content": "VALUE = 1\n",
+                            "content": content,
                         }
                     ),
                 }
@@ -470,7 +478,8 @@ def test_repository_method_executes_original_write_tool_then_independent_verifie
         )
         try:
             owner.create("g", command_id="create")
-            for n in range(4):
+            session_id = owner.session_id
+            for n in range(2 if host else 4):
                 result = await owner.advance(
                     "g", command_id=f"a-{n}", revision=1, epoch=1
                 )
@@ -478,31 +487,159 @@ def test_repository_method_executes_original_write_tool_then_independent_verifie
                     result,
                     owner.controller.last_error,
                 )
-            assert (task.root / "target.py").read_text() == "VALUE = 1\n"
-            view = await owner.query("g")
+            assert (task.root / "target.py").read_text() == content
+            before_closeout = owner.planning_trace("g")
+            expected_phases = ["planning", "repair"]
+            if host:
+                # One plan, one tool call and its continuation.
+                assert adapter.calls == 3
+                adapter.sealed = True
+                assert [
+                    b["phase"] for b in before_closeout["batches"]
+                ] == expected_phases
+                assert (await owner.query("g")).goal.status == "active"
+                assert (
+                    await owner.query("g")
+                ).reason == "repository_verification_required"
+                inventory = task.snapshot()
+                # Reject the pre-repair inventory without admitting another Work.
+                with pytest.raises(GoalError, match="inventory changed"):
+                    await owner.verify_current(
+                        "g",
+                        command_id="stale",
+                        revision=1,
+                        epoch=1,
+                        expected_inventory=task.config["workspace_start"],
+                    )
+                assert len(owner.controller.history.batches) == 2
+                verification = await owner.verify_current(
+                    "g",
+                    command_id="verify",
+                    revision=1,
+                    epoch=1,
+                    expected_inventory=inventory,
+                )
+                assert verification.outcome == "work_finished"
+                assert (
+                    await owner.verify_current(
+                        "g",
+                        command_id="verify",
+                        revision=1,
+                        epoch=1,
+                        expected_inventory=inventory,
+                    )
+                    == verification
+                )
+                assert len(owner.controller.history.batches) == 3
+            else:
+                expected_phases.append("planning")
+            expected_phases.append("verification")
             trace = owner.planning_trace("g")
-            assert view.reason == "review_required", json.dumps(trace, indent=2)
-            assert [b["phase"] for b in trace["batches"]] == [
-                "planning",
-                "repair",
-                "planning",
-                "verification",
-            ]
+            assert [b["phase"] for b in trace["batches"]] == expected_phases
             repair = next(
                 e["result"] for e in trace["evidence"] if e["phase"] == "repair"
             )
             assert repair["before"] != repair["after"]
-            await submit(
-                owner,
-                "g",
-                expected_inventory=task.snapshot(),
-                approved=True,
-                reviewer="offline test",
-                reason="bounded fixture change verified",
+            identity, passed = owner.review_basis("g")
+            assert identity["goal_id"] == "g" and identity["session_id"] == session_id
+            assert identity["inventory"] == repair["after"] == task.snapshot()
+            assert (
+                identity["verification_operation_id"]
+                == trace["batches"][-1]["operation_id"]
             )
-            assert owner.controller.query("g").status == "completed"
+            assert identity["verification_run_id"] == trace["batches"][-1]["run_id"]
+            if closeout == "host_failed_check":
+                assert not passed
+                assert trace["batches"][-1]["work_status"] == "failed"
+                with pytest.raises(GoalError, match="not passed"):
+                    await submit(
+                        owner,
+                        "g",
+                        expected_inventory=task.snapshot(),
+                        approved=True,
+                        reviewer="offline independent host",
+                        reason="cannot approve failed proof",
+                    )
+                expected_reason = "repository_verification_required"
+            else:
+                assert passed and (await owner.query("g")).reason == "review_required"
+                assert owner.controller.query("g").status == "active"
+                if host:
+                    with pytest.raises(GoalError, match="review_required"):
+                        await owner.advance(
+                            "g", command_id="no-extra-plan", revision=1, epoch=1
+                        )
+                if closeout == "host_rejected_review":
+                    await owner.submit_review(
+                        "g",
+                        command_id="review",
+                        review_id="review",
+                        expected_identity=identity,
+                        decision="rejected",
+                        reviewer="offline independent host",
+                        reason="scope finding remains",
+                        coverage=["RC-05"],
+                        findings=[
+                            dict(
+                                requirement_id="RC-05",
+                                evidence="target.py fixture change",
+                                expected="independent scope acceptance",
+                                actual="unresolved scope finding",
+                            )
+                        ],
+                    )
+                    expected_reason = "review_rejected"
+                else:
+                    await submit(
+                        owner,
+                        "g",
+                        expected_inventory=task.snapshot(),
+                        approved=True,
+                        reviewer="offline independent host",
+                        reason="bounded fixture change verified",
+                    )
+                    expected_reason = "repository_contract_and_review_satisfied"
+                expected_phases.append("review")
+            final = await owner.query("g")
+            completed = closeout in {"model", "host"}
+            assert final.goal.status == ("completed" if completed else "active")
+            assert final.reason == expected_reason
+            assert final.goal.id == "g" and final.goal.revision == final.goal.epoch == 1
+            assert list(owner.controller.history.goals) == ["g"]
+            assert owner.session_id == session_id
+            # Original profile budget is not reset or enlarged.
+            assert final.goal.limit == 20
+            final_trace = owner.planning_trace("g")
+            assert [b["phase"] for b in final_trace["batches"]] == expected_phases
+            assert final_trace["planning_intents"] == (1 if host else 2)
+            assert adapter.calls == (3 if host else 4)
+            assert not owner.controller.facts().unresolved
+            assert not owner._work.active_runs()
+            if host:
+                assert len(final_trace["batches"]) == (
+                    3 if closeout == "host_failed_check" else 4
+                )
+                assert (
+                    await owner.verify_current(
+                        "g",
+                        command_id="verify",
+                        revision=1,
+                        epoch=1,
+                        expected_inventory=inventory,
+                    )
+                    == verification
+                )
+                assert owner.planning_trace("g") == final_trace
         finally:
             await owner.close()
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=session_id, goal_id="g"
+        )
+        assert cold.goal.status == final.goal.status and cold.reason == expected_reason
+        assert cold.validity == ("current" if completed else "not_satisfied")
+        assert cold.planning == final_trace
+        assert not cold.execution_unresolved
+        assert adapter.calls == (3 if host else 4)
 
     try:
         asyncio.run(scenario())

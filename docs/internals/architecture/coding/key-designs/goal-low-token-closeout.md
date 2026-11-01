@@ -96,3 +96,21 @@ flowchart LR
 因此，本次收尾试验新增模型 token 为 0；此数字不包含旧 Kimi 实施费用，也不包含本次设计、开发、测试与评审对话成本。没有扩大旧 8 次规划额度，没有使用新的在线 Kimi 调用，也没有把旧 paused Goal 改写为成功。这是可信宿主零模型收尾的验证，不是新的自主规划成功试验。
 
 候选源码、分支切点、任务包、评审与冷读证据保留在产品树外的本轮架构分析目录；完整运行资料保留于独立临时根。实验补丁不合入产品分支。实现代码三视角复核及唯一来源校验修复见[评审记录](goal-low-token-closeout-review.md#实施代码三视角复核与关闭)；交付沿用现有 PR 检查。
+
+
+## 8. 同一 Goal 的离线连续闭环验证
+
+2026-11-01，用户授权先完成离线集成验证。基线 `f5277c3d8`；本轮仅扩展原 `test_repository_method_executes_original_write_tool_then_independent_verifier` 测试和验证记录，不调整上述设计、运行组件、权限或预算政策。
+
+同一 Goal、同一 Session 内先由确定性离线模型适配器提出 implement 计划，再通过原 Method、SessionTurnExecutor 与 write 工具实际修改候选文件。宿主随后调用原 verify_current 与 submit_review，关闭 owner 后冷读原记录；规划与实施阶段不使用在线模型。保留原模型提出 verify_all 的路径作为对照。
+
+| 路径 | Work 顺序与数量 | 结果 |
+| --- | --- | --- |
+| 模型选择验证，对照 | planning → repair → planning → verification → review，共 5 个 | completed/current；2 次规划，离线适配器调用 4 次 |
+| 宿主接手成功收尾 | planning → repair → verification → review，共 4 个 | completed/current；1 次规划，离线适配器调用 3 次，收尾阶段不再调用模型 |
+| 实施结束但完整验证失败 | planning → repair → verification，共 3 个 | verification Work failed；拒绝批准请求；Goal active/not_satisfied，冷读保留失败事实 |
+| 完整验证通过但独立评审拒绝 | planning → repair → verification → review，共 4 个 | Goal active/not_satisfied，reason=review_rejected；冷读保留评审发现 |
+
+四条路径均校验最终事实与冷读投影一致，无未收敛执行。宿主路径额外核对：实施前的旧 inventory 被拒绝且不新增 Work；验证依据绑定到实际修复后的 inventory、同一 Goal/Session 以及准确的 verification operation/run；验证成功仍等待宿主评审，不能提前完成或继续规划；重复验证命令返回原回执，保留原 Work/规划计数。原 profile 的总 Work 额度仍为 20，没有重置目标、修改 epoch 或清空历史；本轮证明上述实际消耗，额度临界值合同仍由原 host_verification_capacity_and_source_contract 覆盖。
+
+验证结果：4 passed、39 deselected（53.20 秒）；既有额度/来源合同复验 1 passed、42 deselected（4.88 秒）；Ruff 与 9 项文档检查通过。该证据验证既有能力在同一 Goal 内的衔接及失败语义，不是在线模型表现或实质动态重规划成功的证明。没有新增在线模型调用，没有启动新的真实仓库试验。
