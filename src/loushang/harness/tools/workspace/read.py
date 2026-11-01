@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 from pathlib import Path
+from shlex import quote
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, ImagePart, TextPart
@@ -479,7 +480,7 @@ def _first_line_too_large_notice(
         return None
     return (
         f"[Line {start_line} is {format_size(first_line_size)}, exceeds {format_size(DEFAULT_MAX_BYTES)} limit. "
-        f"Use bash: sed -n '{start_line}p' {path} | head -c {DEFAULT_MAX_BYTES}]"
+        f"Use bash: sed -n '{start_line}p' {quote(path)} | head -c {DEFAULT_MAX_BYTES}]"
     )
 
 
