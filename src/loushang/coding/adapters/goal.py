@@ -369,9 +369,18 @@ class CodingGoal:
 
     def create(self, goal_id: str, *, command_id: str, limit: int | None = None):
         self._open_for_commands()
-        limit = (20 if self._model_planning else 6) if limit is None else limit
-        if self._model_planning and limit != 20:
-            raise GoalError("model-planning profile fixes the total Work limit at 20")
+        planning_limit = (
+            self._profile.limits["work_intents"]
+            if self._model_planning and self._profile
+            else 20
+        )
+        limit = (
+            (planning_limit if self._model_planning else 6) if limit is None else limit
+        )
+        if self._model_planning and limit != planning_limit:
+            raise GoalError(
+                f"model-planning profile fixes the total Work limit at {planning_limit}"
+            )
         if self._delegation is not None and any(
             old != goal_id for old in self.controller.history.goals
         ):

@@ -410,35 +410,36 @@ def test_provider_failure_stops_without_invalid_plan_retry_and_can_resume(
         get_default_api_registry().unregister_api_adapters(adapter.api)
 
 
-@pytest.mark.parametrize(
-    "closeout", ["model", "host", "host_failed_check", "host_rejected_review"]
-)
-def test_repository_method_executes_original_write_tool_then_independent_verifier(
-    tmp_path, monkeypatch, closeout
-):
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
-    task = task_package(tmp_path, initial="VALUE = 0\n")
-
-    host = closeout != "model"
-    content = "VALUE = 2\n" if closeout == "host_failed_check" else "VALUE = 1\n"
-
+def implementation_adapter(task, content, *, inspect_first=False):
     class ImplementAdapter(Adapter):
         wrote = False
         sealed = False
 
+        def __init__(self):
+            self.inputs = []
+
         async def invoke_prepared_raw(self, request, prepared):
             assert not self.sealed, "host closeout must not call the model"
             if not request.context.tools:
-                initial = self.calls == 0
+                payload = prepared.payload_for_transport()
+                text = payload["messages"][-1]["content"][0]["text"]
+                self.inputs.append(json.loads(text[text.index("\n{") + 1 :]))
+                initial = not self.wrote
+                inspect = inspect_first and len(self.inputs) == 1
                 async for part in super().invoke_prepared_raw(request, prepared):
                     if initial and part["type"] == "text_delta":
                         proposal = json.loads(part["text"])
                         proposal.update(
-                            next_action="implement",
+                            next_action="inspect" if inspect else "implement",
                             targets=["reader"],
-                            expected_evidence=["method_execution"],
+                            expected_evidence=[
+                                "repository_report" if inspect else "method_execution"
+                            ],
                             remaining_route=[
-                                {"action": "implement", "targets": ["reader"]},
+                                {
+                                    "action": "inspect" if inspect else "implement",
+                                    "targets": ["reader"],
+                                },
                                 {"action": "verify_all", "targets": []},
                             ],
                         )
@@ -470,7 +471,22 @@ def test_repository_method_executes_original_write_tool_then_independent_verifie
                 yield {"type": "stop_reason", "stop_reason": "stop"}
             yield {"type": "response_done"}
 
-    adapter = ImplementAdapter()
+    return ImplementAdapter()
+
+
+@pytest.mark.parametrize(
+    "closeout", ["model", "host", "host_failed_check", "host_rejected_review"]
+)
+def test_repository_method_executes_original_write_tool_then_independent_verifier(
+    tmp_path, monkeypatch, closeout
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path, initial="VALUE = 0\n")
+
+    host = closeout != "model"
+    content = "VALUE = 2\n" if closeout == "host_failed_check" else "VALUE = 1\n"
+
+    adapter = implementation_adapter(task, content)
 
     async def scenario():
         owner = await open_repository_goal(
@@ -2081,6 +2097,224 @@ def test_host_verification_cancelled_waiter_keeps_original_work(tmp_path, monkey
         finally:
             release.set()
             await owner.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize(
+    "inspect_first,work_limit,planning_limit,completed,work_count,planning_count",
+    [
+        (False, 4, 1, True, 4, 1),
+        (True, 6, 2, True, 6, 2),
+        (True, 5, 2, False, 1, 1),
+        (True, 6, 1, False, 1, 1),
+    ],
+)
+def test_frozen_closeout_budget_matches_model_input_and_admission(
+    tmp_path,
+    monkeypatch,
+    inspect_first,
+    work_limit,
+    planning_limit,
+    completed,
+    work_count,
+    planning_count,
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path, initial="VALUE = 0\n")
+    config = dict(
+        task.config,
+        closeout_budget={
+            "version": 1,
+            "work_intents": work_limit,
+            "planning_intents": planning_limit,
+        },
+    )
+    task.path.write_text(json.dumps(config))
+    task = RepositoryTask(task.path, digest(task.path.read_bytes()))
+    adapter = implementation_adapter(task, "VALUE = 1\n", inspect_first=inspect_first)
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        try:
+            with pytest.raises(GoalError, match="fixes the total Work limit"):
+                owner.create("g", command_id="create-wrong", limit=20)
+            owner.create("g", command_id="create")
+            session_id = owner.session_id
+            for n in range(4):
+                receipt = await owner.advance(
+                    "g", command_id=f"a-{n}", revision=1, epoch=1
+                )
+                trace = owner.planning_trace("g")
+                if receipt.outcome != "work_finished" or any(
+                    b["phase"] == "repair" for b in trace["batches"]
+                ):
+                    break
+            assert len(adapter.inputs) == planning_count
+            first = adapter.inputs[0]
+            assert first["limits"]["work_intents"] == work_limit
+            assert first["limits"]["planning_intents"] == planning_limit
+            assert (
+                first["remaining"]["work_intents_including_this_planning"] == work_limit
+            )
+            assert (
+                first["remaining"]["planning_intents_including_this_planning"]
+                == planning_limit
+            )
+            assert (
+                first["limits"]["check_intents"]
+                == first["remaining"]["check_intents"]
+                == 0
+            )
+            assert first["remaining"]["repair_intents"] == 1
+            assert first["material"]["host_closeout"]["model_actions"] == [
+                "inspect",
+                "implement",
+                "stop",
+            ]
+            assert first["material"]["host_closeout"]["work_routes"][1] == [
+                "planning",
+                "inspect",
+                "planning",
+                "repair",
+                "verification",
+                "review",
+            ]
+            if completed and inspect_first:
+                second = adapter.inputs[1]
+                assert second["remaining"]["work_intents_including_this_planning"] == 4
+                assert (
+                    second["remaining"]["planning_intents_including_this_planning"] == 1
+                )
+                assert second["remaining"]["inspect_intents"] == 0
+                assert any(e["phase"] == "inspect" for e in second["evidence"])
+            adapter.sealed = True
+            if completed:
+                assert receipt.outcome == "work_finished"
+                assert (task.root / "target.py").read_text() == "VALUE = 1\n"
+                args = dict(
+                    command_id="v",
+                    revision=1,
+                    epoch=1,
+                    expected_inventory=task.snapshot(),
+                )
+                verification = await owner.verify_current("g", **args)
+                assert (await owner.query("g")).reason == "review_required"
+                await submit(
+                    owner,
+                    "g",
+                    expected_inventory=task.snapshot(),
+                    approved=True,
+                    reviewer="independent offline host",
+                    reason="fixed contract passed",
+                )
+                assert await owner.verify_current("g", **args) == verification
+            else:
+                assert receipt.outcome == "paused"
+                assert (task.root / "target.py").read_text() == "VALUE = 0\n"
+                assert (
+                    owner.controller.query("g").reason == "repository_closeout_budget"
+                )
+                assert adapter.calls == 1
+            final = await owner.query("g")
+            assert final.goal.limit == work_limit
+            assert final.goal.status == ("completed" if completed else "paused")
+            trace = owner.planning_trace("g")
+            assert len(trace["batches"]) == work_count
+            assert trace["planning_intents"] == planning_count
+            assert adapter.calls == planning_count + (2 if completed else 0)
+            assert not owner._work.active_runs()
+        finally:
+            await owner.close()
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=session_id, goal_id="g"
+        )
+        assert cold.goal == final.goal and cold.planning == trace
+        assert cold.validity == ("current" if completed else "not_satisfied")
+        assert not cold.execution_unresolved
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"version": True},
+        {"version": 2},
+        {"work_intents": True},
+        {"work_intents": 7},
+        {"work_intents": 0},
+        {"planning_intents": 3},
+        {"planning_intents": 0},
+        {"extra": 1},
+    ],
+)
+def test_closeout_budget_refuses_invalid_or_expanded_limits(change):
+    from types import SimpleNamespace
+
+    from loushang.coding.adapters._goal_repository import _repository_limits
+
+    with pytest.raises(GoalError, match="invalid repository closeout budget"):
+        _repository_limits(
+            SimpleNamespace(
+                config={
+                    "closeout_budget": {
+                        "version": 1,
+                        "work_intents": 6,
+                        "planning_intents": 2,
+                        **change,
+                    }
+                }
+            )
+        )
+
+
+def test_closeout_budget_stops_before_first_model_call(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    config = dict(
+        task.config,
+        closeout_budget={
+            "version": 1,
+            "work_intents": 3,
+            "planning_intents": 2,
+        },
+    )
+    task.path.write_text(json.dumps(config))
+    task = RepositoryTask(task.path, digest(task.path.read_bytes()))
+    adapter = NoModelAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        try:
+            owner.create("g", command_id="create")
+            receipt = await owner.advance("g", command_id="a", revision=1, epoch=1)
+            assert receipt.outcome == "paused"
+            assert owner.controller.query("g").reason == "repository_closeout_budget"
+            assert (
+                await owner.advance("g", command_id="a", revision=1, epoch=1) == receipt
+            )
+            assert not owner.controller.history.batches and adapter.calls == 0
+        finally:
+            await owner.close()
+        cold = inspect_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            session_id=owner.session_id,
+            goal_id="g",
+        )
+        assert cold.goal.status == "paused" and cold.validity == "not_satisfied"
+        assert not cold.execution_unresolved
 
     try:
         asyncio.run(scenario())

@@ -267,14 +267,7 @@ class BatchPlanningPolicy:
                 "routes": routes,
                 "rejections": rejections,
                 "limits": self.limits,
-                "remaining": {
-                    "work_intents_including_this_planning": basis.goal.limit
-                    - len(batches),
-                    "planning_intents_including_this_planning": self.limits[
-                        "planning_intents"
-                    ]
-                    - sum(b.source.get("phase") == "planning" for b in batches),
-                },
+                "remaining": self._planning_remaining(basis, batches),
             }
         ).encode()
         input_ref = put(self.blobs, content, f"{operation_id}/planning-input.json")
@@ -325,6 +318,13 @@ class BatchPlanningPolicy:
                 "input_sha256": driver.digest(content),
             },
         )
+
+    def _planning_remaining(self, basis, batches):
+        return {
+            "work_intents_including_this_planning": basis.goal.limit - len(batches),
+            "planning_intents_including_this_planning": self.limits["planning_intents"]
+            - sum(b.source.get("phase") == "planning" for b in batches),
+        }
 
     def confirm_candidate(self, candidate):
         if not super().confirm_candidate(candidate):
