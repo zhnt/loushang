@@ -1580,6 +1580,22 @@ class NoModelAdapter(Adapter):
 def test_host_verification_zero_model_closeout_and_request_identity(
     tmp_path, monkeypatch
 ):
+    from dataclasses import replace
+
+    from loushang.coding.adapters._goal_store import goal_journal_path
+    from loushang.harnesswork.goal import GoalBasis, GoalFacts
+    from loushang.harnesswork.goal.records import plain, replay
+
+    def corrupt_source(data):
+        if "host_verification" in data.get("source", {}):
+            data["source"]["basis"].update(
+                scope_id="foreign-scope",
+                session_id="foreign-session",
+                policy_id="foreign-policy",
+                policy_version=True,
+            )
+        return data
+
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
     task, adapter = task_package(tmp_path), NoModelAdapter()
 
@@ -1637,6 +1653,19 @@ def test_host_verification_zero_model_closeout_and_request_identity(
             assert owner._policy.pending_verification is None
             assert adapter.calls == 0 and owner._allowance.calls == 0
             sid = owner.session_id
+            core = owner.controller
+            changed = replay(
+                core.header,
+                [
+                    replace(record, data=corrupt_source(plain(record.data)))
+                    for record in core.history.records
+                ],
+            )
+            assessment = owner._policy.assess_now(
+                GoalBasis(core.header, changed.goal("g"), changed.sequence),
+                GoalFacts(changed.batches, core.facts().runs),
+            )
+            assert assessment.proof["validity"] == "unknown"
         finally:
             await owner.close()
         cold = inspect_repository_goal(
@@ -1644,6 +1673,16 @@ def test_host_verification_zero_model_closeout_and_request_identity(
         )
         assert cold.goal.status == "completed" and cold.validity == "current"
         assert cold.planning["planning_intents"] == 0
+        journal = goal_journal_path(tmp_path / "data/sessions", sid)
+        rows = [json.loads(line) for line in journal.read_text().splitlines()]
+        for row in rows:
+            if row.get("kind") == "batch_intent":
+                corrupt_source(row["data"])
+        journal.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+        )
+        assert cold.goal.status == "completed" and cold.validity == "unknown"
 
     try:
         asyncio.run(scenario())
@@ -1786,7 +1825,16 @@ def test_host_verification_capacity_and_source_contract():
     basis = NS(
         goal=NS(id="g", limit=20),
         sequence=100,
-        identity={"goal_id": "g", "revision": 1, "epoch": 1, "sequence": 100},
+        identity={
+            "goal_id": "g",
+            "revision": 1,
+            "epoch": 1,
+            "sequence": 100,
+            "scope_id": "scope",
+            "session_id": "session",
+            "policy_id": "policy",
+            "policy_version": 1,
+        },
     )
     source = {
         "phase": "verification",
@@ -1807,7 +1855,11 @@ def test_host_verification_capacity_and_source_contract():
     old = [NS(operation_id=f"old-{n}", goal_id="g") for n in range(18)]
     policy = object.__new__(RepositoryDomain)
     policy.pending_verification = request
-    policy.history = lambda: NS(batches=tuple(old))
+    history = NS(
+        records=(None,) * 100
+        + (NS(kind="batch_intent", data={"basis": basis.identity}),)
+    )
+    policy.history = lambda: NS(batches=tuple(old), records=history.records)
     assert policy._host_capacity(basis)
     old.append(own)
     assert not policy._host_capacity(basis)
@@ -1823,10 +1875,21 @@ def test_host_verification_capacity_and_source_contract():
     ):
         own.source = {**source, "host_verification": {**request, **mutation}}
         with pytest.raises(GoalError):
-            _host_intent(own)
+            _host_intent(own, history)
     own.source = {**source, "proposal_id": "fake-model-plan"}
     with pytest.raises(GoalError):
-        _host_intent(own)
+        _host_intent(own, history)
+    for mutation in (
+        {"scope_id": "foreign"},
+        {"session_id": "foreign"},
+        {"policy_id": "foreign"},
+        {"policy_version": True},
+        {"policy_version": 2},
+        {"sequence": 99},
+    ):
+        own.source = {**source, "basis": {**basis.identity, **mutation}}
+        with pytest.raises(GoalError, match="intent mismatch"):
+            _host_intent(own, history)
 
 
 def test_host_verification_cancelled_waiter_keeps_original_work(tmp_path, monkeypatch):

@@ -161,7 +161,7 @@ def _host_request(goal_id, command_id, revision, epoch, expected_inventory):
     }
 
 
-def _host_intent(batch):
+def _host_intent(batch, history):
     if "host_verification" not in batch.source:
         return None
     value = plain(batch.source["host_verification"])
@@ -195,8 +195,13 @@ def _host_intent(batch):
         plain(batch.source.get("inventory")),
     )
     basis = plain(batch.source.get("basis", {}))
+    if not 0 < batch.intent_sequence <= len(history.records):
+        raise GoalError("host verification intent missing")
+    intent = history.records[batch.intent_sequence - 1]
     if (
         value != expected
+        or intent.kind != "batch_intent"
+        or canonical(basis) != canonical(intent.data.get("basis"))
         or not isinstance(basis, dict)
         or batch.source.get("phase") != "verification"
         or batch.source.get("check") != "all"
@@ -439,11 +444,12 @@ class RepositoryDomain:
             return False
 
     def _host_capacity(self, basis, own_operation=None):
-        batches = [b for b in self.history().batches if b.goal_id == basis.goal.id]
+        history = self.history()
+        batches = [b for b in history.batches if b.goal_id == basis.goal.id]
         own = [b for b in batches if b.operation_id == own_operation]
         if own and (
             len(own) != 1
-            or _host_intent(own[0]) != self.pending_verification
+            or _host_intent(own[0], history) != self.pending_verification
             or own[0].source.get("basis") != basis.identity
             or own[0].intent_sequence != basis.sequence + 1
         ):
@@ -533,6 +539,7 @@ class RepositoryDomain:
         return None
 
     def _observations(self, basis, facts):
+        history = self.history()
         evidence, routes, rejections = [], [], []
         planning = invalid = stalled = 0
         knowledge = set()
@@ -542,7 +549,7 @@ class RepositoryDomain:
         for batch in facts.batches:
             if batch.goal_id != basis.goal.id:
                 continue
-            _host_intent(batch)
+            _host_intent(batch, history)
             phase = batch.source.get("phase")
             planning += phase == "planning"
             run = self._run(batch, facts)
@@ -1090,7 +1097,7 @@ class _RepositoryGoal(CodingGoal):
             core = self.controller
             old = [b for b in core.history.batches if b.command_id == command_id]
             if old:
-                if len(old) != 1 or _host_intent(old[0]) != value:
+                if len(old) != 1 or _host_intent(old[0], core.history) != value:
                     raise GoalError("command has no matching host verification intent")
                 return await super().advance(
                     goal_id, command_id=command_id, revision=revision, epoch=epoch
