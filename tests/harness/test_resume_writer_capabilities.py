@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from loushang.harness.approval.plugin_activation import (
@@ -21,6 +23,13 @@ from tests.harness.approval.test_plugin_execution_resume_context import (
     _enrolled as execution_enrolled,
 )
 from tests.harness.worker.test_resume_parent_context import _fixture as worker_fixture
+
+_WORKER_OWNER = pytest.param(
+    "worker",
+    marks=pytest.mark.skipif(
+        sys.platform != "linux", reason="Linux rooted Worker activation journal"
+    ),
+)
 
 
 def _fixture(tmp_path, owner):
@@ -76,7 +85,7 @@ def _fixture(tmp_path, owner):
     )
 
 
-@pytest.mark.parametrize("owner", ["execution", "activation", "worker"])
+@pytest.mark.parametrize("owner", ["execution", "activation", _WORKER_OWNER])
 @pytest.mark.parametrize("partial_tail", [False, True])
 def test_unsupported_native_writer_protocol_refuses_before_repair_or_enrollment(
     tmp_path, owner, partial_tail
@@ -104,7 +113,7 @@ def test_unsupported_native_writer_protocol_refuses_before_repair_or_enrollment(
     assert after == before
 
 
-@pytest.mark.parametrize("owner", ["execution", "activation", "worker"])
+@pytest.mark.parametrize("owner", ["execution", "activation", _WORKER_OWNER])
 def test_exact_native_capability_constructs_without_filesystem_effects(tmp_path, owner):
     journal, constructor, _, _ = _fixture(tmp_path, owner)
     before = {
@@ -127,7 +136,7 @@ def test_exact_native_capability_constructs_without_filesystem_effects(tmp_path,
     assert after == before
 
 
-@pytest.mark.parametrize("owner", ["execution", "activation", "worker"])
+@pytest.mark.parametrize("owner", ["execution", "activation", _WORKER_OWNER])
 @pytest.mark.parametrize("requirements", ["v1", {"v1"}, frozenset({1})])
 def test_native_protocol_requirements_are_exact_strings_not_coercible_inputs(
     tmp_path, owner, requirements
@@ -139,7 +148,7 @@ def test_native_protocol_requirements_are_exact_strings_not_coercible_inputs(
     assert journal.path.read_bytes() == before
 
 
-@pytest.mark.parametrize("owner", ["execution", "activation", "worker"])
+@pytest.mark.parametrize("owner", ["execution", "activation", _WORKER_OWNER])
 def test_overridden_advertisement_cannot_expand_compiled_writer_support(
     tmp_path, owner
 ):
