@@ -55,9 +55,13 @@ LIMITS = {**DEFAULT_LIMITS, "planning_intents": 8}
 
 def _repository_limits(task):
     """Optional bounded host-closeout policy, frozen with the private task."""
-    if "closeout_budget" not in task.config:
+    content = task.path.read_bytes()
+    if digest(content) != task.digest:
+        raise GoalError("task manifest changed")
+    config = json.loads(content)
+    if "closeout_budget" not in config:
         return dict(LIMITS)
-    value = task.config["closeout_budget"]
+    value = config["closeout_budget"]
     if (
         not isinstance(value, dict)
         or set(value) != {"version", "work_intents", "planning_intents"}
@@ -496,9 +500,15 @@ class RepositoryDomain:
         try:
             self._current_inputs(basis)
             _, _, _, count, invalid, stalled = self._observations(basis, work_facts)
-            return (
-                count < self.limits["planning_intents"] and invalid < 3 and stalled < 2
-            )
+            if invalid >= 3 or stalled >= 2:
+                return False
+            if "inspect_intents" in self.limits:
+                # Resume changes epoch: host closeout needs a fresh verification,
+                # but need not spend another planning intent after implementation.
+                return self._closeout_admits(
+                    basis, "planning"
+                ) or self._closeout_admits(basis, "verification")
+            return count < self.limits["planning_intents"]
         except (ValueError, OSError, KeyError):
             return False
 
@@ -551,21 +561,19 @@ class RepositoryDomain:
                 "check",
             )
         }
-        if phase not in counts or counts[phase] >= self.limits[f"{phase}_intents"]:
-            return False
         if phase in {"planning", "inspect"} and counts["repair"]:
             return False
-        if phase == "inspect" and counts["planning"] >= self.limits["planning_intents"]:
-            return False
         required = {
-            "planning": 4,
-            "inspect": 5,
-            "repair": 3,
-            "verification": 2,
-            "review": 1,
-        }
-        return basis.goal.limit - len(batches) >= required.get(
-            phase, basis.goal.limit + 1
+            "planning": ("planning", "repair", "verification", "review"),
+            "inspect": ("inspect", "planning", "repair", "verification", "review"),
+            "repair": ("repair", "verification", "review"),
+            "verification": ("verification", "review"),
+            "review": ("review",),
+        }.get(phase, ())
+        return (
+            bool(required)
+            and basis.goal.limit - len(batches) >= len(required)
+            and all(counts[p] < self.limits[f"{p}_intents"] for p in required)
         )
 
     def _verification(self, batch, run):
@@ -1264,6 +1272,8 @@ class _RepositoryGoal(CodingGoal):
                 raise GoalError("host verification inventory changed")
             if not self._policy._host_capacity(basis):
                 raise GoalError("host verification requires two Work slots")
+            if not self._policy._closeout_admits(basis, "verification"):
+                raise GoalError("repository closeout verification budget exhausted")
             if self._policy.assess_now(basis, facts).reason == "review_required":
                 raise GoalError("review_required: supply a trusted review")
             self._policy.pending_verification = value
@@ -1342,6 +1352,9 @@ class _RepositoryGoal(CodingGoal):
                     raise GoalError(
                         "same candidate already reviewed; conflicting review"
                     )
+            basis = GoalBasis(core.header, core.query(goal_id), core.history.sequence)
+            if not self._policy._closeout_admits(basis, "review"):
+                raise GoalError("repository closeout review budget exhausted")
             self._policy.pending_review = value
             return await super().advance(
                 goal_id,

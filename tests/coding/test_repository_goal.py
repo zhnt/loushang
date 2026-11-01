@@ -2105,12 +2105,14 @@ def test_host_verification_cancelled_waiter_keeps_original_work(tmp_path, monkey
 
 
 @pytest.mark.parametrize(
-    "inspect_first,work_limit,planning_limit,completed,work_count,planning_count",
+    "inspect_first,work_limit,planning_limit,completed,work_count,planning_count,pause_after_repair",
     [
-        (False, 4, 1, True, 4, 1),
-        (True, 6, 2, True, 6, 2),
-        (True, 5, 2, False, 1, 1),
-        (True, 6, 1, False, 1, 1),
+        (False, 4, 1, True, 4, 1, False),
+        (True, 6, 2, True, 6, 2, False),
+        (True, 5, 2, False, 1, 1, False),
+        (True, 6, 1, False, 1, 1, False),
+        (False, 4, 1, True, 4, 1, True),
+        (True, 6, 2, True, 6, 2, True),
     ],
 )
 def test_frozen_closeout_budget_matches_model_input_and_admission(
@@ -2122,6 +2124,7 @@ def test_frozen_closeout_budget_matches_model_input_and_admission(
     completed,
     work_count,
     planning_count,
+    pause_after_repair,
 ):
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
     task = task_package(tmp_path, initial="VALUE = 0\n")
@@ -2135,6 +2138,10 @@ def test_frozen_closeout_budget_matches_model_input_and_admission(
     )
     task.path.write_text(json.dumps(config))
     task = RepositoryTask(task.path, digest(task.path.read_bytes()))
+    if pause_after_repair:
+        # The mutable cache cannot replace the frozen manifest's budget, even
+        # when a caller drops it before Profile/Policy and Goal creation.
+        task.config.pop("closeout_budget")
     adapter = implementation_adapter(task, "VALUE = 1\n", inspect_first=inspect_first)
 
     async def scenario():
@@ -2197,10 +2204,29 @@ def test_frozen_closeout_budget_matches_model_input_and_admission(
             if completed:
                 assert receipt.outcome == "work_finished"
                 assert (task.root / "target.py").read_text() == "VALUE = 1\n"
+                epoch = 1
+                if pause_after_repair:
+                    owner.controller.control(
+                        "g",
+                        "pause",
+                        command_id="p",
+                        revision=1,
+                        epoch=1,
+                        reason="pause before host closeout",
+                    )
+                    owner.controller.control(
+                        "g",
+                        "resume",
+                        command_id="r",
+                        revision=1,
+                        epoch=2,
+                        reason="finish host closeout without further planning",
+                    )
+                    epoch = 3
                 args = dict(
                     command_id="v",
                     revision=1,
-                    epoch=1,
+                    epoch=epoch,
                     expected_inventory=task.snapshot(),
                 )
                 verification = await owner.verify_current("g", **args)
@@ -2232,7 +2258,10 @@ def test_frozen_closeout_budget_matches_model_input_and_admission(
         finally:
             await owner.close()
         cold = inspect_repository_goal(
-            task=task, data_root=tmp_path / "data", session_id=session_id, goal_id="g"
+            task=RepositoryTask(task.path, task.digest),
+            data_root=tmp_path / "data",
+            session_id=session_id,
+            goal_id="g",
         )
         assert cold.goal == final.goal and cold.planning == trace
         assert cold.validity == ("current" if completed else "not_satisfied")
@@ -2257,24 +2286,25 @@ def test_frozen_closeout_budget_matches_model_input_and_admission(
         {"extra": 1},
     ],
 )
-def test_closeout_budget_refuses_invalid_or_expanded_limits(change):
+def test_closeout_budget_refuses_invalid_or_expanded_limits(tmp_path, change):
     from types import SimpleNamespace
 
     from loushang.coding.adapters._goal_repository import _repository_limits
 
+    content = json.dumps(
+        {
+            "closeout_budget": {
+                "version": 1,
+                "work_intents": 6,
+                "planning_intents": 2,
+                **change,
+            }
+        }
+    ).encode()
+    path = tmp_path / "manifest.json"
+    path.write_bytes(content)
     with pytest.raises(GoalError, match="invalid repository closeout budget"):
-        _repository_limits(
-            SimpleNamespace(
-                config={
-                    "closeout_budget": {
-                        "version": 1,
-                        "work_intents": 6,
-                        "planning_intents": 2,
-                        **change,
-                    }
-                }
-            )
-        )
+        _repository_limits(SimpleNamespace(path=path, digest=digest(content)))
 
 
 def test_closeout_budget_stops_before_first_model_call(tmp_path, monkeypatch):
@@ -2315,6 +2345,104 @@ def test_closeout_budget_stops_before_first_model_call(tmp_path, monkeypatch):
         )
         assert cold.goal.status == "paused" and cold.validity == "not_satisfied"
         assert not cold.execution_unresolved
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize("mutation", ["remove", "smaller", "expand", "inject"])
+def test_closeout_budget_uses_frozen_manifest_not_mutable_config(tmp_path, mutation):
+    from loushang.coding.adapters._goal_repository import RepositoryProfile
+
+    task = task_package(tmp_path)
+    if mutation != "inject":
+        config = dict(
+            task.config,
+            closeout_budget={
+                "version": 1,
+                "work_intents": 6,
+                "planning_intents": 2,
+            },
+        )
+        task.path.write_text(json.dumps(config))
+        task = RepositoryTask(task.path, digest(task.path.read_bytes()))
+    if mutation == "remove":
+        task.config.pop("closeout_budget")
+    else:
+        task.config["closeout_budget"] = {
+            "version": 1,
+            "work_intents": 20 if mutation == "expand" else 4,
+            "planning_intents": 1,
+        }
+    limits = RepositoryProfile(task).limits
+    original = RepositoryTask(task.path, task.digest)
+    assert limits == RepositoryProfile(original).limits
+    assert limits["work_intents"] == (20 if mutation == "inject" else 6)
+    assert limits["planning_intents"] == (8 if mutation == "inject" else 2)
+
+
+def test_closeout_budget_host_rejection_leaves_no_pending_command(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path, initial="VALUE = 2\n")
+    config = dict(
+        task.config,
+        closeout_budget={
+            "version": 1,
+            "work_intents": 6,
+            "planning_intents": 2,
+        },
+    )
+    task.path.write_text(json.dumps(config))
+    task = RepositoryTask(task.path, digest(task.path.read_bytes()))
+    adapter = NoModelAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        try:
+            owner.create("g", command_id="create")
+            args = dict(revision=1, epoch=1, expected_inventory=task.snapshot())
+            receipt = await owner.verify_current("g", command_id="v", **args)
+            assert receipt.outcome == "work_finished"
+            before = owner.controller.history
+            for _ in range(2):
+                with pytest.raises(GoalError, match="verification budget exhausted"):
+                    await owner.verify_current("g", command_id="v-again", **args)
+                assert owner.controller.history == before
+            assert await owner.verify_current("g", command_id="v", **args) == receipt
+            stopped = await owner.advance("g", command_id="a", revision=1, epoch=1)
+            assert stopped.outcome == "paused"
+            assert owner.controller.query("g").reason == "repository_closeout_budget"
+            assert (
+                await owner.advance("g", command_id="a", revision=1, epoch=1) == stopped
+            )
+            # A new epoch cannot reuse the exhausted verification allocation.
+            with pytest.raises(GoalError, match="resume_not_ready"):
+                owner.controller.control(
+                    "g",
+                    "resume",
+                    command_id="r",
+                    revision=1,
+                    epoch=2,
+                    reason="try to continue after verification was consumed",
+                )
+            assert len(owner.controller.history.batches) == 1 and adapter.calls == 0
+            final = await owner.query("g")
+            assert final.goal.status != "completed"
+        finally:
+            await owner.close()
+        cold = inspect_repository_goal(
+            task=task,
+            data_root=tmp_path / "data",
+            session_id=owner.session_id,
+            goal_id="g",
+        )
+        assert cold.goal == final.goal and cold.validity == "not_satisfied"
 
     try:
         asyncio.run(scenario())
