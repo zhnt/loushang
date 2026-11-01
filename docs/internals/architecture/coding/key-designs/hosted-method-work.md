@@ -221,3 +221,9 @@ accept 当前实现无悬挂 I/O；本设计仍不把一次 await 的返回当�
 三视角 R1 已独立执行：职责与复用；运行与失败；数据、权限与兼容。R2 已经原评审者复核关闭全部阻断，结论见[评审记录](hosted-method-work-review.md)。其后用户明确接受并授权实施，不能倒写为内部评审代替用户接受。
 
 已接受检查点：①应用内受权 SDK 与固定 Method 配置；②原 Session/Execution/Work 的职责及图；③事实只保留当前 owner、暂不远程或恢复的切片边界。此次实施仅落实这些检查点；扩展须另评。
+
+## 11. 实施清单与 owner 预算协同
+
+新增 `coding/hosted_method_application.py` 只负责显式 AppHost 装配；`hosted_method.py`、`_hosted_method_config.py` 消费 AppServer 合同，`hosted_method.py`、`_hosted_method_work.py` 消费原 AppService 执行合同。AppServer/AppService 分别新增 `method_work.py` 数据合同和 scoped SDK 模块。既有架构清单按这些确切路径登记，继续禁止反向实现依赖和未评审消费者。
+
+原 `appservice-core` 四文件计数组从 1899 行增长到 1908 行，增量为旧输入旁路封堵，预算从 1900 同步到 1908。`coding/hosted_application.py` 从 891 到 930 行，新增固定配置校验、fresh 入口、原 execution claim 与 facade 选择，完整文件预算同步到 930。没有移出旧代码绕开计数，没有扩大扫描豁免；职责与复用视角复核通过。此同步不新增 PR gate、覆盖范围、触发器或合并条件，交付证据见[交付记录](../../../plans/2026-11-01-hosted-method-work.md)。

@@ -364,6 +364,8 @@ def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicit application-local Method composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),

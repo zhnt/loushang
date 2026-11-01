@@ -3,7 +3,7 @@
 - Authority: descriptive — implementation evidence。
 - Design: [COD-KD-HMW-001 R2](../architecture/coding/key-designs/hosted-method-work.md)，用户于 2026-11-01 回复“同意，继续推进”接受并授权实施。
 - 基线：`914cf3ac84935c8bbd2855e660505b3b31eba2ef`；分支：`design/hosted-method-work-824`；位置：长期 code lane。
-- 状态：第一切片已实现，三视角代码复核关闭，相关离线验证通过；广泛托管检查未完成，详见下文。尚未 commit/push/PR/merge。
+- 状态：第一切片已实现，三视角代码复核关闭；已提交并推送，PR [#841](https://github.com/zhnt/loushang/pull/841) 为 draft。远程功能检查通过，架构清单遗漏已修正并经专项验证，等待修订后的 Actions 结果；尚未合并。
 
 ## 交付行为
 
@@ -36,9 +36,9 @@ AppService/AppServer/AppHost 独立兼容检查：2340 passed、11 skipped，115
 
 广泛托管检查在既有 `test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch` 的隔离子进程停滞；外层约17分钟、子进程约9分钟仍未退出，已停止本次检查及其直接子进程组。该运行不记为通过，也未归因为本次改动或机器环境；未为绕过它修改产品代码。其余专项证据独立保留。
 
-2026-11-01 收尾复核：当前工作树该用例单独通过（61.94秒），额外45秒栈采样显示外层正在等待原隔离controller结果，随后正常退出。隔离虚拟环境固定导入未改动main源码、安装入口也使用同一main源码，对照通过（118.60秒）。未复现上次停滞；不能据此断言其根因已修复，因此不改timeout、不改产品语义。按原 `scripts/ci/check_changed.py` 运行选定交付检查，结果另行补录。
+2026-11-01 收尾复核：当前工作树该用例单独通过（61.94秒），额外45秒栈采样显示外层正在等待原隔离controller结果，随后正常退出。隔离虚拟环境固定导入未改动main源码、安装入口也使用同一main源码，对照通过（118.60秒）。未复现上次停滞；不能据此断言其根因已修复，因此不改timeout、不改产品语义。按原 `scripts/ci/check_changed.py` 启动的本地广泛检查随后主动停止：其执行期间，PR 的既有四个 Coding 分片及托管功能检查均已完成，避免重复消耗机器资源。停止的本地运行不计为通过，也不把人为中断产生的失败计为产品缺陷。
 
-静态架构依赖图 freshness 检查、文档九项规则及变更文档链接检查、git diff whitespace 检查通过。`make plan-checks` 已核实范围，未宣称全量 `make check-changed` 通过；完整Coding检查及上述停滞用例仍未完成，host_runtime/windows_shell 平台检查留待原Actions路由。未修改选择器或新增gate以绕过检查。
+静态架构依赖图 freshness 检查、文档九项规则及变更文档链接检查、git diff whitespace 检查通过。`make plan-checks` 已核实范围，未宣称全量 `make check-changed` 通过；该用例已有上述单独通过证据，完整 Coding 及平台检查以原 Actions 路由的结果为准。未修改选择器或新增 gate 以绕过检查。
 
 ## 代码三视角复核
 
@@ -68,3 +68,11 @@ cd /home/dev/lsspace/loushang/.worktrees/code
 ## 范围
 
 本次打通一个托管 Method/Work SDK 入口。Goal托管自动推进、每次请求动态选Method、跨服务共享执行、网络/stdio入口、持久Work恢复均未在本切片实现，也没有由本次试验获得保证。未扩展CI gate。
+
+## PR 检查与架构清单同步
+
+PR #841 首轮 Actions（源码 `f784dc81e202a8e5df0487865194395c5fd417ca`，run `41316738926`）：四个 Coding 分片、AppService/AppServer 模块、Windows AppHost 原生检查、Linux/macOS/Windows 冒烟、文档及架构 source-facts 均通过。AppHost quality 的 8 项失败均为本切片新增模块/依赖未登记或既有行数预算未同步；该组其余 2627 项通过、11 项跳过。
+
+修订只登记本切片确切的 Coding→AppHost/AppService/AppServer 消费者和两个 `method_work.py` 模块，不豁免整个包。原 `appservice-core` 四文件仍完整计数，实测 1899→1908 行，预算 1900→1908；`coding/hosted_application.py` 完整文件实测 891→930，预算同步增加 39 行。新增内容分别是旧输入旁路封堵、固定配置装配与原 execution claim，责任未迁出原 owner。未删除断言、缩小扫描范围、新增检查或改变 PR 触发与 required checks。
+
+职责与复用评审者已独立核对上述路径和实测预算，无阻断发现；报告与差异归档在产品树外。七文件专项首轮 61 项通过、一处同类 AppHost 消费者清单遗漏；补齐后该文件全部 11 项通过（含首轮通过的 10 项），七文件共 62 项获得通过证据。修订后远程结果以 PR 为准。
