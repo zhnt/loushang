@@ -1568,3 +1568,384 @@ def test_cancelled_release_retains_cleanup_debt_until_original_owner_settles(
         asyncio.run(scenario())
     finally:
         get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+class NoModelAdapter(Adapter):
+    async def invoke_prepared_raw(self, request, prepared):
+        self.calls += 1
+        raise AssertionError("host closeout must not call a model")
+        yield  # pragma: no cover
+
+
+def test_host_verification_zero_model_closeout_and_request_identity(
+    tmp_path, monkeypatch
+):
+    from dataclasses import replace
+
+    from loushang.coding.adapters._goal_store import goal_journal_path
+    from loushang.harnesswork.goal import GoalBasis, GoalFacts
+    from loushang.harnesswork.goal.records import plain, replay
+
+    def corrupt_source(data):
+        if "host_verification" in data.get("source", {}):
+            data["source"]["basis"].update(
+                scope_id="foreign-scope",
+                session_id="foreign-session",
+                policy_id="foreign-policy",
+                policy_version=True,
+            )
+        return data
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task, adapter = task_package(tmp_path), NoModelAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        args = dict(
+            command_id="verify", revision=1, epoch=1, expected_inventory=task.snapshot()
+        )
+        try:
+            owner.create("g", command_id="create")
+            for change in (
+                {"revision": 2},
+                {"epoch": 2},
+                {"expected_inventory": {"target.py": "wrong"}},
+            ):
+                with pytest.raises(GoalError):
+                    await owner.verify_current("g", **{**args, **change})
+            assert not owner.controller.history.batches
+            # Even when the planning observer reports its exhausted allowance,
+            # trusted deterministic verification must not request another plan.
+            original = owner._policy._observations
+
+            def exhausted(*a):
+                evidence, routes, rejections, _, invalid, stalled = original(*a)
+                return evidence, routes, rejections, 8, invalid, stalled
+
+            monkeypatch.setattr(owner._policy, "_observations", exhausted)
+            result = await owner.verify_current("g", **args)
+            monkeypatch.setattr(owner._policy, "_observations", original)
+            assert result.outcome == "work_finished"
+            assert await owner.verify_current("g", **args) == result
+            with pytest.raises(GoalError, match="matching host"):
+                await owner.verify_current(
+                    "g", **{**args, "expected_inventory": {"target.py": "wrong"}}
+                )
+            with pytest.raises(GoalError, match="belongs to host"):
+                await owner.advance("g", command_id="verify", revision=1, epoch=1)
+            with pytest.raises(GoalError, match="review_required"):
+                await owner.verify_current("g", **{**args, "command_id": "duplicate"})
+            assert len(owner.controller.history.batches) == 1
+            assert (
+                await submit(
+                    owner,
+                    "g",
+                    expected_inventory=task.snapshot(),
+                    approved=True,
+                    reviewer="independent test",
+                    reason="verified fixed task and scope",
+                )
+            ).outcome == "completed"
+            assert await owner.verify_current("g", **args) == result
+            assert len(owner.controller.history.batches) == 2
+            assert owner._policy.pending_verification is None
+            assert adapter.calls == 0 and owner._allowance.calls == 0
+            sid = owner.session_id
+            core = owner.controller
+            changed = replay(
+                core.header,
+                [
+                    replace(record, data=corrupt_source(plain(record.data)))
+                    for record in core.history.records
+                ],
+            )
+            assessment = owner._policy.assess_now(
+                GoalBasis(core.header, changed.goal("g"), changed.sequence),
+                GoalFacts(changed.batches, core.facts().runs),
+            )
+            assert assessment.proof["validity"] == "unknown"
+        finally:
+            await owner.close()
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+        )
+        assert cold.goal.status == "completed" and cold.validity == "current"
+        assert cold.planning["planning_intents"] == 0
+        journal = goal_journal_path(tmp_path / "data/sessions", sid)
+        rows = [json.loads(line) for line in journal.read_text().splitlines()]
+        for row in rows:
+            if row.get("kind") == "batch_intent":
+                corrupt_source(row["data"])
+        journal.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=sid, goal_id="g"
+        )
+        assert cold.goal.status == "completed" and cold.validity == "unknown"
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "intent_gap",
+        "append_unknown",
+        "paused",
+        "failed_check",
+        "rejected_review",
+        "changed_candidate",
+    ],
+)
+def test_host_verification_failures_never_complete_or_replay(
+    tmp_path, monkeypatch, fault
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(
+        tmp_path, initial="VALUE = 2\n" if fault == "failed_check" else "VALUE = 1\n"
+    )
+    adapter = NoModelAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        args = dict(
+            command_id="v", revision=1, epoch=1, expected_inventory=task.snapshot()
+        )
+        try:
+            owner.create("g", command_id="create")
+            if fault == "paused":
+                owner.controller.control(
+                    "g",
+                    "pause",
+                    command_id="p",
+                    revision=1,
+                    epoch=1,
+                    reason="explicit pause",
+                )
+                with pytest.raises(GoalError, match="active"):
+                    await owner.verify_current("g", **args)
+                assert not owner.controller.history.batches
+            elif fault in {"intent_gap", "append_unknown"}:
+                core = owner.controller
+                original = core._store.append
+
+                def interrupted(expected, record):
+                    if record.kind == "batch_intent":
+                        if fault == "append_unknown":
+                            original(expected, record)
+                        raise OSError("intent append interrupted")
+                    return original(expected, record)
+
+                monkeypatch.setattr(core._store, "append", interrupted)
+                with pytest.raises(OSError, match="interrupted"):
+                    await owner.verify_current("g", **args)
+                assert core.fenced
+                assert not owner._work.active_runs()
+                with pytest.raises(GoalError):
+                    await owner.verify_current("g", **args)
+                assert (
+                    owner._policy.pending_verification is None
+                    and not owner._repository_busy
+                )
+            else:
+                await owner.verify_current("g", **args)
+                identity, passed = owner.review_basis("g")
+                if fault == "failed_check":
+                    assert passed is False
+                    with pytest.raises(GoalError, match="not passed"):
+                        await submit(
+                            owner,
+                            "g",
+                            expected_inventory=task.snapshot(),
+                            approved=True,
+                            reviewer="test",
+                            reason="must reject",
+                        )
+                elif fault == "changed_candidate":
+                    (task.root / "target.py").write_text("VALUE = 2\n")
+                    with pytest.raises(GoalError):
+                        await owner.submit_review(
+                            "g",
+                            command_id="r",
+                            review_id="r",
+                            expected_identity=identity,
+                            decision="approved",
+                            reviewer="test",
+                            reason="old candidate",
+                            coverage=["RC-05", "RC-06"],
+                            findings=[],
+                        )
+                else:
+                    await owner.submit_review(
+                        "g",
+                        command_id="r",
+                        review_id="r",
+                        expected_identity=identity,
+                        decision="rejected",
+                        reviewer="test",
+                        reason="independent finding",
+                        coverage=["RC-05"],
+                        findings=[
+                            dict(
+                                requirement_id="RC-05",
+                                evidence="fixture evidence",
+                                expected="independent acceptance",
+                                actual="unresolved finding",
+                            )
+                        ],
+                    )
+                    assert (await owner.query("g")).reason == "review_rejected"
+            assert owner.controller.query("g").status != "completed"
+            assert adapter.calls == 0
+        finally:
+            await owner.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
+def test_host_verification_capacity_and_source_contract():
+    from types import SimpleNamespace as NS
+
+    from loushang.coding.adapters._goal_repository import (
+        RepositoryDomain,
+        _host_intent,
+        _host_request,
+    )
+
+    request = _host_request("g", "v", 1, 1, {"target.py": "digest"})
+    basis = NS(
+        goal=NS(id="g", limit=20),
+        sequence=100,
+        identity={
+            "goal_id": "g",
+            "revision": 1,
+            "epoch": 1,
+            "sequence": 100,
+            "scope_id": "scope",
+            "session_id": "session",
+            "policy_id": "policy",
+            "policy_version": 1,
+        },
+    )
+    source = {
+        "phase": "verification",
+        "check": "all",
+        "basis": basis.identity,
+        "inventory": request["expected_inventory"],
+        "host_verification": request,
+    }
+    own = NS(
+        operation_id="own",
+        goal_id="g",
+        command_id="v",
+        revision=1,
+        epoch=1,
+        intent_sequence=101,
+        source=source,
+    )
+    old = [NS(operation_id=f"old-{n}", goal_id="g") for n in range(18)]
+    policy = object.__new__(RepositoryDomain)
+    policy.pending_verification = request
+    history = NS(
+        records=(None,) * 100
+        + (NS(kind="batch_intent", data={"basis": basis.identity}),)
+    )
+    policy.history = lambda: NS(batches=tuple(old), records=history.records)
+    assert policy._host_capacity(basis)
+    old.append(own)
+    assert not policy._host_capacity(basis)
+    assert policy._host_capacity(basis, "own")
+    old.append(NS(operation_id="other", goal_id="g"))
+    assert not policy._host_capacity(basis, "own")
+    for mutation in (
+        {"version": True},
+        {"version": 2},
+        {"revision": True},
+        {"command_id": "other"},
+        {"epoch": 2},
+    ):
+        own.source = {**source, "host_verification": {**request, **mutation}}
+        with pytest.raises(GoalError):
+            _host_intent(own, history)
+    own.source = {**source, "proposal_id": "fake-model-plan"}
+    with pytest.raises(GoalError):
+        _host_intent(own, history)
+    for mutation in (
+        {"scope_id": "foreign"},
+        {"session_id": "foreign"},
+        {"policy_id": "foreign"},
+        {"policy_version": True},
+        {"policy_version": 2},
+        {"sequence": 99},
+    ):
+        own.source = {**source, "basis": {**basis.identity, **mutation}}
+        with pytest.raises(GoalError, match="intent mismatch"):
+            _host_intent(own, history)
+
+
+def test_host_verification_cancelled_waiter_keeps_original_work(tmp_path, monkeypatch):
+    from loushang.coding.adapters._verification_work import CodingVerificationExecutor
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task, adapter = task_package(tmp_path), NoModelAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        original = CodingVerificationExecutor.execute
+        executions = []
+
+        async def held(executor, operation, context):
+            if context.step_id == "report":
+                executions.append(operation.operation_id)
+                entered.set()
+                await release.wait()
+            return await original(executor, operation, context)
+
+        monkeypatch.setattr(CodingVerificationExecutor, "execute", held)
+        args = dict(
+            command_id="v", revision=1, epoch=1, expected_inventory=task.snapshot()
+        )
+        try:
+            owner.create("g", command_id="create")
+            pending = asyncio.create_task(owner.verify_current("g", **args))
+            await asyncio.wait_for(entered.wait(), 15)
+            with pytest.raises(GoalError, match="busy"):
+                await owner.verify_current("g", **args)
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+            assert owner._policy.pending_verification is None
+            assert not owner._repository_busy
+            assert (await owner.verify_current("g", **args)).outcome == "pending"
+            with pytest.raises(GoalError, match="unresolved"):
+                await owner.verify_current("g", **{**args, "command_id": "new"})
+            assert len(owner.controller.history.batches) == 1
+            release.set()
+            run = owner._work.get_run_for_operation(executions[0])
+            # The original Work.wait cancellation path cancels its run; a
+            # cached host request must preserve that outcome, not resubmit.
+            assert run.status == "cancelled"
+            with pytest.raises(asyncio.CancelledError):
+                await owner._work.wait(run.run_id)
+            assert len(executions) == 1 and adapter.calls == 0
+            assert owner.controller.query("g").status != "completed"
+        finally:
+            release.set()
+            await owner.close()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)

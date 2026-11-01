@@ -175,6 +175,19 @@ Older candidate component inventories and pre-Harness component maps are
 historical design inputs when their status points to the Harness owner map.
 They are not a second Current Coding topology.
 
+## Low-Token Closeout Slice
+
+The [low-token Goal closeout design](key-designs/goal-low-token-closeout.md)
+was accepted by the user on 2026-11-01: a trusted host requests existing full verification without another
+model planning call, followed by the original independent review. The bounded
+validation target is zero new model calls and at most two Work executions.
+It does not reinterpret the prior paused run as completed.
+The [three-view design review](key-designs/goal-low-token-closeout-review.md)
+closed its design findings. The local implementation passed the repository Goal
+regression and a real frozen-candidate closeout: 21 contract and 318 regression
+checks, independent approval, then completed/current cold read, with zero new
+model calls and two Work executions. The prior paused Goal remains unchanged.
+
 ## Current-To-Target Gaps
 
 The [repository Goal review-feedback design](key-designs/goal-review-feedback.md)
