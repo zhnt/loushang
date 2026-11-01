@@ -1,6 +1,6 @@
 # CODING-KD-GOAL-04：低 token 的 Goal 收尾
 
-- Authority: normative；Design status: accepted；Implementation status: in-progress。
+- Authority: normative；Design status: accepted；Implementation status: implemented。
 - Revision: R2，2026-11-01。Owner：Coding；协作：HarnessWork Goal/Work、Harness Transcript/Blob；不改变共享组件边界。
 - 源码基线：`06a8033d6620efe2effba4c3a87eac9cb8384025`；方法：干净本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`。
 - 用户目标：控制有限预算，安排花费 token 小的 Goal 收尾闭环。用户于 2026-11-01 明确“确认，请继续”，接受已评审 R2 并授权实施及固定预算收尾试验。
@@ -78,4 +78,21 @@ flowchart LR
 
 实现仅在原 `_goal_repository.py` 增加可信宿主入口、短命请求和来源核对；将原 verification 候选构造提取为同一私有方法供两入口复用。共享 GoalController/Work、队列、Session 生命周期和完成规则均未修改。原 Work.wait 的取消路径会取消并收敛原 run；宿主重复请求保留原回执，不补发。
 
-完整仓库 Goal 离线回归 40 passed（309.59 秒），覆盖新入口及原模型规划、同 Session、reuse/fresh/inherit、冷读；Ruff 与原生成式架构依赖检查通过。最后严格类型、来源序号与零模型 SDK 冷读定向复验 2 passed（15.02 秒）；文档检查 9 项通过。固定候选真实验收结果另记，尚未据此宣称试验完成。
+完整仓库 Goal 离线回归 40 passed（309.59 秒），覆盖新入口及原模型规划、同 Session、reuse/fresh/inherit、冷读；Ruff 与原生成式架构依赖检查通过。最后严格类型、来源序号与零模型 SDK 冷读定向复验 2 passed（15.02 秒）；文档检查 9 项通过。固定候选真实验收已按下述预算完成。
+
+
+### 固定候选的真实收尾结果
+
+2026-11-01，运行源码固定为 `919191f7de7aa6f2fb2b3e7e6f14fe8f86bb18a4`。独立试验工作树从原缺陷基线 `5eadeb91c` 建立，仅复制上轮已修复的两个候选文件；RC-01—06、原独立 verifier、Method 与原始回归测试保持。新任务包 SHA256 为 `a8fa347a43c9a93372abe414c85ef7ae63d950a1936975494f8e4f0027eea056`。
+
+| 实际证据 | 结果 |
+| --- | --- |
+| 原完整 verify_all | 21 项合同、318 项回归通过，均无跳过/错误 |
+| 可信宿主独立评审 | approved；仅两文件改变，16 个原顶层测试/辅助定义未改；先前非普通文件字节读取问题已关闭，无未解决发现 |
+| 新 Work | 恰好 2：verification、review；无 planning/repair Work |
+| 新模型调用 | provider 与原 logical-call 计数均 0，planning_intents 为 0；试验模型入口禁用 |
+| 原 owner 关闭后冷读 | completed / current；reason 为 repository_contract_and_review_satisfied；进程退出 0 |
+
+因此，本次收尾试验新增模型 token 为 0；此数字不包含旧 Kimi 实施费用，也不包含本次设计、开发、测试与评审对话成本。没有扩大旧 8 次规划额度，没有使用新的在线 Kimi 调用，也没有把旧 paused Goal 改写为成功。这是可信宿主零模型收尾的验证，不是新的自主规划成功试验。
+
+候选源码、分支切点、任务包、评审与冷读证据保留在产品树外的本轮架构分析目录；完整运行资料保留于独立临时根。实验补丁不合入产品分支。新入口实现及交付文档目前仅本地提交，尚未推送。
