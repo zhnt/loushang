@@ -45,7 +45,7 @@ flowchart LR
 
 1. 复用 owner 的 busy/closed 防护及原输入核查；核对 Goal 当前 revision/epoch、任务摘要和文件清单。暂停、终态、未收敛执行、清理残留或输入不一致均拒绝；不隐式 resume。
 2. 构造短命的宿主验证请求，在原 policy.prepare 中只为本次调用提供原 verify_all 候选；仍调用原 controller.advance。请求在 finally 清除，不成为第二条队列或持久状态机。
-3. 复用原 verification 候选构造器、Work envelope、report/validation 步骤和 Blob。不得伪造模型 proposal 或把宿主请求记为模型推理。新增候选的 source 显式记录 `host_verification` 版本 1 及完整请求（goal_id、command_id、revision、epoch、expected_inventory）；live/cold 共用核对其与原 batch、basis、inventory 的对应，未知版本拒绝。
+3. 复用原 verification 候选构造器、Work envelope、report/validation 步骤和 Blob。不得伪造模型 proposal 或把宿主请求记为模型推理。新增候选的 source 显式记录 `host_verification` 版本 1 及完整请求（goal_id、command_id、revision、epoch、expected_inventory）；live/cold 共用核对其与原 batch、basis、inventory 的对应，未知版本拒绝。source.basis 与原 replay 已校验的 batch_intent.data.basis 作 canonical 全字段比较，包含 scope、Session 与 policy 身份，且区分布尔与整数。
 4. 先核对持久身份再判断新调用状态：只有同 command_id、同完整请求且有匹配原 host verification intent，才可读取原回执；改参拒绝，原回执尚未形成时保留原未收敛语义，不补发执行。已占用命令 id 却无匹配 intent（含 command_received 后、intent 前中断）明确拒绝重试及改义，保留原事实；不能仅靠核心 advance 的空 data 证明请求相同。普通 advance 与宿主入口互拒命令串用。完成后合法查询原回执仍成立；submit_review 原合同保持。
 5. prepare/confirm 继续核对当前依据和 Work 额度。新验证至少要求剩余 2 个 Work 名额，给验证及评审留位置；intent 后二次 confirm 只将匹配自己的暂定 intent 计回准入余额，初始剩 2 可执行并留下 1。不得把其他 intent 计回。这是准入检查，不是跨进程预留。已有当前成功验证等待评审时，新 verify_current 拒绝为 review_required，不重复验证；原普通 advance 同样不能继续规划。若验证失败，本试验立即停止，不调用模型、不提交批准。
 6. 完整验证成功后，由可信宿主对同一 inventory、验证 operation/run 和任务摘要进行独立评审。存在实质问题则记录 rejected 并结束；只有无未解决问题时才能 approved。源文件变更导致原评审身份失效，不能完成。
@@ -95,4 +95,4 @@ flowchart LR
 
 因此，本次收尾试验新增模型 token 为 0；此数字不包含旧 Kimi 实施费用，也不包含本次设计、开发、测试与评审对话成本。没有扩大旧 8 次规划额度，没有使用新的在线 Kimi 调用，也没有把旧 paused Goal 改写为成功。这是可信宿主零模型收尾的验证，不是新的自主规划成功试验。
 
-候选源码、分支切点、任务包、评审与冷读证据保留在产品树外的本轮架构分析目录；完整运行资料保留于独立临时根。实验补丁不合入产品分支。新入口实现及交付文档目前仅本地提交，尚未推送。
+候选源码、分支切点、任务包、评审与冷读证据保留在产品树外的本轮架构分析目录；完整运行资料保留于独立临时根。实验补丁不合入产品分支。实现代码三视角复核及唯一来源校验修复见[评审记录](goal-low-token-closeout-review.md#实施代码三视角复核与关闭)；交付沿用现有 PR 检查。
