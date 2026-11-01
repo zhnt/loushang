@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -21,16 +22,30 @@ from loushang.coding.adapters._goal_calculator import (
     initial_metadata,
 )
 from loushang.coding.adapters._goal_store import GoalJournal, goal_journal_path
+from loushang.coding.adapters._goal_work_sources import (
+    GoalWorkSourceCleanupError as GoalWorkSourceCleanupError,
+)
+from loushang.coding.adapters._goal_work_sources import (
+    GoalWorkSourceView as GoalWorkSourceView,
+)
+from loushang.coding.adapters._goal_work_sources import (
+    _goal_work_facts,
+)
+from loushang.coding.adapters._goal_work_sources import (
+    read_goal_work_sources as read_goal_work_sources,
+)
 from loushang.coding.adapters._verification_work import CodingVerificationExecutor
+from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobStore
 from loushang.harness.policy import PolicyEvaluatorChain
+from loushang.harness.transcript.source_reader import TranscriptSourceReader
 from loushang.harnesswork import JsonlEventLogBackend, WorkRuntime
-from loushang.harnesswork.cancellation_projection import project_work_cancellations
 from loushang.harnesswork.goal import GoalController, GoalError, GoalHeader, GoalState
 from loushang.harnesswork.goal.contracts import GoalBasis, GoalFacts
 from loushang.harnesswork.goal.records import plain, replay
+from loushang.harnesswork.integrations.transcript import WorkTranscriptSource
 from loushang.harnesswork.ports import WorkExecutionBinding
-from loushang.harnesswork.run_projection import project_work_runs
+from loushang.harnesswork.types import WorkRecordingPolicy
 
 if TYPE_CHECKING:
     from ._goal_planning_limits import PlanningCallAllowance
@@ -80,6 +95,37 @@ class _Resolver:
         return self.prepared.pop(operation.operation_id)
 
 
+def _validate_goal_session(session, workspace, model_planning):
+    if Path(session.session_manager.get_cwd()).resolve() != workspace:
+        raise GoalError("restored Session workspace mismatch")
+    runner = session.extension_runner
+    if runner is not None and any(
+        runner.has_handlers(name)
+        for name in [
+            "user_bash",
+            *(["input", "context"] if model_planning else []),
+            "tool_call",
+            "tool_result",
+            "before_agent_start",
+        ]
+    ):
+        raise GoalError("calculator Goal does not support execution-replacing hooks")
+    if set(session.get_active_tool_names()) != {"read", "edit", "write"}:
+        raise GoalError("calculator Goal requires original file tools")
+    if runner is not None and any(
+        runner.get_tool_extension_name(name) is not None
+        for name in ["read", "edit", "write", "bash"]
+    ):
+        raise GoalError("calculator Goal does not support replacement tool providers")
+    if model_planning:
+        session.set_auto_retry_enabled(False)
+        session.set_auto_compaction_enabled(False)
+        if session.auto_retry_enabled or session.auto_compaction_enabled:
+            raise GoalError(
+                "model planning requires Session retry and compaction disabled"
+            )
+
+
 class CodingGoal:
     """A retained Product owner. Use open(); retain exceptions with cleanup owner."""
 
@@ -100,7 +146,11 @@ class CodingGoal:
         self._session_retired = self._core_retired = self._writer_closed = False
         self._prepared: dict[str, WorkExecutionBinding] = {}
         self._model_planning = False
+        self._profile = None
         self._allowance: PlanningCallAllowance | None = None
+        self._source_reader: TranscriptSourceReader | None = None
+        self._source_retired = False
+        self._delegation = None
 
     @classmethod
     async def open(
@@ -114,15 +164,50 @@ class CodingGoal:
         approval_resolver=None,
         tool_policy_evaluator=None,
         model_planning: bool = False,
+        transcript_retained_until: datetime | None = None,
+    ) -> CodingGoal:
+        return await cls._open(
+            workspace=workspace,
+            data_root=data_root,
+            model=model,
+            session_id=session_id,
+            stream_fn=stream_fn,
+            approval_resolver=approval_resolver,
+            tool_policy_evaluator=tool_policy_evaluator,
+            model_planning=model_planning,
+            transcript_retained_until=transcript_retained_until,
+        )
+
+    @classmethod
+    async def _open(
+        cls,
+        *,
+        workspace: Path,
+        data_root: Path,
+        model=None,
+        session_id: str | None = None,
+        stream_fn=None,
+        approval_resolver=None,
+        tool_policy_evaluator=None,
+        model_planning: bool = False,
+        profile=None,
+        transcript_retained_until: datetime | None = None,
     ) -> CodingGoal:
         if type(model_planning) is not bool:
             raise GoalError("model_planning must be an explicit boolean")
+        if transcript_retained_until is not None and (
+            not isinstance(transcript_retained_until, datetime)
+            or transcript_retained_until.utcoffset() is None
+        ):
+            raise GoalError("Transcript retention requires a timezone-aware datetime")
         if model_planning and (stream_fn is not None or session_id is not None):
             raise GoalError(
                 "model planning requires a fresh Session and the standard AI stream"
             )
         owner = cls(workspace.resolve(), data_root.resolve())
         owner._model_planning = model_planning
+        owner._profile = profile
+        additional_tool_policy = tool_policy_evaluator
         try:
             policy_id = POLICY_ID
             if model_planning:
@@ -131,7 +216,11 @@ class CodingGoal:
                 from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
 
                 owner._allowance = PlanningCallAllowance()
-                planning_tool_policy = PlanningToolPolicy(owner.workspace)
+                planning_tool_policy = (
+                    profile.tool_policy(owner.workspace)
+                    if profile is not None
+                    else PlanningToolPolicy(owner.workspace)
+                )
                 tool_policy_evaluator = PolicyEvaluatorChain(
                     (planning_tool_policy, tool_policy_evaluator)
                     if tool_policy_evaluator is not None
@@ -139,7 +228,9 @@ class CodingGoal:
                     strategy="most_restrictive",
                 )
                 stream_fn = owner._allowance.stream
-                policy_id = PLANNING_POLICY_ID
+                policy_id = (
+                    profile.policy_id if profile is not None else PLANNING_POLICY_ID
+                )
             owner._sdk = create_agent_session_runtime(
                 session_dir=owner.data_root / "sessions",
                 model=model,
@@ -150,7 +241,9 @@ class CodingGoal:
                 enable_multiagent=False,
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
-                system_prompt=(
+                system_prompt=profile.system_prompt
+                if profile is not None
+                else (
                     "Pursue the supplied finite Coding Goal. In planning turns, choose "
                     "a next action and revisable route using current evidence; return "
                     "only the required JSON and do not call tools. In Method execution "
@@ -169,48 +262,43 @@ class CodingGoal:
                 else await owner._sdk.restore_session(session_id)
             )
             owner.session_id = owner._session.session_id
-            if (
-                Path(owner._session.session_manager.get_cwd()).resolve()
-                != owner.workspace
-            ):
-                raise GoalError("restored Session workspace mismatch")
-            runner = owner._session.extension_runner
-            if runner is not None and any(
-                runner.has_handlers(name)
-                for name in [
-                    "user_bash",
-                    *(["input", "context"] if model_planning else []),
-                    "tool_call",
-                    "tool_result",
-                    "before_agent_start",
-                ]
-            ):
-                raise GoalError(
-                    "calculator Goal does not support execution-replacing hooks"
-                )
-            if set(owner._session.get_active_tool_names()) != {"read", "edit", "write"}:
-                raise GoalError("calculator Goal requires original file tools")
-            if runner is not None and any(
-                runner.get_tool_extension_name(name) is not None
-                for name in ["read", "edit", "write", "bash"]
-            ):
-                raise GoalError(
-                    "calculator Goal does not support replacement tool providers"
-                )
-            if model_planning:
-                owner._session.set_auto_retry_enabled(False)
-                owner._session.set_auto_compaction_enabled(False)
-                if (
-                    owner._session.auto_retry_enabled
-                    or owner._session.auto_compaction_enabled
-                ):
-                    raise GoalError(
-                        "model planning requires Session retry and compaction disabled"
-                    )
+            _validate_goal_session(owner._session, owner.workspace, model_planning)
             header = GoalHeader(owner.session_id, owner.session_id, policy_id)
             owner._store = GoalJournal(owner.data_root / "sessions", header)
             owner._store.open(create=session_id is None)
+            transcript_source = None
+            delegated = getattr(profile, "execution_policy", None) is not None
+            if transcript_retained_until is not None or delegated:
+                session_file = owner._session.session_manager.get_session_file()
+                if session_file is None:
+                    raise GoalError(
+                        "Goal Transcript source requires a persistent Session"
+                    )
+                owner._source_reader = TranscriptSourceReader(
+                    session_file=Path(session_file),
+                    conversation_id=owner.session_id,
+                    store_state_root=resolve_platform_home() / "state/session-stores",
+                )
+                if transcript_retained_until is not None:
+                    transcript_source = await WorkTranscriptSource.bind(
+                        owner._source_reader,
+                        binding_id=f"coding-goal:{owner.session_id}",
+                        retained_until=transcript_retained_until,
+                    )
             blobs = SessionBlobStore(owner.data_root, owner.session_id)
+            if delegated:
+                from ._goal_delegation import DelegatedSessions
+
+                identity = await owner._source_reader.inspect_identity()
+                owner._delegation = DelegatedSessions(
+                    owner,
+                    profile,
+                    blobs,
+                    owner._source_reader,
+                    identity.store_identity,
+                    approval_resolver,
+                    additional_tool_policy,
+                )
             work_path = goal_journal_path(
                 owner.data_root / "sessions", owner.session_id
             ).with_suffix(".work.jsonl")
@@ -228,6 +316,8 @@ class CodingGoal:
             owner._work = WorkRuntime(
                 event_log=log,
                 resolver=_Resolver(verification_executor, owner._prepared),
+                recording_version=1,
+                recording_policy=WorkRecordingPolicy(require_persistence=True),
             )
             owner._policy = CalculatorPolicy(
                 workspace=owner.workspace,
@@ -235,20 +325,26 @@ class CodingGoal:
                 blobs=blobs,
                 event_log=log,
                 prepared=owner._prepared,
+                transcript_source=transcript_source,
             )
             if model_planning:
                 from ._goal_planning import ModelPlanningPolicy
 
-                owner._policy = ModelPlanningPolicy(
+                factory = profile.policy if profile is not None else ModelPlanningPolicy
+                owner._policy = factory(
                     workspace=owner.workspace,
                     session=owner._session,
                     blobs=blobs,
                     event_log=log,
                     prepared=owner._prepared,
+                    transcript_source=transcript_source,
                     allowance=owner._allowance,
                     tool_policy=planning_tool_policy,
                     history=lambda: owner.controller.history,
                 )
+            if owner._delegation is not None:
+                owner._policy.delegation = owner._delegation
+                owner._policy.source_reader = owner._source_reader
             owner._core = GoalController(
                 header=header,
                 store=owner._store,
@@ -276,23 +372,36 @@ class CodingGoal:
         limit = (20 if self._model_planning else 6) if limit is None else limit
         if self._model_planning and limit != 20:
             raise GoalError("model-planning profile fixes the total Work limit at 20")
+        if self._delegation is not None and any(
+            old != goal_id for old in self.controller.history.goals
+        ):
+            raise GoalError("delegated profile requires a fresh owner for a new Goal")
         prior = self.controller.history.commands.get(command_id)
         metadata = (
             json.loads(prior.request)["data"]["metadata"]
             if prior is not None
-            else initial_metadata(self.workspace, self._policy.blobs)
+            else (
+                self._profile.initial_metadata(self.workspace, self._policy.blobs)
+                if self._profile is not None
+                else initial_metadata(self.workspace, self._policy.blobs)
+            )
         )
         if self._model_planning and prior is None:
             from ._goal_proposal import LIMITS
-            from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
 
             metadata = {
                 **metadata,
-                "profile": PLANNING_POLICY_ID,
-                "planning_limits": LIMITS,
+                "profile": self.controller.header.policy_id,
+                "planning_limits": self._profile.limits
+                if self._profile is not None
+                else LIMITS,
             }
         return self.controller.create(
-            goal_id, REQUIREMENTS, command_id=command_id, limit=limit, metadata=metadata
+            goal_id,
+            (self._profile.requirements if self._profile is not None else REQUIREMENTS),
+            command_id=command_id,
+            limit=limit,
+            metadata=metadata,
         )
 
     async def advance(
@@ -349,10 +458,14 @@ class CodingGoal:
 
     def clear_queue(self):
         self._open_for_commands()
+        if self._delegation is not None:
+            raise GoalError("direct input unsupported for delegated Goal")
         return self._session.clear_queue()
 
     def _input(self, goal_id: str, method: str, text: str, images) -> None:
         self._open_for_commands()
+        if self._delegation is not None:
+            raise GoalError("direct input unsupported for delegated Goal")
         core = self.controller
         state = core.query(goal_id)
         batches = [
@@ -415,6 +528,12 @@ class CodingGoal:
                 await self._core.settle_work()
             self._work_settled = True
         if not self._session_retired:
+            if self._delegation is not None:
+                await self._delegation.close()
+            if not self._source_retired:
+                if self._source_reader is not None:
+                    await self._source_reader.aclose()
+                self._source_retired = True
             if self._sdk is not None:
                 await self._sdk.dispose_session_runtime()
             self._session_retired = True
@@ -433,8 +552,16 @@ class CodingGoal:
 def inspect_goal(
     *, workspace: Path, data_root: Path, session_id: str, goal_id: str
 ) -> CodingGoalView:
+    return _inspect_goal(
+        workspace=workspace, data_root=data_root, session_id=session_id, goal_id=goal_id
+    )
+
+
+def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None):
     """Cold read without creating a model Session, dispatching or writing events."""
-    header = GoalHeader(session_id, session_id, POLICY_ID)
+    header = GoalHeader(
+        session_id, session_id, profile.policy_id if profile is not None else POLICY_ID
+    )
     store = GoalJournal(data_root.resolve() / "sessions", header, read_only=True)
     try:
         store.open()
@@ -458,37 +585,21 @@ def inspect_goal(
             data_root.resolve() / "sessions", session_id
         ).with_suffix(".work.jsonl")
         log = JsonlEventLogBackend(path)
-        runs = tuple(project_work_runs(log.query(), mark_incomplete_orphaned=True))
-        unresolved = any(
-            not b.not_submitted
-            and not any(
-                r.operation_id == b.operation_id and r.status != "orphaned"
-                for r in runs
-            )
-            for b in history.batches
-        )
-        cancellations = {r.run_id: r for r in project_work_cancellations(log.query())}
-        for b in history.batches:
-            if b.not_submitted:
-                continue
-            found = next((r for r in runs if r.operation_id == b.operation_id), None)
-            if found is not None:
-                if found.session_id != session_id or (
-                    b.run_receipt and b.run_receipt != found.run_id
-                ):
-                    raise GoalError("Goal/Work association mismatch")
-                observation = cancellations.get(found.run_id)
-                if observation is None or observation.status not in {
-                    "not_requested",
-                    "settled",
-                }:
-                    unresolved = True
-        if any(
-            b.not_submitted and any(r.operation_id == b.operation_id for r in runs)
-            for b in history.batches
-        ):
-            raise GoalError("not_submitted contradicts original Work")
+        runs, unresolved = _goal_work_facts(history, log.query(), session_id)
         blobs = SessionBlobStore(data_root.resolve(), session_id, read_only=True)
+        if profile is not None:
+            return profile.inspect(
+                workspace,
+                data_root,
+                session_id,
+                goal_id,
+                actual,
+                history,
+                log,
+                runs,
+                unresolved,
+                blobs,
+            )
         policy = CalculatorPolicy(
             workspace=workspace.resolve(),
             session=SimpleNamespace(pending_message_count=0),

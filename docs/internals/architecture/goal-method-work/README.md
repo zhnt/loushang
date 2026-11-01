@@ -18,6 +18,15 @@
 
 ## 概念与职责定位
 
+2026-10-30 接入专项：[Goal 执行上下文与 Work 来源记录 R2.1](session-execution-recording.md)。区分同 Session 连续执行、独立子上下文及固定截点继承；优先复用已有 Multiagent。[三视角独立评审](session-execution-recording-review.md)及用户接受后，同 Session 第一切片已实现并通过离线验证，见[交付记录](../../plans/2026-10-30-goal-session-recording.md)；两种子 agent 接入仍为后续范围。
+
+2026-10-31 已接受专项：[Goal 批次执行 Session 与上下文选择 R3](delegated-session-execution.md)及[独立三视角评审](delegated-session-execution-review.md)。用户已授权实施；任务分支实现 reuse/fresh/inherit，初轮代码评审发现的五类阻断已在 `2a046fa3b` 修正并经原三位独立 reviewer 复核关闭。离线 SDK 闭环和完整 Harness 回归通过；本轮真实任务完成 A→A→B 及两次事实驱动的修复，但在最终 verify_all 前用尽 8 次规划额度并暂停，尚未完成在线验收；不把任务分支或旧在线记录写成 main 已交付事实。
+
+Work 记录与 Goal 完成依据的已接受协同设计见
+[HW-KD-003：事实留存、重放与 Transcript 共享](../harnesswork/key-designs/fact-retention-replay.md)。
+其 R3.1 明确共享默认处理与 Product 策略配置，并提出来源/留存及读取合同：Goal 继续声明并核验所需依据，Work 记录合同不能静默删去这些依据；
+原文与用量仍由 Transcript 保存。便宜的状态快照不等于当前验收。用户于 2026-10-29 接受 R3.1 的架构语义及所列实施前条件；底座的默认记录合同/确认查询[第一切片](../../plans/2026-10-29-work-recording-defaults.md)及[Transcript 引用切片](../../plans/2026-10-29-work-transcript-references.md)已本地合入 main；Coding Goal 接入仍为上述新专项，不改变既有 Goal 状态机与已交付范围。
+
 > Goal 保存目标和完成依据；模型提出实施计划；Method 规定所选工作的契约；Skill 提供局部专业指导；Work 执行并记录实际结果。
 
 这句话记录用户确认采用的协作职责定位，不代表各项能力均已实现。当前本地最小闭环
@@ -105,4 +114,12 @@ Method 与 Skill 的详细边界见 [Method 架构说明](../method/README.md)�
 
 模型规划当前实施、全部真实试验与验证边界见[实施记录](model-planning-implementation.md)。
 2026-10-27 用户选择先交付当前模型逐批规划切片，再用真实开发任务验证动态重规划。
-GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)暂不执行。
+当次 GP-03 尚未完成；[后续协作验证建议](model-planning-followup-scenario.md)暂不执行。
+
+2026-10-28 已从 PR #826 合并后的 main 建立独立工作树，启动真实 #125 任务的
+[评审反馈专项 R1](../coding/key-designs/goal-review-feedback.md)与
+[固定验收及执行计划](../../plans/2026-10-28-goal-review-replanning.md)。专项候选由
+Coding 私有适配承接，复用原 Goal/Work/Blob，系统环境和关键交互已于 2026-10-28 获用户明确确认；
+旧试验保留。本轮反馈集成离线验证通过；真实 Kimi 运行在测试失败后新增并执行修复，
+完整验证、宿主评审与关闭后冷读均通过，GP-03 在该有界仓库任务中已证明。
+实际运行采用 7 次规划、15 个 Work；历史读取成本较高，性能与全入口扩展仍待后续工作。

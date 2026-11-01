@@ -141,7 +141,14 @@ class Proposal:
         }
 
 
-def parse_proposal(raw: bytes, *, known_evidence: Collection[str]) -> Proposal:
+def parse_proposal(
+    raw: bytes,
+    *,
+    known_evidence: Collection[str],
+    action_type=Action,
+    requirement_ids=REQUIREMENT_IDS,
+    expected_evidence=EXPECTED_EVIDENCE,
+) -> Proposal:
     """Decode only model-owned fields. Identity and authority come from the owner."""
     if not raw or len(raw) > 16 * 1024:
         raise ProposalRejected("proposal exceeds response limit or is empty")
@@ -153,15 +160,15 @@ def parse_proposal(raw: bytes, *, known_evidence: Collection[str]) -> Proposal:
         raise ProposalRejected("invalid single JSON proposal") from error
     if not isinstance(value, dict) or set(value) != _KEYS:
         raise ProposalRejected("proposal fields do not match v1")
-    action = Action.parse(value["next_action"], value["targets"])
+    action = action_type.parse(value["next_action"], value["targets"])
     requirements = _strings(value["requirement_ids"])
     if not set(
         requirements
-    ) <= REQUIREMENT_IDS or not action.required_requirements <= set(requirements):
+    ) <= requirement_ids or not action.required_requirements <= set(requirements):
         raise ProposalRejected("requirements do not cover action scope")
     expected = _strings(value["expected_evidence"])
     # Templates fix evidence expectations; a model cannot create a new proof kind.
-    if set(expected) != EXPECTED_EVIDENCE[action.name]:
+    if set(expected) != expected_evidence[action.name]:
         raise ProposalRejected("expected evidence does not match action contract")
     route = value["remaining_route"]
     if not isinstance(route, list) or not 1 <= len(route) <= 6:
@@ -170,7 +177,7 @@ def parse_proposal(raw: bytes, *, known_evidence: Collection[str]) -> Proposal:
     for entry in route:
         if not isinstance(entry, dict) or set(entry) != {"action", "targets"}:
             raise ProposalRejected("invalid route entry")
-        actions.append(Action.parse(entry["action"], entry["targets"]))
+        actions.append(action_type.parse(entry["action"], entry["targets"]))
     if actions[0] != action:
         raise ProposalRejected("route does not begin with selected action")
     refs = _strings(value["evidence_refs"])

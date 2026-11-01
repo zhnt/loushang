@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from loushang.harness.events import RuntimeEvent, project_session_runtime_event
 from loushang.harnesswork.event_log import EventLogBackend
+from loushang.harnesswork.integrations.transcript import (
+    CONTRACT_KEY,
+    WorkTranscriptError,
+    WorkTranscriptSource,
+)
 from loushang.harnesswork.ports import WorkExecutionBinding, WorkExecutionContext
 from loushang.harnesswork.runtime import WorkRuntime
 from loushang.harnesswork.types import (
     WorkCancellationOutcome,
     WorkEventFact,
     WorkOperation,
+    WorkRecordingPolicy,
     WorkRun,
     WorkRunSpec,
     WorkStepSpec,
@@ -190,6 +198,19 @@ SessionTurnHook = Callable[
 ]
 
 
+def _idle_event() -> asyncio.Event:
+    result = asyncio.Event()
+    result.set()
+    return result
+
+
+@dataclass
+class _TurnCooperation:
+    cancelled: bool = False
+    started: bool = False
+    handoff_idle: asyncio.Event = field(default_factory=_idle_event)
+
+
 @dataclass(frozen=True, slots=True)
 class SessionTurnExecutor:
     """Execute prepared session turns and publish projected runtime facts."""
@@ -201,6 +222,17 @@ class SessionTurnExecutor:
     turns: tuple[SessionWorkTurn, ...] = ()
     before_turn: SessionTurnHook | None = None
     after_turn: SessionTurnHook | None = None
+
+    transcript_source: WorkTranscriptSource | None = None
+    _cooperation: dict[str, _TurnCooperation] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+
+    def _is_cancelled(self, context: WorkExecutionContext) -> bool:
+        state = self._cooperation.get(context.run_id)
+        return (state is not None and state.cancelled) or getattr(
+            context, "cancellation_requested", False
+        ) is True
 
     async def execute(
         self,
@@ -216,8 +248,30 @@ class SessionTurnExecutor:
                 f"{operation.domain}:{operation.kind}"
             )
         turn = self._resolve_turn(operation, context)
+        cooperation = self._cooperation.setdefault(context.run_id, _TurnCooperation())
+        cooperation.started = True
+
+        record_events: dict[str, str] = {}
+        collecting = False
+        collection_errors: list[str] = []
 
         async def listener(event: object) -> None:
+            if (
+                collecting
+                and self.transcript_source is not None
+                and isinstance(event, RuntimeEvent)
+            ):
+                projected = project_session_runtime_event(event)
+                if projected is not None and projected.get("type") == "message_end":
+                    if (
+                        event.session_id != self.transcript_source.conversation_id
+                        or not event.source_record_id
+                    ):
+                        collection_errors.append(
+                            "message lacks a committed source locator or belongs to another session"
+                        )
+                    else:
+                        record_events[event.source_record_id] = event.event_id
             for fact in self.project_event_facts(event):
                 context.publish(fact)
 
@@ -225,6 +279,10 @@ class SessionTurnExecutor:
         try:
             messages = (turn.text, *turn.follow_up_messages)
             for message_index, text in enumerate(messages):
+                if self._is_cancelled(context):
+                    raise asyncio.CancelledError
+                record_events.clear()
+                collection_errors.clear()
                 active_turn = turn if message_index == 0 else SessionWorkTurn(text=text)
                 await _call_turn_hook(
                     self.before_turn,
@@ -232,15 +290,43 @@ class SessionTurnExecutor:
                     message_index,
                     len(messages),
                 )
-                await _prompt_turn(self.session, active_turn)
+                if self._is_cancelled(context):
+                    raise asyncio.CancelledError
+                if self.transcript_source is not None:
+                    self.transcript_source.check()
+                collecting = True
+                try:
+                    await _prompt_turn(self.session, active_turn)
+                finally:
+                    collecting = False
+                if self._is_cancelled(context):
+                    raise asyncio.CancelledError
+                if self.transcript_source is not None:
+                    if collection_errors:
+                        raise WorkTranscriptError(collection_errors[0])
+                    cooperation.handoff_idle.clear()
+                    try:
+                        await self.transcript_source.report(
+                            dict(record_events),
+                            handoff_id=f"{context.step_index or 0}:{message_index}",
+                            publish=context.publish,
+                            cancelled=lambda: self._is_cancelled(context),
+                        )
+                    finally:
+                        cooperation.handoff_idle.set()
+                if self._is_cancelled(context):
+                    raise asyncio.CancelledError
                 await _call_turn_hook(
                     self.after_turn,
                     active_turn,
                     message_index,
                     len(messages),
                 )
+                if self._is_cancelled(context):
+                    raise asyncio.CancelledError
         finally:
             unsubscribe()
+            self._cooperation.pop(context.run_id, None)
         return WorkCancellationOutcome.settled()
 
     async def cancel_and_wait(
@@ -248,17 +334,26 @@ class SessionTurnExecutor:
         operation: WorkOperation,
         context: WorkExecutionContext,
     ) -> WorkCancellationOutcome:
-        del operation, context
-        abort = getattr(self.session, "abort", None)
-        if not callable(abort):
-            return WorkCancellationOutcome.unsupported()
-        result = abort()
-        if inspect.isawaitable(result):
-            await result
-        wait_for_idle = getattr(self.session, "wait_for_idle", None)
-        if callable(wait_for_idle):
-            await wait_for_idle()
-        return WorkCancellationOutcome.settled()
+        del operation
+        cooperation = self._cooperation.setdefault(context.run_id, _TurnCooperation())
+        cooperation.cancelled = True
+        try:
+            abort = getattr(self.session, "abort", None)
+            if not callable(abort):
+                return WorkCancellationOutcome.unsupported()
+            result = abort()
+            if inspect.isawaitable(result):
+                await result
+            wait_for_idle = getattr(self.session, "wait_for_idle", None)
+            if callable(wait_for_idle):
+                await wait_for_idle()
+            await cooperation.handoff_idle.wait()
+            return WorkCancellationOutcome.settled()
+        finally:
+            if not cooperation.started:
+                # Canonical context retains cancellation admission even if the
+                # driver finishes before execute starts; do not retain dead runs.
+                self._cooperation.pop(context.run_id, None)
 
     def _resolve_turn(
         self,
@@ -334,6 +429,38 @@ class SessionOperationInProgressError(RuntimeError):
     """Raised when one session attempts to own multiple active Work runs."""
 
 
+def prepare_session_work_source(
+    operation: WorkOperation,
+    *,
+    spec: WorkRunSpec,
+    session: SessionPromptPort,
+    executor: SessionTurnExecutor,
+    source: WorkTranscriptSource,
+) -> tuple[WorkOperation, SessionTurnExecutor]:
+    """Freeze source handoffs before admission, without executing or reading.
+
+    Product wrappers must be assembled around the returned standard executor;
+    this function never inspects arbitrary wrapper chains or owns a runtime.
+    """
+    if type(executor) is not SessionTurnExecutor or executor.session is not session:
+        raise WorkTranscriptError(
+            "source requires the standard executor for this Session"
+        )
+    if (
+        operation.session_id != source.conversation_id
+        or CONTRACT_KEY in operation.payload
+    ):
+        raise WorkTranscriptError("source session mismatch or reserved contract key")
+    handoffs = _expected_handoffs(executor, operation, spec)
+    return (
+        replace(
+            operation,
+            payload={**operation.payload, CONTRACT_KEY: source.contract(handoffs)},
+        ),
+        replace(executor, transcript_source=source),
+    )
+
+
 class SessionWorkRuntime:
     """Session-scoped adapter over the canonical :class:`WorkRuntime`."""
 
@@ -347,11 +474,14 @@ class SessionWorkRuntime:
         session_id: SessionIdReader = lambda: "",
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         cancellation_timeout: float | None = 30.0,
+        transcript_source: WorkTranscriptSource | None = None,
+        recording_policy: WorkRecordingPolicy | None = None,
     ) -> None:
         self.session = session
         self.event_log = event_log
         self.profile = profile
         self._session_id = session_id
+        self.transcript_source = transcript_source
         self._resolver = _SessionExecutionResolver(
             session=session,
             profile=profile,
@@ -362,6 +492,10 @@ class SessionWorkRuntime:
             event_log=event_log,
             clock=clock,
             cancellation_timeout=cancellation_timeout,
+            recording_version=1
+            if transcript_source is not None or recording_policy is not None
+            else None,
+            recording_policy=recording_policy,
         )
         self._project_event_facts = project_event_facts
 
@@ -384,6 +518,14 @@ class SessionWorkRuntime:
         if self.work_runtime.active_runs():
             raise SessionOperationInProgressError(
                 "the active session already has a Work operation"
+            )
+        if self.transcript_source is not None:
+            operation, executor = prepare_session_work_source(
+                operation,
+                spec=spec or WorkRunSpec(),
+                session=self.session,
+                executor=executor or self._executor(),
+                source=self.transcript_source,
             )
         if executor is not None:
             self._resolver.prepare(operation.operation_id, executor)
@@ -672,4 +814,43 @@ __all__ = [
     "project_prepared_session_work_turns",
     "require_session_work_turn",
     "submit_session_turn",
+    "prepare_session_work_source",
 ]
+
+
+def _expected_handoffs(
+    executor: SessionTurnExecutor, operation: WorkOperation, spec: WorkRunSpec
+) -> list[dict[str, object]]:
+    if executor.turns:
+        if (
+            executor.turn is not None
+            or len(executor.turns) != len(spec.steps)
+            or any(
+                t.step_id != step.step_id for t, step in zip(executor.turns, spec.steps)
+            )
+        ):
+            raise WorkTranscriptError("prepared source turns differ from Work steps")
+        turns = executor.turns
+    else:
+        if spec.steps:
+            raise WorkTranscriptError(
+                "source plan requires explicit turns for every step"
+            )
+        if executor.turn is None and operation.payload.get("follow_up_count", 0) != 0:
+            raise WorkTranscriptError(
+                "raw source operation cannot infer follow-up prompts"
+            )
+        turns = (
+            executor.turn
+            or SessionWorkTurn(text=str(operation.payload.get("text", ""))),
+        )
+    return [
+        dict(
+            handoff_id=f"{index}:{prompt}",
+            step_index=index if spec.steps else None,
+            step_id=spec.steps[index].step_id if spec.steps else spec.step_id,
+            prompt_index=prompt,
+        )
+        for index, turn in enumerate(turns)
+        for prompt in range(1 + len(turn.follow_up_messages))
+    ]

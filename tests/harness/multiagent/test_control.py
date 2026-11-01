@@ -433,3 +433,21 @@ def test_live_fact_subscription_can_be_removed_without_changing_control_state() 
         "spawned",
         "status_changed",
     ]
+
+
+def test_spawn_preflight_is_read_only_and_uses_actual_admission_rules():
+    control = _control(limits=ControlLimits(max_open_agents=2))
+    args = dict(caller=HOST, parent_path=AgentPath.root(), agent_type="reviewer")
+    for _ in range(2):
+        assert control.check_spawn(**args).ref == control.root_ref
+    assert control.registry.open_count == 1
+    assert control.registry.reserved_count == 0
+    assert control.facts() == ()
+    record = control.spawn(**args, name="one")
+    assert record.ref.incarnation == 1
+    with pytest.raises(MultiAgentError) as preflight:
+        control.check_spawn(**args)
+    with pytest.raises(MultiAgentError) as dispatch:
+        control.spawn(**args, name="two")
+    assert preflight.value.code == dispatch.value.code == "agent_limit_reached"
+    assert control.registry.reserved_count == 0

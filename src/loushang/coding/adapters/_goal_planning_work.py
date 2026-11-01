@@ -31,8 +31,14 @@ def publish_report(blobs, context, value, *, role, session_id):
 class PlanningToolPolicy:
     """Only the current Method step may grant model file-tool access."""
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, *, read_paths=None, write_paths=None):
         self.workspace = workspace.resolve()
+        self.read_paths = None if read_paths is None else frozenset(read_paths)
+        self.write_paths = (
+            frozenset(write_paths)
+            if write_paths is not None
+            else {self.workspace / "calculator.py"}
+        )
         self.step: str | None = None
         self.verification: Mapping[str, object] | None = None
 
@@ -74,7 +80,9 @@ class PlanningToolPolicy:
             if item.resolved_path is None or not Path(item.resolved_path).is_absolute():
                 return deny
             path = Path(item.resolved_path).resolve()
-            if not path.is_relative_to(self.workspace):
+            if not path.is_relative_to(self.workspace) or (
+                self.read_paths is not None and path not in self.read_paths
+            ):
                 return deny
             paths.add(path)
         expected = "read" if subject.tool_name == "read" else "write"
@@ -87,7 +95,7 @@ class PlanningToolPolicy:
                     return deny
                 effect_paths.add(Path(value).resolve())
         if paths != effect_paths or (
-            expected == "write" and paths != {self.workspace / "calculator.py"}
+            expected == "write" and not paths <= self.write_paths
         ):
             return deny
         return PolicyDecision.allow()
@@ -159,11 +167,21 @@ class ScopedVerificationWork:
 
 class PlanningWork:
     def __init__(
-        self, delegate, *, session, blobs, allowance, prompt, input_ref, known_evidence
+        self,
+        delegate,
+        *,
+        session,
+        blobs,
+        allowance,
+        prompt,
+        input_ref,
+        known_evidence,
+        parser=parse_proposal,
     ):
         self.delegate, self.session, self.blobs = delegate, session, blobs
         self.allowance, self.prompt = allowance, prompt
         self.input_ref, self.known_evidence = input_ref, tuple(known_evidence)
+        self.parser = parser
 
     async def execute(self, operation, context):
         manager = self.session.session_manager
@@ -201,7 +219,7 @@ class PlanningWork:
                 self.blobs, raw, f"{operation.operation_id}/response.txt"
             )
             report["response_proof"] = proof
-            proposal = parse_proposal(raw, known_evidence=self.known_evidence)
+            proposal = self.parser(raw, known_evidence=self.known_evidence)
             report["proposal"] = proposal.data()
             report["rejection"] = None
         except ProposalRejected as error:

@@ -24,19 +24,15 @@ class _ReplayState:
     terminal: bool = False
 
 
-def project_work_runs(
-    entries: Iterable[EventLogEntry],
-    *,
-    mark_incomplete_orphaned: bool = False,
-) -> tuple[WorkRun, ...]:
-    """Rebuild WorkRun read models while validating lifecycle invariants."""
+class _RunProjector:
+    """Shared incremental reducer for loaded history and acknowledged records."""
 
-    states: dict[str, _ReplayState] = {}
-    order: list[str] = []
-    operation_ids: dict[str, str] = {}
+    def __init__(self) -> None:
+        self.states: dict[str, _ReplayState] = {}
+        self._operation_ids: dict[str, str] = {}
 
-    for entry in entries:
-        state = states.get(entry.run_id)
+    def apply(self, entry: EventLogEntry) -> None:
+        state = self.states.get(entry.run_id)
         if state is None:
             if entry.entry_type != "operation":
                 raise WorkRunReplayError(
@@ -46,19 +42,20 @@ def project_work_runs(
                 raise WorkRunReplayError(
                     f"run {entry.run_id} operation sequence must be 0"
                 )
-            prior_run_id = operation_ids.get(entry.operation_id)
+            prior_run_id = self._operation_ids.get(entry.operation_id)
             if prior_run_id is not None:
                 raise WorkRunReplayError(
                     f"operation {entry.operation_id} belongs to multiple runs"
                 )
-            operation_ids[entry.operation_id] = entry.run_id
+            self._operation_ids[entry.operation_id] = entry.run_id
             run = _run_from_operation(entry)
-            states[entry.run_id] = _ReplayState(run=run, last_sequence=0)
-            order.append(entry.run_id)
-            continue
+            self.states[entry.run_id] = _ReplayState(run=run, last_sequence=0)
+            return
 
         if entry.entry_type == "operation":
-            raise WorkRunReplayError(f"run {entry.run_id} has duplicate operation entry")
+            raise WorkRunReplayError(
+                f"run {entry.run_id} has duplicate operation entry"
+            )
         if entry.operation_id != state.run.operation_id:
             raise WorkRunReplayError(f"run {entry.run_id} changes operation_id")
         if entry.session_id != state.run.session_id:
@@ -72,7 +69,18 @@ def project_work_runs(
         state.last_sequence = entry.sequence
         _apply_event(state, entry)
 
-    runs = tuple(states[run_id].run for run_id in order)
+
+def project_work_runs(
+    entries: Iterable[EventLogEntry],
+    *,
+    mark_incomplete_orphaned: bool = False,
+) -> tuple[WorkRun, ...]:
+    """Rebuild WorkRun read models while validating lifecycle invariants."""
+
+    projector = _RunProjector()
+    for entry in entries:
+        projector.apply(entry)
+    runs = tuple(state.run for state in projector.states.values())
     if not mark_incomplete_orphaned:
         return runs
     return tuple(
@@ -121,9 +129,7 @@ def _apply_event(state: _ReplayState, entry: EventLogEntry) -> None:
         status = "cancelling"
     elif kind in _TERMINAL_KINDS:
         allowed = (
-            {"cancelling"}
-            if kind == "WorkRunCancelled"
-            else {"running", "cancelling"}
+            {"cancelling"} if kind == "WorkRunCancelled" else {"running", "cancelling"}
         )
         _require_status(entry, status, allowed)
         status = _TERMINAL_KINDS[kind]

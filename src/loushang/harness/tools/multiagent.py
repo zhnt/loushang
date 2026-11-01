@@ -184,7 +184,9 @@ class MultiAgentToolPack:
             label="Spawn agent",
             description=(
                 "Create a bounded child agent for one focused task. A successful "
-                "call returns its canonical path; a failed call creates no child."
+                "call returns its canonical path. A failed call may retain a "
+                "cleanup-only child; inspect its error and list_agents, then retry "
+                "close_agent on that original child before reusing its capacity."
             ),
             properties={
                 "name": {
@@ -423,6 +425,19 @@ class MultiAgentToolPack:
                 target=path,
             )
             closed = tuple(getattr(outcome, "closed", ()))
+            errors = tuple(getattr(outcome, "dispose_errors", ()))
+            if errors:
+                return _result(
+                    f"Closed {len(closed)} agents; cleanup failed for {len(errors)}. "
+                    "Inspect the errors; retry close_agent for retained children.",
+                    {
+                        "agents": [_record(record) for record in closed],
+                        "cleanup_errors": [
+                            {"agent_ref": str(ref), "error": str(error)}
+                            for ref, error in errors
+                        ],
+                    },
+                )
             return _result(
                 f"Closed {len(closed)} agents.",
                 {"agents": [_record(record) for record in closed]},

@@ -22,6 +22,17 @@ acceptance does not establish writable release or performance readiness.
 
 ## Scope
 
+Implemented and offline-verified local SDK integration (same-Session slice):
+[Goal execution context and Work source recording](../goal-method-work/session-execution-recording.md).
+It reuses the existing Session, Work and Multiagent boundaries; its first slice
+only connects the local Coding Goal to shared recording and Transcript sources.
+It does not enable child execution or change normal CLI/TUI defaults.
+
+The [shared child Session composition](../harness/multiagent/child-session-composition.md)
+moves child creation, round adaptation and cleanup into Harness. Coding keeps
+roles, model/tool selection, sandbox configuration and its current non-persistent
+child policy; the existing Coding factory entrypoint delegates to that mechanism.
+
 Coding is the installed Loushang Product composition root. It turns Harness,
 Agent, AI, Method, HarnessWork, Channel, HarnessTUI and TUI contracts into a
 coding-specific CLI, SDK and terminal experience.
@@ -165,6 +176,12 @@ historical design inputs when their status points to the Harness owner map.
 They are not a second Current Coding topology.
 
 ## Current-To-Target Gaps
+
+The [repository Goal review-feedback design](key-designs/goal-review-feedback.md)
+is an accepted local SDK slice (user confirmation, 2026-10-28), with focused offline
+implementation checks passing. Coding interprets trusted
+review findings through existing Goal-linked Work and Blob evidence; it does not
+add a shared execution loop or establish generic repository Goal availability.
 
 - `coding.lsp` and `coding.arch` are production-mounted live Graph nodes when
   their selected composition and mount policy enable them;

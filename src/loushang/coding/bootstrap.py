@@ -85,6 +85,7 @@ from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
+    coding_lsp_should_defer,
 )
 from loushang.coding.composition_provenance import (
     composition_header_metadata,
@@ -872,23 +873,12 @@ def _create_agent_session(
         if historical_entries and lsp_enabled_for_session and lsp_mode == "on_demand"
         else None
     )
-    historical_lsp_selected = bool(historical_entries) and (
-        historical_startup is None
-        or any(
-            item["pluginId"] == "coding.lsp.default"
-            for item in cast(
-                list[dict[str, object]], historical_startup["selectedRevisions"]
-            )
-        )
-    )
-    # A validated startup receipt distinguishes a dormant LSP Session from an
-    # older eager Session. History without a receipt keeps the conservative
-    # eager route because its original owner selection is not proven.
-    defer_lsp_for_session = (
-        lsp_enabled_for_session
-        and lsp_mode == "on_demand"
-        and not historical_lsp_selected
-        and "coding.lsp.default" not in legacy_disabled_plugin_ids
+    defer_lsp_for_session = coding_lsp_should_defer(
+        enabled=lsp_enabled_for_session,
+        mode=lsp_mode,
+        has_history=bool(historical_entries),
+        startup=historical_startup,
+        legacy_disabled="coding.lsp.default" in legacy_disabled_plugin_ids,
     )
     eager_lsp_enabled_for_session = (
         lsp_enabled_for_session and not defer_lsp_for_session
