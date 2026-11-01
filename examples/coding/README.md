@@ -401,3 +401,11 @@ Goal/Work/Transcript/Blob 重建规划轨迹，不把导出文件当作事实权
 此模式固定最多 20 个 Work 意图、10 次规划，连续 3 次无效提案或 2 次无进展后停止；
 不是 token、费用或时间硬上限。真实模型规划→修复→独立验证已有成功记录；实际
 改变路线后完成的动态重规划证据仍待真实开发任务补齐，见[实施记录](../../docs/internals/architecture/goal-method-work/model-planning-implementation.md)。
+
+## 29：托管 Method → Work SDK 闭环
+
+运行 `python examples/coding/29_hosted_method.py`，通过实际 AppHost / AppService
+执行固定的 inspect → verify Method，并查询原 Work 与记录确认。示例使用确定性
+离线模型，不需要 API key，也不产生模型费用；默认创建新临时目录。
+预期输出 execution=succeeded、work=completed。只覆盖应用内 SDK 与内存 Work，
+不提供进程恢复或远程协议；详见[交付记录](../../docs/internals/plans/2026-11-01-hosted-method-work.md)。

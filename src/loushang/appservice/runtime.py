@@ -553,6 +553,11 @@ class AppServiceV1:
     def continuity_enabled(self) -> bool:
         return self._continuity_lease is not None
 
+    def _require_legacy_input(self) -> None:
+        config = self._execution_config
+        if config is not None and config.select_work_port is not None:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
     def _execution_binding(self, session: _SessionOwner) -> ExecutionBindingV1:
         config, registry = self._execution_config, self._execution_registry
         if config is None or registry is None:
@@ -1183,6 +1188,7 @@ class AppServiceV1:
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         if self._execution_registry is not None:
             try:
@@ -1198,18 +1204,21 @@ class AppServiceV1:
 
     async def steer_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.steer_turn(request.text)
         return AckV1()
 
     async def follow_up_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.follow_up_turn(request.text)
         return AckV1()
 
     async def interrupt_turn(self, request: TurnInterruptV1) -> AckV1:
         self._require_request(request, TurnInterruptV1)
+        self._require_legacy_input()
         session = await self._resolve_member_session(
             request.attachment_id,
             request.controller_generation,

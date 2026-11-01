@@ -36,6 +36,7 @@ from .resume_ports import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 if TYPE_CHECKING:
     from .client_scope import AppClientScopeV1
+    from .method_work import HostedMethodWorkPortV1
     from .runtime import _SessionOwner
 
 
@@ -45,12 +46,15 @@ class HostedExecutionServiceBindingV1:
     service_instance_id: str
     select_port: Callable[[HostedSessionPortV1], HostedExecutionPortV1 | None]
     limits: ExecutionLimitsV1 = ExecutionLimitsV1()
+    select_work_port: Callable[[HostedSessionPortV1], HostedMethodWorkPortV1 | None] | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.application_id)
         _identifier(self.service_instance_id)
         if not callable(self.select_port) or type(self.limits) is not ExecutionLimitsV1:
             raise TypeError("invalid execution service binding")
+        if self.select_work_port is not None and not callable(self.select_work_port):
+            raise TypeError("invalid Work service binding")
 
 
 @dataclass(slots=True)

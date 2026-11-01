@@ -163,6 +163,7 @@ class CodingRealHostedSessionV1:
         self._interrupted = False
         self._revision = 0
         self._close_task: asyncio.Task[None] | None = None
+        self._execution_claimed = False
         session.set_approval_presenter(
             self._present_approval, dismisser=self._dismiss_approval
         )
@@ -170,6 +171,18 @@ class CodingRealHostedSessionV1:
     @property
     def control(self) -> SessionControlPort:
         return self._session
+
+    @property
+    def execution_claimed(self) -> bool:
+        return self._execution_claimed
+
+    def claim_execution(self) -> None:
+        if self._execution_claimed or self._close_task is not None:
+            raise ValueError("Coding Session already has an execution owner")
+        self._execution_claimed = True
+
+    def release_failed_execution_claim(self) -> None:
+        self._execution_claimed = False
 
     async def lookup_resume_input(
         self, query: CodingResumeInputLookupQueryV1,
