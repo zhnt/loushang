@@ -61,6 +61,7 @@ from loushang.appservice.ports import (
     HostedSessionResolutionFailureV1,
 )
 
+from ._hosted_goal_config import HostedGoalSetup
 from ._hosted_method_config import CodingHostedMethodV1
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -125,6 +126,7 @@ class CodingForegroundHostedApplicationRequestV1:
     admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
     execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
     method: CodingHostedMethodV1 | None = field(default=None, repr=False, kw_only=True)
+    goal: HostedGoalSetup | None = field(default=None, repr=False, kw_only=True)
     session_owner: CodingHostedSessionOwnerV1 | None = field(default=None, repr=False)
     managed_selection: bool = False
     managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False)
@@ -135,6 +137,11 @@ class CodingForegroundHostedApplicationRequestV1:
             raise ValueError("hosted Method requires its explicit execution capability")
         if self.method is None and self.execution is not None and self.execution.select_work_port is not None:
             raise ValueError("Work capability requires a fixed hosted Method")
+        if self.goal is not None and (type(self.goal) is not HostedGoalSetup or self.method is not None
+                or self.execution is None or self.execution.select_goal_port is None):
+            raise ValueError("hosted Goal requires its exclusive execution capability")
+        if self.goal is None and self.execution is not None and self.execution.select_goal_port is not None:
+            raise ValueError("Goal capability requires fixed hosted Goal configuration")
         _require_managed_selection(self.managed_selection, self.sessions, self.profile_id, self.admitted_scopes)
         if self.managed_selection and self.session_owner is not self.sessions:
             raise ValueError("managed Session catalog must retain its shutdown owner")
@@ -482,7 +489,7 @@ class _LeasedCodingHostedBinding:
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
 
-    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution", "_managed_selection", "_method", "_method_used")
+    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution", "_managed_selection", "_method", "_method_used", "_goal")
 
     def __init__(
         self,
@@ -494,6 +501,7 @@ class CodingAppHostHostedSessionResolverV1:
         admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None,
         execution: bool = False,
         method: CodingHostedMethodV1 | None = None,
+        goal: HostedGoalSetup | None = None,
         managed_selection: bool = False,
     ) -> None:
         if type(runtime) is not AppHostRuntimeV1:
@@ -509,6 +517,7 @@ class CodingAppHostHostedSessionResolverV1:
             raise ValueError("managed selection execution adapter is not admitted")
         if method is not None and (type(method) is not CodingHostedMethodV1 or not execution):
             raise ValueError("invalid hosted Method resolver configuration")
+        self._goal = goal
         self._method = method
         self._method_used = False
         self._execution = execution
@@ -527,7 +536,7 @@ class CodingAppHostHostedSessionResolverV1:
             request.product_id, request.scope, request.scope_fingerprint,
         ) not in self._scopes:
             raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
-        if self._method is not None:
+        if self._method is not None or self._goal is not None:
             if request.session_id is not None or self._method_used:
                 raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
             self._method_used = True
@@ -569,6 +578,12 @@ class CodingAppHostHostedSessionResolverV1:
             )
             if not _identity_matches_open(request, wrapper.identity):
                 raise ValueError("Coding hosted binding identity mismatch")
+            if self._goal is not None:
+                from .hosted_goal import CodingHostedGoalSessionV1
+
+                if type(binding) is not CodingRealHostedSessionV1:
+                    raise TypeError("hosted Goal requires a fresh Coding Session")
+                return CodingHostedGoalSessionV1(binding, self._goal, owner=wrapper)
             if self._method is not None:
                 from .hosted_method import CodingHostedMethodSessionV1
 
@@ -673,6 +688,7 @@ async def create_coding_foreground_hosted_application(
             admitted_scopes=request.admitted_scopes,
             execution=request.execution is not None,
             method=request.method,
+            goal=request.goal,
             managed_selection=request.managed_selection,
         )
         return create_hosted_application_runtime(

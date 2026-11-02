@@ -555,7 +555,7 @@ class AppServiceV1:
 
     def _require_legacy_input(self) -> None:
         config = self._execution_config
-        if config is not None and config.select_work_port is not None:
+        if config is not None and (config.select_work_port is not None or config.select_goal_port is not None):
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
     def _execution_binding(self, session: _SessionOwner) -> ExecutionBindingV1:

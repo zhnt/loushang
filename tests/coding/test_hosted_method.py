@@ -503,7 +503,7 @@ def test_new_method_option_preserves_original_positional_constructor():
         generation_id="compatibility", sessions=_CanonicalSessions(),
         session_factory=_SessionFactory(events), events=events, ids=_Ids(),
     ), session_owner=owner)
-    original_values = [getattr(request, f.name) for f in fields(request) if f.name != "method"]
+    original_values = [getattr(request, f.name) for f in fields(request) if f.name not in {"method", "goal"}]
     copied = CodingForegroundHostedApplicationRequestV1(*original_values)
-    assert copied.session_owner is owner and copied.method is None
+    assert copied.session_owner is owner and copied.method is None and copied.goal is None
     assert copied.managed_selection is request.managed_selection

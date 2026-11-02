@@ -261,96 +261,11 @@ class CodingGoal:
                 if session_id is None
                 else await owner._sdk.restore_session(session_id)
             )
-            owner.session_id = owner._session.session_id
-            _validate_goal_session(owner._session, owner.workspace, model_planning)
-            header = GoalHeader(owner.session_id, owner.session_id, policy_id)
-            owner._store = GoalJournal(owner.data_root / "sessions", header)
-            owner._store.open(create=session_id is None)
-            transcript_source = None
-            delegated = getattr(profile, "execution_policy", None) is not None
-            if transcript_retained_until is not None or delegated:
-                session_file = owner._session.session_manager.get_session_file()
-                if session_file is None:
-                    raise GoalError(
-                        "Goal Transcript source requires a persistent Session"
-                    )
-                owner._source_reader = TranscriptSourceReader(
-                    session_file=Path(session_file),
-                    conversation_id=owner.session_id,
-                    store_state_root=resolve_platform_home() / "state/session-stores",
-                )
-                if transcript_retained_until is not None:
-                    transcript_source = await WorkTranscriptSource.bind(
-                        owner._source_reader,
-                        binding_id=f"coding-goal:{owner.session_id}",
-                        retained_until=transcript_retained_until,
-                    )
-            blobs = SessionBlobStore(owner.data_root, owner.session_id)
-            if delegated:
-                from ._goal_delegation import DelegatedSessions
-
-                identity = await owner._source_reader.inspect_identity()
-                owner._delegation = DelegatedSessions(
-                    owner,
-                    profile,
-                    blobs,
-                    owner._source_reader,
-                    identity.store_identity,
-                    approval_resolver,
-                    additional_tool_policy,
-                )
-            work_path = goal_journal_path(
-                owner.data_root / "sessions", owner.session_id
-            ).with_suffix(".work.jsonl")
-            log = JsonlEventLogBackend(work_path)
-            executor = CodingVerificationExecutor(
-                session=owner._session, blobs=blobs, event_log=log
-            )
-            verification_executor: Any = executor
-            if model_planning:
-                from ._goal_planning_work import ScopedVerificationWork
-
-                verification_executor = ScopedVerificationWork(
-                    executor, policy=planning_tool_policy
-                )
-            owner._work = WorkRuntime(
-                event_log=log,
-                resolver=_Resolver(verification_executor, owner._prepared),
-                recording_version=1,
-                recording_policy=WorkRecordingPolicy(require_persistence=True),
-            )
-            owner._policy = CalculatorPolicy(
-                workspace=owner.workspace,
-                session=owner._session,
-                blobs=blobs,
-                event_log=log,
-                prepared=owner._prepared,
-                transcript_source=transcript_source,
-            )
-            if model_planning:
-                from ._goal_planning import ModelPlanningPolicy
-
-                factory = profile.policy if profile is not None else ModelPlanningPolicy
-                owner._policy = factory(
-                    workspace=owner.workspace,
-                    session=owner._session,
-                    blobs=blobs,
-                    event_log=log,
-                    prepared=owner._prepared,
-                    transcript_source=transcript_source,
-                    allowance=owner._allowance,
-                    tool_policy=planning_tool_policy,
-                    history=lambda: owner.controller.history,
-                )
-            if owner._delegation is not None:
-                owner._policy.delegation = owner._delegation
-                owner._policy.source_reader = owner._source_reader
-            owner._core = GoalController(
-                header=header,
-                store=owner._store,
-                work=owner._work,
-                next_work=owner._policy,
-                acceptance=owner._policy,
+            await owner._initialize_session(
+                policy_id=policy_id, create=session_id is None,
+                planning_tool_policy=planning_tool_policy if model_planning else None,
+                transcript_retained_until=transcript_retained_until,
+                approval_resolver=approval_resolver, additional_tool_policy=additional_tool_policy,
             )
             return owner
         except BaseException as error:
@@ -359,6 +274,124 @@ class CodingGoal:
             except BaseException:
                 raise GoalConstructionError(owner, error) from error
             raise
+
+    async def _initialize_borrowed(self, session, allowance, tool_policy) -> None:
+        """Initialize a retained owner; the caller owns failure cleanup.
+
+        Never acquires or disposes the external AppHost Session. Requires the
+        same allowance/policy injected at Session construction.
+        """
+        if self._session is not None or self._closing:
+            raise GoalError("Goal already initialized or closing")
+        from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+
+        self._session = session
+        self._model_planning = True
+        self._allowance = allowance
+        # Hosted construction stages the graph; SDK lifecycle normally performs
+        # this preparation. Reuse that same owner before validating file tools.
+        await session.prepare_execution(start_extensions=True)
+        (self.data_root / "sessions").mkdir(mode=0o700, parents=True, exist_ok=True)
+        await self._initialize_session(
+            policy_id=PLANNING_POLICY_ID, create=True, planning_tool_policy=tool_policy,
+        )
+
+    async def _initialize_session(
+        self, *, policy_id, create, planning_tool_policy=None,
+        transcript_retained_until=None, approval_resolver=None, additional_tool_policy=None,
+    ):
+        profile, model_planning = self._profile, self._model_planning
+        self.session_id = self._session.session_id
+        _validate_goal_session(self._session, self.workspace, model_planning)
+        header = GoalHeader(self.session_id, self.session_id, policy_id)
+        self._store = GoalJournal(self.data_root / "sessions", header)
+        self._store.open(create=create)
+        transcript_source = None
+        delegated = getattr(profile, "execution_policy", None) is not None
+        if transcript_retained_until is not None or delegated:
+            session_file = self._session.session_manager.get_session_file()
+            if session_file is None:
+                raise GoalError(
+                    "Goal Transcript source requires a persistent Session"
+                )
+            self._source_reader = TranscriptSourceReader(
+                session_file=Path(session_file),
+                conversation_id=self.session_id,
+                store_state_root=resolve_platform_home() / "state/session-stores",
+            )
+            if transcript_retained_until is not None:
+                transcript_source = await WorkTranscriptSource.bind(
+                    self._source_reader,
+                    binding_id=f"coding-goal:{self.session_id}",
+                    retained_until=transcript_retained_until,
+                )
+        blobs = SessionBlobStore(self.data_root, self.session_id)
+        if delegated:
+            from ._goal_delegation import DelegatedSessions
+
+            identity = await self._source_reader.inspect_identity()
+            self._delegation = DelegatedSessions(
+                self,
+                profile,
+                blobs,
+                self._source_reader,
+                identity.store_identity,
+                approval_resolver,
+                additional_tool_policy,
+            )
+        work_path = goal_journal_path(
+            self.data_root / "sessions", self.session_id
+        ).with_suffix(".work.jsonl")
+        log = JsonlEventLogBackend(work_path)
+        executor = CodingVerificationExecutor(
+            session=self._session, blobs=blobs, event_log=log
+        )
+        verification_executor: Any = executor
+        if model_planning:
+            from ._goal_planning_work import ScopedVerificationWork
+
+            verification_executor = ScopedVerificationWork(
+                executor, policy=planning_tool_policy
+            )
+        self._work = WorkRuntime(
+            event_log=log,
+            resolver=_Resolver(verification_executor, self._prepared),
+            recording_version=1,
+            recording_policy=WorkRecordingPolicy(require_persistence=True),
+        )
+        self._policy = CalculatorPolicy(
+            workspace=self.workspace,
+            session=self._session,
+            blobs=blobs,
+            event_log=log,
+            prepared=self._prepared,
+            transcript_source=transcript_source,
+        )
+        if model_planning:
+            from ._goal_planning import ModelPlanningPolicy
+
+            factory = profile.policy if profile is not None else ModelPlanningPolicy
+            self._policy = factory(
+                workspace=self.workspace,
+                session=self._session,
+                blobs=blobs,
+                event_log=log,
+                prepared=self._prepared,
+                transcript_source=transcript_source,
+                allowance=self._allowance,
+                tool_policy=planning_tool_policy,
+                history=lambda: self.controller.history,
+            )
+        if self._delegation is not None:
+            self._policy.delegation = self._delegation
+            self._policy.source_reader = self._source_reader
+        self._core = GoalController(
+            header=header,
+            store=self._store,
+            work=self._work,
+            next_work=self._policy,
+            acceptance=self._policy,
+        )
 
     @property
     def controller(self) -> GoalController:

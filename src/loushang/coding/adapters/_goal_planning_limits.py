@@ -6,6 +6,8 @@ the standard AI stream and counts logical invocations within an admitted Work.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from loushang.agent.model_transport import prepared_request_conformant
 from loushang.ai import CallOptions, RetryOptions, stream
 from loushang.harnesswork.goal import GoalError
@@ -18,7 +20,12 @@ class PlanningCallLimit(GoalError):
 
 
 class PlanningCallAllowance:
-    def __init__(self) -> None:
+    def __init__(self, *, total_limit: int | None = None, max_output_tokens: int | None = None) -> None:
+        for value in (total_limit, max_output_tokens):
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError("positive model allowance required")
+        self.total_limit, self.max_output_tokens = total_limit, max_output_tokens
+        self.total_calls = 0
         self.operation_id: str | None = None
         self.phase: str | None = None
         self.calls = 0
@@ -54,6 +61,9 @@ class PlanningCallAllowance:
             if self.fenced or self.phase is None or self.failed:
                 self.failed = True
                 raise PlanningCallLimit("model call outside an admitted phase")
+            if self.total_limit is not None and self.total_calls >= self.total_limit:
+                self.failed = self.fenced = True
+                raise PlanningCallLimit("owner model-call allowance exhausted")
             maximum = LIMITS[f"{self.phase}_calls"]
             if self.calls >= maximum:
                 self.failed = True
@@ -61,6 +71,12 @@ class PlanningCallAllowance:
             if options is not None and not isinstance(options, CallOptions):
                 self.failed = True
                 raise PlanningCallLimit("unrecognized model call options")
+            if self.max_output_tokens is not None:
+                options = options or CallOptions()
+                output = options.max_output_tokens
+                options = replace(options, max_output_tokens=min(output, self.max_output_tokens)
+                                  if output is not None else self.max_output_tokens,
+                                  retry=RetryOptions(max_attempts=1))
             retry = options.retry if options is not None else None
             if retry is not None and (
                 not isinstance(retry, RetryOptions)
@@ -71,6 +87,7 @@ class PlanningCallAllowance:
             # No suspension occurs before consuming the allowance. Pass through
             # the exact prepared committer, cancellation authority and response.
             self.calls += 1
+            self.total_calls += 1
             try:
                 return await stream(model, context, options)
             except BaseException:

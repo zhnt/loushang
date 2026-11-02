@@ -48,6 +48,7 @@ from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
 from .execution_registry import ExecutionErrorCodeV1, ExecutionServiceErrorV1
 from .execution_service import ScopedExecutionClientV1
+from .goal import ScopedGoalClientV1
 from .method_work import ScopedMethodWorkClientV1
 from .resume_ports import (
     _current_resume_subject,
@@ -218,12 +219,13 @@ class AppClientScopeV1:
         self._close_task: asyncio.Task[None] | None = None
         self._execution_client: ScopedExecutionClientV1 | None = None
         self._method_work_client: ScopedMethodWorkClientV1 | None = None
+        self._goal_client: ScopedGoalClientV1 | None = None
 
     @property
     def execution_client(self) -> ScopedExecutionClientV1 | None:
         self._require_open()
         config = self._service._execution_config
-        if config is not None and config.select_work_port is not None:
+        if config is not None and (config.select_work_port is not None or config.select_goal_port is not None):
             return None
         return self._borrow_execution_client()
 
@@ -246,6 +248,18 @@ class AppClientScopeV1:
             assert execution is not None
             self._method_work_client = ScopedMethodWorkClientV1(execution)
         return self._method_work_client
+
+    @property
+    def goal_client(self) -> ScopedGoalClientV1 | None:
+        self._require_open()
+        config = self._service._execution_config
+        if config is None or config.select_goal_port is None:
+            return None
+        if self._goal_client is None:
+            execution = self._borrow_execution_client()
+            assert execution is not None
+            self._goal_client = ScopedGoalClientV1(execution)
+        return self._goal_client
 
     @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:

@@ -311,15 +311,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         """Opt-in full invocation input result, retaining the legacy prompt API."""
         from loushang.harness.session.prompt_execution import execute_prompt
 
-        if not self.execution_available:
-            raise RuntimeError(
-                "failed execution preparation requires Session retirement"
-            )
-        try:
-            await self.prepare_model_call_runtime()
-        except BaseException:
-            self._execution_preparation_failed = True
-            raise
+        await self.prepare_execution()
         if check_cancelled is not None:
             check_cancelled()
         result = await execute_prompt(
@@ -332,6 +324,24 @@ class AgentProductSession(AgentSessionAdapterMixin):
         await self._composition.retry_runtime.settle()
         await self._composition.session_runtime.host_runtime.settle_runs()
         return result
+
+    async def prepare_execution(self, *, start_extensions: bool = False) -> None:
+        """Prepare original owners; failed setup is retired by settle_execution.
+
+        Optional startup matches the SDK's prepare/activate order for a retained
+        borrowed Session. Ordinary prompt execution keeps its existing lifecycle.
+        """
+        if type(start_extensions) is not bool:
+            raise TypeError("explicit startup selection required")
+        if not self.execution_available:
+            raise RuntimeError("failed execution preparation requires Session retirement")
+        try:
+            await self.prepare_model_call_runtime()
+            if start_extensions:
+                await self.start_extension_runtime(reason="startup")
+        except BaseException:
+            self._execution_preparation_failed = True
+            raise
 
     @property
     def execution_available(self) -> bool:

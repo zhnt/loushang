@@ -199,7 +199,8 @@ def test_g12_new_owners_remain_independently_reviewable() -> None:
         # Keep this exact owner under its own review gate.
         # COD-KD-HMW-001: fixed Method selection and exclusive execution
         # claim add 39 lines; retain this exact complete owner in the check.
-        CODING_APPLICATION: 800 + 84 + 7 + 39,
+        # COD-KD-HG-001: mutually exclusive Goal selection (+16), full owner counted.
+        CODING_APPLICATION: 800 + 84 + 7 + 39 + 16,
     }
     for path, limit in limits.items():
         lines = len(_read(path).splitlines())

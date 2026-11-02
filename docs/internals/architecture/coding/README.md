@@ -82,7 +82,11 @@ mandatory UI dependencies.
 ## Target
 
 Accepted #824 first slice: [hosted Method execution and Work queries](key-designs/hosted-method-work.md).
-The user accepted R2 after three-view review on 2026-11-01. The implementation
+Accepted #824 second slice: [hosted Goal minimum loop](key-designs/hosted-goal-loop.md),
+with [three-view review](key-designs/hosted-goal-loop-review.md); the user accepted
+R2 on 2026-11-02. Implementation reuses the canonical Session and Goal/Work authorities.
+See the [Goal delivery evidence](../../plans/2026-11-02-hosted-goal-loop.md).
+The user accepted Method R2 after three-view review on 2026-11-01. That implementation
 connects one authorized application-local SDK entry to the original AppHost
 Session and HarnessWork execution; see the [delivery evidence](../../plans/2026-11-01-hosted-method-work.md).
 

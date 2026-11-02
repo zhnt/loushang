@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loushang.appserver.execution.model import (
@@ -36,6 +36,7 @@ from .resume_ports import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 if TYPE_CHECKING:
     from .client_scope import AppClientScopeV1
+    from .goal import HostedGoalPortV1
     from .method_work import HostedMethodWorkPortV1
     from .runtime import _SessionOwner
 
@@ -48,6 +49,8 @@ class HostedExecutionServiceBindingV1:
     limits: ExecutionLimitsV1 = ExecutionLimitsV1()
     select_work_port: Callable[[HostedSessionPortV1], HostedMethodWorkPortV1 | None] | None = None
 
+    select_goal_port: Callable[[HostedSessionPortV1], HostedGoalPortV1 | None] | None = field(default=None, kw_only=True)
+
     def __post_init__(self) -> None:
         _identifier(self.application_id)
         _identifier(self.service_instance_id)
@@ -55,6 +58,8 @@ class HostedExecutionServiceBindingV1:
             raise TypeError("invalid execution service binding")
         if self.select_work_port is not None and not callable(self.select_work_port):
             raise TypeError("invalid Work service binding")
+        if self.select_goal_port is not None and (not callable(self.select_goal_port) or self.select_work_port is not None):
+            raise TypeError("invalid or competing Goal service binding")
 
 
 @dataclass(slots=True)
