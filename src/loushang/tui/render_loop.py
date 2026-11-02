@@ -144,6 +144,7 @@ class RenderPlanStrategyKind(Enum):
     BASELINE_RESET = auto()
     RESIZE_REPAINT = auto()
     UNSAFE_VIEWPORT = auto()
+    VIEWPORT_NAVIGATION = auto()
     NO_CHANGE = auto()
     APPEND = auto()
     PROTECTED_APPEND = auto()
@@ -158,6 +159,7 @@ DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
     RenderPlanStrategyKind.FIRST_RENDER,
     RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
     RenderPlanStrategyKind.BASELINE_RESET,
+    RenderPlanStrategyKind.VIEWPORT_NAVIGATION,
     RenderPlanStrategyKind.RESIZE_REPAINT,
     RenderPlanStrategyKind.UNSAFE_VIEWPORT,
     RenderPlanStrategyKind.NO_CHANGE,
@@ -207,6 +209,8 @@ class RenderPlanRuntime:
     clear_scrollback_policy: ClearScrollbackPolicy
     baseline_reset: RenderBaselineReset | None
     unsafe_viewport_reason: str | None
+    viewport_navigation_requested: bool
+    manual_viewport_active: bool
     diagnostics: Callable[..., RenderDiagnostics]
     repaint_diagnostics: Callable[..., RenderDiagnostics]
     managed_viewport_repaint_diagnostics: Callable[..., RenderDiagnostics]
@@ -339,6 +343,46 @@ class UnsafeViewportStrategy:
             operation_class="recovery_repaint",
             repaint_kind="recovery",
             repaint_reason=runtime.unsafe_viewport_reason,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ViewportNavigationStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.VIEWPORT_NAVIGATION
+    name: ClassVar[str] = "viewport_navigation"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        if runtime.unsafe_viewport_reason is not None:
+            return False
+        if runtime.viewport_navigation_requested:
+            return True
+        if not runtime.manual_viewport_active:
+            return False
+        return (
+            context.viewport_top != runtime.previous_viewport_top
+            or context.width_changed
+            or context.height_changed
+            or len(context.current_lines) != len(context.previous_lines)
+            or (context.first_changed is not None and context.first_changed < context.viewport_top)
+            or (
+                context.last_changed is not None
+                and context.last_changed >= context.viewport_top + context.size.rows
+            )
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.managed_viewport_repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            repaint_reason="viewport_navigation",
+            operation_class="viewport_navigation",
+            repaint_kind="interaction",
+            viewport_top=context.viewport_top,
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
 
@@ -684,6 +728,7 @@ DEFAULT_STRATEGIES: dict[RenderPlanStrategyKind, RenderPlanStrategy] = {
     RenderPlanStrategyKind.BASELINE_RESET: BaselineResetStrategy(),
     RenderPlanStrategyKind.RESIZE_REPAINT: ResizeRepaintStrategy(),
     RenderPlanStrategyKind.UNSAFE_VIEWPORT: UnsafeViewportStrategy(),
+    RenderPlanStrategyKind.VIEWPORT_NAVIGATION: ViewportNavigationStrategy(),
     RenderPlanStrategyKind.NO_CHANGE: NoChangeStrategy(),
     RenderPlanStrategyKind.APPEND: AppendStrategy(),
     RenderPlanStrategyKind.PROTECTED_APPEND: ProtectedAppendStrategy(),
@@ -703,6 +748,8 @@ class RenderLoop:
     previous_raw_lines: Sequence[str] = ()
     previous_size: TerminalSize | None = None
     previous_viewport_top: int = 0
+    _manual_viewport_top: int | None = None
+    _viewport_navigation_requested: bool = False
     scrollback_viewport_top: int = 0
     hardware_cursor_row: int = 0
     hardware_cursor_column: int = 0
@@ -747,10 +794,28 @@ class RenderLoop:
     def mark_viewport_unsafe(self, reason: str) -> None:
         self._unsafe_viewport_reason = reason
 
+    def scroll_viewport(self, rows: int) -> bool:
+        """Move the displayed logical frame while mouse input owns scrolling."""
+
+        if rows == 0 or self.previous_size is None:
+            return False
+        last_top = _viewport_top(self.previous_rendered_lines, self.previous_size)
+        current = self._manual_viewport_top
+        if current is None:
+            current = self.previous_viewport_top
+        target = max(0, min(last_top, current + rows))
+        if target == current:
+            return False
+        self._manual_viewport_top = None if target == last_top else target
+        self._viewport_navigation_requested = True
+        return True
+
     def reset_baseline(
         self,
         reset: str | RenderBaselineReset = "baseline_reset",
     ) -> None:
+        self._manual_viewport_top = None
+        self._viewport_navigation_requested = False
         self._baseline_reset = (
             RenderBaselineReset(reason=reset) if isinstance(reset, str) else reset
         )
@@ -803,7 +868,12 @@ class RenderLoop:
                 if appended_lines > 0 and first_changed == len(previous_lines) and first_changed > 0
                 else None
             )
-        viewport_top = _viewport_top(current_lines, size)
+        natural_viewport_top = _viewport_top(current_lines, size)
+        viewport_top = (
+            natural_viewport_top
+            if self._manual_viewport_top is None
+            else min(self._manual_viewport_top, natural_viewport_top)
+        )
         differential_viewport_top = _differential_viewport_top(
             previous_viewport_top=self.previous_viewport_top,
             natural_viewport_top=viewport_top,
@@ -949,6 +1019,8 @@ class RenderLoop:
             clear_scrollback_policy=self.clear_scrollback_policy,
             baseline_reset=self._baseline_reset,
             unsafe_viewport_reason=self._unsafe_viewport_reason,
+            viewport_navigation_requested=self._viewport_navigation_requested,
+            manual_viewport_active=self._manual_viewport_top is not None,
             diagnostics=self._diagnostics,
             repaint_diagnostics=self._repaint_diagnostics,
             managed_viewport_repaint_diagnostics=self._managed_viewport_repaint_diagnostics,
@@ -978,8 +1050,9 @@ class RenderLoop:
         append_start: int | None = None,
         scrollback_frontier_rebased: bool = False,
         delete_kitty_image_sequences: tuple[str, ...] = (),
+        viewport_top: int | None = None,
     ) -> RenderDiagnostics:
-        viewport_top = _viewport_top(current_lines, size)
+        viewport_top = _viewport_top(current_lines, size) if viewport_top is None else viewport_top
         return self._diagnostics(
             current_lines=current_lines,
             previous_lines=previous_lines,
@@ -1016,6 +1089,11 @@ class RenderLoop:
         self.previous_raw_lines = diagnostics.raw_logical_lines
         self.previous_size = size
         self.previous_viewport_top = diagnostics.viewport_top
+        self._viewport_navigation_requested = False
+        if self._manual_viewport_top is not None:
+            natural_top = _viewport_top(diagnostics.current_logical_lines, size)
+            if self._manual_viewport_top >= natural_top:
+                self._manual_viewport_top = None
         if diagnostics.clear_scrollback_emitted or diagnostics.scrollback_frontier_rebased:
             self.scrollback_viewport_top = diagnostics.viewport_top
         else:

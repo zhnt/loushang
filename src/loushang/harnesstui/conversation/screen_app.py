@@ -798,10 +798,13 @@ class ScreenConversationApp:
             self._mouse_press_control = None
             self._mouse_press_key = None
             self._mouse_press_position = None
-            self._selection_tip = (
+            next_tip = (
                 min(row, self._transcript_region.visible_height - 1),
                 column,
             )
+            if next_tip == self._selection_tip:
+                return False, None
+            self._selection_tip = next_tip
             return True, None
         if action == "release":
             if (
