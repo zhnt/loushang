@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ._hosted_goal_config import CodingHostedGoalV1
+from ._hosted_goal_config import CodingHostedGoalV1, _finite_positive
 from .adapters._goal_repository import RepositoryProfile
 from .adapters._goal_repository_hosted_task import HostedRepositoryTask
 
@@ -27,6 +27,16 @@ class CodingHostedRepositoryGoalV1(CodingHostedGoalV1):
     reviewer_id: str = ""
     reviewer: Callable[[Mapping], Awaitable[dict]] | None = None
     max_advances: int = 6
+    closeout_reserve_seconds: float = 0.0
+
+    def _validate_deadline(self) -> None:
+        reserve = self.closeout_reserve_seconds
+        if (
+            not _finite_positive(self.deadline_seconds)
+            or type(reserve) not in (int, float)
+            or not 0 <= reserve < self.deadline_seconds
+        ):
+            raise ValueError("invalid repository Goal deadline or closeout reserve")
 
     def __post_init__(self):
         super(CodingHostedRepositoryGoalV1, self).__post_init__()

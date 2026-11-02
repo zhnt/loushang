@@ -115,6 +115,12 @@ failure was closed after responsibility review; its architecture/scope regressio
 passed 35 checks. Earlier broad runs remain partial. Calculator and local
 repository contracts remain effective.
 
+The accepted [hosted Goal budget and observation design](key-designs/hosted-goal-budget-observation.md)
+and [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+address effective model budgets and an optional lightweight progress view.
+The user accepted R1 on 2026-11-02. [Local implementation and validation](key-designs/hosted-goal-budget-observation-implementation.md)
+retain full query/wait and completion validation; no online trial is implied.
+
 ## Direct Architecture Children
 
 | Child scope | Placement | Current | Target / gap |

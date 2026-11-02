@@ -42,7 +42,8 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
         self._require_execution_open()
         c = self._setup.config
         return GoalCapabilityV1(self._goal_binding, c.max_advances, c.max_model_calls,
-                                c.max_output_tokens, c.deadline_seconds, profile=self._setup.profile_id, accepting=self._invocation is None)
+                                c.max_output_tokens, c.deadline_seconds, profile=self._setup.profile_id,
+                                accepting=self._invocation is None, supports_progress=True)
 
     def start_execution(self, request):
         self._require_execution_open()
@@ -96,6 +97,53 @@ class CodingHostedGoalSessionV1(CodingHostedExecutionSessionV1):
 
     async def start_turn(self, text):
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    async def progress_goal(self, execution_id):
+        # No await, business assessment, workspace IO or history replay here.
+        self._require_execution_open()
+        invocation, owner = self._invocation, self._goal
+        if invocation is None:
+            return GoalObservationV1("not_started", "not_started")
+        if invocation.execution_id != execution_id:
+            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        usage = dict(advances=invocation.advances, model_calls=self._setup.allowance.total_calls)
+        if not invocation.initialized:
+            return GoalObservationV1("initializing" if invocation.initializing else
+                                     "unavailable" if invocation.initialization_failed else "not_started",
+                                     invocation.reason, **usage)
+        try:
+            core = owner.controller
+            state = core.query(self._setup.goal_id)
+            if len(core.history.batches) > self._setup.config.max_advances:
+                raise ValueError("unexpected Goal batch count")
+            batches, unresolved = [], core.fenced
+            for batch in core.history.batches:
+                observed = None
+                if batch.run_receipt is not None and not batch.not_submitted:
+                    run = owner._work.get_run(batch.run_receipt)
+                    if run.operation_id != batch.operation_id or run.session_id != core.header.session_id:
+                        raise ValueError("Goal/Work identity mismatch")
+                    observed = observe_work_run(owner._work, run, progress=True)
+                    if self._setup.repository is not None:
+                        observed = _repository_observation(observed)
+                    unresolved |= (run.status == "orphaned" or observed.cancellation is None or
+                                   observed.cancellation.status not in {"not_requested", "settled"})
+                elif not batch.not_submitted:
+                    unresolved = True
+                batches.append(GoalBatchObservationV1(
+                    batch.id, batch.operation_id, observed.work if observed else None,
+                    observed.recording if observed else None, observed.cancellation if observed else None,
+                    observed.errors if observed else (() if batch.not_submitted else ("work_observation_unavailable",)),
+                ))
+            unknown = core.fenced or any(b.errors for b in batches)
+            reason = "advancing" if invocation.reason in {"planning", "advancing"} else invocation.reason
+            return GoalObservationV1(
+                "present", reason, state.id, state.status, state.revision, state.epoch,
+                core.history.sequence, "unknown" if unknown else "not_checked",
+                unresolved, batches=tuple(batches), **usage,
+            )
+        except Exception:
+            return GoalObservationV1("unavailable", "goal_observation_unavailable", **usage)
 
     async def snapshot(self):
         snapshot = await super().snapshot()

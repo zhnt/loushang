@@ -84,6 +84,7 @@ draft/proposed and superseded groups only when they contain records.
 | [ARD-008: Preserve Workspace Compatibility Across Upgrades](accepted/ARD-008-workspace-upgrade-compatibility.md) | Accepted | Product startup, Plugin storage and Session recovery | Retain compatible storage owners for existing workspaces; future storage changes preserve ordinary startup and data without user resets. |
 | [ARD-009: Unified Loading Input And Terminal Adapters](accepted/ARD-009-unified-loading-input-and-terminal-adapters.md) | Accepted | Coding, HarnessTUI and TUI | Share loading ownership and adapt transferable native input; native macOS/Windows validation pending. |
 | [ARD-019: Work Facts And Transcript Sharing](accepted/ARD-019-work-facts-and-transcript-sharing.md) | Accepted | HarnessWork, Harness Session/Transcript, Product composition and Goal consumption | HarnessWork supplies default recording and reading mechanisms; Product configures policies and resources. R3.1 semantics accepted 2026-10-29; opt-in full-fact recording/confirmation slice implemented locally; source-binding and migration obligations retained. |
+| [ARD-020: Hosted Goal Budget And Observation](accepted/ARD-020-hosted-goal-budget-and-observation.md) | Accepted | Coding, AppService/AppServer, HarnessWork | Product configures effective budgets; original owners enforce them; optional progress preserves full query/wait and completion validation. |
 
 ### Draft
 

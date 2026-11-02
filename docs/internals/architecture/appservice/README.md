@@ -17,6 +17,12 @@
   route opts into G16 client scopes, without changing default or G14 behavior
 - Owner: Loushang AppService architecture
 
+Accepted amendment: [ARD-020](../decisions/accepted/ARD-020-hosted-goal-budget-and-observation.md)
+and the [Coding budget/observation design](../coding/key-designs/hosted-goal-budget-observation.md)
+add an optional scoped progress view while retaining full query/wait semantics.
+R1 was accepted on 2026-11-02; original scope, owner and revocation checks remain
+authoritative. Local implementation evidence is linked from the Coding design.
+
 ## Accepted Resume Contract
 
 AppService retains attachment, controller, and execution ownership and consumes a narrow Product readiness and durable-input lookup port. It does not own a second preparation queue.

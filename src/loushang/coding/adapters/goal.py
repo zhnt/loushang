@@ -439,6 +439,8 @@ class CodingGoal:
                 if self._profile is not None
                 else LIMITS,
             }
+        if prior is None and self._allowance is not None and self._allowance.hosted_limits is not None:
+            metadata = {**metadata, "hosted_execution_limits": dict(self._allowance.hosted_limits)}
         return self.controller.create(
             goal_id,
             (self._profile.requirements if self._profile is not None else REQUIREMENTS),

@@ -9,11 +9,11 @@ from loushang.appserver.method_work import (
 from loushang.harnesswork.plan_projection import project_work_plan_runs
 
 
-def observe_work_run(runtime, run, *, max_steps=64) -> MethodWorkObservationV1:
+def observe_work_run(runtime, run, *, max_steps=64, progress=False) -> MethodWorkObservationV1:
     errors: list[str] = []
     steps: tuple[WorkStepObservationV1, ...] = ()
     try:
-        plans = project_work_plan_runs(runtime.query(run_id=run.run_id))
+        plans = () if progress else project_work_plan_runs(runtime.query(run_id=run.run_id))
         if len(plans) == 1:
             steps = tuple(WorkStepObservationV1(step.step_id, step.status) for step in plans[0].steps)
         if len(steps) > max_steps:
@@ -31,6 +31,8 @@ def observe_work_run(runtime, run, *, max_steps=64) -> MethodWorkObservationV1:
         contract = record.contract
         if contract is None:
             raise ValueError("missing recording contract")
+        if progress and (record.basis != "acknowledged" or record.run != run):
+            raise ValueError("progress requires this owner's confirmed run")
         recording = WorkRecordingObservationV1(
             contract.version, contract.capture, contract.retention, contract.require_persistence,
             record.run.status, record.basis, record.observed_sequence, record.source_event_id,
@@ -39,6 +41,8 @@ def observe_work_run(runtime, run, *, max_steps=64) -> MethodWorkObservationV1:
         errors.append("work_recording_unavailable")
     cancellation = None
     try:
+        if progress and recording is None:
+            raise ValueError("no local run confirmation; no historical cancellation lookup")
         cancel = runtime.get_cancellation(run.run_id)
         cancellation = WorkCancellationObservationV1(
             cancel.status, cancel.reason_code, cancel.reported_status, cancel.basis,

@@ -207,3 +207,5 @@ reviewer只消费冻结值并产生判定，没有需要Goal接管的外部资�
 不新增PR gate。职责边界的精确清单若受实现影响需按实际依赖更新，不扩大豁免或扫描范围。默认calculator不迁移；首轮repository profile明确是新选项。若需要公开任务包schema、远程评审、任意长期任务、多writer/多Session或reviewer模型预算，重新评议对应合同，不在本切片预建。
 
 本轮交付包括本专项、[三视角评审记录](hosted-repository-goal-review.md)与[实施证据](hosted-repository-goal-implementation.md)。实施者负责源代码核对和未来V1–V7；可信宿主负责任务与评审依据；用户评审本稿的环境、职责与合同。已按用户接受开始实现；离线验证与代码评审另记录，不启动在线试验。
+
+后续接受：[HG-003：有效预算与进度观察](hosted-goal-budget-observation.md)于2026-11-02获用户接受，增量允许repository显式时限/收尾预留及可选progress；本稿R2.1的其余限额、完整query/wait和独立冻结试验的约束保持有效。原120秒试验可行性要求由HG-003的显式T/R可行性要求补充，不代表已授权新的在线试验。

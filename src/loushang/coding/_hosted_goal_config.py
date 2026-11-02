@@ -1,6 +1,7 @@
 """Trusted, bounded calculator Goal configuration; never client-selected code."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,7 +25,10 @@ class CodingHostedGoalV1:
         for value, maximum in ((self.max_advances, 8), (self.max_model_calls, 8), (self.max_output_tokens, 1024)):
             if type(value) is not int or not 1 <= value <= maximum:
                 raise ValueError("invalid hosted Goal budget")
-        if type(self.deadline_seconds) not in (int, float) or not 0 < self.deadline_seconds <= 120:
+        self._validate_deadline()
+
+    def _validate_deadline(self) -> None:
+        if not _finite_positive(self.deadline_seconds) or self.deadline_seconds > 120:
             raise ValueError("invalid hosted Goal deadline")
 
     def validate_roots(self, launch) -> None:
@@ -45,3 +49,10 @@ class HostedGoalSetup:
         self.profile_id = "repository-closeout" if repository is not None else "calculator"
         self.allowance = PlanningCallAllowance(total_limit=config.max_model_calls, max_output_tokens=config.max_output_tokens)
         self.policy = repository.tool_policy(config.workspace) if repository is not None else PlanningToolPolicy(config.workspace)
+
+
+def _finite_positive(value):
+    try:
+        return type(value) in (int, float) and math.isfinite(value) and value > 0
+    except OverflowError:
+        return False

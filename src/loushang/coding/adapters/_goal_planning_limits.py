@@ -6,7 +6,9 @@ the standard AI stream and counts logical invocations within an admitted Work.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
+from types import MappingProxyType
 
 from loushang.agent.model_transport import prepared_request_conformant
 from loushang.ai import CallOptions, RetryOptions, stream
@@ -31,9 +33,39 @@ class PlanningCallAllowance:
         self.calls = 0
         self.failed = False
         self.fenced = False
+        self.hosted_limits = None
+        self._budget_snapshot: Callable[[], dict] | None = None
+        self._checkpoint: Callable[[], None] | None = None
         # Decorating the bound callable itself is unsupported; decorate the
         # closure given to the SDK, preserving its existing conformance seam.
         self.stream = prepared_request_conformant(self._delegate())
+
+    def bind_hosted_budget(self, limits, snapshot, checkpoint):
+        if self.hosted_limits is not None or self.total_calls:
+            raise PlanningCallLimit("hosted budget already bound")
+        self.hosted_limits = MappingProxyType(dict(limits))
+        self._budget_snapshot, self._checkpoint = snapshot, checkpoint
+
+    def model_budget(self):
+        if self.hosted_limits is None:
+            return {}
+        assert self._budget_snapshot is not None
+        return {"hosted_budget": {
+            **self.hosted_limits, **self._budget_snapshot(),
+            "total_calls": self.total_calls,
+            "model_calls_remaining_including_next_call": max(0, self.total_limit - self.total_calls),
+            "sample": "batch_preparation_including_next_call",
+        }}
+
+    def model_limits(self, profile):
+        if self.hosted_limits is None:
+            return profile
+        result = dict(profile)
+        for key in ("repair_calls", "planning_calls"):
+            result[key] = min(result[key], self.total_limit)
+        result["provider_attempts"] = 1
+        result["work_intents"] = min(result["work_intents"], self.hosted_limits["max_advances"])
+        return result
 
     def enter(self, operation_id: str, phase: str) -> None:
         if (
@@ -58,6 +90,8 @@ class PlanningCallAllowance:
 
     def _delegate(self):
         async def bounded_stream(model, context, options=None):
+            if self._checkpoint is not None:
+                self._checkpoint()
             if self.fenced or self.phase is None or self.failed:
                 self.failed = True
                 raise PlanningCallLimit("model call outside an admitted phase")
