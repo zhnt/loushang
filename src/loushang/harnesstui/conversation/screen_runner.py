@@ -275,6 +275,18 @@ async def run_conversation_screen(
                 ),
             )
         )
+        set_scroll_handler = getattr(router, "set_transcript_scroll_handler", None)
+        if callable(set_scroll_handler):
+
+            def scroll_transcript(rows: int) -> bool:
+                if not runtime.render_loop.scroll_viewport(rows):
+                    return False
+                clear_selection = getattr(app, "clear_transcript_selection", None)
+                if callable(clear_selection):
+                    clear_selection()
+                return True
+
+            set_scroll_handler(scroll_transcript)
 
         async def settle_aborting_task(
             *, resume_pending: bool = True

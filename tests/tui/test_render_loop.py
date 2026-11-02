@@ -145,6 +145,55 @@ def _render_segment(
     )
 
 
+def test_mouse_viewport_navigation_keeps_history_visible_until_returning_to_tail() -> None:
+    root = StaticRoot(tuple(f"line {index}" for index in range(12)))
+    terminal = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root),
+        terminal=terminal,
+    )
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 7
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(7, 12))
+    native_scrollback = tuple(terminal.screen.scrollback_lines)
+
+    assert runtime.render_loop.scroll_viewport(-3)
+    step = runtime.render_now()
+    assert step.diagnostics.viewport_top == 4
+    assert step.diagnostics.operation_class == "viewport_navigation"
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 9))
+    assert tuple(terminal.screen.scrollback_lines) == native_scrollback
+
+    root.lines += ("line 12", "line 13")
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 4
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 9))
+    assert tuple(terminal.screen.scrollback_lines) == native_scrollback
+
+    assert runtime.render_loop.scroll_viewport(100)
+    runtime.render_now()
+    assert runtime.render_loop.previous_viewport_top == 9
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(9, 14))
+    assert tuple(terminal.screen.scrollback_lines) == (*native_scrollback, "line 7", "line 8")
+    assert not runtime.render_loop.scroll_viewport(1)
+
+
+def test_manual_viewport_survives_terminal_resize() -> None:
+    root = StaticRoot(tuple(f"line {index}" for index in range(12)))
+    terminal = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    runtime = TuiRuntime(render_loop=RenderLoop(root), terminal=terminal)
+    runtime.render_now()
+    assert runtime.render_loop.scroll_viewport(-3)
+    runtime.render_now()
+
+    terminal.resize(TerminalSize(columns=20, rows=4))
+    step = runtime.render_now()
+
+    assert step.diagnostics.operation_class == "viewport_navigation"
+    assert step.diagnostics.viewport_top == 4
+    assert tuple(terminal.screen.visible_lines) == tuple(f"line {index}" for index in range(4, 8))
+
+
 def test_segmented_render_skips_11748_committed_rows_on_bottom_frame_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -581,6 +630,7 @@ def test_default_render_strategy_order_matches_design() -> None:
         RenderPlanStrategyKind.FIRST_RENDER,
         RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
         RenderPlanStrategyKind.BASELINE_RESET,
+        RenderPlanStrategyKind.VIEWPORT_NAVIGATION,
         RenderPlanStrategyKind.RESIZE_REPAINT,
         RenderPlanStrategyKind.UNSAFE_VIEWPORT,
         RenderPlanStrategyKind.NO_CHANGE,
