@@ -108,5 +108,8 @@ class RepositoryTask:
         return {
             "acceptance": self.config["requirements"],
             "allowed_files": self.allowed,
-            "files": {name: (self.root / name).read_text() for name in self.readable},
+            "files": self.read_files(self.readable, None),
         }
+
+    def read_files(self, names, snapshot):
+        return {name: (self.root / name).read_text() for name in names}

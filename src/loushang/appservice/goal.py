@@ -74,7 +74,7 @@ class ScopedGoalClientV1:
             raise GoalServiceError("unavailable")
         # No await between authority/owner validation and native admission.
         with original._scope.resume_subject_scope(control, submission_id=submission_id):
-            record = original._registry.submit(binding, "calculator", submission_id)
+            record = original._registry.submit(binding, capability.profile, submission_id)
         return GoalSubmissionV1(
             GoalHandleV1(instance, capability.goal_binding, record.state.execution_id), record,
         )

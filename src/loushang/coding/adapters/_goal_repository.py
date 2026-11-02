@@ -1146,9 +1146,7 @@ class RepositoryReport:
                 for target in self.targets
                 for name in self.policy.task.config["inspect_files"][target]
             }
-            report["files"] = {
-                name: (self.policy.root / name).read_text() for name in sorted(names)
-            }
+            report["files"] = self.policy.task.read_files(sorted(names), report["after"])
         publish_report(
             self.policy.blobs,
             context,

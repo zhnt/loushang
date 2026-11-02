@@ -132,6 +132,8 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         # COD-KD-HG-001: original registry/guard drives one bounded Goal.
         Path("src/loushang/coding/hosted_goal.py"),
         Path("src/loushang/coding/_hosted_goal_work.py"),
+        # COD-KD-HG-002: fixed repository command selection in that same guard.
+        Path("src/loushang/coding/_hosted_repository_work.py"),
         Path("src/loushang/apphost/managed/bootstrap.py"),
         Path("src/loushang/apphost/managed/mux_creation.py"),
         Path("src/loushang/apphost/managed/mux_management.py"),
