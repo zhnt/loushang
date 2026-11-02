@@ -61,6 +61,7 @@ from loushang.appservice.ports import (
     HostedSessionResolutionFailureV1,
 )
 
+from ._hosted_method_config import CodingHostedMethodV1
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSessionBindingV1,
@@ -123,11 +124,17 @@ class CodingForegroundHostedApplicationRequestV1:
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
     admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
     execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
+    method: CodingHostedMethodV1 | None = field(default=None, repr=False, kw_only=True)
     session_owner: CodingHostedSessionOwnerV1 | None = field(default=None, repr=False)
     managed_selection: bool = False
     managed_mux: ManagedMuxServiceBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        if self.method is not None and (type(self.method) is not CodingHostedMethodV1
+                or self.execution is None or self.execution.select_work_port is None):
+            raise ValueError("hosted Method requires its explicit execution capability")
+        if self.method is None and self.execution is not None and self.execution.select_work_port is not None:
+            raise ValueError("Work capability requires a fixed hosted Method")
         _require_managed_selection(self.managed_selection, self.sessions, self.profile_id, self.admitted_scopes)
         if self.managed_selection and self.session_owner is not self.sessions:
             raise ValueError("managed Session catalog must retain its shutdown owner")
@@ -394,6 +401,10 @@ class CodingHostedProfileFactoryV1:
         if type(key) is not SessionBindingKeyV1:
             raise RuntimeError("coding_hosted_profile_invalid")
         _validate_hosted_binding(binding, key)
+        from .hosted_session import CodingRealHostedSessionV1
+
+        if type(binding) is CodingRealHostedSessionV1 and binding.execution_claimed:
+            raise RuntimeError("Coding Session already has an execution owner")
         return _HostedProfileLease(
             self._profile_id,
             cast(CodingHostedSessionBindingV1, binding),
@@ -471,7 +482,7 @@ class _LeasedCodingHostedBinding:
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
 
-    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution", "_managed_selection")
+    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution", "_managed_selection", "_method", "_method_used")
 
     def __init__(
         self,
@@ -482,6 +493,7 @@ class CodingAppHostHostedSessionResolverV1:
         operation_id_factory: Callable[[], str],
         admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None,
         execution: bool = False,
+        method: CodingHostedMethodV1 | None = None,
         managed_selection: bool = False,
     ) -> None:
         if type(runtime) is not AppHostRuntimeV1:
@@ -495,6 +507,10 @@ class CodingAppHostHostedSessionResolverV1:
             raise TypeError("invalid Coding execution activation")
         if managed_selection and execution:
             raise ValueError("managed selection execution adapter is not admitted")
+        if method is not None and (type(method) is not CodingHostedMethodV1 or not execution):
+            raise ValueError("invalid hosted Method resolver configuration")
+        self._method = method
+        self._method_used = False
         self._execution = execution
         self._runtime = runtime
         self._sessions = sessions
@@ -511,11 +527,26 @@ class CodingAppHostHostedSessionResolverV1:
             request.product_id, request.scope, request.scope_fingerprint,
         ) not in self._scopes:
             raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
-        lease = (
-            await self._attach_create(request)
-            if request.session_id is None
-            else await self._attach_resume(request)
-        )
+        if self._method is not None:
+            if request.session_id is not None or self._method_used:
+                raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
+            self._method_used = True
+        try:
+            lease = (
+                await self._attach_create(request)
+                if request.session_id is None
+                else await self._attach_resume(request)
+            )
+        except BaseException:
+            self._method_used = False
+            raise
+        from .hosted_session import CodingRealHostedSessionV1
+
+        existing = lease.profile_binding
+        if type(existing) is CodingRealHostedSessionV1 and existing.execution_claimed:
+            # Detach only this rejected lease; never close the original owner.
+            await lease.close()
+            raise ValueError("Coding Session already has an execution owner")
         wrapper: _LeasedCodingHostedBinding | None = None
         try:
             binding = lease.profile_binding
@@ -538,6 +569,12 @@ class CodingAppHostHostedSessionResolverV1:
             )
             if not _identity_matches_open(request, wrapper.identity):
                 raise ValueError("Coding hosted binding identity mismatch")
+            if self._method is not None:
+                from .hosted_method import CodingHostedMethodSessionV1
+
+                if type(binding) is not CodingRealHostedSessionV1:
+                    raise TypeError("hosted Method requires a fresh Coding Session")
+                return CodingHostedMethodSessionV1(binding, self._method, owner=wrapper)
             if self._execution:
                 from .hosted_execution import create_leased_coding_execution_session
 
@@ -548,6 +585,7 @@ class CodingAppHostHostedSessionResolverV1:
                 await wrapper.close()
             else:
                 await _close_rejected_lease(self._runtime, lease)
+            self._method_used = False
             raise
 
     async def _attach_create(
@@ -634,6 +672,7 @@ async def create_coding_foreground_hosted_application(
             operation_id_factory=request.operation_id_factory,
             admitted_scopes=request.admitted_scopes,
             execution=request.execution is not None,
+            method=request.method,
             managed_selection=request.managed_selection,
         )
         return create_hosted_application_runtime(

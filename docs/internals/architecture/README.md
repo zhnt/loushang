@@ -48,6 +48,12 @@ For a design question:
 
 ## Truth Planes
 
+Cross-scope #824 first slice: [hosted Method execution and Work queries](coding/key-designs/hosted-method-work.md).
+Loushang architecture coordinates the AppHost, AppService, Coding, Method and
+HarnessWork boundaries; Coding owns the integration key design. The user accepted
+R2 and authorized this application-local slice on 2026-11-01 after three-view
+review. Existing ordinary, remote and resume contracts remain unchanged.
+
 | Plane | Role | Normal location |
 | --- | --- | --- |
 | Facts | Objective repository state produced by source, tests, or generators | `generated/`, source, tests |

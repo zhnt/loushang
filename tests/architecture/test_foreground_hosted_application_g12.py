@@ -197,7 +197,9 @@ def test_g12_new_owners_remain_independently_reviewable() -> None:
         APPHOST_APPLICATION: 550 + 16,
         # PLC9B Product Session ownership closes the injected factory (+7).
         # Keep this exact owner under its own review gate.
-        CODING_APPLICATION: 800 + 84 + 7,
+        # COD-KD-HMW-001: fixed Method selection and exclusive execution
+        # claim add 39 lines; retain this exact complete owner in the check.
+        CODING_APPLICATION: 800 + 84 + 7 + 39,
     }
     for path, limit in limits.items():
         lines = len(_read(path).splitlines())

@@ -81,6 +81,11 @@ mandatory UI dependencies.
 
 ## Target
 
+Accepted #824 first slice: [hosted Method execution and Work queries](key-designs/hosted-method-work.md).
+The user accepted R2 after three-view review on 2026-11-01. The implementation
+connects one authorized application-local SDK entry to the original AppHost
+Session and HarnessWork execution; see the [delivery evidence](../../plans/2026-11-01-hosted-method-work.md).
+
 Coding remains a thin but real Product, not an empty facade. It retains domain
 policy, Product resources and final composition while shared mechanisms move
 behind stable owner contracts.
