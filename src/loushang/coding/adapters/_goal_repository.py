@@ -426,6 +426,12 @@ class RepositoryDomain:
         )
 
     def _current_inputs(self, basis):
+        if (
+            self.allowance is not None
+            and self.allowance.hosted_limits is not None
+            and canonical(plain(basis.goal.metadata.get("hosted_execution_limits"))) != canonical(dict(self.allowance.hosted_limits))
+        ):
+            raise GoalError("hosted execution limits changed")
         if self.delegation is not None:
             self.delegation._available()
         if (
@@ -532,7 +538,7 @@ class RepositoryDomain:
                         "review",
                     ],
                 ],
-                "instruction": "Work routes describe phases, not proposal action names. Use only model_actions in next_action and remaining_route. Inspect only if needed and affordable; implementation receives the full allowed source. After one implement Work, the host selects full verification and independent review.",
+                "instruction": "Work routes describe phases, not proposal action names. Use only model_actions in next_action and remaining_route. Phase slots also require sufficient total remaining Work/command budget; listed routes are not execution grants. Inspect only if needed and affordable; implementation receives the full allowed source. After one implement Work, the host selects full verification and independent review.",
             }
         return material
 
@@ -1002,6 +1008,7 @@ class RepositoryDomain:
                             "proposal": proposal.data(),
                             "material": self.task.material(),
                             "evidence": evidence,
+                            **(self.allowance.model_budget() if self.allowance is not None else {}),
                         }
                     ),
                     self.root,

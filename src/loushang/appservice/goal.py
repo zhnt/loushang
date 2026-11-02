@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loushang.appserver.execution.model import (
     ExecutionInterruptDispositionV1,
@@ -34,6 +34,13 @@ class HostedGoalPortV1(HostedExecutionPortV1, Protocol):
     async def query_goal(self, execution_id: str) -> GoalObservationV1: ...
 
 
+@runtime_checkable
+class HostedGoalProgressPortV1(Protocol):
+    """Optional extension of the same Product port, never a replacement owner."""
+
+    async def progress_goal(self, execution_id: str) -> GoalObservationV1: ...
+
+
 class ScopedGoalClientV1:
     """Borrow the original scope/registry; a handle is observation, not authority."""
 
@@ -59,6 +66,8 @@ class ScopedGoalClientV1:
         capability = port.goal_capability
         if type(capability) is not GoalCapabilityV1:
             raise TypeError("invalid Goal capability")
+        if capability.supports_progress and not isinstance(port, HostedGoalProgressPortV1):
+            raise TypeError("Goal progress capability requires its Product extension")
         original._check(control, session)
         return session, binding, port, capability
 
@@ -119,6 +128,21 @@ class ScopedGoalClientV1:
             record, ExecutionInterruptDispositionV1.ALREADY_TERMINAL
             if record.state.status.terminal else ExecutionInterruptDispositionV1.REQUESTED,
         )
+
+    async def progress(self, control: SessionSnapshotRequestV1, handle: GoalHandleV1) -> GoalQueryV1:
+        """Observe recorded progress without revalidating business completion."""
+        _, _, port, _ = await self._target(control, handle)
+        if not port.goal_capability.supports_progress:
+            raise GoalServiceError("unsupported")
+        if not isinstance(port, HostedGoalProgressPortV1):
+            raise TypeError("invalid Goal progress port")
+        observation = await port.progress_goal(handle.execution_id)
+        _, _, current, record = await self._target(control, handle)
+        if current is not port:
+            raise GoalServiceError("binding_changed")
+        if type(observation) is not GoalObservationV1 or observation.validity not in {"not_checked", "unknown"}:
+            raise TypeError("invalid Goal progress observation")
+        return GoalQueryV1(handle, record, observation)
 
     async def wait(self, control: SessionSnapshotRequestV1, handle: GoalHandleV1) -> GoalQueryV1:
         _, binding, _, record = await self._target(control, handle)

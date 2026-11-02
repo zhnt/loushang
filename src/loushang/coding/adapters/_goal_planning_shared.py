@@ -254,6 +254,17 @@ class BatchPlanningPolicy:
     def _planning(self, basis, snapshot, evidence, routes, rejections):
         operation_id = f"goal-op-{uuid4().hex}"
         batches = [b for b in self.history().batches if b.goal_id == basis.goal.id]
+        budget = self.allowance.model_budget() if self.allowance is not None else {}
+        remaining = self._planning_remaining(basis, batches)
+        if budget:
+            hosted = budget["hosted_budget"]
+            remaining["model_calls_remaining_including_next_call"] = hosted["model_calls_remaining_including_next_call"]
+            # The original Invocation already charged this command before
+            # preparation; this planning Work is included in both quantities.
+            remaining["work_intents_including_this_planning"] = min(
+                remaining["work_intents_including_this_planning"],
+                max(0, hosted["max_advances"] - hosted["advances_including_current_command"] + 1),
+            )
         content = canonical(
             {
                 "version": 1,
@@ -266,8 +277,9 @@ class BatchPlanningPolicy:
                 "evidence": evidence,
                 "routes": routes,
                 "rejections": rejections,
-                "limits": self.limits,
-                "remaining": self._planning_remaining(basis, batches),
+                "limits": self.allowance.model_limits(self.limits) if self.allowance is not None else self.limits,
+                "remaining": remaining,
+                **budget,
             }
         ).encode()
         input_ref = put(self.blobs, content, f"{operation_id}/planning-input.json")

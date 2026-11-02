@@ -20,12 +20,51 @@ class GoalInvocation:
         self.reason = "not_started"
         self.pause_attempted = False
         self.deadline = None
+        self.model_deadline = None
+        self.model_stage = setup.repository is not None
+        self._timer = None
+        self._stop_reason = None
+
+    def _bind_budget(self):
+        setup = self.setup
+        if setup.repository is not None:
+            config = setup.config
+            setup.allowance.bind_hosted_budget(
+                dict(version=1, profile=setup.profile_id, deadline_seconds=config.deadline_seconds,
+                     closeout_reserve_seconds=config.closeout_reserve_seconds,
+                     max_model_calls=config.max_model_calls, max_output_tokens=config.max_output_tokens,
+                     max_advances=config.max_advances, provider_attempts=1),
+                self.budget_snapshot, self.checkpoint,
+            )
 
     def checkpoint(self):
-        if self.deadline is not None and time.monotonic() >= self.deadline:
-            raise TimeoutError
         if self.cancelled or self.cancel_requested():
             raise asyncio.CancelledError
+        reason = self._deadline_reason()
+        if reason is not None:
+            self._stop_reason = self._stop_reason or reason
+            self.reason = self._stop_reason
+            raise TimeoutError(reason)
+
+    def _deadline_reason(self):
+        now = time.monotonic()
+        if self.deadline is not None and now >= self.deadline:
+            return "goal_deadline_exceeded"
+        if self.model_stage and self.model_deadline is not None and now >= self.model_deadline:
+            return "goal_model_stage_deadline_exceeded"
+        return None
+
+    def budget_snapshot(self):
+        now = time.monotonic()
+        return dict(advances_including_current_command=self.advances,
+                    model_seconds_remaining=max(0, int(self.model_deadline - now)),
+                    business_seconds_remaining=max(0, int(self.deadline - now)))
+
+    def begin_closeout(self):
+        self.checkpoint()
+        self.model_stage = False
+        if self._timer is not None:
+            self._timer.reschedule(asyncio.get_running_loop().time() + max(0, self.deadline - time.monotonic()))
 
     def _recording_available(self):
         try:
@@ -91,24 +130,31 @@ class GoalInvocation:
 
     async def run(self, control):
         self.deadline = time.monotonic() + self.setup.config.deadline_seconds
-        self.task = asyncio.create_task(self._drive(), name="hosted-goal-drive")
+        self.model_deadline = self.deadline - getattr(self.setup.config, "closeout_reserve_seconds", 0)
         try:
+            self._bind_budget()
             # Deadline bounds business, never the retained settlement task.
-            async with asyncio.timeout(self.setup.config.deadline_seconds):
+            end = self.model_deadline if self.model_stage else self.deadline
+            async with asyncio.timeout(max(0, end - time.monotonic())) as timer:
+                self._timer = timer
+                self.task = asyncio.create_task(self._drive(), name="hosted-goal-drive")
                 return await asyncio.shield(self.task)
         except TimeoutError:
             self.cancelled = True
-            self.reason = "goal_deadline_exceeded"
+            self._stop_reason = self._stop_reason or self._deadline_reason() or "goal_deadline_exceeded"
+            self.reason = self._stop_reason
             self.task.cancel()
             return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, self.reason)
         except asyncio.CancelledError:
             self.cancelled = True
-            self.reason = "goal_interrupted"
+            self.reason = self._stop_reason or "goal_interrupted"
             self.task.cancel()
             raise
         except Exception:
-            self.reason = "goal_unavailable"
+            self.reason = self._stop_reason or "goal_unavailable"
             return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, self.reason)
+        finally:
+            self._timer = None
 
     async def settle(self):
         if self.task is not None:

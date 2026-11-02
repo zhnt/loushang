@@ -21,6 +21,7 @@ class GoalCapabilityV1:
     deadline_seconds: float
     profile: str = "calculator"
     accepting: bool = True
+    supports_progress: bool = False
 
 
 @dataclass(frozen=True, slots=True)

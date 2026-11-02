@@ -71,6 +71,13 @@ async def drive_repository(invocation):
         invocation.advances += 1
         result = await getattr(owner, name)(goal_id, **fields)
         invocation.checkpoint()
+        if name == "advance":
+            batches = owner.controller.history.batches
+            last = batches[-1] if batches else None
+            if last is not None and last.source.get("phase") == "repair" and last.run_receipt:
+                run = owner._work.get_run(last.run_receipt)
+                if run.status == "completed":
+                    invocation.begin_closeout()
         return result
 
     while invocation.advances < setup.config.max_advances:
