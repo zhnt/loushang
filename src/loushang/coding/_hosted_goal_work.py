@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 
@@ -18,8 +19,11 @@ class GoalInvocation:
         self.advances = 0
         self.reason = "not_started"
         self.pause_attempted = False
+        self.deadline = None
 
     def checkpoint(self):
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise TimeoutError
         if self.cancelled or self.cancel_requested():
             raise asyncio.CancelledError
 
@@ -43,13 +47,20 @@ class GoalInvocation:
         self.initializing = True
         self.reason = "initializing"
         try:
+            if self.setup.repository is not None:
+                task = self.setup.repository.task
+                task.read_files(task.allowed, task.config["workspace_start"])
+                self.checkpoint()
             await self.owner._initialize_borrowed(self.session, self.setup.allowance, self.setup.policy)
             self.checkpoint()
-            self.owner.create("calculator", command_id=f"{self.execution_id}:create")
+            self.owner.create(self.setup.goal_id, command_id=f"{self.execution_id}:create")
             self.initialized = True
         finally:
             self.initializing = False
             self.initialization_failed = not self.initialized
+        if self.setup.repository is not None:
+            from ._hosted_repository_work import drive_repository
+            return await drive_repository(self)
         for index in range(self.setup.config.max_advances):
             self.checkpoint()
             if not self._recording_available():
@@ -79,6 +90,7 @@ class GoalInvocation:
         return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, self.reason)
 
     async def run(self, control):
+        self.deadline = time.monotonic() + self.setup.config.deadline_seconds
         self.task = asyncio.create_task(self._drive(), name="hosted-goal-drive")
         try:
             # Deadline bounds business, never the retained settlement task.
@@ -123,10 +135,10 @@ class GoalInvocation:
             self.pause_attempted = True
             core = self.owner.controller
             if not core.fenced:
-                state = core.query("calculator")
+                state = core.query(self.setup.goal_id)
                 if state.status == "active":
                     try:
-                        core.control("calculator", "pause", command_id=f"{self.execution_id}:stop",
+                        core.control(self.setup.goal_id, "pause", command_id=f"{self.execution_id}:stop",
                                      revision=state.revision, epoch=state.epoch, reason=self.reason)
                     except Exception:
                         # Preserve original fenced/unknown state. Do not invent

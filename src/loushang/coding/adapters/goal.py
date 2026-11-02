@@ -293,7 +293,8 @@ class CodingGoal:
         await session.prepare_execution(start_extensions=True)
         (self.data_root / "sessions").mkdir(mode=0o700, parents=True, exist_ok=True)
         await self._initialize_session(
-            policy_id=PLANNING_POLICY_ID, create=True, planning_tool_policy=tool_policy,
+            policy_id=self._profile.policy_id if self._profile is not None else PLANNING_POLICY_ID,
+            create=True, planning_tool_policy=tool_policy,
         )
 
     async def _initialize_session(

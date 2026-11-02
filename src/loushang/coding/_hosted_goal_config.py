@@ -38,7 +38,10 @@ class CodingHostedGoalV1:
 
 
 class HostedGoalSetup:
-    def __init__(self, config: CodingHostedGoalV1) -> None:
+    def __init__(self, config: CodingHostedGoalV1, *, repository=None) -> None:
         self.config = config
+        self.repository = repository
+        self.goal_id = "repository" if repository is not None else "calculator"
+        self.profile_id = "repository-closeout" if repository is not None else "calculator"
         self.allowance = PlanningCallAllowance(total_limit=config.max_model_calls, max_output_tokens=config.max_output_tokens)
-        self.policy = PlanningToolPolicy(config.workspace)
+        self.policy = repository.tool_policy(config.workspace) if repository is not None else PlanningToolPolicy(config.workspace)

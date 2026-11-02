@@ -9,6 +9,9 @@ from loushang.apphost.application import HostedApplicationRuntimeV1
 
 from ._hosted_goal_config import CodingHostedGoalV1 as CodingHostedGoalV1
 from ._hosted_goal_config import HostedGoalSetup
+from ._hosted_repository_config import (
+    CodingHostedRepositoryGoalV1 as CodingHostedRepositoryGoalV1,
+)
 from .hosted_application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     create_coding_foreground_hosted_application,
@@ -29,13 +32,17 @@ async def create_coding_goal_application(
         raise TypeError("explicit launch and calculator Goal required")
     goal.validate_roots(launch)
     setup = HostedGoalSetup(goal)
+    return await _create_goal_application(launch, setup, model)
+
+
+async def _create_goal_application(launch, setup, model):
     request = _coding_foreground_request(
         application_id=launch.application_id, catalog=CodingHostedSessionCatalogV1(launch.scopes),
         generation=token_hex(16), model=model, stream_fn=setup.allowance.stream, tools=None,
         session_discovery=False, owned_transcripts=False, profile_id=CODING_HOSTED_APPLICATION_PROFILE_ID,
         session_tool_policy=setup.policy, session_active_tools=["read", "edit", "write"],
         session_allowed_tools=["read", "edit", "write", "bash"],
-        session_system_prompt=("Pursue the finite calculator Goal. Planning turns return only the requested JSON; "
+        session_system_prompt=setup.repository.system_prompt if setup.repository is not None else ("Pursue the finite calculator Goal. Planning turns return only the requested JSON; "
                                "Method steps may use file tools and change only calculator.py. "
                                "Do not change requirements, tests, Method or permissions. "
                                "Only independent verification establishes completion."),
@@ -50,3 +57,14 @@ async def create_coding_goal_application(
         await app.close()
         raise
     return app
+
+
+async def create_coding_repository_goal_application(
+    launch: CodingHostedLaunchV1, goal: CodingHostedRepositoryGoalV1, *,
+    model: Model | ModelSelection | None = None,
+) -> HostedApplicationRuntimeV1:
+    """Run one trusted frozen task on the original hosted Session; no implicit review."""
+    if type(launch) is not CodingHostedLaunchV1 or type(goal) is not CodingHostedRepositoryGoalV1:
+        raise TypeError("explicit launch and repository Goal required")
+    setup = HostedGoalSetup(goal, repository=goal.prepare(launch))
+    return await _create_goal_application(launch, setup, model)

@@ -102,6 +102,19 @@ owns the implemented Capability Planner/Binder/Runtime/Projector substrate;
 composition and one Session graph. Arch remains independently mountable when
 LSP is disabled.
 
+## Hosted Repository Goal Slice
+
+The [hosted repository Goal design](key-designs/hosted-repository-goal.md) specifies
+reusing the existing bounded repository task, Method, verification and trusted
+review through the application-local hosted Goal entry. Its R2.1
+[three-view technical review](key-designs/hosted-repository-goal-review.md)
+closed its findings; the user accepted R2.1 on 2026-11-02. The local slice is implemented and
+[verified offline](key-designs/hosted-repository-goal-implementation.md): 35 new
+checks and 126 compatibility checks passed. The pre-existing G16 line-budget
+failure was closed after responsibility review; its architecture/scope regression
+passed 35 checks. Earlier broad runs remain partial. Calculator and local
+repository contracts remain effective.
+
 ## Direct Architecture Children
 
 | Child scope | Placement | Current | Target / gap |
