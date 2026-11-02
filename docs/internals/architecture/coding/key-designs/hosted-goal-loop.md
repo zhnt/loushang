@@ -1,9 +1,9 @@
 # COD-KD-HG-001：托管 Goal 最小业务闭环
 
-- Authority: proposed；Design status: draft — R2；Implementation status: not-started。
+- Authority: normative — accepted target；Design status: accepted — R2；Implementation status: implemented。
 - Owner: Coding；协同 AppService/AppHost/HarnessWork。#824 第二切片。
 - 方法：本地 archmethod master `0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`，干净；采用 key-design/review 方法。
-- 本轮授权：用户要求完成交付收尾、专项设计及三视角评审、实现纵向闭环。以下为待技术评审设计，不伪称用户已逐条评审。
+- 本轮授权：用户要求完成交付收尾、专项设计及三视角评审、实现纵向闭环。用户于 2026-11-02 明确回复“接受R2”，随后要求推进第3项；本轮落实已接受方案。
 
 ## 1. 问题、事实与范围
 
@@ -88,4 +88,4 @@ flowchart LR
 | H5中断/清理 | 当前Work取消后无下一批；cleanup失败保留依赖，retry不增加模型调用；真正close释放图 |
 | H6兼容 | 原CodingGoal自有Session路径、Method切片与普通hosted执行聚焦回归 |
 
-三视角：职责与复用；运行与失败；数据/权限/兼容。评审只依据本文和源码，不用合理猜测填合同。技术阻断关闭后提交用户评审。会话既有要求“系统环境图等重要工作件需要我评审”，#824也保留这一条件；本次完成1/2/3授权不伪造对尚未展示新方案的逐条接受。用户接受本方案后实施第3项；此前继续独立完成第1项交付。
+三视角：职责与复用；运行与失败；数据/权限/兼容。R2技术阻断均已关闭，用户于2026-11-02接受R2并授权实施第3项。实施完成后进行三视角代码复核，不重复请求同一设计的接受。

@@ -409,3 +409,17 @@ Goal/Work/Transcript/Blob 重建规划轨迹，不把导出文件当作事实权
 离线模型，不需要 API key，也不产生模型费用；默认创建新临时目录。
 预期输出 execution=succeeded、work=completed。只覆盖应用内 SDK 与内存 Work，
 不提供进程恢复或远程协议；详见[交付记录](../../docs/internals/plans/2026-11-01-hosted-method-work.md)。
+
+## 30：托管 Goal 最小业务闭环
+
+运行 `python examples/coding/30_hosted_goal.py`，通过真实 AppHost / AppService 与
+同一个 canonical Session 执行 calculator 的逐批规划、固定 Method 修复和独立验证。
+示例使用确定性的离线 provider，无网络、API key 或模型费用；默认创建新临时目录。
+预期输出 `execution=succeeded`、Goal `status=completed`、`validity=current`，
+并列出原 Work 身份和独立记录确认。这个试验验证托管集成，不重复证明模型规划能力。
+
+入口为 `create_coding_goal_application(launch, CodingHostedGoalV1(...), model=...)`，
+经 `scope.goal_client.start/query/wait/interrupt/retry_settlement` 控制。固定最多8次
+推进、8次逻辑模型调用、每次1024输出tokens、provider单次尝试，业务期限120秒；
+清理可能继续等待，不保证120秒内释放资源。应用关闭前仍可换scope查询；没有远程
+协议或重开推进。`result.json`只是展示结果，不能用于恢复执行。

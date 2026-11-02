@@ -127,6 +127,9 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             # Reviewed Method capability values and Product execution adapter.
             or consumer == Path("src/loushang/coding/hosted_method.py")
             or consumer == Path("src/loushang/coding/_hosted_method_config.py")
+            # COD-KD-HG-001: Goal values and shared safe Work projection.
+            or consumer == Path("src/loushang/coding/hosted_goal.py")
+            or consumer == Path("src/loushang/coding/_hosted_work_observation.py")
             # Retained native execution and original subject borrow, no binder.
             or consumer == Path("src/loushang/coding/_hosted_execution_work.py")
             or consumer == Path("src/loushang/coding/cli/hosted.py")

@@ -32,11 +32,13 @@ from loushang.harness.approval import (
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
 from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeFactoryPort,
 )
+from loushang.harness.policy import PolicyEvaluator, PolicyEvaluatorChain
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
@@ -383,6 +385,10 @@ class CodingRealHostedSessionFactoryV1:
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
         tools: list[ToolDefinition] | None = None,
+        session_tool_policy: PolicyEvaluator | None = None,
+        session_active_tools: list[str] | None = None,
+        session_allowed_tools: list[str] | None = None,
+        session_system_prompt: str | None = None,
         output_capture_factory: ExecCaptureFactory | None = None,
         package_product_runtime_factory_for_session: (
             CodingHostedProductRuntimeFactoryForSession | None
@@ -392,6 +398,10 @@ class CodingRealHostedSessionFactoryV1:
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._session_tool_policy = session_tool_policy
+        self._session_active_tools = session_active_tools
+        self._session_allowed_tools = session_allowed_tools
+        self._session_system_prompt = session_system_prompt
         self._output_capture_factory = output_capture_factory
         self._package_product_runtime_factory_for_session = (
             package_product_runtime_factory_for_session
@@ -485,7 +495,13 @@ class CodingRealHostedSessionFactoryV1:
                 services=services,
                 tools=self._tools,
                 approval_resolver=approval,
-                tool_policy_evaluator=policy.policy_engine,
+                tool_policy_evaluator=(PolicyEvaluatorChain(
+                    tuple(p for p in (self._session_tool_policy, policy.policy_engine) if p is not None),
+                    strategy="most_restrictive",
+                ) if self._session_tool_policy is not None else policy.policy_engine),
+                active_tool_names=self._session_active_tools,
+                allowed_tool_names=self._session_allowed_tools if self._session_allowed_tools is not None else ToolSelection.ALL,
+                system_prompt=self._session_system_prompt,
                 output_capture_factory=self._output_capture_factory,
                 package_product_runtime_factory=runtime_factory,
             )

@@ -33,6 +33,7 @@ from loushang.appservice.discovery_ports import (
 from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.machine_resources import prepare_private_directory_chain
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
@@ -226,6 +227,10 @@ def _coding_foreground_request(
     tools: list[ToolDefinition] | None, session_discovery: bool, owned_transcripts: bool,
     profile_id: str, resume_history: bool = False, managed_selection: bool = False,
     managed_mux: ManagedMuxServiceBindingV1 | None = None,
+    session_tool_policy: PolicyEvaluator | None = None,
+    session_active_tools: list[str] | None = None,
+    session_allowed_tools: list[str] | None = None,
+    session_system_prompt: str | None = None,
     output_capture_factory: ExecCaptureFactory | None = None,
     package_product_runtime_factory_for_session: CodingHostedProductRuntimeFactoryForSession | None = None,
 ) -> CodingForegroundHostedApplicationRequestV1:
@@ -278,6 +283,10 @@ def _coding_foreground_request(
             model=model,
             stream_fn=stream_fn,
             tools=tools,
+            session_tool_policy=session_tool_policy,
+            session_active_tools=session_active_tools,
+            session_allowed_tools=session_allowed_tools,
+            session_system_prompt=session_system_prompt,
             output_capture_factory=output_capture_factory,
             package_product_runtime_factory_for_session=(
                 package_product_runtime_factory_for_session
