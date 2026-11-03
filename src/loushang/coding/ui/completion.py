@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+from dataclasses import replace
 from pathlib import Path
 
 from loushang.harnesstui.completion.host import (
@@ -9,6 +11,8 @@ from loushang.harnesstui.completion.host import (
 )
 from loushang.tui import (
     CombinedCompletionProvider,
+    CompletionItem,
+    CompletionProvider,
     SlashCommandCompletionProvider,
 )
 
@@ -30,7 +34,16 @@ def coding_completion_host(session: object) -> PreparedCatalogCompletionHost:
         session,
         profile=_CODING_COMPLETION_PROFILE,
     )
-    return with_plugin_management_completion(host, session=session)
+    host = with_plugin_management_completion(host, session=session)
+    original = host.command_provider_source
+
+    async def goal_commands():
+        value = original()
+        provider = await value if inspect.isawaitable(value) else value
+        return CompletionProvider(tuple(provider.items) + (CompletionItem(
+            value="/goal", label="/goal", description="Create and operate a development Goal in this Session"),))
+
+    return replace(host, command_provider_source=goal_commands)
 
 
 _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(

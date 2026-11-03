@@ -110,6 +110,16 @@ def build_coding_ui_controller(
         intent: object,
     ) -> HostActionResult | None:
         text = getattr(intent, "text", None)
+        from loushang.coding.ui.goal import execute_goal_command, is_goal_command
+
+        if isinstance(text, str) and is_goal_command(text):
+            if getattr(intent, "images", None):
+                return HostActionResult(error_message="/goal does not accept image attachments.")
+            bound = current_session()
+            result = await execute_goal_command(bound, text)
+            if current_session() is not bound:
+                return HostActionResult(error_message="Goal result belongs to the previous Session.")
+            return result
         if isinstance(text, str) and (
             text == "/plugins" or text.startswith("/plugins ")
         ):
@@ -294,14 +304,19 @@ def build_coding_ui_controller(
             invocation_name=invocation_name,
         )
 
-    def abort_command() -> None:
+    async def abort_command() -> None:
         current = current_session()
-        command_execution = getattr(current, "command_execution", None)
-        abort = getattr(command_execution, "abort", None)
-        if not callable(abort):
-            abort = getattr(current, "abort_bash", None)
-        if callable(abort):
-            abort()
+        goal = getattr(current, "_embedded_goal_commands", None)
+        try:
+            if goal is not None and goal.running:
+                await goal.execute("cancel")
+        finally:
+            command_execution = getattr(current, "command_execution", None)
+            abort = getattr(command_execution, "abort", None)
+            if not callable(abort):
+                abort = getattr(current, "abort_bash", None)
+            if callable(abort):
+                abort()
 
     return build_standard_conversation_ui_controller(
         get_operations=get_operations,

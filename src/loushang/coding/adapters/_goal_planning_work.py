@@ -107,9 +107,10 @@ class PlanningToolPolicy:
 class ScopedSessionWork:
     """Bind the original Session overlay and retain it until its turn settles."""
 
-    def __init__(self, delegate, *, session, allowance, policy, phase, execution=None):
+    def __init__(self, delegate, *, session, allowance, policy, phase, execution=None, step_aliases=None):
         self.delegate, self.session, self.allowance = delegate, session, allowance
         self.policy, self.phase = policy, phase
+        self.step_aliases = dict(step_aliases or {})
         self.execution = execution
 
     async def execute(self, operation, context):
@@ -120,6 +121,7 @@ class ScopedSessionWork:
             raise GoalError("Goal model Work requires a Session execution binding")
         self.allowance.enter(operation.operation_id, self.phase)
         step = context.step_id if self.phase == "repair" else None
+        step = self.step_aliases.get(step, step)
         self.policy.step = step
         tools = (
             ["read"]

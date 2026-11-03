@@ -18,6 +18,8 @@ from loushang.harnesstui.conversation.host import (
 )
 from loushang.harnesstui.conversation.input import (
     ClipboardImageInputRouterBuilder,
+    ConversationInputHandled,
+    ConversationInputRouter,
     bind_clipboard_image_input_router,
 )
 from loushang.harnesstui.conversation.input_policy import (
@@ -73,8 +75,22 @@ def project_coding_capabilities(
         declared("product_commands", True),  # Standard Coding surface/dispatch is bound by this composition.
     ))
 
+class _CodingInputRouter(ConversationInputRouter):
+    def _submit(self):
+        from .goal import is_goal_command, is_goal_control
+        text = self.app.composer.value.strip()
+        if is_goal_command(text):
+            if self.draft_store.select_for_text(text):
+                self.app.state.set_status("/goal accepts text only; remove attachments first.")
+                return ConversationInputHandled()
+            if self.app.state.running and not is_goal_control(text):
+                self.app.state.set_status("Goal execution command unavailable while running; use /goal status or cancel.")
+                return ConversationInputHandled()
+        return super()._submit()
+
+
 build_screen_input_router = bind_clipboard_image_input_router(
-    policy=CODING_CONVERSATION_INPUT_POLICY,
+    policy=CODING_CONVERSATION_INPUT_POLICY, router_type=_CodingInputRouter,
 )
 
 
@@ -85,7 +101,7 @@ def build_runtime_screen_input_router(
 
     return bind_clipboard_image_input_router(
         policy=CODING_CONVERSATION_INPUT_POLICY,
-        runtime_scope=scope,
+        runtime_scope=scope, router_type=_CodingInputRouter,
     )
 
 
