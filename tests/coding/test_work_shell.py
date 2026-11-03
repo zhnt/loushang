@@ -2801,7 +2801,8 @@ def _goal_offline_model():
     )
 
 
-def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch):
+@pytest.mark.parametrize("close_during_cancel", [False, True])
+def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch, close_during_cancel):
     from loushang.agent.types import AgentToolResult
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
@@ -2834,14 +2835,47 @@ def test_goal_verification_cancel_waits_for_original_command_owner_before_close(
         owner.create("g", command_id="create")
         advancing = asyncio.create_task(owner.advance("g", command_id="advance", revision=1, epoch=1))
         await entered.wait()
-        cancellation = asyncio.create_task(owner.controller.request_cancel("g"))
+        cancel_finally, cancellation_waiting = asyncio.Event(), asyncio.Event()
+        cancellation = None
+        original_cancel = owner._work.cancel
+
+        async def cancel_work(run_id):
+            result = await original_cancel(run_id)
+            if close_during_cancel and asyncio.current_task() is cancellation:
+                # Keep the public cancellation invocation open after physical
+                # settlement, without holding the Work's own cancellation driver.
+                cancellation_waiting.set()
+                await asyncio.Event().wait()
+            return result
+
+        monkeypatch.setattr(owner._work, "cancel", cancel_work)
+
+        async def cancel():
+            try:
+                return await owner.controller.request_cancel("g")
+            finally:
+                cancel_finally.set()
+                if close_during_cancel:
+                    await owner.close()
+
+        cancellation = asyncio.create_task(cancel())
         await aborted.wait()
         assert signals[0].aborted and not cancellation.done()
         assert owner._session.command_execution.is_running
         drained.set()
-        await cancellation
-        with pytest.raises(asyncio.CancelledError):
-            await advancing
+        if close_during_cancel:
+            await asyncio.wait_for(cancellation_waiting.wait(), 10)
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
+            closing = asyncio.create_task(owner.close())
+            await asyncio.wait_for(cancel_finally.wait(), 2)
+            await asyncio.wait_for(closing, 10)
+            result = await asyncio.gather(cancellation, return_exceptions=True)
+            assert isinstance(result[0], asyncio.CancelledError)
+        else:
+            await cancellation
+            with pytest.raises(asyncio.CancelledError):
+                await advancing
         assert not owner._session.command_execution.is_running
         assert owner.controller.query("g").status != "completed"
         for batch in owner.controller.history.batches:

@@ -15,7 +15,10 @@ from loushang.harness.session.execution_admission import (
     SessionExecutionAdmission,
     SessionExecutionUnavailable,
 )
-from loushang.harness.session.execution_scope import SessionExecutionScope
+from loushang.harness.session.execution_scope import (
+    ExecutionObservations,
+    SessionExecutionScope,
+)
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.contracts import (
     GoalAcceptancePolicy,
@@ -225,6 +228,24 @@ class SessionGoalController(GoalController):
     def __init__(self, *, coordinator: SessionGoalCoordinator, **kwargs):
         super().__init__(**kwargs)
         self._session_coordinator = coordinator
+        self._cancellation_observations = ExecutionObservations()
+
+    async def request_cancel(self, goal_id: str) -> tuple[object, ...]:
+        if self._retired or self._quiescing:
+            return await super().request_cancel(goal_id)
+        return await self._cancellation_observations.invoke(
+            lambda: super(SessionGoalController, self).request_cancel(goal_id),
+        )
+
+    async def quiesce(self) -> None:
+        self.begin_close()
+        try:
+            await self._cancellation_observations.quiesce()
+        except BaseException as error:
+            if not isinstance(error, asyncio.CancelledError):
+                self._quiescence_error = error
+            raise
+        await super().quiesce()
 
     async def advance(self, goal_id: str, *, command_id: str, revision: int, epoch: int):
         return await self._session_coordinator.advance(

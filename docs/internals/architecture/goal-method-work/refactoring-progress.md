@@ -10,9 +10,9 @@
 | --- | --- | --- |
 | S0 | 冻结迁移前Goal记录、通用proof、calculator/repository真实规划input/proof/Work及公开符号签名；保存原源码快照，旧reader9例通过 | 随后续受影响切片扩充固定样本和物理并发/回退矩阵，不以当前有限fixture冒称全部历史组合 |
 | S1 | 执行控制首切片：Harness新增ModelCallAllowance与ExecutionDeadline；原Coding限额/托管Invocation委托，原异常与结果映射保留；三视角代码评审及修正完成，专项38 passed/315 deselected | 完整Coding检查4165 passed、21 skipped、62 deselected；Harness首轮6038 passed后发现依赖放置错误，修正后6389 passed、121 skipped；取消/收敛的通用资源组合待S2合同落地继续提炼；尚未远程交付 |
-| S2 | 用户已接受[协同专项R2](session-goal-coordination.md)；现有Goal接入原Session受理、队列隔离、操作配置与原SessionWorkRuntime resolver；切片三视角问题逐项关闭 | 继续普通Session公开接入及完整阶段验收；当前没有把中间切片当整个阶段完成 |
-| S3 | 通用来源核对已提炼到Harness，批次选择/消费与PlanningWork交接已提炼到HarnessWork，三视角无阻断；固定旧proof及12场景差分通过 | 普通Session接入、旧配置分支清理与完整阶段验收仍待完成，不能把当前切片当全阶段完成 |
-| S4a | 无实施 | 本地与application-local AppService共享装配和真实等价/权限验收，清理重复实现 |
+| S2 | 用户已接受[协同专项R2](session-goal-coordination.md)；原Goal及已有Session首profile共用原受理、队列、操作配置、资源scope与原Work resolver；查询/取消调用边界已收敛 | 整体故障证据合并、选择检查与最终评审；不能扩大为任意Session/profile均受支持 |
+| S3 | 来源核对归Harness，批次选择/消费与PlanningWork交接归HarnessWork，领域/Method内容保留；固定旧proof与12场景差分通过；旧全局配置回退删除 | 原repository/委派/托管整体回归和最终源码评审 |
+| S4a | 已验证同profile本地Session绑定与application-local AppService完成/有界暂停的业务等价，三视角无阻断 | 整体检查、权限/故障既有证据合并、最终交付；未激活日常菜单或真实lmux wire |
 | S4b | 分离为后续专项 | 真实lmux Goal wire；不能因本地能力通过就宣称可达 |
 
 总体Goal未完成，S2用户评审前置条件已解除；不计算没有完整权重校准的总体完成百分比。下文S0/S1检查记录为历史切点，不代替S2新增代码的验证。
@@ -90,3 +90,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## S4a两入口业务等价切片
 
 本地Session attach与application-local AppService现对同一固定calculator profile、匹配模型输出/调用限额做原管线对照。正常完成及无效提案后暂停2项通过32.68秒，三视角无阻断，见[等价评审](dual-entry-equivalence-review.md)。实际日常TUI菜单及真实lmux wire未激活；取消/deadline/权限的其他组合沿原专项与最终回归核查，不因两个样例一致泛称全矩阵等价。
+
+## 取消调用与选择检查收尾
+
+公开取消调用现复用原Harness观察调用边界，关闭不join调用方外层Task，保留原Core/Work取消和错误权威。三视角无阻断，两模式回归通过，见[取消调用评审](refactoring-cancellation-call-review.md)。非Coding selector测试移入既有Work runtime测试路由，选择器已通过，未新增门禁。旧e160 reader读取S4新产物的4个Goal、18个Work、6份真实规划proof通过且日志摘要不变；hosted独立Transcript不在该6份proof范围内，原S2 repository来源双向证据继续保留。整体检查与远程交付仍未完成。
