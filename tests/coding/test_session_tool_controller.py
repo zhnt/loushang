@@ -7,6 +7,7 @@ import pytest
 
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import RegistrationOwner
@@ -72,7 +73,7 @@ def _active_runtime_tool_controller() -> tuple[
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=["runtime_tool"],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -99,7 +100,7 @@ def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=["show_session_cwd"],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: ResourceBundle(
@@ -207,7 +208,7 @@ def test_tool_controller_rejects_raw_runtime_tools_when_registry_is_absent(
             agent=agent,
             get_cwd=lambda: "/tmp/project",
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=ToolSelection.ALL,
             initial_active_tool_names=["runtime_tool"],
             base_prompt="Base prompt.",
             get_resource_bundle=lambda: None,
@@ -260,7 +261,7 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
         agent=Agent(initial_state={"tools": []}),
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -329,7 +330,7 @@ def test_tool_controller_registers_selected_runtime_resolver_contribution(
         agent=Agent(initial_state={"tools": []}),
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -360,7 +361,7 @@ def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_beha
         agent=Agent(initial_state={"tools": []}),
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -397,7 +398,7 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=["runtime_tool"],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -488,7 +489,7 @@ def test_live_bind_rebind_failure_does_not_consume_default_first_seen() -> None:
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -534,7 +535,7 @@ def test_live_bind_failure_compensates_its_default_without_losing_newer_intent()
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: None,
@@ -572,9 +573,7 @@ def test_live_bind_failure_compensates_its_default_without_losing_newer_intent()
     assert asyncio.run(lease.dispose()).state == "removed"
 
 
-def test_tool_controller_live_dispose_retries_view_rebind_after_exact_removal() -> (
-    None
-):
+def test_tool_controller_live_dispose_retries_view_rebind_after_exact_removal() -> None:
     controller, registry, agent, original, replacement = (
         _active_runtime_tool_controller()
     )
@@ -618,7 +617,7 @@ def test_tool_controller_runtime_registration_preserves_default_activation(
         agent=agent,
         get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
-        allowed_tool_names=None,
+        allowed_tool_names=ToolSelection.ALL,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
         get_resource_bundle=lambda: ResourceBundle(

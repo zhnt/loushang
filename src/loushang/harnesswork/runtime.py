@@ -3,10 +3,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from loushang.harnesswork.cancellation_projection import (
+    _decode_terminal,
+    project_work_cancellations,
+)
 from loushang.harnesswork.event_log import EventLogBackend, EventLogEntry, EventPosition
 from loushang.harnesswork.ports import (
     WorkDomainCancellation,
@@ -15,12 +19,23 @@ from loushang.harnesswork.ports import (
     WorkExecutionBinding,
     WorkExecutionContext,
 )
+from loushang.harnesswork.recording import (
+    WorkRecording,
+    WorkRecordingContract,
+    _encode_contract,
+    _freeze_contract,
+    _RecordingObserver,
+    _require_version,
+)
 from loushang.harnesswork.types import (
     DeliveryHint,
     WorkCancellationOutcome,
+    WorkCancellationRecord,
+    WorkCancellationStatus,
     WorkEvent,
     WorkEventFact,
     WorkOperation,
+    WorkRecordingPolicy,
     WorkRun,
     WorkRunSpec,
     WorkStepSpec,
@@ -43,6 +58,8 @@ _LIFECYCLE_EVENT_KINDS = frozenset(
         "WorkStepCancelled",
     }
 )
+
+
 class WorkRuntimeError(RuntimeError):
     pass
 
@@ -71,6 +88,10 @@ class WorkCancellationTimeoutError(WorkCancellationFailedError):
     pass
 
 
+class WorkCancellationObservationUnavailable(WorkRuntimeError):
+    """An append failed, so this owner's cancellation view cannot be confirmed."""
+
+
 @dataclass
 class _RunState:
     operation: WorkOperation
@@ -78,10 +99,21 @@ class _RunState:
     run: WorkRun
     executor: WorkDomainExecutor
     cancellation: WorkDomainCancellation | None
+    recording_contract: WorkRecordingContract | None = None
     sequence: int = 0
     task: asyncio.Task[None] | None = None
     cancellation_task: asyncio.Task[WorkCancellationOutcome] | None = None
     cancellation_outcome: WorkCancellationOutcome | None = None
+    cancellation_requested: bool = False
+    cancellation_report: WorkCancellationStatus | None = None
+    # Keep the outcome itself to prevent id reuse and cross-waiter provenance loss.
+    cancellation_sources: dict[int, tuple[WorkCancellationOutcome, str]] = field(
+        default_factory=dict
+    )
+    cancellation_resolution: tuple[WorkCancellationStatus, str] | None = None
+    cancellation_record: WorkCancellationRecord | None = None
+    confirmed_sequence: int = 0
+    confirmed_event_id: str | None = None
     error: BaseException | None = None
     terminal: bool = False
     current_step: WorkStepSpec | None = None
@@ -97,6 +129,11 @@ class _ExecutionContext(WorkExecutionContext):
     @property
     def run_id(self) -> str:
         return self.state.run.run_id
+
+    @property
+    def cancellation_requested(self) -> bool:
+        """Optional observation of the original synchronous cancellation admission."""
+        return self.state.cancellation_requested
 
     @property
     def step_id(self) -> str | None:
@@ -130,6 +167,8 @@ class WorkRuntime:
         cancellation: WorkDomainCancellation | None = None,
         resolver: WorkDomainExecutionResolver | None = None,
         cancellation_timeout: float | None = None,
+        recording_version: int | None = None,
+        recording_policy: WorkRecordingPolicy | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         if (executor is None) == (resolver is None):
@@ -138,6 +177,11 @@ class WorkRuntime:
             raise ValueError("resolver owns the per-operation cancellation capability")
         if cancellation_timeout is not None and cancellation_timeout <= 0:
             raise ValueError("cancellation_timeout must be positive")
+        if recording_version is not None:
+            _require_version(recording_version)
+        elif recording_policy is not None:
+            raise ValueError("recording_policy requires recording_version=1")
+        self._recording_policy = recording_policy or WorkRecordingPolicy()
         self._executor = executor
         self._cancellation = cancellation
         self._resolver = resolver
@@ -147,8 +191,10 @@ class WorkRuntime:
         self._replay_checkpoint = event_log.checkpoint()
         from loushang.harnesswork.run_projection import project_work_runs
 
-        historical_runs = project_work_runs(
-            event_log.query(), mark_incomplete_orphaned=True
+        history = event_log.query()
+        historical_runs = project_work_runs(history, mark_incomplete_orphaned=True)
+        self._recording = (
+            _RecordingObserver(history) if recording_version is not None else None
         )
         self._historical_runs = {run.run_id: run for run in historical_runs}
         self._historical_operation_runs = {
@@ -157,6 +203,7 @@ class WorkRuntime:
         self._states: dict[str, _RunState] = {}
         self._operation_runs: dict[str, str] = {}
         self._event_listeners: list[WorkEventListener] = []
+        self._cancellation_observation_unavailable = False
 
     async def accept(
         self,
@@ -170,6 +217,15 @@ class WorkRuntime:
             )
         resolved_spec = spec or WorkRunSpec()
         _validate_spec(resolved_spec)
+        if self._recording is None and resolved_spec.recording_policy is not None:
+            raise ValueError("recording_policy requires recording_version=1")
+        recording_contract = (
+            _freeze_contract(
+                self._event_log, self._recording_policy, resolved_spec.recording_policy
+            )
+            if self._recording is not None
+            else None
+        )
         binding = self._resolve_execution(operation, resolved_spec)
         run_id = resolved_spec.run_id or f"run-{uuid4().hex}"
         if self._find_run(run_id) is not None:
@@ -192,6 +248,7 @@ class WorkRuntime:
             run=run,
             executor=binding.executor,
             cancellation=binding.cancellation,
+            recording_contract=recording_contract,
         )
         self._append_operation(state)
         self._states[run_id] = state
@@ -221,6 +278,7 @@ class WorkRuntime:
         state = self._state(run_id)
         if state.terminal:
             return state.run
+        state.cancellation_requested = True
         if state.run.status == "accepted":
             self._start(state)
             self._activate_first_step(state)
@@ -236,6 +294,7 @@ class WorkRuntime:
             outcome = await self._await_cancellation_outcome(state)
         else:
             outcome = WorkCancellationOutcome.unsupported()
+            self._observe_outcome(state, outcome, "no_capability")
             state.cancellation_outcome = outcome
 
         task = state.task
@@ -250,6 +309,7 @@ class WorkRuntime:
                     f"run {run_id} did not settle after cancellation"
                 )
                 outcome = WorkCancellationOutcome.failed(timeout_error)
+                self._observe_outcome(state, outcome, "execution_timeout")
                 state.cancellation_outcome = outcome
                 task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -265,6 +325,54 @@ class WorkRuntime:
         if run is None:
             raise UnknownWorkRunError(f"unknown work run: {run_id}")
         return run
+
+    def get_recording(self, run_id: str) -> WorkRecording:
+        """Read append-confirmed or loaded facts, without business revalidation.
+
+        One append exception disables this owner's confirmation view, even when
+        later appends succeed. The existing get_run remains a live observation.
+        The Runtime must exclusively own appends to its backend. ``loaded``
+        means supplied history, not proof of a disk read or a stopped writer.
+        After an uncertain append, stop the writer and reopen the persistent
+        backend before constructing a cold reader; reusing its cache is unsafe.
+        """
+        if self._recording is None:
+            raise ValueError("get_recording requires recording_version=1")
+        record = self._recording.get(run_id)
+        if record is None:
+            raise UnknownWorkRunError(f"unknown work run: {run_id}")
+        return record
+
+    def get_cancellation(self, run_id: str) -> WorkCancellationRecord:
+        """Read committed terminal evidence or an explicitly live snapshot.
+
+        This adds no cancellation authority over historical runs. An append
+        exception invalidates this view, without fencing the existing writer.
+        """
+        if self._cancellation_observation_unavailable:
+            raise WorkCancellationObservationUnavailable(
+                "取消观察暂不可确认。"
+            ) from None
+        state = self._states.get(run_id)
+        if state is not None:
+            if state.cancellation_record is not None:
+                return state.cancellation_record
+            pending = state.cancellation_requested or state.run.status == "cancelling"
+            return WorkCancellationRecord(
+                operation_id=state.run.operation_id,
+                run_id=state.run.run_id,
+                session_id=state.run.session_id,
+                status="pending" if pending else "not_requested",
+                reason_code="in_progress" if pending else "none",
+                reported_status=None,
+                basis="live",
+                observed_sequence=state.confirmed_sequence,
+                source_event_id=state.confirmed_event_id,
+            )
+        records = project_work_cancellations(self._event_log.query(run_id=run_id))
+        if not records:
+            raise UnknownWorkRunError(f"unknown work run: {run_id}")
+        return records[0]
 
     def get_run_for_operation(self, operation_id: str) -> WorkRun | None:
         run_id = self._operation_runs.get(operation_id)
@@ -433,12 +541,24 @@ class WorkRuntime:
             )
         except BaseException as error:
             outcome = WorkCancellationOutcome.failed(error)
+            reason = "domain_exception"
+        else:
+            reason = (
+                "domain_failure"
+                if isinstance(outcome, WorkCancellationOutcome)
+                and outcome.status == "failed"
+                else "domain_reported"
+            )
+            if isinstance(outcome, WorkCancellationOutcome):
+                state.cancellation_report = outcome.status
         if not isinstance(outcome, WorkCancellationOutcome):
+            reason = "invalid_return"
             outcome = WorkCancellationOutcome.failed(
                 WorkCancellationFailedError(
                     "domain cancellation must return WorkCancellationOutcome"
                 )
             )
+        self._observe_outcome(state, outcome, reason)
         state.cancellation_outcome = outcome
         return outcome
 
@@ -448,6 +568,17 @@ class WorkRuntime:
         task = state.cancellation_task
         if task is None:
             outcome = WorkCancellationOutcome.unsupported()
+            self._observe_outcome(
+                state,
+                outcome,
+                (
+                    "no_capability"
+                    if state.cancellation is None
+                    else "cancellation_not_driven"
+                )
+                if state.cancellation_requested
+                else "executor_interrupted",
+            )
         try:
             if task is None:
                 pass
@@ -467,6 +598,7 @@ class WorkRuntime:
                     f"domain cancellation timed out for run {state.run.run_id}"
                 )
             )
+            self._observe_outcome(state, outcome, "domain_timeout")
         state.cancellation_outcome = outcome
         return outcome
 
@@ -483,9 +615,7 @@ class WorkRuntime:
         if self._cancellation_timeout is None:
             await task
             return
-        await asyncio.wait_for(
-            asyncio.shield(task), timeout=self._cancellation_timeout
-        )
+        await asyncio.wait_for(asyncio.shield(task), timeout=self._cancellation_timeout)
 
     def _finish_cancellation_outcome(
         self,
@@ -496,10 +626,19 @@ class WorkRuntime:
     ) -> None:
         if state.terminal:
             return
+        _, reason = state.cancellation_sources[id(outcome)]
+        state.cancellation_resolution = (outcome.status, reason)
         if outcome.status == "failed":
             self._finish_failed(state, _cancellation_error(outcome))
             return
         self._finish_cancelled(state, cancelled or asyncio.CancelledError())
+
+    @staticmethod
+    def _observe_outcome(
+        state: _RunState, outcome: WorkCancellationOutcome, reason: str
+    ) -> None:
+        if not state.terminal:
+            state.cancellation_sources[id(outcome)] = (outcome, reason)
 
     def _start(self, state: _RunState) -> None:
         if state.run.status != "accepted":
@@ -521,13 +660,13 @@ class WorkRuntime:
         if steps and not state.step_active:
             self._start_step(state, steps[0], 0)
 
-    def _start_step(
-        self, state: _RunState, step: WorkStepSpec, index: int
-    ) -> None:
+    def _start_step(self, state: _RunState, step: WorkStepSpec, index: int) -> None:
         if state.step_active:
             if state.current_step == step and state.current_step_index == index:
                 return
-            raise WorkRuntimeError("cannot start a Work step before the prior step ends")
+            raise WorkRuntimeError(
+                "cannot start a Work step before the prior step ends"
+            )
         state.current_step = step
         state.current_step_index = index
         state.step_active = True
@@ -577,10 +716,14 @@ class WorkRuntime:
         failure_payload = {**self._current_scope_payload(state), "error": str(error)}
         terminal_run = replace(state.run, status="failed")
         if state.step_active:
-            self._publish_lifecycle(state, kind="WorkStepFailed", payload=failure_payload)
+            self._publish_lifecycle(
+                state, kind="WorkStepFailed", payload=failure_payload
+            )
             state.step_active = False
         if state.spec.plan_id is not None:
-            self._publish_lifecycle(state, kind="WorkPlanFailed", payload=failure_payload)
+            self._publish_lifecycle(
+                state, kind="WorkPlanFailed", payload=failure_payload
+            )
         state.run = terminal_run
         self._publish_terminal(
             state, kind="WorkRunFailed", payload=state.spec.run_event_payload
@@ -664,13 +807,16 @@ class WorkRuntime:
             kind=kind,
             payload=self._lifecycle_payload(state, payload),
             delivery_hint="immediate",
+            terminal=True,
         )
-        state.terminal = True
         return event
 
     def _append_operation(self, state: _RunState) -> EventPosition:
         operation = state.operation
-        return self._event_log.append(
+        metadata: dict[str, object] = {"cancellation_observation_version": 1}
+        if state.recording_contract is not None:
+            metadata["recording"] = _encode_contract(state.recording_contract)
+        return self._append_entry(
             EventLogEntry(
                 entry_id=f"{state.run.run_id}-operation-0",
                 entry_type="operation",
@@ -683,6 +829,7 @@ class WorkRuntime:
                     "kind": operation.kind,
                     "domain": operation.domain,
                     "payload": dict(operation.payload),
+                    "_harnesswork": metadata,
                 },
                 created_at=self._clock(),
             )
@@ -696,6 +843,7 @@ class WorkRuntime:
         payload: Mapping[str, object],
         delivery_hint: DeliveryHint,
         source_event_ref: str | None = None,
+        terminal: bool = False,
     ) -> WorkEvent:
         state.sequence += 1
         event = WorkEvent(
@@ -711,11 +859,60 @@ class WorkRuntime:
             payload=payload,
             source_event_ref=source_event_ref,
         )
-        self._event_log.append(_event_log_entry(event))
+        entry = _event_log_entry(event)
+        record = None
+        if terminal:
+            resolution = state.cancellation_resolution
+            status, reason = (
+                resolution if resolution is not None else ("not_requested", "none")
+            )
+            if reason in {"executor_interrupted", "cancellation_not_driven"}:
+                status = "unknown"
+            entry = replace(
+                entry,
+                payload={
+                    **entry.payload,
+                    "_harnesswork": {
+                        "cancellation": {
+                            "version": 1,
+                            "status": status,
+                            "reason_code": reason,
+                            "reported_status": state.cancellation_report,
+                        }
+                    },
+                },
+            )
+            record = _decode_terminal(
+                entry, cancellation_started=resolution is not None
+            )
+        self._append_entry(entry)
+        state.confirmed_sequence = event.sequence
+        state.confirmed_event_id = event.event_id
+        if terminal:
+            state.terminal = True
+            state.cancellation_record = record
+            state.cancellation_sources.clear()
         for listener in tuple(self._event_listeners):
             with suppress(Exception):
                 listener(event)
         return event
+
+    def _append_entry(self, entry: EventLogEntry) -> EventPosition:
+        try:
+            position = self._event_log.append(entry)
+        except BaseException:
+            self._cancellation_observation_unavailable = True
+            if self._recording is not None:
+                self._recording.invalidate()
+            raise
+        if self._recording is not None:
+            try:
+                self._recording.observe(entry)
+            except Exception:
+                # Append has already succeeded. A broken derived observer must
+                # not interrupt terminal bookkeeping or permit a second terminal.
+                self._recording.invalidate()
+        return position
 
     def _lifecycle_payload(
         self, state: _RunState, payload: Mapping[str, object]
@@ -803,6 +1000,7 @@ __all__ = [
     "UnknownWorkRunError",
     "WorkCancellationFailedError",
     "WorkCancellationTimeoutError",
+    "WorkCancellationObservationUnavailable",
     "WorkLifecycleOwnershipError",
     "WorkRunTerminalError",
     "WorkRuntime",

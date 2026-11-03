@@ -1,0 +1,1439 @@
+"""Fresh-process operator journey for the Linux Worker native release."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import shutil
+import subprocess
+import sys
+from hashlib import sha256
+from importlib.metadata import version
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+import loushang.coding.package_product_worker_payload as worker_payload_module
+from loushang.ai.types import UserMessage
+from loushang.coding._plugin_lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.cli.package_worker_native import (
+    _read_candidate_status_document,
+)
+from loushang.coding.cli.package_worker_native import (
+    main as worker_native_main,
+)
+from loushang.coding.package_pre_b_snapshot import (
+    cutover_and_bootstrap_coding_package_product,
+)
+from loushang.coding.package_product_runtime import (
+    CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    open_coding_fenced_product_application_owner,
+)
+from loushang.coding.package_product_worker_activation_state_journal import (
+    CodingProductWorkerActivationStateJournal,
+)
+from loushang.coding.package_product_worker_operator_query import (
+    query_coding_product_worker,
+)
+from loushang.coding.package_product_worker_payload import (
+    CodingWorkerPayloadDebtPlanV1,
+    open_coding_product_worker_supervisor_journal,
+    repair_coding_product_worker_unmarked_payload_debt,
+    review_coding_product_worker_unmarked_payload_debt,
+)
+from loushang.coding.session_manager import SessionManager
+from loushang.harness.config.agent import SettingsManager
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PosixLocalWheelProductSessionOwner,
+)
+from loushang.harness.plugin_management.package_gc_target import (
+    resolve_plugin_package_gc_root_target,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+)
+from loushang.harness.session import AgentProductSession
+from loushang.harness.worker.contracts import WorkerLaunchIdentityV1
+
+_ROOT = Path(__file__).resolve().parents[2]
+_BUILDER = _ROOT / "scripts/dev/build_posix_containment_launcher.py"
+_WHEEL_BUILDER = _ROOT / "scripts/dev/build_posix_native_release_wheel.py"
+_AUTHOR_WORKER_SOURCE = _ROOT / "examples/plugins/coding_worker_query/query_worker.c"
+
+
+def test_worker_candidate_status_marks_changed_desired_revision_stale() -> None:
+    class _ChangingSelection:
+        calls = 0
+
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            self.calls += 1
+            return SimpleNamespace(
+                inventory_revision=self.calls,
+                desired_state="installed_enabled",
+            )
+
+    class _ReadOwner:
+        selected_manifests = _ChangingSelection()
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> None:
+            return None
+
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_version="1", executable_digest="a" * 64
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["snapshotStatus"] == "stale_evidence"
+    assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["candidateOptInAlignment"] == "stale_evidence"
+    assert observed["productUse"] == "not_checked"
+
+
+def test_worker_candidate_status_marks_changed_opt_in_decision_stale() -> None:
+    class _StableSelection:
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                inventory_revision=1, desired_state="installed_enabled"
+            )
+
+    class _ReadOwner:
+        selected_manifests = _StableSelection()
+        reads = 0
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> object:
+            self.reads += 1
+            if self.reads == 1:
+                return None
+            return SimpleNamespace(to_dict=lambda: {"generation": 2})
+
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_version="1", executable_digest="a" * 64
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["snapshotStatus"] == "stale_evidence"
+    assert observed["candidateSelection"] == {"stage": "stale_evidence"}
+    assert observed["candidateOptInAlignment"] == "stale_evidence"
+    assert observed["candidateOptInDecision"] == {"generation": 2}
+
+
+def test_worker_candidate_status_marks_old_opt_in_identity_mismatch() -> None:
+    class _StableSelection:
+        def capture_plugin_desired_selection_for(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                inventory_revision=1, desired_state="installed_enabled"
+            )
+
+    class _ReadOwner:
+        selected_manifests = _StableSelection()
+        decision = SimpleNamespace(
+            action="allow",
+            opt_in=SimpleNamespace(
+                plugin_id="reviewworker",
+                contribution_id="query-provider",
+                owner_id="coding",
+                artifact_digest="c" * 64,
+                native_platform="linux-x86_64",
+            ),
+            to_dict=lambda: {"generation": 1},
+        )
+
+        def worker_opt_in_decision(self, _plugin_id: str) -> object:
+            return self.decision
+
+        def selected_worker_candidate_evidence(self, _plugin_id: str) -> object:
+            return SimpleNamespace(
+                candidate=SimpleNamespace(
+                    plugin_id="reviewworker",
+                    plugin_version="2",
+                    contribution_id="query-provider",
+                    owner_id="coding",
+                    executable_digest="a" * 64,
+                ),
+                artifact_digest="b" * 64,
+                native_platform="linux-x86_64",
+            )
+
+    observed = _read_candidate_status_document(_ReadOwner(), "reviewworker")
+    assert observed["candidateSelection"]["stage"] == "observed_in_read"
+    assert observed["candidateOptInAlignment"] == "identity_mismatch"
+    assert observed["productUse"] == "not_checked"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Worker candidate status")
+def test_worker_candidate_status_refuses_unfenced_workspace_without_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    before = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
+    assert (
+        worker_native_main(
+            [
+                "--workspace",
+                str(workspace),
+                "candidate-status",
+                "--plugin-id",
+                "example",
+            ]
+        )
+        == 1
+    )
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "Coding Worker native command refused:" in output.err
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux Product payload custody")
+def test_worker_native_cli_repairs_empty_pre_marker_stage_across_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "private-home"))
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        layout,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    )
+    owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    attempt_id = "12" * 16
+    try:
+        stage = owner.runtime_owner.product_owner.state_root / (
+            f"worker-payload-{attempt_id}"
+        )
+        stage.mkdir(mode=0o700)
+    finally:
+        owner.close()
+    command = (
+        sys.executable,
+        "-m",
+        "loushang.coding.cli.package_worker_native",
+        "--workspace",
+        str(workspace),
+    )
+
+    def run(*args: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            (*command, *args),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            env=os.environ.copy(),
+            check=False,
+        )
+
+    reviewed = run("review-empty-payload-debt", "--attempt-id", attempt_id)
+    assert reviewed.returncode == 0, reviewed.stderr
+    plan_id = json.loads(reviewed.stdout)["emptyPayloadDebtReview"]["planId"]
+    assert isinstance(plan_id, str) and len(plan_id) == 64
+    stale = run(
+        "repair-empty-payload-debt",
+        "--attempt-id",
+        attempt_id,
+        "--plan-id",
+        "0" * 64,
+    )
+    assert stale.returncode == 1
+    assert b"coding_worker_payload_debt_plan_stale" in stale.stderr
+    assert stage.is_dir()
+    repaired = run(
+        "repair-empty-payload-debt",
+        "--attempt-id",
+        attempt_id,
+        "--plan-id",
+        plan_id,
+    )
+    assert repaired.returncode == 0, repaired.stderr
+    assert json.loads(repaired.stdout)["emptyPayloadDebtRepair"] == {
+        "attemptId": attempt_id,
+        "planId": plan_id,
+    }
+    assert not stage.exists()
+    replay = run(
+        "repair-empty-payload-debt",
+        "--attempt-id",
+        attempt_id,
+        "--plan-id",
+        plan_id,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert replay.stdout == repaired.stdout
+    stale_replay = run(
+        "repair-empty-payload-debt",
+        "--attempt-id",
+        attempt_id,
+        "--plan-id",
+        "0" * 64,
+    )
+    assert stale_replay.returncode == 1
+    assert b"coding_worker_payload_debt_plan_stale" in stale_replay.stderr
+
+    unmarked_attempt = "34" * 16
+    unmarked_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        unmarked_stage = (
+            unmarked_owner.runtime_owner.product_owner.state_root
+            / f"worker-payload-{unmarked_attempt}"
+        )
+        unmarked_stage.mkdir(mode=0o700)
+        (unmarked_stage / "bin").mkdir(mode=0o700)
+        (unmarked_stage / "bin" / "worker").write_bytes(b"partial CLI Worker")
+        (unmarked_stage / "bin" / "worker").chmod(0o600)
+    finally:
+        unmarked_owner.close()
+    unmarked_reviewed = run(
+        "review-unmarked-payload-debt", "--attempt-id", unmarked_attempt
+    )
+    assert unmarked_reviewed.returncode == 0, unmarked_reviewed.stderr
+    unmarked_review = json.loads(unmarked_reviewed.stdout)["unmarkedPayloadDebtReview"]
+    assert [item["relativePath"] for item in unmarked_review["members"]] == [
+        "bin",
+        "bin/worker",
+    ]
+    unmarked_id = unmarked_review["reviewId"]
+    stale_unmarked = run(
+        "repair-unmarked-payload-debt",
+        "--attempt-id",
+        unmarked_attempt,
+        "--review-id",
+        "0" * 64,
+    )
+    assert stale_unmarked.returncode == 1
+    assert b"coding_worker_payload_debt_plan_stale" in stale_unmarked.stderr
+    partial_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        partial_product = partial_owner.runtime_owner.product_owner
+        assert isinstance(partial_product, PosixLocalWheelProductSessionOwner)
+        partial_review = review_coding_product_worker_unmarked_payload_debt(
+            partial_product, attempt_id=unmarked_attempt
+        )
+        assert partial_review.fingerprint == unmarked_id
+
+        def interrupt_unmarked_repair(
+            root_fd: int,
+            stage_fd: int,
+            stage_name: str,
+            expected: object,
+            *,
+            allow_partial: bool,
+        ) -> None:
+            assert stage_name == f"worker-payload-{unmarked_attempt}"
+            assert expected == partial_review and allow_partial
+            parent_fd = os.open(
+                "bin",
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=stage_fd,
+            )
+            try:
+                os.unlink("worker", dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+            raise OSError("injected pre-marker cleanup interruption")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                worker_payload_module,
+                "_remove_unmarked_repair_remainder",
+                interrupt_unmarked_repair,
+            )
+            with pytest.raises(OSError, match="pre-marker cleanup interruption"):
+                repair_coding_product_worker_unmarked_payload_debt(
+                    partial_product, expected_review=partial_review
+                )
+    finally:
+        partial_owner.close()
+    assert (unmarked_stage / "bin").is_dir()
+    assert not (unmarked_stage / "bin" / "worker").exists()
+    repaired_unmarked = run(
+        "repair-unmarked-payload-debt",
+        "--attempt-id",
+        unmarked_attempt,
+        "--review-id",
+        unmarked_id,
+    )
+    assert repaired_unmarked.returncode == 0, repaired_unmarked.stderr
+    assert json.loads(repaired_unmarked.stdout)["unmarkedPayloadDebtRepair"] == {
+        "attemptId": unmarked_attempt,
+        "reviewId": unmarked_id,
+    }
+    assert not unmarked_stage.exists()
+    replay_unmarked = run(
+        "repair-unmarked-payload-debt",
+        "--attempt-id",
+        unmarked_attempt,
+        "--review-id",
+        unmarked_id,
+    )
+    assert replay_unmarked.returncode == 0, replay_unmarked.stderr
+    assert replay_unmarked.stdout == repaired_unmarked.stdout
+
+    complete_attempt = "9a" * 16
+    complete_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        product = complete_owner.runtime_owner.product_owner
+        assert isinstance(product, PosixLocalWheelProductSessionOwner)
+        complete_stage = product.state_root / f"worker-payload-{complete_attempt}"
+        complete_stage.mkdir(mode=0o700)
+        body = b"settled CLI payload fixture"
+        stage_fd = os.open(complete_stage, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            worker_payload_module._write_payload(stage_fd, "bin/worker", body)
+            metadata = os.fstat(stage_fd)
+            complete_plan = CodingWorkerPayloadDebtPlanV1(
+                attempt_id=complete_attempt,
+                entrypoint="bin/worker",
+                payload_digest=sha256(body).hexdigest(),
+                payload_size=len(body),
+                receipt_fingerprint="f" * 64,
+                stage_device=metadata.st_dev,
+                stage_inode=metadata.st_ino,
+            )
+            worker_payload_module._write_marker(stage_fd, complete_plan)
+        finally:
+            os.close(stage_fd)
+        journal = open_coding_product_worker_supervisor_journal(product)
+        identity = WorkerLaunchIdentityV1(
+            plugin_id="workerprobe",
+            plugin_revision_digest="a" * 64,
+            contribution_id="query-provider",
+            owner_id="coding.lsp",
+            product_id="coding",
+            scope_id="test-scope",
+            owner_generation=1,
+            declaration_fingerprint="b" * 64,
+            worker_configuration_fingerprint="c" * 64,
+            attempt_id=complete_attempt,
+            supervisor_epoch=1,
+            session_nonce="d" * 64,
+        )
+        claimed = journal.claim(identity, max_attempts=1)
+        failed = journal.transition(
+            complete_attempt,
+            expected_phase="claimed",
+            next_phase="failed",
+            expected_record_revision=claimed.record_revision,
+            expected_supervisor_epoch=1,
+            failure_code="worker_launch_failed",
+        )
+        journal.transition(
+            complete_attempt,
+            expected_phase="failed",
+            next_phase="process_settled",
+            expected_record_revision=failed.record_revision,
+            expected_supervisor_epoch=1,
+            failure_code=failed.failure_code,
+        )
+    finally:
+        complete_owner.close()
+    complete_repair = run(
+        "repair-payload-debt",
+        "--attempt-id",
+        complete_attempt,
+        "--plan-id",
+        complete_plan.fingerprint,
+    )
+    assert complete_repair.returncode == 0, complete_repair.stderr
+    assert json.loads(complete_repair.stdout)["payloadDebtRepair"] == {
+        "attemptId": complete_attempt,
+        "planId": complete_plan.fingerprint,
+    }
+    assert not complete_stage.exists()
+    complete_replay = run(
+        "repair-payload-debt",
+        "--attempt-id",
+        complete_attempt,
+        "--plan-id",
+        complete_plan.fingerprint,
+    )
+    assert complete_replay.returncode == 0, complete_replay.stderr
+    assert complete_replay.stdout == complete_repair.stdout
+    stale_complete_replay = run(
+        "repair-payload-debt",
+        "--attempt-id",
+        complete_attempt,
+        "--plan-id",
+        "0" * 64,
+    )
+    assert stale_complete_replay.returncode == 1
+    assert b"coding_worker_payload_debt_plan_stale" in stale_complete_replay.stderr
+
+
+@pytest.mark.requires_host_runtime
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux native Worker release")
+def test_worker_native_operator_cli_reopens_product_across_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(mode=0o700)
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "private-home"))
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "global-settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    cutover_and_bootstrap_coding_package_product(
+        layout,
+        settings,
+        workspace=workspace,
+        namespace_id="a" * 64,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+    )
+    source = tmp_path / "reviewworker-1-py3-none-manylinux_2_17_x86_64.whl"
+    compiler = shutil.which("cc")
+    assert compiler is not None
+    executable = tmp_path / "contained-query-worker"
+    built_worker = subprocess.run(
+        (
+            compiler,
+            "-static",
+            "-O2",
+            "-s",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-o",
+            str(executable),
+            str(_AUTHOR_WORKER_SOURCE),
+        ),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert built_worker.returncode == 0, built_worker.stderr
+
+    def build_author_wheel(version_number: str) -> Path:
+        result = subprocess.run(
+            (
+                sys.executable,
+                "-m",
+                "loushang.plugin",
+                "build-coding-worker-candidate",
+                str(executable),
+                "--plugin-id",
+                "reviewworker",
+                "--version",
+                version_number,
+                "--contribution-id",
+                "query-provider",
+                "--owner-id",
+                "coding",
+                "--native-platform",
+                "linux-x86_64",
+                "--output-dir",
+                str(tmp_path),
+            ),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        document = json.loads(result.stdout)
+        artifact = Path(document["artifactPath"])
+        assert document["sha256"] == sha256(artifact.read_bytes()).hexdigest()
+        assert document["productAdmission"] == "not_checked"
+        assert document["productUse"] == "not_checked"
+        return artifact
+
+    assert build_author_wheel("1") == source
+    release = tmp_path / "release"
+    built = subprocess.run(
+        (sys.executable, str(_BUILDER), "--output-dir", str(release)),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert built.returncode == 0, built.stderr
+    packaged = subprocess.run(
+        (
+            sys.executable,
+            str(_WHEEL_BUILDER),
+            "--release-dir",
+            str(release),
+            "--wheel-dir",
+            str(tmp_path / "native-wheels"),
+        ),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert packaged.returncode == 0, packaged.stderr
+    native_wheel = Path(packaged.stdout.decode().strip())
+    command = (
+        sys.executable,
+        "-m",
+        "loushang.coding.cli.package_worker_native",
+        "--workspace",
+        str(workspace),
+    )
+
+    def run(*args: str) -> tuple[subprocess.CompletedProcess[bytes], dict[str, object]]:
+        result = subprocess.run(
+            (*command, *args),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=90,
+            env={**os.environ, "PYTHONPATH": str(_ROOT / "src")},
+            check=False,
+        )
+        document = json.loads(result.stdout) if result.stdout else {}
+        return result, document
+
+    linked_dir = tmp_path / "linked-source"
+    linked_dir.mkdir()
+    linked_source = linked_dir / source.name
+    linked_source.symlink_to(source)
+    linked, _ = run(
+        "candidate-capture",
+        "--wheel",
+        str(linked_source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert linked.returncode == 1
+    admitted, admission_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert admitted.returncode == 0, admitted.stderr
+    assert admission_output["candidateCapture"] == "recorded"
+    assert admission_output["productAdmission"] == "not_checked"
+    assert admission_output["productUse"] == "not_checked"
+    candidate_binding = admission_output["workerCandidateBinding"]
+    assert isinstance(candidate_binding, dict)
+    assert (
+        candidate_binding["artifactDigest"] == sha256(source.read_bytes()).hexdigest()
+    )
+    assert candidate_binding["pluginId"] == "reviewworker"
+    refused, _ = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding.other",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert refused.returncode == 1
+    repeated, repeated_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert repeated.returncode == 0, repeated.stderr
+    assert repeated_output["workerCandidateBinding"] == candidate_binding
+
+    reviewed, review_output = run("review", "--wheel", str(native_wheel))
+    assert reviewed.returncode == 0, reviewed.stderr
+    review = review_output["nativeReleaseReview"]
+    assert isinstance(review, dict)
+    review_id = review["reviewId"]
+    assert isinstance(review_id, str) and len(review_id) == 64
+    wrong, _ = run(
+        "approve",
+        "--wheel",
+        str(native_wheel),
+        "--review-id",
+        "0" * 64,
+        "--operation-id",
+        "native-cli-approve-one",
+        "--expected-generation",
+        "0",
+    )
+    assert wrong.returncode == 1
+    assert b"coding_worker_native_command_unavailable" in wrong.stderr
+    status, status_output = run("status")
+    assert status.returncode == 0
+    assert status_output == {"approvalDecision": None}
+    approved, approved_output = run(
+        "approve",
+        "--wheel",
+        str(native_wheel),
+        "--review-id",
+        review_id,
+        "--operation-id",
+        "native-cli-approve-one",
+        "--expected-generation",
+        "0",
+    )
+    assert approved.returncode == 0, approved.stderr
+    approved_decision = approved_output["approvalDecision"]
+    assert isinstance(approved_decision, dict)
+    assert approved_decision["generation"] == 1
+    installed, installed_output = run("install", "--wheel", str(native_wheel))
+    assert installed.returncode == 0, installed.stderr
+    installed_closure = installed_output["nativeClosure"]
+    assert isinstance(installed_closure, dict)
+    installed_revision = installed_closure["nativeProfileCatalogRevision"]
+    assert isinstance(installed_revision, str) and installed_revision.endswith(":g1")
+    before_candidate_status = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
+    candidate_status, candidate_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert candidate_status.returncode == 0, candidate_status.stderr
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before_candidate_status
+    )
+    assert candidate_output["candidateOptInDecision"] is None
+    assert candidate_output["candidateStatusVersion"] == 2
+    assert candidate_output["snapshotStatus"] == "partial_evidence"
+    assert candidate_output["candidateSelection"] == {"stage": "not_selected"}
+    assert candidate_output["candidateOptInAlignment"] == "not_selected"
+    assert candidate_output["productUse"] == "not_checked"
+    assert candidate_output["ordinarySessionRouting"] == "python_sdk_explicit_linux"
+    assert candidate_output["defaultSessionRouting"] == "closed"
+    before_selection, _ = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-before-selection",
+        "--expected-generation",
+        "0",
+    )
+    assert before_selection.returncode == 1
+    assert b"coding_worker_opt_in_selection_unavailable" in before_selection.stderr
+
+    wrong_digest, _ = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        "0" * 64,
+        "--operation-id",
+        "candidate-cli-wrong-digest",
+    )
+    assert wrong_digest.returncode == 1
+    installed, installed_output = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-install",
+    )
+    assert installed.returncode == 0, installed.stderr
+    install_result = installed_output["candidateInstall"]
+    assert isinstance(install_result, dict)
+    assert install_result["pluginId"] == "reviewworker"
+    assert install_result["lifecycle"] == "installed"
+    assert install_result["alreadyInstalled"] is False
+    assert installed_output["productUse"] == "not_checked"
+    inventory_revision = install_result["inventoryRevision"]
+    assert isinstance(inventory_revision, int) and inventory_revision > 0
+    stale_enable, _ = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-stale-enable",
+        "--expected-inventory-revision",
+        "0",
+    )
+    assert stale_enable.returncode == 1
+    enabled, enabled_output = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-enable",
+        "--expected-inventory-revision",
+        str(inventory_revision),
+    )
+    assert enabled.returncode == 0, enabled.stderr
+    operation = enabled_output["candidateManagementOperation"]
+    assert isinstance(operation, dict)
+    assert operation["status"] == "terminal"
+    result = operation["result"]
+    assert isinstance(result, dict) and result["disposition"] == "succeeded"
+    enabled_inventory_revision = enabled_output["inventoryRevision"]
+    assert isinstance(enabled_inventory_revision, int)
+    repeated_enable, repeated_enable_output = run(
+        "candidate-enable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-enable",
+        "--expected-inventory-revision",
+        str(inventory_revision),
+    )
+    assert repeated_enable.returncode == 0, repeated_enable.stderr
+    assert repeated_enable_output == enabled_output
+    repeated_install, repeated_install_output = run(
+        "candidate-install",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--operation-id",
+        "candidate-cli-install",
+    )
+    assert repeated_install.returncode == 0, repeated_install.stderr
+    replayed_install = repeated_install_output["candidateInstall"]
+    assert isinstance(replayed_install, dict)
+    assert replayed_install["alreadyInstalled"] is True
+    assert replayed_install["lifecycle"] == "installed"
+    selected_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        product = selected_owner.runtime_owner.product_owner
+        gate_history = product.state_root / "worker-start-gates.jsonl"
+        snapshot = product.desired_state.snapshot()
+        (selection,) = tuple(
+            item
+            for item in snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
+        )
+        assert selection.selection.desired_state == "installed_enabled"
+        old_revision = selection.selection.package_revision
+        assert old_revision is not None
+    finally:
+        selected_owner.close()
+
+    before_allow, before_allow_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert before_allow.returncode == 0, before_allow.stderr
+    assert before_allow_output["candidateSelection"]["stage"] == "observed_in_read"
+    assert before_allow_output["candidateOptInAlignment"] == "not_allowed"
+
+    allowed, allowed_output = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-allow",
+        "--expected-generation",
+        "0",
+    )
+    assert allowed.returncode == 0, allowed.stderr
+    decision = allowed_output["candidateOptInDecision"]
+    assert allowed_output["ordinarySessionRouting"] == "python_sdk_explicit_linux"
+    assert allowed_output["defaultSessionRouting"] == "closed"
+    assert isinstance(decision, dict)
+    assert decision["action"] == "allow"
+    assert decision["generation"] == 1
+    opt_in = decision["optIn"]
+    assert isinstance(opt_in, dict)
+    assert opt_in["pluginId"] == "reviewworker"
+    assert not gate_history.exists()
+    assert not gate_history.with_name(gate_history.name + ".lock").exists()
+    empty_attempts, empty_attempts_output = run("list-gated-attempts")
+    assert empty_attempts.returncode == 0, empty_attempts.stderr
+    assert empty_attempts_output == {"gatedAttempts": []}
+    assert not gate_history.exists()
+    assert not gate_history.with_name(gate_history.name + ".lock").exists()
+    absent_session, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(tmp_path / "missing-session.jsonl"),
+        "--symbol",
+        "review",
+    )
+    assert absent_session.returncode == 1
+    assert b"coding_worker_query_session_unavailable" in absent_session.stderr
+    transcript_root = tmp_path / "worker-query-transcripts"
+    transcript_root.mkdir()
+    session = asyncio.run(
+        SessionManager.new(
+            session_dir=transcript_root,
+            cwd=str(workspace),
+            session_id="candidate-cli-query",
+        )
+    )
+    asyncio.run(
+        session.append_message(
+            UserMessage(role="user", content="Worker query", timestamp=1.0)
+        )
+    )
+    session_file = session.get_session_file()
+    assert session_file is not None
+    invalid_query, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review;other",
+    )
+    assert invalid_query.returncode == 1
+    assert b"coding_worker_query_symbol_invalid" in invalid_query.stderr
+    queried, query_output = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert queried.returncode == 0, queried.stderr
+    assert query_output == {"workerQuery": {"text": "Review symbol"}}
+    for _ in range(3):
+        repeated_query, repeated_output = run(
+            "query",
+            "--plugin-id",
+            "reviewworker",
+            "--session-file",
+            str(session_file),
+            "--symbol",
+            "review",
+        )
+        assert repeated_query.returncode == 0, repeated_query.stderr
+        assert repeated_output == query_output
+    listed_attempts, listed_attempts_output = run("list-gated-attempts")
+    assert listed_attempts.returncode == 0, listed_attempts.stderr
+    attempts = listed_attempts_output["gatedAttempts"]
+    assert isinstance(attempts, list) and len(attempts) == 4
+    assert len({item["attemptId"] for item in attempts}) == 4
+    assert all(item["phase"] == "bound" for item in attempts)
+    retained = CodingProductWorkerActivationStateJournal(
+        gate_history.with_name("worker-activation-state.jsonl")
+    ).retained_attempts_read_only()
+    assert {item.attempt_id for item in retained} == {
+        item["attemptId"] for item in attempts
+    }
+    assert all(item.phase == "settled" for item in retained)
+    failing_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+
+        async def fail_graph(_session: AgentProductSession) -> None:
+            raise RuntimeError("injected query graph failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(AgentProductSession, "prepare_model_call_runtime", fail_graph)
+            with pytest.raises(RuntimeError, match="injected query graph failure"):
+                asyncio.run(
+                    query_coding_product_worker(
+                        product=failing_owner.runtime_owner.product_owner,
+                        workspace=workspace,
+                        plugin_id="reviewworker",
+                        session_file=session_file,
+                        symbol="review",
+                    )
+                )
+        after_failure = CodingProductWorkerActivationStateJournal(
+            gate_history.with_name("worker-activation-state.jsonl")
+        ).retained_attempts_read_only()
+        assert len(after_failure) == len(retained) + 1
+        assert all(item.phase == "settled" for item in after_failure)
+    finally:
+        failing_owner.close()
+    gate_lock = gate_history.with_name(gate_history.name + ".lock")
+    hidden_lock = gate_lock.with_name(gate_lock.name + ".held")
+    gate_lock.rename(hidden_lock)
+    try:
+        missing_lock, _ = run("list-gated-attempts")
+        assert missing_lock.returncode == 1
+        assert b"coding_worker_start_gate_lock_missing" in missing_lock.stderr
+    finally:
+        hidden_lock.rename(gate_lock)
+    replay, replay_output = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-allow",
+        "--expected-generation",
+        "0",
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert replay_output == allowed_output
+    changed_replay, _ = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-allow",
+        "--expected-generation",
+        "0",
+        "--require-worker",
+    )
+    assert changed_replay.returncode == 1
+    assert b"coding_worker_opt_in_operation_conflict" in changed_replay.stderr
+    stale, _ = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-stale",
+        "--expected-generation",
+        "0",
+    )
+    assert stale.returncode == 1
+    assert b"coding_worker_opt_in_stale" in stale.stderr
+    worker_opt_in_journal = next(tmp_path.rglob("worker-opt-in.jsonl"))
+    journal_before_status = worker_opt_in_journal.read_bytes()
+    before_candidate_status = tuple(
+        sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*"))
+    )
+    status, status_output = run("candidate-status", "--plugin-id", "reviewworker")
+    assert status.returncode == 0, status.stderr
+    assert all(status_output[key] == value for key, value in allowed_output.items())
+    assert status_output["candidateStatusVersion"] == 2
+    assert status_output["snapshotStatus"] == "partial_evidence"
+    assert status_output["candidateSelection"] == {
+        "stage": "observed_in_read",
+        "pluginVersion": "1",
+        "executableDigest": sha256(executable.read_bytes()).hexdigest(),
+    }
+    assert status_output["candidateOptInAlignment"] == "identity_match_in_read"
+    assert status_output["productUse"] == "not_checked"
+    assert worker_opt_in_journal.read_bytes() == journal_before_status
+    assert (
+        tuple(sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")))
+        == before_candidate_status
+    )
+    update_source = build_author_wheel("2")
+    captured_update, update_capture_output = run(
+        "candidate-capture",
+        "--wheel",
+        str(update_source),
+        "--contribution-id",
+        "query-provider",
+        "--owner-id",
+        "coding",
+        "--native-platform",
+        "linux-x86_64",
+    )
+    assert captured_update.returncode == 0, captured_update.stderr
+    update_binding = update_capture_output["workerCandidateBinding"]
+    assert isinstance(update_binding, dict)
+    update_digest = update_binding["artifactDigest"]
+    assert isinstance(update_digest, str)
+    update_args = (
+        "candidate-update",
+        "--plugin-id",
+        "reviewworker",
+        "--from-artifact-digest",
+        str(candidate_binding["artifactDigest"]),
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-update",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    update_while_allowed, _ = run(*update_args)
+    assert update_while_allowed.returncode == 1
+    assert b"coding_worker_candidate_opt_in_revoke_required" in update_while_allowed.stderr
+    revoked_for_update, revoked_for_update_output = run(
+        "candidate-revoke",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-revoke-for-update",
+        "--expected-generation",
+        "1",
+    )
+    assert revoked_for_update.returncode == 0, revoked_for_update.stderr
+    assert revoked_for_update_output["candidateOptInDecision"]["action"] == "revoke"
+    stale_update, _ = run(*update_args[:-1], "0")
+    assert stale_update.returncode == 1
+    assert b"coding_worker_candidate_update_selection_stale" in stale_update.stderr
+    updated, updated_output = run(*update_args)
+    assert updated.returncode == 0, updated.stderr
+    candidate_update = updated_output["candidateUpdate"]
+    assert isinstance(candidate_update, dict)
+    assert candidate_update["fromArtifactDigest"] == candidate_binding["artifactDigest"]
+    assert candidate_update["artifactDigest"] == update_digest
+    assert candidate_update["lifecycle"] == "installed"
+    assert candidate_update["alreadyUpdated"] is False
+    enabled_inventory_revision = candidate_update["inventoryRevision"]
+    assert isinstance(enabled_inventory_revision, int)
+    update_replay, update_replay_output = run(*update_args)
+    assert update_replay.returncode == 0, update_replay.stderr
+    assert update_replay_output["candidateUpdate"]["alreadyUpdated"] is True
+    wrong_update_replay, _ = run(
+        *update_args[:-3], "candidate-cli-update-other", *update_args[-2:]
+    )
+    assert wrong_update_replay.returncode == 1
+    after_update_without_allow, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_update_without_allow.returncode == 1
+    selected_update, selected_update_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert selected_update.returncode == 0, selected_update.stderr
+    assert selected_update_output["candidateSelection"]["pluginVersion"] == "2"
+    allowed_update, allowed_update_output = run(
+        "candidate-allow",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-allow-update",
+        "--expected-generation",
+        "2",
+    )
+    assert allowed_update.returncode == 0, allowed_update.stderr
+    decision = allowed_update_output["candidateOptInDecision"]
+    assert decision["generation"] == 3
+    updated_query, updated_query_output = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert updated_query.returncode == 0, updated_query.stderr
+    assert updated_query_output == query_output
+    updated_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        updated_snapshot = (
+            updated_owner.runtime_owner.product_owner.desired_state.snapshot()
+        )
+        (updated_selection,) = tuple(
+            item
+            for item in updated_snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
+        )
+        new_revision = updated_selection.selection.package_revision
+        assert new_revision is not None
+        assert new_revision.package_content_digest == update_digest
+    finally:
+        updated_owner.close()
+    remove_while_allowed, _ = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-remove-too-early",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    assert remove_while_allowed.returncode == 1
+    assert b"coding_worker_candidate_opt_in_revoke_required" in remove_while_allowed.stderr
+    disabled, disabled_output = run(
+        "candidate-disable",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-disable",
+        "--expected-inventory-revision",
+        str(enabled_inventory_revision),
+    )
+    assert disabled.returncode == 0, disabled.stderr
+    disable_operation = disabled_output["candidateManagementOperation"]
+    assert isinstance(disable_operation, dict)
+    disable_result = disable_operation["result"]
+    assert isinstance(disable_result, dict)
+    assert disable_result["disposition"] == "succeeded"
+    disabled_inventory_revision = disabled_output["inventoryRevision"]
+    assert isinstance(disabled_inventory_revision, int)
+    disabled_status, disabled_status_output = run(
+        "candidate-status", "--plugin-id", "reviewworker"
+    )
+    assert disabled_status.returncode == 0, disabled_status.stderr
+    assert disabled_status_output["candidateSelection"] == {"stage": "not_selected"}
+    assert disabled_status_output["candidateOptInAlignment"] == "not_selected"
+    assert disabled_status_output["candidateOptInDecision"] == decision
+    assert disabled_status_output["productUse"] == "not_checked"
+    after_disable, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_disable.returncode == 1
+    revoked_candidate, revoked_candidate_output = run(
+        "candidate-revoke",
+        "--plugin-id",
+        "reviewworker",
+        "--operation-id",
+        "candidate-cli-revoke",
+        "--expected-generation",
+        "3",
+    )
+    assert revoked_candidate.returncode == 0, revoked_candidate.stderr
+    revoked_decision = revoked_candidate_output["candidateOptInDecision"]
+    assert (
+        revoked_candidate_output["ordinarySessionRouting"]
+        == "python_sdk_explicit_linux"
+    )
+    assert revoked_candidate_output["defaultSessionRouting"] == "closed"
+    assert isinstance(revoked_decision, dict)
+    assert revoked_decision["action"] == "revoke"
+    assert revoked_decision["killSwitchGeneration"] == 2
+    after_revoke, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_revoke.returncode == 1
+    assert b"package_product_root_not_selected" in after_revoke.stderr
+    removed, removed_output = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-remove",
+        "--expected-inventory-revision",
+        str(disabled_inventory_revision),
+    )
+    assert removed.returncode == 0, removed.stderr
+    remove_operation = removed_output["candidateManagementOperation"]
+    assert isinstance(remove_operation, dict)
+    remove_result = remove_operation["result"]
+    assert isinstance(remove_result, dict)
+    assert remove_result["disposition"] == "succeeded"
+    assert removed_output["packageRetirement"] == "not_checked"
+    removed_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        snapshot = removed_owner.runtime_owner.product_owner.desired_state.snapshot()
+        (retired,) = tuple(
+            item
+            for item in snapshot.installations
+            if item.installation_key.plugin_id == "reviewworker"
+        )
+        assert retired.selection.desired_state == "absent"
+    finally:
+        removed_owner.close()
+    removed_replay, removed_replay_output = run(
+        "candidate-remove",
+        "--plugin-id",
+        "reviewworker",
+        "--artifact-digest",
+        update_digest,
+        "--operation-id",
+        "candidate-cli-remove",
+        "--expected-inventory-revision",
+        str(disabled_inventory_revision),
+    )
+    assert removed_replay.returncode == 0, removed_replay.stderr
+    assert removed_replay_output == removed_output
+    retired_owner = open_coding_fenced_product_application_owner(
+        layout,
+        workspace=workspace,
+        runtime_version=version("loushang"),
+        runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        worker_candidates=True,
+    )
+    try:
+        product = retired_owner.runtime_owner.product_owner
+        settlements = PackageStoreSettlementJournal(
+            product.state_root / "root-settlements.jsonl"
+        ).records()
+        committed_sets = PackageCommittedSetJournal(
+            product.state_root / "committed-sets.jsonl"
+        ).records()
+        retired_roots = tuple(
+            product.plugin_store_root
+            / resolve_plugin_package_gc_root_target(
+                revision,
+                bindings=product.gc_bindings.records(),
+                claims=product.gc_bindings.claims(),
+                committed_sets=committed_sets,
+                settlements=settlements,
+            ).settlement.final_name
+            for revision in (old_revision, new_revision)
+        )
+        assert all(root.is_dir() for root in retired_roots)
+    finally:
+        retired_owner.close()
+    gc_command = (
+        sys.executable,
+        "-m",
+        "loushang.coding.cli.package_gc",
+        "--workspace",
+        str(workspace),
+        "--worker-candidates",
+    )
+
+    def run_gc(
+        *args: str,
+    ) -> tuple[subprocess.CompletedProcess[bytes], dict[str, object]]:
+        result = subprocess.run(
+            (*gc_command, *args),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=90,
+            env={**os.environ, "PYTHONPATH": str(_ROOT / "src")},
+            check=False,
+        )
+        return result, json.loads(result.stdout) if result.stdout else {}
+
+    prepared_gc, prepared_gc_output = run_gc("prepare")
+    assert prepared_gc.returncode == 0, prepared_gc.stderr
+    assert prepared_gc_output["disposition"] == "prepared"
+    listed_gc, listed_gc_output = run_gc("list")
+    assert listed_gc.returncode == 0, listed_gc.stderr
+    worker_candidates = tuple(
+        item
+        for item in listed_gc_output["candidates"]
+        if item["pluginId"] == "reviewworker"
+    )
+    assert len(worker_candidates) == 2
+    for index, item in enumerate(worker_candidates, start=1):
+        deleted_gc, deleted_gc_output = run_gc(
+            "delete",
+            "--candidate-id",
+            item["candidateId"],
+            "--attempt-key",
+            f"worker-candidate-cli-gc-{index}",
+        )
+        assert deleted_gc.returncode == 0, deleted_gc.stderr
+        assert deleted_gc_output["disposition"] == "succeeded"
+    assert all(not root.exists() for root in retired_roots)
+    after_remove, _ = run(
+        "query",
+        "--plugin-id",
+        "reviewworker",
+        "--session-file",
+        str(session_file),
+        "--symbol",
+        "review",
+    )
+    assert after_remove.returncode == 1
+    assert b"package_product_root_not_selected" in after_remove.stderr
+    revoked, revoked_output = run(
+        "revoke",
+        "--operation-id",
+        "native-cli-revoke-two",
+        "--expected-generation",
+        "1",
+    )
+    assert revoked.returncode == 0, revoked.stderr
+    revoked_approval = revoked_output["approvalDecision"]
+    assert isinstance(revoked_approval, dict)
+    assert revoked_approval["generation"] == 2
+    refused, _ = run("install", "--wheel", str(native_wheel))
+    assert refused.returncode == 1
+    assert b"coding_worker_native_command_unavailable" in refused.stderr

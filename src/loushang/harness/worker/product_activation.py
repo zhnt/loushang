@@ -21,9 +21,12 @@ from hashlib import sha256
 from types import TracebackType
 from typing import Literal, Protocol, Self, cast
 
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
+
 PRODUCT_WORKER_ACTIVATION_POLICY_VERSION = 1
 PRODUCT_WORKER_ACTIVATION_RECEIPT_VERSION = 1
 PRODUCT_WORKER_ACTIVATION_STATE_VERSION = 2
+PRODUCT_WORKER_RESUME_STATE_VERSION = 3
 WORKER_CLEANUP_SETTLEMENT_VERSION = 1
 WORKER_CLEANUP_DEBT_VERSION = 1
 WORKER_CLEANUP_SETTLEMENT_V2_VERSION = 2
@@ -58,6 +61,10 @@ class _ActivationReason(str, Enum):
     POLICY_REQUIRED_UNAVAILABLE = "policy_required_unavailable"
     PUBLISHED = "published"
     PUBLICATION_FENCED = "publication_fenced"
+    RESUME_PARENT_UNKNOWN = "resume_parent_unknown"
+    RESUME_PARENT_SEALED = "resume_parent_sealed"
+    RESUME_CONTEXT_MISMATCH = "resume_context_mismatch"
+    RESUME_START_UNKNOWN = "resume_start_unknown"
     RESTART_EXHAUSTED = "restart_exhausted"
     RESTART_READY = "restart_ready"
     RETIRED = "retired"
@@ -429,6 +436,7 @@ class WorkerCleanupSettlementV1:
     domain_retired: bool
     tree_settled: bool
     settlement_version: int = WORKER_CLEANUP_SETTLEMENT_VERSION
+    no_effect: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
@@ -446,9 +454,10 @@ class WorkerCleanupSettlementV1:
             raise ValueError("Cleanup settlement requires all exact-attempt exit edges")
         if self.settlement_version != WORKER_CLEANUP_SETTLEMENT_VERSION:
             raise ValueError("Unsupported Worker cleanup settlement version")
+        _require_bool(self.no_effect, name="no-effect settlement")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "attemptId": self.attempt_id,
             "bootIdentity": self.boot_identity,
             "domainRetired": self.domain_retired,
@@ -459,12 +468,19 @@ class WorkerCleanupSettlementV1:
             "settlementVersion": self.settlement_version,
             "treeSettled": self.tree_settled,
         }
+        if self.no_effect:
+            document["noEffect"] = True
+        return document
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
         document = _strict_document(
             value,
-            _SETTLEMENT_FIELDS,
+            (
+                _SETTLEMENT_NO_EFFECT_FIELDS
+                if isinstance(value, dict) and "noEffect" in value
+                else _SETTLEMENT_FIELDS
+            ),
             name="cleanup settlement",
         )
         return cls(
@@ -477,6 +493,9 @@ class WorkerCleanupSettlementV1:
             domain_retired=_bool(document, "domainRetired"),
             tree_settled=_bool(document, "treeSettled"),
             settlement_version=_integer(document, "settlementVersion"),
+            no_effect=(
+                _bool(document, "noEffect") if "noEffect" in document else False
+            ),
         )
 
 
@@ -494,6 +513,7 @@ class WorkerCleanupSettlementV2:
     tree_settled: bool
     native_containment_settled: bool
     settlement_version: int = WORKER_CLEANUP_SETTLEMENT_V2_VERSION
+    no_effect: bool = False
 
     def __post_init__(self) -> None:
         _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
@@ -517,9 +537,10 @@ class WorkerCleanupSettlementV2:
             raise ValueError("Cleanup V2 settlement requires all exact-attempt edges")
         if self.settlement_version != WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
             raise ValueError("Unsupported Worker cleanup V2 settlement version")
+        _require_bool(self.no_effect, name="no-effect settlement")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "attemptId": self.attempt_id,
             "bootIdentity": self.boot_identity,
             "domainRetired": self.domain_retired,
@@ -531,12 +552,19 @@ class WorkerCleanupSettlementV2:
             "settlementVersion": self.settlement_version,
             "treeSettled": self.tree_settled,
         }
+        if self.no_effect:
+            document["noEffect"] = True
+        return document
 
     @classmethod
     def from_dict(cls, value: object) -> Self:
         document = _strict_document(
             value,
-            _SETTLEMENT_V2_FIELDS,
+            (
+                _SETTLEMENT_V2_NO_EFFECT_FIELDS
+                if isinstance(value, dict) and "noEffect" in value
+                else _SETTLEMENT_V2_FIELDS
+            ),
             name="cleanup V2 settlement",
         )
         return cls(
@@ -553,6 +581,9 @@ class WorkerCleanupSettlementV2:
                 "nativeContainmentSettled",
             ),
             settlement_version=_integer(document, "settlementVersion"),
+            no_effect=(
+                _bool(document, "noEffect") if "noEffect" in document else False
+            ),
         )
 
 
@@ -1290,6 +1321,7 @@ class ProductWorkerActivationCoordinator:
         host_identity: str,
         boot_identity: str,
         cleanup_contract_version: int = WORKER_CLEANUP_SETTLEMENT_VERSION,
+        parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> _AttemptAdmissionLease:
         """Acquire the freshness lease spanning registration and first effect."""
 
@@ -1303,6 +1335,7 @@ class ProductWorkerActivationCoordinator:
             host_identity=host_identity,
             boot_identity=boot_identity,
             cleanup_contract_version=cleanup_contract_version,
+            parent_context=parent_context,
         )
 
     def publish(
@@ -1449,6 +1482,8 @@ class ProductWorkerActivationCoordinator:
             WorkerCleanupSettlementV2,
         }:
             raise TypeError("Worker cleanup settlement must be typed")
+        if settlement.no_effect:
+            raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
         key = _AttemptKey(
             settlement.receipt_fingerprint,
             settlement.attempt_id,
@@ -1752,6 +1787,122 @@ class ProductWorkerActivationCoordinator:
                 self._commit_locked(completed_state)
                 return self.active_attempts()
 
+    @staticmethod
+    def resume_parent_scope_digest(*, product_id: str, product_scope_id: str) -> str:
+        _require_identifier(product_id, name="Product id")
+        _require_opaque(product_scope_id, name="Product scope id")
+        return _resume_scope_digest(product_id, product_scope_id)
+
+    @property
+    def resume_parent_contract_digest(self) -> str:
+        return self.resume_parent_contract_digest_value()
+
+    @staticmethod
+    def resume_parent_contract_digest_value() -> str:
+        """Return the protocol digest without opening a Worker state owner."""
+
+        return sha256(b"harness.worker-activation.resume-context/v1").hexdigest()
+
+    def enroll_resume_parent(
+        self,
+        context: ResumeEffectParentContextV1,
+        *,
+        policy: ProductWorkerActivationPolicyV1,
+        expected_state_revision: int,
+    ) -> None:
+        self._require_not_reentrant()
+        _require_positive_integer(
+            expected_state_revision, name="expected state revision"
+        )
+        if type(policy) is not ProductWorkerActivationPolicyV1:
+            raise TypeError("Worker Resume requires native typed policy")
+        _require_resume_context(context, product_scope_id=policy.product_scope_id)
+        if context.product_id != policy.product_id:
+            raise _ActivationRejected(_ActivationReason.RESUME_CONTEXT_MISMATCH)
+        with self._lock:
+            self._reload_locked()
+            if self._state["stateRevision"] != expected_state_revision:
+                raise _ActivationRejected(_ActivationReason.STALE_AUTHORITY)
+            new_state = _json_clone(self._state)
+            if new_state["stateVersion"] != PRODUCT_WORKER_RESUME_STATE_VERSION:
+                new_state["stateVersion"] = PRODUCT_WORKER_RESUME_STATE_VERSION
+                new_state["resumeParents"] = {}
+                new_state["resumeUseParents"] = {}
+            parents = _mapping(new_state, "resumeParents")
+            identity = (
+                context.product_id,
+                context.session_id,
+                context.attempt_id,
+                context.owner_id,
+            )
+            for node in parents.values():
+                assert isinstance(node, dict)
+                existing = ResumeEffectParentContextV1.from_dict(node["context"])
+                if identity == (
+                    existing.product_id,
+                    existing.session_id,
+                    existing.attempt_id,
+                    existing.owner_id,
+                ):
+                    raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
+            if len(parents) >= _MAX_DURABLE_ATTEMPTS:
+                raise _ActivationRejected(_ActivationReason.CAPACITY_EXHAUSTED)
+            parents[context.digest] = {
+                "context": context.to_dict(),
+                "productScopeId": policy.product_scope_id,
+                "sealed": False,
+                "nativeKeys": None,
+                "membershipDigest": None,
+            }
+            self._commit_locked(new_state)
+
+    def resume_parent_snapshot(
+        self, context: ResumeEffectParentContextV1
+    ) -> Mapping[str, object]:
+        self._require_not_reentrant()
+        with self._lock:
+            self._reload_locked()
+            node = _require_resume_parent(self._state, context)
+            keys = _resume_native_keys(self._state, context.digest)
+            return {
+                "parentContext": context.to_dict(),
+                "sealed": node["sealed"],
+                "membershipDigest": node["membershipDigest"],
+                "stateRevision": self._state["stateRevision"],
+                "nativeAttempts": {
+                    key: _json_clone(_mapping(_mapping(self._state, "attempts"), key))
+                    for key in keys
+                },
+            }
+
+    def seal_resume_parent(
+        self, context: ResumeEffectParentContextV1, *, expected_state_revision: int
+    ) -> Mapping[str, object]:
+        self._require_not_reentrant()
+        _require_positive_integer(
+            expected_state_revision, name="expected state revision"
+        )
+        with self._lock:
+            self._reload_locked()
+            _require_resume_parent(self._state, context, require_open=True)
+            if self._state["stateRevision"] != expected_state_revision:
+                raise _ActivationRejected(_ActivationReason.STALE_AUTHORITY)
+            keys = _resume_native_keys(self._state, context.digest)
+            attempts = _mapping(self._state, "attempts")
+            if any(
+                _mapping(attempts, key)["phase"]
+                not in {"registered", "published", "settled"}
+                for key in keys
+            ):
+                raise _ActivationRejected(_ActivationReason.RESUME_START_UNKNOWN)
+            new_state = _json_clone(self._state)
+            node = _mapping(_mapping(new_state, "resumeParents"), context.digest)
+            node["sealed"] = True
+            node["nativeKeys"] = list(keys)
+            node["membershipDigest"] = _resume_membership_digest(context, keys)
+            self._commit_locked(new_state)
+            return self.resume_parent_snapshot(context)
+
     def active_attempts(self) -> tuple[Mapping[str, object], ...]:
         self._require_not_reentrant()
         with self._lock:
@@ -1784,6 +1935,15 @@ class ProductWorkerActivationCoordinator:
             self._reload_locked()
             if self._state["killSwitchState"] != "open":
                 raise _ActivationRejected(_ActivationReason.KILL_SWITCH_LATCHED)
+            if lease.parent_context is not None:
+                _require_resume_context(
+                    lease.parent_context, product_scope_id=lease.policy.product_scope_id
+                )
+                if lease.parent_context.product_id != lease.policy.product_id:
+                    raise _ActivationRejected(_ActivationReason.RESUME_CONTEXT_MISMATCH)
+                _require_resume_parent(
+                    self._state, lease.parent_context, require_open=True
+                )
             _validate_receipt_for_policy(lease.policy, lease.receipt)
             self._require_current_locked(lease.receipt)
             key = _attempt_key(
@@ -1827,6 +1987,10 @@ class ProductWorkerActivationCoordinator:
                 "required": lease.policy.effective_required,
                 "restartOrdinal": 0,
             }
+            if lease.parent_context is not None:
+                _mapping(new_state, "resumeUseParents")[key.encoded] = (
+                    lease.parent_context.digest
+                )
             lease._key = key
             self._commit_locked(new_state)
         except BaseException as error:
@@ -1883,7 +2047,11 @@ class ProductWorkerActivationCoordinator:
     def _mark_effect_started(self, lease: _AttemptAdmissionLease) -> None:
         self._require_not_reentrant()
         key = lease._required_key()
+        if lease.parent_context is not None:
+            self._reload_locked()
         attempt = self._attempt_locked(key)
+        if lease.parent_context is not None:
+            _require_resume_parent(self._state, lease.parent_context, require_open=True)
         if attempt["phase"] != "registered":
             raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
         new_state = _json_clone(self._state)
@@ -1940,6 +2108,7 @@ class ProductWorkerActivationCoordinator:
                     domain_retired=True,
                     tree_settled=True,
                     native_containment_settled=True,
+                    no_effect=True,
                 )
             )
         else:
@@ -1952,6 +2121,7 @@ class ProductWorkerActivationCoordinator:
                 protocol_terminal=True,
                 domain_retired=True,
                 tree_settled=True,
+                no_effect=True,
             )
         new_state = _json_clone(self._state)
         new_attempt = _mapping(_mapping(new_state, "attempts"), key.encoded)
@@ -2078,6 +2248,7 @@ class ProductWorkerActivationCoordinator:
         expected = cast(int, self._state["stateRevision"])
         new_state["stateRevision"] = expected + 1
         validated = _validate_state(new_state)
+        _validate_resume_state_transition(self._state, validated)
         try:
             committed = self._call_external(
                 self._store.compare_and_swap,
@@ -2110,6 +2281,7 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         host_identity: str,
         boot_identity: str,
         cleanup_contract_version: int,
+        parent_context: ResumeEffectParentContextV1 | None,
     ) -> None:
         if not isinstance(policy, ProductWorkerActivationPolicyV1):
             raise TypeError("Worker admission requires typed policy")
@@ -2120,6 +2292,10 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         _require_opaque(host_identity, name="host identity")
         _require_opaque(boot_identity, name="boot identity")
         _require_cleanup_contract_version(cleanup_contract_version)
+        if parent_context is not None and (
+            cleanup_contract_version != WORKER_CLEANUP_SETTLEMENT_V2_VERSION
+        ):
+            raise ValueError("Worker Resume requires native containment cleanup v2")
         self.coordinator = coordinator
         self.policy = policy
         self.receipt = receipt
@@ -2128,6 +2304,7 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         self.host_identity = host_identity
         self.boot_identity = boot_identity
         self.cleanup_contract_version = cleanup_contract_version
+        self.parent_context = parent_context
         self._key: _AttemptKey | None = None
         self._authority_release_id: int | None = None
         self._lock_held = False
@@ -2233,6 +2410,8 @@ _SETTLEMENT_FIELDS = frozenset(
     }
 )
 _SETTLEMENT_V2_FIELDS = _SETTLEMENT_FIELDS | {"nativeContainmentSettled"}
+_SETTLEMENT_NO_EFFECT_FIELDS = _SETTLEMENT_FIELDS | {"noEffect"}
+_SETTLEMENT_V2_NO_EFFECT_FIELDS = _SETTLEMENT_V2_FIELDS | {"noEffect"}
 _DEBT_FIELDS = frozenset(
     {
         "attemptId",
@@ -2315,15 +2494,196 @@ def _transition_attempt(attempt: dict[str, object], target: str) -> None:
     attempt["phase"] = target
 
 
+def _resume_scope_digest(product_id: str, product_scope_id: str) -> str:
+    return sha256(
+        b"loushang.worker-activation.resume-scope/v1\0"
+        + json.dumps(
+            {
+                "ownerId": "harness.worker-activation",
+                "productId": product_id,
+                "productScopeId": product_scope_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
+def _resume_membership_digest(
+    context: ResumeEffectParentContextV1, keys: tuple[str, ...]
+) -> str:
+    return sha256(
+        b"loushang.worker-activation.resume-membership/v1\0"
+        + context.digest.encode()
+        + b"\0"
+        + json.dumps(list(keys), separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _require_resume_context(
+    context: ResumeEffectParentContextV1, *, product_scope_id: str
+) -> None:
+    if type(context) is not ResumeEffectParentContextV1:
+        raise TypeError("Worker Resume requires an exact typed context")
+    if (
+        context.owner_id != "harness.worker-activation"
+        or context.contract_digest
+        != sha256(b"harness.worker-activation.resume-context/v1").hexdigest()
+        or context.scope_digest
+        != _resume_scope_digest(context.product_id, product_scope_id)
+    ):
+        raise ValueError("Worker Resume context does not match native scope/contract")
+
+
+def _resume_native_keys(state: Mapping[str, object], digest: str) -> tuple[str, ...]:
+    links = _mapping(state, "resumeUseParents")
+    return tuple(sorted(key for key, parent in links.items() if parent == digest))
+
+
+def _require_resume_parent(
+    state: Mapping[str, object],
+    context: ResumeEffectParentContextV1,
+    *,
+    require_open: bool = False,
+) -> dict[str, object]:
+    if state.get("stateVersion") != PRODUCT_WORKER_RESUME_STATE_VERSION:
+        raise _ActivationRejected(_ActivationReason.RESUME_PARENT_UNKNOWN)
+    node = _mapping(state, "resumeParents").get(context.digest)
+    if not isinstance(node, dict) or node.get("context") != context.to_dict():
+        raise _ActivationRejected(_ActivationReason.RESUME_PARENT_UNKNOWN)
+    _require_resume_context(context, product_scope_id=_string(node, "productScopeId"))
+    if require_open and node["sealed"] is True:
+        raise _ActivationRejected(_ActivationReason.RESUME_PARENT_SEALED)
+    return node
+
+
+def _validate_resume_state(state: dict[str, object]) -> None:
+    parents = _mapping(state, "resumeParents")
+    links = _mapping(state, "resumeUseParents")
+    attempts = _mapping(state, "attempts")
+    if len(parents) > _MAX_DURABLE_ATTEMPTS or len(links) > _MAX_DURABLE_ATTEMPTS:
+        raise ValueError("Worker Resume state exceeds native capacity")
+    identities = set()
+    for digest, value in parents.items():
+        node = _strict_document(
+            value,
+            frozenset(
+                {
+                    "context",
+                    "productScopeId",
+                    "sealed",
+                    "nativeKeys",
+                    "membershipDigest",
+                }
+            ),
+            name="Resume parent",
+        )
+        context = ResumeEffectParentContextV1.from_dict(node["context"])
+        _require_resume_context(
+            context, product_scope_id=_string(node, "productScopeId")
+        )
+        identity = (
+            context.product_id,
+            context.session_id,
+            context.attempt_id,
+            context.owner_id,
+        )
+        if digest != context.digest or identity in identities:
+            raise ValueError("Worker Resume context identity changed")
+        identities.add(identity)
+        sealed = _bool(node, "sealed")
+        keys = _resume_native_keys(state, digest)
+        if sealed:
+            if node["nativeKeys"] != list(keys) or node[
+                "membershipDigest"
+            ] != _resume_membership_digest(context, keys):
+                raise ValueError("Worker Resume sealed membership changed")
+        elif node["nativeKeys"] is not None or node["membershipDigest"] is not None:
+            raise ValueError("Open Worker Resume parent cannot claim sealed membership")
+    for key, linked_digest in links.items():
+        if (
+            key not in attempts
+            or type(linked_digest) is not str
+            or linked_digest not in parents
+        ):
+            raise ValueError("Worker Resume native registration is orphaned")
+
+
+def _validate_resume_state_transition(
+    previous: Mapping[str, object] | None, current: Mapping[str, object]
+) -> None:
+    if (
+        previous is None
+        or previous.get("stateVersion") != PRODUCT_WORKER_RESUME_STATE_VERSION
+    ):
+        if current.get(
+            "stateVersion"
+        ) == PRODUCT_WORKER_RESUME_STATE_VERSION and _mapping(
+            current, "resumeUseParents"
+        ):
+            raise ValueError("Worker Resume requires prior durable enrollment")
+        return
+    if current.get("stateVersion") != PRODUCT_WORKER_RESUME_STATE_VERSION:
+        raise ValueError("Worker Resume state cannot downgrade")
+    old_parents = _mapping(previous, "resumeParents")
+    parents = _mapping(current, "resumeParents")
+    old_links = _mapping(previous, "resumeUseParents")
+    links = _mapping(current, "resumeUseParents")
+    old_attempts = _mapping(previous, "attempts")
+    attempts = _mapping(current, "attempts")
+    for digest, old_value in old_parents.items():
+        old = _mapping(old_parents, digest)
+        node = _mapping(parents, digest)
+        if (
+            node["context"] != old["context"]
+            or node["productScopeId"] != old["productScopeId"]
+        ):
+            raise ValueError("Worker Resume enrollment was rebound")
+        if old["sealed"] is True and node != old_value:
+            raise ValueError("Worker Resume seal changed")
+        if old["sealed"] is False and node["sealed"] is True:
+            for key in _resume_native_keys(previous, digest):
+                if _mapping(old_attempts, key)["phase"] not in {
+                    "registered",
+                    "published",
+                    "settled",
+                }:
+                    raise ValueError("Worker Resume start remains unresolved")
+    for key, linked_digest in old_links.items():
+        if links.get(key) != linked_digest or key not in attempts:
+            raise ValueError("Worker Resume registered native evidence disappeared")
+        if (
+            _mapping(old_parents, cast(str, linked_digest))["sealed"] is True
+            and _mapping(old_attempts, key)["phase"] == "registered"
+            and _mapping(attempts, key)["phase"] == "effect_started"
+        ):
+            raise ValueError("Worker Resume start follows seal")
+    for key, linked_digest in links.items():
+        if key not in old_links and (
+            key in old_attempts
+            or linked_digest not in old_parents
+            or _mapping(old_parents, cast(str, linked_digest))["sealed"] is True
+        ):
+            raise ValueError("Worker Resume registration is late or retroactive")
+
+
 def _compact_settled_attempts(state: dict[str, object]) -> None:
     """Deterministically free one admission slot using absorbing records only."""
 
     attempts = _mapping(state, "attempts")
+    links = (
+        _mapping(state, "resumeUseParents")
+        if state.get("stateVersion") == PRODUCT_WORKER_RESUME_STATE_VERSION
+        else {}
+    )
     required = max(0, len(attempts) - _MAX_DURABLE_ATTEMPTS + 1)
     settled = sorted(
         key
         for key, value in attempts.items()
-        if isinstance(value, dict) and value.get("phase") == "settled"
+        if isinstance(value, dict)
+        and value.get("phase") == "settled"
+        and key not in links
     )
     for key in settled[:required]:
         del attempts[key]
@@ -2343,8 +2703,17 @@ def _initial_state(*, restart_budget: int) -> dict[str, object]:
 
 
 def _migrate_activation_state(value: object) -> dict[str, object]:
-    document = _strict_document(value, _STATE_FIELDS, name="activation state")
-    version = _integer(document, "stateVersion")
+    if not isinstance(value, dict):
+        raise ValueError("Worker activation state must be an object")
+    version = _integer(value, "stateVersion")
+    fields = (
+        _STATE_FIELDS | {"resumeParents", "resumeUseParents"}
+        if version == 3
+        else _STATE_FIELDS
+    )
+    document = _strict_document(value, fields, name="activation state")
+    if version == PRODUCT_WORKER_RESUME_STATE_VERSION:
+        return document
     if version == PRODUCT_WORKER_ACTIVATION_STATE_VERSION:
         return document
     if version != 1:
@@ -2402,7 +2771,10 @@ def _cleanup_debt_from_dict(
 
 def _validate_state(value: object) -> dict[str, object]:
     document = _migrate_activation_state(value)
-    if _integer(document, "stateVersion") != PRODUCT_WORKER_ACTIVATION_STATE_VERSION:
+    if _integer(document, "stateVersion") not in {
+        PRODUCT_WORKER_ACTIVATION_STATE_VERSION,
+        PRODUCT_WORKER_RESUME_STATE_VERSION,
+    }:
         raise ValueError("Unsupported Product Worker activation state version")
     _require_positive_integer(
         _integer(document, "stateRevision"), name="state revision"
@@ -2547,6 +2919,8 @@ def _validate_state(value: object) -> dict[str, object]:
         attempt = _mapping(attempts, encoded_key)
         if attempt["phase"] == "published" and encoded_key not in publication_targets:
             raise ValueError("Published Worker activation attempt has no publication")
+    if document["stateVersion"] == PRODUCT_WORKER_RESUME_STATE_VERSION:
+        _validate_resume_state(document)
     return _json_clone(document)
 
 

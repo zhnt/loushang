@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from functools import cache
 from pathlib import Path
+
+import pytest
+
+from tests.architecture._source_imports import imported_modules
 
 BASELINE_PATH = Path(
     "docs/internals/architecture/harness/plugin/resource-catalog-rcp0-baseline.md"
@@ -141,13 +145,30 @@ EXPECTED_CALL_SITES = {
 }
 
 EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
+    # Hashes configured enable/disable facts, without reading Skill bodies.
+    (
+        Path("src/loushang/harness/resources/_catalog_input_receipt.py"),
+        "ResourceCatalogInputReceipt.input_fingerprint",
+    ),
+    # The author smoke checks the new Session's selected Skill identity; the
+    # actual body use is proven separately in persisted model input.
+    (
+        Path("src/loushang/coding/plugin_author_smoke.py"),
+        "_prove_new_session_use",
+    ),
+    # The read-only Product preview lists Catalog-selected Skill identities;
+    # it does not read Skill bodies or activate the previewed composition.
+    (
+        Path("src/loushang/coding/package_product_preview.py"),
+        "CodingFencedProductReadOnlyPreviewOwner.preview_current_data_resources",
+    ),
     # The Catalog bootstrap projects immutable Skill summaries for the
     # compatibility Bundle; it does not discover or load Skill bodies.
     (
         Path(
             "src/loushang/harness/resource_catalog/bootstrap_projection.py"
         ),
-        "prepare_resource_catalog_bootstrap_projection",
+        "prepare_resource_catalog_bootstrap_result",
     ),
     # The Product adapter compiles legacy disabled-name settings to typed
     # activation identities before Catalog composition; it does not select the
@@ -364,6 +385,7 @@ class _QualifiedFunctionVisitor(ast.NodeVisitor):
         self.scope.pop()
 
 
+@cache
 def _qualified_functions(
     source: str,
     *,
@@ -374,32 +396,24 @@ def _qualified_functions(
     return tuple(visitor.functions)
 
 
-class _CodeUnitNodeVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.nodes: list[ast.AST] = []
-
-    def generic_visit(self, node: ast.AST) -> None:
-        self.nodes.append(node)
-        super().generic_visit(node)
-
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        del node
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        del node
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        del node
-
-    def visit_Lambda(self, node: ast.Lambda) -> None:
-        del node
+@cache
+def _function_nodes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[ast.AST, ...]:
+    return tuple(
+        node
+        for statement in function.body
+        if not isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in ast.walk(statement)
+    )
 
 
-def _code_unit_nodes(body: list[ast.stmt]) -> tuple[ast.AST, ...]:
-    visitor = _CodeUnitNodeVisitor()
-    for statement in body:
-        visitor.visit(statement)
-    return tuple(visitor.nodes)
+@pytest.fixture(autouse=True, scope="module")
+def _release_scan_caches() -> Iterator[None]:
+    yield
+    _function_nodes.cache_clear()
+    _qualified_functions.cache_clear()
+    _source_texts.cache_clear()
 
 
 def _call_sites(
@@ -419,8 +433,7 @@ def _call_sites(
                     or isinstance(node.func, ast.Attribute)
                     and node.func.attr == callable_name
                 )
-                for parent in _code_unit_nodes(function.body)
-                for node in ast.walk(parent)
+                for node in _function_nodes(function)
             ):
                 sites.add((path, qualified))
     return sites
@@ -439,8 +452,7 @@ def _attribute_load_sites(
                 isinstance(node, ast.Attribute)
                 and isinstance(node.ctx, ast.Load)
                 and node.attr == attribute_name
-                for parent in _code_unit_nodes(function.body)
-                for node in ast.walk(parent)
+                for node in _function_nodes(function)
             ):
                 sites.add((path, qualified))
     return sites
@@ -463,8 +475,7 @@ def _named_attribute_load_sites(
                 and node.attr == attribute_name
                 and isinstance(node.value, ast.Name)
                 and node.value.id == receiver_name
-                for parent in _code_unit_nodes(function.body)
-                for node in ast.walk(parent)
+                for node in _function_nodes(function)
             ):
                 sites.add((path, qualified))
     return sites
@@ -490,8 +501,7 @@ def _getattr_sites(
                 and node.args[0].id == receiver_name
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value == attribute_name
-                for parent in _code_unit_nodes(function.body)
-                for node in ast.walk(parent)
+                for node in _function_nodes(function)
             ):
                 sites.add((path, qualified))
     return sites
@@ -508,8 +518,7 @@ def _keyword_sites(
         for qualified, function in _qualified_functions(source, filename=path):
             if any(
                 isinstance(node, ast.keyword) and node.arg == keyword_name
-                for parent in _code_unit_nodes(function.body)
-                for node in ast.walk(parent)
+                for node in _function_nodes(function)
             ):
                 sites.add((path, qualified))
     return sites
@@ -521,6 +530,8 @@ def _legacy_loader_import_edges(
     prefix = "loushang.harness.resources."
     edges: set[tuple[Path, str]] = set()
     for path, source in sources.items():
+        if f"{prefix}_loader" not in source:
+            continue
         for node in ast.walk(ast.parse(source, filename=str(path))):
             if not isinstance(node, ast.ImportFrom) or node.module is None:
                 continue
@@ -531,13 +542,7 @@ def _legacy_loader_import_edges(
 
 
 def _imported_modules(source: str, *, filename: Path) -> set[str]:
-    modules: set[str] = set()
-    for node in ast.walk(ast.parse(source, filename=str(filename))):
-        if isinstance(node, ast.ImportFrom) and node.module is not None:
-            modules.add(node.module)
-        elif isinstance(node, ast.Import):
-            modules.update(alias.name for alias in node.names)
-    return modules
+    return imported_modules(filename, source)
 
 
 def _text_record_fields(document: str, heading: str) -> tuple[str, ...]:
@@ -750,6 +755,11 @@ def test_rcp0_refresh_mount_mutation_and_close_inventory_is_exact() -> None:
         {loader_path: sources[loader_path], roots_path: sources[roots_path]},
         "close",
     ) == {
+        # Original loader owns asynchronous preview tasks and revision pins.
+        (loader_path, "ResourceLoader._release_catalog_preview_pins"),
+        (loader_path, "ResourceLoader.aclose"),
+        (loader_path, "ResourceLoader.close_catalog_preview_tasks"),
+        (loader_path, "CatalogSessionResourceLoaderView.aclose"),
         (loader_path, "ResourceLoader.__del__"),
         (loader_path, "ResourceLoader.close"),
         (loader_path, "ResourceLoader.set_package_mounts"),

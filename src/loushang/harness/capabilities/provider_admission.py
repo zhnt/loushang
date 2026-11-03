@@ -10,7 +10,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Literal, Never, Protocol, TypeVar
+from types import MappingProxyType
+from typing import Literal, Never, Protocol, TypeAlias, TypeVar
 
 from loushang.harness.capabilities.contracts import CapabilityDefinition
 from loushang.harness.capabilities.providers import (
@@ -35,6 +36,7 @@ CAPABILITY_PROVIDER_CANDIDATE_VERSION = 1
 CAPABILITY_PROVIDER_ELIGIBILITY_VERSION = 1
 CAPABILITY_PROVIDER_OWNER_SNAPSHOT_VERSION = 1
 CAPABILITY_PROVIDER_SYMBOL_LOCATOR_VERSION = 1
+CAPABILITY_WORKER_PROVIDER_BINDING_SPEC_VERSION = 1
 
 
 class CapabilityProviderAdmissionError(RuntimeError):
@@ -134,6 +136,10 @@ class CapabilityProviderBindingSpec:
             self.to_dict(),
         )
 
+    @property
+    def execution_model(self) -> Literal["in_process"]:
+        return "in_process"
+
     def to_dict(self) -> dict[str, object]:
         return {
             "bindingInputs": _thaw_json(self.binding_inputs),
@@ -145,6 +151,101 @@ class CapabilityProviderBindingSpec:
             "packageContentDigest": self.package_content_digest,
             "pluginId": self.plugin_id,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityWorkerProviderBindingSpec:
+    """Pathless, inert Worker binding; runtime admission remains separate."""
+
+    plugin_id: str
+    contribution_id: str
+    capability_id: str
+    owner_id: str
+    package_content_digest: str
+    dependency_lock_digest: str
+    manifest_digest: str
+    reservation_fingerprint: str
+    declaration_fingerprint: str
+    worker_configuration_fingerprint: str
+    executable_digest: str
+    executable_size: int
+    declared_required: bool
+    native_platform: Literal["linux-x86_64", "windows-amd64"]
+    execution_model: Literal["local_worker"] = "local_worker"
+    binding_spec_version: int = CAPABILITY_WORKER_PROVIDER_BINDING_SPEC_VERSION
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("Plugin id", self.plugin_id),
+            ("contribution id", self.contribution_id),
+            ("Capability id", self.capability_id),
+            ("owner id", self.owner_id),
+        ):
+            _require_nonempty(value, name=name)
+        if not self.capability_id.startswith(f"{self.owner_id}."):
+            raise ValueError("Worker binding Capability is outside its owner")
+        for name, value in (
+            ("package content digest", self.package_content_digest),
+            ("dependency lock digest", self.dependency_lock_digest),
+            ("manifest digest", self.manifest_digest),
+            ("reservation fingerprint", self.reservation_fingerprint),
+            ("declaration fingerprint", self.declaration_fingerprint),
+            ("Worker configuration fingerprint", self.worker_configuration_fingerprint),
+            ("executable digest", self.executable_digest),
+        ):
+            _require_sha256(value, name=name)
+        if (
+            type(self.executable_size) is not int
+            or not 0 < self.executable_size <= 16 * 1024 * 1024
+        ):
+            raise ValueError("Worker executable size is invalid")
+        if type(self.declared_required) is not bool:
+            raise TypeError("Worker requiredness must be a bool")
+        if self.native_platform not in {"linux-x86_64", "windows-amd64"}:
+            raise ValueError("Worker native platform is unsupported")
+        if self.execution_model != "local_worker":
+            raise ValueError("Worker execution model is unsupported")
+        _require_exact_version(
+            self.binding_spec_version,
+            supported=CAPABILITY_WORKER_PROVIDER_BINDING_SPEC_VERSION,
+            name="Capability Worker Provider binding spec",
+        )
+
+    @property
+    def binding_inputs(self) -> Mapping[str, object]:
+        return MappingProxyType({})
+
+    @property
+    def fingerprint(self) -> str:
+        return _digest_document(
+            "loushang.capability-worker-provider-binding-spec/v1", self.to_dict()
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "bindingInputs": {},
+            "bindingSpecVersion": self.binding_spec_version,
+            "capabilityId": self.capability_id,
+            "contributionId": self.contribution_id,
+            "declaredRequired": self.declared_required,
+            "declarationFingerprint": self.declaration_fingerprint,
+            "dependencyLockDigest": self.dependency_lock_digest,
+            "executableDigest": self.executable_digest,
+            "executableSize": self.executable_size,
+            "executionModel": self.execution_model,
+            "manifestDigest": self.manifest_digest,
+            "nativePlatform": self.native_platform,
+            "ownerId": self.owner_id,
+            "packageContentDigest": self.package_content_digest,
+            "pluginId": self.plugin_id,
+            "reservationFingerprint": self.reservation_fingerprint,
+            "workerConfigurationFingerprint": self.worker_configuration_fingerprint,
+        }
+
+
+CapabilityProviderBindingSpecV1: TypeAlias = (
+    CapabilityProviderBindingSpec | CapabilityWorkerProviderBindingSpec
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,7 +276,7 @@ class CapabilityProviderCandidateEnvelope:
 
     definition: CapabilityDefinition
     provider: CapabilityBundleProvider
-    binding_spec: CapabilityProviderBindingSpec
+    binding_spec: CapabilityProviderBindingSpecV1
     plugin_candidate_fingerprint: str
     declaration_fingerprint: str
     declaration_evidence_fingerprint: str
@@ -195,8 +296,19 @@ class CapabilityProviderCandidateEnvelope:
             raise TypeError("Capability Provider candidate requires a Definition")
         if not isinstance(self.provider, CapabilityBundleProvider):
             raise TypeError("Capability Provider candidate requires Provider metadata")
-        if not isinstance(self.binding_spec, CapabilityProviderBindingSpec):
+        if not isinstance(
+            self.binding_spec,
+            CapabilityProviderBindingSpec | CapabilityWorkerProviderBindingSpec,
+        ):
             raise TypeError("Capability Provider candidate requires a binding spec")
+        if isinstance(self.binding_spec, CapabilityWorkerProviderBindingSpec) and (
+            self.binding_spec.capability_id != self.definition.capability_id
+            or self.binding_spec.owner_id != self.definition.owner_id
+            or self.binding_spec.declaration_fingerprint != self.declaration_fingerprint
+            or self.provider.requirements
+            or self.provider.required_authorities
+        ):
+            raise ValueError("Worker Provider candidate exceeds its read-only binding")
         if self.provider.capability_id != self.definition.capability_id:
             raise ValueError(
                 "Capability Provider candidate metadata must target its Definition"
@@ -260,9 +372,7 @@ class CapabilityProviderCandidateEnvelope:
             "allowedAuthorityCeiling": list(self.allowed_authority_ceiling),
             "bindingSpec": self.binding_spec.to_dict(),
             "candidateVersion": self.candidate_version,
-            "declarationEvidenceFingerprint": (
-                self.declaration_evidence_fingerprint
-            ),
+            "declarationEvidenceFingerprint": (self.declaration_evidence_fingerprint),
             "declarationFingerprint": self.declaration_fingerprint,
             "definition": _capability_definition_to_dict(self.definition),
             "instanceRevisionRef": self.instance_revision_ref.to_dict(),
@@ -295,6 +405,9 @@ class CapabilityProviderOwnerPolicy:
     allowed_provider_ids: tuple[str, ...]
     allowed_source_trust_classes: tuple[str, ...]
     authority_ceiling: tuple[str, ...]
+    allowed_execution_models: tuple[Literal["in_process", "local_worker"], ...] = (
+        "in_process",
+    )
 
     def __post_init__(self) -> None:
         capability_id = _require_nonempty(
@@ -327,6 +440,14 @@ class CapabilityProviderOwnerPolicy:
             self.authority_ceiling,
             name="owner authority ceiling",
         )
+        execution_models = _normalized_names(
+            self.allowed_execution_models,
+            name="allowed Provider execution models",
+        )
+        if not execution_models or any(
+            model not in {"in_process", "local_worker"} for model in execution_models
+        ):
+            raise ValueError("Capability owner policy has unsupported execution models")
         object.__setattr__(self, "capability_id", capability_id)
         object.__setattr__(self, "owner_id", owner_id)
         object.__setattr__(self, "allowed_provider_ids", providers)
@@ -336,6 +457,7 @@ class CapabilityProviderOwnerPolicy:
             trust_classes,
         )
         object.__setattr__(self, "authority_ceiling", authority_ceiling)
+        object.__setattr__(self, "allowed_execution_models", execution_models)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -478,9 +600,7 @@ class CapabilityProviderAdmissionRecord:
         )
         if facets != tuple(sorted(self.candidate.provider.facets)):
             raise ValueError("Admission facets do not match Provider metadata")
-        if authorities != tuple(
-            sorted(self.candidate.provider.required_authorities)
-        ):
+        if authorities != tuple(sorted(self.candidate.provider.required_authorities)):
             raise ValueError("Admission authorities do not match Provider metadata")
         _require_interval(self.issued_at, self.expires_at, name="admission")
         _require_exact_version(
@@ -504,7 +624,7 @@ class CapabilityProviderAdmissionRecord:
         return self.candidate.provider
 
     @property
-    def binding_spec(self) -> CapabilityProviderBindingSpec:
+    def binding_spec(self) -> CapabilityProviderBindingSpecV1:
         return self.candidate.binding_spec
 
     @property
@@ -576,12 +696,8 @@ class CapabilityProviderOwnerAuthority:
             owner_policy_revision=self._policy.policy_revision,
             revocation_epoch=self._policy.revocation_epoch,
             allowed_facets=tuple(sorted(candidate.provider.facets)),
-            allowed_authorities=tuple(
-                sorted(candidate.provider.required_authorities)
-            ),
-            source_trust_policy_revision=(
-                candidate.source_trust_policy_revision
-            ),
+            allowed_authorities=tuple(sorted(candidate.provider.required_authorities)),
+            source_trust_policy_revision=(candidate.source_trust_policy_revision),
             issued_at=issued_at,
             expires_at=expires_at,
             eligibility_version=CAPABILITY_PROVIDER_ELIGIBILITY_VERSION,
@@ -676,9 +792,16 @@ class CapabilityProviderOwnerAuthority:
                 "Capability Provider is not present in the owner allowlist.",
             )
         if (
+            candidate.binding_spec.execution_model
+            not in policy.allowed_execution_models
+        ):
+            _raise_admission(
+                "provider_execution_model_not_allowed",
+                "Capability Provider execution model is not allowed by its owner.",
+            )
+        if (
             not candidate.source_trusted
-            or candidate.source_trust_class
-            not in policy.allowed_source_trust_classes
+            or candidate.source_trust_class not in policy.allowed_source_trust_classes
         ):
             _raise_admission(
                 "provider_source_not_eligible",
@@ -799,9 +922,11 @@ __all__ = [
     "CAPABILITY_PROVIDER_ELIGIBILITY_VERSION",
     "CAPABILITY_PROVIDER_OWNER_SNAPSHOT_VERSION",
     "CAPABILITY_PROVIDER_SYMBOL_LOCATOR_VERSION",
+    "CAPABILITY_WORKER_PROVIDER_BINDING_SPEC_VERSION",
     "CapabilityProviderAdmissionError",
     "CapabilityProviderAdmissionRecord",
     "CapabilityProviderBindingSpec",
+    "CapabilityProviderBindingSpecV1",
     "CapabilityProviderCandidateEnvelope",
     "CapabilityProviderCandidateFingerprint",
     "CapabilityProviderEligibilityGrant",
@@ -809,4 +934,5 @@ __all__ = [
     "CapabilityProviderOwnerPolicy",
     "CapabilityProviderOwnerSnapshot",
     "CapabilityProviderSymbolLocator",
+    "CapabilityWorkerProviderBindingSpec",
 ]

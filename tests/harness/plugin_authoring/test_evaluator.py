@@ -86,9 +86,7 @@ def test_evaluator_uses_verified_bytes_and_attaches_exact_receipt_evidence(
     )
     evaluator = PluginDefinitionEvaluator(
         decision_journal=journal,
-        import_realm=PluginImportRealm(
-            import_realm_id_factory=lambda: "4" * 32
-        ),
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
         clock=lambda: 2_500,
     )
 
@@ -153,9 +151,7 @@ def test_mixed_document_and_executable_groups_join_before_one_finalization(
     )
     evaluator = PluginDefinitionEvaluator(
         decision_journal=journal,
-        import_realm=PluginImportRealm(
-            import_realm_id_factory=lambda: "4" * 32
-        ),
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
         clock=lambda: 2_500,
     )
 
@@ -167,9 +163,10 @@ def test_mixed_document_and_executable_groups_join_before_one_finalization(
     assert finalize_counter.count == 1
     assert decode_counter.count == 1
     assert published_synthetic_plugin.import_marker.exists()
-    assert {
-        candidate.evidence.kind for candidate in selection.candidates
-    } == {"document_decoded", "in_process_evaluated"}
+    assert {candidate.evidence.kind for candidate in selection.candidates} == {
+        "document_decoded",
+        "in_process_evaluated",
+    }
     assert len(selection.candidates) == 2
     assert journal.snapshot().execution_uses[0].state == "EVALUATED"
 
@@ -317,9 +314,7 @@ def test_later_executable_failure_aborts_mixed_aggregate_without_finalizing(
         resolver,
         execution_evaluator=PluginDefinitionEvaluator(
             decision_journal=journal,
-            import_realm=PluginImportRealm(
-                import_realm_id_factory=lambda: "4" * 32
-            ),
+            import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
             clock=lambda: 2_500,
         ),
     )
@@ -433,9 +428,7 @@ def _issue_and_accept(
 
 
 def _plan(*fixtures: _PublishedPlugin) -> PluginSelectionPlanV2:
-    ordered = tuple(
-        sorted(fixtures, key=lambda item: item.package.manifest.name)
-    )
+    ordered = tuple(sorted(fixtures, key=lambda item: item.package.manifest.name))
     return PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id="coding",
@@ -450,9 +443,7 @@ def _plan(*fixtures: _PublishedPlugin) -> PluginSelectionPlanV2:
                 for fixture in ordered
             ),
         ),
-        selected_plugin_ids=tuple(
-            fixture.package.manifest.name for fixture in ordered
-        ),
+        selected_plugin_ids=tuple(fixture.package.manifest.name for fixture in ordered),
         selected_contributions=tuple(
             PluginContributionRef(
                 fixture.package.manifest.name,
@@ -490,3 +481,61 @@ def _plan(*fixtures: _PublishedPlugin) -> PluginSelectionPlanV2:
             )
         ),
     )
+
+
+@pytest.mark.parametrize("enrolled", [False, True])
+def test_real_definition_import_requires_durable_exact_resume_parent_registration(
+    tmp_path: Path,
+    published_synthetic_plugin: _PublishedExecutablePlugin,
+    enrolled: bool,
+) -> None:
+    from loushang.harness.approval.plugin_execution import PluginExecutionJournalError
+    from loushang.harness.resume_effects import ResumeEffectParentContextV1
+
+    fixture = published_synthetic_plugin
+    resolver = PluginSelectionResolver()
+    journal = _journal(tmp_path)
+    accepted = _issue_and_accept(resolver, journal, (fixture,), plan=_plan(fixture))
+    context = ResumeEffectParentContextV1(
+        product_id="coding",
+        session_id="historical-session",
+        attempt_id="intent-1",
+        request_id="request-1",
+        intent_digest="a" * 64,
+        owner_id="harness.plugin-execution",
+        scope_digest=journal.resume_parent_scope_digest(product_id="coding"),
+        contract_digest=journal.resume_parent_contract_digest,
+    )
+    if enrolled:
+        journal.enroll_resume_parent(
+            context, expected_journal_revision=journal.snapshot().journal_revision
+        )
+    evaluator = PluginDefinitionEvaluator(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+        clock=lambda: 2500,
+        resume_parent_context=context,
+    )
+    if not enrolled:
+        journal.path.write_bytes(journal.path.read_bytes() + b'{"eventVersion":2')
+    original = journal.path.read_bytes()
+    coordinator = PluginDeclarationCoordinator(resolver, execution_evaluator=evaluator)
+    if not enrolled:
+        with pytest.raises(PluginExecutionJournalError) as caught:
+            coordinator.finalize(accepted)
+        assert caught.value.code == "plugin_execution_resume_parent_unknown"
+        assert not fixture.import_marker.exists()
+        assert journal.path.read_bytes() == original
+    else:
+        selection = coordinator.finalize(accepted)
+        assert isinstance(selection, PluginSelection)
+        assert fixture.import_marker.read_text() == "imported"
+        snapshot = journal.resume_parent_snapshot(context)
+        assert len(snapshot.execution_uses) == 1
+        assert snapshot.execution_uses[0].state == "EVALUATED"
+        assert snapshot.execution_uses[0].preflight_use_id == accepted.preflight_use_id
+        sealed = journal.seal_resume_parent(
+            context, expected_journal_revision=snapshot.journal_revision
+        )
+        assert sealed.execution_uses == snapshot.execution_uses
+        assert sealed.sealed

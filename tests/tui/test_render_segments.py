@@ -65,6 +65,23 @@ def test_contiguous_slice_and_tail_preserve_segment_views() -> None:
     assert lines.tail(0) == ()
 
 
+def test_concat_preserves_segment_offsets_across_views_and_empty_parts() -> None:
+    first = SegmentedRenderLines.from_segments(
+        (RenderLineSegment(_lines("zero", "one", "two")),)
+    )[1:]
+    second = SegmentedRenderLines.from_segments(
+        (RenderLineSegment(_lines("three", "four")),)
+    )
+    joined = SegmentedRenderLines.concat(first, second)
+
+    assert SegmentedRenderLines.concat(SegmentedRenderLines(), first) is first
+    assert SegmentedRenderLines.concat(second, SegmentedRenderLines()) is second
+    assert len(joined) == 4
+    assert joined[-1].text == "four"
+    assert tuple(line.text for line in joined[1:3]) == ("two", "three")
+    assert joined == _lines("one", "two", "three", "four")
+
+
 def test_nested_contiguous_slice_collapses_to_a_single_base_segment_view() -> None:
     segment = RenderLineSegment(_lines("zero", "one", "two", "three"), revision=5)
     lines = SegmentedRenderLines.from_segments((segment,))
@@ -140,6 +157,35 @@ def test_screen_region_stack_preserves_segments_and_wraps_plain_results() -> Non
     assert result.lines.segments[0] is stable
     assert result.lines.segments[1].cacheable is False
     assert result.lines.segments[2].cacheable is False
+
+
+def test_screen_region_stack_does_not_recount_historical_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = SegmentedRenderLines.from_segments(
+        tuple(RenderLineSegment(_lines(f"history {index}")) for index in range(200))
+    )
+    stack = ScreenRegionStack(
+        (
+            ScreenRegion("transcript", _SegmentedRenderable(history)),
+            ScreenRegion("editor", _PlainRenderable("input"), required=True),
+        )
+    )
+    original_count = RenderLineSegment.line_count.fget
+    assert original_count is not None
+    counted = 0
+
+    def count_segment_lines(segment: RenderLineSegment) -> int:
+        nonlocal counted
+        counted += 1
+        return original_count(segment)
+
+    monkeypatch.setattr(RenderLineSegment, "line_count", property(count_segment_lines))
+    result = stack.render(RenderConstraints(width=80, max_height=1000))
+
+    assert len(result.lines) == 201
+    assert result.lines[-1].text == "input"
+    assert counted < 30
 
 
 def test_screen_region_stack_offsets_cursor_using_segment_lengths() -> None:

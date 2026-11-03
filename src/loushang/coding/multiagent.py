@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,38 +19,28 @@ from loushang.coding.session import AgentSession
 from loushang.coding.tool_pack import coding_platform_tool_names
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
-    DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.multiagent import (
-    AgentInputMessage,
     AgentTypeRegistry,
     AgentTypeSpec,
     DelegatedExecutionProfile,
     ForkedHistory,
     ForkTier,
     SubagentContextPlan,
-    SubagentDisposeResult,
-    SubagentRoundResult,
     WorkspaceLease,
     WorkspaceLeasePort,
-    WorkspaceLeaseRequest,
-    WorkspaceLeaseSnapshot,
 )
-from loushang.harness.multiagent.run_handle import RoundMode
 from loushang.harness.session import BootstrapServices
 from loushang.harness.session.multiagent import (
-    AgentInputFacade,
     SessionMultiAgentRuntime,
     SessionSubagentBinding,
     SessionSubagentFactory,
     SessionSubagentRequest,
     bind_agent_session_multiagent,
-    build_agent_session_input_facade,
-    install_agent_forked_history,
-    project_agent_round_result,
 )
+from loushang.harness.session.subagent import AgentSessionSubagentFactory
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 _RuntimeBuilder = Callable[..., AgentSessionRuntime]
@@ -116,7 +105,7 @@ _ROLE_PROMPTS: Mapping[str, str] = {
 def coding_read_only_agent_types(
     *,
     default_model: str | None = None,
-    maximum_children: int = 3,
+    maximum_children: int = 4,
 ) -> AgentTypeRegistry:
     """Return Coding's initial admitted, non-writing analysis roles."""
 
@@ -147,7 +136,7 @@ def coding_read_only_agent_types(
 def coding_agent_types(
     *,
     default_model: str | None = None,
-    maximum_children: int = 3,
+    maximum_children: int = 4,
 ) -> AgentTypeRegistry:
     """Return Coding's complete phase-two type catalog."""
 
@@ -206,9 +195,7 @@ def coding_multiagent_system_prompt(
 ) -> str:
     """Describe the admitted Coding collaboration surface to the root model."""
 
-    resolved_host_environment = (
-        host_environment or LocalHostEnvironmentProbe().detect()
-    )
+    resolved_host_environment = host_environment or LocalHostEnvironmentProbe().detect()
 
     role_descriptions = {
         "explorer": (
@@ -241,15 +228,19 @@ def coding_multiagent_system_prompt(
         "## Multi-agent collaboration\n\n"
         "You may delegate focused work to session-owned child agents with "
         "`spawn_agent`. Spawning is asynchronous: use `wait_agent` to wait for "
-        "new collaboration activity, `list_agents` to inspect the visible tree, "
+        "new collaboration activity, `get_agent_result` to read a truncated "
+        "child report using the exact path, incarnation, and round_id from its "
+        "completion notice, `list_agents` to inspect the visible tree, "
         "and `send_message` for a follow-up. Use `interrupt_agent` or "
         "`close_agent` only for agents you own. Child completion notices enter "
         "your system mailbox, separate from editable follow-up and steering input "
         "queues, and must be synthesized into your answer. A successful "
         "`spawn_agent` call returns the canonical child path. A failed spawn "
-        "creates no child: do not claim it succeeded, do not wait for it, and do "
-        "not invent a path to close. Instead inspect the structured error and "
-        "`list_agents`.\n\n"
+        "does not establish a running task and may retain a cleanup-only child. "
+        "Do not claim it succeeded; do not wait for it, and do not invent a path "
+        "to close. Inspect the structured error "
+        "and `list_agents`; use `close_agent` on the reported original child "
+        "to retry cleanup before reusing its capacity.\n\n"
         "Choose an agent type whose listed tools cover the delegated task. "
         "A completed child run means that its model turn ended; it is not proof "
         "that the requested task succeeded. Completed, failed, and interrupted "
@@ -320,13 +311,10 @@ class CodingSubagentFactory(SessionSubagentFactory):
         if not resolved_cwd.is_dir():
             raise NotADirectoryError(20, "Not a directory", str(resolved_cwd))
         self._session_dir = Path(session_dir)
-        self._cwd = resolved_cwd
         self._tool_registry = tool_registry
         self._default_model_provider = default_model_provider or (lambda: default_model)
         self._services = services
-        self._approval_resolver = approval_resolver
         self._runtime_builder = runtime_builder
-        self._workspace_leases = workspace_leases
         self._host_environment = (
             host_environment or LocalHostEnvironmentProbe().detect()
         )
@@ -344,141 +332,86 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 + ", ".join(unknown_exact_names)
             )
         self._selected_exact_tool_names = frozenset(selected_exact_names)
+        self._children = AgentSessionSubagentFactory(
+            cwd=resolved_cwd,
+            runtime_builder=self._build_child_runtime,
+            approval_resolver=approval_resolver,
+            workspace_leases=workspace_leases,
+            missing_response="Coding child produced no assistant response.",
+            completed_response="Coding child completed.",
+        )
 
-    async def create(
+    async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
+        return await self._children.create(request)
+
+    def _build_child_runtime(
         self,
         request: SessionSubagentRequest,
-    ) -> SessionSubagentBinding:
-        workspace_lease: WorkspaceLease | None = None
-        runtime: AgentSessionRuntime | None = None
-        child_approval_resolver: ActorBoundApprovalResolver | None = None
-        delegated_execution_profile: DelegatedExecutionProfile | None = None
-        child_cwd = self._cwd
-        try:
-            if request.agent_type.workspace_mode == "isolated":
-                if self._workspace_leases is None:
-                    raise RuntimeError(
-                        f"Coding agent type {request.agent_type.name!r} requires "
-                        "an isolated workspace lease"
-                    )
-                workspace_lease = await self._workspace_leases.acquire(
-                    WorkspaceLeaseRequest(
-                        agent_ref=request.record.ref,
-                        agent_type=request.agent_type.name,
-                        mode="isolated",
-                    )
-                )
-                child_cwd = Path(workspace_lease.execution_ref)
-            plan = request.context_plan
-            allowed_tools = coding_platform_tool_names(
-                _resolve_allowed_tools(request),
-                self._host_environment,
-            )
-            unavailable_exact_tools = tuple(
-                name
-                for name in allowed_tools
-                if name in CODING_EXACT_OWNER_TOOL_NAMES
-                and name not in self._selected_exact_tool_names
-            )
-            if unavailable_exact_tools:
-                raise ValueError(
-                    "Coding child exact-owner tools are not selected: "
-                    + ", ".join(unavailable_exact_tools)
-                )
-            model_ref = plan.model if plan is not None else None
-            if model_ref is None:
-                model_ref = request.agent_type.default_model
-            selection_registry = getattr(
-                getattr(self._services, "model_registry", None),
-                "ai_registry",
-                None,
-            )
-            model: Model | ModelSelection | None = (
-                parse_model_selection_reference(
-                    model_ref,
-                    registry=selection_registry,
-                )
-                if model_ref is not None
-                else self._default_model_provider()
-            )
-            approval_resolver = (
-                plan.approval_resolver
-                if plan is not None and plan.approval_resolver is not None
-                else self._approval_resolver or DenyApprovalResolver()
-            )
-            child_approval_resolver = ActorBoundApprovalResolver(
-                resolver=approval_resolver,
-                actor_id=str(request.record.ref),
-            )
-            delegated_execution_profile = DelegatedExecutionProfile(
-                actor_ref=request.record.ref,
-                allowed_tools=allowed_tools,
-                execution_profile_ceiling=coding_workspace_execution_profile(
-                    child_cwd,
-                    writable=_sandbox_workspace_is_writable(request.agent_type.name),
-                ),
-                approval_actor_id=str(request.record.ref),
-                workspace_ref=(
-                    workspace_lease.workspace_ref
-                    if workspace_lease is not None
-                    else None
-                ),
-            )
-            runtime = self._runtime_builder(
-                session_dir=self._session_dir,
-                model=model,
-                system_prompt=_resolve_system_prompt(request),
-                tool_registry=_select_tool_registry(
-                    self._tool_registry,
-                    allowed_tools,
-                ),
-                allowed_tool_names=list(allowed_tools),
-                active_tool_names=list(allowed_tools),
-                services=self._services,
-                persist=False,
-                sandbox_workspace_writable=_sandbox_workspace_is_writable(
-                    request.agent_type.name
-                ),
-                approval_resolver=cast(Any, child_approval_resolver),
-                delegated_execution_profile=delegated_execution_profile,
-            )
-            session = await runtime.create_session(cwd=str(child_cwd))
-            install_agent_forked_history(
-                session,
-                request.context_plan,
-                invalid_message=(
-                    "Coding subagent history must contain canonical Agent messages"
-                ),
-            )
-        except BaseException:
-            try:
-                if child_approval_resolver is not None:
-                    child_approval_resolver.end_session("Child session creation failed")
-            finally:
-                try:
-                    if runtime is not None:
-                        await runtime.dispose_session_runtime()
-                finally:
-                    if (
-                        workspace_lease is not None
-                        and self._workspace_leases is not None
-                    ):
-                        await self._workspace_leases.release(workspace_lease)
-            raise
-        driver = _CodingSubagentDriver(
-            runtime=runtime,
-            session=session,
-            approval_resolver=child_approval_resolver,
-            delegated_execution_profile=delegated_execution_profile,
-            workspace_lease=workspace_lease,
-            workspace_leases=self._workspace_leases,
+        cwd: Path,
+        approval_resolver: ActorBoundApprovalResolver,
+        workspace_lease: WorkspaceLease | None,
+    ) -> AgentSessionRuntime:
+        plan = request.context_plan
+        allowed_tools = coding_platform_tool_names(
+            _resolve_allowed_tools(request),
+            self._host_environment,
         )
-        return SessionSubagentBinding(
-            driver=driver,
-            input_activity=driver.input_facade,
+        unavailable_exact_tools = tuple(
+            name
+            for name in allowed_tools
+            if name in CODING_EXACT_OWNER_TOOL_NAMES
+            and name not in self._selected_exact_tool_names
+        )
+        if unavailable_exact_tools:
+            raise ValueError(
+                "Coding child exact-owner tools are not selected: "
+                + ", ".join(unavailable_exact_tools)
+            )
+        model_ref = plan.model if plan is not None else None
+        if model_ref is None:
+            model_ref = request.agent_type.default_model
+        selection_registry = getattr(
+            getattr(self._services, "model_registry", None),
+            "ai_registry",
+            None,
+        )
+        model: Model | ModelSelection | None = (
+            parse_model_selection_reference(
+                model_ref,
+                registry=selection_registry,
+            )
+            if model_ref is not None
+            else self._default_model_provider()
+        )
+        delegated_execution_profile = DelegatedExecutionProfile(
+            actor_ref=request.record.ref,
+            allowed_tools=allowed_tools,
+            execution_profile_ceiling=coding_workspace_execution_profile(
+                cwd,
+                writable=_sandbox_workspace_is_writable(request.agent_type.name),
+            ),
+            approval_actor_id=str(request.record.ref),
             workspace_ref=(
                 workspace_lease.workspace_ref if workspace_lease is not None else None
             ),
+        )
+        return self._runtime_builder(
+            session_dir=self._session_dir,
+            model=model,
+            system_prompt=_resolve_system_prompt(request),
+            tool_registry=_select_tool_registry(
+                self._tool_registry,
+                allowed_tools,
+            ),
+            allowed_tool_names=list(allowed_tools),
+            active_tool_names=list(allowed_tools),
+            services=self._services,
+            persist=False,
+            sandbox_workspace_writable=_sandbox_workspace_is_writable(
+                request.agent_type.name
+            ),
+            approval_resolver=cast(Any, approval_resolver),
+            delegated_execution_profile=delegated_execution_profile,
         )
 
 
@@ -505,110 +438,13 @@ def install_coding_multiagent_session(
         session,
         child_factory=child_factory,
         agent_types=agent_types,
+        agent_type_hints={
+            "explorer": "read-only investigation",
+            "reviewer": "review",
+            "implementation_worker": "implementation in an isolated worktree",
+        },
         register_tools=register_tools,
     )
-
-
-class _CodingSubagentDriver:
-    """Map one Coding child session to the shared round-driver contract."""
-
-    def __init__(
-        self,
-        *,
-        runtime: AgentSessionRuntime,
-        session: AgentSession,
-        approval_resolver: ActorBoundApprovalResolver | None = None,
-        delegated_execution_profile: DelegatedExecutionProfile | None = None,
-        workspace_lease: WorkspaceLease | None = None,
-        workspace_leases: WorkspaceLeasePort | None = None,
-    ) -> None:
-        self._runtime = runtime
-        self._session = session
-        self.input_facade: AgentInputFacade[object] = build_agent_session_input_facade(
-            session
-        )
-        self._initial_message: AgentInputMessage | None = None
-        self._rounds_started = 0
-        self._approval_resolver = approval_resolver
-        self.delegated_execution_profile = delegated_execution_profile
-        self._workspace_lease = workspace_lease
-        self._workspace_leases = workspace_leases
-
-    def deliver(self, message: AgentInputMessage) -> None:
-        if self._rounds_started == 0 and self._initial_message is None:
-            self._initial_message = message
-            return
-        self.input_facade.enqueue_message(message)
-
-    async def run_round(
-        self,
-        *,
-        round_id: int,
-        mode: RoundMode,
-    ) -> SubagentRoundResult:
-        del round_id
-        if self._approval_resolver is not None:
-            self._approval_resolver.open_session()
-        message_count = len(self._session.agent.state.messages)
-        self._rounds_started += 1
-        if mode == "prompt":
-            initial = self._initial_message
-            self._initial_message = None
-            if initial is None:
-                raise RuntimeError("Coding child has no staged initial prompt")
-            await self._session.prompt(
-                initial.text,
-                source=f"multiagent:{initial.message_id}",
-            )
-        else:
-            await self._session.continue_run()
-        result = project_agent_round_result(
-            tuple(self._session.agent.state.messages[message_count:]),
-            missing_response="Coding child produced no assistant response.",
-            completed_response="Coding child completed.",
-        )
-        if self._workspace_lease is None or self._workspace_leases is None:
-            return result
-        snapshot = await self._workspace_leases.snapshot(self._workspace_lease)
-        return replace(
-            result,
-            workspace_ref=snapshot.workspace_ref,
-            artifact_refs=snapshot.artifact_refs,
-            change_set_ref=snapshot.change_set_ref,
-        )
-
-    def abort(self) -> None:
-        if self._approval_resolver is not None:
-            self._approval_resolver.close_session("Child agent interrupted")
-        self._session.abort()
-
-    async def dispose(self) -> SubagentDisposeResult:
-        errors: list[Exception] = []
-        released_workspace: WorkspaceLeaseSnapshot | None = None
-        if self._approval_resolver is not None:
-            self._approval_resolver.end_session("Child agent closed")
-        try:
-            await self._runtime.dispose_session_runtime()
-        except Exception as error:
-            errors.append(error)
-        if self._workspace_lease is not None and self._workspace_leases is not None:
-            try:
-                released_workspace = await self._workspace_leases.release(
-                    self._workspace_lease
-                )
-            except Exception as error:
-                errors.append(error)
-        dispose_error: Exception | None
-        if len(errors) == 1:
-            dispose_error = errors[0]
-        elif errors:
-            dispose_error = ExceptionGroup("Coding child disposal failed", errors)
-        else:
-            dispose_error = None
-        return SubagentDisposeResult(
-            released_workspace=released_workspace,
-            dispose_error=dispose_error,
-        )
 
 
 def _resolve_system_prompt(request: SessionSubagentRequest) -> str:

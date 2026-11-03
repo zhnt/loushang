@@ -85,13 +85,13 @@ AgentInputFacade 合成父 input 文本：
 ```text
 completion_notice
   sender: 子 agent_path
-  text:   人可读的完成摘要（终态消息截断 + 状态）
-  payload:
-    status:  completed | failed | interrupted
-    final_message: str           # 终态消息全文
-    usage:   { tokens, tool_uses, duration_ms }
-    worktree / artifact refs     # 经 LifecycleProjection 丰富的事实字段（TerminalFactMapper 归 projection）
+  text:   状态 + 短结果原文，或截断预览与精确结果引用
+  refs:   worktree / artifact refs
 ```
+
+终态全文、usage 和 round 身份留在 Control 的 `AgentCompletionNotice` 中；
+原接收 agent 可在当前 Control 生命周期内用 `get_agent_result` 分段读取。
+通知到达不自动把长报告全文注入父 agent 上下文。
 
 时序链：RunHandle 转接原始 result → LifecycleProjection 推导终态并
 经 `TerminalFactMapper` 丰富事实 → AgentInputFacade 消费该事实合成
@@ -126,7 +126,8 @@ wait_agent(timeout_ms?) -> WaitOutcome
    模型不需要区分"等哪个 agent"，等待的是"我的 input 有动静"。
    （Codex v2 的 InputQueueActivity 模型。）
 2. **唤醒只给摘要不给内容**：WaitOutcome 说明"哪个/哪些 sender 有
-   更新"；内容在接收方的后续 turn 作为 user-role 消息自然出现——
+   更新"；完成通知在接收方的后续 turn 出现，长结果另用
+   `get_agent_result` 读取——
    防止模型在 wait 结果里读到半截内容后绕过正常消息通道（Codex
    v2 的 wait 同样不返回内容）。
 3. **超时边界**：timeout 有 min/max/default，由策略参数注入（产品

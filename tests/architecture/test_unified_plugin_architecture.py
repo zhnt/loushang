@@ -2,18 +2,36 @@ from __future__ import annotations
 
 import ast
 import inspect
+import io
 import json
-from collections.abc import Mapping
+import re
+import tokenize
+from collections.abc import Iterator, Mapping
 from dataclasses import fields
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
 from typing import get_args
 
+import pytest
+
 import loushang.harness.capabilities as public_capabilities
 import loushang.harness.resources.plugins as public_plugins
 import loushang.harness.runtime as public_runtime
 from loushang.harness.runtime import RuntimeCapabilityScope
+from tests.architecture._source_imports import imported_modules
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_source_cache() -> Iterator[None]:
+    """Do not retain the repository text snapshot after this module finishes."""
+    try:
+        yield
+    finally:
+        _qualified_functions.cache_clear()
+        _source_tree.cache_clear()
+        _source_texts.cache_clear()
+
 
 ARCHITECTURE_PATH = Path("docs/internals/architecture/harness/plugin/architecture.md")
 AUTHORING_PLAN_PATH = Path(
@@ -40,9 +58,7 @@ PLC7_CONTRACT_PATH = Path(
 CODING_CAPABILITY_COMPOSER_PATH = Path(
     "src/loushang/coding/_capability_plugin_composition.py"
 )
-CODING_CAPABILITY_SPECS_PATH = Path(
-    "src/loushang/coding/_capability_plugin_specs.py"
-)
+CODING_CAPABILITY_SPECS_PATH = Path("src/loushang/coding/_capability_plugin_specs.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
@@ -58,6 +74,13 @@ README_PATH = Path("docs/internals/architecture/harness/plugin/README.md")
 HARNESS_README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
+    # Builtin publication and selected Product Wheel verification name an exact
+    # member; the shared PluginManifestParser remains the only parser owner.
+    Path("src/loushang/coding/package_builtin_wheel.py"),
+    Path("src/loushang/coding/package_product_revisions.py"),
+    Path("src/loushang/harness/package_product/product_local_wheel_runtime.py"),
+    Path("src/loushang/harness/package_product/product_worker_candidate.py"),
+    Path("src/loushang/harness/resources/packages/product_local_wheel_policy.py"),
     Path("src/loushang/harness/resources/packages/manifest.py"),
     Path("src/loushang/harness/resources/plugins/manifest.py"),
     Path("src/loushang/plugin/_package.py"),
@@ -160,8 +183,18 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         Path("src/loushang/harness/resources/packages/mounts.py"),
         "PackageResourceMount.read_text",
     ): "package-resource-mount",
+    (
+        Path("src/loushang/harness/resources/packages/mounts.py"),
+        "PackageResourceMount.capture_text",
+    ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
+    # Bounded capture uses the same original verified revision handle.
+    (
+        Path("src/loushang/harness/resources/packages/mounts.py"),
+        "PackageResourceMount.capture_text",
+        "verified_open_file:handle",
+    ): 1,
     (
         Path("src/loushang/harness/resources/plugins/python_symbols.py"),
         "load_verified_plugin_python_module",
@@ -293,6 +326,698 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
         "path_read",
     ): 1,
 }
+
+
+# PLC9B boundary inventory, reviewed by component rather than inferred from the
+# current scan. path_read is syntactic: archive.open, typed sink/journal.open
+# and pure receipt constructors are not grants of arbitrary filesystem access.
+# See docs/internals/architecture/harness/plugin/plugin-boundary-sinks-plc9b.md.
+PLC9B_BOUNDARY_SINKS = (
+    (
+        "cleanup.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageQuarantineCleanupJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "closure_journal.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageClosureResolutionJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "committed_sets.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageCommittedSetJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "epoch_fence.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageEpochFenceJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "journal.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageLifecycleJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "phase_evidence.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageArtifactEvidenceJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageRetentionHandoffJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "staging.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageArtifactStagingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "store_settlements.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageStoreSettlementJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "transaction_pins.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageTransactionPinJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_artifact_for_read",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_artifact_for_write",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_verified_tree_file",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineTreeWriter._open_file",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_open_directory",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_open_regular_file_at",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.__init__",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.authorizes_root_identity",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.open_sink",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore._validate_receipt",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_open_directory",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_open_regular_file",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore.__init__",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore.open_sink",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore._validate_receipt",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "PackagePosixEpochCutoverOwner.__init__",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "PackagePosixEpochCutoverOwner._open_pinned",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "_open_ancestor_chain",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 2},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "_open_directory_at",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "windows_epoch_cutover.py",
+        "PackageWindowsEpochCutoverOwner.__init__",
+        "package-windows-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "windows_epoch_cutover.py",
+        "PackageWindowsEpochCutoverOwner._open_pinned",
+        "package-windows-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer.__init__",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 3},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer._exclusive_restore_root",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 3},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer.restore",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 2},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_directory",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_directory_at",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_regular_file",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_strict_json_object",
+        "package-posix-offline-restore-materializer",
+        {"json_decode": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer.__init__",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer._exclusive_restore_root",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer.restore",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 2},
+    ),
+    (
+        "windows_offline_restore.py",
+        "_strict_json_object",
+        "package-windows-offline-restore-materializer",
+        {"json_decode": 1},
+    ),
+    (
+        "wheel.py",
+        "_extract_verified_tree",
+        "package-safe-wheel-verifier",
+        {"path_read": 1},
+    ),
+    (
+        "wheel.py",
+        "_verify_archive_content",
+        "package-safe-wheel-verifier",
+        {"path_read": 1},
+    ),
+    (
+        "tree_transfer.py",
+        "PackageVerifiedTreeTransferOwner.transfer",
+        "package-verified-tree-transfer-owner",
+        {"verified_open_file:sink": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "PackageRetentionHandoffJournal.open",
+        "package-retention-handoff-journal",
+        {"path_read": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "PackageRetentionHandoffOwner.execute",
+        "package-retention-handoff-owner",
+        {"path_read": 1},
+    ),
+)
+PLC9B_BOUNDARY_OWNERS = {
+    "PackageArtifactEvidenceJournal",
+    "PackageArtifactStagingJournal",
+    "PackageClosureResolutionJournal",
+    "PackageCommittedSetJournal",
+    "PackageEpochFenceJournal",
+    "PackageLifecycleJournal",
+    "PackageQuarantineCleanupJournal",
+    "PackageRetentionHandoffJournal",
+    "PackageStoreSettlementJournal",
+    "PackageTransactionPinJournal",
+    "package-posix-epoch-cutover-owner",
+    "package-posix-offline-restore-materializer",
+    "package-posix-role-store",
+    "package-quarantine-native-boundary",
+    "package-retention-handoff-journal",
+    "package-retention-handoff-owner",
+    "package-safe-wheel-verifier",
+    "package-verified-tree-transfer-owner",
+    "package-windows-epoch-cutover-owner",
+    "package-windows-offline-restore-materializer",
+    "package-windows-role-store",
+}
+for _module, _qualified, _owner, _counts in PLC9B_BOUNDARY_SINKS:
+    _site = (
+        Path("src/loushang/harness/resources/packages/plugin_lifecycle") / _module,
+        _qualified,
+    )
+    assert _site not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_site] = _owner
+    for _operation, _count in _counts.items():
+        _key = (*_site, _operation)
+        assert _key not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[_key] = _count
+# Existing distribution evidence reads belong to the same resolver. The wheel
+# RECORD fast path was introduced in 19056149d without updating this inventory.
+for _qualified in (
+    "_declared_top_level_packages",
+    "InstalledPythonDistributionEvidenceResolver._resolve_installed_candidate",
+):
+    _site = (
+        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+        _qualified,
+    )
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_site] = (
+        "installed-python-distribution-evidence-resolver"
+    )
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[(*_site, "path_read")] = 1
+
+
+
+# Post-PLC9B owner inventory for exact Product, migration, and management reads.
+# These sites are explicitly classified; the scan still rejects every new sink.
+PLC9_CLOSURE_BOUNDARY_SINKS = (
+    (
+        "plugin_management/instance_runtime.py",
+        "decode_plugin_instance_runtime_capture",
+        "PluginInstanceRuntimeLedger",
+        {"json_decode": 1},
+    ),
+    (
+        "plugin_management/package_gc_binding.py",
+        "_assert_no_duplicate_json_keys",
+        "PluginPackageGcBindingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "plugin_management/package_gc_dependency_repair.py",
+        "PackageDependencyGcRepairJournal._load",
+        "PackageDependencyGcRepairJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "plugin_management/package_gc_dependency_review.py",
+        "PackageDependencyGcRepairReviewJournal._load",
+        "PackageDependencyGcRepairReviewJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "plugin_management/package_gc_results.py",
+        "_assert_no_duplicate_json_keys",
+        "PluginPackageGcResultJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "plugin_management/private_data_confirmation.py",
+        "PluginPrivateDataConfirmationJournal._load_unlocked",
+        "PluginPrivateDataConfirmationJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "plugin_management/retirement.py",
+        "decode_plugin_retirement_intent_capture",
+        "PluginRetirementIntentLedger",
+        {"json_decode": 1},
+    ),
+    (
+        "plugin_management/retirement_sets.py",
+        "decode_plugin_retirement_set_capture",
+        "PluginRetirementSetLedger",
+        {"json_decode": 1},
+    ),
+    (
+        "plugin_management/service.py",
+        "decode_plugin_management_operation_capture",
+        "PluginManagementService",
+        {"json_decode": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/lease_registry.py",
+        "PackageEpochRuntimeLeaseRegistry._load_unlocked",
+        "PackageEpochRuntimeLeaseRegistry",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/lease_registry.py",
+        "_assert_no_duplicate_keys",
+        "PackageEpochRuntimeLeaseRegistry",
+        {"json_decode": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/local_source.py",
+        "open_regular_no_follow",
+        "package-pinned-local-wheel-source-boundary",
+        {"path_read": 4},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_cutover.py",
+        "PackagePosixEpochCutoverOwner.reopen_fenced",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotEvidenceStore.__init__",
+        "PackagePosixEpochSnapshotEvidenceStore",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotEvidenceStore.list_domain_members",
+        "PackagePosixEpochSnapshotEvidenceStore",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotEvidenceStore.read_regular_member",
+        "PackagePosixEpochSnapshotEvidenceStore",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotEvidenceStore.snapshot",
+        "PackagePosixEpochSnapshotEvidenceStore",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotOwner.__init__",
+        "PackagePosixEpochSnapshotOwner",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_epoch_snapshot.py",
+        "PackagePosixEpochSnapshotOwner._capture_locked",
+        "PackagePosixEpochSnapshotOwner",
+        {"path_read": 2},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_materialization.py",
+        "_PosixRoleStore.delete_settlement",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_materialization.py",
+        "_PosixRoleStore.read_operation_settlements",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_materialization.py",
+        "_PosixRoleStore.read_settlement_file",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_materialization.py",
+        "_PosixRoleStore.read_settlement_files",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_materialization.py",
+        "_read_existing_tree_file",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_pre_fence_registration.py",
+        "PackagePosixPreFenceRegistrationOwner.__init__",
+        "PackagePosixPreFenceRegistrationOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/posix_pre_fence_registration.py",
+        "PackagePosixPreFenceRegistrationOwner._open",
+        "PackagePosixPreFenceRegistrationOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_epoch_cutover.py",
+        "PackageWindowsEpochCutoverOwner.reopen_fenced",
+        "package-windows-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_epoch_snapshot.py",
+        "_open_private_root",
+        "PackageWindowsEpochSnapshotEvidenceStore",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_lease_registry.py",
+        "PackageWindowsEpochRuntimeLeaseRegistry.__init__",
+        "PackageWindowsEpochRuntimeLeaseRegistry",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_lease_registry.py",
+        "_assert_no_duplicate_keys",
+        "PackageWindowsEpochRuntimeLeaseRegistry",
+        {"json_decode": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_materialization.py",
+        "_WindowsRoleStore.authorizes_root_identity",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_materialization.py",
+        "_WindowsRoleStore.delete_settlement",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_materialization.py",
+        "_WindowsRoleStore.read_operation_settlements",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_materialization.py",
+        "_WindowsRoleStore.read_settlement_file",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_materialization.py",
+        "_WindowsRoleStore.read_settlement_files",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_pre_fence_registration.py",
+        "PackageWindowsPreFenceRegistrationOwner.__init__",
+        "PackageWindowsPreFenceRegistrationOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/plugin_lifecycle/windows_pre_fence_registration.py",
+        "PackageWindowsPreFenceRegistrationOwner._open",
+        "PackageWindowsPreFenceRegistrationOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_admission_binding.py",
+        "PackageProductAdmissionBindingJournal._load_unlocked",
+        "PackageProductAdmissionBindingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "resources/packages/product_epoch_guard.py",
+        "PackageProductPosixFencedRuntimeOwner._prepare_private_child",
+        "PackageProductPosixFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_epoch_guard.py",
+        "PackageProductPosixFencedRuntimeOwner._assert_pinned_children_unlocked",
+        "PackageProductPosixFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_epoch_guard.py",
+        "PackageProductPosixFencedRuntimeOwner.open",
+        "PackageProductPosixFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_pinned_adoption_binding.py",
+        "PackageProductPinnedAdoptionBindingJournal._load_unlocked",
+        "PackageProductPinnedAdoptionBindingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "resources/packages/product_pre_b_snapshot.py",
+        "PackageProductPreBSnapshotOwner.cutover_from_legacy",
+        "PackageProductPreBSnapshotOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_rebind_admission_binding.py",
+        "PackageProductRebindAdmissionBindingJournal._load_unlocked",
+        "PackageProductRebindAdmissionBindingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "resources/packages/product_staging_adoption_binding.py",
+        "PackageProductStagingAdoptionBindingJournal._load_unlocked",
+        "PackageProductStagingAdoptionBindingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_epoch_guard.py",
+        "PackageProductWindowsFencedRuntimeOwner.open",
+        "PackageProductWindowsFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_epoch_guard.py",
+        "inspect_windows_product_private_directory_identity",
+        "PackageProductWindowsFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_epoch_guard.py",
+        "prepare_windows_product_private_directory_chain",
+        "PackageProductWindowsFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_epoch_guard.py",
+        "prepare_windows_product_control_root",
+        "PackageProductWindowsFencedRuntimeOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_pre_b_snapshot.py",
+        "PackageProductWindowsPreBSnapshotOwner.cutover_from_legacy",
+        "PackageProductWindowsPreBSnapshotOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/packages/product_windows_pre_b_snapshot.py",
+        "reopen_windows_product_cutover",
+        "PackageProductWindowsPreBSnapshotOwner",
+        {"path_read": 1},
+    ),
+    (
+        "resources/plugins/revisions.py",
+        "_legacy_package_epoch_write_guard",
+        "verified-revision-boundary",
+        {"path_read": 2},
+    ),
+)
+PLC9_CLOSURE_BOUNDARY_OWNERS = {
+    "PackageDependencyGcRepairJournal",
+    "PackageDependencyGcRepairReviewJournal",
+    "PackageEpochRuntimeLeaseRegistry",
+    "PackagePosixEpochSnapshotEvidenceStore",
+    "PackagePosixEpochSnapshotOwner",
+    "PackagePosixPreFenceRegistrationOwner",
+    "PackageProductAdmissionBindingJournal",
+    "PackageProductPinnedAdoptionBindingJournal",
+    "PackageProductPosixFencedRuntimeOwner",
+    "PackageProductPreBSnapshotOwner",
+    "PackageProductRebindAdmissionBindingJournal",
+    "PackageProductStagingAdoptionBindingJournal",
+    "PackageProductWindowsFencedRuntimeOwner",
+    "PackageProductWindowsPreBSnapshotOwner",
+    "PackageWindowsEpochRuntimeLeaseRegistry",
+    "PackageWindowsEpochSnapshotEvidenceStore",
+    "PackageWindowsPreFenceRegistrationOwner",
+    "PluginInstanceRuntimeLedger",
+    "PluginManagementService",
+    "PluginPackageGcBindingJournal",
+    "PluginPackageGcResultJournal",
+    "PluginPrivateDataConfirmationJournal",
+    "PluginRetirementIntentLedger",
+    "PluginRetirementSetLedger",
+    "package-pinned-local-wheel-source-boundary",
+}
+for _relative, _qualified, _owner, _counts in PLC9_CLOSURE_BOUNDARY_SINKS:
+    _site = (Path("src/loushang/harness") / _relative, _qualified)
+    assert _site not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_site] = _owner
+    for _operation, _count in _counts.items():
+        _key = (*_site, _operation)
+        assert _key not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[_key] = _count
 
 
 def _contract_text_fields(document: str, *, heading: str) -> set[str]:
@@ -560,6 +1285,9 @@ INERT_PLUGIN_SOURCE_ROOTS = (
     Path("src/loushang/harness/plugin_authoring"),
     Path("src/loushang/harness/resources/plugins"),
 )
+_ON_STRING_ESCAPE = re.compile(
+    r"\\(?:x6[eEfF]|u006[eEfF]|U0000006[eEfF]|15[67]|N\{)"
+)
 
 
 @cache
@@ -567,6 +1295,11 @@ def _source_texts() -> dict[Path, str]:
     return {
         path: path.read_text(encoding="utf-8") for path in SOURCE_ROOT.rglob("*.py")
     }
+
+
+@cache
+def _source_tree(filename: Path, source: str) -> ast.Module:
+    return ast.parse(source, filename=str(filename))
 
 
 def _static_string_value(
@@ -612,7 +1345,7 @@ def _static_string_sites(sources: Mapping[Path, str], value: str) -> set[Path]:
     for path, source in sources.items():
         if any(fragment not in source for fragment in fragments):
             continue
-        tree = ast.parse(source, filename=str(path))
+        tree = _source_tree(path, source)
         bindings = _static_string_bindings(tree)
         if any(
             _static_string_value(node, bindings) == value for node in ast.walk(tree)
@@ -648,13 +1381,14 @@ class _QualifiedFunctionVisitor(ast.NodeVisitor):
         self.scope.pop()
 
 
+@cache
 def _qualified_functions(
     source: str,
     *,
     filename: Path,
 ) -> tuple[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef], ...]:
     visitor = _QualifiedFunctionVisitor()
-    visitor.visit(ast.parse(source, filename=str(filename)))
+    visitor.visit(_source_tree(filename, source))
     return tuple(visitor.functions)
 
 
@@ -686,6 +1420,58 @@ def _code_unit_nodes(body: list[ast.stmt]) -> tuple[ast.AST, ...]:
     for statement in body:
         visitor.visit(statement)
     return tuple(visitor.nodes)
+
+
+def _node_source_contains_any(
+    lines: list[str],
+    node: ast.AST,
+    tokens: frozenset[str],
+) -> bool:
+    start = max(getattr(node, "lineno", 1) - 1, 0)
+    end = getattr(node, "end_lineno", None) or len(lines)
+    return any(token in line for line in lines[start:end] for token in tokens)
+
+
+def _text_contains_live_sink_token(text: str, tokens: frozenset[str]) -> bool:
+    if any(token in text for token in tokens if token != "on"):
+        return True
+    if "on" not in tokens:
+        return False
+    if re.search(r"\bon\b", text) is not None:
+        return True
+    quoted_o = any(f"{quote}o{quote}" in text for quote in ("'", '"'))
+    quoted_n = any(f"{quote}n{quote}" in text for quote in ("'", '"'))
+    if _ON_STRING_ESCAPE.search(text) is None and not (quoted_o and quoted_n):
+        return False
+    adjacent_string = ""
+    try:
+        stream = tokenize.generate_tokens(io.StringIO(text).readline)
+        for token in stream:
+            if token.type == tokenize.NAME and token.string == "on":
+                return True
+            if token.type == tokenize.STRING:
+                try:
+                    value = ast.literal_eval(token.string)
+                except (SyntaxError, ValueError):
+                    adjacent_string = ""
+                    continue
+                if isinstance(value, str):
+                    combined = adjacent_string + value
+                    if combined == "on":
+                        return True
+                    adjacent_string = (
+                        combined
+                        if "on".startswith(combined)
+                        else value if "on".startswith(value) else ""
+                    )
+                    continue
+            if token.type not in {tokenize.COMMENT, tokenize.NL}:
+                adjacent_string = ""
+    except (IndentationError, tokenize.TokenError):
+        # A source slice may not be independently tokenizable.  Keep it as a
+        # candidate so the already parsed AST remains the final authority.
+        return True
+    return False
 
 
 def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
@@ -768,7 +1554,7 @@ def _plugin_package_boundary_sink_sites(
     for path, source in sources.items():
         if not any(path.is_relative_to(root) for root in PLUGIN_PACKAGE_BOUNDARY_ROOTS):
             continue
-        tree = ast.parse(source, filename=str(path))
+        tree = _source_tree(path, source)
         json_modules, json_decoders = _import_aliases(tree)
         if _is_plugin_package_boundary_sink(
             _code_unit_nodes(tree.body),
@@ -878,7 +1664,7 @@ def _plugin_package_boundary_sink_call_counts(
     for path, source in sources.items():
         if not any(path.is_relative_to(root) for root in PLUGIN_PACKAGE_BOUNDARY_ROOTS):
             continue
-        tree = ast.parse(source, filename=str(path))
+        tree = _source_tree(path, source)
         json_modules, json_decoders = _import_aliases(tree)
         json_decoder_classes = _json_decoder_class_aliases(tree)
         json_decoder_instances = _json_decoder_instance_aliases(
@@ -1107,14 +1893,13 @@ def _graph_receiver_aliases(
     allow_self: bool,
 ) -> set[str]:
     aliases = {
-        child.id
+        node.id
         for node in nodes
-        for child in ast.walk(node)
-        if isinstance(child, ast.Name)
+        if isinstance(node, ast.Name)
         and (
-            "graph" in child.id.lower()
-            or "runtime" in child.id.lower()
-            or (allow_self and child.id == "self")
+            "graph" in node.id.lower()
+            or "runtime" in node.id.lower()
+            or (allow_self and node.id == "self")
         )
     }
     changed = True
@@ -1246,6 +2031,12 @@ def _function_mutates_private_graph_state(
         "update",
     }
     nodes = _code_unit_nodes(function.body)
+    if not any(
+        isinstance(node, ast.Attribute) and node.attr in attributes
+        or isinstance(node, ast.Constant) and node.value in attributes
+        for node in nodes
+    ):
+        return False
     receiver_aliases = _graph_receiver_aliases(nodes, allow_self=allow_self)
     aliases = _sensitive_container_aliases(
         nodes,
@@ -1355,7 +2146,8 @@ def _graph_private_mutation_sites(
         if not any(attribute in source for attribute in attributes):
             continue
         allow_self = "harness/capabilities/graph_" in path.as_posix()
-        tree = ast.parse(source, filename=str(path))
+        source_lines = source.splitlines()
+        tree = _source_tree(path, source)
         if _function_mutates_private_graph_state(
             tree,
             attributes,
@@ -1363,6 +2155,8 @@ def _graph_private_mutation_sites(
         ):
             sites.add((path, "<module>"))
         for qualified, function in _qualified_functions(source, filename=path):
+            if not _node_source_contains_any(source_lines, function, attributes):
+                continue
             if _function_mutates_private_graph_state(
                 function,
                 attributes,
@@ -1437,12 +2231,19 @@ def _live_binding_sink_inventory(
     for path, source in sources.items():
         if not path.is_relative_to(SOURCE_ROOT):
             continue
-        if not any(token in source for token in tokens):
+        if not _text_contains_live_sink_token(source, tokens):
             continue
-        tree = ast.parse(source, filename=str(path))
+        source_lines = source.splitlines()
+        tree = _source_tree(path, source)
         for token in _live_sink_tokens(_code_unit_nodes(tree.body), tokens):
             inventory.add((path, "<module>", token))
         for qualified, function in _qualified_functions(source, filename=path):
+            start = max(getattr(function, "lineno", 1) - 1, 0)
+            end = getattr(function, "end_lineno", None) or len(source_lines)
+            if not _text_contains_live_sink_token(
+                "\n".join(source_lines[start:end]), tokens
+            ):
+                continue
             for token in _live_sink_tokens(
                 _code_unit_nodes(function.body),
                 tokens,
@@ -1458,7 +2259,7 @@ def _class_sites(sources: Mapping[Path, str], class_name: str) -> tuple[Path, ..
         if f"class {class_name}" in source
         if any(
             isinstance(node, ast.ClassDef) and node.name == class_name
-            for node in ast.walk(ast.parse(source, filename=str(path)))
+            for node in ast.walk(_source_tree(path, source))
         )
     )
 
@@ -1471,7 +2272,7 @@ def _call_sites(
     for path, source in sources.items():
         if callable_name not in source:
             continue
-        tree = ast.parse(source, filename=str(path))
+        tree = _source_tree(path, source)
         module_nodes = _code_unit_nodes(tree.body)
         if _nodes_call_name(module_nodes, callable_name):
             sites.add((path, "<module>"))
@@ -1496,13 +2297,7 @@ def _nodes_call_name(nodes: tuple[ast.AST, ...], callable_name: str) -> bool:
 
 
 def _imported_modules(source: str, *, filename: Path) -> set[str]:
-    modules: set[str] = set()
-    for node in ast.walk(ast.parse(source, filename=str(filename))):
-        if isinstance(node, ast.Import):
-            modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            modules.add(node.module)
-    return modules
+    return imported_modules(filename, source)
 
 
 def _executable_loading_sites(
@@ -1520,7 +2315,7 @@ def _executable_loading_sites(
     for path, source in sources.items():
         if not any(token in source for token in tokens):
             continue
-        tree = ast.parse(source, filename=str(path))
+        tree = _source_tree(path, source)
         if _nodes_call_any_name(_code_unit_nodes(tree.body), tokens):
             sites.add((path, "<module>"))
         for qualified, function in _qualified_functions(source, filename=path):
@@ -2771,7 +3566,9 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     assert _plugin_package_boundary_sink_sites(sources) == set(
         EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
     )
-    assert set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()) == {
+    assert set(
+        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()
+    ) == PLC9B_BOUNDARY_OWNERS | PLC9_CLOSURE_BOUNDARY_OWNERS | {
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",
@@ -3768,9 +4565,7 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
         encoding="utf-8"
     )
-    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(
-        encoding="utf-8"
-    )
+    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(encoding="utf-8")
     agent_product = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )

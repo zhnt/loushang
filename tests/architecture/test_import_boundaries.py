@@ -5,6 +5,7 @@ import importlib
 import subprocess
 import sys
 from dataclasses import dataclass, fields
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,8 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
         ),
         harness_root / "session": (
             "loushang.ai.api_registry",
+            # Session prepares a sealed provider context using AI's normalization contract.
+            "loushang.ai.context",
             "loushang.ai.json_codec",
             "loushang.ai.model",
             "loushang.ai.options",
@@ -545,11 +548,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
             imported,
             allowed_prefixes
             + (("loushang.agent.types",) if path == agent_binding else ())
-            + (
-                ("loushang.appserver",)
-                if path.is_relative_to(hosted_mux_root)
-                else ()
-            ),
+            + (("loushang.appserver",) if path.is_relative_to(hosted_mux_root) else ()),
         )
     ]
 
@@ -1273,7 +1272,12 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "conversation.py",
         "diagnostics.py",
         "model_settings.py",
+        "package_repair.py",
         "packages.py",
+        "plugin_desired.py",
+        "plugin_explanation.py",
+        "plugin_management_snapshot.py",
+        "plugin_preview.py",
         "session_lifecycle.py",
         "transcript.py",
     }
@@ -1333,7 +1337,9 @@ def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     prompt_input_imports = _absolute_imports(prompt_input_path)
     image_payload_imports = _absolute_imports(image_payload_path)
     read_tool_imports = _absolute_imports(read_tool_path)
@@ -1511,7 +1517,9 @@ def test_harness_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     stdout_guard_source = Path("src/loushang/harness/host/stdout_guard.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     application_source = Path("src/loushang/harness/cli/application.py").read_text(
         encoding="utf-8"
     )
@@ -1553,7 +1561,7 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     scenario_cli_source = Path("src/loushang/harness/scenario/cli.py").read_text(
         encoding="utf-8"
     )
-    coding_source = Path("src/loushang/coding/cli/__main__.py").read_text(
+    coding_source = Path("src/loushang/coding/cli/application.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -2603,7 +2611,9 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
         if _matches_any(imported, boundary.forbidden_prefixes)
     ] == []
 
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
     coding_work_source = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
@@ -5156,7 +5166,9 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
         encoding="utf-8"
     )
     rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "fork_session_with_result" not in runtime_source
     assert "entry_id: str, options: object | None = None" not in runtime_source
@@ -5988,14 +6000,21 @@ def _find_forbidden_imports(boundary: ImportBoundary) -> list[str]:
 
 
 def _absolute_imports(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+    source = path.read_text(encoding="utf-8")
+    return list(_absolute_import_facts(path.as_posix(), source))
+
+
+@lru_cache(maxsize=4096)
+def _absolute_import_facts(filename: str, source: str) -> tuple[str, ...]:
+    path = Path(filename)
+    tree = ast.parse(source, filename=filename)
     imports: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imports.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             imports.extend(_import_from_targets(path, node))
-    return imports
+    return tuple(imports)
 
 
 def _harness_internal_dependency_graph(root: Path) -> dict[str, set[str]]:

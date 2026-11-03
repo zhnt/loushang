@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,10 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     AgentTranscriptSessionCatalog,
+    ConversationMetadataPatch,
     RecordAnnotationPatch,
     SessionQuery,
     build_agent_transcript_label_indexes,
@@ -285,6 +288,36 @@ def test_catalog_upsert_refuses_duplicate_physical_identity_and_invalidates_inde
     assert catalog.index_path.exists() is False
 
 
+def test_duplicate_identity_rejection_preserves_a_newer_index_version(tmp_path, monkeypatch):
+    first = tmp_path / "first.jsonl"
+    write_agent_transcript_export(
+        first, _header("shared", cwd="/workspace"), [_record("record", "first")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    summary = catalog.load_index()[0]
+    write_agent_transcript_export(
+        tmp_path / "duplicate.jsonl", _header("shared", cwd="/workspace"),
+        [_record("duplicate", "different")],
+    )
+    original = catalog._validated_unique_authority_snapshot
+    successor = None
+
+    def publish_successor_then_detect_collision():
+        nonlocal successor
+        index = catalog._projection_index()
+        rows = catalog_module._run_catalog(index.query(SessionQuery()))
+        catalog_module._run_catalog(index.replace(rows))
+        successor = catalog.index_path.read_bytes()
+        return original()
+
+    monkeypatch.setattr(catalog, "_validated_unique_authority_snapshot", publish_successor_then_detect_collision)
+    with pytest.raises(RuntimeError, match="duplicate identities"):
+        asyncio.run(catalog.upsert_summary(summary, source_revision=summary.entry_count))
+    assert successor is not None
+    assert catalog.index_path.read_bytes() == successor
+
+
 def test_catalog_repair_revalidates_authority_before_publish(
     tmp_path: Path,
     monkeypatch,
@@ -444,6 +477,34 @@ def test_bounded_catalog_stats_all_and_reads_only_recent_head_tail(
     assert not tuple(tmp_path.glob("*.model-input-v2-index.json"))
 
 
+def test_bounded_transcript_preview_reads_tail_without_publishing_authority(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "large.jsonl"
+    write_agent_transcript_export(
+        path,
+        _header("large", cwd="/workspace"),
+        [
+            _record("first", "first prompt"),
+            _record("middle", "x" * 140_000, parent_id="first"),
+            _record("last", "recent message", parent_id="middle"),
+        ],
+    )
+    before = path.read_bytes()
+
+    preview = catalog_module.read_agent_transcript_bounded_preview(
+        path, segment_bytes=4096,
+    )
+
+    assert preview.header.conversation_id == "large"
+    assert [record.record_id for record in preview.records] == ["first", "last"]
+    assert [record.record_id for record in preview.tail_records] == ["last"]
+    assert preview.bytes_read <= 8192
+    assert preview.source_fingerprint == catalog_module.session_file_authority_fingerprint(path)
+    assert path.read_bytes() == before
+    assert not (tmp_path / ".session-index.json").exists()
+
+
 def test_bounded_catalog_can_publish_complete_lightweight_index(
     tmp_path: Path,
 ) -> None:
@@ -465,6 +526,73 @@ def test_bounded_catalog_can_publish_complete_lightweight_index(
     assert all(summary.authority_fingerprint for summary in loaded)
     assert all(summary.counts_exact for summary in loaded)
     assert all(not summary.all_messages_text for summary in loaded)
+
+
+@pytest.mark.parametrize("name", ["Latest name", None])
+def test_bounded_catalog_reuses_only_unchanged_summary_metadata(
+    tmp_path,
+    monkeypatch,
+    name,
+):
+    def write_named(path, identity, title):
+        write_agent_transcript_export(
+            path,
+            _header(identity, cwd="/workspace"),
+            [
+                _record("first", "First prompt"),
+                ConversationRecord(
+                    record_id="name",
+                    parent_id="first",
+                    kind=CONVERSATION_METADATA_PATCH_KIND,
+                    payload_version=1,
+                    created_at="2026-07-18T00:00:02Z",
+                    payload=ConversationMetadataPatch(values={"name": title})
+                    if title
+                    else ConversationMetadataPatch(removed_keys=("name",)),
+                ),
+            ],
+        )
+
+    stable, changed = tmp_path / "stable.jsonl", tmp_path / "changed.jsonl"
+    write_named(stable, "stable", "Keep this name")
+    write_named(changed, "changed", "Old name")
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    write_named(changed, "changed", name)
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    stale = catalog.try_query_index_snapshot()
+    assert stale.index_state == "stale"
+    reads = []
+    original = catalog_module._read_bounded_segments
+
+    def read(candidate, *, segment_bytes):
+        reads.append(candidate.path)
+        return original(candidate, segment_bytes=segment_bytes)
+
+    monkeypatch.setattr(catalog_module, "_read_bounded_segments", read)
+    snapshot = catalog.bounded_index_snapshot(cached_items=stale.items)
+    assert {
+        item.projection.session_id: item.projection.name for item in snapshot.items
+    } == {
+        "stable": "Keep this name",
+        "changed": name,
+    }
+    assert reads == [changed]
+    assert snapshot.bytes_read <= 2 * 64 * 1024
+    with monkeypatch.context() as scoped:
+        def fail_scan(_namespace):
+            raise AssertionError("selected cached rows must retain their path binding")
+
+        scoped.setattr(catalog._layout, "scan_paths", fail_scan)
+        for item in snapshot.items:
+            assert catalog.load_authoritative_revision(item.locator) == 2
+    published = catalog.refresh_bounded_index()
+    assert {item.session_id: item.name for item in published} == {
+        "stable": "Keep this name",
+        "changed": name,
+    }
+    assert reads == [changed, changed]
+    assert catalog.try_query_index_snapshot().index_state == "fresh"
 
 
 def test_bounded_index_refresh_does_not_publish_a_racing_directory(
@@ -510,7 +638,7 @@ def test_bounded_index_refresh_revalidates_authority_after_publish(
         [_record("record", "prompt")],
     )
     catalog = AgentTranscriptSessionCatalog(tmp_path)
-    original_replace = catalog_module.JsonConversationIndex.replace
+    original_replace = catalog_module.JsonConversationIndex.replace_with_receipt
 
     async def replace_then_add_duplicate(index, items):
         published = await original_replace(index, items)
@@ -523,13 +651,152 @@ def test_bounded_index_refresh_revalidates_authority_after_publish(
 
     monkeypatch.setattr(
         catalog_module.JsonConversationIndex,
-        "replace",
+        "replace_with_receipt",
         replace_then_add_duplicate,
     )
 
     with pytest.raises(RuntimeError, match="changed"):
         catalog.refresh_bounded_index()
     assert catalog.index_path.exists() is False
+
+
+@pytest.mark.parametrize("refresh", ["refresh_bounded_index", "refresh_index", "repair_index"])
+def test_refresh_failure_preserves_another_writers_publication(tmp_path, monkeypatch, refresh):
+    write_agent_transcript_export(
+        tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    if refresh == "repair_index":
+        catalog.refresh_index()
+        write_agent_transcript_export(
+            tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+            [_record("record", "prompt"), _record("next", "updated", parent_id="record")],
+        )
+    original = catalog_module.JsonConversationIndex.replace_with_receipt
+    successor = None
+
+    async def publish_then_race(index, items):
+        nonlocal successor
+        result = await original(index, items)
+        write_agent_transcript_export(
+            tmp_path / "new.jsonl", _header("new", cwd="/workspace"),
+            [_record("new-record", "new session")],
+        )
+        await original(index, items)  # Independent successor generation.
+        successor = index.path.read_bytes()
+        return result  # The failed refresh owns only the older receipt.
+
+    monkeypatch.setattr(catalog_module.JsonConversationIndex, "replace_with_receipt", publish_then_race)
+    with pytest.raises(RuntimeError, match="changed"):
+        getattr(catalog, refresh)()
+    assert successor is not None
+    assert catalog.index_path.read_bytes() == successor
+
+
+@pytest.mark.parametrize("no_change", [False, True])
+def test_upsert_postcheck_failure_preserves_other_publication(tmp_path, monkeypatch, no_change):
+    write_agent_transcript_export(
+        tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    summary = catalog.load_index()[0]
+    original = catalog_module.JsonConversationIndex.upsert_with_receipt
+    retained = None
+
+    async def publish_then_race(index, item):
+        nonlocal retained
+        if no_change:
+            # A newer revision wins first; the attempted stale upsert owns no receipt.
+            await original(index, replace(item, source_revision=item.source_revision + 1))
+            result = await original(index, item)
+            assert result == (False, None)
+        else:
+            result = await original(index, item)
+            assert result[0] is True and result[1] is not None
+            await original(index, item)  # A successor publication, not our receipt.
+        retained = index.path.read_bytes()
+        write_agent_transcript_export(
+            tmp_path / "new.jsonl", _header("new", cwd="/workspace"),
+            [_record("new-record", "new session")],
+        )
+        return result
+
+    monkeypatch.setattr(catalog_module.JsonConversationIndex, "upsert_with_receipt", publish_then_race)
+    with pytest.raises(RuntimeError, match="authority changed during index upsert"):
+        asyncio.run(catalog.upsert_summary(summary, source_revision=summary.entry_count))
+    assert retained is not None
+    assert catalog.index_path.read_bytes() == retained
+    assert catalog.try_query_index_snapshot().index_state == "stale"
+
+
+def test_unchanged_repair_postcheck_failure_does_not_invalidate_cache(tmp_path, monkeypatch):
+    write_agent_transcript_export(
+        tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    before = catalog.index_path.read_bytes()
+    original = catalog._validated_unique_authority_snapshot
+    calls = 0
+
+    def race_after_validation():
+        nonlocal calls
+        result = original()
+        calls += 1
+        if calls == 2:
+            write_agent_transcript_export(
+                tmp_path / "new.jsonl", _header("new", cwd="/workspace"),
+                [_record("new-record", "new session")],
+            )
+        return result
+
+    def forbidden_refresh():
+        raise AssertionError("postcheck failure must not trigger another publication")
+
+    monkeypatch.setattr(catalog, "_validated_unique_authority_snapshot", race_after_validation)
+    monkeypatch.setattr(catalog, "refresh_index", forbidden_refresh)
+    with pytest.raises(RuntimeError, match="changed"):
+        catalog.repair_index()
+    assert catalog.index_path.read_bytes() == before
+    assert catalog.try_query_index_snapshot().index_state == "stale"
+
+
+def test_repair_lost_publication_receipt_does_not_retry_or_delete(tmp_path, monkeypatch):
+    write_agent_transcript_export(
+        tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    write_agent_transcript_export(
+        tmp_path / "session.jsonl", _header("session", cwd="/workspace"),
+        [_record("record", "prompt"), _record("next", "updated", parent_id="record")],
+    )
+    original = catalog_module.JsonConversationIndex.replace_with_receipt
+    published = None
+    calls = 0
+
+    async def lose_receipt(index, items):
+        nonlocal published, calls
+        calls += 1
+        await original(index, items)
+        published = index.path.read_bytes()
+        raise RuntimeError("injected lost publication receipt")
+
+    def forbidden_refresh():
+        raise AssertionError("unknown publication must not trigger retry")
+
+    monkeypatch.setattr(catalog_module.JsonConversationIndex, "replace_with_receipt", lose_receipt)
+    monkeypatch.setattr(catalog, "refresh_index", forbidden_refresh)
+    with pytest.raises(RuntimeError, match="lost publication receipt"):
+        catalog.repair_index()
+    assert calls == 1
+    assert published is not None
+    assert catalog.index_path.read_bytes() == published
 
 
 def test_index_freshness_can_ignore_only_the_active_transcript(
@@ -691,9 +958,10 @@ def test_targeted_path_projection_never_replays_unrelated_large_transcript(
     original = catalog_module.load_agent_transcript_file
     loaded: list[Path] = []
 
-    def record_load(path: Path, *, max_bytes: int | None = None):
+    def record_load(path: Path, *, max_bytes: int | None = None, read_only: bool = False):
         loaded.append(path)
-        return original(path, max_bytes=max_bytes)
+        assert read_only
+        return original(path, max_bytes=max_bytes, read_only=read_only)
 
     monkeypatch.setattr(catalog_module, "load_agent_transcript_file", record_load)
 

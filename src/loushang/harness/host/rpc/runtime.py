@@ -29,8 +29,22 @@ from loushang.harness.host.rpc.commands import (
     RpcDiagnosticsCommands,
     RpcModelSettingsCommands,
     RpcPackageCommands,
+    RpcPackageRepairCommands,
+    RpcPluginDesiredCommands,
+    RpcPluginExplanationCommands,
+    RpcPluginManagementSnapshotCommands,
+    RpcPluginPreviewCommands,
     RpcSessionLifecycleCommands,
     RpcTranscriptCommands,
+)
+from loushang.harness.host.rpc.commands.package_repair import (
+    PackageRepairRpcClientPort,
+)
+from loushang.harness.host.rpc.commands.plugin_desired import (
+    PluginDesiredRpcClientPort,
+)
+from loushang.harness.host.rpc.commands.plugin_management_snapshot import (
+    PluginManagementSnapshotRpcQueryPort,
 )
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.projections import (
@@ -44,6 +58,12 @@ from loushang.harness.host.rpc.routing import legacy_rpc_routes
 from loushang.harness.host.rpc.wire import (
     project_session_state,
     session_messages,
+)
+from loushang.harness.plugin_management.current_preview import (
+    PluginCurrentPreviewQueryPort,
+)
+from loushang.harness.plugin_management.operation_explanation import (
+    PluginOperationExplanationQueryPort,
 )
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.runtime import SessionOperationResult
@@ -190,6 +210,22 @@ class RpcHost(ModeAdapter):
         diagnostics_projection: RpcDiagnosticsProjection = (
             STANDARD_RPC_DIAGNOSTICS_PROJECTION
         ),
+        plugin_preview_factory: (
+            Callable[[str], PluginCurrentPreviewQueryPort] | None
+        ) = None,
+        plugin_explanation_factory: (
+            Callable[[str], PluginOperationExplanationQueryPort] | None
+        ) = None,
+        plugin_desired_factory: (
+            Callable[[str], PluginDesiredRpcClientPort] | None
+        ) = None,
+        plugin_management_factory: (
+            Callable[[str], PluginManagementSnapshotRpcQueryPort] | None
+        ) = None,
+        on_plugin_session_bound: Callable[[object], None] | None = None,
+        package_repair_factory: (
+            Callable[[str], PackageRepairRpcClientPort] | None
+        ) = None,
     ) -> None:
         if event_view not in event_projection.supported_views:
             raise ValueError(f"unsupported json event view: {event_view}")
@@ -203,10 +239,15 @@ class RpcHost(ModeAdapter):
         self.event_select = tuple(event_projection.normalize_select(event_select))
         self.render_tool_events = render_tool_events
         self._host_runtime = ProductHostRuntime(stdin=stdin)
+        if on_plugin_session_bound is not None and not callable(on_plugin_session_bound):
+            raise TypeError("Plugin RPC Session binding callback is invalid")
+        self._on_plugin_session_bound = on_plugin_session_bound
         self.session: Any = self._require_current_session()
         self._session_binding: _RpcSessionBindingPort = _DynamicRpcSessionBinding(
             self.session
         )
+        if self._on_plugin_session_bound is not None:
+            self._on_plugin_session_bound(self.session)
         self._session_operation_resolver = self._build_session_operation_resolver()
         self._rpc_operations = SessionRpcOperationBinding(
             get_operations=self._require_session_operations,
@@ -229,6 +270,51 @@ class RpcHost(ModeAdapter):
             runtime=runtime,
             get_session=lambda: self.session,
             output=self._rpc_output,
+        )
+        self._plugin_preview_commands = (
+            RpcPluginPreviewCommands(
+                get_cwd=lambda: self._session_binding.cwd(),
+                bind_query=plugin_preview_factory,
+                output=self._rpc_output,
+            )
+            if plugin_preview_factory is not None
+            else None
+        )
+        self._plugin_explanation_commands = (
+            RpcPluginExplanationCommands(
+                get_cwd=lambda: self._session_binding.cwd(),
+                bind_query=plugin_explanation_factory,
+                output=self._rpc_output,
+            )
+            if plugin_explanation_factory is not None
+            else None
+        )
+        self._plugin_desired_commands = (
+            RpcPluginDesiredCommands(
+                get_cwd=lambda: self._session_binding.cwd(),
+                bind_client=plugin_desired_factory,
+                output=self._rpc_output,
+            )
+            if plugin_desired_factory is not None
+            else None
+        )
+        self._plugin_management_commands = (
+            RpcPluginManagementSnapshotCommands(
+                get_cwd=lambda: self._session_binding.cwd(),
+                bind_query=plugin_management_factory,
+                output=self._rpc_output,
+            )
+            if plugin_management_factory is not None
+            else None
+        )
+        self._package_repair_commands = (
+            RpcPackageRepairCommands(
+                get_cwd=lambda: self._session_binding.cwd(),
+                bind_client=package_repair_factory,
+                output=self._rpc_output,
+            )
+            if package_repair_factory is not None
+            else None
         )
         self._session_lifecycle_commands = RpcSessionLifecycleCommands(
             runtime=self.runtime,
@@ -380,6 +466,31 @@ class RpcHost(ModeAdapter):
                     *self._command_catalog_commands.bindings(),
                     *self._diagnostics_commands.bindings(),
                     *self._package_commands.bindings(),
+                    *(
+                        self._plugin_preview_commands.bindings()
+                        if self._plugin_preview_commands is not None
+                        else ()
+                    ),
+                    *(
+                        self._plugin_explanation_commands.bindings()
+                        if self._plugin_explanation_commands is not None
+                        else ()
+                    ),
+                    *(
+                        self._plugin_desired_commands.bindings()
+                        if self._plugin_desired_commands is not None
+                        else ()
+                    ),
+                    *(
+                        self._plugin_management_commands.bindings()
+                        if self._plugin_management_commands is not None
+                        else ()
+                    ),
+                    *(
+                        self._package_repair_commands.bindings()
+                        if self._package_repair_commands is not None
+                        else ()
+                    ),
                     *self._bash_maintenance_commands.bindings(),
                 )
             ),
@@ -447,6 +558,8 @@ class RpcHost(ModeAdapter):
 
 
     def _bind_session(self, session: object) -> None:
+        if self._on_plugin_session_bound is not None:
+            self._on_plugin_session_bound(session)
         self._unsubscribe()
         self.session = session
         self._session_binding = _DynamicRpcSessionBinding(session)
@@ -592,6 +705,22 @@ async def run_rpc_host(
     diagnostics_projection: RpcDiagnosticsProjection = (
         STANDARD_RPC_DIAGNOSTICS_PROJECTION
     ),
+    plugin_preview_factory: (
+        Callable[[str], PluginCurrentPreviewQueryPort] | None
+    ) = None,
+    plugin_explanation_factory: (
+        Callable[[str], PluginOperationExplanationQueryPort] | None
+    ) = None,
+    plugin_desired_factory: (
+        Callable[[str], PluginDesiredRpcClientPort] | None
+    ) = None,
+    plugin_management_factory: (
+        Callable[[str], PluginManagementSnapshotRpcQueryPort] | None
+    ) = None,
+    on_plugin_session_bound: Callable[[object], None] | None = None,
+    package_repair_factory: (
+        Callable[[str], PackageRepairRpcClientPort] | None
+    ) = None,
 ) -> int:
     mode = RpcHost(
         runtime=runtime,
@@ -603,6 +732,12 @@ async def run_rpc_host(
         render_tool_events=render_tool_events,
         event_projection=event_projection,
         diagnostics_projection=diagnostics_projection,
+        plugin_preview_factory=plugin_preview_factory,
+        plugin_explanation_factory=plugin_explanation_factory,
+        plugin_desired_factory=plugin_desired_factory,
+        plugin_management_factory=plugin_management_factory,
+        on_plugin_session_bound=on_plugin_session_bound,
+        package_repair_factory=package_repair_factory,
     )
     return await mode.run()
 

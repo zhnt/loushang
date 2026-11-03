@@ -342,15 +342,27 @@ def test_exec_service_incrementally_decodes_split_utf8_sequence(tmp_path: Path) 
 
 
 def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) -> None:
+    ready = tmp_path / "child-ready"
     child_script = (
-        "import sys, time; "
+        "import pathlib, sys; "
         "sys.stdout.write('\\n'); sys.stdout.flush(); "
-        "time.sleep(0.2); "
+        f"pathlib.Path({str(ready)!r}).touch(); "
+        "sys.stdin.buffer.read(); "
         "sys.stdout.write('formatted\\n'); sys.stdout.flush()"
     )
-    root_script = (
-        "import subprocess, sys; "
-        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    root_script = "\n".join(
+        (
+            "import os, pathlib, subprocess, sys, time",
+            f"ready = pathlib.Path({str(ready)!r})",
+            f"child = subprocess.Popen([sys.executable, '-c', {child_script!r}], stdin=subprocess.PIPE)",
+            "deadline = time.monotonic() + 3",
+            "while not ready.exists() and time.monotonic() < deadline:",
+            "    time.sleep(0.01)",
+            "if not ready.exists():",
+            "    raise RuntimeError('child did not start')",
+            # Closing the root process closes the only writer to child stdin.
+            "os._exit(0)",
+        )
     )
 
     async def scenario() -> None:
@@ -361,9 +373,10 @@ def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) ->
                     cwd=str(tmp_path),
                 )
             ),
-            timeout=2,
+            timeout=5,
         )
 
+        assert result.exit_code == 0
         assert result.stdout.splitlines() == ["", "formatted"]
         assert result.stdio_complete is True
         assert result.stdio_drain_reason is None
@@ -533,7 +546,14 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
 def test_exec_service_discards_unretained_output_artifacts(
     tmp_path: Path,
     capture_full_output: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from loushang.harness.workspace.exec import service as service_module
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("disabled output retention created a temporary file")
+
+    monkeypatch.setattr(service_module.tempfile, "mkstemp", forbidden)
     artifact_dir = tmp_path / "artifacts"
     artifact_dir.mkdir()
 
@@ -626,5 +646,45 @@ def test_exec_service_task_cancellation_kills_process_tree(tmp_path: Path) -> No
             await asyncio.wait_for(task, timeout=1)
         await asyncio.sleep(0.6)
         assert not marker.exists()
+
+    asyncio.run(scenario())
+
+
+def test_large_utf8_bash_previews_remain_json_safe_and_retain_exact_output(tmp_path):
+    from loushang.foundation.json import require_json_value
+    from loushang.harness.tools.workspace.bash import (
+        _BashPartialOutput,
+        _exec_result_to_tool_result,
+    )
+
+    async def scenario():
+        partial = _BashPartialOutput()
+        updates = []
+
+        async def update(chunk):
+            preview = partial.append(chunk)
+            require_json_value(preview.content[0].text)
+            updates.append(preview)
+
+        text = "工具输出" * 30000
+        result = await ExecService().execute(
+            ExecRequest(
+                command=(
+                    sys.executable,
+                    "-c",
+                    'import sys; sys.stdout.write("工具输出"*30000)',
+                ),
+                cwd=str(tmp_path),
+                artifact_dir=str(tmp_path),
+            ),
+            on_update=update,
+        )
+        final = _exec_result_to_tool_result(result)
+        require_json_value(final.content[0].text)
+        require_json_value(final.details)
+        assert updates and result.exit_code == 0 and final.details["truncated"]
+        assert final.details["stdout_total_bytes"] == len(text.encode("utf-8"))
+        assert result.stdout_artifact_path is not None
+        assert Path(result.stdout_artifact_path).read_bytes() == text.encode("utf-8")
 
     asyncio.run(scenario())

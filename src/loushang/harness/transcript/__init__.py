@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from loushang.harness.transcript.committer import (
         ApplicationMessageIdentityConflictError,
         CommitResult,
+        PrebuiltExtensionDataIdentityConflictError,
+        PrebuiltUserMessageIdentityConflictError,
+        PrebuiltUserMessageLookupResult,
         TranscriptCommitter,
     )
     from loushang.harness.transcript.compaction import (
@@ -138,6 +141,7 @@ if TYPE_CHECKING:
         AgentTranscriptLifecycleContext,
         AgentTranscriptLifecycleSession,
         AgentTranscriptRuntimeBinding,
+        TranscriptDeletionOwner,
         delete_agent_transcript_jsonl,
     )
     from loushang.harness.transcript.maintenance import (
@@ -393,6 +397,8 @@ _EXPORT_MODULES = {
     "ApplicationMessage": "loushang.harness.transcript.types",
     "ApplicationMessageIdFactory": "loushang.harness.transcript.session",
     "ApplicationMessageIdentityConflictError": "loushang.harness.transcript.committer",
+    "PrebuiltExtensionDataIdentityConflictError": "loushang.harness.transcript.committer",
+    "PrebuiltUserMessageIdentityConflictError": "loushang.harness.transcript.committer",
     "BranchContextSummary": "loushang.harness.transcript.types",
     "BranchSummaryDelta": "loushang.harness.transcript.summarization",
     "BranchSummaryOutput": "loushang.harness.transcript.interaction",
@@ -401,6 +407,7 @@ _EXPORT_MODULES = {
     "BindingInputResolver": "loushang.harness.transcript.session_factory",
     "Clock": "loushang.harness.transcript.writer",
     "CommitResult": "loushang.harness.transcript.committer",
+    "PrebuiltUserMessageLookupResult": "loushang.harness.transcript.committer",
     "CommitObserver": "loushang.harness.transcript.session",
     "CompactionDecision": "loushang.harness.transcript.maintenance",
     "CompactionHookDecision": "loushang.harness.transcript.maintenance",
@@ -512,6 +519,7 @@ _EXPORT_MODULES = {
     "create_agent_transcript_repository": "loushang.harness.transcript.jsonl_file",
     "decode_agent_transcript_bytes": "loushang.harness.transcript.jsonl_file",
     "delete_agent_transcript_jsonl": "loushang.harness.transcript.lifecycle",
+    "TranscriptDeletionOwner": "loushang.harness.transcript.lifecycle",
     "build_context_usage_snapshot": "loushang.harness.transcript.context_usage",
     "build_threshold_compaction_decision": "loushang.harness.transcript.maintenance",
     "calculate_context_tokens": "loushang.harness.transcript.context_usage",

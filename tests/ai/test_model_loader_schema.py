@@ -125,6 +125,47 @@ def test_endpoint_requires_base_url_or_base_url_env() -> None:
         validate_model_registry_raw(raw)
 
 
+@pytest.mark.parametrize(
+    "efforts, reasoning, default",
+    [
+        ("high", True, None),
+        (["low", "low"], True, None),
+        ([" "], True, None),
+        (["low"], False, None),
+        (["low"], True, "high"),
+    ],
+)
+def test_model_loader_rejects_invalid_reasoning_efforts(
+    efforts: object, reasoning: bool, default: str | None
+) -> None:
+    capabilities = _capabilities()
+    capabilities["reasoning"] = reasoning
+    capabilities["reasoningEfforts"] = efforts
+    model_extra: dict[str, object] = {"capabilities": capabilities}
+    if default is not None:
+        model_extra["defaults"] = {"reasoningEffort": default}
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False}, model_extra=model_extra
+    )
+    with pytest.raises(ValueError, match="reasoning efforts|must be supported"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("required", [True, "true"])
+def test_model_loader_rejects_reasoning_required_without_reasoning(
+    required: object,
+) -> None:
+    capabilities = _capabilities()
+    capabilities["reasoning"] = False
+    capabilities["reasoningRequired"] = required
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        model_extra={"capabilities": capabilities},
+    )
+    with pytest.raises(ValueError, match="reasoningRequired"):
+        validate_model_registry_raw(raw)
+
+
 @pytest.mark.parametrize("value", ["", "   "])
 def test_endpoint_rejects_empty_base_url(value: str) -> None:
     raw = _registry_raw(endpoint_extra={"baseUrl": value})
@@ -362,13 +403,42 @@ def test_registry_rejects_invalid_capability_values(
     message: str,
 ) -> None:
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
-    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"][
-        "models"
-    ]["test-model"]["capabilities"]
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"]["models"][
+        "test-model"
+    ]["capabilities"]
     assert isinstance(capabilities, dict)
     capabilities[field] = value
 
     with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
+def test_provider_compaction_requires_explicit_responses_endpoint_and_model(
+    tmp_path: Path,
+) -> None:
+    raw = _registry_raw(
+        api="openai-responses", endpoint_adapter={"developerRole": False}
+    )
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"]["models"][
+        "test-model"
+    ]["capabilities"]
+    capabilities["providerCompaction"] = "openai-responses"
+
+    model = load_model_registry_from_file(_write_registry(tmp_path, raw)).get_model(
+        "custom", "test-endpoint", "test-model"
+    )
+    assert model.provider_compaction == "openai-responses"
+    assert model.to_raw()["capabilities"]["providerCompaction"] == "openai-responses"
+
+    raw["providers"]["custom"]["endpoints"]["test-endpoint"]["api"] = (
+        "openai-completions"
+    )
+    with pytest.raises(ValueError, match="providerCompaction requires"):
+        validate_model_registry_raw(raw)
+
+    raw["providers"]["custom"]["endpoints"]["test-endpoint"]["api"] = "openai-responses"
+    capabilities["providerCompaction"] = "unknown"
+    with pytest.raises(ValueError, match="providerCompaction requires"):
         validate_model_registry_raw(raw)
 
 

@@ -42,7 +42,7 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "deepseek",
         "openai-completions",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         ("DEEPSEEK_API_KEY",),
     ),
     ProviderExample(

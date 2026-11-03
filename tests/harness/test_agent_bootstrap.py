@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -9,11 +10,13 @@ import loushang.harness.session.bootstrap_construction as bootstrap_construction
 from loushang.ai.model import ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import ControlConfig
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.resources.packages.product_runtime import (
+from loushang.harness.package_product.product_runtime import (
     PackageProductRuntimeBindingV1,
 )
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
@@ -163,7 +166,7 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
         resource_bundle={"resources": []},
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools_mode=None,
     )
@@ -194,8 +197,52 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
         ),
     )
 
-    assert result == ("session-2", {"resources": []}, None, "base", None)
+    assert result == ("session-2", {"resources": []}, [], "base", None)
     assert diagnostics == ["extension-diagnostic"]
+
+
+def test_agent_bootstrap_requires_explicit_unrestricted_tool_selection() -> None:
+    class FakeAgent:
+        session_id: str | None = None
+
+    request = AgentSessionConstructionRequest(
+        session_id="selection-test",
+        base_prompt="base",
+        resolved_prompt="base",
+        thinking_level="off",
+        model=None,
+        convert_to_llm=lambda value: value,
+        steering_mode="one-at-a-time",
+        follow_up_mode="one-at-a-time",
+        thinking_budgets={},
+        max_retry_delay_ms=None,
+        stream_fn=None,
+        resource_bundle={},
+        tools=None,
+        tool_registry=None,
+        allowed_tool_names=None,
+        active_tool_names=["read"],
+        no_tools_mode=None,
+    )
+
+    def construct(selection: AgentSessionConstructionRequest) -> list[str] | None:
+        return AgentSessionConstructionRuntime().construct(
+            selection,
+            agent_factory=lambda **_kwargs: FakeAgent(),
+            register_extension_tools=lambda bundle, registry: (bundle, registry, ()),
+            record_extension_diagnostics=lambda _diagnostics: None,
+            registry_factory=object,
+            register_tool=lambda _registry, _tool: None,
+            session_factory=lambda _agent, _bundle, _registry, active, _prompt, _mode: (
+                active
+            ),
+        )
+
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        assert construct(request) == []
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        assert construct(replace(request, active_tool_names=None)) == []
+    assert construct(replace(request, allowed_tool_names=ToolSelection.ALL)) == ["read"]
 
 
 def test_agent_product_construction_runtime_composes_existing_owners(
@@ -299,7 +346,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
             thinking_level="off",
             tools=None,
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=[],
             active_tool_names=None,
             no_tools=None,
             stream_fn=None,
@@ -328,7 +375,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         {"resources": []},
         extension_runtime,
         None,
-        None,
+        [],
         "base prompt",
         None,
     )
@@ -412,7 +459,7 @@ def test_agent_product_construction_binding_compiles_research_policy(
         thinking_level=None,
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools=None,
         stream_fn=None,
@@ -450,9 +497,11 @@ def test_agent_product_construction_binding_compiles_research_policy(
     assert session_capabilities == [capability_runtime]
 
 
+@pytest.mark.parametrize("fail_construction", (False, True))
 def test_agent_product_construction_activates_aggregate_package_runtime_first(
     monkeypatch,
     tmp_path,
+    fail_construction: bool,
 ) -> None:
     calls: list[object] = []
 
@@ -478,11 +527,24 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
                 lifecycle=cast(Any, lifecycle),
                 inventory=cast(Any, inventory),
                 mode="enforced",
+                on_dispose=(
+                    (lambda: calls.append("dispose:packages"))
+                    if fail_construction
+                    else None
+                ),
             )
 
     def construct(_self, request):
         calls.append("construct:session")
         assert lifecycle.active
+        catalog_preparer = request.configuration.prepare_catalog_bootstrap_projection
+        assert callable(catalog_preparer)
+        assert isinstance(
+            catalog_preparer(request.configuration.resource_loader, tmp_path),
+            ResourceBundle,
+        )
+        if fail_construction:
+            raise RuntimeError("forced Session construction failure")
         session = request.session_factory(
             object(),
             object(),
@@ -531,40 +593,74 @@ def test_agent_product_construction_activates_aggregate_package_runtime_first(
         get_tool_source_info=lambda _runtime, _name: None,
     )
 
-    binding.construct(
-        services=services,
-        package_materializer=cast(Any, "materializer"),
-        package_product_runtime_factory=cast(Any, Factory()),
-        session_id="session:research",
-        cwd=str(tmp_path),
-        extension_flag_values=None,
-        explicit_system_prompt=None,
-        append_system_prompt=(),
-        model=None,
-        thinking_level=None,
-        tools=None,
-        tool_registry=None,
-        allowed_tool_names=None,
-        active_tool_names=None,
-        no_tools=None,
-        stream_fn=None,
-        convert_to_llm=lambda value: value,
-        agent_factory=lambda **_kwargs: object(),
-        session_factory=lambda _capabilities, _agent, _bundle, _extensions, _registry, _active, _prompt, _mode, product_lifecycle, product_inventory, product_mode: (
-            captured.append((product_lifecycle, product_inventory, product_mode))
-            or object()
-        ),
-        on_default_model_unavailable=lambda *_args: None,
-        set_scoped_models=lambda *_args: None,
-    )
+    def prepare_product_catalog(_loader, cwd, runtime):
+        assert runtime.lifecycle is lifecycle
+        assert runtime.inventory is inventory
+        calls.append("prepare:product-catalog")
+        return ResourceBundle(cwd=cwd)
+
+    def reject_legacy_catalog(_loader, _cwd):
+        raise AssertionError("legacy Catalog preparation was used")
+
+    def run_construct() -> None:
+        binding.construct(
+            services=services,
+            package_materializer=cast(Any, "materializer"),
+            package_product_runtime_factory=cast(Any, Factory()),
+            session_id="session:research",
+            cwd=str(tmp_path),
+            extension_flag_values=None,
+            catalog_authoritative=True,
+            prepare_catalog_bootstrap_projection=reject_legacy_catalog,
+            prepare_package_product_catalog_bootstrap_projection=(
+                prepare_product_catalog
+            ),
+            explicit_system_prompt=None,
+            append_system_prompt=(),
+            model=None,
+            thinking_level=None,
+            tools=None,
+            tool_registry=None,
+            allowed_tool_names=[],
+            active_tool_names=None,
+            no_tools=None,
+            stream_fn=None,
+            convert_to_llm=lambda value: value,
+            agent_factory=lambda **_kwargs: object(),
+            session_factory=lambda _capabilities, _agent, _bundle, _extensions, _registry, _active, _prompt, _mode, product_lifecycle, product_inventory, product_mode: (
+                captured.append((product_lifecycle, product_inventory, product_mode))
+                or object()
+            ),
+            on_default_model_unavailable=lambda *_args: None,
+            set_scoped_models=lambda *_args: None,
+        )
+
+    if fail_construction:
+        with pytest.raises(RuntimeError, match="forced Session construction failure"):
+            run_construct()
+    else:
+        run_construct()
 
     assert calls[0][0] == "create:packages"
     request = calls[0][1]
     assert request.product_id == "research"
     assert request.session_id == "session:research"
     assert request.cwd == str(tmp_path.resolve())
-    assert calls[1:] == ["activate:packages", "construct:session"]
-    assert captured == [(lifecycle, inventory, "enforced")]
+    if fail_construction:
+        assert calls[1:] == [
+            "activate:packages",
+            "construct:session",
+            "prepare:product-catalog",
+            "dispose:packages",
+        ]
+        assert captured == []
+    else:
+        assert calls[1:] == [
+            "activate:packages",
+            "construct:session",
+            "prepare:product-catalog",
+        ]
+        assert captured == [(lifecycle, inventory, "enforced")]
 
 
 def test_agent_product_construction_resolves_final_profile_without_rebinding_resources(
@@ -651,7 +747,7 @@ def test_agent_product_construction_resolves_final_profile_without_rebinding_res
         thinking_level=None,
         tools=None,
         tool_registry=None,
-        allowed_tool_names=None,
+        allowed_tool_names=[],
         active_tool_names=None,
         no_tools=None,
         stream_fn=None,
@@ -754,7 +850,7 @@ def test_agent_product_construction_disposes_single_candidate_on_failure(
             thinking_level=None,
             tools=None,
             tool_registry=None,
-            allowed_tool_names=None,
+            allowed_tool_names=[],
             active_tool_names=None,
             no_tools=None,
             stream_fn=None,

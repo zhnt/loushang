@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from loushang.harness.continuity import (
+    CallbackPreparedActivationLease,
+    ContinuityTarget,
+)
 from loushang.harnesstui.conversation.agent_surfaces import (
     build_standard_agent_screen_surface_workflow_ports,
 )
@@ -36,6 +40,52 @@ class _Runtime:
         assert target == "entry-1"
         assert position == "before"
         return SimpleNamespace(cancelled=False, payload="Investigate this.")
+
+
+def test_standard_resume_surface_consumes_prepared_lifecycle_activation() -> None:
+    session = _Session()
+    target = ContinuityTarget(
+        provider_id="research.sessions",
+        opaque_id="session-2",
+        revision="3",
+    )
+    prepared: list[ContinuityTarget] = []
+    consumed: list[ContinuityTarget] = []
+
+    class _ContinuityReference:
+        async def prepare(self, selected: ContinuityTarget):
+            prepared.append(selected)
+            return CallbackPreparedActivationLease(
+                target=selected,
+                disposition="in_place",
+                consume=lambda: consumed.append(selected),
+            )
+
+    async def select_model(value: str) -> str:
+        return value
+
+    async def build_settings_content() -> object:
+        return {"product": "research"}
+
+    ports = build_standard_agent_screen_surface_workflow_ports(
+        session,
+        runtime=_Runtime(),
+        continuity_reference=_ContinuityReference(),
+        select_model=select_model,
+        set_model_label=lambda _label: None,
+        set_session_label=lambda _label: None,
+        build_settings_content=build_settings_content,
+        terminal_diagnostics=lambda: "research terminal",
+        hotkeys=lambda: "research hotkeys",
+        request_render=lambda _kind: None,
+    )
+
+    assert ports.activate_continuity is not None
+    assert asyncio.run(ports.activate_continuity(target)) == (
+        "Resumed session session-2"
+    )
+    assert prepared == [target]
+    assert consumed == [target]
 
 
 def test_standard_agent_surfaces_bind_structural_product_session_operations() -> None:

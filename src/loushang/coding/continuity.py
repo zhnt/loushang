@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
 
+from loushang.ai.types import AssistantMessage, UserMessage
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.capabilities.owner_component_host import (
     CapabilityOwnerComponentHost,
@@ -52,6 +53,7 @@ from loushang.harness.continuity.plugin_runtime import (
     publish_continuity_plugin_generation_with_mutations,
 )
 from loushang.harness.conversation import IndexedProjection
+from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import (
     CONTINUITY_PROVIDER_PACKS_SLOT,
     ProductRuntimePlan,
@@ -72,9 +74,18 @@ from loushang.harness.transcript import (
     SessionIndexPage,
     SessionQuery,
     SessionSummary,
+    assistant_message_text,
     same_agent_transcript_session_path,
     session_summary_authority_is_current,
     session_summary_revision,
+    user_message_text,
+)
+from loushang.harness.transcript.jsonl_file import AgentTranscriptFileError
+
+from .resume_history import (
+    read_coding_resume_header,
+    read_coding_resume_recent_page,
+    read_coding_resume_snapshot,
 )
 
 CODING_CONTINUITY_PROVIDER_ID = "coding.sessions"
@@ -355,7 +366,10 @@ class CodingContinuityProvider:
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
         indexed = self._cached_target(target)
         summary = indexed.projection
+        history_changed = False
+        history_text: str | None = None
         rows = [
+            ("Session ID", summary.session_id),
             ("Workspace", summary.cwd or "Unknown"),
             (
                 "Messages",
@@ -382,6 +396,100 @@ class CodingContinuityProvider:
                 rows.append(("Compatible copies", str(len(discovery.aliases))))
             if discovery.conflicts:
                 rows.append(("Conflicting copies", str(len(discovery.conflicts))))
+        if summary.session_file is not None:
+            # A cancelled preview still owns each submitted native read until
+            # it settles. Stable references therefore keep root shutdown joined
+            # through real completion rather than just waiter cancellation.
+            try:
+                history = await settled_io(
+                    read_coding_resume_header, summary.session_file,
+                )
+            except (OSError, ValueError):
+                rows.append(("History identity", "Unavailable"))
+            else:
+                if history.header.conversation_id != summary.session_id:
+                    history_changed = True
+                    rows.append(("History identity", "Changed; refresh"))
+                else:
+                    rows.append((
+                        "History identity",
+                        "Coding" if history.product_identity == "coding" else "Unverified",
+                    ))
+                    rows.append((
+                        "Historical composition",
+                        history.composition.set_id
+                        if history.composition is not None else "Legacy unknown",
+                    ))
+                    try:
+                        from .runtime.agent_session_runtime import AgentSessionRuntime
+
+                        if isinstance(self._runtime, AgentSessionRuntime):
+                            snapshot = await AgentSessionRuntime.preview_resume_history(
+                                self._runtime, summary.session_file,
+                                max_bytes=1024 * 1024,
+                            )
+                        else:
+                            snapshot = await settled_io(
+                                read_coding_resume_snapshot,
+                                summary.session_file,
+                                max_bytes=1024 * 1024,
+                            )
+                    except AgentTranscriptFileError as exc:
+                        if exc.code != "session_file_too_large":
+                            rows.append(("Recent history", "Bounded preview unavailable"))
+                        else:
+                            try:
+                                if isinstance(self._runtime, AgentSessionRuntime):
+                                    recent = await AgentSessionRuntime.preview_resume_recent_page(
+                                        self._runtime, summary.session_file,
+                                    )
+                                else:
+                                    recent = await settled_io(
+                                        read_coding_resume_recent_page,
+                                        summary.session_file,
+                                    )
+                            except (OSError, ValueError):
+                                rows.append(("Recent history", "Bounded preview unavailable"))
+                            else:
+                                if not recent.records:
+                                    rows.append(("Recent history", "Bounded preview unavailable"))
+                                elif (
+                                    recent.header_preview.header != history.header
+                                    or (
+                                        summary.authority_fingerprint is not None
+                                        and recent.source_fingerprint
+                                        != summary.authority_fingerprint
+                                    )
+                                ):
+                                    history_changed = True
+                                else:
+                                    history_text = _readonly_history_text(recent.records)
+                                    rows.append(("Recent history", "Unverified tail preview"))
+                    except (OSError, ValueError):
+                        rows.append(("Recent history", "Bounded preview unavailable"))
+                    else:
+                        if (
+                            snapshot.header_preview.header != history.header
+                            or (
+                                summary.authority_fingerprint is not None
+                                and snapshot.source_fingerprint
+                                != summary.authority_fingerprint
+                            )
+                        ):
+                            history_changed = True
+                        else:
+                            history_text = _readonly_history_text(snapshot.selected_records)
+                            start_planning = getattr(
+                                self._runtime, "start_configured_resume_planning", None
+                            )
+                            if callable(start_planning):
+                                try:
+                                    planning_started = await start_planning(snapshot)
+                                except (OSError, RuntimeError, TypeError, ValueError):
+                                    rows.append(("Resume preparation", "Unavailable"))
+                                else:
+                                    if planning_started is True:
+                                        rows.append(("Resume preparation", "In progress"))
         inspect_assets = getattr(
             self._runtime,
             "inspect_discovered_session_assets",
@@ -389,7 +497,7 @@ class CodingContinuityProvider:
         )
         if callable(inspect_assets) and summary.session_file is not None:
             try:
-                asset_health = await asyncio.to_thread(
+                asset_health = await settled_io(
                     inspect_assets,
                     summary.session_file,
                 )
@@ -402,6 +510,13 @@ class CodingContinuityProvider:
             model_id = summary.model.get("model_id")
             if provider and model_id:
                 rows.append(("Model", f"{provider}/{model_id}"))
+        if summary.authority_fingerprint is not None:
+            history_changed = (
+                not session_summary_authority_is_current(summary)
+                or history_changed
+            )
+        if history_changed:
+            history_text = None
         artifacts = (
             (
                 ContinuityArtifactReference(
@@ -419,7 +534,13 @@ class CodingContinuityProvider:
             sections=(
                 ContinuityPreviewSection(
                     kind="text",
-                    text=summary.last_message_preview or summary.first_message,
+                    text=(
+                        "History changed; refresh"
+                        if history_changed
+                        else history_text
+                        or summary.last_message_preview
+                        or summary.first_message
+                    ),
                 ),
                 ContinuityPreviewSection(
                     kind="key_value",
@@ -434,13 +555,15 @@ class CodingContinuityProvider:
             stale=(
                 session_summary_revision(summary, indexed.source_revision)
                 != target.revision
-            ),
+            ) or history_changed,
         )
 
-    async def prepare(
+    async def resolve_history_source(
         self,
         target: ContinuityTarget,
-    ) -> CallbackPreparedActivationLease:
+    ) -> str | Path:
+        """Resolve one current native transcript without preparing a Session."""
+
         indexed = self._cached_target(target)
         summary = indexed.projection
         _require_unconflicted_summary(summary)
@@ -453,28 +576,13 @@ class CodingContinuityProvider:
                 "The selected Coding session summary is stale."
             )
         # Index rows are advisory projections. Resolve their raw identity against
-        # fresh path-level discovery so a same-source duplicate cannot be activated
+        # fresh path-level discovery so a same-source duplicate cannot be entered
         # through a stale collapsed index entry.
         reference: str | Path = (
             summary.session_id
             if summary.discovery is not None
             else summary.session_file or summary.session_id
         )
-        current = self._runtime.get_current_session()
-        if current is not None and _same_session_reference(
-            self._runtime.get_current_session_ref(),
-            reference,
-        ):
-            return CallbackPreparedActivationLease(
-                target=target,
-                disposition="in_place",
-                consume=lambda: SessionOperationResult(
-                    previous=current,
-                    current=current,
-                    payload=None,
-                    cancelled=False,
-                ),
-            )
         if summary.authority_fingerprint is not None:
             if not session_summary_authority_is_current(summary):
                 raise StaleContinuityTargetError(
@@ -491,6 +599,30 @@ class CodingContinuityProvider:
                 raise StaleContinuityTargetError(
                     "The selected Coding session changed after it was listed."
                 )
+        return reference
+
+    async def prepare(
+        self,
+        target: ContinuityTarget,
+    ) -> CallbackPreparedActivationLease:
+        reference = await self.resolve_history_source(target)
+        indexed = self._cached_target(target)
+        summary = indexed.projection
+        current = self._runtime.get_current_session()
+        if current is not None and _same_session_reference(
+            self._runtime.get_current_session_ref(),
+            reference,
+        ):
+            return CallbackPreparedActivationLease(
+                target=target,
+                disposition="in_place",
+                consume=lambda: SessionOperationResult(
+                    previous=current,
+                    current=current,
+                    payload=None,
+                    cancelled=False,
+                ),
+            )
         candidate = await self._runtime.prepare_restore_session_operation(reference)
         if (
             summary.authority_fingerprint is not None
@@ -635,6 +767,30 @@ class CodingContinuityComposition:
                 self.owned_cleanup()
             self._owned_cleanup_complete = True
         self._shutdown = True
+
+
+async def resolve_coding_continuity_history_source(
+    composition: CodingContinuityComposition,
+    target: ContinuityTarget,
+) -> str | Path:
+    """Resolve an admitted native Coding target for history-first Resume."""
+
+    if not isinstance(composition, CodingContinuityComposition):
+        raise TypeError("Coding continuity composition is invalid")
+    if not isinstance(target, ContinuityTarget):
+        raise TypeError("Coding continuity target is invalid")
+    if target.provider_id != CODING_CONTINUITY_PROVIDER_ID:
+        raise RuntimeError(
+            "History-first Resume requires a native Coding session target"
+        )
+    providers = tuple(
+        bound.provider
+        for bound in composition.hub.composition.continuity_providers
+        if bound.provider.descriptor.provider_id == CODING_CONTINUITY_PROVIDER_ID
+    )
+    if len(providers) != 1 or type(providers[0]) is not CodingContinuityProvider:
+        raise RuntimeError("Native Coding continuity authority is unavailable")
+    return await providers[0].resolve_history_source(target)
 
 
 @dataclass
@@ -958,6 +1114,7 @@ class _PrivateContinuityPayload:
     file_identity: tuple[int, int]
     root_identity: tuple[int, int]
     root_descriptor: int
+    file_descriptor: int  # Pin the inode until identity-checked cleanup finishes.
 
 
 def _write_private_continuity_payload(
@@ -1012,21 +1169,28 @@ def _write_private_continuity_payload_at(
         _write_continuity_payload_bytes(descriptor, payload.data)
         status = os.fstat(descriptor)
         file_identity = (status.st_dev, status.st_ino)
-        os.close(descriptor)
-        descriptor = -1
         return _PrivateContinuityPayload(
             path=root / name,
             file_identity=file_identity,
             root_identity=root_identity,
             root_descriptor=root_descriptor,
+            file_descriptor=descriptor,
         )
     except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        if name:
-            with suppress(OSError):
-                os.unlink(name, dir_fd=root_descriptor)
-        os.close(root_descriptor)
+        try:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    current = os.stat(
+                        name, dir_fd=root_descriptor, follow_symlinks=False
+                    )
+                    if os.path.samestat(os.fstat(descriptor), current):
+                        os.unlink(name, dir_fd=root_descriptor)
+        finally:
+            try:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            finally:
+                os.close(root_descriptor)
         raise
 
 
@@ -1117,7 +1281,10 @@ def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> Non
             raise OSError("Coding continuity temporary file identity changed")
         os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
     finally:
-        os.close(staged.root_descriptor)
+        try:
+            os.close(staged.file_descriptor)
+        finally:
+            os.close(staged.root_descriptor)
 
 
 async def _remove_private_continuity_payload_atomic(
@@ -1304,6 +1471,28 @@ def _summary_title(summary: SessionSummary) -> str:
     return summary.session_id[:8]
 
 
+def _readonly_history_text(records: Iterable[object]) -> str | None:
+    """Show a few selected-path messages without activating their Session."""
+
+    recent: list[str] = []
+    for record in reversed(tuple(records)):
+        payload = getattr(record, "payload", None)
+        text: str | None
+        if isinstance(payload, UserMessage):
+            label, text = "You", user_message_text(payload)
+        elif isinstance(payload, AssistantMessage):
+            label, text = "Assistant", assistant_message_text(payload)
+        else:
+            continue
+        normalized = " ".join(text.split()) if text else ""
+        if not normalized:
+            continue
+        recent.append(f"{label}: {normalized[:160]}")
+        if len(recent) == 3:
+            break
+    return "\n".join(reversed(recent)) if recent else None
+
+
 def _require_unconflicted_summary(summary: SessionSummary) -> None:
     discovery = summary.discovery
     if discovery is not None and not discovery.resumable:
@@ -1381,6 +1570,7 @@ __all__ = [
     "bind_coding_continuity",
     "bind_coding_plugin_continuity",
     "get_coding_continuity_composition",
+    "resolve_coding_continuity_history_source",
     "shutdown_coding_continuity",
     "supports_coding_continuity_secure_staging",
 ]

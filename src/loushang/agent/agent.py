@@ -642,11 +642,16 @@ class Agent:
 
     def _create_context_snapshot(self) -> AgentContext:
         return AgentContext(
-            system_prompt=self._state.system_prompt,
+            system_prompt=(
+                None
+                if self._state.provider_window is not None
+                else self._state.system_prompt
+            ),
             messages=[
                 canonicalize_user_message(message) for message in self._state.messages
             ],
             tools=list(self._state.tools),
+            provider_window=self._state.provider_window,
         )
 
     def _create_loop_config(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any, cast
 
 from loushang.ai.context import NormalizedContext
@@ -25,11 +26,26 @@ from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
 from loushang.ai.tool.transform import MISSING_TOOL_RESULT_TEXT
 from loushang.ai.trace import emit_trace as _emit_trace
-from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    Tool,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.ai.utils import sanitize_surrogates
 
 
+@dataclass(frozen=True, slots=True)
+class _ChatPrefixState:
+    projection_key: str
+    source_message_count: int
+    normalized_message_count: int
+    ends_with_user: bool
+
+
 class OpenAIChatCompletionsAdapter:
+    prepare_request_in_worker = True
     api = "openai-completions"
     supports_structured_output = True
 
@@ -58,11 +74,9 @@ class OpenAIChatCompletionsAdapter:
         supports_reasoning_effort = adapter_config.reasoning_effort
 
         capabilities = model.capabilities
-        messages_param = _build_messages(
-            model,
-            normalized,
-            adapter_config,
-            capabilities,
+        projection_key = _chat_projection_key(request, adapter_config)
+        messages_param = _build_messages_with_certified_prefix(
+            request, adapter_config, projection_key
         )
         tools_param = _build_tools(normalized.tools, adapter_config)
         if tools_param is None and _has_tool_history(list(normalized.messages)):
@@ -121,7 +135,29 @@ class OpenAIChatCompletionsAdapter:
                 "tool_count": len(tools_param or []),
             },
         )
-        return PreparedModelRequest.from_provider_request(request, payload=params)
+        prepared = PreparedModelRequest.from_provider_request(request, payload=params)
+        committer = (
+            options.prepared_request_committer if options is not None else None
+        )
+        source_count = getattr(committer, "current_provider_source_count", None)
+        if (
+            projection_key is not None
+            and type(source_count) is int
+            and source_count >= 0
+            and (options is None or options.trace is None)
+        ):
+            prepared._retain_adapter_projection_state(
+                _ChatPrefixState(
+                    projection_key=projection_key,
+                    source_message_count=source_count,
+                    normalized_message_count=len(normalized.messages),
+                    ends_with_user=(
+                        bool(normalized.messages)
+                        and type(normalized.messages[-1]) is UserMessage
+                    ),
+                )
+            )
+        return prepared
 
     async def invoke_prepared_raw(
         self,
@@ -136,7 +172,9 @@ class OpenAIChatCompletionsAdapter:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         try:
-            from openai import AsyncOpenAI, Omit  # type: ignore
+            from loushang.ai.sdk_import import load_sdk_symbols
+
+            AsyncOpenAI, Omit = await load_sdk_symbols(self.api)  # type: ignore[misc]
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "openai SDK is not installed. Install via `pip install openai`"
@@ -694,6 +732,76 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
             getattr(model, "reasoning", False),
         )
     )
+
+
+def _chat_projection_key(
+    request: ProviderRequest,
+    adapter_config: OpenAICompletionsConfig,
+) -> str | None:
+    """Capture every model fact used by Chat message projection."""
+
+    model = request.model
+    try:
+        return json.dumps(
+            {
+                "id": model.id,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "api": model.api,
+                "upstream_id": model.upstream_id,
+                "model": model.to_raw(),
+                "adapter": adapter_config.to_raw(),
+                "system_prompt": request.context.system_prompt,
+                "pairing_mode": getattr(request.options, "pairing_mode", "repair"),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_messages_with_certified_prefix(
+    request: ProviderRequest,
+    adapter_config: OpenAICompletionsConfig,
+    projection_key: str | None,
+) -> list[Any]:
+    normalized = request.context
+    model = request.model
+    capabilities = model.capabilities
+    committer = (
+        request.options.prepared_request_committer
+        if request.options is not None
+        else None
+    )
+    previous = getattr(committer, "prepared_request_reuse", None)
+    state = getattr(previous, "_adapter_projection_state", None)
+    certified_count = getattr(committer, "certified_provider_prefix_count", None)
+    if (
+        projection_key is not None
+        and (request.options is None or request.options.trace is None)
+        and type(previous) is PreparedModelRequest
+        and type(state) is _ChatPrefixState
+        and state.projection_key == projection_key
+        and state.ends_with_user
+        and type(certified_count) is int
+        and certified_count > 0
+        and certified_count == state.source_message_count
+        and state.normalized_message_count <= len(normalized.messages)
+        and previous._owned_envelope_is_current()
+    ):
+        sealed_messages = previous.payload.get("messages")
+        if type(sealed_messages) is tuple:
+            suffix = NormalizedContext(
+                system_prompt=None,
+                messages=normalized.messages[state.normalized_message_count :],
+            )
+            projected: list[Any] = list(sealed_messages)
+            projected.extend(_build_messages(model, suffix, adapter_config, capabilities))
+            return projected
+    return _build_messages(model, normalized, adapter_config, capabilities)
 
 
 def _build_messages(

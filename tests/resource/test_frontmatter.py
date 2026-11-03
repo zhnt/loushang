@@ -10,15 +10,6 @@ def test_frontmatter_parser_has_product_neutral_entrypoint() -> None:
     assert result.body == "Run review."
 
 
-def test_harness_frontmatter_entrypoint_is_canonical() -> None:
-    from loushang.harness.resources.frontmatter import (
-        parse_frontmatter as harness_parse_frontmatter,
-    )
-    from loushang.resource.frontmatter import parse_frontmatter
-
-    assert harness_parse_frontmatter is parse_frontmatter
-
-
 def test_legacy_resource_frontmatter_path_preserves_harness_owner_identity() -> None:
     from loushang.harness.resources.frontmatter import (
         FrontmatterParseError as HarnessFrontmatterParseError,

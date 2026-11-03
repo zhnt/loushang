@@ -6,6 +6,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from tests.architecture._source_imports import resolved_imports
+
 APPSERVER = Path("src/loushang/appserver")
 APPSERVICE = Path("src/loushang/appservice")
 CODING_ADAPTER = Path("src/loushang/coding/appservice_adapter.py")
@@ -21,22 +23,7 @@ def _read(path: Path) -> str:
 
 
 def _imports(path: Path) -> set[str]:
-    imported: set[str] = set()
-    package = path.parent.relative_to("src").parts
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            retained = len(package) - (node.level - 1) if node.level else 0
-            base = (
-                (*package[:retained], *(node.module or "").split("."))
-                if node.level
-                else tuple((node.module or "").split("."))
-            )
-            normalized = tuple(part for part in base if part)
-            if normalized:
-                imported.add(".".join(normalized))
-    return imported
+    return resolved_imports(path, include_members=False, reject_invalid_relative=False)
 
 
 def _package_imports(root: Path) -> set[str]:
@@ -50,7 +37,10 @@ def _imports_prefix(imports: set[str], prefix: str) -> bool:
 def test_G17_controller_borrows_only_appserver_semantics() -> None:
     imports = _imports(HARNESSTUI_MUX / "controller.py")
     assert {name for name in imports if name.startswith("loushang.appserver")} == {
-        "loushang.appserver.client", "loushang.appserver.protocol",
+        "loushang.appserver.client",
+        "loushang.appserver.execution.client",
+        "loushang.appserver.execution.recovery",
+        "loushang.appserver.protocol",
     }
 
 
@@ -68,6 +58,7 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
         assert not _imports_prefix(imports, forbidden)
     for path in (
         APPSERVER / "ports.py",
+        APPSERVER / "managed_mux_close.py",
         *sorted((APPSERVER / "protocol").glob("*.py")),
     ):
         for imported in _imports(path):
@@ -126,13 +117,33 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         CODING_ADAPTER,
         Path("src/loushang/apphost/application.py"),
         Path("src/loushang/apphost/continuity.py"),
+        Path("src/loushang/apphost/foreground.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_execution.py"),
+        Path("src/loushang/coding/hosted_resume.py"),
+        Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/_hosted_execution_work.py"),
+        # COD-KD-HMW-001: original guard/registry, no second execution owner.
+        Path("src/loushang/coding/hosted_method.py"),
+        Path("src/loushang/coding/_hosted_method_work.py"),
+        # COD-KD-HG-001: original registry/guard drives one bounded Goal.
+        Path("src/loushang/coding/hosted_goal.py"),
+        Path("src/loushang/coding/_hosted_goal_work.py"),
+        # COD-KD-HG-002: fixed repository command selection in that same guard.
+        Path("src/loushang/coding/_hosted_repository_work.py"),
+        Path("src/loushang/apphost/managed/bootstrap.py"),
+        Path("src/loushang/apphost/managed/mux_creation.py"),
+        Path("src/loushang/apphost/managed/mux_management.py"),
+        Path("src/loushang/apphost/managed/mux_probe.py"),
+        Path("src/loushang/coding/managed_local.py"),
+        Path("src/loushang/coding/managed_bootstrap.py"),
+        Path("src/loushang/coding/managed_catalog.py"),
     }
+    assert {name for name in _imports(Path("src/loushang/apphost/managed/mux_probe.py"))
+            if name.startswith("loushang.appservice")} == {"loushang.appservice.continuity"}
     assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
@@ -141,10 +152,26 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     # a default Product or by altering the legacy Hosted Session port.
     for path in (
         CODING_ADAPTER,
-        Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/__init__.py"),
     ):
         assert "hosted_execution" not in _read(path)
+    bootstrap = ast.parse(_read(Path("src/loushang/coding/hosted_bootstrap.py")))
+    bootstrap_execution_imports = {
+        node
+        for node in ast.walk(bootstrap)
+        if isinstance(node, ast.ImportFrom) and node.module == "hosted_execution"
+    }
+    bootstrap_guarded_imports = {
+        imported
+        for node in ast.walk(bootstrap)
+        if isinstance(node, ast.If) and ast.unparse(node.test) == "not managed_selection"
+        for statement in node.body
+        for imported in ast.walk(statement)
+        if isinstance(imported, ast.ImportFrom)
+        and imported.module == "hosted_execution"
+    }
+    assert len(bootstrap_execution_imports) == 1
+    assert bootstrap_execution_imports == bootstrap_guarded_imports
     # The foreground owner may select the optional adapter, but only within
     # its explicit execution branch. Default construction must not import it.
     composition = ast.parse(_read(Path("src/loushang/coding/hosted_application.py")))
@@ -184,6 +211,7 @@ def test_G11_EMBEDDED_OMISSION_preserves_every_installed_current_route() -> None
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),
@@ -234,6 +262,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
             for name in ("__init__.py", "client.py", "ports.py", "runtime.py")
         ),
         "appservice-continuity": tuple(APPSERVICE.glob("continuity*.py")),
+        "appservice-managed-contract": (APPSERVICE / "managed_mux.py", APPSERVICE / "managed_mux_close.py"),
+        "appserver-close-values": (APPSERVER / "managed_mux_close.py",),
         "coding-adapter": (CODING_ADAPTER,),
         "harnesstui-mux": tuple(
             HARNESSTUI_MUX / name for name in
@@ -244,23 +274,36 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # G17's independently reviewed optional discovery algebra/codec adds
         # 271 lines to this exact group; all protocol modules still count.
         # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
-        "appserver": 2_100,
-        # Attachment-scoped model discovery and selection extend the existing
-        # AppService authority boundary without exposing provider credentials.
-        "appservice-core": 1_550,
-        "appservice-continuity": 1_250,
-        # Optional execution plus the redacted, session-local model control
-        # bridge remain isolated in the Coding AppService adapter.
+        # GUI's attachment-scoped model control adds 121 net lines to the
+        # existing protocol/client group (6 client, 6 exports, 49 codec, 60 model).
+        "appserver": 2_100 + 121,
+        # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
+        # state lock/atomic continuity authority; all four core files still count.
+        # LMUX M0 §72 keeps close coordination on the same state/continuity
+        # owner; reviewed core is 1876 lines, including original core files.
+        # Hosted capability routing and attachment-scoped model control share
+        # this existing AppService core owner.
+        "appservice-core": 1_961,
+        # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
+        # same continuity schema/recovery boundary; no owner split or activation.
+        # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
+        # complete continuity group 1378 lines, two managed contracts 134.
+        "appservice-continuity": 1_400,
+        "appservice-managed-contract": 150,
+        "appserver-close-values": 80,
+        # Hosted execution plus redacted, session-local model control remain
+        # isolated in the Coding AppService adapter.
         "coding-adapter": 470,
-        "harnesstui-mux": 600,
+        # Stable execution recovery and explicit profile wiring from main.
+        "harnesstui-mux": 688,
     }
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)
         assert lines <= limits[name], (name, lines, limits[name])
-    # The G17 terminal owner has its own exact, separately tested 950-line
-    # budget; do not expand the G11 semantic controller budget or hide new files.
+    # The terminal owner has its own separately tested 1042-line budget;
+    # do not move shell code into this semantic group or hide new files.
     assert {path.name for path in HARNESSTUI_MUX.glob("*.py")} == {
         *(path.name for path in groups["harnesstui-mux"]),
         "shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py",
-        "session_picker.py",
+        "session_picker.py", "conversation_binding.py",
     }

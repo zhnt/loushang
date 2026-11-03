@@ -10,6 +10,8 @@ from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import AppFramedStreamV1
+from loushang.appserver.managed_mux import ManagedMuxCreationClientV1
+from loushang.appserver.managed_mux_close import ManagedMuxCloseClientV1
 from loushang.appserver.protocol import (
     AppServiceError,
     InvalidAppMessageError,
@@ -19,6 +21,8 @@ from loushang.appserver.protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
     supports_execution,
+    supports_managed_mux,
+    supports_managed_mux_close,
 )
 from loushang.appserver.remote_client import RemoteAppClientV1
 
@@ -34,7 +38,11 @@ def test_G16_PROFILE_closed_message_stream_keeps_exact_negotiation(profile):
             execution = create_autospec(ExecutionClientV1, instance=True)
             execution.service_instance_id = "instance"
         server = AppServerConnectionV1(cast(AppClientV1, _SemanticClient()),
-                                      AppFramedStreamV1(right), profile=profile, execution=execution)
+                                      AppFramedStreamV1(right), profile=profile, execution=execution,
+                                      managed_mux=(create_autospec(ManagedMuxCreationClientV1, instance=True)
+                                                   if supports_managed_mux(profile) else None),
+                                      managed_mux_close=(create_autospec(ManagedMuxCloseClientV1, instance=True)
+                                                         if supports_managed_mux_close(profile) else None))
         client = RemoteAppClientV1(AppFramedStreamV1(left), profile=profile)
         serving = asyncio.create_task(server.serve())
         try:

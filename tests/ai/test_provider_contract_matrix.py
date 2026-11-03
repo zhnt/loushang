@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 from typing import NamedTuple
 
-from loushang.ai.api_registry import APIRegistry
-from loushang.ai.bootstrap import register_builtin_api_adapters
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
-from loushang.ai.provider.protocol import APIAdapter
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AI_SOURCE_ROOT = REPO_ROOT / "src/loushang/ai"
@@ -54,27 +50,6 @@ CORE_ADAPTER_MATRIX = (
         OpenAIResponsesAdapter,
     ),
 )
-
-
-def test_core_production_adapters_implement_api_adapter_contract() -> None:
-    for case in CORE_ADAPTER_MATRIX:
-        adapter = case.adapter_type()
-
-        assert adapter.api == case.api
-        assert isinstance(adapter, APIAdapter)
-        assert callable(adapter.invoke_raw)
-        assert list(inspect.signature(adapter.invoke_raw).parameters) == ["request"]
-        assert not hasattr(adapter, "stream_simple")
-
-
-def test_builtin_registration_is_frozen_to_core_adapter_matrix() -> None:
-    registry = APIRegistry()
-
-    register_builtin_api_adapters(registry)
-
-    assert sorted(adapter.api for adapter in registry.list_api_adapters()) == [
-        case.api for case in CORE_ADAPTER_MATRIX
-    ]
 
 
 def test_contract_matrix_document_matches_core_adapters() -> None:

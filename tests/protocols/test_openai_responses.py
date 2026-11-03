@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+from functools import partial
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
-from loushang.ai.context import NormalizedContext, normalize_context
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -23,6 +26,7 @@ from loushang.ai.protocols._openai_responses import process_responses_stream
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider import ProviderRequest, resolve_request_for_model
 from loushang.ai.structured import StructuredOutputOptions
+from loushang.ai.trace import emit_trace
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -37,23 +41,15 @@ from loushang.ai.types import (
 )
 from tests.protocols._runtime import (
     bound_test_model,
+    invoke_raw_parts_for_test,
     make_provider_request,
-    provider_request_for_test,
-    start_test_provider_stream,
+    normalized_context_for_test,
+    stream_for_test,
 )
 
-
-def _normalized_context(model, context, options=None):
-    if not isinstance(model, Model) or not model.api:
-        model = bound_test_model(
-            model,
-            api="openai-responses",
-            options=options,
-        )
-    pairing_mode = (
-        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
-    )
-    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+_normalized_context = partial(normalized_context_for_test, "openai-responses")
+_invoke_raw_parts = partial(invoke_raw_parts_for_test, "openai-responses")
+_stream = partial(stream_for_test, "openai-responses")
 
 
 class _AsyncEventStream:
@@ -94,46 +90,6 @@ def test_openai_responses_parser_closes_owned_event_iterator() -> None:
         await source.aclose()
 
     asyncio.run(_run())
-
-
-def _invoke_raw_parts(
-    provider,
-    model,
-    context,
-    options=None,
-    request=None,
-    *,
-    mode: str = "stream",
-):
-    normalized_context = _normalized_context(
-        request.model if request is not None else model,
-        context,
-        options,
-    )
-    provider_request = provider_request_for_test(
-        provider,
-        model,
-        normalized_context,
-        options=options,
-        request=request,
-    )
-    if mode != "stream":
-        provider_request = replace(provider_request, mode=mode)
-    return provider.invoke_raw(provider_request)
-
-
-async def _stream(provider, model, context, options=None, request=None):
-    return start_test_provider_stream(
-        provider,
-        model,
-        _normalized_context(
-            request.model if request is not None else model,
-            context,
-            options,
-        ),
-        options,
-        request=request,
-    )
 
 
 def _assert_no_session_hint_fields() -> None:
@@ -370,11 +326,7 @@ def test_openai_responses_closes_nested_stream_and_owned_client_at_terminal(
         source = _invoke_raw_parts(
             OpenAIResponsesAdapter(),
             _Model(),
-            {
-                "messages": [
-                    UserMessage(role="user", content="hello", timestamp=0.0)
-                ]
-            },
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(auth=ApiKeyAuth("test-key")),
         )
         while (await anext(source))["type"] != "response_done":
@@ -406,11 +358,7 @@ def test_openai_responses_does_not_close_injected_client_at_terminal(
         source = _invoke_raw_parts(
             OpenAIResponsesAdapter(client=client),
             _Model(),
-            {
-                "messages": [
-                    UserMessage(role="user", content="hello", timestamp=0.0)
-                ]
-            },
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(auth=ApiKeyAuth("test-key")),
         )
         while (await anext(source))["type"] != "response_done":
@@ -434,11 +382,7 @@ def test_openai_responses_closes_owned_client_after_create_error(
         source = _invoke_raw_parts(
             OpenAIResponsesAdapter(),
             _Model(),
-            {
-                "messages": [
-                    UserMessage(role="user", content="hello", timestamp=0.0)
-                ]
-            },
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(auth=ApiKeyAuth("test-key")),
         )
         while (await anext(source))["type"] != "response_error":
@@ -460,11 +404,7 @@ def test_openai_responses_closes_stream_and_client_after_iteration_error(
         source = _invoke_raw_parts(
             OpenAIResponsesAdapter(),
             _Model(),
-            {
-                "messages": [
-                    UserMessage(role="user", content="hello", timestamp=0.0)
-                ]
-            },
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(auth=ApiKeyAuth("test-key")),
         )
         while (await anext(source))["type"] != "response_error":
@@ -1597,6 +1537,181 @@ def test_openai_responses_function_call_delta_uses_composite_call_id() -> None:
         {"type": "stop_reason", "stop_reason": "stop"},
         {"type": "response_done"},
     ]
+
+
+def test_openai_responses_parallel_calls_retain_arguments_from_final_events() -> None:
+    events = []
+    for index, name in enumerate(("bash", "read", "spawn_agent")):
+        events.append(
+            SimpleNamespace(
+                type="response.output_item.added",
+                output_index=index,
+                item=SimpleNamespace(
+                    type="function_call",
+                    id=f"fc_{index}",
+                    call_id=f"call_{index}",
+                    name=name,
+                ),
+            )
+        )
+    for index, arguments in enumerate(
+        ('{"cmd":"pwd"}', '{"path":"a"}', '{"task":"inspect"}')
+    ):
+        events.extend(
+            (
+                SimpleNamespace(
+                    type="response.function_call_arguments.done",
+                    item_id=f"fc_{index}",
+                    output_index=index,
+                    arguments=arguments,
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=index,
+                    item=SimpleNamespace(
+                        type="function_call",
+                        id=f"fc_{index}",
+                        call_id=f"call_{index}",
+                        arguments=arguments,
+                    ),
+                ),
+            )
+        )
+    events.append(
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(status="completed"),
+        )
+    )
+
+    parts = asyncio.run(_collect_raw_parts(events))
+    assert [part for part in parts if part["type"] == "tool_call_args_delta"] == []
+    assert [
+        part["arguments"] for part in parts if part["type"] == "tool_call_args_final"
+    ] == [
+        '{"cmd":"pwd"}',
+        '{"cmd":"pwd"}',
+        '{"path":"a"}',
+        '{"path":"a"}',
+        '{"task":"inspect"}',
+        '{"task":"inspect"}',
+    ]
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+    )
+    for part in parts:
+        assembler.feed(part)
+
+    async def collect_events():
+        return [event async for event in stream]
+
+    result = asyncio.run(collect_events())[-1]["message"]
+    assert [part.arguments for part in result.content] == [
+        {"cmd": "pwd"},
+        {"path": "a"},
+        {"task": "inspect"},
+    ]
+
+
+def test_openai_responses_item_done_arguments_work_without_argument_done_event() -> (
+    None
+):
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.output_item.added",
+                    output_index=0,
+                    item=SimpleNamespace(
+                        type="function_call", id="fc_1", call_id="call_1", name="bash"
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=0,
+                    item=SimpleNamespace(
+                        type="function_call",
+                        id="fc_1",
+                        call_id="call_1",
+                        arguments='{"cmd":"pwd"}',
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed"),
+                ),
+            ]
+        )
+    )
+    assert [
+        part["arguments"] for part in parts if part["type"] == "tool_call_args_final"
+    ] == ['{"cmd":"pwd"}']
+
+
+def test_openai_responses_tool_argument_trace_contains_only_metadata() -> None:
+    secret = "do-not-record-this-command"
+    reports: list[dict[str, object]] = []
+    events = [
+        SimpleNamespace(type="response.created", response=SimpleNamespace(id="resp_1")),
+        SimpleNamespace(
+            type="response.output_item.added",
+            output_index=0,
+            item=SimpleNamespace(
+                type="function_call", id="fc_1", call_id="call_1", name="bash"
+            ),
+        ),
+        SimpleNamespace(
+            type="response.function_call_arguments.done",
+            item_id="fc_1",
+            output_index=0,
+            arguments=json.dumps({"cmd": secret}),
+        ),
+        SimpleNamespace(
+            type="response.output_item.done",
+            output_index=0,
+            item=SimpleNamespace(
+                type="function_call",
+                id="fc_1",
+                call_id="call_1",
+                name="bash",
+                arguments=json.dumps({"cmd": secret}),
+            ),
+        ),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(status="completed"),
+        ),
+    ]
+
+    async def collect():
+        return [
+            part
+            async for part in process_responses_stream(
+                _AsyncEventStream(events), on_tool_arguments=reports.append
+            )
+        ]
+
+    asyncio.run(collect())
+    assert len(reports) == 1
+    assert reports[0]["delta_count"] == 0
+    assert reports[0]["args_source"] == "item_done"
+    assert reports[0]["valid_json"] is True
+    assert reports[0]["final_matches_item"] is True
+    assert secret not in json.dumps(reports)
+
+    traces: list[dict[str, object]] = []
+    emit_trace(
+        SimpleNamespace(trace=traces.append),
+        {"type": "sdk:tool_arguments", **reports[0]},
+    )
+    assert traces[0]["data"]["delta_count"] == 0
+    assert traces[0]["data"]["final_matches_item"] is True
+    assert secret not in json.dumps(traces)
 
 
 def test_openai_responses_accepts_response_done_completion_alias() -> None:

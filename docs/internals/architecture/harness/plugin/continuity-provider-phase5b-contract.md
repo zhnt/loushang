@@ -78,6 +78,17 @@ directory-relative no-follow creation fail closed in Phase 5B; a Windows
 reparse-safe handle bridge is a separate implementation requirement, not a
 path-based fallback.
 
+The staging owner retains both the directory descriptor and the original file
+descriptor until cleanup finishes. The open file pins its inode: a saved
+device/inode pair alone would permit an unlinked file's identity to be reused
+by a replacement. Missing files are tolerated, but a replacement is preserved
+and the prepared Product candidate is aborted. Write-failure cleanup only
+unlinks a file actually created by this operation whose identity still matches
+the retained handle; exhausting name retries grants no deletion authority over
+an existing file. Both handles are released on success, failure and cancellation,
+after any in-flight owned work settles. These checks do not provide an atomic
+compare-and-unlink primitive against concurrent same-user path replacement.
+
 ## Composition and presentation
 
 Product/OEM Runtime Profile provenance remains the identity used by signed Hub

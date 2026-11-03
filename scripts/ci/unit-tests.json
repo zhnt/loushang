@@ -1,0 +1,149 @@
+{
+  "ai": [
+    "tests/ai/test_errors.py",
+    "tests/ai/test_json_codec.py",
+    "tests/ai/test_model_domain.py",
+    "tests/ai/test_model_registry.py",
+    "tests/ai/test_options.py",
+    "tests/ai/test_tool_validation.py",
+    "tests/ai/test_usage.py"
+  ],
+  "agent": [
+    "tests/agent/test_agent_loop.py",
+    "tests/agent/test_json_codec.py",
+    "tests/agent/test_public_api.py",
+    "tests/agent/test_tool_output.py"
+  ],
+  "apphost": [
+    "tests/apphost/test_catalog.py",
+    "tests/apphost/test_contracts.py",
+    "tests/apphost/test_managed_admission_record.py",
+    "tests/apphost/test_managed_contracts.py",
+    "tests/apphost/test_managed_paths.py",
+    "tests/apphost/test_managed_trace_buffer.py",
+    "tests/apphost/test_router.py"
+  ],
+  "appserver": [
+    "tests/appserver/test_connection_protocol.py",
+    "tests/appserver/test_execution_protocol.py",
+    "tests/appserver/test_managed_mux_wire.py",
+    "tests/appserver/test_protocol.py",
+    "tests/appserver/test_session_discovery_protocol.py"
+  ],
+  "appservice": [
+    "tests/appservice/test_execution_registry.py",
+    "tests/appservice/test_execution_snapshot.py",
+    "tests/appservice/test_owned_operations.py",
+    "tests/appservice/test_runtime.py"
+  ],
+  "channel": [
+    "tests/channel/test_channel_types.py",
+    "tests/channel/test_json_codec.py"
+  ],
+  "coding": [
+    "tests/coding/test_agent_session_model_input.py",
+    "tests/coding/test_compaction_core.py",
+    "tests/coding/test_composition_sets.py",
+    "tests/coding/test_multiagent.py",
+    "tests/coding/test_policy_engine.py",
+    "tests/coding/test_prompt_command.py",
+    "tests/coding/test_session_file_codec.py",
+    "tests/coding/test_session_operation_contract.py",
+    "tests/coding/test_tool_path_utils.py",
+    "tests/coding/test_tool_protocol.py",
+    "tests/coding/test_tool_public_types.py",
+    "tests/coding/test_tool_schema.py",
+    "tests/coding/test_tool_truncate.py",
+    "tests/coding/test_tool_wrapper.py",
+    "tests/coding/test_types.py",
+    "tests/coding/test_workspace_tool_pack_compatibility.py"
+  ],
+  "foundation": [
+    "tests/foundation/observability/test_identity.py",
+    "tests/foundation/observability/test_problem_text.py",
+    "tests/foundation/observability/test_projection.py",
+    "tests/foundation/test_json.py",
+    "tests/foundation/test_json_contract.py"
+  ],
+  "harness": [
+    "tests/harness/diagnostics/test_types.py",
+    "tests/harness/events/test_bus.py",
+    "tests/harness/events/test_projection.py",
+    "tests/harness/events/test_types.py",
+    "tests/harness/resources/plugins/test_manifest.py",
+    "tests/harness/resources/plugins/test_python_symbols.py",
+    "tests/harness/resources/plugins/test_strict_json.py",
+    "tests/harness/session/test_model_selection.py",
+    "tests/harness/session/test_operation_contract.py",
+    "tests/harness/session/test_queue_controller.py",
+    "tests/harness/test_sdk_surface.py",
+    "tests/harness/tools/test_core.py",
+    "tests/harness/tools/test_workspace.py"
+  ],
+  "harnesswork": [
+    "tests/harnesswork/test_plan_projection.py",
+    "tests/harnesswork/test_plan_projection_golden.py",
+    "tests/harnesswork/test_public_api.py"
+  ],
+  "harnesstui": [
+    "tests/harnesstui/conversation/test_control.py",
+    "tests/harnesstui/conversation/test_projection.py",
+    "tests/harnesstui/conversation/test_queue.py",
+    "tests/harnesstui/conversation/test_resume.py",
+    "tests/harnesstui/plain/test_renderer.py",
+    "tests/harnesstui/selection/test_model.py",
+    "tests/harnesstui/settings/test_model.py",
+    "tests/harnesstui/status/test_line.py"
+  ],
+  "hosting": [
+    "tests/hosting/test_contracts.py",
+    "tests/hosting/test_machine_identity.py",
+    "tests/hosting/test_platform_selection.py"
+  ],
+  "method": [
+    "tests/method/test_method_compiler.py",
+    "tests/method/test_method_loader.py",
+    "tests/method/test_method_projection.py",
+    "tests/method/test_method_registry.py",
+    "tests/method/test_method_selector.py",
+    "tests/method/test_method_types.py"
+  ],
+  "ontology": [
+    "tests/ontology/test_action_planning.py",
+    "tests/ontology/test_action_schema.py",
+    "tests/ontology/test_fact_model.py",
+    "tests/ontology/test_fact_projection.py",
+    "tests/ontology/test_identity_crosswalk.py",
+    "tests/ontology/test_package_artifacts.py",
+    "tests/ontology/test_schema.py",
+    "tests/ontology/test_schema_evolution.py",
+    "tests/ontology/test_schema_interfaces.py",
+    "tests/ontology/test_typed_query.py"
+  ],
+  "plugin": [
+    "tests/harness/plugin_authoring/test_public_sdk.py"
+  ],
+  "resource": [
+    "tests/resource/test_frontmatter.py",
+    "tests/resource/test_provenance.py"
+  ],
+  "tui": [
+    "tests/tui/test_cell_width.py",
+    "tests/tui/test_editor_buffer.py",
+    "tests/tui/test_input_routing.py",
+    "tests/tui/test_render_core.py",
+    "tests/tui/test_render_segments.py",
+    "tests/tui/test_streaming_markdown.py",
+    "tests/tui/test_text_input.py",
+    "tests/tui/test_transcript_region.py",
+    "tests/tui/test_widgets_foundation.py"
+  ],
+  "work": [
+    "tests/work/test_artifact_ref.py",
+    "tests/work/test_event_log.py",
+    "tests/work/test_package_boundaries.py",
+    "tests/work/test_public_api.py",
+    "tests/work/test_run_projection.py",
+    "tests/work/test_work_types.py"
+  ]
+}

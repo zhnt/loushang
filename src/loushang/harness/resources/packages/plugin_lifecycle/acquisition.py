@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import BinaryIO, Literal, Protocol, cast
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
     canonicalize_source_identity,
@@ -21,6 +22,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
     open_windows_directory,
     open_windows_regular_file_at,
     supports_windows_rooted_io,
+    windows_flush_directory,
     windows_listdir_at,
     windows_rmdir_at,
     windows_stat_at,
@@ -671,6 +673,18 @@ class _AuthorizedPackageSource:
         return self._stream
 
 
+@dataclass(frozen=True, slots=True)
+class PackageQuarantineAttemptObservationV1:
+    """One pathless, momentary physical observation of an exact attempt slot."""
+
+    operation_id: str
+    attempt_epoch: int
+    node_id: str
+    store_identity: tuple[int, int]
+    attempt_name: str
+    attempt_identity: tuple[int, int] | None
+
+
 class PackageQuarantineStore:
     """Owner-created private attempt roots; Source adapters never receive it."""
 
@@ -679,7 +693,10 @@ class PackageQuarantineStore:
         _require_no_link_ancestors(self.root.parent)
         if self.root.exists() or self.root.is_symlink():
             _require_private_directory(self.root)
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if os.name == "nt":
+            _create_private_windows_directory(self.root)
+        else:
+            self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         _require_no_link_ancestors(self.root)
         _require_private_directory(self.root)
         if _supports_descriptor_relative_io():
@@ -703,6 +720,191 @@ class PackageQuarantineStore:
                 if entry.is_dir(follow_symlinks=False)
             )
         )
+
+    def observe_attempts(
+        self,
+        operation_id: str,
+        attempt_epoch: int,
+        node_ids: tuple[str, ...],
+        *,
+        removed_identities: tuple[tuple[int, int], ...] = (),
+    ) -> tuple[PackageQuarantineAttemptObservationV1, ...]:
+        """Read exact POSIX attempt slots without creating or repairing state.
+
+        The caller must derive the complete node set from durable owner evidence
+        and recheck this momentary observation before an authorized mutation.
+        """
+
+        _require_safe_label(operation_id, name="quarantine operation id")
+        _require_positive(attempt_epoch, name="quarantine attempt epoch")
+        if (
+            not isinstance(node_ids, tuple)
+            or not node_ids
+            or any(not isinstance(node_id, str) for node_id in node_ids)
+            or len(set(node_ids)) != len(node_ids)
+        ):
+            raise ValueError("Quarantine node ids must be a non-empty unique tuple")
+        for node_id in node_ids:
+            _require_safe_label(node_id, name="quarantine node id")
+        if not isinstance(removed_identities, tuple) or any(
+            not isinstance(identity, tuple)
+            or len(identity) != 2
+            or any(type(value) is not int or value < 0 for value in identity)
+            for identity in removed_identities
+        ):
+            raise ValueError("Removed quarantine identities are invalid")
+        if os.name != "posix" or not _supports_descriptor_relative_io():
+            raise OSError("Physical Package quarantine observation is unsupported")
+
+        self._require_root_identity()
+        root_fd = _open_directory(self.root)
+        try:
+            if _identity(os.fstat(root_fd)) != self._root_identity:
+                raise OSError("Package quarantine root identity changed")
+            observations = []
+            for node_id in sorted(node_ids):
+                attempt_name = _attempt_name_for(operation_id, attempt_epoch, node_id)
+                try:
+                    attempt_fd = _open_directory(attempt_name, dir_fd=root_fd)
+                except FileNotFoundError:
+                    attempt_identity = None
+                else:
+                    try:
+                        metadata = os.fstat(attempt_fd)
+                        visible = os.stat(
+                            attempt_name, dir_fd=root_fd, follow_symlinks=False
+                        )
+                        if (
+                            not stat.S_ISDIR(metadata.st_mode)
+                            or metadata.st_mode & 0o077
+                            or not stat.S_ISDIR(visible.st_mode)
+                            or _identity(metadata) != _identity(visible)
+                        ):
+                            raise OSError("Package quarantine attempt identity changed")
+                        attempt_identity = _identity(metadata)
+                    finally:
+                        os.close(attempt_fd)
+                observations.append(
+                    PackageQuarantineAttemptObservationV1(
+                        operation_id=operation_id,
+                        attempt_epoch=attempt_epoch,
+                        node_id=node_id,
+                        store_identity=self._root_identity,
+                        attempt_name=attempt_name,
+                        attempt_identity=attempt_identity,
+                    )
+                )
+            if any(
+                _directory_identity_exists_at(root_fd, identity)
+                for identity in removed_identities
+            ):
+                raise OSError("Removed Package quarantine attempt identity moved")
+            self._require_root_identity()
+            return tuple(observations)
+        finally:
+            os.close(root_fd)
+
+    def observe_empty(self) -> tuple[int, int]:
+        """Observe an empty POSIX Store root without creating or repairing it."""
+
+        if os.name != "posix" or not _supports_descriptor_relative_io():
+            raise OSError("Physical Package quarantine observation is unsupported")
+        self._require_root_identity()
+        root_fd = _open_directory(self.root)
+        try:
+            identity = _identity(os.fstat(root_fd))
+            if identity != self._root_identity:
+                raise OSError("Package quarantine root identity changed")
+            if _listdir_at(root_fd):
+                raise OSError("Package quarantine Store is not empty")
+            self._require_root_identity()
+            return identity
+        finally:
+            os.close(root_fd)
+
+    def observe_known_entries(
+        self, allowed: tuple[tuple[str, tuple[int, int]], ...]
+    ) -> tuple[int, int]:
+        """Prove every direct entry is an exact known private attempt root."""
+
+        if (
+            not isinstance(allowed, tuple)
+            or len({name for name, _identity_pair in allowed}) != len(allowed)
+            or any(
+                not isinstance(name, str)
+                or re.fullmatch(r"attempt-[0-9a-f]{64}", name) is None
+                or not isinstance(identity_pair, tuple)
+                or len(identity_pair) != 2
+                or any(type(value) is not int or value < 0 for value in identity_pair)
+                for name, identity_pair in allowed
+            )
+        ):
+            raise ValueError("Known Package quarantine entries are invalid")
+        if os.name != "posix" or not _supports_descriptor_relative_io():
+            raise OSError("Physical Package quarantine observation is unsupported")
+        expected = dict(allowed)
+        self._require_root_identity()
+        root_fd = _open_directory(self.root)
+        try:
+            identity = _identity(os.fstat(root_fd))
+            if identity != self._root_identity:
+                raise OSError("Package quarantine root identity changed")
+            if set(_listdir_at(root_fd)) != set(expected):
+                raise OSError("Package quarantine Store has unattributed entries")
+            for name, expected_identity in expected.items():
+                entry_fd = _open_directory(name, dir_fd=root_fd)
+                try:
+                    metadata = os.fstat(entry_fd)
+                    visible = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                    if (
+                        not stat.S_ISDIR(metadata.st_mode)
+                        or metadata.st_mode & 0o077
+                        or not stat.S_ISDIR(visible.st_mode)
+                        or _identity(metadata) != expected_identity
+                        or _identity(visible) != expected_identity
+                    ):
+                        raise OSError("Known Package quarantine entry changed")
+                finally:
+                    os.close(entry_fd)
+            self._require_root_identity()
+            return identity
+        finally:
+            os.close(root_fd)
+
+    def prove_acquisition_sink(
+        self,
+        observed: PackageQuarantineAttemptObservationV1,
+        receipt: BoundedAcquisitionReceiptV1,
+    ) -> None:
+        """Bind a physical attempt directory to its durable acquisition sink."""
+
+        if (
+            not isinstance(observed, PackageQuarantineAttemptObservationV1)
+            or not isinstance(receipt, BoundedAcquisitionReceiptV1)
+            or observed.attempt_identity is None
+            or observed.store_identity != self._root_identity
+            or observed.operation_id != receipt.operation_id
+            or observed.attempt_epoch != receipt.attempt_epoch
+            or observed.node_id != receipt.node_id
+            or observed.attempt_name
+            != _attempt_name_for(
+                receipt.operation_id, receipt.attempt_epoch, receipt.node_id
+            )
+        ):
+            raise OSError("Committed Package acquisition changed attempt")
+        expected = sha256(
+            canonical_json_bytes(
+                {
+                    "attemptIdentity": list(observed.attempt_identity),
+                    "artifactName": (
+                        f"artifact-{sha256(receipt.node_id.encode()).hexdigest()}"
+                    ),
+                    "rootIdentity": list(observed.store_identity),
+                }
+            )
+        ).hexdigest()
+        if receipt.sink_identity != expected:
+            raise OSError("Committed Package acquisition changed physical sink")
 
     def total_residue_bytes(self) -> int:
         self._require_root_identity()
@@ -1941,17 +2143,21 @@ def _verify_envelope(
 def _attempt_entry_names(
     request: PackageAcquisitionRequestV1,
 ) -> tuple[str, str]:
-    seed = canonical_json_bytes(
-        {
-            "attemptEpoch": request.attempt_epoch,
-            "nodeId": request.node_id,
-            "operationId": request.operation_id,
-        }
-    )
     return (
-        f"attempt-{sha256(seed).hexdigest()}",
+        _attempt_name_for(request.operation_id, request.attempt_epoch, request.node_id),
         f"artifact-{sha256(request.node_id.encode()).hexdigest()}",
     )
+
+
+def _attempt_name_for(operation_id: str, attempt_epoch: int, node_id: str) -> str:
+    seed = canonical_json_bytes(
+        {
+            "attemptEpoch": attempt_epoch,
+            "nodeId": node_id,
+            "operationId": operation_id,
+        }
+    )
+    return f"attempt-{sha256(seed).hexdigest()}"
 
 
 def _supports_descriptor_relative_io() -> bool:
@@ -1969,15 +2175,70 @@ def _supports_descriptor_relative_io() -> bool:
 
 def _open_directory(path: str | Path, *, dir_fd: int | None = None) -> int:
     if os.name == "nt":
-        return open_windows_directory(path, dir_fd=dir_fd)
+        descriptor = open_windows_directory(path, dir_fd=dir_fd, read_control=True)
+        try:
+            with WindowsPrivateDirectoryAcl() as acl:
+                acl.validate(descriptor)
+            return descriptor
+        except BaseException:
+            os.close(descriptor)
+            raise
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     return os.open(path, flags, dir_fd=dir_fd)
 
 
+def _create_private_windows_directory(path: Path) -> None:
+    parent = open_windows_directory(path.parent)
+    try:
+        parent_identity = _identity(os.fstat(parent))
+        if _identity(path.parent.lstat()) != parent_identity:
+            raise OSError("Package quarantine parent changed")
+        with WindowsPrivateDirectoryAcl() as acl:
+            created = False
+            try:
+                descriptor = open_windows_directory(
+                    path.name,
+                    dir_fd=parent,
+                    create_new=True,
+                    security_descriptor=acl.security_descriptor,
+                    read_control=True,
+                )
+                created = True
+            except FileExistsError:
+                descriptor = open_windows_directory(
+                    path.name,
+                    dir_fd=parent,
+                    read_control=True,
+                )
+            try:
+                acl.validate(descriptor)
+                if created:
+                    windows_flush_directory(parent)
+                if _identity(path.parent.lstat()) != parent_identity:
+                    raise OSError("Package quarantine parent changed")
+            finally:
+                os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
 def _create_directory_at(directory_fd: int, name: str) -> int:
     if os.name == "nt":
-        return open_windows_directory(name, dir_fd=directory_fd, create_new=True)
+        with WindowsPrivateDirectoryAcl() as acl:
+            descriptor = open_windows_directory(
+                name,
+                dir_fd=directory_fd,
+                create_new=True,
+                security_descriptor=acl.security_descriptor,
+                read_control=True,
+            )
+            try:
+                acl.validate(descriptor)
+                return descriptor
+            except BaseException:
+                os.close(descriptor)
+                raise
     os.mkdir(name, mode=0o700, dir_fd=directory_fd)
     return _open_directory(name, dir_fd=directory_fd)
 
@@ -1990,12 +2251,21 @@ def _open_regular_file_at(
     write: bool,
 ) -> int:
     if os.name == "nt":
-        return open_windows_regular_file_at(
-            directory_fd,
-            name,
-            create_new=create_new,
-            write=write,
-        )
+        with WindowsPrivateDirectoryAcl() as acl:
+            descriptor = open_windows_regular_file_at(
+                directory_fd,
+                name,
+                create_new=create_new,
+                write=write,
+                security_descriptor=acl.security_descriptor if create_new else None,
+                read_control=True,
+            )
+            try:
+                acl.validate(descriptor)
+                return descriptor
+            except BaseException:
+                os.close(descriptor)
+                raise
     flags = (
         (os.O_WRONLY if write else os.O_RDONLY)
         | getattr(os, "O_CLOEXEC", 0)
@@ -2125,6 +2395,9 @@ def _require_private_directory(path: Path) -> None:
         raise OSError("Package quarantine root is not a private directory")
     if os.name == "posix" and metadata.st_mode & 0o077:
         raise OSError("Package quarantine root permissions are not private")
+    if os.name == "nt":
+        descriptor = _open_directory(path)
+        os.close(descriptor)
 
 
 def _require_no_link_ancestors(path: Path) -> None:

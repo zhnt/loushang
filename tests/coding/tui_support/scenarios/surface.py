@@ -184,7 +184,7 @@ def _run_model_select() -> object:
     result.assert_text_contains("Select Model")
     result.assert_text_contains("Model set: openai:test-endpoint:gpt-5.4")
     result.assert_text_contains(
-        "openai:test-endpoint:gpt-5.4 | repo | main | abcd | idle"
+        "gpt-5.4 | repo | main | abcd | idle"
     )
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
@@ -481,7 +481,8 @@ def _run_permissions_mode_surface() -> object:
     assert result.app.state.permission_profile == "cautious"
     result.assert_text_contains("Standard")
     result.assert_text_contains("Cautious (current)")
-    result.assert_text_contains("Permissions updated to Cautious (project).")
+    result.assert_text_contains("Permissions updated to Cautious for this session.")
+    result.assert_text_contains("Saved as the project default.")
     result.assert_no_clear_screen()
     return result
 

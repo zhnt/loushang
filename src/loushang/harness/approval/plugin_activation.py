@@ -27,6 +27,7 @@ from loushang.harness.journal import (
     load_jsonl,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 CONTRIBUTION_ACTIVATION_APPROVAL_SUBJECT_VERSION = 1
 OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION = 1
@@ -55,6 +56,8 @@ PluginActivationJournalEventKind = Literal[
     "activation_consumed",
     "activation_use_transitioned",
     "activation_uses_recovered",
+    "resume_parent_enrolled",
+    "resume_parent_sealed",
 ]
 
 _USE_TRANSITIONS = frozenset(
@@ -67,9 +70,7 @@ _USE_TRANSITIONS = frozenset(
         ("STARTED", "FAILED"),
     }
 )
-_TERMINAL_USE_STATES = frozenset(
-    {"CANCELLED_BEFORE_START", "COMMITTED", "FAILED"}
-)
+_TERMINAL_USE_STATES = frozenset({"CANCELLED_BEFORE_START", "COMMITTED", "FAILED"})
 
 
 class PluginActivationJournalRecordCodecError(JournalCodecError):
@@ -170,7 +171,9 @@ class ContributionActivationApprovalSubject:
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8")
-        return sha256(b"loushang.contribution-activation-subject/v1\0" + payload).hexdigest()
+        return sha256(
+            b"loushang.contribution-activation-subject/v1\0" + payload
+        ).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -335,9 +338,7 @@ class OwnerComponentActivationApprovalSubject:
     revocation_epoch: int
     effective_authorities: tuple[str, ...]
     execution_model: Literal["in_process"]
-    subject_kind: Literal["capability_owner_component"] = (
-        "capability_owner_component"
-    )
+    subject_kind: Literal["capability_owner_component"] = "capability_owner_component"
     subject_version: int = OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION
 
     def __post_init__(self) -> None:
@@ -511,9 +512,7 @@ class OwnerComponentActivationApprovalSubject:
                 component_kind=_wire_string(
                     document["componentKind"], name="component kind"
                 ),
-                component_id=_wire_string(
-                    document["componentId"], name="component id"
-                ),
+                component_id=_wire_string(document["componentId"], name="component id"),
                 plugin_id=_wire_string(document["pluginId"], name="Plugin id"),
                 contribution_id=_wire_string(
                     document["contributionId"], name="contribution id"
@@ -686,15 +685,13 @@ class PluginActivationDecisionRecordV1:
             )
             subject = (
                 OwnerComponentActivationApprovalSubject.from_dict(subject_document)
-                if subject_document.get("subjectKind")
-                == "capability_owner_component"
-                else ContributionActivationApprovalSubject.from_dict(
-                    subject_document
-                )
+                if subject_document.get("subjectKind") == "capability_owner_component"
+                else ContributionActivationApprovalSubject.from_dict(subject_document)
             )
-            if _wire_string(
-                document["subjectDigest"], name="subject digest"
-            ) != subject.digest:
+            if (
+                _wire_string(document["subjectDigest"], name="subject digest")
+                != subject.digest
+            ):
                 raise ValueError("Activation decision Subject digest does not match")
             return cls(
                 decision_id=_wire_string(document["decisionId"], name="decision id"),
@@ -847,9 +844,7 @@ class ActivationUseReservationV1:
                 instance_revision_ref=PluginInstanceRevisionRef.from_dict(
                     document["instanceRevisionRef"]
                 ),
-                host_boot_id=_wire_string(
-                    document["hostBootId"], name="Host boot id"
-                ),
+                host_boot_id=_wire_string(document["hostBootId"], name="Host boot id"),
                 import_realm_id=_wire_string(
                     document["importRealmId"], name="import realm id"
                 ),
@@ -887,6 +882,9 @@ class _PluginActivationJournalEventV1:
     source: str | None = None
     occurred_at_unix_ms: int = 0
     event_version: int = PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION
+    parent_context: ResumeEffectParentContextV1 | None = None
+    native_use_ids: tuple[str, ...] = ()
+    membership_digest: str | None = None
 
     def __post_init__(self) -> None:
         _require_positive_integer(self.journal_revision, name="journal revision")
@@ -897,10 +895,24 @@ class _PluginActivationJournalEventV1:
         if self.journal_revision != self.expected_journal_revision + 1:
             raise ValueError("Activation journal CAS revision is invalid")
         _require_nonnegative_integer(self.occurred_at_unix_ms, name="event time")
-        _require_version(
-            self.event_version,
-            expected=PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION,
+        context_event = self.event_kind in {
+            "resume_parent_enrolled",
+            "resume_parent_sealed",
+        } or (
+            self.event_kind == "activation_consumed" and self.parent_context is not None
         )
+        _require_version(self.event_version, expected=2 if context_event else 1)
+        if (
+            context_event
+            and type(self.parent_context) is not ResumeEffectParentContextV1
+        ):
+            raise ValueError("Resume native event requires exact parent context")
+        if not context_event and self.parent_context is not None:
+            raise ValueError("Legacy native event cannot carry parent context")
+        if self.event_kind != "resume_parent_sealed" and (
+            self.native_use_ids or self.membership_digest is not None
+        ):
+            raise ValueError("Only a Resume seal carries native membership")
         if self.event_kind == "decision_issued":
             valid = (
                 self.decision is not None
@@ -938,6 +950,29 @@ class _PluginActivationJournalEventV1:
                 and self.actor_id is None
                 and self.source is None
             )
+        elif self.event_kind in {"resume_parent_enrolled", "resume_parent_sealed"}:
+            valid = (
+                self.decision is None
+                and self.reservation is None
+                and not self.reservations
+                and self.actor_id is None
+                and self.source is None
+                and self.expected_state is None
+            )
+            if self.event_kind == "resume_parent_sealed":
+                if type(
+                    self.native_use_ids
+                ) is not tuple or self.native_use_ids != tuple(
+                    sorted(set(self.native_use_ids))
+                ):
+                    raise ValueError("Resume membership must be sorted and unique")
+                for use_id in self.native_use_ids:
+                    _require_hex(use_id, length=48, name="native activation use id")
+                assert self.parent_context is not None
+                if self.membership_digest != _resume_membership_digest(
+                    self.parent_context, self.native_use_ids
+                ):
+                    raise ValueError("Resume membership digest does not match")
         else:
             raise ValueError("Unsupported Plugin activation event kind")
         if not valid:
@@ -945,7 +980,15 @@ class _PluginActivationJournalEventV1:
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object]
-        if self.event_kind == "decision_issued":
+        if self.event_kind in {"resume_parent_enrolled", "resume_parent_sealed"}:
+            assert self.parent_context is not None
+            payload = {"parentContext": self.parent_context.to_dict()}
+            if self.event_kind == "resume_parent_sealed":
+                payload.update(
+                    nativeUseIds=list(self.native_use_ids),
+                    membershipDigest=self.membership_digest,
+                )
+        elif self.event_kind == "decision_issued":
             assert self.decision is not None
             payload = {"decision": self.decision.to_dict()}
         elif self.event_kind == "decision_revoked":
@@ -962,6 +1005,8 @@ class _PluginActivationJournalEventV1:
                 "decision": self.decision.to_dict(),
                 "reservation": self.reservation.to_dict(),
             }
+            if self.parent_context is not None:
+                payload["parentContext"] = self.parent_context.to_dict()
         elif self.event_kind == "activation_use_transitioned":
             assert self.reservation is not None and self.expected_state is not None
             payload = {
@@ -969,9 +1014,7 @@ class _PluginActivationJournalEventV1:
                 "reservation": self.reservation.to_dict(),
             }
         else:
-            payload = {
-                "reservations": [item.to_dict() for item in self.reservations]
-            }
+            payload = {"reservations": [item.to_dict() for item in self.reservations]}
         return {
             "eventKind": self.event_kind,
             "eventVersion": self.event_version,
@@ -996,11 +1039,16 @@ class _PluginActivationJournalEventV1:
             },
             name="Plugin activation journal event",
         )
-        _wire_version(
-            document["eventVersion"],
-            expected=PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION,
-        )
         kind = _wire_string(document["eventKind"], name="event kind")
+        version = document["eventVersion"]
+        expected_version = (
+            2
+            if version == 2
+            and kind
+            in {"activation_consumed", "resume_parent_enrolled", "resume_parent_sealed"}
+            else 1
+        )
+        _wire_version(version, expected=expected_version)
         payload = _wire_object(document["payload"], name="event payload")
         try:
             decision: PluginActivationDecisionRecordV1 | None = None
@@ -1009,7 +1057,34 @@ class _PluginActivationJournalEventV1:
             reservations: tuple[ActivationUseReservationV1, ...] = ()
             actor_id: str | None = None
             source: str | None = None
-            if kind == "decision_issued":
+            parent_context = None
+            native_use_ids: tuple[str, ...] = ()
+            membership_digest = None
+            if kind in {"resume_parent_enrolled", "resume_parent_sealed"}:
+                _wire_exact_fields(
+                    payload,
+                    keys={"parentContext"}
+                    | (
+                        {"nativeUseIds", "membershipDigest"}
+                        if kind == "resume_parent_sealed"
+                        else set()
+                    ),
+                    name="Resume native payload",
+                )
+                parent_context = ResumeEffectParentContextV1.from_dict(
+                    payload["parentContext"]
+                )
+                if kind == "resume_parent_sealed":
+                    ids = payload["nativeUseIds"]
+                    if type(ids) is not list:
+                        raise ValueError("Resume native membership requires an array")
+                    native_use_ids = tuple(
+                        _wire_string(item, name="native use id") for item in ids
+                    )
+                    membership_digest = _wire_string(
+                        payload["membershipDigest"], name="membership digest"
+                    )
+            elif kind == "decision_issued":
                 _wire_exact_fields(payload, keys={"decision"}, name="issue payload")
                 decision = PluginActivationDecisionRecordV1.from_dict(
                     payload["decision"]
@@ -1028,7 +1103,8 @@ class _PluginActivationJournalEventV1:
             elif kind == "activation_consumed":
                 _wire_exact_fields(
                     payload,
-                    keys={"decision", "reservation"},
+                    keys={"decision", "reservation"}
+                    | ({"parentContext"} if version == 2 else set()),
                     name="consumption payload",
                 )
                 decision = PluginActivationDecisionRecordV1.from_dict(
@@ -1037,6 +1113,10 @@ class _PluginActivationJournalEventV1:
                 reservation = ActivationUseReservationV1.from_dict(
                     payload["reservation"]
                 )
+                if version == 2:
+                    parent_context = ResumeEffectParentContextV1.from_dict(
+                        payload["parentContext"]
+                    )
             elif kind == "activation_use_transitioned":
                 _wire_exact_fields(
                     payload,
@@ -1073,6 +1153,10 @@ class _PluginActivationJournalEventV1:
                     name="expected journal revision",
                 ),
                 event_kind=cast(PluginActivationJournalEventKind, kind),
+                event_version=_wire_integer(version, name="event version"),
+                parent_context=parent_context,
+                native_use_ids=native_use_ids,
+                membership_digest=membership_digest,
                 decision=decision,
                 reservation=reservation,
                 expected_state=expected_state,
@@ -1102,12 +1186,31 @@ class PluginActivationDecisionSnapshotV1:
     activation_uses: tuple[ActivationUseReservationV1, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class PluginActivationResumeParentSnapshotV1:
+    """Native facts only; recovered failure does not prove task quiescence."""
+
+    parent_context: ResumeEffectParentContextV1
+    activation_uses: tuple[ActivationUseReservationV1, ...]
+    sealed: bool
+    membership_digest: str | None
+    unfenced_recovered_use_ids: tuple[str, ...]
+    journal_revision: int
+
+
 @dataclass(slots=True)
 class _ReplayedActivationJournal:
     events: tuple[_PluginActivationJournalEventV1, ...]
     decisions: dict[str, PluginActivationDecisionRecordV1]
     subject_decisions: dict[str, list[str]]
     activation_uses: dict[str, ActivationUseReservationV1]
+    resume_parents: dict[str, ResumeEffectParentContextV1]
+    resume_use_parents: dict[str, str]
+    resume_seals: dict[str, _PluginActivationJournalEventV1]
+    unfenced_recovered_uses: set[str]
+
+
+_RESUME_WRITER_CAPABILITIES = frozenset({"harness.plugin-activation.resume-context/v1"})
 
 
 class PluginActivationDecisionJournal:
@@ -1118,6 +1221,7 @@ class PluginActivationDecisionJournal:
         path: str | Path,
         *,
         scope_id: str,
+        required_writer_capabilities: frozenset[str] = frozenset(),
         identity_factory: Callable[[], str] = lambda: secrets.token_hex(24),
         clock: Callable[[], int] = lambda: time_ns() // 1_000_000,
         retained_authority_validator: Callable[
@@ -1126,12 +1230,27 @@ class PluginActivationDecisionJournal:
     ) -> None:
         _require_nonempty(scope_id, name="Plugin activation journal scope id")
         self._path = Path(path)
+        if type(required_writer_capabilities) is not frozenset or any(
+            type(item) is not str for item in required_writer_capabilities
+        ):
+            raise TypeError("Writer capabilities require an exact frozenset of strings")
+        if not required_writer_capabilities <= _RESUME_WRITER_CAPABILITIES:
+            raise self._error(
+                "Required native Writer protocol is unsupported",
+                code="plugin_activation_writer_protocol_unsupported",
+            )
         self._scope_id = scope_id
         self._identity_factory = identity_factory
         self._clock = clock
         self._retained_authority_validator = retained_authority_validator
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    @property
+    def writer_protocol_capabilities(self) -> frozenset[str]:
+        """Implemented wire support only; this value grants no authority."""
+
+        return _RESUME_WRITER_CAPABILITIES
 
     @property
     def path(self) -> Path:
@@ -1207,14 +1326,24 @@ class PluginActivationDecisionJournal:
         host_boot_id: str,
         import_realm_id: str,
         expected_journal_revision: int,
+        parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> ActivationUseReservationV1:
         self._require_subject_scope(subject)
         _require_hex(decision_id, length=48, name="activation decision id")
         _require_hex(host_boot_id, length=32, name="Host boot id")
         _require_hex(import_realm_id, length=32, name="import realm id")
         _require_expected_revision(expected_journal_revision)
+        if parent_context is not None:
+            self._require_resume_parent_context(parent_context)
+            if parent_context.product_id != subject.product_id:
+                raise self._error(
+                    "Resume parent Product does not match native subject",
+                    code="plugin_activation_resume_context_mismatch",
+                )
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=parent_context, require_open_resume=True
+            )
             self._require_journal_revision(replayed, expected_journal_revision)
             decision = replayed.decisions.get(decision_id)
             if decision is None:
@@ -1273,9 +1402,7 @@ class PluginActivationDecisionJournal:
                 host_boot_id=host_boot_id,
                 import_realm_id=import_realm_id,
                 owner_policy_revision=subject.owner_policy_revision,
-                source_trust_policy_revision=(
-                    subject.source_trust_policy_revision
-                ),
+                source_trust_policy_revision=(subject.source_trust_policy_revision),
                 revocation_epoch=subject.revocation_epoch,
                 state="CONSUMED_NOT_STARTED",
             )
@@ -1290,6 +1417,7 @@ class PluginActivationDecisionJournal:
                 event_kind="activation_consumed",
                 decision=consumed,
                 reservation=reservation,
+                parent_context=parent_context,
                 occurred_at=now,
             )
             return reservation
@@ -1350,6 +1478,7 @@ class PluginActivationDecisionJournal:
         reservation: ActivationUseReservationV1,
         *,
         expected_state: PluginActivationUseState,
+        started_at_unix_ms: int | None = None,
     ) -> None:
         if not isinstance(reservation, ActivationUseReservationV1):
             raise TypeError("Activation use validation requires an exact reservation")
@@ -1365,15 +1494,27 @@ class PluginActivationDecisionJournal:
             if (
                 decision is None
                 or decision.consumption_state != "CONSUMED"
-                or decision.consumed_activation_use_id
-                != reservation.activation_use_id
+                or decision.consumed_activation_use_id != reservation.activation_use_id
             ):
                 raise self._error(
                     "Plugin activation use has no exact consumed decision",
                     code="plugin_activation_use_authority_mismatch",
                 )
             now = self._now()
-            if now < decision.issued_at_unix_ms or now >= decision.expires_at_unix_ms:
+            if started_at_unix_ms is None:
+                decision_time_current = (
+                    decision.issued_at_unix_ms <= now < decision.expires_at_unix_ms
+                )
+            else:
+                decision_time_current = (
+                    type(started_at_unix_ms) is int
+                    and decision.issued_at_unix_ms
+                    <= started_at_unix_ms
+                    < decision.expires_at_unix_ms
+                    and started_at_unix_ms <= now
+                    and now - started_at_unix_ms < 900_000
+                )
+            if not decision_time_current:
                 raise self._error(
                     "Plugin activation decision expired before execution start",
                     code="plugin_activation_decision_expired",
@@ -1403,13 +1544,26 @@ class PluginActivationDecisionJournal:
         _require_hex(import_realm_id, length=32, name="import realm id")
         _require_expected_revision(expected_journal_revision)
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                starting_use_id=activation_use_id
+                if target_state == "STARTING"
+                else None,
+            )
             self._require_journal_revision(replayed, expected_journal_revision)
             current = replayed.activation_uses.get(activation_use_id)
             if current is None:
                 raise self._error(
                     "Plugin activation use does not exist",
                     code="plugin_activation_use_missing",
+                )
+            if (
+                target_state == "STARTING"
+                and replayed.resume_use_parents.get(activation_use_id)
+                in replayed.resume_seals
+            ):
+                raise self._error(
+                    "Resume parent enumeration is sealed",
+                    code="plugin_activation_resume_parent_sealed",
                 )
             if current.state != expected_state:
                 raise self._error(
@@ -1445,25 +1599,35 @@ class PluginActivationDecisionJournal:
         current_host_boot_id: str,
         recovered_at_unix_ms: int,
         expected_journal_revision: int,
+        parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> tuple[ActivationUseReservationV1, ...]:
         _require_hex(current_host_boot_id, length=32, name="current Host boot id")
         _require_expected_revision(expected_journal_revision)
+        if parent_context is not None:
+            self._require_resume_parent_context(parent_context)
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=parent_context,
+                require_open_resume=parent_context is not None,
+            )
             self._require_journal_revision(replayed, expected_journal_revision)
             recovered: list[ActivationUseReservationV1] = []
             for current in sorted(
                 replayed.activation_uses.values(),
                 key=lambda item: item.activation_use_id,
             ):
+                if (
+                    parent_context is not None
+                    and replayed.resume_use_parents.get(current.activation_use_id)
+                    != parent_context.digest
+                ):
+                    continue
                 if current.state in _TERMINAL_USE_STATES:
                     continue
                 if current.host_boot_id == current_host_boot_id:
                     continue
                 if current.state == "CONSUMED_NOT_STARTED":
-                    recovered.append(
-                        replace(current, state="CANCELLED_BEFORE_START")
-                    )
+                    recovered.append(replace(current, state="CANCELLED_BEFORE_START"))
                     continue
                 recovered.append(replace(current, state="FAILED"))
             if not recovered:
@@ -1476,9 +1640,19 @@ class PluginActivationDecisionJournal:
             )
             return tuple(recovered)
 
-    def snapshot(self) -> PluginActivationDecisionSnapshotV1:
+    def snapshot(
+        self,
+        *,
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
+        require_open_resume: bool = False,
+    ) -> PluginActivationDecisionSnapshotV1:
+        if resume_parent_context is not None:
+            self._require_resume_parent_context(resume_parent_context)
         with self._lock():
-            replayed = self._load_and_replay_unlocked()
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=resume_parent_context,
+                require_open_resume=require_open_resume,
+            )
         return PluginActivationDecisionSnapshotV1(
             journal_revision=len(replayed.events),
             decisions=tuple(
@@ -1499,6 +1673,136 @@ class PluginActivationDecisionJournal:
                 code="plugin_activation_identity_conflict",
             )
         return identity
+
+    def resume_parent_scope_digest(self, *, product_id: str) -> str:
+        _require_nonempty(product_id, name="Resume Product id")
+        document = {
+            "ownerId": "harness.plugin-activation",
+            "productId": product_id,
+            "scopeId": self._scope_id,
+        }
+        return sha256(
+            b"loushang.plugin-activation.resume-scope/v1\0"
+            + json.dumps(
+                document,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+
+    @property
+    def resume_parent_contract_digest(self) -> str:
+        return sha256(b"harness.plugin-activation.resume-context/v1").hexdigest()
+
+    def _require_resume_parent_context(
+        self, context: ResumeEffectParentContextV1
+    ) -> None:
+        if type(context) is not ResumeEffectParentContextV1:
+            raise TypeError("Resume native owner requires a typed parent context")
+        if (
+            context.owner_id != "harness.plugin-activation"
+            or context.scope_digest
+            != self.resume_parent_scope_digest(product_id=context.product_id)
+            or context.contract_digest != self.resume_parent_contract_digest
+        ):
+            raise self._error(
+                "Resume context does not match original owner scope/contract",
+                code="plugin_activation_resume_context_mismatch",
+            )
+
+    def enroll_resume_parent(
+        self, context: ResumeEffectParentContextV1, *, expected_journal_revision: int
+    ) -> None:
+        """Enroll inert parent data; native decision consumption still admits uses."""
+        self._require_resume_parent_context(context)
+        _require_expected_revision(expected_journal_revision)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            self._require_journal_revision(replayed, expected_journal_revision)
+            if context.digest in replayed.resume_parents:
+                raise self._error(
+                    "Resume parent is already enrolled",
+                    code="plugin_activation_resume_parent_exists",
+                )
+            if any(
+                _resume_parent_identity(existing) == _resume_parent_identity(context)
+                for existing in replayed.resume_parents.values()
+            ):
+                raise self._error(
+                    "Resume parent identity was already bound to another intent",
+                    code="plugin_activation_resume_parent_conflict",
+                )
+            self._append_unlocked(
+                replayed,
+                event_kind="resume_parent_enrolled",
+                parent_context=context,
+                occurred_at=self._now(),
+            )
+
+    def seal_resume_parent(
+        self, context: ResumeEffectParentContextV1, *, expected_journal_revision: int
+    ) -> PluginActivationResumeParentSnapshotV1:
+        """Fence all future native starts/registrations for the exact parent.
+
+        STARTING is unresolved even across boots; it cannot be sealed by absence
+        or by a new boot identity. External effect settlement is not inferred.
+        """
+        self._require_resume_parent_context(context)
+        _require_expected_revision(expected_journal_revision)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked(
+                required_resume_parent=context,
+                require_open_resume=True,
+                require_quiescent_resume=True,
+            )
+            self._require_journal_revision(replayed, expected_journal_revision)
+            _require_open_resume_parent(replayed, context, path=self._path)
+            _require_quiescent_resume_parent(replayed, context, path=self._path)
+            uses = _resume_parent_uses(replayed, context)
+            ids = tuple(item.activation_use_id for item in uses)
+            digest = _resume_membership_digest(context, ids)
+            self._append_unlocked(
+                replayed,
+                event_kind="resume_parent_sealed",
+                parent_context=context,
+                native_use_ids=ids,
+                membership_digest=digest,
+                occurred_at=self._now(),
+            )
+            return PluginActivationResumeParentSnapshotV1(
+                context,
+                uses,
+                True,
+                digest,
+                (),
+                len(replayed.events) + 1,
+            )
+
+    def resume_parent_snapshot(
+        self, context: ResumeEffectParentContextV1
+    ) -> PluginActivationResumeParentSnapshotV1:
+        self._require_resume_parent_context(context)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked(required_resume_parent=context)
+            if replayed.resume_parents.get(context.digest) != context:
+                raise self._error(
+                    "Original parent enrollment is missing",
+                    code="plugin_activation_resume_parent_unknown",
+                )
+            seal = replayed.resume_seals.get(context.digest)
+            return PluginActivationResumeParentSnapshotV1(
+                context,
+                _resume_parent_uses(replayed, context),
+                seal is not None,
+                seal.membership_digest if seal is not None else None,
+                tuple(
+                    use.activation_use_id
+                    for use in _resume_parent_uses(replayed, context)
+                    if use.activation_use_id in replayed.unfenced_recovered_uses
+                ),
+                len(replayed.events),
+            )
 
     def _require_subject_scope(
         self,
@@ -1550,11 +1854,18 @@ class PluginActivationDecisionJournal:
         reservations: tuple[ActivationUseReservationV1, ...] = (),
         actor_id: str | None = None,
         source: str | None = None,
+        parent_context: ResumeEffectParentContextV1 | None = None,
+        native_use_ids: tuple[str, ...] = (),
+        membership_digest: str | None = None,
     ) -> None:
         event = _PluginActivationJournalEventV1(
             journal_revision=len(replayed.events) + 1,
             expected_journal_revision=len(replayed.events),
             event_kind=event_kind,
+            event_version=2 if parent_context is not None else 1,
+            parent_context=parent_context,
+            native_use_ids=native_use_ids,
+            membership_digest=membership_digest,
             decision=decision,
             reservation=reservation,
             expected_state=expected_state,
@@ -1571,33 +1882,79 @@ class PluginActivationDecisionJournal:
             durability=self._unlocked_durability,
         )
 
-    def _load_and_replay_unlocked(self) -> _ReplayedActivationJournal:
+    def _load_and_replay_unlocked(
+        self,
+        *,
+        required_resume_parent: ResumeEffectParentContextV1 | None = None,
+        require_open_resume: bool = False,
+        require_quiescent_resume: bool = False,
+        starting_use_id: str | None = None,
+    ) -> _ReplayedActivationJournal:
         if not self._path.exists():
-            return _empty_replay()
-        try:
-            snapshot: JsonlSnapshot[None, _PluginActivationJournalEventV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=_ACTIVATION_EVENT_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
+            if required_resume_parent is not None:
+                raise self._error(
+                    "Original parent enrollment is missing",
+                    code="plugin_activation_resume_parent_unknown",
                 )
+            return _empty_replay()
+        replayed = _empty_replay()
+
+        def validate_snapshot(
+            snapshot: JsonlSnapshot[None, _PluginActivationJournalEventV1],
+        ) -> None:
+            nonlocal replayed
+            replayed = _replay(snapshot.records, path=self._path)
+            if (
+                starting_use_id is not None
+                and replayed.resume_use_parents.get(starting_use_id)
+                in replayed.resume_seals
+            ):
+                raise self._error(
+                    "Resume parent enumeration is sealed",
+                    code="plugin_activation_resume_parent_sealed",
+                )
+            for context in replayed.resume_parents.values():
+                self._require_resume_parent_context(context)
+            if required_resume_parent is not None:
+                if (
+                    replayed.resume_parents.get(required_resume_parent.digest)
+                    != required_resume_parent
+                ):
+                    raise self._error(
+                        "Original parent enrollment is missing",
+                        code="plugin_activation_resume_parent_unknown",
+                    )
+                if require_open_resume:
+                    _require_open_resume_parent(
+                        replayed, required_resume_parent, path=self._path
+                    )
+                if require_quiescent_resume:
+                    _require_quiescent_resume_parent(
+                        replayed, required_resume_parent, path=self._path
+                    )
+            if any(
+                decision.scope_id != self._scope_id
+                for decision in replayed.decisions.values()
+            ):
+                raise self._error(
+                    "Plugin activation journal contains another durable scope",
+                    code="plugin_activation_journal_corrupt",
+                )
+
+        try:
+            load_jsonl(
+                self._path,
+                record_codec=_ACTIVATION_EVENT_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
+                validate_snapshot=validate_snapshot,
             )
         except JournalFileError as exc:
             raise self._error(
                 "Plugin activation journal cannot be decoded",
                 code="plugin_activation_journal_corrupt",
             ) from exc
-        replayed = _replay(snapshot.records, path=self._path)
-        if any(
-            decision.scope_id != self._scope_id
-            for decision in replayed.decisions.values()
-        ):
-            raise self._error(
-                "Plugin activation journal contains another durable scope",
-                code="plugin_activation_journal_corrupt",
-            )
         return replayed
 
     def _error(self, message: str, *, code: str) -> PluginActivationJournalError:
@@ -1610,6 +1967,10 @@ def _empty_replay() -> _ReplayedActivationJournal:
         decisions={},
         subject_decisions={},
         activation_uses={},
+        resume_parents={},
+        resume_use_parents={},
+        resume_seals={},
+        unfenced_recovered_uses=set(),
     )
 
 
@@ -1626,7 +1987,26 @@ def _replay(
             or event.expected_journal_revision != index - 1
         ):
             raise _corrupt(path, "Activation journal revision sequence is invalid")
-        if event.event_kind == "decision_issued":
+        if event.event_kind == "resume_parent_enrolled":
+            assert event.parent_context is not None
+            context = event.parent_context
+            if any(
+                _resume_parent_identity(existing) == _resume_parent_identity(context)
+                for existing in replayed.resume_parents.values()
+            ):
+                raise _corrupt(path, "Resume parent identity enrolled more than once")
+            replayed.resume_parents[context.digest] = context
+        elif event.event_kind == "resume_parent_sealed":
+            assert event.parent_context is not None
+            context = event.parent_context
+            _require_open_resume_parent(replayed, context, path=path)
+            _require_quiescent_resume_parent(replayed, context, path=path)
+            if event.native_use_ids != tuple(
+                use.activation_use_id for use in _resume_parent_uses(replayed, context)
+            ):
+                raise _corrupt(path, "Resume membership is incomplete")
+            replayed.resume_seals[context.digest] = event
+        elif event.event_kind == "decision_issued":
             assert event.decision is not None
             decision = event.decision
             if decision.decision_id in replayed.decisions:
@@ -1664,9 +2044,7 @@ def _replay(
                 else replace(
                     previous_decision,
                     consumption_state="CONSUMED",
-                    consumed_activation_use_id=(
-                        event.reservation.activation_use_id
-                    ),
+                    consumed_activation_use_id=(event.reservation.activation_use_id),
                     decision_revision=previous_decision.decision_revision + 1,
                 )
             )
@@ -1681,9 +2059,7 @@ def _replay(
                 host_boot_id=event.reservation.host_boot_id,
                 import_realm_id=event.reservation.import_realm_id,
                 owner_policy_revision=subject.owner_policy_revision,
-                source_trust_policy_revision=(
-                    subject.source_trust_policy_revision
-                ),
+                source_trust_policy_revision=(subject.source_trust_policy_revision),
                 revocation_epoch=subject.revocation_epoch,
                 state="CONSUMED_NOT_STARTED",
             )
@@ -1695,12 +2071,27 @@ def _replay(
                 or event.reservation.activation_use_id in replayed.activation_uses
             ):
                 raise _corrupt(path, "Activation consumption event is invalid")
+            if event.parent_context is not None:
+                _require_open_resume_parent(replayed, event.parent_context, path=path)
+                if event.parent_context.product_id != subject.product_id:
+                    raise _corrupt(
+                        path, "Resume parent Product does not match native decision"
+                    )
+                replayed.resume_use_parents[event.reservation.activation_use_id] = (
+                    event.parent_context.digest
+                )
             replayed.decisions[event.decision.decision_id] = event.decision
             replayed.activation_uses[event.reservation.activation_use_id] = (
                 event.reservation
             )
         elif event.event_kind == "activation_use_transitioned":
             assert event.reservation is not None and event.expected_state is not None
+            if (
+                event.reservation.state == "STARTING"
+                and replayed.resume_use_parents.get(event.reservation.activation_use_id)
+                in replayed.resume_seals
+            ):
+                raise _corrupt(path, "Native start follows sealed Resume membership")
             previous_reservation = replayed.activation_uses.get(
                 event.reservation.activation_use_id
             )
@@ -1725,23 +2116,99 @@ def _replay(
                 previous_reservation = replayed.activation_uses.get(
                     reservation.activation_use_id
                 )
-                valid = previous_reservation is not None and (
-                    (
-                        previous_reservation.state == "CONSUMED_NOT_STARTED"
-                        and reservation.state == "CANCELLED_BEFORE_START"
+                valid = (
+                    previous_reservation is not None
+                    and (
+                        (
+                            previous_reservation.state == "CONSUMED_NOT_STARTED"
+                            and reservation.state == "CANCELLED_BEFORE_START"
+                        )
+                        or (
+                            previous_reservation.state in {"STARTING", "STARTED"}
+                            and reservation.state == "FAILED"
+                        )
                     )
-                    or (
-                        previous_reservation.state in {"STARTING", "STARTED"}
-                        and reservation.state == "FAILED"
+                    and reservation
+                    == replace(
+                        previous_reservation,
+                        state=reservation.state,
                     )
-                ) and reservation == replace(
-                    previous_reservation,
-                    state=reservation.state,
                 )
                 if not valid:
                     raise _corrupt(path, "Activation recovery event is invalid")
+                assert previous_reservation is not None
+                if previous_reservation.state in {"STARTING", "STARTED"}:
+                    replayed.unfenced_recovered_uses.add(reservation.activation_use_id)
                 replayed.activation_uses[reservation.activation_use_id] = reservation
     return replayed
+
+
+def _resume_parent_identity(context: ResumeEffectParentContextV1) -> tuple[str, ...]:
+    return context.product_id, context.session_id, context.attempt_id, context.owner_id
+
+
+def _resume_parent_uses(
+    replayed: _ReplayedActivationJournal, context: ResumeEffectParentContextV1
+) -> tuple[ActivationUseReservationV1, ...]:
+    return tuple(
+        sorted(
+            (
+                use
+                for key, use in replayed.activation_uses.items()
+                if replayed.resume_use_parents.get(key) == context.digest
+            ),
+            key=lambda use: use.activation_use_id,
+        )
+    )
+
+
+def _require_open_resume_parent(
+    replayed: _ReplayedActivationJournal,
+    context: ResumeEffectParentContextV1,
+    *,
+    path: Path,
+) -> None:
+    if replayed.resume_parents.get(context.digest) != context:
+        raise PluginActivationJournalError(
+            "Original parent enrollment is missing",
+            code="plugin_activation_resume_parent_unknown",
+            path=path,
+        )
+    if context.digest in replayed.resume_seals:
+        raise PluginActivationJournalError(
+            "Original parent enumeration is sealed",
+            code="plugin_activation_resume_parent_sealed",
+            path=path,
+        )
+
+
+def _resume_membership_digest(
+    context: ResumeEffectParentContextV1, ids: tuple[str, ...]
+) -> str:
+    return sha256(
+        b"loushang.plugin-activation.resume-membership/v1\0"
+        + context.digest.encode()
+        + b"\0"
+        + json.dumps(list(ids), separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _require_quiescent_resume_parent(
+    replayed: _ReplayedActivationJournal,
+    context: ResumeEffectParentContextV1,
+    *,
+    path: Path,
+) -> None:
+    if any(
+        use.state in {"STARTING", "STARTED"}
+        or use.activation_use_id in replayed.unfenced_recovered_uses
+        for use in _resume_parent_uses(replayed, context)
+    ):
+        raise PluginActivationJournalError(
+            "Original factory invocation remains unfenced",
+            code="plugin_activation_resume_start_unknown",
+            path=path,
+        )
 
 
 def _latest_subject_decision(

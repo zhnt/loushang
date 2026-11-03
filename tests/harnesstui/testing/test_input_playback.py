@@ -15,6 +15,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputIgnored,
     ConversationLocalResult,
     ConversationPromptResult,
+    ConversationShellResult,
     ConversationSteerResult,
     ConversationSurfaceResult,
 )
@@ -150,6 +151,14 @@ def test_default_result_payload_preserves_legacy_schema_for_every_variant() -> N
         assert dict(default_conversation_result_payload(result)) == (
             neutral | changed
         )
+
+
+def test_default_result_payload_captures_shell_submission() -> None:
+    payload = default_conversation_result_payload(
+        ConversationShellResult(text="!! printf hello")
+    )
+
+    assert payload["shell_text"] == "!! printf hello"
 
 
 def test_input_playback_artifact_uses_injected_snapshot_and_result_payload(

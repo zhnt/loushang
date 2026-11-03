@@ -35,10 +35,12 @@ PACKAGE_OPERATIONS = Path("src/loushang/harness/resources/packages/operations.py
 PACKAGE_SOURCE_RESOLVER = Path(
     "src/loushang/harness/resources/packages/source_resolver.py"
 )
-PLUGIN_MANAGER = Path("src/loushang/harness/resources/plugins/manager.py")
 PLUGIN_AUTHORITY = Path("src/loushang/harness/resources/plugins/authority.py")
 PLUGIN_RESOLVER = Path("src/loushang/harness/resources/plugins/resolver.py")
 PLUGIN_SELECTION = Path("src/loushang/harness/resources/plugins/selection.py")
+CONTRIBUTION_TYPES = Path(
+    "src/loushang/harness/resources/plugins/contribution_types.py"
+)
 DECLARATIONS = Path("src/loushang/harness/resources/plugins/declarations.py")
 PACKAGE_MATERIALIZER = Path("src/loushang/harness/resources/packages/materializer.py")
 PLUGIN_REVISIONS = Path("src/loushang/harness/resources/plugins/revisions.py")
@@ -60,8 +62,23 @@ SOURCE_ROOTS = (Path("src/loushang"),)
 
 LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/bootstrap.py"),
-    Path("src/loushang/coding/cli/__main__.py"),
+    Path("src/loushang/coding/cli/application.py"),
+    Path("src/loushang/coding/cli/package_cutover.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
+    Path("src/loushang/coding/package_legacy_builtin_adoption.py"),
+    Path("src/loushang/coding/package_legacy_builtin_review.py"),
+    Path("src/loushang/coding/package_legacy_classification.py"),
+    Path("src/loushang/coding/package_legacy_configured_source.py"),
+    Path("src/loushang/coding/package_legacy_disabled_acceptance.py"),
+    Path("src/loushang/coding/package_legacy_disabled_review.py"),
+    Path("src/loushang/coding/package_legacy_local_acceptance.py"),
+    Path("src/loushang/coding/package_legacy_local_adoption.py"),
+    Path("src/loushang/coding/package_legacy_local_adoption_read.py"),
+    Path("src/loushang/coding/package_legacy_removed_adoption.py"),
+    Path("src/loushang/coding/package_legacy_removed_review.py"),
+    Path("src/loushang/coding/package_legacy_review.py"),
+    Path("src/loushang/coding/package_product_runtime.py"),
+    Path("src/loushang/coding/package_source_snapshot.py"),
     Path("src/loushang/harness/config/agent/_settings_codec.py"),
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
@@ -71,26 +88,57 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/resources/packages/roots.py"),
     Path("src/loushang/harness/resources/packages/session.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
-    Path("src/loushang/harness/resources/plugins/manager.py"),
     Path("src/loushang/harness/session/bootstrap_activation.py"),
 }
 MANIFEST_ENABLED_FILES = {
     Path("src/loushang/coding/_base_plugin.py"),
     Path("src/loushang/coding/_capability_plugin_composition.py"),
+    Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+    Path("src/loushang/coding/package_product_revisions.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
-    Path("src/loushang/coding/plugin_management_cli.py"),
+    Path("src/loushang/harness/plugin_management/configured_sources.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
-    Path("src/loushang/harness/resources/plugins/selection.py"),
 }
 SOURCE_ENABLED_FILES = {
+    Path("src/loushang/coding/_product_capability_plugin_composition.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
-    Path("src/loushang/harness/resources/plugins/selection.py"),
     Path("src/loushang/harness/resources/plugins/manifest.py"),
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
     {
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "CodingLegacyWorkspaceClassificationV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "CodingLegacySourceConfigurationV1",
+        ): 1,
+        (Path("src/loushang/coding/package_legacy_classification.py"), "<module>"): 1,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "classify_coding_legacy_workspace",
+        ): 3,
+        (
+            Path("src/loushang/coding/package_legacy_classification.py"),
+            "classify_coding_legacy_source_configuration",
+        ): 2,
+        (Path("src/loushang/coding/package_source_snapshot.py"), "<module>"): 1,
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "require_fresh_coding_product_inputs",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "is_coding_fresh_first_b_snapshot",
+        ): 1,
+        # ARD-008: read effective legacy settings before selecting a storage owner.
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "_coding_product_settings_need_compatibility",
+        ): 1,
         (
             Path("src/loushang/harness/config/agent/_settings_patch.py"),
             "AgentSettingsUpdate",
@@ -106,10 +154,10 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/continuity_bootstrap.py"),
             "bind_coding_configured_continuity",
-        ): 5,
+        ): 6,
         (Path("src/loushang/coding/continuity_bootstrap.py"), "_configured_sources"): 1,
         (
-            Path("src/loushang/coding/cli/__main__.py"),
+            Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages.fallback_records",
         ): 2,
         (Path("src/loushang/harness/config/agent/types.py"), "ControlConfig"): 1,
@@ -152,10 +200,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 2,
         (Path("src/loushang/harness/config/agent/_settings_codec.py"), "<module>"): 2,
         (
-            Path("src/loushang/harness/resources/plugins/manager.py"),
-            "PluginManager.__init__",
-        ): 2,
-        (
             Path("src/loushang/harness/config/agent/manager.py"),
             "SettingsManager.update_settings",
         ): 9,
@@ -193,8 +237,148 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 3,
     }
 )
+LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS.update(
+    {
+        (
+            Path("src/loushang/coding/cli/package_cutover.py"),
+            "_require_disabled_only_preflight",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_adoption.py"),
+            "adopt_coding_first_b_builtin_only",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1.__post_init__",
+        ): 4,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1._identity",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "CodingLegacyBuiltinOnlyReviewV1.from_dict",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "admit_coding_builtin_only_snapshot",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_builtin_review.py"),
+            "review_coding_first_b_builtin_only",
+        ): 2,
+        (
+            Path("src/loushang/coding/package_legacy_configured_source.py"),
+            "match_coding_legacy_local_skill_configured_source",
+        ): 2,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_acceptance.py"),
+            "CodingLegacyDisabledOnlyAcceptanceV1.create",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_review.py"),
+            "CodingLegacyDisabledOnlyReviewV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_review.py"),
+            "CodingLegacyDisabledOnlyReviewV1.__post_init__",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_review.py"),
+            "CodingLegacyDisabledOnlyReviewV1._identity_dict",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_review.py"),
+            "CodingLegacyDisabledOnlyReviewV1.from_dict",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_disabled_review.py"),
+            "review_coding_first_b_disabled_only",
+        ): 3,
+        (
+            Path("src/loushang/coding/package_legacy_local_acceptance.py"),
+            "CodingLegacyLocalAcceptanceV1.create",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_local_acceptance.py"),
+            "_require_frozen_review",
+        ): 2,
+        (
+            Path("src/loushang/coding/package_legacy_local_adoption.py"),
+            "adopt_coding_legacy_local_data_review",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_local_adoption_read.py"),
+            "coding_legacy_local_data_adoption_settled",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_adoption.py"),
+            "adopt_coding_first_b_removed_local",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1.__post_init__",
+        ): 4,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1._identity",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "CodingLegacyRemovedReviewV1.from_dict",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "admit_coding_removed_local_snapshot",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_removed_review.py"),
+            "review_coding_first_b_removed_local",
+        ): 3,
+        (
+            Path("src/loushang/coding/package_legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.__post_init__",
+        ): 3,
+        (
+            Path("src/loushang/coding/package_legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1._identity_dict",
+        ): 2,
+        (
+            Path("src/loushang/coding/package_legacy_review.py"),
+            "CodingLegacyLocalAdoptionReviewV1.from_dict",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_legacy_review.py"),
+            "review_coding_legacy_installed_local_source",
+        ): 2,
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "bootstrap_coding_accepted_disabled_only_product_plugins",
+        ): 1,
+    }
+)
 MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
     {
+        (
+            Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+            "_validate_product_lineage",
+        ): 1,
+        (
+            Path("src/loushang/coding/package_product_revisions.py"),
+            "_validate_builtin_selection",
+        ): 2,
         (
             Path("src/loushang/coding/_base_plugin.py"),
             "prepare_managed_coding_base_plugin_assembly",
@@ -208,26 +392,27 @@ MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
             "_reconcile_enabled_instances",
         ): 1,
         (
-            Path("src/loushang/coding/plugin_management_cli.py"),
-            "CodingConfiguredPluginSourceProjection.snapshot",
+            Path("src/loushang/harness/plugin_management/configured_sources.py"),
+            "project_configured_plugin_sources",
         ): 1,
         (PLUGIN_RESOLVER, "PluginResolver.project_package"): 1,
-        (PLUGIN_SELECTION, "PluginSelectionResolver._resolve_preflight"): 1,
         (PLUGIN_AUTHORITY, "_assert_published_lineage"): 2,
     }
 )
 SOURCE_ENABLED_SCOPE_COUNTS = Counter(
     {
+        (
+            Path("src/loushang/coding/_product_capability_plugin_composition.py"),
+            "_validate_product_lineage",
+        ): 1,
         (PLUGIN_RESOLVER, "PluginResolver.project_package"): 1,
         (
             Path("src/loushang/harness/resources/plugins/manifest.py"),
             "_resolved_source",
         ): 2,
-        (PLUGIN_SELECTION, "PluginSelectionResolver._resolve_preflight"): 1,
         (PLUGIN_AUTHORITY, "PluginResolutionAuthority.project_package"): 1,
     }
 )
-PLUGIN_MANAGER_SCOPE_COUNTS = Counter({(PLUGIN_MANAGER, "PluginManager"): 1})
 PACKAGE_ENTRYPOINT_ROOTS = (
     Path("src/loushang/coding/cli"),
     Path("src/loushang/harness/cli"),
@@ -731,13 +916,13 @@ def test_plc9_inventory_names_existing_owner_and_peer_source_sites() -> None:
         "src/loushang/harness/resources/packages/session.py",
         "src/loushang/harness/resources/packages/operations.py",
         "src/loushang/harness/resources/packages/source_resolver.py",
-        "src/loushang/harness/resources/plugins/manager.py",
         "src/loushang/harness/resources/plugins/authority.py",
         "src/loushang/harness/resources/plugins/resolver.py",
         "src/loushang/harness/resources/plugins/selection.py",
         "src/loushang/harness/resources/packages/materializer.py",
         "src/loushang/harness/resources/plugins/revisions.py",
         "src/loushang/harness/resources/plugins/dependencies.py",
+        "src/loushang/harness/resources/plugins/contribution_types.py",
         "src/loushang/harness/resources/plugins/declarations.py",
         "src/loushang/harness/workspace/process/host.py",
         "src/loushang/harness/tools/process_hosting.py",
@@ -772,7 +957,6 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
     updates = _source(MANAGEMENT_UPDATES)
     toggles = _source(CLI_TOGGLES)
     listing = _source(CLI_LISTING)
-    manager = _source(PLUGIN_MANAGER)
     authority = _source(PLUGIN_AUTHORITY)
     resolver = _source(PLUGIN_RESOLVER)
     selection = _source(PLUGIN_SELECTION)
@@ -794,13 +978,12 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
     assert '_call(settings_manager, "enable_plugin"' not in toggles
     assert "management.query(" in listing
     assert "PluginResolutionAuthority" not in listing
-    assert "class PluginManager:" in manager
-    assert "def enable_plugin(" in manager
-    assert "def disable_plugin(" in manager
-    assert "def remove_plugin_source(" in manager
+    assert not Path("src/loushang/harness/resources/plugins/manager.py").exists()
     assert "package.manifest.name not in self._disabled_plugins" in authority
     assert "enabled=enabled and resolved_package.manifest.enabled" in resolver
-    assert "not package.source.enabled or not package.manifest.enabled" in selection
+    assert "package.manifest.enabled" not in selection
+    assert "package.source.enabled" not in selection
+    assert "Product selection is authoritative after publication" in selection
     assert "The enablement migration is one-way" in _source(BASELINE)
 
 
@@ -819,12 +1002,12 @@ def test_plc9_inventories_every_legacy_plugin_enablement_token_file() -> None:
     assert _semantic_token_scope_counts("source.enabled") == (
         SOURCE_ENABLED_SCOPE_COUNTS
     )
-    assert _semantic_token_scope_counts("PluginManager") == PLUGIN_MANAGER_SCOPE_COUNTS
+    assert _semantic_token_scope_counts("PluginManager") == Counter()
     for path in LEGACY_DISABLED_PLUGIN_FILES | SOURCE_ENABLED_FILES:
         assert str(path) in inventory, path
 
 
-def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
+def test_plc9_keeps_one_desired_state_writer_and_exact_composition_sites() -> None:
     assert _desired_state_mutation_sites() == {
         (MANAGEMENT_SERVICE, "PluginManagementService._execute_unlocked", "commit"),
         (
@@ -841,6 +1024,35 @@ def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
         (
             Path("src/loushang/coding/_plugin_lifecycle.py"),
             "build_coding_plugin_management_application",
+        ),
+        # Fresh B state is opened only behind the fenced Coding Product owner;
+        # the management service remains the sole desired-state mutation site.
+        (
+            Path("src/loushang/coding/package_product_runtime.py"),
+            "open_coding_package_product_state",
+        ),
+        # Fenced B CLI list opens the existing ledger with a strict read-only
+        # load policy; it does not add a Desired State mutation site.
+        (
+            Path("src/loushang/coding/package_product_management_cli.py"),
+            "_ProductCliOwner.open",
+        ),
+        # P1 transition-status reads keep the CLI on the same read-only ledger.
+        (
+            Path("src/loushang/coding/package_product_management_cli.py"),
+            "read_coding_fenced_desired_transition",
+        ),
+        # Read-only preview opens the ledger with strict load policy and never
+        # becomes a second Desired State writer.
+        (
+            Path("src/loushang/coding/package_product_preview.py"),
+            "CodingFencedProductReadOnlyPreviewOwner.open",
+        ),
+        # Private-data read commands pin the same epoch and open the existing
+        # ledger with a strict no-repair policy; only the management service writes.
+        (
+            Path("src/loushang/coding/package_private_data_read_owner.py"),
+            "CodingArchPrivateDataReadOwner.open",
         ),
     }
 
@@ -1071,7 +1283,9 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         "uninstall_package_async",
         "update_package",
     }:
-        expected[(RPC_PACKAGES, "_DynamicPackageCapabilities._invoke_lifecycle", symbol)] = 1
+        expected[
+            (RPC_PACKAGES, "_DynamicPackageCapabilities._invoke_lifecycle", symbol)
+        ] = 1
     expected[
         (
             RPC_PACKAGES,
@@ -1098,7 +1312,9 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         (SESSION_FACADE_OPTIONAL, "SessionFacadeOptionalOperations", 2),
         (PACKAGE_SESSION, "SessionPackageController", 1),
     ):
-        expected[(path, f"{owner}.execute_package_lifecycle", "execute_package_lifecycle")] = count
+        expected[
+            (path, f"{owner}.execute_package_lifecycle", "execute_package_lifecycle")
+        ] = count
     expected[
         (
             PACKAGE_SESSION,
@@ -1111,7 +1327,7 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
     expected[(agent_args, "agent_cli_argument_values", "check_package_updates")] = 1
     expected[
         (
-            Path("src/loushang/coding/cli/__main__.py"),
+            Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages",
             "get_packages",
         )
@@ -1194,7 +1410,9 @@ def test_plc9_freezes_package_safety_gap_and_reusable_primitives() -> None:
     assert "Binding/history forgetting" in inventory
 
 
-def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology() -> None:
+def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology() -> (
+    None
+):
     declarations = _source(DECLARATIONS)
     author_sdk = "\n".join(
         _source(path) for path in sorted(AUTHOR_SDK_ROOT.rglob("*.py"))
@@ -1211,7 +1429,7 @@ def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology()
         "document",
         "in_process",
     )
-    assert _literal_members(DECLARATIONS, "PluginContributionExecutionModel") == (
+    assert _literal_members(CONTRIBUTION_TYPES, "PluginContributionExecutionModel") == (
         "data_only",
         "in_process",
         "local_worker",
@@ -1233,10 +1451,18 @@ def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology()
         "PluginPackageLifecycleLedger",
         "ProcessHost",
         "LocalSandboxService",
-        "local_worker",
         "remote_service",
     ):
         assert forbidden_export not in author_sdk
+    assert {
+        path
+        for path in AUTHOR_SDK_ROOT.rglob("*.py")
+        if "local_worker" in _source(path)
+    } == {
+        AUTHOR_SDK_ROOT / "__init__.py",
+        AUTHOR_SDK_ROOT / "__main__.py",
+        AUTHOR_SDK_ROOT / "_coding_local_worker_wheel.py",
+    }
     assert "class ProcessHost:" in process_host
     assert "containment_planner" in process_host
     assert "class LocalSandboxService:" in sandbox
@@ -1346,13 +1572,9 @@ def test_plc9_classifies_compatibility_candidates_before_plc9e() -> None:
         Path(
             "src/loushang/harness/resources/packages/operations.py"
         ): "PackageOperationsRuntime.uninstall_sync",
-        Path("src/loushang/harness/resources/plugins/manager.py"): "PluginManager",
         Path(
             "src/loushang/harness/resources/plugins/resolver.py"
         ): "PluginResolver.resolve_resources",
-        Path(
-            "src/loushang/harness/resources/plugins/safe_files.py"
-        ): "compatibility import",
         Path(
             "src/loushang/harness/resources/plugins/import_realm.py"
         ): "PluginImportRealm",
@@ -1372,6 +1594,10 @@ def test_plc9_classifies_compatibility_candidates_before_plc9e() -> None:
         assert path.is_file()
         assert str(path) in inventory
         assert symbol in inventory
+    assert not Path("src/loushang/harness/resources/plugins/safe_files.py").exists()
+    assert "def resolve_resources(" not in _source(
+        Path("src/loushang/harness/resources/plugins/resolver.py")
+    )
     for disposition in (
         "migrate/delete",
         "decision-required",

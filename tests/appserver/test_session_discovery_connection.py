@@ -11,6 +11,8 @@ from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import AppFramedStreamV1
+from loushang.appserver.managed_mux import ManagedMuxCreationClientV1
+from loushang.appserver.managed_mux_close import ManagedMuxCloseClientV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppFailureV1,
@@ -29,6 +31,8 @@ from loushang.appserver.protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
     supports_execution,
+    supports_managed_mux,
+    supports_managed_mux_close,
 )
 from loushang.appserver.remote_client import RemoteAppClientV1
 
@@ -199,10 +203,15 @@ def test_G17_COMPAT_profile_mismatch_never_reaches_semantic_dispatch(
         if supports_execution(server_profile):
             execution = create_autospec(ExecutionClientV1, instance=True)
             execution.service_instance_id = "instance"
+        managed_close = (create_autospec(ManagedMuxCloseClientV1, instance=True)
+                         if supports_managed_mux_close(server_profile) else None)
         server = AppServerConnectionV1(
             cast(AppClientV1, _SemanticClient()), AppFramedStreamV1(right),
             profile=server_profile, discovery=discovery, phase_timeout=0.2,
             execution=execution,
+            managed_mux=(create_autospec(ManagedMuxCreationClientV1, instance=True)
+                         if supports_managed_mux(server_profile) else None),
+            managed_mux_close=managed_close,
         )
         client = RemoteAppClientV1(
             AppFramedStreamV1(left), profile=client_profile, phase_timeout=0.2,
@@ -214,6 +223,8 @@ def test_G17_COMPAT_profile_mismatch_never_reaches_semantic_dispatch(
             with pytest.raises(AppServiceError):
                 await serving
             assert not discovery.requests
+            if managed_close is not None:
+                assert managed_close.mock_calls == []
             assert client.discovery_client is None
         finally:
             await client.close()

@@ -17,6 +17,7 @@ from loushang.hosting import (
     HostingFailureCategory,
     HostingLifecycleTransition,
     HostingObservation,
+    HostingStartSettledError,
     LaunchPreparationPort,
     ProcessLaunchRequest,
     ProcessLease,
@@ -51,6 +52,9 @@ from loushang.hosting._process_backend import (
     _ProcessTransport,
 )
 from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
+from loushang.hosting._windows_lpac_runtime import (
+    _create_windows_lpac_child_session_host,
+)
 
 _P = ParamSpec("_P")
 
@@ -802,6 +806,7 @@ async def test_child_session_failure_matrix_publishes_neither_and_reclaims_all(
     with pytest.raises(HostingError) as failure:
         await host.start(ChildSessionRequest(request), port)
     assert failure.value.category is expected_category
+    assert isinstance(failure.value, HostingStartSettledError)
     await host.close()
 
     assert not host._leases
@@ -853,6 +858,7 @@ async def test_child_session_retains_nested_endpoint_acquisition_debt() -> None:
         )
 
     assert failure.value.category is HostingFailureCategory.ENDPOINT_UNAVAILABLE
+    assert not isinstance(failure.value, HostingStartSettledError)
     assert host._state == "faulted"
     assert len(host._reservations) == 1
     assert process_backend.processes == []
@@ -877,6 +883,7 @@ async def test_child_session_retains_nested_process_rollback_debt() -> None:
         )
 
     assert failure.value.category is HostingFailureCategory.CHILD_EXITED_EARLY
+    assert not isinstance(failure.value, HostingStartSettledError)
     assert host._state == "faulted"
     assert len(host._reservations) == 1
     with pytest.raises(BaseExceptionGroup):
@@ -912,7 +919,9 @@ async def test_child_session_cancellation_after_process_attachment_rolls_back() 
 
 
 @_async_test
-async def test_host_close_waits_for_session_transaction_not_callers_later_work() -> None:
+async def test_host_close_waits_for_session_transaction_not_callers_later_work() -> (
+    None
+):
     events: list[str] = []
     host, process_backend, endpoint_backend = _fake_host(events)
     process_backend.block_spawn = True
@@ -944,7 +953,9 @@ async def test_host_close_waits_for_session_transaction_not_callers_later_work()
 
 
 @_async_test
-async def test_host_close_fences_aggregate_publication_after_process_publication() -> None:
+async def test_host_close_fences_aggregate_publication_after_process_publication() -> (
+    None
+):
     events: list[str] = []
     process_backend = _ProcessBackend(events)
     endpoint_backend = _EndpointBackend(events)
@@ -1047,7 +1058,9 @@ async def test_child_session_observations_share_correlation_and_cannot_veto() ->
 
 
 @_async_test
-async def test_cancelled_session_close_waiter_does_not_repeat_successful_owner() -> None:
+async def test_cancelled_session_close_waiter_does_not_repeat_successful_owner() -> (
+    None
+):
     events: list[str] = []
     observations: list[HostingObservation] = []
 
@@ -1197,7 +1210,9 @@ async def test_managed_launch_joins_opaque_material_into_one_spawn_manifest() ->
 
 
 @_async_test
-async def test_managed_launch_callback_failure_after_capture_reclaims_before_endpoint() -> None:
+async def test_managed_launch_callback_failure_after_capture_reclaims_before_endpoint() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     host, process_backend, endpoint_backend = _fake_host(
@@ -1230,9 +1245,7 @@ async def test_managed_launch_cancellation_after_capture_reclaims_reservation() 
     request = _process_request()
     preparation = _ManagedPreparationPort(request, events)
     preparation.release.clear()
-    start = asyncio.create_task(
-        host.start(ChildSessionRequest(request), preparation)
-    )
+    start = asyncio.create_task(host.start(ChildSessionRequest(request), preparation))
     await preparation.capture_returned.wait()
 
     start.cancel()
@@ -1433,7 +1446,9 @@ async def test_managed_launch_backend_contract_mismatch_closes_both_materials() 
 
 
 @_async_test
-async def test_managed_launch_cancelled_different_capture_retains_both_materials() -> None:
+async def test_managed_launch_cancelled_different_capture_retains_both_materials() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     capture_backend.block_after_attachment = True
@@ -1488,7 +1503,9 @@ async def test_managed_launch_missing_attachment_is_salvaged_then_rejected() -> 
 
 
 @_async_test
-async def test_managed_launch_close_waits_for_claimed_spawn_and_rejects_replay() -> None:
+async def test_managed_launch_close_waits_for_claimed_spawn_and_rejects_replay() -> (
+    None
+):
     events: list[str] = []
     request = _process_request()
     capture_backend = _CaptureBackend(events)
@@ -1628,7 +1645,9 @@ async def test_managed_launch_final_fence_cancellation_prevents_spawn() -> None:
 
 
 @_async_test
-async def test_managed_launch_ambiguous_spawn_cancellation_reclaims_every_owner() -> None:
+async def test_managed_launch_ambiguous_spawn_cancellation_reclaims_every_owner() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     host, process_backend, endpoint_backend = _fake_host(
@@ -1693,7 +1712,9 @@ async def test_managed_launch_host_close_waits_for_attached_capture() -> None:
 
 
 @_async_test
-async def test_managed_launch_cleanup_debt_is_retained_and_retried_on_host_close() -> None:
+async def test_managed_launch_cleanup_debt_is_retained_and_retried_on_host_close() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     host, _, _ = _fake_host(events, launch_capture_backend=capture_backend)
@@ -1789,7 +1810,9 @@ async def test_managed_launch_binding_is_consumed_by_the_first_bind() -> None:
 
 
 @_async_test
-async def test_managed_launch_attached_then_capture_error_reclaims_both_owners() -> None:
+async def test_managed_launch_attached_then_capture_error_reclaims_both_owners() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     capture_backend.error_after_attachment = OSError("capture failed after attach")
@@ -2042,7 +2065,9 @@ async def test_managed_launch_concurrent_verify_is_one_use() -> None:
 
 
 @_async_test
-async def test_managed_launch_dual_cleanup_failure_retries_in_dependency_order() -> None:
+async def test_managed_launch_dual_cleanup_failure_retries_in_dependency_order() -> (
+    None
+):
     events: list[str] = []
     request = _process_request()
     backend = _CaptureBackend(events)
@@ -2150,7 +2175,9 @@ async def test_managed_launch_cancelled_missing_spawn_callback_is_salvaged() -> 
 
 
 @_async_test
-async def test_managed_launch_cancelled_different_spawn_retains_both_processes() -> None:
+async def test_managed_launch_cancelled_different_spawn_retains_both_processes() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     host, process_backend, endpoint_backend = _fake_host(
@@ -2242,7 +2269,9 @@ async def test_managed_launch_missing_effect_gate_is_attached_then_fenced() -> N
 
 
 @_async_test
-async def test_managed_launch_attachment_invalidates_forged_not_created_receipt() -> None:
+async def test_managed_launch_attachment_invalidates_forged_not_created_receipt() -> (
+    None
+):
     events: list[str] = []
     capture_backend = _CaptureBackend(events)
     host, process_backend, endpoint_backend = _fake_host(
@@ -2489,3 +2518,10 @@ def test_child_session_factory_rejects_invalid_bounds(
 ) -> None:
     with pytest.raises(ValueError):
         create_child_session_host(**overrides)  # type: ignore[arg-type]
+
+
+def test_windows_lpac_child_session_factory_is_private_and_platform_checked() -> None:
+    if os.name != "nt":
+        with pytest.raises(HostingError) as error:
+            _create_windows_lpac_child_session_host()
+        assert error.value.category is HostingFailureCategory.PLATFORM_UNSUPPORTED

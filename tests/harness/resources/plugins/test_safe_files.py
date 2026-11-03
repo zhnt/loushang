@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.harness.resources import _safe_files
-from loushang.harness.resources.plugins.safe_files import (
+from loushang.harness.resources._safe_files import (
     ContainedFileCaptureError,
     capture_contained_regular_file,
 )

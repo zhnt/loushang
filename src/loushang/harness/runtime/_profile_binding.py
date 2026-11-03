@@ -28,7 +28,12 @@ RuntimeCapabilityDisposer = Callable[[object, object | None], None | Awaitable[N
 
 @dataclass(frozen=True)
 class RuntimeCapabilityImplementation:
-    """One registered factory for an exact slot, key, and wire version."""
+    """One registered factory for an exact slot, key, and wire version.
+
+    A factory owns its effects until it returns a value. On failure or
+    cancellation it must settle unreturned resources itself; a binder can
+    dispose only values actually handed to it, not escaped tasks or threads.
+    """
 
     slot: str
     implementation: str
@@ -173,6 +178,9 @@ class RuntimeProfileBinding:
         self._async_disposal_pending: tuple[_BoundRuntimeCapability, ...] | None = None
         self._async_dispose_lock = asyncio.Lock()
         self._sync_disposal_pending: tuple[_BoundRuntimeCapability, ...] | None = None
+        self._prepared_by: RuntimeProfileBinder | None = None
+        self._construction_state = "ready"
+        self._construction_loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def profile(self) -> ResolvedRuntimeProfile:
@@ -212,6 +220,8 @@ class RuntimeProfileBinding:
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("runtime profile binding is closed")
+        if self._construction_state != "ready":
+            raise RuntimeError("runtime profile binding is not ready")
 
 
 class RuntimeProfileBinder:
@@ -219,6 +229,69 @@ class RuntimeProfileBinder:
 
     def __init__(self, registry: RuntimeCapabilityRegistry) -> None:
         self._registry = registry
+
+    def prepare_binding(
+        self, profile: ResolvedRuntimeProfile, *, context: object | None = None,
+    ) -> RuntimeProfileBinding:
+        """Return an unpopulated cleanup owner before any factory executes.
+
+        Retain it before awaiting bind_prepared. Failed construction does not
+        dispose implicitly: the owner explicitly disposes the same binding.
+        """
+        state = RuntimeBindingState[RuntimeProfileBindings](
+            unbound_message="runtime profile binding has not been initialized",
+            stale_message="runtime profile binding was refreshed",
+        )
+        binding = RuntimeProfileBinding(profile=profile, context=context, state=state, bound={})
+        binding._prepared_by = self
+        binding._construction_state = "prepared"
+        return binding
+
+    def _check_prepared_binding(self, binding: RuntimeProfileBinding) -> None:
+        if binding._prepared_by is None:
+            return
+        if binding._prepared_by is not self:
+            raise RuntimeError("prepared binding belongs to another binder")
+        loop = asyncio.get_running_loop()
+        if binding._construction_loop is None:
+            binding._construction_loop = loop
+        elif binding._construction_loop is not loop:
+            raise RuntimeError("prepared binding belongs to another event loop")
+
+    async def bind_prepared(self, binding: RuntimeProfileBinding) -> RuntimeProfileBinding:
+        """Populate once, retaining each returned value before the next factory.
+
+        No generation is published until all factories and projection succeed.
+        The caller must join construction before disposing this binding.
+        """
+        self._check_prepared_binding(binding)
+        if binding._prepared_by is not self or binding._closed or binding._construction_state != "prepared":
+            raise RuntimeError("runtime profile binding cannot be constructed again")
+        binding._construction_state = "building"
+        try:
+            for capability in binding.profile.capabilities:
+                for resolved in capability.selections:
+                    selection = resolved.selection
+                    implementation = self._registry.resolve(selection)
+                    try:
+                        value = await _await_result(implementation.create(selection, binding._context))
+                    except (asyncio.CancelledError, RuntimeCapabilityBindingError):
+                        raise
+                    except Exception as exc:
+                        raise RuntimeCapabilityBindingError(
+                            "capability factory failed", slot=selection.slot,
+                            implementation=selection.implementation,
+                            implementation_version=selection.implementation_version,
+                        ) from exc
+                    entry = _BoundRuntimeCapability(resolved=resolved, implementation=implementation, value=value)
+                    key = capability.slot.key
+                    binding._bound[key] = (*binding._bound.get(key, ()), entry)
+            binding._state.bind(_live_bindings(binding.profile, binding._bound))
+        except BaseException:
+            binding._construction_state = "failed"
+            raise
+        binding._construction_state = "ready"
+        return binding
 
     async def bind(
         self,
@@ -272,6 +345,7 @@ class RuntimeProfileBinder:
         *,
         boundary: Literal["turn"] = "turn",
     ) -> None:
+        self._check_prepared_binding(binding)
         if boundary != "turn":
             raise ValueError(
                 "runtime profile rebind is only supported at a turn boundary"
@@ -356,6 +430,9 @@ class RuntimeProfileBinder:
         )
 
     async def dispose(self, binding: RuntimeProfileBinding) -> None:
+        self._check_prepared_binding(binding)
+        if binding._construction_state == "building":
+            raise RuntimeError("runtime profile binding is still building")
         async with binding._async_dispose_lock:
             task = binding._dispose_task
             if task is None:
@@ -365,16 +442,26 @@ class RuntimeProfileBinder:
                 entries = pending or tuple(
                     entry for bound in binding._bound.values() for entry in bound
                 )
+                # A failed task publication must not turn closed into settled.
+                binding._async_disposal_pending = entries
                 if not binding._closed:
                     binding._closed = True
                     binding._state.invalidate("runtime profile binding was disposed")
-                task = asyncio.create_task(
-                    self._dispose_entries_collecting_retryable(
-                        entries,
-                        context=binding._context,
-                    )
-                )
+                published = asyncio.get_running_loop().create_future()
+
+                async def dispose_entries():
+                    await published
+                    return await self._dispose_entries_collecting_retryable(entries, context=binding._context)
+
+                work = dispose_entries()
+                try:
+                    task = asyncio.create_task(work)
+                except BaseException:
+                    published.cancel()
+                    work.close()
+                    raise
                 binding._dispose_task = task
+                published.set_result(None)
             try:
                 errors, failed = await _await_cancellation_atomic(task)
             except asyncio.CancelledError as exc:
@@ -390,6 +477,8 @@ class RuntimeProfileBinder:
     def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
         """Dispose a binding created from synchronous factories."""
 
+        if binding._prepared_by is not None:
+            raise RuntimeError("prepared bindings require asynchronous disposal")
         task = binding._dispose_task
         if task is not None and task.done():
             return

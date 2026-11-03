@@ -70,6 +70,18 @@ class CliArgs(AgentCliArgs):
     work_log_inspect: str | None
     work_log_run: str | None
     work_log_inspect_format: WorkLogInspectFormat
+    preview_current_plugins: bool
+    composition_set: str | None
+    worker_query_plugin: str | None
+    preview_composition_set: str | None
+    discover_local_plugins: bool
+    discover_local_plugins_format: Literal["text", "json"]
+    discover_local_query: str
+    discover_local_kind: Literal["all", "plugin", "skill", "prompt", "theme"]
+    discover_local_source: Literal["all", "project_local", "user_global", "local", "builtin"]
+    discover_local_limit: int
+    explain_plugin_operation: str | None
+    repair_plugin_desired_operation: str | None
 
 
 def build_parser() -> ArgumentParser:
@@ -94,6 +106,54 @@ def removed_legacy_resource_option(
         if value.startswith("-e") and not value.startswith("--") and value != "-e":
             return "-e"
     return None
+
+
+def current_preview_option_requested(argv: tuple[str, ...]) -> bool:
+    """Find the preview option without mistaking explicit prompt values for it."""
+
+    return _early_plugin_read_option_requested(argv, "--preview-current-plugins")
+
+
+def local_discovery_option_requested(argv: tuple[str, ...]) -> bool:
+    """Find the read-only local inventory route before service initialization."""
+
+    return _early_plugin_read_option_requested(argv, "--discover-local-plugins")
+
+
+def plugin_explanation_option_requested(argv: tuple[str, ...]) -> bool:
+    """Find the operation explanation option before service initialization."""
+
+    return _early_plugin_read_option_requested(argv, "--explain-plugin-operation")
+
+
+def plugin_repair_option_requested(argv: tuple[str, ...]) -> bool:
+    """Find the explicit Desired State repair route before Session startup."""
+
+    return _early_plugin_read_option_requested(
+        argv, "--repair-plugin-desired-operation"
+    )
+
+
+def _early_plugin_read_option_requested(argv: tuple[str, ...], option: str) -> bool:
+
+    value_flags = {
+        flag
+        for spec in CODING_CLI_PROFILE.root_arguments
+        if spec.action in {"store", "append"}
+        for flag in spec.flags
+    }
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            return False
+        if token == option or token.startswith(option + "="):
+            return True
+        if "=" not in token and token in value_flags:
+            index += 2
+            continue
+        index += 1
+    return False
 
 
 def parse_args(
@@ -148,6 +208,18 @@ def parse_args(
         work_log_inspect=namespace.work_log_inspect,
         work_log_run=namespace.work_log_run,
         work_log_inspect_format=namespace.work_log_inspect_format,
+        preview_current_plugins=namespace.preview_current_plugins,
+        composition_set=namespace.composition_set,
+        worker_query_plugin=namespace.worker_query_plugin,
+        preview_composition_set=namespace.preview_composition_set,
+        discover_local_plugins=namespace.discover_local_plugins,
+        discover_local_plugins_format=namespace.discover_local_plugins_format,
+        discover_local_query=namespace.discover_local_query,
+        discover_local_kind=namespace.discover_local_kind,
+        discover_local_source=namespace.discover_local_source,
+        discover_local_limit=namespace.discover_local_limit,
+        explain_plugin_operation=namespace.explain_plugin_operation,
+        repair_plugin_desired_operation=namespace.repair_plugin_desired_operation,
     )
 
 
@@ -225,4 +297,14 @@ def _method_subcommand_index(argv: list[str]) -> int | None:
     return None
 
 
-__all__ = ["CliArgs", "ExtensionFlag", "build_parser", "help_text", "parse_args"]
+__all__ = [
+    "CliArgs",
+    "ExtensionFlag",
+    "build_parser",
+    "current_preview_option_requested",
+    "local_discovery_option_requested",
+    "plugin_explanation_option_requested",
+    "plugin_repair_option_requested",
+    "help_text",
+    "parse_args",
+]

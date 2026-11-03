@@ -19,6 +19,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputRouter,
     ConversationLocalResult,
     ConversationPromptResult,
+    ConversationShellResult,
     ConversationSurfaceResult,
 )
 from loushang.harnesstui.conversation.input_policy import (
@@ -104,6 +105,48 @@ def _owned_attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAtta
     )
 
 
+@pytest.mark.parametrize(("text", "running", "key", "kind"), [
+    ("prompt", False, "enter", "prompt"),
+    ("prompt", True, "enter", "steer"),
+    ("prompt", True, "alt+enter", "follow_up"),
+    ("/local", True, "enter", "local"),
+    ("/exit", False, "enter", "exit"),
+])
+def test_deferred_input_returns_intent_without_presenting_or_consuming(text, running, key, kind):
+    app = _ConversationApp()
+    if running:
+        app.state.begin_run(started_at=1.0)
+    app.composer.set_text(text)
+    router = ConversationInputRouter(app=app, should_exit=lambda value: value == "/exit",
+        is_local_command=lambda value: value == "/local", submission_presentation="deferred")
+    result = router.handle(InputEvent(kind="key", key=key))
+    assert result.kind == kind
+    assert app.composer.value == text
+    assert app.state.running is running
+    assert not app.state.records and not app.state.pending_steers and not app.state.pending_followups
+
+
+def test_deferred_input_refuses_attachment_transfer_and_remote_queue_edits(tmp_path):
+    app = _ConversationApp()
+    router = ConversationInputRouter(app=app, should_exit=lambda _: False,
+                                    submission_presentation="deferred")
+    attachment = _owned_attachment(tmp_path)
+    router.draft_store.add(attachment)
+    app.composer.set_text(attachment.marker)
+    with pytest.raises(ValueError, match="deferred input requires an empty attachment store"):
+        router.handle(InputEvent(kind="key", key="enter"))
+    assert len(router.draft_store) == 1 and attachment.path.exists()
+    app.state.pending_steers.append("remote steer")
+    app.state.pending_followups.append("remote followup")
+    for key in ("alt+up", "escape"):
+        assert router.handle(InputEvent(kind="key", key=key)).kind == "ignored"
+    assert app.state.pending_steers == ["remote steer"]
+    assert app.state.pending_followups == ["remote followup"]
+    assert app.composer.value == attachment.marker
+    router.dispose()
+    assert not attachment.path.exists()
+
+
 def test_conversation_input_results_are_discriminated_and_payload_valid() -> None:
     from loushang.harnesstui.conversation.input import (
         ConversationAbortResult,
@@ -178,6 +221,53 @@ def test_conversation_input_router_submits_neutral_prompt_attachments(
     assert app.state.running is True
     assert app.composer.value == ""
     assert attachment_path.exists() is False
+
+
+@pytest.mark.parametrize("text", ["", "send this"])
+def test_cancel_cleanup_does_not_submit_a_draft_edited_after_enter(text: str) -> None:
+    app = _ConversationApp()
+    app.composer.set_text(text)
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    router.set_submission_paused(True)
+    assert isinstance(
+        router.handle(InputEvent(kind="key", key="enter")),
+        ConversationInputIgnored,
+    )
+    app.composer.set_text("still editing")
+    assert router.resume_paused_submission() is None
+    assert app.composer.value == "still editing"
+    assert not app.state.running
+
+
+def test_cancel_cleanup_does_not_submit_retired_draft_attachments(tmp_path: Path) -> None:
+    app = _ConversationApp()
+    attachment = _owned_attachment(tmp_path)
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    router.draft_store.add(attachment)
+    app.composer.set_text(f"describe {attachment.marker}")
+    router.set_submission_paused(True)
+    router.handle(InputEvent(kind="key", key="enter"))
+    router.draft_store.discard(attachment)
+    assert router.resume_paused_submission() is None
+    assert not app.state.running
+    router.dispose()
+
+
+@pytest.mark.parametrize("transition", ["replace", "dispose"])
+def test_cancel_cleanup_does_not_submit_after_input_owner_changes(transition: str) -> None:
+    app = _ConversationApp()
+    app.composer.set_text("draft")
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    router.set_submission_paused(True)
+    router.handle(InputEvent(kind="key", key="enter"))
+    if transition == "replace":
+        app = _ConversationApp()
+        app.composer.set_text("draft")
+        router.replace_app(app)
+    else:
+        router.dispose()
+    assert router.resume_paused_submission() is None
+    assert not app.state.running
 
 
 def test_conversation_input_router_preserves_running_followup_priority(
@@ -417,6 +507,31 @@ def test_conversation_input_router_handles_local_command_while_run_is_active() -
     assert app.state.pending_steers == []
     assert app.state.pending_followups == []
     assert app.composer.value == ""
+
+
+def test_conversation_input_router_routes_shell_before_active_steer() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    app.composer.set_text("!! printf hi")
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationShellResult(text="!! printf hi")
+    assert app.state.pending_steers == []
+    assert app.composer.value == ""
+
+
+def test_conversation_input_router_reports_empty_shell_without_starting_prompt() -> None:
+    app = _ConversationApp()
+    router = ConversationInputRouter(app=app, should_exit=lambda _text: False)
+    app.composer.set_text("!!")
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationInputHandled()
+    assert app.state.status_message == "Enter a shell command after ! or !!"
+    assert app.state.running is False
 
 
 def test_conversation_input_router_restores_pending_messages() -> None:

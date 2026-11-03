@@ -15,6 +15,7 @@ from ..protocol import (
     SessionSnapshotV1,
     TurnTextV1,
 )
+from ..resume_model import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._~-]{0,127}\Z")
 
@@ -266,6 +267,7 @@ class ExecutionOperationV1(str, Enum):
     INTERRUPT = "execution/interrupt"
     SNAPSHOT = "execution/snapshot"
     EVENTS = "execution/read_events"
+    RESUME_INPUT_LOOKUP = "session/lookup_resume_input"
 
 
 class ExecutionInterruptDispositionV1(str, Enum):
@@ -297,6 +299,7 @@ class ExecutionCallV1:
     submission_id: str | None = None
     execution_id: str | None = None
     text: str | None = None
+    resume_query: ResumeInputLookupQueryV1 | None = None
 
     def __post_init__(self) -> None:
         _identifier(self.request_id)
@@ -308,6 +311,10 @@ class ExecutionCallV1:
         submission = self.operation in {ExecutionOperationV1.SUBMIT, ExecutionOperationV1.FIND}
         execution = self.operation in {ExecutionOperationV1.GET, ExecutionOperationV1.INTERRUPT}
         text = self.operation is ExecutionOperationV1.SUBMIT
+        if (self.resume_query is not None) != (self.operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP):
+            raise ValueError("unexpected Resume lookup query")
+        if self.resume_query is not None and type(self.resume_query) is not ResumeInputLookupQueryV1:
+            raise TypeError("invalid Resume lookup query")
         if (self.submission_id is not None) != submission or (
             self.execution_id is not None
         ) != execution or (self.text is not None) != text:
@@ -343,6 +350,7 @@ class ExecutionFailureV1:
 ExecutionResultV1 = (
     ExecutionRecordV1 | ExecutionSessionSnapshotV1 | ExecutionEventsV1
     | ExecutionInterruptResultV1 | ExecutionFailureV1 | AppFailureV1 | None
+    | ResumeInputLookupResultV1
 )
 
 
@@ -357,5 +365,6 @@ class ExecutionResponseV1:
             ExecutionRecordV1, ExecutionSessionSnapshotV1, ExecutionEventsV1,
             ExecutionFailureV1, AppFailureV1,
             ExecutionInterruptResultV1,
+            ResumeInputLookupResultV1,
         ):
             raise TypeError("invalid execution response")

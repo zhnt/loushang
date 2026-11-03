@@ -42,7 +42,7 @@ def test_G17_COMMAND_help_describe_and_non_tty_have_no_state_effects(tmp_path, c
     assert main([*_argv(tmp_path), "--describe"]) == 0
     output = capsys.readouterr()
     value = json.loads(output.out)
-    assert value["profile"] == "foreground-stdio-discovery/v1"
+    assert value["profile"] == "foreground-stdio-discovery-execution/v1"
     assert value["exitEndsApplication"] is True
     assert str(tmp_path) not in output.out and output.err == ""
     with pytest.raises(SystemExit) as no_tty:
@@ -56,7 +56,7 @@ def test_G17_ADMISSION_request_preserves_venv_and_uses_isolated_fixed_child(tmp_
     assert request.argv[:4] == (
         sys.executable, "-I", "-m", "loushang.coding.cli.hosted"
     )
-    assert request.argv[-1] == "--session-discovery"
+    assert request.argv[-2:] == ("--session-discovery", "--session-execution")
     assert request.cwd == str(tmp_path)
 
 
@@ -117,6 +117,7 @@ def _fake_command(tmp_path, monkeypatch, *, read_error=None, create_error=None):
     class Owner:
         client = Client()
         discovery_client = object()
+        execution_client = object()
         diagnostics = SimpleNamespace(exit_code=0, forced_exit=False)
 
         def __init__(self, *args, **kwargs):

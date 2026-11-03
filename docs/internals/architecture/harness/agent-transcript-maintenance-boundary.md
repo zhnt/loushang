@@ -52,6 +52,13 @@ owns continuation scheduling.
 message-serialization mechanism; it accepts Product prompt profiles,
 completion selection, and JSON-safe summary decoration. It does not own prompt
 wording, provider discovery, credentials, model policy, or an extension API.
+For a split turn, a Product may supply a combined prompt profile. The executor
+uses one bounded summary call when both sources fit and the result passes the
+Product's section validation; otherwise it uses the existing separate history
+and turn-prefix calls. The Product may opt into an early capacity probe after
+ordinary threshold checks. The probe uses the same request limits as execution,
+while the transcript runtime owns the stable-snapshot check and checkpoint
+commit. This option is disabled by default.
 
 The same optional Agent transcript profile owns branch-delta preparation and
 summary execution. A branch summary is a normal visible transcript record, not
@@ -102,6 +109,38 @@ than being estimated as an observed value.
 The resolved runtime capability configuration remains authoritative per field.
 Product compaction settings use `None` to inherit capability values, while
 concrete live settings override only their corresponding fields.
+
+## Linux transcript deletion ownership
+
+Linux callers of `delete_agent_transcript_jsonl` and the base
+`ProductTranscriptSession.delete_session` must supply `maintenance_owner`.
+The narrow `TranscriptDeletionOwner` protocol delegates to the application's
+existing owned `AgentTranscriptSessionFactory.delete_transcript`; it does not
+construct a temporary factory or decide authority by looking for lock files.
+
+```python
+deleted = await delete_agent_transcript_jsonl(
+    session_file,
+    current_session_file=current_session_file,
+    maintenance_owner=application_transcript_factory,
+)
+```
+
+Here `application_transcript_factory` is the caller's already retained owned
+factory. The application keeps it through completion and shutdown, including
+any pending preparation or cleanup error. The facade neither closes that
+factory nor converts an unknown commit or cleanup failure into success.
+
+This is an intentional Linux low-level API compatibility change: without an
+owner the call raises before accessing the path, even if the file does not
+exist. The ordinary Linux Coding application runtime uses its original owned
+factory for deletion. Its bound SessionManager rejects a different owner.
+Non-Linux unowned behavior is unchanged; that is not a claim of shared Linux
+writer protection on those platforms.
+
+Owned deletion removes the transcript under its admitted writer authority.
+It leaves attachments recoverable for explicit maintenance; successful
+transcript deletion does not mean all associated storage has been reclaimed.
 
 ## Verification
 

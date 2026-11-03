@@ -11,6 +11,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import TypeVar
 
+from loushang.appserver.managed_mux import (
+    ManagedMuxCreatedV1,
+    ManagedMuxCreateV1,
+    ManagedMuxCreationClientV1,
+)
+from loushang.appserver.managed_mux_close import (
+    ManagedMuxCloseClientV1,
+    ManagedMuxCloseStateV1,
+    ManagedMuxCloseV1,
+)
 from loushang.appserver.protocol import (
     AckV1,
     AppErrorCodeV1,
@@ -40,6 +50,17 @@ from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
 from .execution_registry import ExecutionErrorCodeV1, ExecutionServiceErrorV1
 from .execution_service import ScopedExecutionClientV1
+from .goal import ScopedGoalClientV1
+from .method_work import ScopedMethodWorkClientV1
+from .resume_ports import (
+    _current_resume_subject,
+    _current_resume_submission_id,
+    _lookup_scoped_resume_input,
+    _require_current_resume_subject,
+    _require_scoped_session,
+    _resume_subject_digest,
+    _resume_subject_scope,
+)
 from .runtime import AppServiceV1, _SessionOwner
 from .session_discovery import SessionDiscoveryViewV1
 
@@ -199,10 +220,18 @@ class AppClientScopeV1:
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._execution_client: ScopedExecutionClientV1 | None = None
+        self._method_work_client: ScopedMethodWorkClientV1 | None = None
+        self._goal_client: ScopedGoalClientV1 | None = None
 
     @property
     def execution_client(self) -> ScopedExecutionClientV1 | None:
         self._require_open()
+        config = self._service._execution_config
+        if config is not None and (config.select_work_port is not None or config.select_goal_port is not None):
+            return None
+        return self._borrow_execution_client()
+
+    def _borrow_execution_client(self) -> ScopedExecutionClientV1 | None:
         registry = self._service._execution_registry
         if registry is None:
             return None
@@ -211,16 +240,77 @@ class AppClientScopeV1:
         return self._execution_client
 
     @property
+    def method_work_client(self) -> ScopedMethodWorkClientV1 | None:
+        self._require_open()
+        config = self._service._execution_config
+        if config is None or config.select_work_port is None:
+            return None
+        if self._method_work_client is None:
+            execution = self._borrow_execution_client()
+            assert execution is not None
+            self._method_work_client = ScopedMethodWorkClientV1(execution)
+        return self._method_work_client
+
+    @property
+    def goal_client(self) -> ScopedGoalClientV1 | None:
+        self._require_open()
+        config = self._service._execution_config
+        if config is None or config.select_goal_port is None:
+            return None
+        if self._goal_client is None:
+            execution = self._borrow_execution_client()
+            assert execution is not None
+            self._goal_client = ScopedGoalClientV1(execution)
+        return self._goal_client
+
+    @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:
         self._require_open()
         return self._discovery
 
     def _require_open(self) -> None:
-        if self._closed or self._owner._closed or self._service._closed:
+        if self._closed or self._owner._closed or self._service._closed or self._service._managed_shutdown:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
+
+    @property
+    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+        self._require_open()
+        return self if self._service._managed_mux is not None else None
+
+    async def create_managed_mux(self, request: ManagedMuxCreateV1) -> ManagedMuxCreatedV1:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCreateV1)
+        if self._service._managed_mux is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        # The existing application operation owner retains accepted creation
+        # across client EOF. It does not grant deployment admission itself.
+        return await self._owner._operations.execute(
+            lambda: self._service.create_managed_mux(request),
+        )
+
+    @property
+    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+        self._require_open()
+        binding = self._service._managed_mux
+        return self if binding is not None and binding.closing is not None else None
+
+    async def close_managed_mux(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCloseV1)
+        if self.managed_mux_close_client is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await self._owner._operations.execute(lambda: self._service.close_managed_mux(request))
+
+    async def read_managed_mux_close(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1 | None:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCloseV1)
+        if self.managed_mux_close_client is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await self._owner._operations.execute(lambda: self._service.read_managed_mux_close(request), control=True)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         self._require_open()
+        self._service._require_legacy_mux_mutation()
         self._service._require_request(request, MuxCreateV1)
         owner = self._owner
         if len(self._service._mux_by_id) + owner._creating >= 32:
@@ -395,6 +485,7 @@ class AppClientScopeV1:
         )
 
     async def close_mux(self, request: MuxCloseV1) -> AckV1:
+        self._service._require_legacy_mux_mutation()
         self._service._require_request(request, MuxCloseV1)
         return await self._change(
             request.selector, lambda selector: self._service.close_mux(MuxCloseV1(selector)),
@@ -412,23 +503,14 @@ class AppClientScopeV1:
             raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
         return session
 
-    def _require_current_session(
-        self, request: SessionSnapshotRequestV1, session: _SessionOwner,
-    ) -> None:
-        self._attachment(request.attachment_id, request.controller_generation)
-        pair = self._service._attachments.get(request.attachment_id)
-        if pair is None:
-            raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
-        mux, attachment = pair
-        if (
-            not attachment.active or mux.closed
-            or attachment.controller_generation != request.controller_generation
-            or mux.next_generation != request.controller_generation
-            or self._service._sessions.get(session.identity.session_id) is not session
-            or not any(member.member_id == request.member_id and member.session is session
-                       for member in mux.members)
-        ):
-            raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
+    # Optional Resume functions bind to this exact original scope instance.
+    # Controller/session tables and execution ownership remain on their owners.
+    _require_current_session = _require_scoped_session
+    resume_subject_digest = _resume_subject_digest
+    require_current_resume_subject = _require_current_resume_subject
+    resume_subject_scope = _resume_subject_scope
+    current_resume_subject = staticmethod(_current_resume_subject)
+    current_resume_submission_id = staticmethod(_current_resume_submission_id)
 
     async def snapshot_session(
         self, request: SessionSnapshotRequestV1
@@ -463,8 +545,11 @@ class AppClientScopeV1:
         self._attachment(request.attachment_id, request.controller_generation)
         return value
 
+    lookup_resume_input = _lookup_scoped_resume_input
+
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._service._require_request(request, TurnTextV1)
+        self._service._require_legacy_input()
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
@@ -479,7 +564,10 @@ class AppClientScopeV1:
                 self._require_current_session(SessionSnapshotRequestV1(
                     request.attachment_id, request.controller_generation, request.member_id
                 ), session)
-                await registry.start_legacy(binding, request.text)
+                with self.resume_subject_scope(SessionSnapshotRequestV1(
+                    request.attachment_id, request.controller_generation, request.member_id,
+                )):
+                    await registry.start_legacy(binding, request.text)
                 return AckV1()
         await self._owner._operations.execute(
             lambda: session.start_turn(request.text), key=session.identity.session_id
@@ -488,6 +576,7 @@ class AppClientScopeV1:
 
     async def steer_turn(self, request: TurnTextV1) -> AckV1:
         self._service._require_request(request, TurnTextV1)
+        self._service._require_legacy_input()
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
@@ -496,6 +585,7 @@ class AppClientScopeV1:
 
     async def follow_up_turn(self, request: TurnTextV1) -> AckV1:
         self._service._require_request(request, TurnTextV1)
+        self._service._require_legacy_input()
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
@@ -504,6 +594,7 @@ class AppClientScopeV1:
 
     async def interrupt_turn(self, request: TurnInterruptV1) -> AckV1:
         self._service._require_request(request, TurnInterruptV1)
+        self._service._require_legacy_input()
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )

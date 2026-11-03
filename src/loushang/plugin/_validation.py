@@ -9,6 +9,10 @@ from pathlib import Path
 from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
 )
+from loushang.harness.resources._safe_files import (
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
     StrictPluginJsonCodec,
@@ -27,10 +31,6 @@ from loushang.harness.resources.plugins.engine import (
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
-)
-from loushang.harness.resources.plugins.safe_files import (
-    ContainedFileCaptureError,
-    capture_contained_regular_file,
 )
 from loushang.harness.resources.skill_actions import (
     MAX_SKILL_ACTION_DOCUMENT_BYTES,
@@ -164,9 +164,7 @@ def validate_package(path: str | Path) -> PluginValidationResult:
         raw_declaration = engine.get("declarationIrVersion")
         raw_features = engine.get("requiredFeatures")
         engine_version = raw_api if type(raw_api) is int else None
-        declaration_version = (
-            raw_declaration if type(raw_declaration) is int else None
-        )
+        declaration_version = raw_declaration if type(raw_declaration) is int else None
         if isinstance(raw_features, list) and all(
             isinstance(item, str) for item in raw_features
         ):

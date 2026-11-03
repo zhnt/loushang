@@ -884,6 +884,74 @@ delete a request already transferred to a durable Work owner. Persistence is
 therefore an explicit ownership transfer, not an accidental consequence of
 writing a request to disk.
 
+### 10.6 Exact action confirmation across awaits
+
+`InteractiveApprovalResolver.confirm(request)` provides an ephemeral
+`ApprovalConfirmation` for a coordinated Product action. It can reuse a
+currently matching native session grant or retained Policy rule. Without such
+a fact, issuance requires an accepted interactive `handle_result` response;
+a plain allow decision from headless fallback does not issue confirmation.
+Ordinary `resolve` and Tool authorization retain their existing behavior.
+
+`require_current_confirmation(confirmation, request=...)` validates the
+issuing resolver's object identity, the exact frozen request and its current
+grant/rule, when applicable. Copying fields or replaying a serialized value
+does not create authority. `allow_once` confirmation remains local to that
+exact coordinated action; it does not become a Tool grant or a reusable
+capability matcher. Products continue to check current actor, Policy and
+execution ceiling separately at each effect boundary.
+
+The resolver admits at most sixty-four outstanding confirmation actions.
+`release_confirmation` releases or revokes a delivered fact. Actor cancellation
+and actor grant revocation invalidate that actor's delivered facts. Session
+close/dispose invalidates all confirmation facts, including when the same
+resolver is reopened. Existing session-grant retention across presentation
+close remains unchanged. Cancelled/denied waiters leave no confirmation fact.
+Coalesced requests can reuse an accepted session grant; an `allow_once`
+response for one action does not confirm another action.
+
+Coding's Resume permission request binds the exact target Session/leaf,
+ancestry, Plan, subject, candidate epoch and owner-observed permission expansion
+to this original owner. This confirmation prerequisite does not compute live
+Policy, settle activation effects or make Resume ready by itself.
+
+Resume may additionally bind a native `EffectiveExecutionProfile` to its exact
+confirmation request. The Authorization owner's
+`execution_profile_expansion_codes` compares readable/writable roots, denied
+subtrees and network rank. Missing baseline is explicitly unknown. Comparison
+is bounded to 64 roots per field and is data only: a historical baseline or an
+empty difference does not prove a live subject, Policy or approval.
+
+Coding's native Approval request carries reviewable current scope data and a
+fingerprint bounded to 16 KiB, alongside bounded expansion codes. Revalidation
+requires an explicitly supplied current scope matching the confirmed scope,
+then checks the same original resolver's confirmation. Omitting or changing
+that scope cannot borrow the fact. Current actor/Policy producers and effect
+settlement remain separate mandatory gates.
+
+The original `ScopeBoundProcessLauncher.execution_profile_ceiling` exposes its
+frozen gateway ceiling as read data. It is not a process-start grant or evidence
+of OS containment. In particular, a disabled Sandbox's ExecService may have no
+execution profile while the original process gateway still holds a managed
+ceiling; consumers must inspect the correct owner and Sandbox status separately.
+
+Resume can also bind the current native Policy configuration to that exact
+request. `PolicyEngine.configuration_fingerprint` observes ordered native rule
+inputs, with at most 256 rules per field and 16 KiB of encoded data.
+`PermissionProfilePolicyEvaluator.configuration_fingerprint` includes the live
+requested/effective profile and ceiling plus the selected native rule inputs.
+The default Workspace Policy selection reads managed rules from its original
+settings owner for both observation and evaluation; existing selections thus
+honor newly configured denies. Injected custom policy factories retain their
+existing evaluation contract and require their own observation entry.
+
+A Policy-bound confirmation requires an explicitly supplied current native
+Policy at revalidation. The original Approval owner compares the rebuilt exact
+request with its retained fact, including changes while awaiting confirmation.
+This fingerprint is a configuration dependency, not an actor admission,
+Policy verdict, executable-code identity or external-effect settlement. Those
+owner checks remain required before execution.
+
 ## 11. Mandatory Enforcement Gateway
 
 Every effectful tool or Product operation uses one gateway:
@@ -1197,10 +1265,12 @@ The first shared implementation exposes three user-facing permission modes:
 | `cautious` | Also ask before direct workspace writes and edits |
 | `full_access` | Skip discretionary `ask` results after explicit confirmation |
 
-These modes are a live Policy preference, not an enforcement profile.
-`full_access` cannot turn a managed deny into allow and cannot widen the
-effective sandbox, filesystem/network execution profile, Product ceiling,
-parent delegation, or `AgentTypeSpec` limits. A managed
+These modes are live Product preferences, not frozen per-action enforcement
+profiles. Coding selects workspace execution authority for Standard/Cautious
+and host execution authority for Full Access before authorizing each new action.
+`full_access` cannot turn a managed deny into allow or exceed an explicit
+executor ceiling, required workspace sandbox, parent delegation, or
+`AgentTypeSpec` limits. A managed
 `PermissionProfileCeiling` may disable modes; a disabled mode remains visible
 with its reason but cannot be selected.
 
@@ -1213,21 +1283,33 @@ session choice
   bounded by the managed ceiling
 ```
 
-Project and user selections are persisted in their existing settings layers;
-session selection is in-memory. The Policy wrapper reads the active setting
+Project and user defaults are persisted in their existing settings layers;
+session selection is in-memory. An interactive `/permissions` selection always
+applies to the current session immediately. Selecting project or user also
+saves that default, before applying the session override. Saving a default
+must succeed before changing the current session; errors are not reported as
+a successful mode change. This leaves existing project preferences intact
+when saving a user default. New sessions continue to use the precedence above.
+The underlying SettingsManager scoped setter retains its layer-only semantics.
+The Policy wrapper reads the active setting
 for every evaluation, so changing a mode affects the next tool action without
 rebuilding the tool registry.
 
 `/permissions` is a common Harness TUI center with two tabs:
 
 - **Mode** selects `standard`, `cautious`, or `full_access` for session,
-  project, or user scope. `full_access` requires a second confirmation.
+  session plus project default, or session plus user default. `full_access`
+  requires a second confirmation when enabling it or saving a persistent
+  default, including when the current session is already Full Access.
 - **Retained** reopens pending requests and revokes session/project/user
   permissions.
 
 The status line may show the effective mode as `perm=<mode>`. Mode changes
 publish the redacted `session.permission_profile_changed` event with previous,
 requested, effective, and scope fields.
+The refreshed permissions page also retains confirmation of immediate session
+application and the saved default, so reopening the page cannot hide that
+feedback behind the conversation's transient status line.
 
 Settings additionally expose:
 
@@ -1238,7 +1320,7 @@ Settings additionally expose:
 - pending requests;
 - managed fields that cannot be edited locally.
 
-CLI and TUI changes are transactional and validated before persistence.
+CLI and TUI changes are validated before persistence.
 Suggested commands are:
 
 ```text
@@ -1249,6 +1331,103 @@ Suggested commands are:
 ```
 
 Products may choose aliases, but they operate on the shared runtime.
+
+### 14.9 Recoverable Git Operations Across Shells
+
+Standard mode does not ask merely because Git changes local history or refs.
+The same literal Git classification applies to direct execution, POSIX shells,
+PowerShell and Cmd. It covers normal inspection, staging, commits/amendments,
+branch and tag changes (including force-moving/deleting local refs), merge,
+rebase, cherry-pick, revert, non-hard resets, index-only restore, stash
+operations (including dropping local stash refs), non-force worktree changes,
+remote configuration, fetch/pull, and publication dry runs. Repeated/attached
+`-C`, repository paths, understood data-only `-c` options and literal Git-only
+command chains/pipelines use the same rules.
+Local ref changes leave the Git objects available until pruning; they do not
+promise permanent recovery or a new checkpoint service.
+
+The classifier examines every command in a chain, preserving quoted messages
+as data. It cannot authorize a non-Git tail, dynamic expansion, mixed pipeline,
+redirection, executable config override or unknown Git alias by recognizing
+only the beginning of a script. Such scripts retain the dialect's existing
+fallback. Managed rules and declared effects are evaluated as before.
+
+Standard still asks for publication, uncommitted/untracked content loss
+(`reset --hard`, forced checkout/switch/rm/mv, worktree restore, `clean`, forced
+worktree removal), recovery-object/reflog
+pruning and explicitly executing additional programs (`rebase --exec`,
+`submodule foreach`, `bisect run`, external diff/merge tools). Full Access
+continues to suppress discretionary asks within existing execution ceilings.
+
+Decision and review (2026-10-17): accepted by Codex acting as the responsible
+Harness/HarnessTUI implementation agent, within the user's request for immediate
+session Full, optional user default persistence, and all recoverable Git work
+without approval. The alternative of widening only the PowerShell allowlist was
+rejected because it retains inconsistent command effects across Products and
+shells. Settings precedence remains a storage contract; interactive application
+is owned by AgentSessionApprovalRuntime; the pre-session Coding Resume adapter
+applies the same selection semantics without granting Resume admission. Git semantic classification remains
+owned by Policy, not by the presenter or approval broker. This revises local
+interaction and classification only; it does not select a new sandbox mode or
+replay persisted approval receipts as authority.
+
+#### Full Access execution selection (2026-10-18)
+
+Accepted contract: a root Coding session's Full Access selection applies to
+filesystem tools, shell commands and hosted process starts immediately, without
+restarting the session or rebuilding the capability graph. Standard/Cautious
+select the workspace profile; Full selects the host profile, intersected with
+the immutable Product, injected executor and delegated ceilings. Host access
+means POSIX `/`, or Windows drive roots and the workspace UNC share, under the
+existing OS account. It does not grant OS privileges or bypass managed denies.
+A `required` sandbox retains the workspace ceiling and its existing fail-closed
+backend behavior. An enabled `best_effort` sandbox receives the selected scope
+through its existing backend; changing modes does not disable the backend.
+
+Coding owns live selection through `CodingExecutionAuthority`. Harness provides
+`ExecutionProfileProvider` and `select_execution_profile` to intersect that
+selection with the immutable ceiling. ExecService, workspace operations and
+the hosted-process gateway consult the same owner. Standard/Cautious file
+tools remain confined to the workspace itself; the extra shared Git metadata
+roots needed by linked-worktree processes do not grant file-tool access.
+The persistent output
+adapter forwards the delegate's current profile instead of copying its startup
+value. Settings precedence, user-default persistence and Resume admission
+remain unchanged.
+
+Process and Exec gateways freeze selection before their asynchronous Policy
+and Approval work; switching to Full cannot widen that pending authorization.
+Graph-owned filesystem facets read the live selection at their own path
+admission boundary. Switching back to Standard/Cautious restricts new
+operations; it does not terminate an already running process. The sandbox
+scope also intersects any supplied frozen action profile, so an intervening
+mode change cannot expand that action's containment scope. No model tool
+argument selects the trusted provider or raises its maximum.
+
+Decision and review: accepted by Codex as the implementing agent responsible
+for Coding/Harness integration and the common architecture boundary, within
+the authorized Full execution task. Reviewed alternatives were changing only
+approval prompts (leaves execution blocked), rebuilding the session on every
+mode change (disrupts owned resources), and disabling sandbox enforcement
+(would bypass required containment). The selected approach retains the owned
+execution path, immutable maximum and existing per-action audit profile.
+Review used local method revision
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`.
+
+Verification: `tests/coding/test_bootstrap.py` exercises live switching and a
+saved user Full default through real file tools, shell authorization and a
+hosted Python process; it also checks a read-only/network-denied executor.
+`tests/coding/test_sandbox.py` covers scope selection, required/managed/delegated
+ceilings and downgrade. Existing authorization, process-hosting and persistent
+output tests verify non-widening selection, pending-action freezing and live
+forwarding. No new PR gate or workflow route is introduced.
+
+Review basis: local architecture method master
+`0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e`. Verification belongs to the existing
+`tests/harness/test_permissions.py`, `tests/harness/test_policy_engine.py`,
+`tests/harness/test_default_policy.py`, and
+`tests/harnesstui/approval/test_surface.py` contracts; the existing Coding
+permission/Gateway acceptance cases remain applicable. No PR gate is added.
 
 ## 15. Physical Module Layout
 

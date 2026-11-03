@@ -13,6 +13,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphPlanner,
 )
 from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderAdmissionError,
     CapabilityProviderAdmissionRecord,
     CapabilityProviderBindingSpec,
     CapabilityProviderCandidateEnvelope,
@@ -20,6 +21,7 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerPolicy,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
@@ -49,6 +51,87 @@ def test_product_resolver_represents_an_empty_external_provider_closure() -> Non
     assert resolved.entries == ()
     assert resolved.prebound_providers == ()
     assert resolved.optional_decisions == ()
+
+
+def test_worker_provider_requires_explicit_owner_model_and_resolves_exact_binding() -> (
+    None
+):
+    definition = _definition("app.worker")
+    provider = _provider(definition)
+    binding = CapabilityWorkerProviderBindingSpec(
+        plugin_id="app-provider",
+        contribution_id="app-contribution",
+        capability_id=definition.capability_id,
+        owner_id=definition.owner_id,
+        package_content_digest="a" * 64,
+        dependency_lock_digest="a" * 64,
+        manifest_digest="a" * 64,
+        reservation_fingerprint="a" * 64,
+        declaration_fingerprint="a" * 64,
+        worker_configuration_fingerprint="a" * 64,
+        executable_digest="a" * 64,
+        executable_size=128,
+        declared_required=False,
+        native_platform="linux-x86_64",
+    )
+    candidate = replace(
+        _candidate(definition, provider, marker="a"),
+        binding_spec=binding,
+        source_trust_class="local-worker-candidate",
+    )
+    default_owner = CapabilityProviderOwnerAuthority(
+        CapabilityProviderOwnerPolicy(
+            capability_id=definition.capability_id,
+            owner_id=definition.owner_id,
+            policy_revision="app-worker-1",
+            revocation_epoch=1,
+            allowed_provider_ids=(provider.provider_id,),
+            allowed_source_trust_classes=("local-worker-candidate",),
+            authority_ceiling=(),
+        )
+    )
+    with pytest.raises(CapabilityProviderAdmissionError) as denied:
+        default_owner.grant_eligibility(candidate, issued_at=100, expires_at=220)
+    assert denied.value.code == "provider_execution_model_not_allowed"
+
+    owner = CapabilityProviderOwnerAuthority(
+        replace(
+            default_owner.policy,
+            policy_revision="app-worker-2",
+            allowed_execution_models=("local_worker",),
+        )
+    )
+    grant = owner.grant_eligibility(candidate, issued_at=100, expires_at=220)
+    admission = owner.admit(candidate, eligibility=grant, issued_at=120, expires_at=200)
+    resolved = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id="app",
+            roots=(definition.capability_id,),
+            choices=(
+                ProductCapabilityProviderChoice(
+                    capability_id=definition.capability_id,
+                    provider_id=provider.provider_id,
+                    candidate_fingerprint=admission.candidate_fingerprint,
+                ),
+            ),
+            policy_revision="app-provider-worker-1",
+        ),
+        definitions=(definition,),
+        admissions=(admission,),
+        owner_snapshots=(owner.snapshot(),),
+        evaluated_at=150,
+    )
+    assert resolved.binding_specs == (binding,)
+    assert resolved.entries[0].binding_spec.fingerprint == binding.fingerprint
+    assert resolved.entries[0].binding_spec.to_dict()["executionModel"] == (
+        "local_worker"
+    )
+
+    with pytest.raises(ValueError, match="read-only binding"):
+        replace(
+            candidate,
+            binding_spec=replace(binding, declaration_fingerprint="b" * 64),
+        )
 
 
 def test_product_resolver_selects_required_closure_and_records_optional_absence() -> (

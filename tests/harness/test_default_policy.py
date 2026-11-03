@@ -26,6 +26,11 @@ from loushang.harness.policy_engine import PolicyEngine
         "git commit -m 'test: keep local progress'",
         "git branch feature/example",
         "git branch -d feature/merged",
+        "git branch -D feature/old",
+        "git branch -f feature/old HEAD~1",
+        "git branch -df feature/old",
+        "git tag -d local-tag",
+        "git push --dry-run origin main",
         "git merge feature/example",
         "git merge --abort",
         "git pull --ff-only",
@@ -50,9 +55,6 @@ def test_default_policy_routine_coding_playback_has_no_prompts(command: str) -> 
         ("find . -name '*.tmp' -delete", "filesystem_deletion"),
         ("git reset --hard HEAD~1", "repository_history_rewrite"),
         ("git clean -fd", "repository_clean"),
-        ("git branch -D feature/old", "repository_deletion"),
-        ("git branch -f feature/old HEAD~1", "repository_deletion"),
-        ("git branch -df feature/old", "repository_deletion"),
         ("git worktree remove --force ../dirty-worktree", "repository_deletion"),
         ("git worktree remove -f ../dirty-worktree", "repository_deletion"),
         ("git push origin main", "external_publication"),
@@ -138,6 +140,54 @@ def test_default_policy_allows_dry_run_and_incomplete_unknown_commands() -> None
     )
 
     assert {decision.disposition for decision in decisions} == {"allow"}
+
+
+def test_local_ref_removal_leaves_committed_and_stashed_content_recoverable(tmp_path):
+    import os
+    import subprocess
+
+    environment = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith("GIT_CONFIG")
+        and key not in {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"}
+    }
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-c", f"core.hooksPath={hooks}", "-c", "commit.gpgsign=false", *args],
+            cwd=tmp_path, env=environment, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Permission Test")
+    git("config", "user.email", "permission-test@example.invalid")
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "-m", "base")
+    base_branch = git("branch", "--show-current")
+    git("switch", "-c", "topic")
+    tracked.write_text("committed\n", encoding="utf-8")
+    git("commit", "-am", "topic")
+    commit = git("rev-parse", "HEAD")
+    git("tag", "local-tag")
+    tracked.write_text("pending\n", encoding="utf-8")
+    git("stash", "push", "-m", "checkpoint")
+    stash = git("rev-parse", "refs/stash")
+    git("switch", base_branch)
+
+    for arguments in [("branch", "-D", "topic"), ("tag", "-d", "local-tag"), ("stash", "clear")]:
+        assert _bash_decision("git " + " ".join(arguments)).disposition == "allow"
+        git(*arguments)
+
+    # Permission is relaxed for local refs, not for pruning the objects that
+    # make these history and stash changes recoverable.
+    assert git("show", f"{commit}:tracked.txt") == "committed"
+    assert git("show", f"{stash}:tracked.txt") == "pending"
+    assert _bash_decision("git prune --expire=now").disposition == "ask"
 
 
 def _bash_decision(command: str):

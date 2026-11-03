@@ -38,6 +38,14 @@ class HostingError(RuntimeError):
         super().__init__(message)
 
 
+class HostingStartSettledError(HostingError):
+    """Child-session start failed after its complete rollback settled.
+
+    The category remains the original mechanism failure. This subclass is
+    issued only by the Hosting owner after every local cleanup debt is absent.
+    """
+
+
 class InvalidHostingRequestError(HostingError, ValueError):
     """Raised when materialized launch data violates the Hosting contract."""
 
@@ -52,5 +60,6 @@ class InvalidHostingRequestError(HostingError, ValueError):
 __all__ = [
     "HostingError",
     "HostingFailureCategory",
+    "HostingStartSettledError",
     "InvalidHostingRequestError",
 ]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +16,7 @@ from loushang.harness.approval.plugin_execution import (
 )
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentHost,
+    CapabilityComponentHostError,
 )
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
@@ -41,6 +42,7 @@ from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderOwnerPolicy,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
@@ -86,10 +88,72 @@ from loushang.harness.resources.plugins.types import (
     PluginSource,
     PublishedPluginPackage,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 _AUTHOR_GUIDE = Path(
     "docs/internals/architecture/harness/plugin/plugin-authoring-guide.md"
 )
+
+
+def test_in_process_component_host_refuses_selected_worker_provider(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, returned_facet="query")
+    original = fixture.resolved.admission.candidate
+    definition = original.definition
+    worker_spec = CapabilityWorkerProviderBindingSpec(
+        plugin_id=original.binding_spec.plugin_id,
+        contribution_id=original.binding_spec.contribution_id,
+        capability_id=definition.capability_id,
+        owner_id=definition.owner_id,
+        package_content_digest=fixture.package.content_digest,
+        dependency_lock_digest=fixture.package.dependency_lock.digest,
+        manifest_digest="4" * 64,
+        reservation_fingerprint="5" * 64,
+        declaration_fingerprint=original.declaration_fingerprint,
+        worker_configuration_fingerprint="6" * 64,
+        executable_digest="7" * 64,
+        executable_size=128,
+        declared_required=False,
+        native_platform="linux-x86_64",
+    )
+    candidate = replace(original, binding_spec=worker_spec)
+    owner = CapabilityProviderOwnerAuthority(
+        replace(
+            _authority(definition, revocation_epoch=3).policy,
+            allowed_execution_models=("local_worker",),
+        )
+    )
+    eligibility = owner.grant_eligibility(candidate, issued_at=100, expires_at=400)
+    admission = owner.admit(
+        candidate, eligibility=eligibility, issued_at=120, expires_at=350
+    )
+    resolved_set = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id="coding",
+            roots=(definition.capability_id,),
+            choices=(
+                ProductCapabilityProviderChoice(
+                    capability_id=definition.capability_id,
+                    provider_id=candidate.provider.provider_id,
+                    candidate_fingerprint=admission.candidate_fingerprint,
+                ),
+            ),
+            policy_revision="coding-plugin-policy-1",
+        ),
+        definitions=(definition,),
+        admissions=(admission,),
+        owner_snapshots=(owner.snapshot(),),
+        evaluated_at=150,
+    )
+    host = _host(_journal(tmp_path), fixture)
+    with pytest.raises(CapabilityComponentHostError) as refused:
+        host.activation_subject(
+            resolved_set.entries[0],
+            owner_snapshot=owner.snapshot(),
+            trust_snapshot=fixture.trust_snapshot,
+        )
+    assert refused.value.code == "capability_provider_worker_host_required"
 
 
 def test_author_guide_provider_runs_through_component_host(tmp_path: Path) -> None:
@@ -197,14 +261,17 @@ async def _author_guide_provider_runs_through_component_host(tmp_path: Path) -> 
         plugin_runtime.close()
 
 
+@pytest.mark.parametrize("activation_check", [False, True])
 def test_component_host_defers_import_until_the_existing_binder_constructs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    activation_check: bool,
 ) -> None:
     asyncio.run(
         _component_host_defers_import_until_the_existing_binder_constructs(
             tmp_path,
             monkeypatch,
+            activation_check,
         )
     )
 
@@ -212,6 +279,7 @@ def test_component_host_defers_import_until_the_existing_binder_constructs(
 async def _component_host_defers_import_until_the_existing_binder_constructs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    activation_check: bool,
 ) -> None:
     marker = tmp_path / "activation.log"
     monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
@@ -235,6 +303,9 @@ async def _component_host_defers_import_until_the_existing_binder_constructs(
 
     assert not marker.exists()
     assert journal.snapshot().activation_uses[0].state == "CONSUMED_NOT_STARTED"
+    if activation_check:
+        with pytest.raises(CapabilityComponentHostError):
+            prepared.require_current_activation()
 
     runtime = RuntimeCapabilityGraphRuntime(
         product_id="coding",
@@ -244,7 +315,12 @@ async def _component_host_defers_import_until_the_existing_binder_constructs(
     binder = RuntimeCapabilityGraphBinder()
     await binder.bind(runtime, fixture.plan, (prepared.binding,))
     assert journal.snapshot().activation_uses[0].state == "STARTED"
+    if activation_check:
+        with pytest.raises(CapabilityComponentHostError):
+            prepared.require_current_activation()
     prepared.commit_after_graph_publication()
+    if activation_check:
+        prepared.require_current_activation()
 
     consumer = runtime.capture(
         CapabilityRequirement(
@@ -271,6 +347,78 @@ async def _component_host_defers_import_until_the_existing_binder_constructs(
         "dispose",
     ]
     assert consumer.is_current is False
+    if activation_check:
+        with pytest.raises(CapabilityComponentHostError):
+            prepared.require_current_activation()
+
+
+@pytest.mark.parametrize(
+    "fault", ["recovered", "missing_journal", "revoked_owner", "polluted_realm"]
+)
+def test_current_component_activation_refuses_original_owner_faults(
+    tmp_path, monkeypatch, fault
+):
+    monkeypatch.setenv(
+        "LOUSHANG_COMPONENT_TEST_MARKER", str(tmp_path / "activation.log")
+    )
+
+    async def scenario():
+        fixture = _fixture(tmp_path, returned_facet="query")
+        journal = _journal(tmp_path)
+        host = _host(journal, fixture)
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=_approve(journal, subject).decision_id,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:test",
+            profile_fingerprint="f" * 64,
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        try:
+            await binder.bind(runtime, fixture.plan, (prepared.binding,))
+            if fault == "recovered":
+                _host(journal, fixture, host_boot_id="8" * 32, import_realm_id="9" * 32)
+                assert journal.snapshot().activation_uses[0].state == "FAILED"
+            else:
+                prepared.commit_after_graph_publication()
+                prepared.require_current_activation()
+                if fault == "missing_journal":
+                    journal.path.unlink()
+                elif fault == "revoked_owner":
+                    revoked = _authority(
+                        fixture.resolved.definition,
+                        revocation_epoch=fixture.owner_snapshot.revocation_epoch + 1,
+                    ).snapshot()
+                    host._owner_snapshot_reader = lambda _: revoked
+                else:
+                    realm = host._import_realm
+                    lease = realm.reserve(
+                        host_boot_id="3" * 32,
+                        execution_use_id="9" * 48,
+                        package_namespace=fixture.package.manifest.name,
+                        dependency_lock=fixture.package.dependency_lock,
+                    )
+                    realm.execute(lease, lambda: None)
+                    realm.pollute(lease)
+            before = journal.path.read_bytes() if journal.path.exists() else None
+            with pytest.raises(CapabilityComponentHostError):
+                prepared.require_current_activation()
+            after = journal.path.read_bytes() if journal.path.exists() else None
+            assert before == after
+        finally:
+            await binder.dispose(runtime)
+
+    asyncio.run(scenario())
 
 
 def test_component_host_retries_provider_disposer_after_transient_failure(
@@ -322,6 +470,8 @@ async def _component_host_retries_provider_disposer_after_transient_failure(
 
     assert await binder.dispose(runtime) == ("provider_retirement_failed",)
     assert runtime.has_pending_retirements is True
+    with pytest.raises(CapabilityComponentHostError, match="live committed use"):
+        prepared.require_current_activation()
     assert await binder.dispose(runtime) == ()
     assert runtime.has_pending_retirements is False
     assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 2
@@ -565,6 +715,74 @@ async def _component_host_rechecks_current_authority_before_factory_execution(
     assert journal.snapshot().activation_uses[0].state == "CANCELLED_BEFORE_START"
 
 
+@pytest.mark.parametrize("enrolled", [False, True])
+def test_component_host_requires_original_resume_parent_before_import_or_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, enrolled: bool
+) -> None:
+    async def scenario() -> None:
+        marker = tmp_path / "activation.log"
+        monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+        fixture = _fixture(tmp_path, returned_facet="query")
+        journal = _journal(tmp_path)
+        host = _host(journal, fixture)
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        decision = _approve(journal, subject)
+        context = ResumeEffectParentContextV1(
+            product_id="coding",
+            session_id="historical-session",
+            attempt_id="intent-1",
+            request_id="request-1",
+            intent_digest="a" * 64,
+            owner_id="harness.plugin-activation",
+            scope_digest=journal.resume_parent_scope_digest(product_id="coding"),
+            contract_digest=journal.resume_parent_contract_digest,
+        )
+        if not enrolled:
+            with journal.path.open("ab") as stream:
+                stream.write(b'{"eventVersion":')
+            original = journal.path.read_bytes()
+            with pytest.raises(CapabilityComponentHostError) as caught:
+                _host(journal, fixture, resume_parent_context=context)
+            assert caught.value.code == "plugin_activation_resume_parent_unknown"
+            assert journal.path.read_bytes() == original
+            assert not marker.exists()
+            return
+        journal.enroll_resume_parent(context, expected_journal_revision=1)
+        host = _host(journal, fixture, resume_parent_context=context)
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+        )
+        assert not marker.exists()
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:test",
+            profile_fingerprint="f" * 64,
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, fixture.plan, (prepared.binding,))
+        prepared.commit_after_graph_publication()
+        snapshot = journal.resume_parent_snapshot(context)
+        assert len(snapshot.activation_uses) == 1
+        assert snapshot.activation_uses[0].state == "COMMITTED"
+        assert marker.read_text().splitlines() == ["import", "create"]
+        sealed = journal.seal_resume_parent(
+            context, expected_journal_revision=snapshot.journal_revision
+        )
+        assert sealed.sealed and not sealed.unfenced_recovered_use_ids
+        assert sealed.activation_uses == snapshot.activation_uses
+        await binder.dispose(runtime)
+
+    asyncio.run(scenario())
+
+
 def test_component_host_bootstrap_recovers_possibly_started_activation(
     tmp_path: Path,
 ) -> None:
@@ -615,6 +833,159 @@ def test_component_host_rechecks_decision_expiry_at_factory_boundary(
             monkeypatch,
         )
     )
+
+
+def test_component_host_pins_one_admission_across_slow_graph_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        marker = tmp_path / "activation.log"
+        monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+        fixture = _fixture(tmp_path, returned_facet="query")
+        now = [150]
+        identities = iter(("1" * 48, "2" * 48))
+        journal = PluginActivationDecisionJournal(
+            tmp_path / "activation.jsonl",
+            scope_id="workspace:test",
+            identity_factory=lambda: next(identities),
+            clock=lambda: now[0],
+        )
+        host = CapabilityComponentHost(
+            decision_journal=journal,
+            import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+            host_boot_id="3" * 32,
+            clock=lambda: now[0],
+            owner_snapshot_reader=lambda _capability_id: fixture.owner_snapshot,
+            trust_snapshot_reader=(
+                lambda _plugin_id, _source_identity: fixture.trust_snapshot
+            ),
+            product_policy_revision_reader=(
+                lambda _product_id, _scope_id: "coding-plugin-policy-1"
+            ),
+        )
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        decision = journal.issue_activation_decision(
+            subject,
+            disposition="approved",
+            authorization=PluginApprovalAuthorizationV1.direct(
+                actor_id="operator:test", source="component-host-test"
+            ),
+            issued_at_unix_ms=140,
+            expires_at_unix_ms=300,
+            expected_journal_revision=0,
+        )
+        started = host.begin_admission(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+        )
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=started,
+        )
+        now[0] = 351
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:slow-graph",
+            profile_fingerprint="f" * 64,
+        )
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime, fixture.plan, (prepared.binding,)
+        )
+        prepared.commit_after_graph_publication()
+        assert marker.read_text(encoding="utf-8").splitlines() == [
+            "import",
+            "create",
+        ]
+        with pytest.raises(CapabilityComponentHostError):
+            host.prepare_component(
+                fixture.resolved,
+                package=fixture.package,
+                owner_snapshot=fixture.owner_snapshot,
+                trust_snapshot=fixture.trust_snapshot,
+                decision_id=decision.decision_id,
+                admission_start=started,
+            )
+        await RuntimeCapabilityGraphBinder().dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_component_host_started_admission_keeps_authority_and_time_bounds(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, returned_facet="query")
+    now = [150]
+    current_owner = [fixture.owner_snapshot]
+    journal = _journal(tmp_path)
+    host = CapabilityComponentHost(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+        host_boot_id="3" * 32,
+        clock=lambda: now[0],
+        owner_snapshot_reader=lambda _capability_id: current_owner[0],
+        trust_snapshot_reader=(
+            lambda _plugin_id, _source_identity: fixture.trust_snapshot
+        ),
+        product_policy_revision_reader=(
+            lambda _product_id, _scope_id: "coding-plugin-policy-1"
+        ),
+    )
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    stale_start = host.begin_admission(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    expired_start = host.begin_admission(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    current_owner[0] = _authority(
+        fixture.resolved.definition, revocation_epoch=4
+    ).snapshot()
+    with pytest.raises(CapabilityComponentHostError) as stale:
+        host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=stale_start,
+        )
+    assert stale.value.code == "capability_provider_owner_authority_stale"
+    current_owner[0] = fixture.owner_snapshot
+    now[0] = 900_150
+    with pytest.raises(CapabilityComponentHostError) as expired:
+        host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+            admission_start=expired_start,
+        )
+    assert expired.value.code == "capability_provider_admission_start_expired"
+    host.abort_admission_start(stale_start)
+    host.abort_admission_start(expired_start)
 
 
 async def _component_host_rechecks_decision_expiry_at_factory_boundary(
@@ -758,9 +1129,7 @@ def _author_guide_fixture(
             ),
         ),
         selected_plugin_ids=(plugin_id,),
-        selected_contributions=(
-            PluginContributionRef(plugin_id, contribution_id),
-        ),
+        selected_contributions=(PluginContributionRef(plugin_id, contribution_id),),
         source_trust_snapshots=(trust_snapshot,),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=(
@@ -1062,17 +1431,16 @@ def _host(
     owner_snapshot_reader=None,  # type: ignore[no-untyped-def]
     host_boot_id: str = "3" * 32,
     import_realm_id: str = "4" * 32,
+    resume_parent_context: ResumeEffectParentContextV1 | None = None,
 ) -> CapabilityComponentHost:
     return CapabilityComponentHost(
         decision_journal=journal,
-        import_realm=PluginImportRealm(
-            import_realm_id_factory=lambda: import_realm_id
-        ),
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: import_realm_id),
         host_boot_id=host_boot_id,
+        resume_parent_context=resume_parent_context,
         clock=lambda: 150,
         owner_snapshot_reader=(
-            owner_snapshot_reader
-            or (lambda _capability_id: fixture.owner_snapshot)
+            owner_snapshot_reader or (lambda _capability_id: fixture.owner_snapshot)
         ),
         trust_snapshot_reader=(
             lambda _plugin_id, _source_identity: fixture.trust_snapshot
@@ -1112,7 +1480,7 @@ def _provider_source(
     *,
     disposer_fails_once: bool = False,
 ) -> str:
-    return f'''\
+    return f"""\
 import os
 import json
 from pathlib import Path
@@ -1152,4 +1520,4 @@ async def dispose_provider(_value):
         and MARKER.read_text(encoding="utf-8").splitlines().count("dispose") == 1
     ):
         raise RuntimeError("synthetic transient disposal failure")
-'''
+"""

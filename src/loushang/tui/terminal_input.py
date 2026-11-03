@@ -147,8 +147,20 @@ async def read_input_chunk_or_render_tick(
     render_wakeup: asyncio.Event | None = None,
     pending_input_idle_ms: int | None = None,
     idle_wakeup_ms: int | None = None,
+    return_on_render_wakeup: bool = False,
 ) -> str | None:
     read_chunk = input_chunk_reader or read_input_chunk
+    started_at = time.monotonic()
+    pending_input_deadline = (
+        started_at + max(0, pending_input_idle_ms) / 1000
+        if pending_input_idle_ms is not None
+        else None
+    )
+    idle_wakeup_deadline = (
+        started_at + max(0, idle_wakeup_ms) / 1000
+        if idle_wakeup_ms is not None
+        else None
+    )
     input_task = asyncio.create_task(read_chunk(stdin))
     try:
         while True:
@@ -158,49 +170,90 @@ async def read_input_chunk_or_render_tick(
             if active_task is not None and active_task.done():
                 return None
 
+            now = time.monotonic()
+            # Tool output and immediate animation frames must not restart
+            # terminal deadlines. In particular, an Esc prefix must expire
+            # even when render wakeups arrive more often than its idle window.
+            deadline_expired = (
+                pending_input_deadline is not None and now >= pending_input_deadline
+            ) or (idle_wakeup_deadline is not None and now >= idle_wakeup_deadline)
+            timeout = None
+            timeout_reason = "render"
+            if not deadline_expired:
+                decision = runtime.request_next_animation_frame()
+                if decision.render_now:
+                    runtime.render_now()
+                    continue
+                if decision.delay_ms > 0:
+                    timeout = decision.delay_ms / 1000
+            if pending_input_deadline is not None:
+                pending_timeout = max(0, pending_input_deadline - time.monotonic())
+                if timeout is None or pending_timeout <= timeout:
+                    timeout = pending_timeout
+                    timeout_reason = "pending_input"
+            if idle_wakeup_deadline is not None:
+                idle_timeout = max(0, idle_wakeup_deadline - time.monotonic())
+                if timeout is None or idle_timeout <= timeout:
+                    timeout = idle_timeout
+                    timeout_reason = "idle_wakeup"
+
             wait_for: set[asyncio.Task[Any]] = {input_task}
             if active_task is not None and not active_task.done():
                 wait_for.add(active_task)
             render_task: asyncio.Task[bool] | None = None
             if render_wakeup is not None:
-                render_task = asyncio.create_task(render_wakeup.wait())
+                render_waiter = asyncio.create_task(render_wakeup.wait())
+                render_task = render_waiter
                 wait_for.add(render_task)
 
-            decision = runtime.request_next_animation_frame()
-            timeout = None
-            timeout_reason = "render"
-            if decision.render_now:
-                runtime.render_now()
-                continue
-            if decision.delay_ms > 0:
-                timeout = decision.delay_ms / 1000
-            if pending_input_idle_ms is not None:
-                pending_timeout = max(0, pending_input_idle_ms) / 1000
-                if timeout is None or pending_timeout <= timeout:
-                    timeout = pending_timeout
-                    timeout_reason = "pending_input"
-            if idle_wakeup_ms is not None:
-                idle_timeout = max(0, idle_wakeup_ms) / 1000
-                if timeout is None or idle_timeout <= timeout:
-                    timeout = idle_timeout
-                    timeout_reason = "idle_wakeup"
+                def cancel_render_waiter(
+                    _completed: asyncio.Future[Any],
+                    waiter: asyncio.Task[bool] = render_waiter,
+                ) -> None:
+                    if not waiter.done() and not waiter.cancelling():
+                        waiter.cancel()
 
-            done, _pending = await asyncio.wait(
-                wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                # Start owned waiter cleanup as soon as input/turn completion
+                # is ready. Waiting until asyncio.wait resumes adds two loop
+                # turns before a ready key can reach the screen, potentially
+                # stranding it behind the next synchronous preparation phase.
+                input_task.add_done_callback(cancel_render_waiter)
+                if active_task is not None:
+                    active_task.add_done_callback(cancel_render_waiter)
+
+            try:
+                done, _pending = await asyncio.wait(
+                    wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                if render_task is not None:
+                    input_task.remove_done_callback(cancel_render_waiter)
+                    if active_task is not None:
+                        active_task.remove_done_callback(cancel_render_waiter)
+                    if not render_task.done() and not render_task.cancelling():
+                        render_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await render_task
+            render_wakeup_fired = (
+                render_task is not None
+                and not render_task.cancelled()
+                and render_task in done
             )
-            render_wakeup_fired = render_task is not None and render_task in done
             if render_wakeup_fired and render_wakeup is not None:
                 render_wakeup.clear()
-            if render_task is not None and not render_task.done():
-                render_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await render_task
-            if input_task in done:
+            # Joining the render waiter can complete a terminal read after
+            # asyncio.wait captured its result. Deliver that input before
+            # returning a turn-completion or terminal-deadline wakeup.
+            if input_task.done():
                 return input_task.result()
             if active_task is not None and active_task in done:
                 return None
             if render_wakeup_fired:
-                continue
+                if return_on_render_wakeup:
+                    # A state transition may require input-owner admission work.
+                    return None
+                if not deadline_expired:
+                    continue
             if timeout_reason == "pending_input":
                 # A terminal tail can become readable on the same event-loop
                 # turn as its idle deadline. Give the read task one final
@@ -238,6 +291,8 @@ def _read_input_chunk_blocking(stdin: Any) -> str:
 def stream_is_tty(stream: Any) -> bool:
     isatty = getattr(stream, "isatty", None)
     return bool(callable(isatty) and isatty())
+
+
 __all__ = [
     "ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS",
     "TerminalInputMode",

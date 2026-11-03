@@ -17,6 +17,7 @@ from loushang.coding.arch import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -50,7 +51,7 @@ def _session(
     workspace: Path,
     *,
     mode: CapabilityMountMode,
-    allowed_tool_names: list[str] | None = None,
+    allowed_tool_names: list[str] | ToolSelection = ToolSelection.ALL,
     tool_policy_evaluator: PolicyEvaluator | None = None,
 ) -> AgentSession:
     manager = asyncio.run(

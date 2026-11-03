@@ -7,6 +7,7 @@ from typing import Literal
 
 import pytest
 
+from loushang.coding.lsp._deferred_generation import CodingDeferredLspGeneration
 from loushang.coding.lsp._plugin_opt_in import (
     CodingLspPluginOptInError,
     CodingLspPluginOptInRequest,
@@ -32,6 +33,10 @@ from loushang.harness.approval.plugin_execution import (
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     CatalogConsumerContributionSpec,
+)
+from loushang.harness.capabilities.deferred_slot import (
+    DeferredCapabilityDeclaration,
+    DeferredCapabilitySlot,
 )
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
@@ -462,6 +467,155 @@ def test_product_opt_in_tool_owner_stages_complete_generation_and_retires_revers
         assembled.close()
 
 
+def test_deferred_lsp_child_graph_selects_after_demand_and_retires(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        now = 2_500
+        owners: list[_ApprovalOwner] = []
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="4" * 64,
+            source_id="coding-lsp-opt-in-test",
+        )
+        registration = _ToolRegistrationPort()
+        selection_checks = 0
+        selection_current = True
+
+        def check_selection() -> None:
+            nonlocal selection_checks
+            selection_checks += 1
+            if not selection_current:
+                raise RuntimeError("Product LSP selection changed")
+
+        async def assemble():
+            owner = _ApprovalOwner(now)
+            owners.append(owner)
+            assembled = await asyncio.to_thread(
+                assemble_coding_lsp_plugin_opt_in,
+                CodingLspPluginOptInRequest(approval_owner=owner),
+                session_id="session-test",
+                config=CodingLspPluginConfigV1.from_runtime_inputs(
+                    workspace_root=tmp_path,
+                    definitions=(),
+                    baseline_environment={"PATH": "/admitted/bin"},
+                ),
+                package_materializer=CodingPackageMaterializer(
+                    install_root=tmp_path / "installed",
+                    plugin_revision_root=tmp_path / "revisions",
+                ),
+                workspace_binding=workspace_binding,
+                state_root=tmp_path / "state",
+                host_boot_id="3" * 32,
+                tool_mode="on_demand",
+                clock=lambda: now,
+            )
+            return assembled.capability_assembly
+
+        slot = DeferredCapabilitySlot(
+            DeferredCapabilityDeclaration(
+                capability_id="coding.lsp",
+                facet_ids=("semantic", "tool-runtime", "diagnostics"),
+                tool_names=("document_outline", "inspect_symbol"),
+            ),
+            lambda: CodingDeferredLspGeneration(
+                session_id="session-test",
+                profile_fingerprint="a" * 64,
+                workspace_binding=workspace_binding,
+                registration=registration,
+                assembly_factory=assemble,
+                current_selection_check=check_selection,
+            ),
+        )
+        assert owners == []
+        now += 301_000
+        generation = await slot.activate()
+        assert owners[0].definition_calls == 1
+        assert owners[0].activation_calls == 1
+        assert owners[0].activation_decision is not None
+        assert owners[0].activation_decision.issued_at_unix_ms == now - 10
+        assert selection_checks >= 2
+        assert registration.visible == ["document_outline", "inspect_symbol"]
+        assert generation.access is not None
+        assert generation.access.status().enabled
+        assert generation.graph is not None
+        assert generation.graph.snapshot is not None
+        selection_current = False
+        with pytest.raises(RuntimeError, match="selection changed"):
+            generation.assert_current()
+        await slot.close()
+        assert registration.visible == []
+        assert generation.graph.is_closed
+
+    asyncio.run(scenario())
+
+
+def test_deferred_lsp_child_graph_rolls_back_failed_tool_staging(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="6" * 64,
+            source_id="coding-lsp-opt-in-test",
+        )
+        registration = _ToolRegistrationPort(fail_on="inspect_symbol")
+
+        async def assemble():
+            assembled = await asyncio.to_thread(
+                assemble_coding_lsp_plugin_opt_in,
+                CodingLspPluginOptInRequest(approval_owner=_ApprovalOwner(2_500)),
+                session_id="session-fail",
+                config=CodingLspPluginConfigV1.from_runtime_inputs(
+                    workspace_root=tmp_path,
+                    definitions=(),
+                    baseline_environment={"PATH": "/admitted/bin"},
+                ),
+                package_materializer=CodingPackageMaterializer(
+                    install_root=tmp_path / "installed",
+                    plugin_revision_root=tmp_path / "revisions",
+                ),
+                workspace_binding=workspace_binding,
+                state_root=tmp_path / "state",
+                host_boot_id="3" * 32,
+                tool_mode="on_demand",
+                clock=lambda: 2_500,
+            )
+            return assembled.capability_assembly
+
+        candidate = CodingDeferredLspGeneration(
+            session_id="session-fail",
+            profile_fingerprint="a" * 64,
+            workspace_binding=workspace_binding,
+            registration=registration,
+            assembly_factory=assemble,
+        )
+        slot = DeferredCapabilitySlot(
+            DeferredCapabilityDeclaration(
+                capability_id="coding.lsp",
+                facet_ids=("semantic", "tool-runtime", "diagnostics"),
+                tool_names=("document_outline", "inspect_symbol"),
+            ),
+            lambda: candidate,
+        )
+        with pytest.raises(RuntimeError, match="injected Tool staging failure"):
+            await slot.activate()
+        assert slot.state == "failed"
+        assert registration.visible == []
+        assert registration.staged == []
+        assert candidate.graph is not None
+        assert candidate.graph.is_closed
+        assert candidate.assembly is not None
+        assert candidate.assembly._management_released
+        await slot.close()
+
+    asyncio.run(scenario())
+
+
 def test_product_opt_in_tool_owner_rolls_back_partial_staging(
     tmp_path: Path,
 ) -> None:
@@ -600,9 +754,7 @@ def test_product_opt_in_preserves_unknown_neutral_error_without_self_cause(
 
     with pytest.raises(CodingLspPluginOptInError) as captured:
         prepare_coding_lsp_plugin_opt_in(
-            CodingLspPluginOptInRequest(
-                approval_owner=UnknownFailureApprovalOwner()
-            ),
+            CodingLspPluginOptInRequest(approval_owner=UnknownFailureApprovalOwner()),
             session_id="session-test",
             config=CodingLspPluginConfigV1.from_runtime_inputs(
                 workspace_root=tmp_path,
@@ -758,9 +910,7 @@ def test_default_product_approval_owner_accepts_only_exact_lsp_closure(
         [decision] = journal.snapshot().decisions
         assert decision.decision_id == component_request.activation_decision_id
         assert decision.authorization.actor_id == "product:coding"
-        assert decision.authorization.source == (
-            "coding-lsp-default-product-policy"
-        )
+        assert decision.authorization.source == ("coding-lsp-default-product-policy")
         assert decision.subject.plugin_id == "coding.lsp.default"
         assert decision.subject.capability_id == "coding.lsp"
         assert isinstance(decision.subject, ContributionActivationApprovalSubject)
@@ -769,9 +919,7 @@ def test_default_product_approval_owner_accepts_only_exact_lsp_closure(
                 journal=journal,
                 subject=replace(decision.subject, provider_id="foreign"),
             )
-        assert captured.value.code == (
-            "coding_lsp_default_activation_subject_rejected"
-        )
+        assert captured.value.code == ("coding_lsp_default_activation_subject_rejected")
     finally:
         assembled.close()
 

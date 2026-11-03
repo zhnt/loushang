@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import runpy
 import unittest
@@ -33,7 +34,10 @@ def check_links(path: Path, *, root: Path = ROOT) -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path)
+    parser.add_argument("--plan-env", action="store_true")
     args = parser.parse_args()
+    if args.plan and args.plan_env:
+        parser.error("--plan and --plan-env are mutually exclusive")
     # These existing invariants are pure, zero-argument assertions. Reuse them
     # without pytest's collection/conftest or importing the product. Source graph
     # freshness has its own job and is intentionally excluded here.
@@ -56,9 +60,10 @@ def main() -> None:
     )
     if not result.wasSuccessful():
         raise SystemExit(1)
-    if args.plan:
+    if args.plan or args.plan_env:
         errors = []
-        for relative in json.loads(args.plan.read_text())["paths"]:
+        plan = json.loads(os.environ["CI_PLAN"] if args.plan_env else args.plan.read_text())
+        for relative in plan["paths"]:
             path = ROOT / relative
             if path.suffix == ".md" and path.is_file():
                 errors.extend(check_links(path))

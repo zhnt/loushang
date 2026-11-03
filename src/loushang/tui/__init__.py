@@ -1,365 +1,524 @@
 """Native terminal TUI core primitives."""
 
-from loushang.tui.basic import Box, Spacer, Text, TruncatedText
-from loushang.tui.cell_width import (
-    ColumnSlice,
-    ambiguous_width,
-    autowrap_safe_width,
-    configure_cell_width_from_environment,
-    grapheme_clusters,
-    normalize_box_drawing_diagram,
-    normalize_terminal_output,
-    set_ambiguous_width,
-    slice_by_column,
-    slice_with_width,
-    strip_control_sequences,
-    truncate_to_width,
-    visible_width,
-    wrap_ansi,
-    wrap_cells,
-)
-from loushang.tui.command_palette import (
-    CommandPalette,
-    CommandPaletteItem,
-)
-from loushang.tui.completion import (
-    CombinedCompletionProvider,
-    CompletionCancellationToken,
-    CompletionContext,
-    PathCompletionProvider,
-    SlashCommand,
-    SlashCommandCompletionProvider,
-    get_completion_suggestions,
-)
-from loushang.tui.completion_models import (
-    CompletionApplication,
-    CompletionItem,
-    CompletionProvider,
-    CompletionSuggestions,
-)
-from loushang.tui.content import (
-    CapabilityAwareCodeHighlighter,
-    CodeBlock,
-    CodeHighlighter,
-    CodeHighlighterLike,
-    DiffBlock,
-    ImageBlock,
-    MarkdownRenderCache,
-    MarkdownRenderer,
-    PygmentsCodeHighlighter,
-)
-from loushang.tui.core import (
-    CURSOR_MARKER,
-    CursorDeclaration,
-    RenderConstraints,
-    RenderLine,
-    RenderResult,
-)
-from loushang.tui.extensions import (
-    ExtensionHandle,
-    ExtensionHost,
-    PublicTuiApi,
-    RenderableAdapter,
-)
-from loushang.tui.feedback import (
-    CancellableLoader,
-    DynamicBorder,
-    Loader,
-    Rule,
-    WorkedDivider,
-)
-from loushang.tui.framework import (
-    Container,
-    Focusable,
-    FocusableMixin,
-    Renderable,
-    ScreenRoot,
-    Surface,
-    SurfaceHandle,
-    SurfaceHost,
-    surface_is_bottom_exclusive,
-    surface_is_inline_presentation,
-    surface_is_overlay_presentation,
-    surface_is_page_presentation,
-    surface_presentation,
-)
-from loushang.tui.fuzzy import FuzzyMatch, fuzzy_filter, fuzzy_match
-from loushang.tui.info_panel import InfoPanel
-from loushang.tui.input import (
-    InputBatch,
-    InputEvent,
-    InputIntent,
-    InputReader,
-    InputRouter,
-    sanitize_paste_text,
-)
-from loushang.tui.keybindings import (
-    TUI_CORE_KEYBINDING_CATALOG,
-    KeybindingCatalog,
-    KeybindingConfig,
-    KeybindingConflict,
-    KeybindingManager,
-    normalize_key_id,
-)
-from loushang.tui.keyboard_protocol import KeyboardProtocolController
-from loushang.tui.playback import (
-    PLAYBACK_ARTIFACTS_ENV,
-    PlaybackArtifacts,
-    PlaybackEvent,
-    PlaybackFrameBudget,
-    PlaybackHarness,
-    PlaybackResult,
-    PlaybackScenario,
-    PlaybackStep,
-    RenderDiagnostics,
-    playback_artifacts_directory_from_env,
-)
-from loushang.tui.playback_suite import (
-    PlaybackScenarioResult,
-    PlaybackScenarioSpec,
-    PlaybackSuite,
-    run_playback_scenarios,
-)
-from loushang.tui.render_loop import RenderBaselineReset, RenderLoop
-from loushang.tui.runner import (
-    TerminalSessionFactory,
-    TerminalSizeProvider,
-    TuiInputHandler,
-    TuiInputResult,
-    TuiRunContext,
-    TuiRunner,
-    TuiStartHandler,
-)
-from loushang.tui.runtime import TuiRuntime
-from loushang.tui.scheduler import (
-    AnimationFrameSource,
-    RenderRequestKind,
-    RenderScheduleDecision,
-    RenderScheduler,
-    RenderSchedulerConfig,
-)
-from loushang.tui.selection import SelectionRange
-from loushang.tui.selection_controller import SelectionController
-from loushang.tui.selection_rendering import (
-    DEFAULT_SELECTION_STYLE,
-    highlight_selection_by_columns,
-)
-from loushang.tui.surfaces import (
-    ApprovalChoice,
-    ApprovalSurface,
-    AutocompleteSurface,
-    CommandSurface,
-    DialogSurface,
-    SelectionSurface,
-    SelectItem,
-)
-from loushang.tui.terminal import (
-    FakeCellStyle,
-    FakeScreen,
-    FakeTerminalPort,
-    ProcessTerminalPort,
-    TerminalFrame,
-    TerminalOperation,
-    TerminalPort,
-    TerminalProgressReporter,
-    TerminalSize,
-    terminal_size_from_environment,
-)
-from loushang.tui.terminal_capabilities import (
-    ImageProtocol as TerminalRuntimeImageProtocol,
-)
-from loushang.tui.terminal_capabilities import (
-    KeyboardProtocolStrategy,
-    MouseSelectionOwner,
-    TerminalEnvironment,
-    TerminalRuntimeCapabilities,
-    detect_terminal_capabilities,
-    format_terminal_capability_diagnostics,
-    terminal_environment_from_env,
-)
-from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
-from loushang.tui.terminal_image import (
-    CellDimensions,
-    Image,
-    ImageCellSize,
-    ImageDimensions,
-    ImageProtocol,
-    ImageProtocolSelection,
-    TerminalImageRender,
-    allocate_image_id,
-    calculate_image_cell_size,
-    delete_all_kitty_images,
-    delete_kitty_image,
-    detect_image_protocol,
-    encode_iterm2_image,
-    encode_kitty_image,
-    extract_kitty_image_ids,
-    get_gif_dimensions,
-    get_image_dimensions,
-    get_jpeg_dimensions,
-    get_png_dimensions,
-    get_webp_dimensions,
-    hyperlink,
-    image_fallback,
-    is_terminal_image_line,
-    render_terminal_image,
-    render_terminal_image_result,
-    wrap_tmux_passthrough,
-)
-from loushang.tui.terminal_input import (
-    TerminalInputMode,
-    drain_input,
-    read_input_chunk,
-    read_input_chunk_or_render_tick,
-    stream_is_tty,
-)
-from loushang.tui.terminal_platform import (
-    APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE,
-    DefaultTerminalPlatformAdapter,
-    TerminalPlatformAdapter,
-)
-from loushang.tui.terminal_session import TerminalSession
-from loushang.tui.theme import (
-    TerminalCapabilities,
-    ThemeResolver,
-    apply_theme_style,
-    theme_capabilities_from_runtime,
-)
-from loushang.tui.transcript import (
-    AssistantMessageRecord,
-    ContextCompactionRecord,
-    DisplayRecord,
-    ErrorRecord,
-    StatusRecord,
-    StreamingTextBuffer,
-    ThinkingRecord,
-    ThinkingVisibility,
-    ToolExecutionRecord,
-    TranscriptBuffer,
-    TranscriptView,
-    UserPromptRecord,
-    WorkedDividerRecord,
-    render_transcript_records,
-)
-from loushang.tui.tui import InputListener, Tui
-from loushang.tui.ui_parts import (
-    LOUSHANG_BANNER_LOGO,
-    LOUSHANG_GUANQUE_TOWER_LOGO,
-    Badge,
-    BadgeKind,
-    BottomFrame,
-    Button,
-    ButtonKind,
-    Checkbox,
-    Choice,
-    ColumnChooser,
-    ColumnChooserClose,
-    ColumnChooserColumn,
-    ColumnChooserMove,
-    ColumnChooserSelect,
-    ColumnChooserSort,
-    ColumnChooserToggle,
-    ColumnChooserWidthChange,
-    CommandPaletteView,
-    CompactNumberFormatter,
-    Composer,
-    ConfirmDialog,
-    DataGrid,
-    DataGridAlign,
-    DataGridCell,
-    DataGridCellKey,
-    DataGridColumn,
-    DataGridCursorMode,
-    DataGridEdit,
-    DataGridEnterBehavior,
-    DataGridFilterMode,
-    DataGridFilterPredicate,
-    DataGridFormatResult,
-    DataGridFormatter,
-    DataGridParser,
-    DataGridRow,
-    DataGridRowView,
-    DataGridSelect,
-    DataGridSelectionChange,
-    DataGridSelectionMode,
-    DataGridSortDirection,
-    DataGridThemeResolver,
-    DataGridValidator,
-    DeltaFormatter,
-    Dialog,
-    DialogAction,
-    DirectoryTree,
-    DirectoryTreeEntry,
-    DirectoryTreeEntryKind,
-    DirectoryTreeRealKind,
-    DirectoryTreeSelect,
-    FilterApply,
-    FilterBar,
-    FilterBoundary,
-    FilterField,
-    FilterFocusChange,
-    FooterField,
-    FooterStatusLine,
-    FooterView,
-    Form,
-    FormRow,
-    FormValidationResult,
-    IconButton,
-    KeyValueItem,
-    KeyValueList,
-    LoushangWelcomePanel,
-    Menu,
-    MenuItem,
-    NumberFormatter,
-    PageNavigation,
-    PageNavigationError,
-    PageNavigator,
-    PageScaffold,
-    PageScaffoldContext,
-    PageScaffoldFooter,
-    PathFilter,
-    PathSortKey,
-    PendingQueueView,
-    PendingSection,
-    PercentFormatter,
-    ProgressBar,
-    QuestionDialog,
-    RadioGroup,
-    ScreenLayout,
-    ScreenRegion,
-    ScreenRegionStack,
-    SearchableList,
-    SearchableListItem,
-    SearchableListSelect,
-    SelectList,
-    Spinner,
-    StatusBar,
-    StatusField,
-    StatusKind,
-    StatusPill,
-    TabGroup,
-    TabItem,
-    Table,
-    TableAlign,
-    TableColumn,
-    TableRow,
-    TabPage,
-    Tabs,
-    TextArea,
-    TextField,
-    TextFormatter,
-    TextInput,
-    Toast,
-    ToastKind,
-    ToastStack,
-    Toggle,
-    Toolbar,
-    ToolbarAction,
-    TreeNode,
-    TreeView,
-    WorkingLine,
-    loushang_welcome_theme,
-)
+from __future__ import annotations
+
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from loushang.tui.basic import Box, Spacer, Text, TruncatedText
+    from loushang.tui.cell_width import (
+        ColumnSlice,
+        ambiguous_width,
+        autowrap_safe_width,
+        configure_cell_width_from_environment,
+        grapheme_clusters,
+        normalize_box_drawing_diagram,
+        normalize_terminal_output,
+        set_ambiguous_width,
+        slice_by_column,
+        slice_with_width,
+        strip_control_sequences,
+        truncate_to_width,
+        visible_width,
+        wrap_ansi,
+        wrap_cells,
+    )
+    from loushang.tui.command_palette import (
+        CommandPalette,
+        CommandPaletteItem,
+    )
+    from loushang.tui.completion import (
+        CombinedCompletionProvider,
+        CompletionCancellationToken,
+        CompletionContext,
+        PathCompletionProvider,
+        SlashCommand,
+        SlashCommandCompletionProvider,
+        get_completion_suggestions,
+    )
+    from loushang.tui.completion_models import (
+        CompletionApplication,
+        CompletionItem,
+        CompletionProvider,
+        CompletionSuggestions,
+    )
+    from loushang.tui.content import (
+        CapabilityAwareCodeHighlighter,
+        CodeBlock,
+        CodeHighlighter,
+        CodeHighlighterLike,
+        DiffBlock,
+        ImageBlock,
+        MarkdownRenderCache,
+        MarkdownRenderer,
+        PygmentsCodeHighlighter,
+    )
+    from loushang.tui.core import (
+        CURSOR_MARKER,
+        CursorDeclaration,
+        RenderConstraints,
+        RenderLine,
+        RenderResult,
+    )
+    from loushang.tui.extensions import (
+        ExtensionHandle,
+        ExtensionHost,
+        PublicTuiApi,
+        RenderableAdapter,
+    )
+    from loushang.tui.feedback import (
+        CancellableLoader,
+        DynamicBorder,
+        Loader,
+        Rule,
+        WorkedDivider,
+    )
+    from loushang.tui.framework import (
+        Container,
+        Focusable,
+        FocusableMixin,
+        Renderable,
+        ScreenRoot,
+        Surface,
+        SurfaceHandle,
+        SurfaceHost,
+        surface_is_bottom_exclusive,
+        surface_is_inline_presentation,
+        surface_is_overlay_presentation,
+        surface_is_page_presentation,
+        surface_presentation,
+    )
+    from loushang.tui.fuzzy import FuzzyMatch, fuzzy_filter, fuzzy_match
+    from loushang.tui.info_panel import InfoPanel
+    from loushang.tui.input import (
+        InputBatch,
+        InputEvent,
+        InputIntent,
+        InputReader,
+        InputRouter,
+        sanitize_paste_text,
+    )
+    from loushang.tui.keybindings import (
+        TUI_CORE_KEYBINDING_CATALOG,
+        KeybindingCatalog,
+        KeybindingConfig,
+        KeybindingConflict,
+        KeybindingManager,
+        normalize_key_id,
+    )
+    from loushang.tui.keyboard_protocol import KeyboardProtocolController
+    from loushang.tui.playback import (
+        PLAYBACK_ARTIFACTS_ENV,
+        PlaybackArtifacts,
+        PlaybackEvent,
+        PlaybackFrameBudget,
+        PlaybackHarness,
+        PlaybackResult,
+        PlaybackScenario,
+        PlaybackStep,
+        RenderDiagnostics,
+        playback_artifacts_directory_from_env,
+    )
+    from loushang.tui.playback_suite import (
+        PlaybackScenarioResult,
+        PlaybackScenarioSpec,
+        PlaybackSuite,
+        run_playback_scenarios,
+    )
+    from loushang.tui.render_loop import RenderBaselineReset, RenderLoop
+    from loushang.tui.runner import (
+        TerminalSessionFactory,
+        TerminalSizeProvider,
+        TuiInputHandler,
+        TuiInputResult,
+        TuiRunContext,
+        TuiRunner,
+        TuiStartHandler,
+    )
+    from loushang.tui.runtime import TuiRuntime
+    from loushang.tui.scheduler import (
+        AnimationFrameSource,
+        RenderRequestKind,
+        RenderScheduleDecision,
+        RenderScheduler,
+        RenderSchedulerConfig,
+    )
+    from loushang.tui.selection import SelectionRange
+    from loushang.tui.selection_controller import SelectionController
+    from loushang.tui.selection_rendering import (
+        DEFAULT_SELECTION_STYLE,
+        highlight_selection_by_columns,
+    )
+    from loushang.tui.surfaces import (
+        ApprovalChoice,
+        ApprovalSurface,
+        AutocompleteSurface,
+        CommandSurface,
+        DialogSurface,
+        SelectionSurface,
+        SelectItem,
+    )
+    from loushang.tui.terminal import (
+        FakeCellStyle,
+        FakeScreen,
+        FakeTerminalPort,
+        ProcessTerminalPort,
+        TerminalFrame,
+        TerminalOperation,
+        TerminalPort,
+        TerminalProgressReporter,
+        TerminalSize,
+        terminal_size_from_environment,
+    )
+    from loushang.tui.terminal_capabilities import (
+        ImageProtocol as TerminalRuntimeImageProtocol,
+    )
+    from loushang.tui.terminal_capabilities import (
+        KeyboardProtocolStrategy,
+        MouseSelectionOwner,
+        TerminalEnvironment,
+        TerminalRuntimeCapabilities,
+        detect_terminal_capabilities,
+        format_terminal_capability_diagnostics,
+        terminal_environment_from_env,
+    )
+    from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
+    from loushang.tui.terminal_image import (
+        CellDimensions,
+        Image,
+        ImageCellSize,
+        ImageDimensions,
+        ImageProtocol,
+        ImageProtocolSelection,
+        TerminalImageRender,
+        allocate_image_id,
+        calculate_image_cell_size,
+        delete_all_kitty_images,
+        delete_kitty_image,
+        detect_image_protocol,
+        encode_iterm2_image,
+        encode_kitty_image,
+        extract_kitty_image_ids,
+        get_gif_dimensions,
+        get_image_dimensions,
+        get_jpeg_dimensions,
+        get_png_dimensions,
+        get_webp_dimensions,
+        hyperlink,
+        image_fallback,
+        is_terminal_image_line,
+        render_terminal_image,
+        render_terminal_image_result,
+        wrap_tmux_passthrough,
+    )
+    from loushang.tui.terminal_input import (
+        TerminalInputMode,
+        drain_input,
+        read_input_chunk,
+        read_input_chunk_or_render_tick,
+        stream_is_tty,
+    )
+    from loushang.tui.terminal_platform import (
+        APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE,
+        DefaultTerminalPlatformAdapter,
+        TerminalPlatformAdapter,
+    )
+    from loushang.tui.terminal_session import TerminalSession
+    from loushang.tui.theme import (
+        TerminalCapabilities,
+        ThemeResolver,
+        apply_theme_style,
+        theme_capabilities_from_runtime,
+    )
+    from loushang.tui.transcript import (
+        AssistantMessageRecord,
+        ContextCompactionRecord,
+        DisplayRecord,
+        ErrorRecord,
+        StatusRecord,
+        StreamingTextBuffer,
+        ThinkingRecord,
+        ThinkingVisibility,
+        ToolExecutionRecord,
+        TranscriptBuffer,
+        TranscriptView,
+        UserPromptRecord,
+        WorkedDividerRecord,
+        render_transcript_records,
+    )
+    from loushang.tui.tui import InputListener, Tui
+    from loushang.tui.ui_parts import (
+        LOUSHANG_BANNER_LOGO,
+        LOUSHANG_GUANQUE_TOWER_LOGO,
+        Badge,
+        BadgeKind,
+        BottomFrame,
+        Button,
+        ButtonKind,
+        Checkbox,
+        Choice,
+        ColumnChooser,
+        ColumnChooserClose,
+        ColumnChooserColumn,
+        ColumnChooserMove,
+        ColumnChooserSelect,
+        ColumnChooserSort,
+        ColumnChooserToggle,
+        ColumnChooserWidthChange,
+        CommandPaletteView,
+        CompactNumberFormatter,
+        Composer,
+        ConfirmDialog,
+        DataGrid,
+        DataGridAlign,
+        DataGridCell,
+        DataGridCellKey,
+        DataGridColumn,
+        DataGridCursorMode,
+        DataGridEdit,
+        DataGridEnterBehavior,
+        DataGridFilterMode,
+        DataGridFilterPredicate,
+        DataGridFormatResult,
+        DataGridFormatter,
+        DataGridParser,
+        DataGridRow,
+        DataGridRowView,
+        DataGridSelect,
+        DataGridSelectionChange,
+        DataGridSelectionMode,
+        DataGridSortDirection,
+        DataGridThemeResolver,
+        DataGridValidator,
+        DeltaFormatter,
+        Dialog,
+        DialogAction,
+        DirectoryTree,
+        DirectoryTreeEntry,
+        DirectoryTreeEntryKind,
+        DirectoryTreeRealKind,
+        DirectoryTreeSelect,
+        FilterApply,
+        FilterBar,
+        FilterBoundary,
+        FilterField,
+        FilterFocusChange,
+        FooterField,
+        FooterStatusLine,
+        FooterView,
+        Form,
+        FormRow,
+        FormValidationResult,
+        IconButton,
+        KeyValueItem,
+        KeyValueList,
+        LoushangWelcomePanel,
+        Menu,
+        MenuItem,
+        NumberFormatter,
+        PageNavigation,
+        PageNavigationError,
+        PageNavigator,
+        PageScaffold,
+        PageScaffoldContext,
+        PageScaffoldFooter,
+        PathFilter,
+        PathSortKey,
+        PendingQueueView,
+        PendingSection,
+        PercentFormatter,
+        ProgressBar,
+        QuestionDialog,
+        RadioGroup,
+        ScreenLayout,
+        ScreenRegion,
+        ScreenRegionStack,
+        SearchableList,
+        SearchableListItem,
+        SearchableListSelect,
+        SelectList,
+        Spinner,
+        StatusBar,
+        StatusField,
+        StatusKind,
+        StatusPill,
+        TabGroup,
+        TabItem,
+        Table,
+        TableAlign,
+        TableColumn,
+        TableRow,
+        TabPage,
+        Tabs,
+        TextArea,
+        TextField,
+        TextFormatter,
+        TextInput,
+        Toast,
+        ToastKind,
+        ToastStack,
+        Toggle,
+        Toolbar,
+        ToolbarAction,
+        TreeNode,
+        TreeView,
+        WorkingLine,
+        loushang_welcome_theme,
+    )
+
+
+_EXPORT_GROUPS = {
+    "loushang.tui.basic": ("Box Spacer Text TruncatedText "),
+    "loushang.tui.cell_width": (
+        "ColumnSlice ambiguous_width autowrap_safe_width "
+        "configure_cell_width_from_environment grapheme_clusters "
+        "normalize_box_drawing_diagram normalize_terminal_output set_ambiguous_width "
+        "slice_by_column slice_with_width strip_control_sequences truncate_to_width "
+        "visible_width wrap_ansi wrap_cells "
+    ),
+    "loushang.tui.command_palette": ("CommandPalette CommandPaletteItem "),
+    "loushang.tui.completion": (
+        "CombinedCompletionProvider CompletionCancellationToken CompletionContext "
+        "PathCompletionProvider SlashCommand SlashCommandCompletionProvider "
+        "get_completion_suggestions "
+    ),
+    "loushang.tui.completion_models": (
+        "CompletionApplication CompletionItem CompletionProvider CompletionSuggestions "
+    ),
+    "loushang.tui.content": (
+        "CapabilityAwareCodeHighlighter CodeBlock CodeHighlighter "
+        "CodeHighlighterLike DiffBlock ImageBlock MarkdownRenderCache "
+        "MarkdownRenderer PygmentsCodeHighlighter "
+    ),
+    "loushang.tui.core": (
+        "CURSOR_MARKER CursorDeclaration RenderConstraints RenderLine RenderResult "
+    ),
+    "loushang.tui.extensions": (
+        "ExtensionHandle ExtensionHost PublicTuiApi RenderableAdapter "
+    ),
+    "loushang.tui.feedback": (
+        "CancellableLoader DynamicBorder Loader Rule WorkedDivider "
+    ),
+    "loushang.tui.framework": (
+        "Container Focusable FocusableMixin Renderable ScreenRoot Surface "
+        "SurfaceHandle SurfaceHost surface_is_bottom_exclusive "
+        "surface_is_inline_presentation surface_is_overlay_presentation "
+        "surface_is_page_presentation surface_presentation "
+    ),
+    "loushang.tui.fuzzy": ("FuzzyMatch fuzzy_filter fuzzy_match "),
+    "loushang.tui.info_panel": ("InfoPanel "),
+    "loushang.tui.input": (
+        "InputBatch InputEvent InputIntent InputReader InputRouter sanitize_paste_text "
+    ),
+    "loushang.tui.keybindings": (
+        "TUI_CORE_KEYBINDING_CATALOG KeybindingCatalog KeybindingConfig "
+        "KeybindingConflict KeybindingManager normalize_key_id "
+    ),
+    "loushang.tui.keyboard_protocol": ("KeyboardProtocolController "),
+    "loushang.tui.playback": (
+        "PLAYBACK_ARTIFACTS_ENV PlaybackArtifacts PlaybackEvent PlaybackFrameBudget "
+        "PlaybackHarness PlaybackResult PlaybackScenario PlaybackStep "
+        "RenderDiagnostics playback_artifacts_directory_from_env "
+    ),
+    "loushang.tui.playback_suite": (
+        "PlaybackScenarioResult PlaybackScenarioSpec PlaybackSuite "
+        "run_playback_scenarios "
+    ),
+    "loushang.tui.render_loop": ("RenderBaselineReset RenderLoop "),
+    "loushang.tui.runner": (
+        "TerminalSessionFactory TerminalSizeProvider TuiInputHandler TuiInputResult "
+        "TuiRunContext TuiRunner TuiStartHandler "
+    ),
+    "loushang.tui.runtime": ("TuiRuntime "),
+    "loushang.tui.scheduler": (
+        "AnimationFrameSource RenderRequestKind RenderScheduleDecision "
+        "RenderScheduler RenderSchedulerConfig "
+    ),
+    "loushang.tui.selection": ("SelectionRange "),
+    "loushang.tui.selection_controller": ("SelectionController "),
+    "loushang.tui.selection_rendering": (
+        "DEFAULT_SELECTION_STYLE highlight_selection_by_columns "
+    ),
+    "loushang.tui.surfaces": (
+        "ApprovalChoice ApprovalSurface AutocompleteSurface CommandSurface "
+        "DialogSurface SelectionSurface SelectItem "
+    ),
+    "loushang.tui.terminal": (
+        "FakeCellStyle FakeScreen FakeTerminalPort ProcessTerminalPort TerminalFrame "
+        "TerminalOperation TerminalPort TerminalProgressReporter TerminalSize "
+        "terminal_size_from_environment "
+    ),
+    "loushang.tui.terminal_capabilities": (
+        "TerminalRuntimeImageProtocol KeyboardProtocolStrategy MouseSelectionOwner "
+        "TerminalEnvironment TerminalRuntimeCapabilities "
+        "detect_terminal_capabilities format_terminal_capability_diagnostics "
+        "terminal_environment_from_env "
+    ),
+    "loushang.tui.terminal_diagnostics": ("format_terminal_diagnostics "),
+    "loushang.tui.terminal_image": (
+        "CellDimensions Image ImageCellSize ImageDimensions ImageProtocol "
+        "ImageProtocolSelection TerminalImageRender allocate_image_id "
+        "calculate_image_cell_size delete_all_kitty_images delete_kitty_image "
+        "detect_image_protocol encode_iterm2_image encode_kitty_image "
+        "extract_kitty_image_ids get_gif_dimensions get_image_dimensions "
+        "get_jpeg_dimensions get_png_dimensions get_webp_dimensions hyperlink "
+        "image_fallback is_terminal_image_line render_terminal_image "
+        "render_terminal_image_result wrap_tmux_passthrough "
+    ),
+    "loushang.tui.terminal_input": (
+        "TerminalInputMode drain_input read_input_chunk "
+        "read_input_chunk_or_render_tick stream_is_tty "
+    ),
+    "loushang.tui.terminal_platform": (
+        "APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE DefaultTerminalPlatformAdapter "
+        "TerminalPlatformAdapter "
+    ),
+    "loushang.tui.terminal_session": ("TerminalSession "),
+    "loushang.tui.theme": (
+        "TerminalCapabilities ThemeResolver apply_theme_style "
+        "theme_capabilities_from_runtime "
+    ),
+    "loushang.tui.transcript": (
+        "AssistantMessageRecord ContextCompactionRecord DisplayRecord ErrorRecord "
+        "StatusRecord StreamingTextBuffer ThinkingRecord ThinkingVisibility "
+        "ToolExecutionRecord TranscriptBuffer TranscriptView UserPromptRecord "
+        "WorkedDividerRecord render_transcript_records "
+    ),
+    "loushang.tui.tui": ("InputListener Tui "),
+    "loushang.tui.ui_parts": (
+        "LOUSHANG_BANNER_LOGO LOUSHANG_GUANQUE_TOWER_LOGO Badge BadgeKind "
+        "BottomFrame Button ButtonKind Checkbox Choice ColumnChooser "
+        "ColumnChooserClose ColumnChooserColumn ColumnChooserMove "
+        "ColumnChooserSelect ColumnChooserSort ColumnChooserToggle "
+        "ColumnChooserWidthChange CommandPaletteView CompactNumberFormatter Composer "
+        "ConfirmDialog DataGrid DataGridAlign DataGridCell DataGridCellKey "
+        "DataGridColumn DataGridCursorMode DataGridEdit DataGridEnterBehavior "
+        "DataGridFilterMode DataGridFilterPredicate DataGridFormatResult "
+        "DataGridFormatter DataGridParser DataGridRow DataGridRowView DataGridSelect "
+        "DataGridSelectionChange DataGridSelectionMode DataGridSortDirection "
+        "DataGridThemeResolver DataGridValidator DeltaFormatter Dialog DialogAction "
+        "DirectoryTree DirectoryTreeEntry DirectoryTreeEntryKind "
+        "DirectoryTreeRealKind DirectoryTreeSelect FilterApply FilterBar "
+        "FilterBoundary FilterField FilterFocusChange FooterField FooterStatusLine "
+        "FooterView Form FormRow FormValidationResult IconButton KeyValueItem "
+        "KeyValueList LoushangWelcomePanel Menu MenuItem NumberFormatter "
+        "PageNavigation PageNavigationError PageNavigator PageScaffold "
+        "PageScaffoldContext PageScaffoldFooter PathFilter PathSortKey "
+        "PendingQueueView PendingSection PercentFormatter ProgressBar QuestionDialog "
+        "RadioGroup ScreenLayout ScreenRegion ScreenRegionStack SearchableList "
+        "SearchableListItem SearchableListSelect SelectList Spinner StatusBar "
+        "StatusField StatusKind StatusPill TabGroup TabItem Table TableAlign "
+        "TableColumn TableRow TabPage Tabs TextArea TextField TextFormatter "
+        "TextInput Toast ToastKind ToastStack Toggle Toolbar ToolbarAction TreeNode "
+        "TreeView WorkingLine loushang_welcome_theme "
+    ),
+}
+_EXPORT_MODULES = {
+    name: owner for owner, names in _EXPORT_GROUPS.items() for name in names.split()
+}
+_EXPORT_ALIASES = {"TerminalRuntimeImageProtocol": "ImageProtocol"}
+
 
 __all__ = [
     "ApprovalSurface",
@@ -678,3 +837,16 @@ __all__ = [
     "wrap_cells",
     "wrap_tmux_passthrough",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    owner = _EXPORT_MODULES.get(name)
+    if owner is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(_import_module(owner), _EXPORT_ALIASES.get(name, name))
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

@@ -19,6 +19,7 @@ from loushang.tui.theme import ThemeResolver, apply_theme_style
 ScreenSurfacePurpose = Literal[
     "info",
     "model",
+    "reasoning",
     "command",
     "settings",
     "session",

@@ -9,8 +9,10 @@ configure with their own rules, blocked/ask substrings, and defaults.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
+from dataclasses import dataclass, field, fields
 
+from loushang.foundation.json import dump_json_value
 from loushang.harness.policy.decisions import PolicyDecision
 from loushang.harness.policy.effects_detection import detect_policy_effects
 from loushang.harness.policy.evaluators import PolicyRule, RulePolicyEvaluator
@@ -140,6 +142,28 @@ class PolicyEngine:
             effect = effects[0]
             return PolicyDecision.ask(effect.summary, code=effect.code)
         return PolicyDecision.allow()
+
+    def configuration_fingerprint(self) -> str:
+        """Observe bounded native rule inputs, without authorizing an effect."""
+
+        if type(self) is not PolicyEngine:
+            raise TypeError("Policy configuration requires the native rule engine")
+        inputs: dict[str, object] = {}
+        for item in fields(self):
+            if item.name.startswith("_"):
+                continue
+            value = getattr(self, item.name)
+            if isinstance(value, tuple):
+                if len(value) > 256:
+                    raise ValueError("Policy configuration exceeds its rule budget")
+                value = list(value)
+            inputs[item.name] = value
+        encoded = dump_json_value(
+            inputs, name="Policy configuration", ensure_ascii=True, sort_keys=True,
+        ).encode("utf-8")
+        if len(encoded) > 16 * 1024:
+            raise ValueError("Policy configuration exceeds its byte budget")
+        return hashlib.sha256(b"loushang.policy-engine-configuration/v1\0" + encoded).hexdigest()
 
     def _rules(self) -> tuple[PolicyRule, ...]:
         rules: list[PolicyRule] = []

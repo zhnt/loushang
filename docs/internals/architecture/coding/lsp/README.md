@@ -20,7 +20,7 @@ black-box contract and internal component model.
 ## Architecture Method
 
 The design follows the repository's
-[Architecture Design And Governance Method](../../../architecture-method/README.md)
+[Loushang Architecture Governance Profile](../../governance-profile.md)
 in this order:
 
 ```text

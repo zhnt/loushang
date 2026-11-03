@@ -20,6 +20,24 @@ and performs no filesystem I/O.
 
 ## Composition rule
 
+### Accepted lmux managed-profile layout exception
+
+The [lmux M0 contract](../apphost/lmux-contract-m0.md) accepts one explicitly
+composed Linux deployment layout under `$LOUSHANG_HOME/lmux/machines/<machine>`.
+Its registry, application/control state, logs, cache and disposable instance
+scratch remain separately owned and bounded by lifetime. AppHost receives the
+layout once from trusted Product composition; leaf consumers do not resolve
+home/environment themselves. Explicit temporary overrides still win. Live
+connection credentials remain under the platform runtime namespace; canonical
+Sessions and attachments stay under their existing authority, not lmux.
+
+This is an optional-profile Target, not a change to `PlatformPaths` defaults,
+the ordinary embedded CLI/TUI or existing Hosting consumers. Native private
+directory admission, stable lifecycle fences, quotas and the shared Session
+writer contract must be implemented and verified before activation.
+
+### Shared composition rule
+
 The composition edge resolves `PlatformPaths` and `RuntimeScope` once and
 injects the immutable result. Leaf storage consumers do not reread process
 environment variables and do not infer cwd or user-home policy. This makes a

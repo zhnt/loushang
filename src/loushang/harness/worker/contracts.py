@@ -23,6 +23,7 @@ WORKER_RUNTIME_BINDING_VERSION = 1
 WORKER_LAUNCH_REQUEST_VERSION = 1
 WORKER_LAUNCH_EVIDENCE_VERSION = 1
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
+_OPAQUE_SCOPE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?")
 _MAX_IDENTIFIER_LENGTH = 128
 
 
@@ -58,9 +59,9 @@ class WorkerLaunchIdentityV1:
             ("contribution id", self.contribution_id),
             ("owner id", self.owner_id),
             ("Product id", self.product_id),
-            ("scope id", self.scope_id),
         ):
             _require_identifier(text_value, name=name)
+        _require_opaque_scope(self.scope_id)
         for name, digest_value in (
             ("Plugin revision digest", self.plugin_revision_digest),
             ("declaration fingerprint", self.declaration_fingerprint),
@@ -375,6 +376,17 @@ def _require_identifier(value: object, *, name: str) -> str:
         or not _IDENTIFIER.fullmatch(result)
     ):
         raise ValueError(f"{name} must be a bounded identifier")
+    return result
+
+
+def _require_opaque_scope(value: object) -> str:
+    result = _require_nonempty(value, name="scope id")
+    if (
+        result != value
+        or len(result) > _MAX_IDENTIFIER_LENGTH
+        or not _OPAQUE_SCOPE.fullmatch(result)
+    ):
+        raise ValueError("scope id must be a bounded opaque token")
     return result
 
 

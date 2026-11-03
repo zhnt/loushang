@@ -12,6 +12,10 @@ from loushang.harness.capabilities.contracts import (
     CapabilityRequirementBinding,
     _capability_requirement_to_dict,
 )
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_OWNER_CONTRIBUTION_KINDS,
+    PluginOwnerContributionKind,
+)
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 from loushang.harness.runtime import RuntimeCapabilityScope, RuntimeRefreshBoundary
 
@@ -19,7 +23,7 @@ OWNER_CONTRIBUTION_ADMISSION_VERSION = 1
 OWNER_CONTRIBUTION_CANDIDATE_VERSION = 1
 OWNER_CONTRIBUTION_SNAPSHOT_VERSION = 1
 
-OwnerContributionKind = Literal["resource_item", "tool_pack", "command_pack"]
+OwnerContributionKind = PluginOwnerContributionKind
 ResourceContributionKind = Literal[
     "asset",
     "method",
@@ -30,9 +34,6 @@ ResourceContributionKind = Literal[
 ]
 ResourceLocatorKind = Literal["directory", "file"]
 
-_OWNER_CONTRIBUTION_KINDS = frozenset(
-    {"resource_item", "tool_pack", "command_pack"}
-)
 _RESOURCE_KINDS = frozenset(
     {"asset", "method", "prompt", "skill", "source", "theme"}
 )
@@ -284,7 +285,7 @@ class OwnerContributionPolicy:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.owner_id, name="Contribution owner id")
-        if self.contribution_kind not in _OWNER_CONTRIBUTION_KINDS:
+        if self.contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
             raise ValueError("Unsupported owner contribution kind")
         _require_nonempty(self.product_id, name="Contribution Product id")
         _require_nonempty(self.policy_revision, name="owner policy revision")
@@ -337,7 +338,7 @@ class OwnerContributionSnapshot:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.owner_id, name="Contribution owner id")
-        if self.contribution_kind not in _OWNER_CONTRIBUTION_KINDS:
+        if self.contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
             raise ValueError("Unsupported owner contribution kind")
         _require_nonempty(self.product_id, name="Contribution Product id")
         _require_nonempty(self.policy_revision, name="owner policy revision")

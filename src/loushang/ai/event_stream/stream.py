@@ -76,28 +76,20 @@ class EventStream(Generic[TEvent, TResult]):
                 if is_terminal:
                     break
         finally:
-            if not self._ended:
-                await self.aclose()
+            await self.aclose()
 
     def attach_task(self, task: asyncio.Task[object]) -> None:
         self._producer_task = task
         task.add_done_callback(self._finish_from_task)
 
     async def aclose(self) -> None:
-        if self._ended:
-            return
-        self._ended = True
         task = self._producer_task
-        if task is not None and not task.done():
-            task.cancel()
-            if task is not asyncio.current_task():
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:
-                    self._producer_error = exc
-        self._put_nowait_force(None)
+        if not self._ended:
+            self._ended = True
+            if task is not None and not task.done():
+                task.cancel()
+            self._put_nowait_force(None)
+        await self._await_producer_completion()
 
     cancel = aclose
 
@@ -132,12 +124,17 @@ class EventStream(Generic[TEvent, TResult]):
         task = self._producer_task
         if task is None or task is asyncio.current_task():
             return
-        try:
-            await task
-        except asyncio.CancelledError:
+        caller = asyncio.current_task()
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if caller is None or caller.cancelling() == 0:
+                    break
+        if task.cancelled():
             return
-        except Exception as exc:
-            self._producer_error = exc
+        with suppress(asyncio.CancelledError):
+            self._producer_error = task.exception()
 
     def _finish_from_task(self, task: asyncio.Task[object]) -> None:
         if self._ended:

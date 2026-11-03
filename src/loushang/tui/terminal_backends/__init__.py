@@ -7,14 +7,31 @@ conversation, or product code.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
 from typing import Any, Protocol
 
 
+class NativeTerminalInputReader(Protocol):
+    """Exclusive input owner transferable after its previous read is joined.
+
+    Cancellation must release ownership without discarding partial decoding or
+    native key state. No loop-bound task may outlive a cancelled read.
+    """
+
+    async def read_chunk(self) -> str: ...
+
+    def at_input_boundary(self) -> bool:
+        """Observe empty native and decoder queues without consuming input."""
+        ...
+
+
 class NativeTerminalInputBackend(Protocol):
     """Operating-system boundary used only after a stream is known to be a TTY."""
+
+    def open_reader(self, stdin: Any) -> NativeTerminalInputReader: ...
 
     async def read_chunk(self, stdin: Any) -> str: ...
 
@@ -132,6 +149,14 @@ def native_terminal_input_backend(platform_name: str) -> NativeTerminalInputBack
     return POSIX_TERMINAL_INPUT
 
 
+def native_terminal_input_is_tty(stdin: Any) -> bool:
+    """Distinguish native input from injected/file-like streams on every OS."""
+    try:
+        return os.isatty(stdin.fileno())
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 @cache
 def native_terminal_mode_factory(platform_name: str) -> NativeTerminalModeFactory:
     """Select native mode ownership independently from input decoding."""
@@ -172,12 +197,14 @@ __all__ = [
     "NativeConsoleMode",
     "NativeModifierKeys",
     "NativeTerminalInputBackend",
+    "NativeTerminalInputReader",
     "NativeTerminalModeFactory",
     "NativeTerminalModeLease",
     "NativeTerminalPlatform",
     "NeutralConsoleMode",
     "NeutralModifierKeys",
     "native_terminal_input_backend",
+    "native_terminal_input_is_tty",
     "native_terminal_mode_factory",
     "native_terminal_platform",
 ]

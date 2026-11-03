@@ -62,7 +62,10 @@ def create_edit_tool_definition(
     @tool(
         name="edit",
         label="Edit",
-        description="Apply exact text replacements to a file in the workspace.",
+        description=(
+            "Apply exact text replacements to a workspace file. JSON arguments: "
+            '{"path":"file","edits":[{"oldText":"before","newText":"after"}]}.'
+        ),
         prompt_snippet="- edit: Apply exact text replacements to a file in the workspace.",
     )
     async def edit(

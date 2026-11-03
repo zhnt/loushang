@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from .capture import CapturedExecExecutor, ExecCaptureSink
+from .capture_lease import (
+    CapturePreparation,
+    ExecCaptureFactory,
+    ExecCaptureLease,
+    SealedExecCapture,
+    SealedExecSource,
+)
 from .errors import ExecLaunchError, ExecLaunchErrorKind
 from .service import (
     AuthorizedProcessExecBackend,
@@ -17,6 +25,13 @@ from .types import (
 )
 
 __all__ = [
+    "CapturePreparation",
+    "ExecCaptureFactory",
+    "ExecCaptureLease",
+    "SealedExecCapture",
+    "SealedExecSource",
+    "CapturedExecExecutor",
+    "ExecCaptureSink",
     "ExecBackend",
     "AuthorizedProcessExecBackend",
     "ExecLaunchError",

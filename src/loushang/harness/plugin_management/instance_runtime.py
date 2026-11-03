@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -11,8 +13,21 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
+)
+from loushang.harness.plugin_management.gc_writer_epoch import (
+    PluginGcWriterEpochError,
+    PluginGcWriterEpochRecords,
+    PluginGcWriterEpochSealV1,
+    gc_writer_epoch_codec,
+    split_gc_writer_epoch_records,
 )
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
@@ -49,6 +64,7 @@ from loushang.harness.resources.plugins.selection import PluginInstanceRevisionR
 _ROOT_ACQUISITION_KINDS = frozenset(
     {"independent", "owner_generation", "session_membership"}
 )
+_MAX_CAPTURE_BYTES = 2 * 1024 * 1024
 
 
 def plugin_instance_security_acceptance_journal_path(
@@ -277,6 +293,8 @@ class PluginInstanceRuntimeLedger:
         retirement_intents: PluginInstanceRetirementIntentSourcePort,
         retirement_sets: PluginInstanceRetirementSetSourcePort,
         security_acceptances: PluginInstanceSecurityAcceptanceSourcePort,
+        gc_gate: PluginPackageGcReferenceGatePort | None = None,
+        load_policy: JournalLoadPolicy | None = None,
     ) -> None:
         # Lock sidecars are derived from these stored paths, so normalize once
         # before any equality check or cross-process operation gate is used.
@@ -287,6 +305,7 @@ class PluginInstanceRuntimeLedger:
         self._retirement_sets = retirement_sets
         self._validate_security_acceptance_source(security_acceptances)
         self._security_acceptances = security_acceptances
+        self._gc_gate = gc_gate
         journal_paths = {
             self._path.resolve(),
             self._operation_path.resolve(),
@@ -298,11 +317,56 @@ class PluginInstanceRuntimeLedger:
         if len(journal_paths) != 6:
             raise ValueError("Plugin Instance runtime journals must be distinct")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._load_policy = load_policy or JournalLoadPolicy(partial_tail="repair")
 
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return self._gc_gate
+
+    def seal_gc_writer_epoch(self) -> None:
+        if self._gc_gate is None:
+            raise PluginInstanceRuntimeError(
+                "GC writer epoch requires a reservation gate",
+                code="plugin_package_gc_writer_epoch_unsupported",
+                path=self._path,
+            )
+        with ExitStack() as locks:
+            locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
+            records = self._load_epoch_records_unlocked()
+            _replay(records.records, path=self._path)
+            if not records.sealed:
+                append_jsonl_record(
+                    self._path,
+                    PluginGcWriterEpochSealV1.create(
+                        journal_kind="instance",
+                        owner_path=self._path,
+                        gate=self._gc_gate,
+                    ),
+                    record_codec=gc_writer_epoch_codec(
+                        PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC
+                    ),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                )
+
+    def gc_writer_epoch_sealed(self) -> bool:
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            return self._load_epoch_records_unlocked().sealed
 
     @property
     def management_operation_journal_path(self) -> Path:
@@ -352,11 +416,15 @@ class PluginInstanceRuntimeLedger:
         _require_nonempty(operation_id, name="activation operation id")
         _require_nonempty(idempotency_key, name="activation idempotency key")
         _require_nonempty(direct_host_reference, name="direct host reference")
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -398,6 +466,12 @@ class PluginInstanceRuntimeLedger:
                     raise _unavailable(
                         self._path,
                         "Plugin Installation has no current enabled Instance",
+                    )
+                if selection.package_revision in reserved:
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
                     )
                 self._require_not_security_accepted((selection.instance_revision_ref,))
                 if selection.instance_revision_ref in replayed.instances:
@@ -452,11 +526,15 @@ class PluginInstanceRuntimeLedger:
             (holder_reference, "lease holder reference"),
         ):
             _require_nonempty(value, name=name)
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -501,6 +579,12 @@ class PluginInstanceRuntimeLedger:
                     )
                     for installation_key in keys
                 )
+                if any(package in reserved for _, _, package in subjects):
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
+                    )
                 family = PluginInstanceLeaseFamilyV1.create(
                     lease_kind=lease_kind,
                     operation_id=operation_id,
@@ -537,11 +621,15 @@ class PluginInstanceRuntimeLedger:
             (holder_reference, "lease holder reference"),
         ):
             _require_nonempty(value, name=name)
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -600,6 +688,12 @@ class PluginInstanceRuntimeLedger:
                     )
                     for member in parent.family.members
                 )
+                if any(package in reserved for _, _, package in subjects):
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
+                    )
                 if any(
                     replayed.instances[instance_ref].state not in {"ACTIVE", "DRAINING"}
                     for _, instance_ref, _ in subjects
@@ -922,32 +1016,36 @@ class PluginInstanceRuntimeLedger:
                 return _snapshot_instance(current)
 
     def snapshot(self) -> PluginInstanceRuntimeInventorySnapshotV1:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._operation_path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             sources = self._load_sources()
-            with journal_file_lock(
+            with journal_file_read_lock(
                 self._path,
                 "exclusive",
                 lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                create_lock=self._load_policy.create_lock,
             ):
                 replayed = self._load_and_replay_unlocked()
                 self._validate_sources(replayed, sources)
                 return _snapshot_inventory(replayed)
 
     def events(self) -> tuple[PluginInstanceRuntimeEventV1, ...]:
-        with journal_file_lock(
+        with journal_file_read_lock(
             self._operation_path,
             "exclusive",
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=self._load_policy.create_lock,
         ):
             sources = self._load_sources()
-            with journal_file_lock(
+            with journal_file_read_lock(
                 self._path,
                 "exclusive",
                 lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                create_lock=self._load_policy.create_lock,
             ):
                 replayed = self._load_and_replay_unlocked()
                 self._validate_sources(replayed, sources)
@@ -1039,100 +1137,36 @@ class PluginInstanceRuntimeLedger:
         replayed: _ReplayedInstanceRuntime,
         sources: _SourceEvidence,
     ) -> None:
-        if sources.desired_snapshot.inventory_revision != len(
-            sources.desired_transitions
-        ):
-            raise _corrupt(
-                self._path,
-                "Desired-state snapshot and transitions are inconsistent",
-            )
-        for current in replayed.instances.values():
-            activation = current.activation
-            try:
-                selection = _desired_selection_at(
-                    sources.desired_transitions,
-                    revision=activation.source_inventory_revision,
-                    installation_key=activation.installation_key,
-                )
-            except ValueError as exc:
-                raise _corrupt(
-                    self._path,
-                    "Plugin Instance activation source revision is invalid",
-                ) from exc
-            if not _selection_matches_activation(selection, activation):
-                raise _corrupt(
-                    self._path,
-                    "Plugin Instance activation is absent from desired-state history",
-                )
-            if current.retirement_intent is not None:
-                intent = current.retirement_intent
-                retirement_set = sources.retirement_sets.retirement_set(
-                    intent.retirement_id
-                )
-                if (
-                    _intent_by_id(sources).get(intent.retirement_id) != intent
-                    or retirement_set is None
-                    or retirement_set.intent != intent
-                ):
-                    raise _corrupt(
-                        self._path,
-                        "Plugin Instance drain contradicts retirement evidence",
-                    )
-            if (
-                current.completion is not None
-                and current.completion.completion_kind == "graceful"
-            ):
-                retirement_set = sources.retirement_sets.retirement_set(
-                    current.completion.coordination_id
-                )
-                if retirement_set is None or retirement_set.state != "succeeded":
-                    raise _corrupt(
-                        self._path,
-                        "Retired Plugin Instance lacks successful owner evidence",
-                    )
-        for mutable_family in replayed.families.values():
-            family = mutable_family.family
-            if family.lease_kind == "agent_membership":
-                continue
-            source_revision = family.source_inventory_revision
-            if source_revision is None:
-                raise _corrupt(
-                    self._path,
-                    "Root Plugin Instance family lacks desired-state revision",
-                )
-            for member in family.members:
-                try:
-                    selection = _desired_selection_at(
-                        sources.desired_transitions,
-                        revision=source_revision,
-                        installation_key=member.installation_key,
-                    )
-                except ValueError as exc:
-                    raise _corrupt(
-                        self._path,
-                        "Plugin Instance family source revision is invalid",
-                    ) from exc
-                if (
-                    selection.desired_state != "installed_enabled"
-                    or selection.instance_revision_ref != member.instance_revision_ref
-                    or selection.package_revision != member.package_revision
-                ):
-                    raise _corrupt(
-                        self._path,
-                        "Plugin Instance family is absent from desired-state history",
-                    )
+        _validate_instance_sources(replayed, sources, path=self._path)
 
     def _load_and_replay_unlocked(self) -> _ReplayedInstanceRuntime:
+        return _replay(self._load_epoch_records_unlocked().records, path=self._path)
+
+    def _load_epoch_records_unlocked(
+        self,
+    ) -> PluginGcWriterEpochRecords[PluginInstanceRuntimeEventV1]:
         if not self._path.exists():
-            return _empty_replay()
+            return PluginGcWriterEpochRecords(records=(), sealed=False)
         try:
-            snapshot: JsonlSnapshot[None, PluginInstanceRuntimeEventV1] = load_jsonl(
+            snapshot: JsonlSnapshot[
+                None, PluginInstanceRuntimeEventV1 | PluginGcWriterEpochSealV1
+            ] = load_jsonl(
                 self._path,
-                record_codec=PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
+                record_codec=gc_writer_epoch_codec(PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC),
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
             )
+            return split_gc_writer_epoch_records(
+                snapshot.records,
+                journal_kind="instance",
+                owner_path=self._path,
+                gate=self._gc_gate,
+            )
+        except PluginGcWriterEpochError as exc:
+            raise PluginInstanceRuntimeError(
+                str(exc), code=exc.code, path=self._path
+            ) from exc
         except JournalFileError as exc:
             code = (
                 exc.code
@@ -1148,7 +1182,6 @@ class PluginInstanceRuntimeLedger:
                 code=code,
                 path=self._path,
             ) from exc
-        return _replay(snapshot.records, path=self._path)
 
     def _append_and_apply_unlocked(
         self,
@@ -1163,6 +1196,73 @@ class PluginInstanceRuntimeLedger:
             durability=self._unlocked_durability,
         )
         _apply_event(replayed, event, path=self._path)
+
+
+def decode_plugin_instance_runtime_capture(
+    raw: str,
+    *,
+    path: Path,
+    desired_snapshot: PluginDesiredStateSnapshotV1,
+    desired_transitions: tuple[PluginDesiredStateJournalTransition, ...],
+    retirement_intents: PluginRetirementIntentSnapshotV1,
+    retirement_sets: PluginRetirementSetInventorySnapshotV1,
+) -> PluginInstanceRuntimeInventorySnapshotV1:
+    """Replay frozen Instance bytes against frozen sources without filesystem I/O."""
+
+    if (
+        not isinstance(raw, str)
+        or not isinstance(path, Path)
+        or not isinstance(desired_snapshot, PluginDesiredStateSnapshotV1)
+        or not isinstance(desired_transitions, tuple)
+        or not isinstance(retirement_intents, PluginRetirementIntentSnapshotV1)
+        or not isinstance(retirement_sets, PluginRetirementSetInventorySnapshotV1)
+    ):
+        raise TypeError("Plugin Instance capture requires frozen source evidence")
+    try:
+        oversized = len(raw) > _MAX_CAPTURE_BYTES or len(raw.encode("utf-8")) > (
+            _MAX_CAPTURE_BYTES
+        )
+    except UnicodeError as exc:
+        raise _corrupt(path, "Plugin Instance capture is not UTF-8") from exc
+    if oversized:
+        raise _corrupt(path, "Plugin Instance capture exceeds the size limit")
+    if raw and not raw.endswith("\n"):
+        raise _corrupt(path, "Plugin Instance capture is incomplete")
+    try:
+        for line in raw.splitlines():
+            if line.strip():
+                json.loads(line, object_pairs_hook=_unique_instance_capture_object)
+        snapshot: JsonlSnapshot[None, PluginInstanceRuntimeEventV1] = decode_jsonl(
+            raw,
+            target=path,
+            record_codec=PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
+            load_policy=JournalLoadPolicy(partial_tail="raise", create_lock=False),
+        )
+    except (JournalFileError, ValueError) as exc:
+        raise _corrupt(path, "Plugin Instance capture cannot be decoded") from exc
+    replayed = _replay(snapshot.records, path=path)
+    _validate_instance_sources(
+        replayed,
+        _SourceEvidence(
+            desired_snapshot=desired_snapshot,
+            desired_transitions=desired_transitions,
+            retirement_intents=retirement_intents,
+            retirement_sets=retirement_sets,
+        ),
+        path=path,
+    )
+    return _snapshot_inventory(replayed)
+
+
+def _unique_instance_capture_object(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Plugin Instance capture has duplicate JSON keys")
+        result[key] = value
+    return result
 
 
 def _empty_replay() -> _ReplayedInstanceRuntime:
@@ -1187,6 +1287,84 @@ def _replay(
     for event in events:
         _apply_event(replayed, event, path=path)
     return replayed
+
+
+def _validate_instance_sources(
+    replayed: _ReplayedInstanceRuntime,
+    sources: _SourceEvidence,
+    *,
+    path: Path,
+) -> None:
+    if sources.desired_snapshot.inventory_revision != len(sources.desired_transitions):
+        raise _corrupt(path, "Desired-state snapshot and transitions are inconsistent")
+    for current in replayed.instances.values():
+        activation = current.activation
+        try:
+            selection = _desired_selection_at(
+                sources.desired_transitions,
+                revision=activation.source_inventory_revision,
+                installation_key=activation.installation_key,
+            )
+        except ValueError as exc:
+            raise _corrupt(
+                path, "Plugin Instance activation source revision is invalid"
+            ) from exc
+        if not _selection_matches_activation(selection, activation):
+            raise _corrupt(
+                path, "Plugin Instance activation is absent from desired-state history"
+            )
+        if current.retirement_intent is not None:
+            intent = current.retirement_intent
+            retirement_set = sources.retirement_sets.retirement_set(
+                intent.retirement_id
+            )
+            if (
+                _intent_by_id(sources).get(intent.retirement_id) != intent
+                or retirement_set is None
+                or retirement_set.intent != intent
+            ):
+                raise _corrupt(
+                    path, "Plugin Instance drain contradicts retirement evidence"
+                )
+        if (
+            current.completion is not None
+            and current.completion.completion_kind == "graceful"
+        ):
+            retirement_set = sources.retirement_sets.retirement_set(
+                current.completion.coordination_id
+            )
+            if retirement_set is None or retirement_set.state != "succeeded":
+                raise _corrupt(
+                    path, "Retired Plugin Instance lacks successful owner evidence"
+                )
+    for mutable_family in replayed.families.values():
+        family = mutable_family.family
+        if family.lease_kind == "agent_membership":
+            continue
+        source_revision = family.source_inventory_revision
+        if source_revision is None:
+            raise _corrupt(
+                path, "Root Plugin Instance family lacks desired-state revision"
+            )
+        for member in family.members:
+            try:
+                selection = _desired_selection_at(
+                    sources.desired_transitions,
+                    revision=source_revision,
+                    installation_key=member.installation_key,
+                )
+            except ValueError as exc:
+                raise _corrupt(
+                    path, "Plugin Instance family source revision is invalid"
+                ) from exc
+            if (
+                selection.desired_state != "installed_enabled"
+                or selection.instance_revision_ref != member.instance_revision_ref
+                or selection.package_revision != member.package_revision
+            ):
+                raise _corrupt(
+                    path, "Plugin Instance family is absent from desired-state history"
+                )
 
 
 def _apply_event(
@@ -1548,6 +1726,7 @@ def _corrupt(path: Path, message: str) -> PluginInstanceRuntimeError:
 
 
 __all__ = [
+    "decode_plugin_instance_runtime_capture",
     "PluginInstanceDesiredStateSourcePort",
     "PluginInstanceRetirementIntentSourcePort",
     "PluginInstanceRetirementSetSourcePort",

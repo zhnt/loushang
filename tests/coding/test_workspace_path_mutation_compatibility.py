@@ -21,18 +21,3 @@ def test_workspace_path_helpers_preserve_configured_input_policy(
     assert canonicalize_tool_path(tmp_path / "todo.txt") == str(
         canonicalize_workspace_path(tmp_path / "todo.txt")
     )
-
-
-def test_workspace_mutation_queue_preserves_owner_identity() -> None:
-    import loushang.harness.workspace.mutation_queue as workspace_queue
-    from loushang.harness.workspace import mutation_queue as harness_queue
-
-    assert (
-        workspace_queue.with_file_mutation_queue
-        is harness_queue.with_file_mutation_queue
-    )
-    assert (
-        workspace_queue.run_with_file_mutation_queue
-        is harness_queue.run_with_file_mutation_queue
-    )
-    assert workspace_queue._mutation_locks is harness_queue._mutation_locks

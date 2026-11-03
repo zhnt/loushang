@@ -22,6 +22,10 @@ from loushang.appserver.protocol import (
     TurnTextV1,
 )
 from loushang.appservice.client_scope import ScopedAppServiceV1
+from loushang.appservice.resume_ports import (
+    ResumeInputLookupQueryV1,
+    ResumeInputLookupResultV1,
+)
 
 from .test_runtime import _service, _spec
 
@@ -34,6 +38,183 @@ async def _fixture():
     owner = ScopedAppServiceV1(service, close_timeout=0.05)
     first, second = owner.open_client_scope(), owner.open_client_scope()
     return service, owner, first, second, selector, mux, resolver.sessions[0]
+
+
+def test_resume_subject_observation_uses_native_controller_and_instance() -> None:
+    from .test_execution_service import fixture
+
+    async def scenario():
+        service, owner, first, second, selector, request, product = await fixture()
+        try:
+            digest = first.resume_subject_digest(request)
+            assert len(digest) == 64
+            assert first.resume_subject_digest(request) == digest
+            first.require_current_resume_subject(request, digest)
+            with pytest.raises(AppServiceError) as foreign:
+                second.resume_subject_digest(request)
+            assert foreign.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+            assert owner.pending_counts == (0, 0)
+            assert not product.entered.is_set()
+            assert service._sessions[product.identity.session_id]._execution is None
+            await first.close()
+            attachment = await second.attach_mux(MuxAttachV1(selector))
+            current = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, request.member_id,
+            )
+            assert second.resume_subject_digest(current) != digest
+            with pytest.raises(AppServiceError) as stale:
+                second.require_current_resume_subject(current, digest)
+            assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+            with pytest.raises(AppServiceError):
+                first.require_current_resume_subject(request, digest)
+            await second.close()
+            with pytest.raises(AppServiceError):
+                second.resume_subject_digest(current)
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_resume_subject_without_native_execution_instance_is_unavailable() -> None:
+    async def scenario():
+        service, owner, first, second, selector, mux, session = await _fixture()
+        try:
+            attachment = await first.attach_mux(MuxAttachV1(selector))
+            request = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id,
+            )
+            with pytest.raises(AppServiceError) as unsupported:
+                first.resume_subject_digest(request)
+            assert unsupported.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            assert not session.calls
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_resume_subject_rejects_closed_native_session_before_removal() -> None:
+    from .test_execution_service import fixture
+
+    async def scenario():
+        service, owner, first, second, selector, request, product = await fixture()
+        try:
+            digest = first.resume_subject_digest(request)
+            session = service._sessions[product.identity.session_id]
+            await session.close()
+            # The original owner is already fenced while canonical mapping
+            # removal may still be pending in its caller's close operation.
+            assert service._sessions[product.identity.session_id] is session
+            with pytest.raises(AppServiceError) as closed:
+                first.require_current_resume_subject(request, digest)
+            assert closed.value.code in {AppErrorCodeV1.SESSION_UNAVAILABLE, AppErrorCodeV1.STALE_ATTACHMENT}
+            assert not product.entered.is_set()
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_resume_lookup_requires_current_scope_before_product_read() -> None:
+    async def scenario():
+        service, owner, first, second, selector, mux, session = await _fixture()
+        try:
+            attachment = await first.attach_mux(MuxAttachV1(selector))
+            request = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id,
+            )
+            query = ResumeInputLookupQueryV1("input-1", "a" * 64)
+            with pytest.raises(AppServiceError) as unsupported:
+                await first.lookup_resume_input(request, query)
+            assert unsupported.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+            calls = []
+
+            async def lookup(value):
+                calls.append(value)
+                return ResumeInputLookupResultV1(value.input_id, "record-1", "committed")
+
+            session.lookup_resume_input = lookup
+            with pytest.raises(AppServiceError) as foreign:
+                await second.lookup_resume_input(request, query)
+            assert foreign.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+            assert calls == []
+            result = await first.lookup_resume_input(request, query)
+            assert result.status == "committed"
+            assert calls == [query]
+            assert owner.pending_counts == (0, 0)
+            assert not any(call[0] == "start" for call in session.calls)
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_resume_lookup_discards_delivery_after_controller_takeover() -> None:
+    async def scenario():
+        service, owner, first, second, selector, mux, session = await _fixture()
+        entered, release = asyncio.Event(), asyncio.Event()
+        waiter = None
+
+        async def lookup(query):
+            entered.set()
+            await release.wait()
+            return ResumeInputLookupResultV1(query.input_id, "record-1", "committed")
+
+        session.lookup_resume_input = lookup
+        try:
+            attachment = await first.attach_mux(MuxAttachV1(selector))
+            request = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id,
+            )
+            query = ResumeInputLookupQueryV1("input-1", "a" * 64)
+            waiter = asyncio.create_task(first.lookup_resume_input(request, query))
+            await entered.wait()
+            await first.close()
+            replacement = await second.attach_mux(MuxAttachV1(selector))
+            assert replacement.controller_generation > attachment.controller_generation
+            release.set()
+            with pytest.raises(AppServiceError):
+                await waiter
+            assert session.closed == 0
+            assert (await second.lookup_resume_input(SessionSnapshotRequestV1(
+                replacement.attachment_id, replacement.controller_generation, mux.members[0].member_id,
+            ), query)).status == "committed"
+        finally:
+            release.set()
+            if waiter is not None:
+                await asyncio.gather(waiter, return_exceptions=True)
+            await service.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["wrong_input", "wrong_type", "exception"])
+def test_resume_lookup_rejects_invalid_product_results(failure) -> None:
+    async def scenario():
+        service, owner, first, second, selector, mux, session = await _fixture()
+
+        async def lookup(query):
+            if failure == "exception":
+                raise RuntimeError("private Product detail")
+            if failure == "wrong_type":
+                return {"input_id": query.input_id, "status": "committed"}
+            return ResumeInputLookupResultV1("different-input", "record-1", "committed")
+
+        session.lookup_resume_input = lookup
+        try:
+            attachment = await first.attach_mux(MuxAttachV1(selector))
+            request = SessionSnapshotRequestV1(
+                attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id,
+            )
+            with pytest.raises(AppServiceError) as unavailable:
+                await first.lookup_resume_input(request, ResumeInputLookupQueryV1("input-1", "a" * 64))
+            assert unavailable.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
+            assert "private Product detail" not in str(unavailable.value)
+        finally:
+            await service.close()
+
+    asyncio.run(scenario())
 
 
 def test_G16_CONTROLLER_exclusive_scope_and_foreign_reads_are_fenced() -> None:

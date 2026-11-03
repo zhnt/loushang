@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -16,6 +17,12 @@ AMBIGUOUS_WIDTH_ENV = "LOUSHANG_TUI_AMBIGUOUS_WIDTH"
 _THAI_LAO_AM_TRANSLATION = str.maketrans({"\u0e33": "\u0e4d\u0e32", "\u0eb3": "\u0ecd\u0eb2"})
 _VISIBLE_WIDTH_CACHE_SIZE = 16_384
 _CLUSTER_WIDTH_CACHE_SIZE = 16_384
+_ASCII_TOKEN_RUNS = re.compile(r"\s+|\S+")
+_ASCII_SGR_CODES = re.compile(r"\x1b\[[0-9;:]*m")
+_BOX_DRAWING_GLYPH = re.compile("[┌─┬┐├┼┤│└┴┘]")
+_BOX_DRAWING_ASCII_TRANSLATION = str.maketrans(
+    {glyph: "|" for glyph in "┌─┬┐├┼┤│└┴┘"}
+)
 AmbiguousWidth = Literal[1, 2]
 _AMBIGUOUS_WIDTH: AmbiguousWidth = 1
 
@@ -35,12 +42,14 @@ def strip_control_sequences(text: str) -> str:
     output: list[str] = []
     index = 0
     while index < len(text):
-        control = _extract_control_sequence(text, index)
-        if control is not None:
-            index += control.length
-            continue
-        output.append(text[index])
-        index += 1
+        escape = text.find("\x1b", index)
+        if escape < 0:
+            output.append(text[index:])
+            break
+        output.append(text[index:escape])
+        control = _extract_control_sequence(text, escape)
+        assert control is not None
+        index = escape + control.length
     return "".join(output)
 
 
@@ -110,6 +119,9 @@ def grapheme_clusters(text: str) -> tuple[str, ...]:
 def max_display_cluster_width(text: str) -> int:
     """Return the widest indivisible display cluster in styled text."""
 
+    ascii_width = _printable_sgr_ascii_width(text)
+    if ascii_width is not None:
+        return 1 if ascii_width else 0
     visible = strip_control_sequences(text)
     return max(
         (_cluster_width(cluster) for cluster in _display_grapheme_clusters(visible)),
@@ -123,6 +135,18 @@ def wrap_cells(text: str, *, width: int) -> list[str]:
 
     wrapped: list[str] = []
     for logical_line in strip_control_sequences(text).split("\n"):
+        if not logical_line:
+            wrapped.append("")
+            continue
+        # Printable ASCII has one cell per codepoint and no multi-codepoint
+        # graphemes. Preserve spaces and explicit empty rows while slicing in C.
+        # Controls, tabs and Unicode retain the general cluster-aware layout.
+        if logical_line.isascii() and logical_line.isprintable():
+            wrapped.extend(
+                logical_line[start : start + width]
+                for start in range(0, len(logical_line), width)
+            )
+            continue
         current = ""
         current_width = 0
         for cluster in _display_grapheme_clusters(logical_line):
@@ -147,6 +171,12 @@ def wrap_ansi(text: str, *, width: int) -> list[str]:
     tracker = _StyleTracker()
     for input_line in text.split("\n"):
         current = tracker.active_codes()
+        if input_line.isascii():
+            plain_width = _plain_ascii_width(strip_control_sequences(input_line))
+            if plain_width is not None and plain_width <= width:
+                _process_control_sequences(input_line, tracker)
+                wrapped.append((current + input_line).rstrip(" "))
+                continue
         current_width = 0
         tokens = _ansi_tokens(input_line)
         if not tokens:
@@ -303,10 +333,36 @@ def _visible_width_cached(text: str) -> int:
     plain_ascii_width = _plain_ascii_width(text)
     if plain_ascii_width is not None:
         return plain_ascii_width
+    if _AMBIGUOUS_WIDTH == 1 and not text.isascii() and _BOX_DRAWING_GLYPH.search(text):
+        box_ascii = text.translate(_BOX_DRAWING_ASCII_TRANSLATION)
+        if box_ascii.isascii():
+            box_width = (
+                _printable_sgr_ascii_width(box_ascii)
+                if "\x1b" in box_ascii
+                else _plain_ascii_width(box_ascii)
+            )
+            if box_width is not None:
+                return box_width
+    if "\x1b" in text:
+        sgr_ascii_width = _printable_sgr_ascii_width(text)
+        if sgr_ascii_width is not None:
+            return sgr_ascii_width
     visible = strip_control_sequences(text)
+    plain_ascii_width = _plain_ascii_width(visible)
+    if plain_ascii_width is not None:
+        return plain_ascii_width
     if not _requires_cluster_measurement(visible):
         return _measure_terminal_cells(visible)
     return sum(_cluster_width(cluster) for cluster in _display_grapheme_clusters(visible))
+
+
+def _printable_sgr_ascii_width(text: str) -> int | None:
+    if not text.isascii():
+        return None
+    without_sgr = _ASCII_SGR_CODES.sub("", text)
+    if "\x1b" in without_sgr or not without_sgr.isprintable():
+        return None
+    return len(without_sgr)
 
 
 def _requires_cluster_measurement(text: str) -> bool:
@@ -473,6 +529,9 @@ def _extract_control_sequence(text: str, start: int) -> _ControlSequence | None:
 
 
 def _ansi_tokens(text: str) -> list[str]:
+    if text.isascii():
+        return _ansi_tokens_ascii(text)
+
     tokens: list[str] = []
     current = ""
     current_kind: str | None = None
@@ -503,15 +562,49 @@ def _ansi_tokens(text: str) -> list[str]:
     return tokens
 
 
+def _ansi_tokens_ascii(text: str) -> list[str]:
+    tokens: list[str] = []
+    current = ""
+    current_kind: str | None = None
+    pending_controls = ""
+    index = 0
+    while index < len(text):
+        escape = text.find("\x1b", index)
+        end = len(text) if escape < 0 else escape
+        for match in _ASCII_TOKEN_RUNS.finditer(text, index, end):
+            run = match.group()
+            kind = "space" if run[0].isspace() else "word"
+            if current and current_kind is not None and current_kind != kind:
+                tokens.append(current)
+                current = ""
+            if pending_controls:
+                current += pending_controls
+                pending_controls = ""
+            current += run
+            current_kind = kind
+        if escape < 0:
+            break
+        control = _extract_control_sequence(text, escape)
+        assert control is not None
+        pending_controls += control.code
+        index = escape + control.length
+    if pending_controls:
+        current += pending_controls
+    if current:
+        tokens.append(current)
+    return tokens
+
+
 def _process_control_sequences(text: str, tracker: _StyleTracker) -> None:
     index = 0
     while index < len(text):
-        control = _extract_control_sequence(text, index)
-        if control is not None:
-            tracker.process(control.code)
-            index += control.length
-            continue
-        index += len(_next_cluster(text, index))
+        escape = text.find("\x1b", index)
+        if escape < 0:
+            return
+        control = _extract_control_sequence(text, escape)
+        assert control is not None
+        tracker.process(control.code)
+        index = escape + control.length
 
 
 def _break_long_ansi_token(token: str, *, width: int, tracker: _StyleTracker) -> list[str]:

@@ -1,0 +1,144 @@
+{
+  "artifact_schema_version": 1,
+  "evidence_scope": "Failed Linux fixed-slot absent-bytecode native A/A; diagnostic record only, not an accepted baseline",
+  "raw_report_path": ".artifacts/g18-baseline/native-fixed-absent-aa-disk-01/report.json",
+  "raw_report_sha256": "85c5734f55c6cfdc9793d82c18927134fbbae8ebddc7fda1cb75a3dfe4907d91",
+  "native_receipt_sha256": "92a96c9890630473ca77edb5a933b0a1897969d5931afe0850209156f3c7d06d",
+  "status": "failed",
+  "failure": "CalledProcessError: Command '['/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/observer/bin/python', '-I', '/home/dev/lsspace/loushang/.worktrees/harness/tests/coding/_g18_native_probe.py', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace', 'foreground', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/native.json', '/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active', '/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/native-fixed-absent-aa-disk-01/observer-bytecode']' returned non-zero exit status 1.",
+  "comparison": {
+    "verdict": "not-evaluated",
+    "reason": "collection incomplete"
+  },
+  "source_commit": "9bc69361494293595ae424be225c61e3226a9996",
+  "source_receipts": {
+    "a": {
+      "commit": "9bc69361494293595ae424be225c61e3226a9996",
+      "package_tree": "70cad2a0dac3ed59b646e3769715f475cf2cc960",
+      "package_inventory_sha256": "3dca6999d4532bc8af85e3d90906c19ffe209dadbb23ebb30aecbb033c69e0de",
+      "package_paths_sha256": "944c0973765959dee88d7cc4b3b06e2df9dbb8854e6eaf9d82855f083bbc37bb",
+      "package_file_count": 1304,
+      "project_sha256": "41a1e51a74cc407cada03c89f90195a8600e07c3cb527a3602bef4bd3049593e",
+      "lock_sha256": "556547755c39ef7063c8cb1c3624b322d13216fc8abe621daa6fe095d5b1146d",
+      "wheel_sha256": "c75ed7beaf3a0d10c3583bd181507d5cb6340f79d71971cea4a0cd986a44dd09"
+    },
+    "b": {
+      "commit": "9bc69361494293595ae424be225c61e3226a9996",
+      "package_tree": "70cad2a0dac3ed59b646e3769715f475cf2cc960",
+      "package_inventory_sha256": "3dca6999d4532bc8af85e3d90906c19ffe209dadbb23ebb30aecbb033c69e0de",
+      "package_paths_sha256": "944c0973765959dee88d7cc4b3b06e2df9dbb8854e6eaf9d82855f083bbc37bb",
+      "package_file_count": 1304,
+      "project_sha256": "41a1e51a74cc407cada03c89f90195a8600e07c3cb527a3602bef4bd3049593e",
+      "lock_sha256": "556547755c39ef7063c8cb1c3624b322d13216fc8abe621daa6fe095d5b1146d",
+      "wheel_sha256": "c75ed7beaf3a0d10c3583bd181507d5cb6340f79d71971cea4a0cd986a44dd09"
+    }
+  },
+  "lock_sha256": "556547755c39ef7063c8cb1c3624b322d13216fc8abe621daa6fe095d5b1146d",
+  "wheel_sha256": {
+    "a": "c75ed7beaf3a0d10c3583bd181507d5cb6340f79d71971cea4a0cd986a44dd09",
+    "b": "c75ed7beaf3a0d10c3583bd181507d5cb6340f79d71971cea4a0cd986a44dd09"
+  },
+  "runner_sha256": "5652f78a6e9a5523730184c81dae11b0cf97e316ec6375443bbf4263e6601e63",
+  "probe_sha256": "55136d8c61569cc6360647dfece97b04b6eb9cff97319a55cb333ca56237669e",
+  "platform": "Linux-7.0.0-29-generic-x86_64-with-glibc2.43",
+  "cpu_affinity": [
+    0
+  ],
+  "condition": "fresh process; fixed measured prefix; absent task-owned installed/external bytecode; base Python/stdlib as found; fixed observer; Product state fresh or baseline-seed-restored; no warm Store-head claim",
+  "scratch_parent": "/var/tmp",
+  "scratch_device": 64770,
+  "complete_samples": 86,
+  "failed_samples": 1,
+  "final_verification": "not reached; collection stopped on failure",
+  "sample": {
+    "case": "foreground",
+    "status": "failed",
+    "valid": false,
+    "block": 0,
+    "pair": 5,
+    "side": "b",
+    "warmup": false,
+    "load_before": [
+      4.05126953125,
+      3.1904296875,
+      2.38427734375
+    ],
+    "load_after": [
+      3.76806640625,
+      3.27490234375,
+      2.46484375
+    ],
+    "cache_mode": "absent",
+    "failure": "CalledProcessError: Command '['/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/observer/bin/python', '-I', '/home/dev/lsspace/loushang/.worktrees/harness/tests/coding/_g18_native_probe.py', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace', 'foreground', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/native.json', '/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active', '/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/native-fixed-absent-aa-disk-01/observer-bytecode']' returned non-zero exit status 1."
+  },
+  "slot": {
+    "root": "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3",
+    "prefix": "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active",
+    "active": "b",
+    "busy": false,
+    "failed": true,
+    "identities": {
+      "a": [
+        64770,
+        4370666
+      ],
+      "b": [
+        64770,
+        4371411
+      ]
+    }
+  },
+  "native_receipt": {
+    "schema_version": 2,
+    "case": "foreground",
+    "status": "failed",
+    "valid": false,
+    "milestones": {},
+    "spawns": [
+      {
+        "start": 3071252.43321173,
+        "argv": [
+          "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active/bin/loushang-hosted-tui",
+          "--workspace",
+          "/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace",
+          "--application-root",
+          "/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/application",
+          "--cwd-sessions",
+          "/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/cwd",
+          "--home-sessions",
+          "/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/home"
+        ],
+        "cwd": "/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace",
+        "pid": 2821814
+      }
+    ],
+    "observer_origin": "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/observer/lib/python3.11/site-packages/loushang/coding/__init__.py",
+    "observer_prefix": "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-baseline/observer",
+    "measured_prefix": "/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active",
+    "seed": "empty",
+    "sample_id": "/var/tmp/loushang-g18-native-yl_b62gx/sample-87",
+    "seed_setup": [],
+    "failure_process": {
+      "stat": "2821814 (loushang-hosted) S 2821744 2821814 2821814 0 -1 4194304 33151 0 1659 0 950 100 0 0 20 0 2 0 307125243 202326016 19874 18446744073709551615 100478662430720 100478672671337 140727456923584 0 0 0 0 16781312 2 0 0 0 17 0 0 0 0 0 0 100478712745984 100478712800992 100479520256000 140727456929730 140727456930264 140727456930264 140727456931716 0\n",
+      "status": "Name:\tloushang-hosted\nUmask:\t0002\nState:\tS (sleeping)\nTgid:\t2821814\nNgid:\t0\nPid:\t2821814\nPPid:\t2821744\nTracerPid:\t0\nUid:\t1001\t1001\t1001\t1001\nGid:\t1001\t1001\t1001\t1001\nFDSize:\t64\nGroups:\t27 100 1001 \nNStgid:\t2821814\nNSpid:\t2821814\nNSpgid:\t2821814\nNSsid:\t2821814\nKthread:\t0\nVmPeak:\t  263104 kB\nVmSize:\t  197584 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t  108808 kB\nVmRSS:\t   79500 kB\nRssAnon:\t   67388 kB\nRssFile:\t   12112 kB\nRssShmem:\t       0 kB\nVmData:\t  107536 kB\nVmStk:\t     132 kB\nVmExe:\t   10004 kB\nVmLib:\t    2484 kB\nVmPTE:\t     300 kB\nVmSwap:\t   30308 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t2\nSigQ:\t2/6142\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000001001000\nSigCgt:\t0000000100000002\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\t1\nCpus_allowed_list:\t0\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t4095\nnonvoluntary_ctxt_switches:\t40647\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+      "wchan": "ep_poll",
+      "io": "rchar: 16696380\nwchar: 21980233\nsyscr: 2451\nsyscw: 1202\nread_bytes: 27959296\nwrite_bytes: 24469504\ncancelled_write_bytes: 0\n",
+      "schedstat": "10509520857 12926105110 44742\n",
+      "pressure_cpu": "some avg10=82.64 avg60=81.42 avg300=70.05 total=274278021241\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+      "pressure_io": "some avg10=42.12 avg60=44.44 avg300=35.96 total=95738051702\nfull avg10=0.81 avg60=2.15 avg300=2.77 total=50601965029\n",
+      "pressure_memory": "some avg10=16.70 avg60=15.14 avg300=12.15 total=36458117257\nfull avg10=4.95 avg60=5.27 avg300=4.11 total=20727513154\n"
+    },
+    "failure": "TimeoutError: terminal output predicate timed out:\nTerminalProcessDiagnostics(backend='posix-pty', pid=2821814, argv=('/home/dev/lsspace/loushang/.worktrees/harness/.artifacts/g18-slots/g18-slot-xbc8gcl3/active/bin/loushang-hosted-tui', '--workspace', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace', '--application-root', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/application', '--cwd-sessions', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/cwd', '--home-sessions', '/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace/home'), cwd=PosixPath('/var/tmp/loushang-g18-native-yl_b62gx/sample-87/workspace'), columns=100, rows=30, exit_status=None, reader_alive=True, reader_error=None, unknown_queries=(), output_tail='', termination=None)"
+  },
+  "cause": "not established; severe resource contention observed at ready timeout",
+  "cleanup_observation": {
+    "collector_exit_code": 1,
+    "owner_cleanup_returned": true,
+    "reported_leftovers": true,
+    "reported_force_cleanup": false,
+    "known_pids_absent_after_cleanup": [
+      2821814,
+      2821744
+    ]
+  }
+}

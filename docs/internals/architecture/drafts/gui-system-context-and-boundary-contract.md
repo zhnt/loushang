@@ -18,8 +18,8 @@
 
 本文承接 [GUI 需求](gui-requirements.md)，完成逻辑上下文、物理上下文、职责与
 外部行为合同。技术与阶段约束继承 [工程启动方案](gui-engineering-bootstrap-plan.md)。
-按 [架构方法](../../architecture-method/README.md) 的逻辑先于物理、黑盒先于
-[组件发现](../../architecture-method/component-identification.md) 的顺序组织。
+按逻辑先于物理、黑盒先于组件发现的顺序组织，并遵循
+[架构治理规则](../governance-profile.md)。
 继承 [系统原则](../loushang-architecture-principles.md) 的执行权威、恢复与边界约束。
 采用上述提交中已纳入版本的设计方法；工作区另行进行的方法修订不作为本文的
 接受依据。本文中的“必须/禁止”约束拟议 GUI，不宣称 GUI 已实现或需求已接受。

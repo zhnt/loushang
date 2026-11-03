@@ -20,6 +20,7 @@ from loushang.harness.journal import (
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
+    journal_file_read_lock,
     load_jsonl,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
@@ -42,6 +43,7 @@ PackageTransactionPinKind = Literal["package_transaction"]
 _TERMINAL_PIN_STATES = frozenset({"released", "transferred"})
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_READ_ONLY_LOAD_POLICY = JournalLoadPolicy(partial_tail="raise", create_lock=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -762,11 +764,30 @@ class PackageTransactionPinJournal:
             )
             return matching[-1] if matching else None
 
+    def read_operation_records(
+        self, operation_id: str
+    ) -> tuple[PackageTransactionPinRecordV1, ...]:
+        """Read every pin fact for one operation without repairing the journal."""
+
+        _require_safe_id(operation_id, name="transaction pin operation identity")
+        with journal_file_read_lock(
+            self._path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            create_lock=False,
+        ):
+            records = self._load_unlocked(load_policy=_READ_ONLY_LOAD_POLICY)
+        return tuple(
+            record for record in records if record.operation_id == operation_id
+        )
+
     def records(self) -> tuple[PackageTransactionPinRecordV1, ...]:
         with self._exclusive():
             return self._load_unlocked()
 
-    def _load_unlocked(self) -> tuple[PackageTransactionPinRecordV1, ...]:
+    def _load_unlocked(
+        self, *, load_policy: JournalLoadPolicy | None = None
+    ) -> tuple[PackageTransactionPinRecordV1, ...]:
         if not self._path.exists():
             return ()
         try:
@@ -775,7 +796,7 @@ class PackageTransactionPinJournal:
                 record_codec=PACKAGE_TRANSACTION_PIN_JOURNAL_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+                load_policy=load_policy or self._load_policy,
             )
             records = snapshot.records
             _assert_no_duplicate_json_keys(self._path)

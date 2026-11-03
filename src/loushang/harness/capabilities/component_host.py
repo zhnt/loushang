@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from threading import Lock
 from typing import Never, cast
 
 from loushang.harness.approval.plugin_activation import (
@@ -17,6 +18,7 @@ from loushang.harness.capabilities._activation_host_lifecycle import (
     DurableActivationHostLifecycle,
 )
 from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderBindingSpec,
     CapabilityProviderOwnerSnapshot,
     CapabilityProviderSymbolLocator,
 )
@@ -42,6 +44,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 _PROVIDER_HOST_API_PREFIXES: tuple[str, ...] = ()
 _PROVIDER_HOST_API_EXPORTS = {
@@ -54,6 +57,7 @@ _PROVIDER_HOST_API_EXPORTS = {
         "CapabilityProviderFactory",
     )
 }
+_MAX_COMPONENT_ADMISSION_START_MS = 900_000
 
 
 class CapabilityComponentHostError(RuntimeError):
@@ -62,6 +66,17 @@ class CapabilityComponentHostError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class CapabilityComponentAdmissionStart:
+    """One Host-held admission accepted before a potentially slow graph bind."""
+
+    host: CapabilityComponentHost = field(repr=False)
+    admission_fingerprint: str
+    decision_id: str
+    started_at: int
+    _token: object = field(repr=False, compare=False)
 
 
 class CapabilityComponentHost:
@@ -80,6 +95,7 @@ class CapabilityComponentHost:
         distribution_evidence_resolver: (
             InstalledPythonDistributionEvidenceResolver | None
         ) = None,
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> None:
         if not isinstance(decision_journal, PluginActivationDecisionJournal):
             raise TypeError("Component Host requires an activation decision journal")
@@ -113,8 +129,136 @@ class CapabilityComponentHost:
             import_realm_id=import_realm.import_realm_id,
             clock=clock,
             error_factory=_component_host_error,
+            resume_parent_context=resume_parent_context,
         )
         self._lifecycle.recover_incomplete_uses()
+        self._admission_starts: dict[object, tuple[str, str, int, bool]] = {}
+        self._admission_start_lock = Lock()
+
+    def begin_admission(
+        self,
+        resolved: ResolvedCapabilityProvider,
+        *,
+        owner_snapshot: CapabilityProviderOwnerSnapshot,
+        trust_snapshot: PluginSourceTrustSnapshotV1,
+        decision_id: str,
+    ) -> CapabilityComponentAdmissionStart:
+        """Pin one current admission at graph start, before slow Worker setup."""
+
+        subject = self.activation_subject(
+            resolved,
+            owner_snapshot=owner_snapshot,
+            trust_snapshot=trust_snapshot,
+        )
+        now = self._now()
+        admission = resolved.admission
+        if now < admission.issued_at or now >= admission.expires_at:
+            _raise_host(
+                "capability_provider_admission_not_current",
+                "Selected Capability Provider admission is not current.",
+            )
+        decision = next(
+            (
+                item
+                for item in self._lifecycle.snapshot(require_open=True).decisions
+                if item.decision_id == decision_id
+            ),
+            None,
+        )
+        if (
+            decision is None
+            or decision.subject_digest != subject.digest
+            or decision.disposition != "approved"
+            or decision.consumption_state != "AVAILABLE"
+            or now < decision.issued_at_unix_ms
+            or now >= decision.expires_at_unix_ms
+        ):
+            _raise_host(
+                "capability_provider_activation_decision_not_current",
+                "Selected component activation decision is not current.",
+            )
+        token = object()
+        with self._admission_start_lock:
+            self._admission_starts[token] = (
+                admission.fingerprint,
+                decision_id,
+                now,
+                False,
+            )
+        return CapabilityComponentAdmissionStart(
+            host=self,
+            admission_fingerprint=admission.fingerprint,
+            decision_id=decision_id,
+            started_at=now,
+            _token=token,
+        )
+
+    def abort_admission_start(self, start: CapabilityComponentAdmissionStart) -> None:
+        """Release a witness after graph construction or failed preparation."""
+
+        if (
+            type(start) is not CapabilityComponentAdmissionStart
+            or start.host is not self
+        ):
+            _raise_host(
+                "capability_provider_admission_start_invalid",
+                "Component admission start witness is invalid.",
+            )
+        with self._admission_start_lock:
+            self._admission_starts.pop(start._token, None)
+
+    def _validate_started_admission(
+        self,
+        resolved: ResolvedCapabilityProvider,
+        start: CapabilityComponentAdmissionStart,
+        *,
+        decision_id: str,
+        consume: bool,
+    ) -> None:
+        if (
+            type(start) is not CapabilityComponentAdmissionStart
+            or start.host is not self
+            or start.admission_fingerprint != resolved.admission.fingerprint
+            or start.decision_id != decision_id
+        ):
+            _raise_host(
+                "capability_provider_admission_start_invalid",
+                "Component admission start witness is invalid.",
+            )
+        with self._admission_start_lock:
+            recorded = self._admission_starts.get(start._token)
+            if recorded is None or recorded[:3] != (
+                start.admission_fingerprint,
+                start.decision_id,
+                start.started_at,
+            ):
+                _raise_host(
+                    "capability_provider_admission_start_consumed",
+                    "Component admission start witness is unavailable.",
+                )
+            now = self._now()
+            if (
+                now < start.started_at
+                or now - start.started_at >= _MAX_COMPONENT_ADMISSION_START_MS
+            ):
+                _raise_host(
+                    "capability_provider_admission_start_expired",
+                    "Component admission start witness expired.",
+                )
+            if consume:
+                if not recorded[3]:
+                    _raise_host(
+                        "capability_provider_admission_start_invalid",
+                        "Component admission start witness was not prepared.",
+                    )
+                del self._admission_starts[start._token]
+            else:
+                if recorded[3]:
+                    _raise_host(
+                        "capability_provider_admission_start_consumed",
+                        "Component admission start witness was already prepared.",
+                    )
+                self._admission_starts[start._token] = (*recorded[:3], True)
 
     def activation_subject(
         self,
@@ -131,6 +275,11 @@ class CapabilityComponentHost:
         admission = resolved.admission
         candidate = admission.candidate
         spec = resolved.binding_spec
+        if not isinstance(spec, CapabilityProviderBindingSpec):
+            _raise_host(
+                "capability_provider_worker_host_required",
+                "Worker Provider requires the Worker Component Host.",
+            )
         return ContributionActivationApprovalSubject(
             candidate_fingerprint=admission.candidate_fingerprint,
             admission_fingerprint=admission.fingerprint,
@@ -146,9 +295,7 @@ class CapabilityComponentHost:
             scope_id=candidate.scope_id,
             instance_revision_ref=candidate.instance_revision_ref,
             source_trust_class=trust_snapshot.source_trust_class,
-            source_trust_policy_revision=(
-                trust_snapshot.source_trust_policy_revision
-            ),
+            source_trust_policy_revision=(trust_snapshot.source_trust_policy_revision),
             product_policy_revision=candidate.product_policy_revision,
             owner_policy_revision=owner_snapshot.policy_revision,
             revocation_epoch=owner_snapshot.revocation_epoch,
@@ -165,6 +312,7 @@ class CapabilityComponentHost:
         owner_snapshot: CapabilityProviderOwnerSnapshot,
         trust_snapshot: PluginSourceTrustSnapshotV1,
         decision_id: str,
+        admission_start: CapabilityComponentAdmissionStart | None = None,
     ) -> PreparedCapabilityComponent:
         """Consume approval while preserving cancellation of an unstarted use."""
 
@@ -176,7 +324,14 @@ class CapabilityComponentHost:
         _validate_package(resolved, package)
         now = self._now()
         admission = resolved.admission
-        if now < admission.issued_at or now >= admission.expires_at:
+        if admission_start is not None:
+            self._validate_started_admission(
+                resolved,
+                admission_start,
+                decision_id=decision_id,
+                consume=False,
+            )
+        elif now < admission.issued_at or now >= admission.expires_at:
             _raise_host(
                 "capability_provider_admission_not_current",
                 "Selected Capability Provider admission is not current.",
@@ -200,13 +355,24 @@ class CapabilityComponentHost:
             reservation=reservation,
             import_realm=self._import_realm,
             lifecycle=self._lifecycle,
-            distribution_evidence_resolver=(
-                self._distribution_evidence_resolver
-            ),
+            distribution_evidence_resolver=(self._distribution_evidence_resolver),
             validate_current_authorities=lambda: self._validate_current_authorities(
                 resolved,
                 owner_snapshot=owner_snapshot,
                 trust_snapshot=trust_snapshot,
+            ),
+            validate_started_admission=(
+                None
+                if admission_start is None
+                else lambda: self._validate_started_admission(
+                    resolved,
+                    admission_start,
+                    decision_id=decision_id,
+                    consume=True,
+                )
+            ),
+            admission_started_at=(
+                None if admission_start is None else admission_start.started_at
             ),
         )
         binding = CapabilityBundleProviderBinding(
@@ -280,9 +446,14 @@ class _PreparedComponentAttempt:
     lifecycle: DurableActivationHostLifecycle
     distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver
     validate_current_authorities: Callable[[], None] = field(repr=False)
+    validate_started_admission: Callable[[], None] | None = field(
+        default=None, repr=False
+    )
+    admission_started_at: int | None = None
     started: bool = False
     disposer: CapabilityProviderDisposer | None = None
     pending_disposal_value: CapabilityBundleValue | None = None
+    retired: bool = False
 
     async def create(
         self,
@@ -296,14 +467,18 @@ class _PreparedComponentAttempt:
         self.validate_current_authorities()
         now = self.lifecycle.now()
         admission = self.resolved.admission
-        if now < admission.issued_at or now >= admission.expires_at:
+        if self.validate_started_admission is not None:
+            self.validate_started_admission()
+        elif now < admission.issued_at or now >= admission.expires_at:
             _raise_host(
                 "capability_provider_admission_not_current",
-                "Selected Capability Provider admission expired before start.",
+                "Selected Capability Provider admission expired before start: "
+                f"{self.resolved.capability_id}.",
             )
         self.lifecycle.validate_current(
             self.reservation,
             expected_state="CONSUMED_NOT_STARTED",
+            started_at_unix_ms=self.admission_started_at,
         )
         self.started = True
         lease = self.import_realm.reserve(
@@ -336,9 +511,7 @@ class _PreparedComponentAttempt:
             if inspect.isawaitable(value):
                 value = await value
             if not isinstance(value, CapabilityBundleValue):
-                raise TypeError(
-                    "Component factory must return a CapabilityBundleValue"
-                )
+                raise TypeError("Component factory must return a CapabilityBundleValue")
             self.disposer = disposer
             self.pending_disposal_value = value
             if set(value.facet_ids) != set(self.resolved.admission.effective_facets):
@@ -352,9 +525,40 @@ class _PreparedComponentAttempt:
             raise
 
     async def dispose(self, value: CapabilityBundleValue) -> None:
+        # Fence live-use checks before awaiting cleanup. A failed disposer may
+        # have partially retired its value; retaining it permits cleanup retry,
+        # not another activation admission.
+        self.retired = True
         disposer = self.disposer
         await self._dispose_value(value, disposer=disposer)
         self.disposer = None
+
+    def require_current_activation(self) -> None:
+        """Validate this live, committed use; this is not effect settlement."""
+
+        if self.reservation.state != "COMMITTED" or self.retired:
+            _raise_host(
+                "component_activation_not_current",
+                "Component activation is not a live committed use.",
+            )
+        self.validate_current_authorities()
+        self.lifecycle.validate_current(
+            self.reservation,
+            expected_state="COMMITTED",
+            started_at_unix_ms=self.admission_started_at,
+        )
+        realm = self.import_realm.snapshot()
+        if (
+            realm.state != "clean"
+            or realm.import_realm_id != self.reservation.import_realm_id
+            or realm.host_boot_id != self.reservation.host_boot_id
+            or (self.reservation.plugin_id, self.package.content_digest)
+            not in realm.locked_packages
+        ):
+            _raise_host(
+                "component_activation_import_realm_changed",
+                "Component activation import realm is no longer current.",
+            )
 
     def cancel_before_start(self) -> bool:
         if self.reservation.state != "CONSUMED_NOT_STARTED":
@@ -404,6 +608,11 @@ class _PreparedComponentAttempt:
         self,
     ) -> tuple[CapabilityProviderFactory, CapabilityProviderDisposer | None]:
         spec = self.resolved.binding_spec
+        if not isinstance(spec, CapabilityProviderBindingSpec):
+            _raise_host(
+                "capability_provider_worker_host_required",
+                "Worker Provider requires the Worker Component Host.",
+            )
         factory_module = self._load_module(spec.factory, suffix="factory")
         factory = factory_module.resolve(spec.factory.symbol)
         if not callable(factory):
@@ -511,8 +720,7 @@ def _validate_current_authorities(
     if (
         not trust_snapshot.trusted
         or trust_snapshot.plugin_id != resolved.binding_spec.plugin_id
-        or trust_snapshot.package_source_identity
-        != candidate.package_source_identity
+        or trust_snapshot.package_source_identity != candidate.package_source_identity
         or trust_snapshot.source_trust_class != candidate.source_trust_class
         or trust_snapshot.source_trust_policy_revision
         != candidate.source_trust_policy_revision
@@ -574,11 +782,15 @@ class PreparedCapabilityComponent:
     def commit_after_graph_publication(self) -> None:
         self._attempt.commit_after_graph_publication()
 
+    def require_current_activation(self) -> None:
+        self._attempt.require_current_activation()
+
     async def abort_uncommitted(self) -> bool:
         return await self._attempt.abort_uncommitted()
 
 
 __all__ = [
+    "CapabilityComponentAdmissionStart",
     "CapabilityComponentHost",
     "CapabilityComponentHostError",
     "PreparedCapabilityComponent",

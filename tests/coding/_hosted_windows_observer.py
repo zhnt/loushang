@@ -38,11 +38,18 @@ def _pin_chain(api, root, witness, handles, *, minimum=2):
             assert not api.ended(descriptor), "observed process already exited"
         return pinned[pid]
 
+    def children_of(entries, parent):
+        parent_created = api.created(pin(parent))
+        return {
+            pid for pid, owner in entries.items()
+            if owner == parent and api.created(pin(pid)) >= parent_created
+        }
+
     parent = root
     while True:
         descriptor = pin(parent)
         chain.append((parent, descriptor))
-        children = [pid for pid, owner in table.items() if owner == parent]
+        children = list(children_of(table, parent))
         if not children:
             break
         # CREATE_NO_WINDOW can create one system console host alongside the
@@ -66,10 +73,10 @@ def _pin_chain(api, root, witness, handles, *, minimum=2):
     current = api.entries()
     for pid, descriptor in [*chain, *sidecars]:
         assert current.get(pid) == table[pid] and not api.ended(descriptor), "process identity changed"
-    for pid in pinned:
-        assert {key for key, owner in current.items() if owner == pid} == {
-            key for key, owner in table.items() if owner == pid
-        }, "process descendants changed"
+    for pid, _ in [*chain, *sidecars]:
+        assert children_of(current, pid) == children_of(table, pid), (
+            "process descendants changed"
+        )
     return chain, sidecars
 
 

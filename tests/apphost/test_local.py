@@ -28,6 +28,20 @@ from .test_continuity import _attempt, _Lease, _record, _Session
 SCOPES = (LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64),)
 
 
+@pytest.mark.parametrize("binding_instance,connection_instance", ((None, "a" * 32), ("a" * 32, None), ("a" * 32, "b" * 32)))
+def test_managed_listener_rejects_unbound_or_wrong_instance_before_io(monkeypatch, binding_instance, connection_instance):
+    from types import SimpleNamespace
+
+    from loushang.apphost import local as module
+
+    monkeypatch.setattr(module, "LocalAppServerV1", lambda *a, **k: pytest.fail("invalid activation constructed listener"))
+    with pytest.raises(ValueError, match="admitted application instance"):
+        HostedLocalRuntimeV1(
+            SimpleNamespace(managed_mux_instance=binding_instance), object(), "workspace", scopes=SCOPES,
+            mux_management=True, connection_instance=connection_instance,
+        )
+
+
 class _Application:
     application_id = "coding.default"
     product_id = "coding"
@@ -71,8 +85,16 @@ def _fake_runtime(monkeypatch, *, timeout=1):
             self.request_stop = kwargs["request_stop"]
             self.start_gate = self.close_gate = None
             self.entered = asyncio.Event()
+            self.prepare_entered = asyncio.Event()
+            self.prepare_gate = None
 
-        async def start(self):
+        async def prepare(self, *, deadline=None):
+            self.deadline = deadline
+            self.prepare_entered.set()
+            if self.prepare_gate is not None:
+                await self.prepare_gate.wait()
+
+        async def activate(self):
             events.append("listener.start")
             self.entered.set()
             if self.start_gate is not None:
@@ -96,6 +118,98 @@ def _fake_runtime(monkeypatch, *, timeout=1):
         settlement_timeout=timeout,
     )
     return owner, application, directory, events
+
+
+def test_preparation_does_not_enable_scopes_or_renew_activation_budget(monkeypatch):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch)
+        deadline = asyncio.get_running_loop().time() + 0.1
+        await owner.prepare(deadline=deadline)
+        assert not owner.accepting and events == []
+        assert owner._startup_deadline == owner._server.deadline == deadline
+        await asyncio.sleep(max(0, deadline - asyncio.get_running_loop().time()) + 0.01)
+        with pytest.raises(HostedApplicationError, match="startup_timeout"):
+            await owner.activate()
+        assert owner._activate_task is None and not owner.accepting
+        assert "enable" not in events and "listener.start" not in events
+        assert events[-1] == "application.close" and not owner.cleanup_pending
+    asyncio.run(scenario())
+
+
+def test_repeated_or_out_of_order_stages_leave_valid_owner_intact(monkeypatch):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch)
+        with pytest.raises(HostedApplicationError):
+            await owner.activate()
+        await owner.prepare()
+        for call in (owner.prepare, owner.start):
+            with pytest.raises(HostedApplicationError):
+                await call()
+        assert events == [] and not owner._closing
+        await owner.activate()
+        with pytest.raises(HostedApplicationError):
+            await owner.activate()
+        assert events == ["enable", "listener.start"] and owner.accepting
+        await owner.close()
+        with pytest.raises(HostedApplicationError):
+            await owner.activate()
+    asyncio.run(scenario())
+
+
+def test_close_fences_late_preparation_without_enabling_scopes(monkeypatch):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch, timeout=0.02)
+        gate = owner._server.prepare_gate = asyncio.Event()
+        preparing = asyncio.create_task(owner.prepare())
+        await owner._server.prepare_entered.wait()
+        owned = owner._start_task
+        for call in (owner.prepare, owner.activate, owner.start):
+            with pytest.raises(HostedApplicationError):
+                await call()
+        assert not owner._closing
+        with pytest.raises(HostedApplicationError, match="cleanup_incomplete"):
+            await owner.close()
+        assert owner._start_task is owned and not owned.done()
+        assert "application.close" not in events
+        gate.set()
+        with pytest.raises(HostedApplicationError):
+            await preparing
+        await owner.close(retry_timeout=1)
+        assert "enable" not in events and "listener.start" not in events
+        assert events.count("application.close") == 1 and not owner.cleanup_pending
+    asyncio.run(asyncio.wait_for(scenario(), 5))
+
+
+@pytest.mark.parametrize("deadline", [True, float("nan"), float("inf"), -float("inf"), 10**1000, -(10**1000), 0, -1])
+def test_invalid_deadline_never_starts_or_fences_application(monkeypatch, deadline):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch)
+        with pytest.raises(ValueError):
+            await owner.prepare(deadline=deadline)
+        assert owner._start_task is None and owner._startup_deadline is None
+        assert events == [] and not owner._closing
+        await owner.close()
+    asyncio.run(scenario())
+
+
+def test_one_step_start_reserves_both_phases(monkeypatch):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch)
+        original = owner._prepare
+
+        async def competing(**kwargs):
+            await original(**kwargs)
+            assert owner._start_task.done() and owner._prepared
+            for call in (owner.prepare, owner.start, owner.activate):
+                with pytest.raises(HostedApplicationError):
+                    await call()
+            assert owner._activate_task is None and not owner._closing
+
+        monkeypatch.setattr(owner, "_prepare", competing)
+        await owner.start()
+        assert owner.accepting and events == ["enable", "listener.start"]
+        await owner.close()
+    asyncio.run(scenario())
 
 
 def test_stop_publishes_owner_and_fences_before_reply_then_settles_dependencies(
@@ -124,7 +238,7 @@ def test_stop_publishes_owner_and_fences_before_reply_then_settles_dependencies(
 def test_stop_between_start_task_completion_and_delivery_rejects_ready(monkeypatch):
     async def scenario():
         owner, _, _, events = _fake_runtime(monkeypatch)
-        original = owner._start_once
+        original = owner._activate_once
         reply = asyncio.get_running_loop().create_future()
         reply.set_result(None)
 
@@ -133,7 +247,7 @@ def test_stop_between_start_task_completion_and_delivery_rejects_ready(monkeypat
             # Dispatch stop before asyncio.wait delivers the finished task.
             asyncio.get_running_loop().call_soon(owner._server.request_stop, reply)
 
-        monkeypatch.setattr(owner, "_start_once", start_then_stop)
+        monkeypatch.setattr(owner, "_activate_once", start_then_stop)
         with pytest.raises(HostedApplicationError, match="hosted_local_closed"):
             await owner.start()
         assert not owner.cleanup_pending
@@ -299,7 +413,7 @@ def test_whole_stop_uses_one_deadline_for_all_phases(monkeypatch):
 
         monkeypatch.setattr(local, "_wait", capture)
         await owner.close()
-        assert len(deadlines) == 5  # startup join, reply, connection, directory, G13
+        assert len(deadlines) == 6  # prepare/activate joins, reply, connection, directory, G13
         assert set(deadlines) == {owner._deadline}
 
     asyncio.run(scenario())

@@ -49,14 +49,15 @@ def test_G16_EVIDENCE_exact_platform_case_and_installation_requirements():
 def test_G16_EVIDENCE_ci_keeps_native_and_isolated_wheel_gates_required():
     workflow = Path(".github/workflows/appservice-quality.yml").read_text()
     for entry in (
-        "g16-native-evidence:",
-        "g16-wheel-evidence:",
+        "native-service:",
+        "installed-service:",
         "tests/coding/test_mux_native_evidence.py",
         "run_g16_installed_evidence.py",
         "verify_evidence_manifest.py",
         "actions/upload-artifact@v4",
     ):
         assert entry in workflow
+    assert workflow.count("build --wheel") == 1
     assert "continue-on-error" not in workflow
     script = Path("scripts/dev/run_g16_installed_evidence.py").read_text()
     for invariant in (

@@ -39,6 +39,31 @@ async def _run(args: argparse.Namespace) -> None:
         cwd=str(args.workspace),
         persist=True,
     )
+    if args.mode == "product_crash_after_lease":
+        from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+            PackageEpochRuntimeLeaseRegistry,
+        )
+
+        register = PackageEpochRuntimeLeaseRegistry.register
+
+        def crash_after_register(self, *, runtime_id, runtime_protocol_epoch):
+            handle = register(
+                self,
+                runtime_id=runtime_id,
+                runtime_protocol_epoch=runtime_protocol_epoch,
+            )
+            payload = {
+                "leaseId": handle.lease.lease_id,
+                "runtimeId": runtime_id,
+                "sessionId": manager.get_header().conversation_id,
+            }
+            args.marker.write_text(
+                json.dumps(payload, sort_keys=True), encoding="utf-8"
+            )
+            _emit(payload)
+            os._exit(83)
+
+        PackageEpochRuntimeLeaseRegistry.register = crash_after_register
     session = create_agent_session(
         session_manager=manager,
         model=_model(),
@@ -48,47 +73,51 @@ async def _run(args: argparse.Namespace) -> None:
             )
         ),
     )
-    assembly = session._coding_base_plugin_assembly
-    assert assembly is not None
-    lease = assembly.management_lease
-    assert lease is not None
-    child_state = {
-        "familyId": lease.family.family_id,
-        "sessionId": manager.get_header().conversation_id,
-    }
-    if args.mode == "crash_during_owner_publication":
-        from loushang.coding._plugin_owner_generations import (
-            CodingOwnerGenerationEvidenceLedger,
+    if args.mode == "product_hold":
+        from importlib.metadata import version
+
+        from loushang.coding._plugin_lifecycle import (
+            resolve_coding_plugin_lifecycle_state_layout,
+        )
+        from loushang.coding.package_product_runtime import (
+            CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+            open_coding_fenced_product_application_owner,
         )
 
-        def crash_after_prepare(_self, *, family_id, receipts, **_kwargs):
-            args.marker.write_text(
-                json.dumps(
-                    {
-                        "familyId": family_id,
-                        "receiptCount": len(receipts),
-                    },
-                    sort_keys=True,
-                ),
-                encoding="utf-8",
-            )
-            os._exit(83)
-
-        setattr(CodingOwnerGenerationEvidenceLedger, "publish", crash_after_prepare)
-        _emit(child_state)
         await session.prepare_model_call_runtime()
-        raise AssertionError("owner evidence publication crash hook did not exit")
+        selected = session._coding_base_product_compilation
+        assert selected is not None
+        owner = open_coding_fenced_product_application_owner(
+            resolve_coding_plugin_lifecycle_state_layout(args.workspace),
+            workspace=args.workspace,
+            runtime_version=version("loushang"),
+            runtime_protocol_epoch=CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
+        )
+        try:
+            registry = owner.epoch_runtime.registry
+            [lease] = registry.snapshot(store_id=registry.store_id).active_leases
+            _emit(
+                {
+                    "leaseId": lease.lease_id,
+                    "runtimeId": lease.runtime_id,
+                    "sessionId": manager.get_header().conversation_id,
+                    "selectedRevision": repr(
+                        selected.selected_manifest.snapshot.package_revision
+                    ),
+                }
+            )
+        finally:
+            owner.close()
+        threading.Event().wait()
 
-    await session.prepare_model_call_runtime()
-    _emit(child_state)
-    threading.Event().wait()
+    raise AssertionError("Product crash hook did not exit after lease registration")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "mode",
-        choices=("hold", "crash_during_owner_publication"),
+        choices=("product_hold", "product_crash_after_lease"),
     )
     parser.add_argument("loushang_home", type=Path)
     parser.add_argument("workspace", type=Path)

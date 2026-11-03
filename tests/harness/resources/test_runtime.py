@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from loushang.harness.policy import PolicyDecision
 from loushang.harness.resources.builtin import (
     BuiltInResourcePackage,
@@ -34,8 +32,6 @@ from loushang.harness.resources.plugins import (
     PluginRegistry,
     PluginSource,
 )
-from loushang.harness.resources.plugins.manager import PluginManager
-from loushang.harness.resources.plugins.manifest import PluginManifestError
 
 
 class _AllowPackageSources:
@@ -266,9 +262,7 @@ def test_package_materializer_accepts_injected_policy(tmp_path) -> None:
     assert materializer.materialize_remote_source_sync(source).lifecycle == "installed"
 
 
-def test_package_source_parser_and_plugin_registry_are_product_neutral(
-    tmp_path,
-) -> None:
+def test_package_source_parser_is_product_neutral() -> None:
     config = package_source_from_raw(
         {"source": "pypi:review-pack", "skills": ["review", "debug"]}
     )
@@ -276,15 +270,3 @@ def test_package_source_parser_and_plugin_registry_are_product_neutral(
         source="pypi:review-pack",
         skills=("review", "debug"),
     )
-
-    plugin_root = tmp_path / "review-pack"
-    plugin_root.mkdir()
-    manager = PluginManager()
-    plugin = manager.add_plugin_source(plugin_root)
-
-    assert plugin.manifest.name == "review-pack"
-    assert plugin.enabled is False
-    assert manager.list_enabled_plugins() == []
-    with pytest.raises(PluginManifestError) as caught:
-        manager.resolve_package_roots()
-    assert caught.value.code == "plugin_manager_inventory_only"

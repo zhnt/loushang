@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from copy import copy
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from loushang.harness.conversation.branch import BranchGraph, BranchMode
+from loushang.harness.conversation.branch import (
+    BranchGraph,
+    BranchMode,
+    PreparedBranchAppend,
+)
 from loushang.harness.conversation.diagnostics import ConversationDiagnostic
 from loushang.harness.conversation.ports import ConversationFolder
 from loushang.harness.conversation.store import (
@@ -17,6 +22,14 @@ from loushang.harness.conversation.types import BranchDelta, ConversationTreeNod
 H = TypeVar("H")
 R = TypeVar("R")
 S = TypeVar("S")
+
+
+@dataclass(frozen=True)
+class PreparedRepositoryAppend(Generic[H, R]):
+    source: ConversationRepository[H, R]
+    graph: PreparedBranchAppend[R]
+    selected_leaf_id: str | None
+    last_record_id: str | None
 
 
 class ConversationRepository(Generic[H, R]):
@@ -127,6 +140,54 @@ class ConversationRepository(Generic[H, R]):
         self._graph = candidate_graph
         self._leaf_id = record_id
         return record_id
+
+    def with_appended(self, record: R) -> ConversationRepository[H, R]:
+        return self.with_appended_records((record,))
+
+    def with_appended_records(
+        self, records: Sequence[R]
+    ) -> ConversationRepository[H, R]:
+        """Validate a detached append without rebuilding stable prefix links.
+
+        Callers keep record identities and parent links immutable, as required
+        by the graph lookups. The original repository and its selected branch
+        stay unchanged until a durable owner chooses to publish the result.
+        """
+
+        appended = tuple(records)
+        graph = self._graph.with_appended_records(appended)
+        record_id = self._record_id(appended[-1]) if appended else self._leaf_id
+        if appended and (not isinstance(record_id, str) or not record_id):
+            raise ValueError("Conversation record id must be a non-empty string")
+        candidate = copy(self)
+        candidate._records = [*self._records, *appended]
+        candidate._graph = graph
+        candidate._leaf_id = record_id
+        return candidate
+
+    def prepare_incremental_append(
+        self, records: Sequence[R]
+    ) -> PreparedRepositoryAppend[H, R] | None:
+        """Prevalidate a strict suffix while keeping all published indexes fixed."""
+
+        if self._mode != "strict":
+            return None
+        graph = self._graph.prepare_strict_append(records)
+        last_id = self._record_id(graph.records[-1]) if graph.records else self._leaf_id
+        if graph.records and (not isinstance(last_id, str) or not last_id):
+            raise ValueError("Conversation record id must be a non-empty string")
+        return PreparedRepositoryAppend(self, graph, self._leaf_id, last_id)
+
+    def publish_incremental_append(
+        self, plan: PreparedRepositoryAppend[H, R]
+    ) -> None:
+        """Publish a prevalidated suffix after the authoritative Store receipt."""
+
+        if plan.source is not self or self._leaf_id != plan.selected_leaf_id:
+            raise RuntimeError("conversation selection changed before publication")
+        self._graph.publish_strict_append(plan.graph)
+        self._records.extend(plan.graph.records)
+        self._leaf_id = plan.last_record_id
 
     def set_header(self, header: H) -> None:
         self._header = header

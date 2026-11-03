@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
+from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionSinkPort,
@@ -18,11 +20,171 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageQuarantineStore,
     SourceAdapterResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_deletion_entry_at,
+    open_windows_directory,
+    open_windows_regular_file_at,
+    windows_delete_open_entry,
+    windows_rename_open_directory_at,
+)
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt",
     reason="requires native Windows rooted-handle and reparse semantics",
 )
+
+
+def test_windows_rooted_regular_file_handle_reads_data(tmp_path: Path) -> None:
+    member = tmp_path / "member.json"
+    member.write_bytes(b"{\"source\":\"product\"}")
+    parent = open_windows_directory(tmp_path)
+    try:
+        descriptor = open_windows_regular_file_at(
+            parent, member.name, create_new=False, write=False
+        )
+        try:
+            assert os.read(descriptor, 1024) == b"{\"source\":\"product\"}"
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
+def test_windows_rooted_file_opens_remain_isolated_under_concurrent_reads(
+    tmp_path: Path,
+) -> None:
+    member = tmp_path / "repeated.json"
+    member.write_bytes(b"concurrent rooted read")
+    parent = open_windows_directory(tmp_path)
+    try:
+        def read_once(_: int) -> bytes:
+            descriptor = open_windows_regular_file_at(
+                parent, member.name, create_new=False, write=False
+            )
+            try:
+                return os.read(descriptor, 1024)
+            finally:
+                os.close(descriptor)
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            assert tuple(executor.map(read_once, range(128))) == (
+                b"concurrent rooted read",
+            ) * 128
+    finally:
+        os.close(parent)
+
+
+def test_windows_private_rooted_file_handle_reads_data(tmp_path: Path) -> None:
+    with WindowsPrivateDirectoryAcl() as acl:
+        parent = open_windows_directory(tmp_path)
+        try:
+            private = open_windows_directory(
+                "private",
+                dir_fd=parent,
+                create_new=True,
+                security_descriptor=acl.security_descriptor,
+            )
+            try:
+                writer = open_windows_regular_file_at(
+                    private,
+                    "member.json",
+                    create_new=True,
+                    write=True,
+                    security_descriptor=acl.security_descriptor,
+                )
+                try:
+                    os.write(writer, b"private product")
+                finally:
+                    os.close(writer)
+                reader = open_windows_regular_file_at(
+                    private, "member.json", create_new=False, write=False
+                )
+                try:
+                    assert os.read(reader, 1024) == b"private product"
+                finally:
+                    os.close(reader)
+            finally:
+                os.close(private)
+        finally:
+            os.close(parent)
+
+
+def test_windows_delete_inspected_entry_uses_same_handle_identity(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "private-cache"
+    file_path.write_bytes(b"cache")
+    directory_path = tmp_path / "private-directory"
+    directory_path.mkdir()
+    parent = open_windows_directory(tmp_path)
+    try:
+        for child, directory in ((file_path, False), (directory_path, True)):
+            descriptor = open_windows_deletion_entry_at(
+                parent, child.name, directory=directory
+            )
+            try:
+                metadata = os.fstat(descriptor)
+                identity = (
+                    metadata.st_dev,
+                    metadata.st_ino,
+                    metadata.st_mode,
+                    metadata.st_size,
+                    metadata.st_mtime_ns,
+                )
+                wrong = (identity[0], identity[1] + 1, *identity[2:])
+                with pytest.raises(OSError, match="identity changed"):
+                    windows_delete_open_entry(
+                        descriptor, expected_identity=wrong, directory=directory
+                    )
+                assert child.exists()
+                windows_delete_open_entry(
+                    descriptor, expected_identity=identity, directory=directory
+                )
+            finally:
+                os.close(descriptor)
+            assert not child.exists()
+    finally:
+        os.close(parent)
+
+
+def test_windows_rename_inspected_directory_uses_same_handle_identity(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "private-root"
+    source.mkdir()
+    parent = open_windows_directory(tmp_path)
+    try:
+        descriptor = open_windows_deletion_entry_at(parent, source.name, directory=True)
+        try:
+            metadata = os.fstat(descriptor)
+            identity = (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            )
+            wrong = (identity[0], identity[1] + 1, *identity[2:])
+            with pytest.raises(OSError, match="identity changed"):
+                windows_rename_open_directory_at(
+                    parent,
+                    descriptor,
+                    "private-tombstone",
+                    expected_identity=wrong,
+                )
+            assert source.is_dir()
+            windows_rename_open_directory_at(
+                parent,
+                descriptor,
+                "private-tombstone",
+                expected_identity=identity,
+            )
+        finally:
+            os.close(descriptor)
+        assert not source.exists()
+        assert (tmp_path / "private-tombstone").is_dir()
+    finally:
+        os.close(parent)
 
 
 @dataclass
@@ -111,6 +273,40 @@ def test_windows_native_quarantine_handles_pin_root_and_cleanup_exact_attempt(
 
     candidate.cleanup()
     assert store.attempt_names() == ()
+
+
+def test_windows_native_quarantine_root_attempt_and_artifact_have_private_acl(
+    tmp_path: Path,
+) -> None:
+    owner, store, _ = _owner(tmp_path)
+    candidate = owner.acquire(_request(), budgets=_budgets())
+    try:
+        with WindowsPrivateDirectoryAcl() as acl:
+            root = open_windows_directory(store.root, read_control=True)
+            try:
+                acl.validate(root)
+                attempt = open_windows_directory(
+                    store.attempt_names()[0], dir_fd=root, read_control=True
+                )
+                try:
+                    acl.validate(attempt)
+                    artifact = open_windows_regular_file_at(
+                        attempt,
+                        candidate._attempt._artifact_name,
+                        create_new=False,
+                        write=False,
+                        read_control=True,
+                    )
+                    try:
+                        acl.validate(artifact)
+                    finally:
+                        os.close(artifact)
+                finally:
+                    os.close(attempt)
+            finally:
+                os.close(root)
+    finally:
+        candidate.cleanup()
 
 
 def test_windows_native_store_rejects_root_swap_before_new_attempt(

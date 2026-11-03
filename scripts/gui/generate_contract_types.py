@@ -13,7 +13,7 @@ from dataclasses import fields
 from enum import Enum
 from pathlib import Path
 from types import UnionType
-from typing import get_args, get_origin, get_type_hints
+from typing import Literal, get_args, get_origin, get_type_hints
 
 from loushang.appserver.execution import codec as execution
 from loushang.appserver.protocol import model as app
@@ -67,6 +67,7 @@ def generate() -> dict[str, str]:
     for cls in EXTRA:
         shapes[cls] = tuple(field.name for field in fields(cls))
     enums: dict[str, type[Enum]] = {}
+    literals: dict[str, tuple[str, ...]] = {}
     unions: dict[str, tuple[object, ...]] = {}
     used: set[str] = set()
 
@@ -83,6 +84,14 @@ def generate() -> dict[str, str]:
                 return "u64" if rust else "number"
             raise ValueError(f"Unclassified integer: {key}")
         args, origin = get_args(value), get_origin(value)
+        if origin is Literal:
+            if not args or any(type(item) is not str for item in args):
+                raise ValueError(f"Unsupported literal at {key}: {value}")
+            if rust:
+                name = "".join(part.title() for part in key.replace(".", "_").split("_"))
+                literals[name] = args
+                return name
+            return " | ".join(json.dumps(item) for item in args)
         if origin is UnionType:
             if type(None) in args:
                 members = tuple(item for item in args if item is not type(None))
@@ -153,6 +162,13 @@ def generate() -> dict[str, str]:
                     f"    #[serde(rename = {json.dumps(item.value)})]",
                     f"    Variant{index},",
                 ]
+            )
+        rs.append("}")
+    for name, values in sorted(literals.items()):
+        rs.extend(["#[derive(Debug, serde::Serialize)]", f"pub enum {name} {{"])
+        for index, value in enumerate(values):
+            rs.extend(
+                [f"    #[serde(rename = {json.dumps(value)})]", f"    Variant{index},"]
             )
         rs.append("}")
     if used != DECIMAL | SAFE:

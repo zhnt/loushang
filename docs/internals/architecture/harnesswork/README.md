@@ -28,6 +28,38 @@ typed result 或 crash recovery 当作现有能力。
 
 ## Definition
 
+已接受的新设计：[HW-KD-003：Work 事实留存、重放与 Transcript 共享合同](key-designs/fact-retention-replay.md)。
+R3.1 于 2026-10-29 获用户接受：HarnessWork 提供默认处理、Product 按需配置策略，事实权威与三种读取用途明确；跨 scope 决定见
+[ARD-019](../decisions/accepted/ARD-019-work-facts-and-transcript-sharing.md)。第一切片已实施显式启用的默认记录合同与确认查询，见[实施记录](../../plans/2026-10-29-work-recording-defaults.md)，已本地合入 main。
+第二切片已实现增量来源引用，见 [HW-KD-004](key-designs/transcript-references.md) 与[交付记录](../../plans/2026-10-29-work-transcript-references.md)。真实 Coding SDK 的三次 prompt 已交接，另进程可冷读原记录；未裁剪旧正文。
+Coding Goal 对该机制的接入见 [GMW-KD-SESSION-01](../goal-method-work/session-execution-recording.md)：复用 Session 集成的准备/交接和原记录读取，不向 Goal core 添加 Session 或子 agent 调度职责；R2.1 经三视角及用户评审后，同 Session 切片已实现并完成离线验证，子执行接入仍属后续范围。
+旧默认捕获、Product 保留策略 owner 和已接受 Goal 组件保持原合同；来源交接等剩余差异见专项 §9/§11。
+独立三视角及两项运行语义问题的关闭复核见[评审记录](key-designs/fact-retention-replay-review.md)；
+无剩余架构语义阻断，格式兼容与持久绑定等实施前条件仍保留。
+
+第一阶段独立增量候选：[HW-KD-001：取消结果记录、查询与回放](key-designs/cancellation-observation.md)
+及[专项评审](key-designs/cancellation-observation-review.md)。观察切片已实施，范围、验证与
+集成授权见[实施记录](key-designs/cancellation-observation-implementation.md)。
+该专项不改变本文已接受的强收尾目标，不关闭 unsupported/timeout 路径的已知差异。
+
+下一项独立候选：[HW-KD-002：产物证据交接与读取](key-designs/evidence-handoff.md)，
+设计既有 Blob 与领域事实的关联；用户已授权首个本地 Coding SDK 私有消费切片，
+范围与实施验证见[交付记录](../../plans/2026-10-25-coding-sdk-evidence-loop.md)。
+该接受范围不扩展为公共证据 API，不改变本文的存储/领域边界。
+
+拟新增的可选 Goal 扩展见[最小闭环 R3.2](../goal-method-work/minimum-loop-architecture.md)。
+用户已要求通用 Goal 控制归入 `harnesswork.goal`，Product 保留领域策略与装配；
+其身份、要求版本、状态、批次关联、通用记录/reducer 和完成提交检查为共享职责，
+具体方法准备、业务真值、存储根及 Session 资源 owner 仍属于 Product。
+[Goal 环境与子组件](goal/README.md)明确内部保留 Controller 和记录组件，Codec/Reducer
+属于记录组件内部，外围按真实职责适配。R3.1 三视角技术复核已完成，本轮新工作件
+结论见最小闭环评审记录；首版本地实现及实际验证见[实施记录](goal/implementation.md)，
+未合入 main，不把它算作既有 Phase 2 已交付内容。
+
+依赖保持单向：可选 Goal 使用原 Work，Work 不依赖 Goal，基础 Harness 不依赖
+HarnessWork。Goal 共享代码不 import Coding/Method 或 Harness 私有 I/O；物理
+存储适配复用原机制并由 Product 注入。它不新增 Work 引擎、消息队列或默认调度器。
+
 HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接受业务意图推进到可判定、
 可查询、可回放的终局，同时复用 Harness 的执行 scope、工具、审批、取消和 presentation
 机制。它不是每个 turn、tool call、agent invocation 或进程内 task 的别名。
@@ -151,6 +183,9 @@ Method 完全脱离 Harness，必须先下沉该 owner 并增加单独 import ga
 | Ontology | schema/fact/query/decision/action/outcome 语义，ActionPlan/MutationPlan | Work lifecycle、审批队列、tool/sandbox 实现 |
 | Product | 用户意图、领域 payload、capability binding、具体 artifact、错误解释、最终 UI | 通用 Work/Harness 机制 |
 | Harnesstui | 中立运行/Work presentation 的终端交互 | Work authority、领域状态解释 |
+
+ARD-019 已接受的 Target 补充：HarnessWork 拥有通用默认记录/映射/确认/读取机制，Product 选择场景策略并绑定资源。
+上表的“产品 policy/default”指产品策略选择，不排除共享库提供无需自定义策略的缺省行为；新增机制尚未实现。
 
 ## Core Model
 

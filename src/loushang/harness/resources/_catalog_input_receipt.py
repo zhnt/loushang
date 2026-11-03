@@ -2,16 +2,48 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from loushang.foundation.json import dump_json_value
 from loushang.harness.resources.packages.catalog_inputs import (
     CatalogPluginPackageInput,
 )
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 
 LegacyPackageResourceKind = Literal["extension", "prompt", "skill", "theme"]
+
+
+@dataclass(frozen=True, slots=True)
+class ContextFileInputFact:
+    """Bounded content observation; it never selects an effective context."""
+
+    root: Path
+    filename: str
+    status: Literal["file", "absent", "unavailable"]
+    content_digest: str | None = None
+    content_length: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.root, Path) or not isinstance(self.filename, str):
+            raise TypeError("Context input identity is invalid")
+        if not self.filename or "/" in self.filename or "\\" in self.filename or self.filename in {".", ".."}:
+            raise ValueError("Context input filename is invalid")
+        if self.status not in {"file", "absent", "unavailable"}:
+            raise ValueError("Context input status is invalid")
+        if self.status == "file":
+            if (
+                self.content_digest is None
+                or len(self.content_digest) != 64
+                or any(c not in "0123456789abcdef" for c in self.content_digest)
+                or type(self.content_length) is not int
+                or self.content_length < 0
+            ):
+                raise ValueError("Context input file digest is invalid")
+        elif self.content_digest is not None or self.content_length is not None:
+            raise ValueError("Context input without content must not carry a digest")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +104,7 @@ class ResourceCatalogInputReceipt:
     built_in_resource_packages: tuple[str, ...]
     context_file_names: tuple[str, ...]
     catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
+    context_file_facts: tuple[ContextFileInputFact, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.cwd, Path) or not isinstance(
@@ -137,6 +170,20 @@ class ResourceCatalogInputReceipt:
                     "Resource Catalog Plugin package input does not match its mount"
                 )
         object.__setattr__(self, "catalog_plugin_package_inputs", plugin_inputs)
+        context_facts = tuple(self.context_file_facts)
+        if any(not isinstance(item, ContextFileInputFact) for item in context_facts):
+            raise TypeError("Resource Catalog context input facts are invalid")
+        if len({(item.root, item.filename) for item in context_facts}) != len(context_facts):
+            raise ValueError("Resource Catalog context input facts must be unique")
+        context_roots = set(self.project_context_roots) | set(self.user_resource_roots)
+        if self.no_context_files and context_facts:
+            raise ValueError("Disabled Resource Catalog context cannot carry facts")
+        if any(
+            item.root not in context_roots or item.filename not in self.context_file_names
+            for item in context_facts
+        ):
+            raise ValueError("Resource Catalog context input fact is not configured")
+        object.__setattr__(self, "context_file_facts", context_facts)
         if any(
             not isinstance(item, Path) for item in self.explicit_user_resource_roots
         ):
@@ -225,9 +272,123 @@ class ResourceCatalogInputReceipt:
     def package_roots(self) -> tuple[Path, ...]:
         return tuple(mount.root for mount in self.package_mounts if mount.enabled)
 
+    @property
+    def context_content_complete(self) -> bool:
+        """Whether every configured native context path was observed by content."""
+
+        if self.no_context_files:
+            return not self.context_file_facts
+        roots = dict.fromkeys((*self.project_context_roots, *self.user_resource_roots))
+        expected = {(root, name) for root in roots for name in self.context_file_names}
+        return expected == {
+            (item.root, item.filename) for item in self.context_file_facts
+        } and all(item.status != "unavailable" for item in self.context_file_facts)
+
+    @property
+    def input_fingerprint(self) -> str:
+        """Digest configured facts and bounded context bytes, excluding handles.
+
+        This does not cover Skill, Prompt, Theme, or Extension file contents or
+        grant Resource authority. The owner must revalidate before publication.
+        """
+
+        document = {
+            "version": 2,
+            "cwd": str(self.cwd),
+            "projectResourceRoot": str(self.project_resource_root),
+            "projectContextRoots": [str(path) for path in self.project_context_roots],
+            "packageMounts": [
+                {
+                    "root": str(mount.root),
+                    "enabled": mount.enabled,
+                    "contentDigest": mount.content_digest,
+                    "sourceFilter": (
+                        None if mount.source_filter is None else {
+                            "source": mount.source_filter.source,
+                            "extensions": _optional_names(
+                                mount.source_filter.extensions
+                            ),
+                            "skills": _optional_names(mount.source_filter.skills),
+                            "prompts": _optional_names(mount.source_filter.prompts),
+                            "themes": _optional_names(mount.source_filter.themes),
+                        }
+                    ),
+                }
+                for mount in self.package_mounts
+            ],
+            "packageCandidates": [
+                {
+                    "kind": item.resource_kind,
+                    "path": str(item.source_path),
+                    "order": item.source_root_order,
+                    "contentDigest": item.package_content_digest,
+                }
+                for item in self.package_resource_candidates
+            ],
+            "packageDiagnostics": list(self.package_diagnostic_codes),
+            "catalogPluginPackages": [
+                {
+                    "pluginId": item.binding.plugin_id,
+                    "sourceRootOrder": item.source_root_order,
+                    "sourceIdentity": item.binding.source_identity,
+                    "sourceKind": item.binding.source_kind,
+                    "contentDigest": item.package.content_digest,
+                    "manifestDigest": item.package.manifest_digest,
+                    "dependencyLockDigest": item.package.dependency_lock.digest,
+                    "revision": item.binding.revision,
+                }
+                for item in self.catalog_plugin_package_inputs
+            ],
+            "userResourceRoots": [str(path) for path in self.user_resource_roots],
+            "explicitUserResourceRoots": [
+                str(path) for path in sorted(self.explicit_user_resource_roots)
+            ],
+            "additionalExtensionPaths": [
+                str(path) for path in self.additional_extension_paths
+            ],
+            "additionalSkillPaths": [
+                str(path) for path in self.additional_skill_paths
+            ],
+            "additionalPromptTemplatePaths": [
+                str(path) for path in self.additional_prompt_template_paths
+            ],
+            "additionalThemePaths": [
+                str(path) for path in self.additional_theme_paths
+            ],
+            "noExtensions": self.no_extensions,
+            "noSkills": self.no_skills,
+            "noPromptTemplates": self.no_prompt_templates,
+            "noThemes": self.no_themes,
+            "noContextFiles": self.no_context_files,
+            "builtInResourcePackages": list(self.built_in_resource_packages),
+            "contextFileNames": list(self.context_file_names),
+            "contextFileFacts": [
+                {
+                    "root": str(item.root),
+                    "filename": item.filename,
+                    "status": item.status,
+                    "contentDigest": item.content_digest,
+                    "contentLength": item.content_length,
+                }
+                for item in self.context_file_facts
+            ],
+        }
+        encoded = dump_json_value(
+            document, name="Resource Catalog input fingerprint",
+            ensure_ascii=True, sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(
+            b"loushang.resource-catalog-input/v2\0" + encoded
+        ).hexdigest()
+
+
+def _optional_names(values: tuple[str, ...] | None) -> list[str] | None:
+    return list(values) if values is not None else None
+
 
 __all__ = [
     "CatalogPluginPackageInput",
+    "ContextFileInputFact",
     "LegacyPackageResourceCandidateFact",
     "LegacyPackageResourceKind",
     "ResourceCatalogInputReceipt",

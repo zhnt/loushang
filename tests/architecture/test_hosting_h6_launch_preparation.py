@@ -39,11 +39,16 @@ def test_h6_1_core_is_private_default_dark_and_authority_free() -> None:
     core = _read(CORE)
     child_session = _read(CHILD_SESSION)
     process_backend = _read(PROCESS_BACKEND)
-    public = "\n".join(_read(path) for path in PUBLIC_SURFACES)
+    exported = "\n".join(_read(path) for path in PUBLIC_SURFACES[:2])
+    runtime = _read(PUBLIC_SURFACES[2])
+    public = exported + "\n" + runtime
 
     assert "__all__: list[str] = []" in core
     assert "launch_capture_backend" in child_session
-    assert "launch_capture_backend" not in public
+    assert "launch_capture_backend" not in exported
+    assert "enable_posix_static_capture: bool = False" in runtime
+    assert "if enable_posix_static_capture:" in runtime
+    assert "launch_capture_backend=capture_backend" in runtime
     for private_name in (
         "_LaunchCaptureSpec",
         "_OpaqueLaunchBinding",

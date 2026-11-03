@@ -18,8 +18,11 @@ from loushang.harness.plugin_management.records import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.retirement import (
+    PluginRetirementError,
     PluginRetirementIntentLedger,
+    PluginRetirementIntentSnapshotV1,
     PluginRetirementIntentV1,
+    decode_plugin_retirement_intent_capture,
 )
 from loushang.harness.plugin_management.retirement_sets import (
     PluginOwnerRetirementOutcomeV1,
@@ -29,8 +32,59 @@ from loushang.harness.plugin_management.retirement_sets import (
     PluginRetirementSetEventV1,
     PluginRetirementSetLedger,
     PluginRetirementSetRecordCodecError,
+    decode_plugin_retirement_set_capture,
 )
 from loushang.harness.plugin_management.service import PluginManagementService
+
+
+def test_frozen_retirement_capture_replays_exact_completed_owner_evidence(
+    tmp_path: Path,
+) -> None:
+    intent, intents, sets = _retirement_evidence(tmp_path)
+    target = _target("capture")
+    sets.open_set(intent)
+    sets.commit_plan(_plan(intent, target))
+    sets.record_outcome(_outcome(intent, target, attempt=1, disposition="succeeded"))
+
+    frozen_intents = decode_plugin_retirement_intent_capture(
+        intents.path.read_text(encoding="utf-8"), path=intents.path
+    )
+    frozen_sets = decode_plugin_retirement_set_capture(
+        sets.path.read_text(encoding="utf-8"),
+        path=sets.path,
+        intents=frozen_intents,
+    )
+    assert frozen_intents == intents.snapshot()
+    assert frozen_sets == sets.snapshot()
+    assert frozen_sets.sets[0].state == "succeeded"
+
+    intent_raw = intents.path.read_text(encoding="utf-8")
+    with pytest.raises(PluginRetirementError, match="incomplete"):
+        decode_plugin_retirement_intent_capture(
+            intent_raw.rstrip("\n"), path=intents.path
+        )
+    duplicate_intent = '{"journalRevision":1,' + intent_raw.splitlines()[0][1:] + "\n"
+    with pytest.raises(PluginRetirementError, match="cannot be decoded"):
+        decode_plugin_retirement_intent_capture(duplicate_intent, path=intents.path)
+    set_raw = sets.path.read_text(encoding="utf-8")
+    with pytest.raises(PluginRetirementSetError, match="incomplete"):
+        decode_plugin_retirement_set_capture(
+            set_raw.rstrip("\n"), path=sets.path, intents=frozen_intents
+        )
+    first_set, *other_sets = set_raw.splitlines()
+    duplicate_set = (
+        "\n".join(('{"journalRevision":1,' + first_set[1:], *other_sets)) + "\n"
+    )
+    with pytest.raises(PluginRetirementSetError, match="cannot be decoded"):
+        decode_plugin_retirement_set_capture(
+            duplicate_set, path=sets.path, intents=frozen_intents
+        )
+    with pytest.raises(PluginRetirementSetError, match="contradicts"):
+        decode_plugin_retirement_set_capture(
+            set_raw,
+            path=sets.path,
+            intents=PluginRetirementIntentSnapshotV1(journal_revision=0, intents=()),
+        )
 
 
 def test_retirement_set_records_are_strict_derived_and_round_trip(
@@ -109,8 +163,9 @@ def test_retirement_plan_is_complete_sorted_and_exact() -> None:
         )
 
 
-def test_retirement_plan_allows_same_contribution_in_distinct_owner_generations(
-) -> None:
+def test_retirement_plan_allows_same_contribution_in_distinct_owner_generations() -> (
+    None
+):
     first = _target("a")
     second = PluginOwnerRetirementTargetV1.create(
         owner_reference="owner:b",

@@ -86,6 +86,7 @@ def test_G16_COMMAND_failed_shell_settlement_still_closes_connection(tmp_path, m
             self.client = object()
             self.scopes = (SimpleNamespace(scope="cwd", fingerprint="scope"),)
             self.discovery_client = None
+            self.execution_client = None
 
         async def start(self):
             events.append("connection.start")

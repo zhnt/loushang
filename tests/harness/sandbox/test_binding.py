@@ -181,6 +181,39 @@ def test_disabled_runtime_retains_the_intersected_execution_ceiling(
     assert runtime.status().state == "disabled"
 
 
+@pytest.mark.parametrize("capture_supported", [False, True])
+def test_disabled_live_runtime_preserves_only_admitted_capture(
+    tmp_path: Path, capture_supported: bool,
+) -> None:
+    class ExecuteOnlyService(ExecService):
+        async def execute(self, request, **kwargs):
+            raise AssertionError("capture must not bypass a custom execute owner")
+
+    base = ExecService() if capture_supported else ExecuteOnlyService()
+    maximum = EffectiveExecutionProfile(readable_roots=(tmp_path,))
+    runtime = bind_sandbox_execution_runtime(
+        base_exec_service=base, execution_profile=maximum,
+        execution_profile_provider=lambda: maximum,
+    )
+    assert (runtime.exec_service.capture_executor() is not None) == capture_supported
+    asyncio.run(runtime.close())
+
+
+def test_enabled_sandbox_does_not_borrow_unsandboxed_capture(tmp_path: Path) -> None:
+    backend = _Backend()
+    ceiling = EffectiveExecutionProfile(readable_roots=(tmp_path,))
+    runtime = bind_sandbox_execution_runtime(
+        base_exec_service=ExecService(), settings=SandboxSettings(enabled=True, requirement="required"),
+        registry=_registry(backend), environment_probe=LocalHostEnvironmentProbe(
+            platform_name="linux", architecture="x86_64", environ={},
+        ), scope_request_factory=_scope_request_factory(tmp_path),
+        execution_profile=ceiling, execution_profile_provider=lambda: ceiling,
+    )
+    assert runtime.status().state == "enabled"
+    assert runtime.exec_service.capture_executor() is None
+    asyncio.run(runtime.close())
+
+
 def test_disabled_runtime_binds_one_owned_local_process_launcher(
     tmp_path: Path,
 ) -> None:

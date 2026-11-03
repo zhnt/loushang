@@ -203,6 +203,9 @@ class ExecResult:
     stdout_artifact_ref: RunArtifactRef | SessionBlobRef | None = None
     stderr_artifact_ref: RunArtifactRef | SessionBlobRef | None = None
     artifact_retention_error: str | None = None
+    artifact_cleanup_error: Literal["temporary_cleanup_pending"] | None = field(
+        default=None, kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -236,6 +239,8 @@ class ExecResult:
             self.artifact_retention_error, str
         ):
             raise TypeError("artifact retention error must be a string or None")
+        if self.artifact_cleanup_error not in (None, "temporary_cleanup_pending"):
+            raise ValueError("invalid artifact cleanup diagnostic")
 
 
 __all__ = [

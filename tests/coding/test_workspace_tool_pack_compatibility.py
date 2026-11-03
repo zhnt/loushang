@@ -35,18 +35,18 @@ def test_workspace_tool_modules_are_owned_by_harness() -> None:
         assert harness_module.__name__.startswith("loushang.harness.tools.workspace")
 
 
-def test_coding_factory_keeps_product_metadata_and_activation() -> None:
+def test_coding_factory_inherits_file_tool_text_and_keeps_activation() -> None:
     import loushang.harness.tools.workspace as workspace_tools
     from loushang.coding.tool_pack import (
         CODING_BUILTIN_TOOL_PACK,
         create_coding_tool_definition,
     )
 
-    harness_read = workspace_tools.create_tool_definition("read")
-    coding_read = create_coding_tool_definition("read")
-
-    assert "coding workspace" not in harness_read.description
-    assert "coding workspace" in coding_read.description
+    for name in ("read", "write", "edit", "ls", "find", "grep"):
+        harness_tool = workspace_tools.create_tool_definition(name)
+        coding_tool = create_coding_tool_definition(name)
+        assert coding_tool.description == harness_tool.description
+        assert coding_tool.prompt_snippet == harness_tool.prompt_snippet
     assert CODING_BUILTIN_TOOL_PACK.name == "coding.builtin"
     assert not hasattr(workspace_tools, "CODING_BUILTIN_TOOL_PACK")
 

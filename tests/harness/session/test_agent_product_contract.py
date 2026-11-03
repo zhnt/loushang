@@ -45,13 +45,18 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
 )
+from loushang.harness.capabilities.graph_binding import CapabilityGraphBindingError
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerPolicy,
+    CapabilityWorkerProviderBindingSpec,
 )
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
+    CapabilityBundleValue,
+    CapabilityBundleVisibilityGate,
+    CapabilityFacetBinding,
 )
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
@@ -147,6 +152,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+    SessionCapabilityWorkerComponentRequest,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
@@ -699,6 +705,133 @@ def test_graph_owned_compaction_views_follow_the_current_profile_selection(
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("admission", ["accepted", "denied", "failed_preparation"])
+def test_candidate_graph_requires_live_admission_while_execution_stays_closed(tmp_path, admission):
+    class UnpublishedSession(_ContractProductSession):
+        @property
+        def execution_available(self):
+            return False
+
+    async def scenario():
+        disposed = []
+        _bind_transcript_factory(disposed)
+        product_id = "candidate-admission"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        candidate = _capability_runtime(product_id)
+        session = UnpublishedSession(
+            product_id=product_id, transcript=transcript, capability_runtime=candidate,
+            reserve_tokens=1_111, compact_percent=61.0,
+        )
+        checks = []
+
+        def require_current_admission():
+            checks.append(admission)
+            if admission == "denied":
+                raise PermissionError("candidate admission revoked")
+
+        try:
+            with pytest.raises(RuntimeError, match="Session retirement"):
+                await session.prepare_model_call_runtime()
+            if admission == "failed_preparation":
+                session._execution_preparation_failed = True
+            if admission == "accepted":
+                consumer = await session._prepare_candidate_session_graph(
+                    require_current_admission=require_current_admission,
+                )
+                assert session._model_call_consumer is consumer
+                assert candidate.ownership_state == "graph_owned"
+                assert checks
+                assert not session.execution_available
+                with pytest.raises(RuntimeError, match="Session retirement"):
+                    await session.prepare_model_call_runtime()
+                # A cached graph still needs the caller's current admission.
+                def revoked():
+                    raise PermissionError("candidate admission revoked")
+
+                with pytest.raises(PermissionError):
+                    await session._prepare_candidate_session_graph(require_current_admission=revoked)
+            else:
+                expected = PermissionError if admission == "denied" else RuntimeError
+                with pytest.raises(expected):
+                    await session._prepare_candidate_session_graph(
+                        require_current_admission=require_current_admission,
+                    )
+                assert session._model_call_consumer is None
+                assert candidate.ownership_state == "root_owned"
+        finally:
+            await session.dispose()
+        assert candidate.ownership_state == "disposed"
+        assert disposed == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("boundary", ["lock", "bind", "delivery"])
+def test_candidate_graph_rechecks_revoked_admission_and_uses_original_rollback(tmp_path, boundary):
+    async def scenario():
+        disposed = []
+        _bind_transcript_factory(disposed)
+        product_id = "candidate-revocation"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        candidate = _capability_runtime(product_id)
+        session = _ContractProductSession(
+            product_id=product_id, transcript=transcript, capability_runtime=candidate,
+            reserve_tokens=1_111, compact_percent=61.0,
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        revoked = False
+
+        def require_current_admission():
+            if boundary == "lock":
+                entered.set()
+            if revoked:
+                raise PermissionError("candidate admission revoked")
+            if boundary == "delivery" and session._staged_resource_candidate is None:
+                raise PermissionError("candidate admission revoked before delivery")
+
+        if boundary == "lock":
+            await session._model_call_bind_lock.acquire()
+        elif boundary == "bind":
+            original = session._capability_graph_binder.bind
+
+            async def held(*args, **kwargs):
+                entered.set()
+                await release.wait()
+                return await original(*args, **kwargs)
+
+            session._capability_graph_binder.bind = held
+        task = asyncio.create_task(session._prepare_candidate_session_graph(
+            require_current_admission=require_current_admission,
+        ))
+        entering = asyncio.create_task(entered.wait())
+        try:
+            if boundary != "delivery":
+                await asyncio.wait((task, entering), return_when=asyncio.FIRST_COMPLETED)
+                if not entered.is_set():
+                    await task
+                revoked = True
+                if boundary == "lock":
+                    session._model_call_bind_lock.release()
+                release.set()
+            with pytest.raises(PermissionError):
+                await task
+            assert session._model_call_consumer is None
+            assert candidate.ownership_state == {
+                "lock": "root_owned", "bind": "disposed", "delivery": "graph_owned",
+            }[boundary]
+            if boundary == "delivery":
+                assert not session.execution_available
+        finally:
+            release.set()
+            entering.cancel()
+            await asyncio.gather(entering, task, return_exceptions=True)
+            await session.dispose()
+        assert candidate.ownership_state == "disposed"
+        assert disposed == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
 def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
     tmp_path: Path,
 ) -> None:
@@ -880,8 +1013,7 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
         user_skill_root = user_root / "skills" / "global"
         user_skill_root.mkdir(parents=True)
         (user_skill_root / "SKILL.md").write_text(
-            "---\nname: global\ndescription: User-global skill\n"
-            "---\nUse global.\n",
+            "---\nname: global\ndescription: User-global skill\n---\nUse global.\n",
             encoding="utf-8",
         )
         transcript = await _new_transcript(tmp_path, product_id=product_id)
@@ -1050,21 +1182,19 @@ def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
             message = component["messages"][0]
             assert "Review carefully." in message["modelVisibleText"]
             assert message["modelVisibleText"].endswith("focus")
-            assert rebuilt.logical_input["messages"][message["messageIndex"]][
-                "content"
-            ][0]["text"] == message["modelVisibleText"]
+            assert (
+                rebuilt.logical_input["messages"][message["messageIndex"]]["content"][
+                    0
+                ]["text"]
+                == message["modelVisibleText"]
+            )
             skill = message["skills"][0]
             assert skill["expectedContentDigest"] == skill["observedContentDigest"]
             assert skill["expectedContentLength"] == skill["observedContentLength"]
             assert skill["activationPolicyFingerprint"]
 
             skill_file = (
-                tmp_path
-                / product_id
-                / ".loushang"
-                / "skills"
-                / "review"
-                / "SKILL.md"
+                tmp_path / product_id / ".loushang" / "skills" / "review" / "SKILL.md"
             )
             skill_file.unlink()
             assert (
@@ -1889,6 +2019,10 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
             reserve_tokens=1_111,
             compact_percent=61.0,
         )
+        released_runtime: list[str] = []
+        session._package_product_runtime_binding = SimpleNamespace(  # type: ignore[assignment]
+            dispose_runtime=lambda: released_runtime.append("released")
+        )
 
         def fail_capability_disposal() -> None:
             raise RuntimeError("capability disposal failed")
@@ -1904,6 +2038,7 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
 
         assert session.footer.disposed is True
         assert disposed_transcripts == ["failure-session"]
+        assert released_runtime == []
 
     asyncio.run(scenario())
 
@@ -2271,13 +2406,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ),
                 stage=stage_tools,
                 dispose=dispose_tools,
-                retirement_receipt=lambda _value: (
-                    OwnerGenerationRetirementReceipt(
-                        owner_reference="owner:product.tools",
-                        owner_generation_reference="generation:1",
-                        retirement_handle="retirement:1",
-                        contribution_ids=(owner_admission.contribution_id,),
-                    )
+                retirement_receipt=lambda _value: OwnerGenerationRetirementReceipt(
+                    owner_reference="owner:product.tools",
+                    owner_generation_reference="generation:1",
+                    retirement_handle="retirement:1",
+                    contribution_ids=(owner_admission.contribution_id,),
                 ),
                 commit=lambda _value: None,
                 rollback_commit=lambda _value: None,
@@ -2297,7 +2430,24 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
 
             assert events.exists() is False
             assert activation_journal.snapshot().activation_uses == ()
+            with pytest.raises(RuntimeError):
+                session.require_current_capability_component_activations()
             await session.prepare_model_call_runtime()
+            session.require_current_capability_component_activations()
+            assert len(session._published_capability_components) == 1
+            published = session._published_capability_components
+            read_owner = component_host._owner_snapshot_reader
+
+            def replace_publication_while_reading_owner(capability_id):
+                session._published_capability_components = ()
+                return read_owner(capability_id)
+
+            component_host._owner_snapshot_reader = replace_publication_while_reading_owner
+            with pytest.raises(RuntimeError, match="component publication is unavailable"):
+                session.require_current_capability_component_activations()
+            session._published_capability_components = published
+            component_host._owner_snapshot_reader = read_owner
+            session.require_current_capability_component_activations()
 
             snapshot = session._capability_graph_runtime.snapshot
             assert snapshot is not None
@@ -2349,6 +2499,8 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
 
             await session.dispose()
 
+            with pytest.raises(RuntimeError):
+                session.require_current_capability_component_activations()
             assert events.read_text(encoding="utf-8").splitlines() == [
                 "provider-import",
                 "provider-create",
@@ -2357,6 +2509,241 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 "provider-dispose",
             ]
             assert disposed_transcripts == ["coding-session"]
+
+            worker_provider = replace(resolved_provider.provider, requirements=())
+            original_candidate = resolved_provider.admission.candidate
+            worker_candidate = replace(
+                original_candidate,
+                provider=worker_provider,
+                plugin_candidate_fingerprint="a" * 64,
+                binding_spec=CapabilityWorkerProviderBindingSpec(
+                    plugin_id=original_candidate.binding_spec.plugin_id,
+                    contribution_id=original_candidate.binding_spec.contribution_id,
+                    capability_id=definition.capability_id,
+                    owner_id=definition.owner_id,
+                    package_content_digest=fixture.package.content_digest,
+                    dependency_lock_digest=fixture.package.dependency_lock.digest,
+                    manifest_digest="4" * 64,
+                    reservation_fingerprint="5" * 64,
+                    declaration_fingerprint=(
+                        original_candidate.declaration_fingerprint
+                    ),
+                    worker_configuration_fingerprint="6" * 64,
+                    executable_digest="7" * 64,
+                    executable_size=128,
+                    declared_required=False,
+                    native_platform="linux-x86_64",
+                ),
+            )
+            worker_owner = CapabilityProviderOwnerAuthority(
+                replace(
+                    provider_authority.policy,
+                    policy_revision="coding-worker-owner-1",
+                    allowed_execution_models=("local_worker",),
+                )
+            )
+            worker_eligibility = worker_owner.grant_eligibility(
+                worker_candidate, issued_at=100, expires_at=220
+            )
+            worker_admission = worker_owner.admit(
+                worker_candidate,
+                eligibility=worker_eligibility,
+                issued_at=120,
+                expires_at=200,
+            )
+            worker_resolved = ProductCapabilityProviderResolver().resolve(
+                ProductCapabilityProviderSelectionPlanV1(
+                    product_id="coding",
+                    roots=(definition.capability_id,),
+                    choices=(
+                        ProductCapabilityProviderChoice(
+                            capability_id=definition.capability_id,
+                            provider_id=worker_provider.provider_id,
+                            candidate_fingerprint=(
+                                worker_admission.candidate_fingerprint
+                            ),
+                        ),
+                    ),
+                    policy_revision="coding-plugin-policy-1",
+                ),
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
+                admissions=(worker_admission,),
+                owner_snapshots=(worker_owner.snapshot(),),
+                evaluated_at=150,
+                prebound_providers=(workspace_binding.provider,),
+            )
+            worker_events: list[str] = []
+            worker_gates: list[CapabilityBundleVisibilityGate] = []
+
+            class _PreparedWorker:
+                def __init__(self, binding: CapabilityBundleProviderBinding) -> None:
+                    self.binding = binding
+                    self.receipt_fingerprint = "a" * 64
+                    self.worker_admission_fingerprint = "b" * 64
+
+                def commit_after_graph_publication(self) -> None:
+                    assert worker_gates[-1].state == "visible"
+                    worker_events.append("committed")
+
+                async def abort_uncommitted(self) -> bool:
+                    worker_gates[-1].retire()
+                    worker_events.append("aborted")
+                    return True
+
+            async def prepare_worker(graph_generation: int) -> _PreparedWorker:
+                worker_events.append(f"prepare:{graph_generation}")
+                gate = CapabilityBundleVisibilityGate(
+                    graph_generation=graph_generation,
+                    validate_current=lambda: None,
+                )
+                worker_gates.append(gate)
+
+                def create(_context: object) -> CapabilityBundleValue:
+                    worker_events.append("created")
+                    return CapabilityBundleValue(
+                        (
+                            CapabilityFacetBinding(
+                                "query",
+                                {
+                                    "label": "foundation",
+                                    "runtime_id": "session:coding-session",
+                                    "workspace_read": True,
+                                },
+                            ),
+                        )
+                    )
+
+                async def dispose(_value: CapabilityBundleValue) -> None:
+                    assert gate.state == "retired"
+                    worker_events.append("disposed")
+
+                return _PreparedWorker(
+                    CapabilityBundleProviderBinding(
+                        provider=worker_provider,
+                        scope_instance_id="worker:session:coding-session",
+                        binding_input_fingerprint=worker_admission.fingerprint,
+                        create=create,
+                        dispose=dispose,
+                        visibility_gates=(gate,),
+                    )
+                )
+
+            worker_requirement = CapabilityRequirement(
+                capability=definition.capability_id,
+                facets=("query",),
+                compatible_contract=CapabilityContractRange.exact(1),
+            )
+            worker_inputs = SessionCapabilityCompositionInputs(
+                product_composition=compilation,
+                resolved_providers=worker_resolved,
+                host_consumer_requirements=(worker_requirement,),
+                component_requests=(
+                    SessionCapabilityWorkerComponentRequest(
+                        resolved=worker_resolved.entries[0],
+                        owner_snapshot=worker_owner.snapshot(),
+                        trust_snapshot=trust_snapshot,
+                        receipt_fingerprint="a" * 64,
+                        worker_admission_fingerprint="b" * 64,
+                        prepare=prepare_worker,
+                    ),
+                ),
+            )
+            assert (
+                worker_inputs.compare(
+                    replace(worker_inputs, host_consumer_requirements=())
+                )
+                == "restart_required"
+            )
+            with pytest.raises(ValueError, match="outside selected Provider"):
+                replace(
+                    worker_inputs,
+                    host_consumer_requirements=(
+                        CapabilityRequirement(
+                            capability="coding.unselected",
+                            facets=("query",),
+                            compatible_contract=CapabilityContractRange.exact(1),
+                        ),
+                    ),
+                )
+            [worker_request] = worker_inputs.component_requests
+            with pytest.raises(ValueError, match="mismatched graph binding"):
+                await replace(
+                    worker_request,
+                    worker_admission_fingerprint="c" * 64,
+                ).prepare_component(1)
+            assert worker_events == ["prepare:1", "aborted"]
+            assert worker_gates[0].state == "retired"
+            worker_events.clear()
+            worker_gates.clear()
+            worker_transcript = await _new_transcript(tmp_path, product_id="coding")
+            worker_session = _ContractProductSession(
+                product_id="coding",
+                transcript=worker_transcript,
+                capability_runtime=_capability_runtime("coding"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+                capability_composition_inputs=worker_inputs,
+                capability_owner_generation_bindings=(owner_binding,),
+            )
+            await worker_session.prepare_model_call_runtime()
+            assert worker_events == ["prepare:1", "created", "committed"]
+            assert worker_gates[0].state == "visible"
+            assert worker_session.capture_host_product_consumer(
+                worker_requirement
+            ).require("query") == {
+                "label": "foundation",
+                "runtime_id": "session:coding-session",
+                "workspace_read": True,
+            }
+            with pytest.raises(ValueError, match="was not selected"):
+                worker_session.capture_host_product_consumer(
+                    CapabilityRequirement(
+                        capability="coding.unselected",
+                        facets=("query",),
+                        compatible_contract=CapabilityContractRange.exact(1),
+                    )
+                )
+            await worker_session.dispose()
+            assert worker_gates[0].state == "retired"
+            assert worker_events[-1] == "disposed"
+
+            worker_events.clear()
+            worker_gates.clear()
+
+            def fail_worker_create(_context: object) -> CapabilityBundleValue:
+                worker_events.append("create-failed")
+                raise RuntimeError("synthetic Worker graph failure")
+
+            async def prepare_failing_worker(graph_generation: int) -> _PreparedWorker:
+                prepared_worker = await prepare_worker(graph_generation)
+                prepared_worker.binding = replace(
+                    prepared_worker.binding, create=fail_worker_create
+                )
+                return prepared_worker
+
+            failing_inputs = replace(
+                worker_inputs,
+                component_requests=(
+                    replace(worker_request, prepare=prepare_failing_worker),
+                ),
+            )
+            failing_transcript = await _new_transcript(tmp_path, product_id="coding")
+            failing_session = _ContractProductSession(
+                product_id="coding",
+                transcript=failing_transcript,
+                capability_runtime=_capability_runtime("coding"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+                capability_composition_inputs=failing_inputs,
+                capability_owner_generation_bindings=(owner_binding,),
+            )
+            with pytest.raises(CapabilityGraphBindingError):
+                await failing_session.prepare_model_call_runtime()
+            assert worker_events == ["prepare:1", "create-failed", "aborted"]
+            assert worker_gates[0].state == "retired"
+            await failing_session.dispose()
         finally:
             fixture.runtime.close()
 
@@ -2826,6 +3213,82 @@ def dispose_provider(_value):
 def _append_event(path: Path, event: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(event + "\n")
+
+
+@pytest.mark.parametrize("outcome", ["ready", "cancel", "superseded"])
+def test_agent_model_boundary_awaits_evidence_before_binding_current_request(
+    tmp_path, monkeypatch, outcome: str
+) -> None:
+    async def scenario() -> None:
+        disposed = []
+        _bind_transcript_factory(disposed)
+        transcript = await _new_transcript(tmp_path, product_id="evidence-ready")
+        session = _ContractProductSession(
+            product_id="evidence-ready",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("evidence-ready"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        host = SimpleNamespace(current_session=session)
+        session._extension_bridge.set_runtime_host(host)
+        entered, release = asyncio.Event(), asyncio.Event()
+        settled = asyncio.Event()
+
+        async def prepare_evidence():
+            entered.set()
+            try:
+                await release.wait()
+            finally:
+                settled.set()
+
+        monkeypatch.setattr(
+            session._request_evidence_runtime,
+            "prepare_model_input_async",
+            prepare_evidence,
+        )
+        preparation = ModelCallPreparation(
+            purpose="main",
+            sequence=1,
+            model=session.agent.model,
+            context=Context(system_prompt="evidence probe", messages=[]),
+            options=CallOptions(),
+        )
+        existing = asyncio.all_tasks()
+        job = asyncio.create_task(session.agent.prepare_model_call(preparation))
+        started = asyncio.create_task(entered.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {job, started}, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert started in done and not job.done(), (
+                "model request bypassed evidence preparation"
+            )
+            if outcome == "cancel":
+                job.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await job
+            else:
+                if outcome == "superseded":
+                    host.current_session = object()
+                release.set()
+                if outcome == "superseded":
+                    with pytest.raises(RuntimeError, match="current"):
+                        await job
+                else:
+                    options = await job
+                    assert options.prepared_request_committer is not None
+            assert settled.is_set()
+        finally:
+            job.cancel()
+            started.cancel()
+            await asyncio.gather(job, started, return_exceptions=True)
+            session._extension_bridge.set_runtime_host(None)
+            await session.dispose()
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(scenario())
 
 
 def _bind_transcript_factory(

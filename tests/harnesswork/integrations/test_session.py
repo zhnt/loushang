@@ -76,6 +76,7 @@ def test_session_work_runtime_accepts_product_vocabulary_as_a_profile() -> None:
             "kind": "SubmitDesignTurn",
             "domain": "design",
             "payload": {"text": "revise the title slide"},
+            "_harnesswork": {"cancellation_observation_version": 1},
         }
 
     asyncio.run(scenario())

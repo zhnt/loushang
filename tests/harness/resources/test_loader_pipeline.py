@@ -337,6 +337,11 @@ def test_resource_loader_authority_selection_is_monotonic(tmp_path: Path) -> Non
         match="legacy_loader_cannot_prepare_catalog_inputs",
     ):
         legacy.prepare_catalog_input_receipt(tmp_path)
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="legacy_loader_cannot_preview_catalog_inputs",
+    ):
+        legacy.preview_catalog_input_receipt(tmp_path)
 
     catalog = ResourceLoader(user_resource_roots=())
     catalog.prepare_catalog_input_receipt(tmp_path)
@@ -350,6 +355,209 @@ def test_resource_loader_authority_selection_is_monotonic(tmp_path: Path) -> Non
         match="legacy_loader_cannot_restore_catalog_projection",
     ):
         legacy.restore_catalog_projection(None)
+
+
+def test_catalog_input_preview_uses_formal_owner_selection_without_claiming_authority(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package"
+    extension = package / "extensions" / "would_execute.py"
+    extension.parent.mkdir(parents=True)
+    extension.write_text("raise RuntimeError('extension executed')\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("Current instructions", encoding="utf-8")
+    loader = ResourceLoader(
+        package_roots=(package,), user_resource_roots=(),
+        project_resource_mode="legacy", context_file_names=("AGENTS.md",),
+    )
+
+    preview = loader.preview_catalog_input_receipt(project)
+
+    assert preview.project_resource_root == project
+    assert loader._catalog_authority_selected is False
+    assert loader._legacy_authority_selected is False
+    assert loader._catalog_inputs_pending is False
+    assert loader._initial_resource_catalog_input_receipt is None
+    assert loader.get_system_prompt_override() is None
+    assert len(preview.input_fingerprint) == 64
+    assert loader.prepare_catalog_input_receipt(project) == preview
+    assert loader.preview_catalog_input_receipt(project).input_fingerprint == (
+        preview.input_fingerprint
+    )
+    loader.set_runtime_options(no_skills=True)
+    assert loader.preview_catalog_input_receipt(project).input_fingerprint != (
+        preview.input_fingerprint
+    )
+    loader.set_package_roots(
+        (package,),
+        {package: PackageSourceConfig(source=str(package), prompts=("review.md",))},
+    )
+    assert len(loader.preview_catalog_input_receipt(project).input_fingerprint) == 64
+
+
+def test_catalog_input_preview_tracks_context_bytes_without_following_links(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    context = project / "AGENTS.md"
+    context.write_text("AAAA", encoding="utf-8")
+    loader = ResourceLoader(
+        user_resource_roots=(), project_resource_mode="legacy",
+        context_file_names=("AGENTS.md",),
+    )
+
+    first = loader.preview_catalog_input_receipt(project)
+    first_fact = next(
+        item for item in first.context_file_facts if item.root == project
+    )
+    assert first_fact.status == "file"
+    assert first_fact.content_length == 4
+    context.write_text("BBBB", encoding="utf-8")
+    second = loader.preview_catalog_input_receipt(project)
+    second_fact = next(
+        item for item in second.context_file_facts if item.root == project
+    )
+    assert second_fact.content_digest != first_fact.content_digest
+    assert second.input_fingerprint != first.input_fingerprint
+
+    context.unlink()
+    context.symlink_to(tmp_path / "outside.md")
+    third = loader.preview_catalog_input_receipt(project)
+    third_fact = next(
+        item for item in third.context_file_facts if item.root == project
+    )
+    assert third_fact.status == "unavailable"
+    assert third.context_content_complete is False
+    assert loader._catalog_authority_selected is False
+
+
+def test_catalog_input_preview_stops_package_enumeration_before_reading_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from concurrent.futures import CancelledError
+
+    package = tmp_path / "package"
+    prompts = package / "prompts"
+    prompts.mkdir(parents=True)
+    for index in range(20):
+        (prompts / f"prompt-{index}.md").write_text("prompt", encoding="utf-8")
+    loader = ResourceLoader(package_roots=(package,), user_resource_roots=())
+    calls = 0
+
+    def stop():
+        nonlocal calls
+        calls += 1
+        if calls == 5:
+            raise CancelledError("package enumeration cancelled")
+
+    def forbidden_read(*args, **kwargs):
+        pytest.fail("cancelled directory enumeration proceeded to package text reads")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(PackageResourceMount, "read_text", forbidden_read)
+        patch.setattr(PackageResourceMount, "capture_text", forbidden_read)
+        with pytest.raises(CancelledError, match="package enumeration cancelled"):
+            loader.preview_catalog_input_receipt(tmp_path, work_probe=stop)
+    assert calls == 5
+    assert loader._catalog_authority_selected is False
+    assert loader._legacy_authority_selected is False
+    # The cancelled receipt was not retained or consumed.
+    preview = loader.preview_catalog_input_receipt(tmp_path)
+    assert preview.input_fingerprint == loader.prepare_catalog_input_receipt(tmp_path).input_fingerprint
+
+
+def test_catalog_input_preview_discards_package_text_beyond_total_byte_budget(tmp_path: Path) -> None:
+    from loushang.harness.resources._safe_files import ResourceReadBudgetExceeded
+
+    prompts = tmp_path / "package" / "prompts"
+    prompts.mkdir(parents=True)
+    for name in ("one.md", "two.md"):
+        (prompts / name).write_bytes(b"a" * (4 * 1024 * 1024 + 1))
+    loader = ResourceLoader(package_roots=(prompts.parent,), user_resource_roots=())
+    with pytest.raises(ResourceReadBudgetExceeded) as caught:
+        loader.preview_catalog_input_receipt(tmp_path)
+    assert caught.value.reason_code == "resource.preview_byte_budget_exceeded"
+    assert loader._catalog_authority_selected is False
+    assert loader._legacy_authority_selected is False
+    assert loader._initial_resource_catalog_input_receipt is None
+    # On-demand preparation still owns its ordinary path and can read the data.
+    assert len(loader.prepare_catalog_input_receipt(tmp_path).package_resource_candidates) == 2
+
+
+def test_catalog_input_preview_checks_cancellation_between_context_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from concurrent.futures import CancelledError
+
+    from loushang.harness.resources import _catalog_input_preparation as preparation
+
+    context = tmp_path / "AGENTS.md"
+    context.write_bytes(b"a" * (256 * 1024))
+    loader = ResourceLoader(user_resource_roots=(), context_file_names=("AGENTS.md",))
+    original_capture = preparation.capture_contained_regular_file
+    chunks = 0
+
+    def capture(*args, **kwargs):
+        original_probe = kwargs["read_probe"]
+
+        def probe():
+            nonlocal chunks
+            chunks += 1
+            if chunks == 2:
+                raise CancelledError("context read cancelled")
+            original_probe()
+
+        return original_capture(*args, **{**kwargs, "read_probe": probe})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(preparation, "capture_contained_regular_file", capture)
+        with pytest.raises(CancelledError, match="context read cancelled"):
+            loader.preview_catalog_input_receipt(tmp_path, work_probe=lambda: None)
+    assert chunks == 2
+    assert loader._catalog_authority_selected is False
+    assert loader._legacy_authority_selected is False
+    receipt = loader.preview_catalog_input_receipt(tmp_path)
+    fact = next(item for item in receipt.context_file_facts if item.root == tmp_path)
+    assert fact.content_length == 256 * 1024
+    assert context.read_bytes() == b"a" * (256 * 1024)
+
+
+def test_catalog_input_preview_rejects_loader_configuration_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.resources import loader as loader_module
+
+    loader = ResourceLoader(user_resource_roots=())
+    original = loader_module.prepare_resource_catalog_input_receipt
+
+    def change_during_scan(*args, **kwargs):
+        loader.set_runtime_options(no_skills=True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        loader_module, "prepare_resource_catalog_input_receipt",
+        change_during_scan,
+    )
+    with pytest.raises(ResourceLoaderCompatibilityError, match="catalog_preview_stale"):
+        loader.preview_catalog_input_receipt(tmp_path)
+    assert loader._catalog_authority_selected is False
+    assert loader._legacy_authority_selected is False
+
+    formal = ResourceLoader(user_resource_roots=())
+
+    def change_formal_scan(*args, **kwargs):
+        formal.set_runtime_options(no_skills=True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        loader_module, "prepare_resource_catalog_input_receipt",
+        change_formal_scan,
+    )
+    with pytest.raises(ResourceLoaderCompatibilityError, match="catalog_preview_stale"):
+        formal.prepare_catalog_input_receipt(tmp_path)
+    assert formal._catalog_authority_selected is True
 
 
 def test_catalog_preparation_failure_keeps_compatibility_reads_closed(
@@ -408,7 +616,11 @@ def test_resource_loader_receipt_carries_verified_package_candidate_facts(
     loader = ResourceLoader()
     loader.set_package_mounts((mount,))
     try:
+        preview = loader.preview_catalog_input_receipt(project)
+        assert handle.closed is False
         receipt = loader.prepare_catalog_input_receipt(project)
+        assert receipt == preview
+        assert receipt.input_fingerprint == preview.input_fingerprint
 
         assert receipt.package_mounts == (mount,)
         assert receipt.package_roots == (handle.root,)

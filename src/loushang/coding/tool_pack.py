@@ -59,12 +59,8 @@ CODING_DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = (
     "write",
 )
 
+# File tools keep their Harness-owned argument descriptions and prompt snippets.
 _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
-    "read": (
-        "Read text files and images from the coding workspace. "
-        "For large text files, use offset and limit to continue reading.",
-        "- read: Read text files and images from the coding workspace.",
-    ),
     "bash": (
         "Execute a shell command through the coding exec service.",
         "- bash: Execute shell commands. Prefer a single command string; use cwd for the working directory.",
@@ -73,33 +69,16 @@ _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
         "Execute a PowerShell script through the coding exec service. Use Windows PowerShell 5.1-compatible syntax unless PowerShell 7 availability is known.",
         "- shell: Execute PowerShell scripts on Windows using PowerShell syntax.",
     ),
-    "edit": (
-        "Apply exact text replacements to a file in the coding workspace.",
-        "- edit: Apply exact text replacements to a file in the coding workspace.",
-    ),
-    "write": (
-        "Write a text file in the coding workspace.",
-        "- write: Write a text file in the coding workspace.",
-    ),
-    "grep": (
-        "Search file contents in the coding workspace.",
-        "- grep: Search file contents for patterns in the coding workspace.",
-    ),
-    "find": (
-        "Find file paths in the coding workspace.",
-        "- find: Find file paths by glob pattern in the coding workspace.",
-    ),
-    "ls": (
-        "List directory entries in the coding workspace.",
-        "- ls: List directory entries in the coding workspace.",
-    ),
 }
 
 
 def _decorate_coding_tool_definition(
     definition: ToolDefinition,
 ) -> ToolDefinition:
-    description, prompt_snippet = _CODING_TOOL_TEXT[cast(ToolName, definition.name)]
+    tool_text = _CODING_TOOL_TEXT.get(cast(ToolName, definition.name))
+    if tool_text is None:
+        return definition
+    description, prompt_snippet = tool_text
     return replace(
         definition,
         description=description,

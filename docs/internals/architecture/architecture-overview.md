@@ -14,9 +14,7 @@ architecture. Product strategy, mission, and positioning live in
 [Loushang Strategy](../strategy/strategy.md). Detailed subsystem and component
 designs live in their own Architecture Scopes.
 
-Loushang applies the
-[Architecture Design And Governance Method](../architecture-method/README.md)
-through its
+Loushang's architecture governance is recorded in the
 [Architecture Governance Profile](governance-profile.md).
 
 ## Architecture In One Sentence
@@ -184,6 +182,13 @@ or default activation. Those extensions require their own accepted contracts.
 
 Accepted Target directions include:
 
+- Resume separates readable historical facts from current execution authority;
+  [ARD-004](decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+  [ARD-005](decisions/accepted/ARD-005-resume-continuation-commit.md), and
+  [ARD-006](decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md)
+  accept same-ID continuation, one-message Binding/evidence commit, and Hosted
+  readiness inside one Product binding. Live admission, recovery, and background
+  performance remain incomplete in the [Delta ledger](current-target-gap-ledger.md);
 - Product-to-Harness-to-Agent-to-AI remains the one-way execution spine;
 - Harness mechanisms remain Product-neutral and Products retain domain policy
   and final composition;
@@ -217,7 +222,7 @@ Unresolved proposals under `drafts/`, including broader future-V3.1 material,
 remain candidate directions until the governing owner accepts the specific
 contract through a decision or canonical scope document. The AOD's own
 accepted status does not accept those candidates. Follow the
-[Target acceptance rule](../architecture-method/README.md#target-acceptance).
+[Target acceptance rule](governance-profile.md#target-acceptance-in-loushang).
 
 ## Major Current-To-Target Deltas
 
@@ -274,14 +279,12 @@ normative cross-layer rules.
 ## Architecture Documentation
 
 - [Architecture Catalog And Reading Order](README.md)
-- [Architecture Design And Governance Method](../architecture-method/README.md)
 - [Loushang Architecture Governance Profile](governance-profile.md)
 - [Architecture Principles](loushang-architecture-principles.md)
 - [Subsystems And Architecture Scopes](subsystem.md)
 - [Subsystem Diagram](subsystem-diagram.md)
 - [Generated Current Package Dependencies](generated/current-package-dependencies.md)
 - [Current-To-Target Gap Ledger](current-target-gap-ledger.md)
-- [Architecture Artifact Model](../architecture-method/artifact-model.md)
 
 Each top-level and sufficiently complex nested scope owns its detailed
 requirements, boundary, component, interaction, dependency, decision,

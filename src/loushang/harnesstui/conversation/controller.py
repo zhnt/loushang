@@ -5,15 +5,17 @@ from __future__ import annotations
 import asyncio
 import inspect
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
+from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
     SessionOperationResolver,
     SessionOperationUnavailableError,
     SessionPromptRequest,
+    command_execution_record_from_result,
 )
 from loushang.harnesstui.conversation.intents import (
     AbortIntent,
@@ -27,18 +29,36 @@ ImageParts = tuple[object, ...] | list[object] | None
 SessionCommandDispatcher = Callable[
     [object], Awaitable[HostActionResult | None]
 ]
-BashExecutor = Callable[[str], Awaitable[None]]
+BashExecutor = Callable[[str, bool], Awaitable[None]]
 CommandAbort = Callable[[], None | Awaitable[None]]
+
+
+def bind_user_bash_executor(
+    get_session: Callable[[], object],
+    *,
+    on_record: Callable[[CommandExecutionRecord], None] | None = None,
+) -> BashExecutor:
+    """Reuse a Session's shell execution and present its recorded result."""
+
+    async def execute(command: str, exclude_from_context: bool) -> None:
+        result = await _maybe_await(
+            getattr(get_session(), "execute_bash")(
+                command, exclude_from_context=exclude_from_context
+            )
+        )
+        if on_record is not None and isinstance(result, Mapping):
+            on_record(
+                command_execution_record_from_result(
+                    command, result, exclude_from_context=exclude_from_context
+                )
+            )
+
+    return execute
 
 
 class _TextIntent(Protocol):
     @property
     def text(self) -> str: ...
-
-
-class _BashIntent(Protocol):
-    @property
-    def command(self) -> str: ...
 
 
 @dataclass
@@ -94,7 +114,11 @@ class ConversationUiController:
             ):
                 if self.execute_bash is None:
                     raise RuntimeError("Session does not support bash execution")
-                await self.execute_bash(cast(_BashIntent, intent).command)
+                bash_intent = cast(BashIntent, intent)
+                await self.execute_bash(
+                    bash_intent.command,
+                    bash_intent.exclude_from_context,
+                )
                 return HostActionResult()
             if self.follow_up_intent_type is not None and isinstance(
                 intent, self.follow_up_intent_type
@@ -263,5 +287,6 @@ __all__ = [
     "ConversationUiController",
     "ImageParts",
     "SessionCommandDispatcher",
+    "bind_user_bash_executor",
     "build_standard_conversation_ui_controller",
 ]

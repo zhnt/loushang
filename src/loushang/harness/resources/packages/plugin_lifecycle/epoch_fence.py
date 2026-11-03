@@ -1093,10 +1093,13 @@ PACKAGE_EPOCH_FENCE_JOURNAL_CODEC = FunctionalJournalRecordCodec(
 class PackageEpochFenceJournal:
     """One durable adjacent epoch chain for one stable Package store identity."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self._path = Path(path).resolve()
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
+        self._read_only = read_only
+        self._load_policy = JournalLoadPolicy(
+            partial_tail="raise" if read_only else "repair"
+        )
 
     @property
     def path(self) -> Path:
@@ -1106,6 +1109,8 @@ class PackageEpochFenceJournal:
         self,
         request: PackageEpochFenceRequestV1,
     ) -> PackageEpochFenceReceiptV1:
+        if self._read_only:
+            raise ValueError("Read-only Package epoch fence cannot publish")
         if not isinstance(request, PackageEpochFenceRequestV1):
             raise TypeError("Package epoch fence request is required")
         with self._exclusive():
@@ -1132,6 +1137,13 @@ class PackageEpochFenceJournal:
 
     def current(self, store_id: str) -> PackageEpochFenceReceiptV1 | None:
         _require_safe_id(store_id, name="Package store identity")
+        if self._read_only:
+            records = self._load_unlocked()
+            return (
+                records[-1].receipt
+                if records and records[-1].receipt.store_id == store_id
+                else None
+            )
         with self._exclusive():
             records = self._load_unlocked()
             if not records:
@@ -1142,6 +1154,8 @@ class PackageEpochFenceJournal:
             return current
 
     def records(self) -> tuple[PackageEpochFenceRecordV1, ...]:
+        if self._read_only:
+            return self._load_unlocked()
         with self._exclusive():
             return self._load_unlocked()
 

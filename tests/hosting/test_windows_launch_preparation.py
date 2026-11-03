@@ -875,6 +875,37 @@ def test_windows_pe_parser_accepts_exact_amd64_direct_import_profile(
     )
 
 
+def test_windows_lpac_pe_parser_accepts_only_used_approved_platform_imports(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "worker.exe"
+    body = _minimal_pe(("KERNEL32.DLL",))
+    image.write_bytes(body)
+    digest = hashlib.sha256(body).hexdigest()
+    permitted = ("ADVAPI32.DLL", "KERNEL32.DLL", "USERENV.DLL", "WS2_32.DLL")
+
+    with pytest.raises(HostingError, match="import closure changed"):
+        _verify_pe_image(
+            image, expected_digest=digest, expected_imports=permitted
+        )
+    _verify_pe_image(
+        image,
+        expected_digest=digest,
+        expected_imports=permitted,
+        allow_import_subset=True,
+    )
+
+    unapproved = _minimal_pe(("EVIL.DLL",))
+    image.write_bytes(unapproved)
+    with pytest.raises(HostingError, match="import closure changed"):
+        _verify_pe_image(
+            image,
+            expected_digest=hashlib.sha256(unapproved).hexdigest(),
+            expected_imports=permitted,
+            allow_import_subset=True,
+        )
+
+
 @pytest.mark.parametrize(
     "mutation",
     (

@@ -217,7 +217,13 @@ def test_persistent_session_accepts_legacy_capability_semantic_snapshot(
     asyncio.run(scenario())
 
 
-def test_persistent_session_rejects_a_different_capability_profile(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "metadata_key",
+    [CODING_RUNTIME_PROFILE_METADATA_KEY, CODING_CAPABILITY_PROFILE_METADATA_KEY],
+)
+def test_persistent_session_accepts_a_historical_profile(
+    tmp_path, metadata_key: str
+) -> None:
     async def scenario() -> None:
         manager = await SessionManager.new(
             session_dir=tmp_path,
@@ -229,7 +235,7 @@ def test_persistent_session_rejects_a_different_capability_profile(tmp_path) -> 
             manager.header,
             metadata={
                 **manager.header.metadata,
-                CODING_CAPABILITY_PROFILE_METADATA_KEY: {
+                metadata_key: {
                     "schemaVersion": 1,
                     "productId": "coding",
                     "capabilities": [],
@@ -237,10 +243,18 @@ def test_persistent_session_rejects_a_different_capability_profile(tmp_path) -> 
             },
         )
         write_session_file(manager.session_file, header, manager.get_entries())
+        before = manager.session_file.read_bytes()
         await manager.dispose_runtime_profile()
 
-        with pytest.raises(ValueError, match="unsupported capability profile"):
-            await SessionManager.load(manager.session_file, persist=True)
+        resumed = await SessionManager.load(manager.session_file, persist=True)
+        try:
+            assert manager.session_file.read_bytes() == before
+            await resumed.append_message(
+                UserMessage(role="user", content="continue", timestamp=1.0)
+            )
+            assert resumed.get_leaf_entry().payload.content == "continue"
+        finally:
+            await resumed.dispose_runtime_profile()
 
     asyncio.run(scenario())
 

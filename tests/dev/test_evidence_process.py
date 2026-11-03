@@ -25,6 +25,200 @@ supervisor = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(supervisor)
 
 
+@pytest.mark.parametrize("kind", ["live", "settled-after-snapshot", "diagnostic-io", "normal"])
+def test_unknown_thread_diagnostic_preserves_original_failure_and_physical_reap(
+    tmp_path, monkeypatch, kind
+):
+    attach = supervisor._attach_thread_diagnostic
+    attached = []
+
+    def attach_after_reap(error, result):
+        pid = int((tmp_path / "controller.pid").read_text())
+        if os.name == "posix":
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+        attached.append(True)
+        attach(error, result)
+
+    monkeypatch.setattr(supervisor, "_attach_thread_diagnostic", attach_after_reap)
+    program = f"""
+import __main__ as controller
+import os, threading
+from pathlib import Path
+Path('controller.pid').write_text(str(os.getpid()))
+kind = {kind!r}
+if kind != 'normal':
+    stop = threading.Event()
+    entered = threading.Event()
+    def leftover():
+        private_local = 'G18-MUST-NOT-CAPTURE-LOCALS'
+        entered.set()
+        stop.wait()
+    worker = threading.Thread(target=leftover, name='g18-thread-witness', daemon=True)
+    worker.start()
+    assert entered.wait(5)
+    if kind == 'settled-after-snapshot':
+        enumerate_threads = threading.enumerate
+        def snapshot():
+            result = enumerate_threads()
+            if worker in result:
+                stop.set()
+                worker.join(5)
+                assert not worker.is_alive()
+            return result
+        threading.enumerate = snapshot
+    if kind == 'diagnostic-io':
+        write = Path.write_text
+        def broken(path, *args, **kwargs):
+            if path.name.endswith('.threads.pending'):
+                Path('diagnostic-attempted').touch()
+                raise OSError('injected diagnostic IO failure')
+            return write(path, *args, **kwargs)
+        Path.write_text = broken
+else:
+    def forbidden(*args):
+        Path('unexpected-diagnostic').touch()
+        raise AssertionError('success must not collect thread diagnostics')
+    controller._write_thread_diagnostic = forbidden
+"""
+    arguments = ([sys.executable, "-I", "-c", program],)
+    options = dict(cwd=tmp_path, environment={}, timeout=15)
+    if kind == "normal":
+        supervisor.run_python(*arguments, **options)
+        assert not (tmp_path / "unexpected-diagnostic").exists()
+    else:
+        with pytest.raises(subprocess.CalledProcessError) as caught:
+            supervisor.run_python(*arguments, **options)
+        error = caught.value
+        assert error.returncode == 1
+        if kind == "diagnostic-io":
+            assert (tmp_path / "diagnostic-attempted").exists()
+            assert not hasattr(error, "evidence_threads")
+        else:
+            diagnostic = error.evidence_threads
+            (thread,) = diagnostic["threads"]
+            assert thread["name"] == "g18-thread-witness"
+            assert type(thread["ident"]) is int and type(thread["native_id"]) is int
+            assert thread["daemon"] is True
+            assert thread["frame_missing"] is (kind == "settled-after-snapshot")
+            assert bool(thread["stack"]) is (kind == "live")
+            encoded = json.dumps(diagnostic)
+            assert "G18-MUST-NOT-CAPTURE-LOCALS" not in encoded
+            assert len(encoded.encode()) <= 65536
+    # The temporary sidecar must have travelled with the exception before its
+    # control directory was removed; no process or control root is abandoned.
+    assert not list(tmp_path.glob("g17-probe-*"))
+    assert attached == ([] if kind == "normal" else [True])
+    pid = int((tmp_path / "controller.pid").read_text())
+    if os.name == "posix":
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or sys.version_info[:2] != (3, 11),
+    reason="pinned Linux CPython 3.11 observer watcher handoff",
+)
+def test_asyncio_process_wait_can_finish_before_its_watcher_thread(tmp_path):
+    # Hold the actual stdlib waitpid thread only after its loop notification.
+    # No sleep/polling or production failure predicate is changed. The retained
+    # owner must reject and physically reap this deliberately unfinished owner.
+    program = """
+import asyncio, os, sys, threading
+from pathlib import Path
+Path('controller.pid').write_text(str(os.getpid()))
+policy = asyncio.DefaultEventLoopPolicy()
+watcher = asyncio.ThreadedChildWatcher()
+policy.set_child_watcher(watcher)
+asyncio.set_event_loop_policy(policy)
+hold = threading.Event()
+notified = threading.Event()
+async def scenario():
+    loop = asyncio.get_running_loop()
+    notify = loop._write_to_self
+    def notify_then_hold():
+        if threading.current_thread() is threading.main_thread():
+            return notify()
+        notified.set()
+        notify()
+        hold.wait()
+    loop._write_to_self = notify_then_hold
+    try:
+        process = await asyncio.create_subprocess_exec(sys.executable, '-I', '-c', 'pass')
+        Path('child.pid').write_text(str(process.pid))
+        assert await process.wait() == 0
+        assert notified.is_set()
+        assert any(thread.is_alive() for thread in watcher._threads.values())
+        Path('callback-before-watcher-exit').touch()
+    finally:
+        loop._write_to_self = notify
+asyncio.run(scenario())
+"""
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        supervisor.run_python(
+            [sys.executable, "-I", "-c", program], cwd=tmp_path,
+            environment={}, timeout=15,
+        )
+    assert caught.value.returncode == 1
+    assert (tmp_path / "callback-before-watcher-exit").exists()
+    (thread,) = caught.value.evidence_threads["threads"]
+    assert thread["name"] == "asyncio-waitpid-0" and thread["daemon"]
+    assert any(frame["function"] == "notify_then_hold" for frame in thread["stack"])
+    for name in ("controller.pid", "child.pid"):
+        with pytest.raises(ProcessLookupError):
+            os.kill(int((tmp_path / name).read_text()), 0)
+    assert not list(tmp_path.glob("g17-probe-*"))
+
+
+def test_thread_diagnostic_is_bounded_and_does_not_inspect_frame_locals(tmp_path, monkeypatch):
+    class Frame:
+        f_code = SimpleNamespace(co_filename="界" * 1000, co_name="函" * 1000)
+        f_lineno = 1
+
+        @property
+        def f_back(self):
+            return self
+
+        @property
+        def f_locals(self):
+            pytest.fail("frame locals must never be read")
+
+    monkeypatch.setattr(supervisor.sys, "_current_frames", lambda: {1: Frame()})
+    thread = SimpleNamespace(ident=1, native_id=2, name="名" * 1000, daemon=True)
+    result = tmp_path / "result"
+    supervisor._write_thread_diagnostic(result, [thread] * 20)
+    raw = result.with_suffix(".threads").read_bytes()
+    value = json.loads(raw)
+    assert len(raw) <= 65536 and value["truncated"]
+    assert 0 < len(value["threads"]) <= 8
+    assert all(item["stack_truncated"] and len(item["stack"]) == 8 for item in value["threads"])
+
+
+@pytest.mark.parametrize("fault", ["missing", "io", "oversize", "invalid", "directory", "symlink", "fifo"])
+def test_unreadable_thread_sidecar_never_replaces_original_failure(tmp_path, monkeypatch, fault):
+    if fault in {"symlink", "fifo"} and os.name != "posix":
+        pytest.skip("POSIX non-following/nonblocking diagnostic read")
+    result = tmp_path / "result"
+    path = result.with_suffix(".threads")
+    if fault == "io":
+        monkeypatch.setattr(supervisor.os, "open", lambda *_: (_ for _ in ()).throw(OSError("diagnostic")))
+    elif fault == "oversize":
+        path.write_bytes(b" " * 65537)
+    elif fault == "invalid":
+        path.write_text('{"code": 0}')
+    elif fault == "directory":
+        path.mkdir()
+    elif fault == "symlink":
+        target = tmp_path / "other"
+        target.write_text('{"threads": [], "truncated": false}')
+        path.symlink_to(target)
+    elif fault == "fifo":
+        os.mkfifo(path)
+    error = RuntimeError("original failure")
+    supervisor._attach_thread_diagnostic(error, result)
+    assert str(error) == "original failure" and not hasattr(error, "evidence_threads")
+
+
 @pytest.mark.parametrize("operation", ["probe", "uncaptured-pytest", "captured-pytest"])
 def test_native_stdin_of_descendants_is_eof_not_supervisor_control(tmp_path, operation):
     child = "import os,sys; assert os.read(0,1)==b''; assert sys.stdin.read()==''"

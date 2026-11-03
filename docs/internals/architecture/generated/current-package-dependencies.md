@@ -50,6 +50,7 @@ graph TD
     PKG_AI --> PKG_FOUNDATION
     PKG_APPHOST --> PKG_APPSERVER
     PKG_APPHOST --> PKG_APPSERVICE
+    PKG_APPHOST --> PKG_FOUNDATION
     PKG_APPHOST --> PKG_HARNESS
     PKG_APPHOST --> PKG_HOSTING
     PKG_APPSERVICE --> PKG_APPSERVER
@@ -97,7 +98,7 @@ graph TD
 | --- | --- |
 | `loushang.agent` | `loushang.ai`, `loushang.foundation` |
 | `loushang.ai` | `loushang.foundation` |
-| `loushang.apphost` | `loushang.appserver`, `loushang.appservice`, `loushang.harness`, `loushang.hosting` |
+| `loushang.apphost` | `loushang.appserver`, `loushang.appservice`, `loushang.foundation`, `loushang.harness`, `loushang.hosting` |
 | `loushang.appserver` | None |
 | `loushang.appservice` | `loushang.appserver` |
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
@@ -118,12 +119,22 @@ graph TD
 
 | Command | Implementation |
 | --- | --- |
+| `lmux` | `loushang.coding.cli.lmux:main` |
 | `loushang` | `loushang.coding.cli.__main__:main` |
+| `loushang-coding-extension` | `loushang.coding.extension_author:main` |
+| `loushang-coding-plugin-smoke` | `loushang.coding.plugin_author_smoke:main` |
+| `loushang-coding-plugin-status` | `loushang.coding.plugin_support_status:main` |
 | `loushang-hosted` | `loushang.coding.cli.hosted:main` |
 | `loushang-hosted-tui` | `loushang.coding.cli.hosted_client:main` |
 | `loushang-mux` | `loushang.coding.cli.mux:main` |
+| `loushang-package-cutover` | `loushang.coding.cli.package_cutover:main` |
+| `loushang-package-gc` | `loushang.coding.cli.package_gc:main` |
+| `loushang-package-repair` | `loushang.coding.cli.package_repair:main` |
 | `loushang-plugin` | `loushang.plugin.__main__:main` |
+| `loushang-plugin-private-data` | `loushang.coding.cli.plugin_private_data:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
+| `loushang-worker-native` | `loushang.coding.cli.package_worker_native:main` |
+| `loushang-worker-windows-candidate` | `loushang.coding.cli.package_worker_windows_candidate:main` |
 
 ## Interpretation Rules
 

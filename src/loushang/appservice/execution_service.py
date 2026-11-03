@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loushang.appserver.execution.model import (
@@ -32,9 +32,12 @@ from .execution_snapshot import (
     capture_execution_snapshot,
 )
 from .ports import HostedSessionPortV1
+from .resume_ports import ResumeInputLookupQueryV1, ResumeInputLookupResultV1
 
 if TYPE_CHECKING:
     from .client_scope import AppClientScopeV1
+    from .goal import HostedGoalPortV1
+    from .method_work import HostedMethodWorkPortV1
     from .runtime import _SessionOwner
 
 
@@ -44,12 +47,19 @@ class HostedExecutionServiceBindingV1:
     service_instance_id: str
     select_port: Callable[[HostedSessionPortV1], HostedExecutionPortV1 | None]
     limits: ExecutionLimitsV1 = ExecutionLimitsV1()
+    select_work_port: Callable[[HostedSessionPortV1], HostedMethodWorkPortV1 | None] | None = None
+
+    select_goal_port: Callable[[HostedSessionPortV1], HostedGoalPortV1 | None] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _identifier(self.application_id)
         _identifier(self.service_instance_id)
         if not callable(self.select_port) or type(self.limits) is not ExecutionLimitsV1:
             raise TypeError("invalid execution service binding")
+        if self.select_work_port is not None and not callable(self.select_work_port):
+            raise TypeError("invalid Work service binding")
+        if self.select_goal_port is not None and (not callable(self.select_goal_port) or self.select_work_port is not None):
+            raise TypeError("invalid or competing Goal service binding")
 
 
 @dataclass(slots=True)
@@ -110,7 +120,8 @@ class ScopedExecutionClientV1:
         _, binding = await self._resolve(control, expected_instance_id)
         # Duplicate lookup precedes every capacity check. No communication slot
         # is reserved and no await separates this authority cut from admission.
-        return self._registry.submit(binding, text, submission_id)
+        with self._scope.resume_subject_scope(control, submission_id=submission_id):
+            return self._registry.submit(binding, text, submission_id)
 
     async def get_execution(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,
@@ -118,6 +129,16 @@ class ScopedExecutionClientV1:
     ) -> ExecutionRecordV1:
         session, _ = await self._resolve(control, expected_instance_id)
         return self._registry.get(session.identity, execution_id)
+
+    async def lookup_resume_input(
+        self, control: SessionSnapshotRequestV1, expected_instance_id: str,
+        query: ResumeInputLookupQueryV1,
+    ) -> ResumeInputLookupResultV1:
+        self._scope._require_open()
+        self._registry.require_instance(expected_instance_id)
+        result = await self._scope.lookup_resume_input(control, query)
+        self._registry.require_instance(expected_instance_id)
+        return result
 
     async def find_execution_by_submission(
         self, control: SessionSnapshotRequestV1, expected_instance_id: str,

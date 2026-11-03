@@ -7,6 +7,7 @@ from typing import Any, Generic, Self, TypeVar, assert_never, cast
 from loushang.harnesstui.conversation.input import (
     ConversationAbortResult,
     ConversationClipboardResult,
+    ConversationCopyTextResult,
     ConversationExitResult,
     ConversationFollowupResult,
     ConversationInputHandled,
@@ -15,6 +16,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputRouter,
     ConversationLocalResult,
     ConversationPromptResult,
+    ConversationShellResult,
     ConversationSteerResult,
     ConversationSurfaceResult,
 )
@@ -78,6 +80,8 @@ def default_conversation_result_payload(
     if isinstance(result, ConversationPromptResult):
         payload["prompt_text"] = result.text
         payload["prompt_attachment_count"] = _attachment_count(result.attachments)
+    elif isinstance(result, ConversationShellResult):
+        payload["shell_text"] = result.text
     elif isinstance(result, ConversationLocalResult):
         payload["local_text"] = result.text
     elif isinstance(result, ConversationSteerResult):
@@ -94,6 +98,8 @@ def default_conversation_result_payload(
         payload["exit_code"] = result.exit_code
     elif isinstance(result, ConversationClipboardResult):
         pass
+    elif isinstance(result, ConversationCopyTextResult):
+        payload["copy_text"] = result.text
     elif isinstance(result, ConversationInputHandled):
         pass
     elif isinstance(result, ConversationInputIgnored):

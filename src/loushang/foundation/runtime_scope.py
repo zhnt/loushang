@@ -318,6 +318,7 @@ def sweep_runtime_runs(
             if candidate.size >= 0
             and (
                 candidate.quarantined
+                or policy.stale_after_seconds == 0
                 or current_time - candidate.modified_at >= policy.stale_after_seconds
             )
         }

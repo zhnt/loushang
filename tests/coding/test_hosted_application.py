@@ -394,6 +394,7 @@ class _SessionFactory:
         self.events = events
         self.bindings: list[_Binding] = []
         self._fail_close_once = fail_close_once
+        self.close_snapshots: list[tuple[int, ...]] = []
 
     async def create_session(
         self,
@@ -411,6 +412,9 @@ class _SessionFactory:
         self._fail_close_once = False
         self.bindings.append(binding)
         return binding
+
+    async def close(self) -> None:
+        self.close_snapshots.append(tuple(binding.closed for binding in self.bindings))
 
 
 class _Ids:
@@ -553,11 +557,24 @@ async def test_G12_VERTICAL_CANARY_crosses_real_composition_create_turn_resume_c
         SessionDiscoveryScope.CURRENT_DIRECTORY,
     )
 
+    await controller.submit("after resume")
+    await controller.poll()
+    assert controller.state is not None
+    assert controller.state.windows[0].session_id == created_id
+    assert controller.state.windows[0].records[-1] == TranscriptRecordV1(
+        TranscriptRecordKindV1.ASSISTANT,
+        "after resume",
+    )
+    assert environment.session_factory.bindings[1].control.prompts == [
+        "after resume"
+    ]
+
     await controller.close()
     await client.close_mux(MuxCloseV1(MuxSelectorV1(name="dev")))
     report = await app.shutdown()
     assert report.completed is True
     assert environment.session_factory.bindings[1].closed == 1
+    assert environment.session_factory.close_snapshots == [(1, 1)]
     assert environment.events[-2:] == [
         f"pin.close:{CODING_HOSTED_APPLICATION_PROFILE_ID}",
         "pin.close:coding",

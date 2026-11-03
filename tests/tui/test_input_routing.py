@@ -383,6 +383,20 @@ def test_input_reader_buffers_old_x10_mouse_sequence_across_feeds() -> None:
     assert events == (InputEvent(kind="mouse", mouse_button=0, mouse_column=9, mouse_row=4, mouse_action="press"),)
 
 
+def test_input_reader_decodes_drag_wheel_and_mouse_modifiers() -> None:
+    reader = InputReader()
+
+    assert reader.feed("\x1b[<60;10;5M\x1b[<64;10;5M\x1b[<65;10;5M\x1b[<35;10;5M") == (
+        InputEvent(
+            kind="mouse", mouse_button=0, mouse_column=9, mouse_row=4,
+            mouse_action="drag", mouse_modifiers=frozenset({"shift", "alt", "ctrl"}),
+        ),
+        InputEvent(kind="mouse", mouse_button=0, mouse_column=9, mouse_row=4, mouse_action="scroll_up"),
+        InputEvent(kind="mouse", mouse_button=1, mouse_column=9, mouse_row=4, mouse_action="scroll_down"),
+        InputEvent(kind="mouse", mouse_button=3, mouse_column=9, mouse_row=4, mouse_action="move"),
+    )
+
+
 def test_input_reader_reports_terminal_control_responses_as_signals() -> None:
     reader = InputReader()
 
@@ -464,8 +478,8 @@ def test_keybinding_manager_normalizes_legacy_alt_arrow_aliases() -> None:
 def test_keybinding_manager_matches_transcript_reader_alias() -> None:
     manager = KeybindingManager()
 
-    assert manager.matches("ctrl_o", "tui.transcript.open")
-    assert manager.matches("ctrl+o", "tui.transcript.open")
+    assert manager.matches("ctrl_o", "tui.transcript.copyLastAnswer")
+    assert manager.matches("ctrl+o", "tui.transcript.copyLastAnswer")
     assert manager.matches("ctrl_t", "tui.transcript.open")
     assert manager.matches("ctrl+t", "tui.transcript.open")
 

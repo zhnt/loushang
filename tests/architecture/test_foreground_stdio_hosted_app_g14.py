@@ -71,9 +71,12 @@ def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() 
     allowed = {
         "loushang.apphost.application",
         "loushang.apphost.continuity",
+        "loushang.appserver.client",
         "loushang.appserver.connection",
+        "loushang.appserver.execution.client",
         "loushang.appserver.framing",
         "loushang.appserver.protocol.connection_profile",
+        "loushang.appservice.client_scope",
     }
     assert (
         imports
@@ -105,7 +108,7 @@ def test_G14_BOUNDARIES_only_explicit_product_command_composes_native_stdio() ->
     assert "loushang.appserver.local" not in bootstrap
     assert "loushang.appserver.stdio" not in bootstrap
     for default in (
-        "src/loushang/coding/cli/__main__.py",
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py",
         "src/loushang/coding/ui/cli.py",
         "src/loushang/coding/__init__.py",
     ):

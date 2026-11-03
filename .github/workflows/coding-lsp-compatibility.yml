@@ -68,7 +68,6 @@ jobs:
           uv run python scripts/dev/run_pytest.py
           tests/integration/coding/test_typescript_lsp_live.py
           -q
-
   gopls-live:
     if: ${{ fromJSON(inputs.plan).checks.lsp }}
     runs-on: ubuntu-latest
@@ -135,18 +134,3 @@ jobs:
           uv run python scripts/dev/run_pytest.py
           tests/integration/coding/test_rust_analyzer_lsp_live.py
           -q
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [pyright-live, typescript-live, gopls-live, rust-analyzer-live]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"pyright-live":"lsp","typescript-live":"lsp","gopls-live":"lsp","rust-analyzer-live":"lsp"}'

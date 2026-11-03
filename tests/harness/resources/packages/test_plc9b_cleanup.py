@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -18,6 +19,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
     PackageQuarantineCleanupJournal,
+    PackageQuarantineCleanupJournalError,
     PackageQuarantineCleanupStatusV1,
 )
 
@@ -96,6 +98,65 @@ def _pending(tmp_path: Path):
         rejection_stage="inspecting",
     )
     return journal, status, store, attempt
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor-relative proof")
+def test_quarantine_observation_tracks_exact_attempt_without_writing(
+    tmp_path: Path,
+) -> None:
+    candidate, store = _candidate(tmp_path)
+    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+
+    [present] = store.observe_attempts("cleanup-operation", 1, ("root",))
+
+    assert present.node_id == "root"
+    assert present.store_identity == store._root_identity
+    assert present.attempt_identity == candidate.cleanup_target().attempt_identity
+    assert present.attempt_name == candidate.cleanup_target().attempt_name
+    assert (
+        tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+        == before
+    )
+
+    candidate.cleanup()
+    [absent] = store.observe_attempts("cleanup-operation", 1, ("root",))
+    assert absent.attempt_identity is None
+    assert absent.attempt_name == present.attempt_name
+    assert store.observe_empty() == store._root_identity
+    (store.root / "unrelated-file").write_bytes(b"residue")
+    with pytest.raises(OSError, match="not empty"):
+        store.observe_empty()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor-relative proof")
+def test_quarantine_observation_refuses_link_in_exact_attempt_slot(
+    tmp_path: Path,
+) -> None:
+    candidate, store = _candidate(tmp_path)
+    attempt = store.root / candidate.cleanup_target().attempt_name
+    displaced = store.root / "displaced-attempt"
+    attempt.rename(displaced)
+    attempt.symlink_to(displaced, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        store.observe_attempts("cleanup-operation", 1, ("root",))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor-relative proof")
+def test_quarantine_observation_refuses_moved_removed_identity(
+    tmp_path: Path,
+) -> None:
+    candidate, store = _candidate(tmp_path)
+    target = candidate.cleanup_target()
+    (store.root / target.attempt_name).rename(store.root / "displaced-attempt")
+
+    with pytest.raises(OSError, match="identity moved"):
+        store.observe_attempts(
+            target.operation_id,
+            target.attempt_epoch,
+            (target.node_id,),
+            removed_identities=(target.attempt_identity,),
+        )
 
 
 def test_cleanup_tombstone_is_pathless_append_once_and_exactly_repairable(
@@ -194,3 +255,32 @@ def test_cleanup_repair_adopts_delete_completed_before_journal_append(
 
     assert completed.disposition == "cleanup_complete"
     assert len(journal.records()) == 2
+
+
+def test_cleanup_operation_tombstones_are_strict_read_only_owner_evidence(
+    tmp_path: Path,
+) -> None:
+    journal_path = tmp_path / "cleanup.jsonl"
+    journal = PackageQuarantineCleanupJournal(journal_path)
+    lock_path = journal_path.with_name(f"{journal_path.name}.lock")
+    assert journal.read_operation_tombstones("cleanup-operation") == ()
+    assert not journal_path.exists()
+    assert not lock_path.exists()
+
+    journal, pending, store, _attempt = _pending(tmp_path)
+    assert journal.read_operation_tombstones("cleanup-operation") == (pending,)
+    assert journal.read_operation_tombstones("different-operation") == ()
+    completed = journal.repair(
+        pending.target.cleanup_id,
+        expected_cleanup_revision=pending.cleanup_revision,
+        store=store,
+    )
+    assert journal.read_operation_tombstones("cleanup-operation") == (completed,)
+
+    with journal.path.open("ab") as output:
+        output.write(b'{"partial":')
+    before = journal.path.read_bytes()
+    with pytest.raises(PackageQuarantineCleanupJournalError) as corrupt:
+        journal.read_operation_tombstones("cleanup-operation")
+    assert corrupt.value.code == "package_cleanup_journal_corrupt"
+    assert journal.path.read_bytes() == before

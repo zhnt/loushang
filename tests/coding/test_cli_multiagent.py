@@ -357,3 +357,71 @@ def test_scripted_provider_exercises_the_real_coding_runtime_without_credentials
         assert not tuple((project / ".loushang" / "sessions").glob("*.jsonl"))
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("primary", ["timeout", "failed", "cleanup_only"])
+def test_recipe_cli_preserves_cleanup_diagnostics(tmp_path, monkeypatch, primary):
+    from types import SimpleNamespace
+
+    from loushang.harness.multiagent import AgentPath, AgentRef, RecipeExecutionError
+    from loushang.harness.multiagent.executor import (
+        ImmediateRecipeExecutor,
+        _report_cleanup_failures,
+    )
+
+    async def scenario():
+        failure = (
+            TimeoutError("late")
+            if primary == "timeout"
+            else RuntimeError("business failed")
+            if primary == "failed"
+            else RecipeExecutionError("recipe_cleanup_failed", "child cleanup failed")
+        )
+        ref = AgentRef(AgentPath.root().child("reviewer"), 1)
+        _report_cleanup_failures(failure, ((ref, OSError("specific workspace fault")),))
+
+        async def run(self, recipe, request):
+            raise failure
+
+        monkeypatch.setattr(ImmediateRecipeExecutor, "run", run)
+
+        class Runtime:
+            disposed = False
+
+            async def create_session(self, **kwargs):
+                return SimpleNamespace(multiagent_runtime=object())
+
+            async def dispose_session_runtime(self, **kwargs):
+                self.disposed = True
+
+        runtime = Runtime()
+        stderr = StringIO()
+        result = await run_coding_multiagent_command(
+            (
+                "run",
+                "debate",
+                "--prompt",
+                "Decide",
+                "--timeout",
+                "1",
+                "--session-dir",
+                str(tmp_path / "sessions"),
+            ),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=SimpleNamespace(),
+            build_services=lambda cwd: SimpleNamespace(),
+            build_tool_registry=lambda **kwargs: object(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert result == 1 and runtime.disposed
+        output = stderr.getvalue()
+        assert str(ref) in output and "specific workspace fault" in output
+        assert "retry close_agent" in output
+        if primary == "timeout":
+            assert "timed out after 1s" in output
+        elif primary == "failed":
+            assert "business failed" in output
+
+    asyncio.run(scenario())

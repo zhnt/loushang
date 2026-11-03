@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from loushang.ai.context import NormalizedContext
+from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.model import (
     AdapterConfig,
     Auth,
@@ -41,6 +41,70 @@ def start_test_provider_stream(
         lambda: provider.invoke_raw(resolved),
         options=options,
         request=resolved,
+    )
+
+
+def normalized_context_for_test(
+    api: str,
+    model: object,
+    context: object,
+    options: object | None = None,
+) -> NormalizedContext:
+    if not isinstance(model, Model) or not model.api:
+        model = bound_test_model(model, api=api, options=options)
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def invoke_raw_parts_for_test(
+    api: str,
+    provider,
+    model,
+    context,
+    options=None,
+    request=None,
+    *,
+    mode: str = "stream",
+):
+    normalized_context = normalized_context_for_test(
+        api,
+        request.model if request is not None else model,
+        context,
+        options,
+    )
+    provider_request = provider_request_for_test(
+        provider,
+        model,
+        normalized_context,
+        options=options,
+        request=request,
+    )
+    if mode != "stream":
+        provider_request = replace(provider_request, mode=mode)
+    return provider.invoke_raw(provider_request)
+
+
+async def stream_for_test(
+    api: str,
+    provider,
+    model,
+    context,
+    options=None,
+    request=None,
+):
+    return start_test_provider_stream(
+        provider,
+        model,
+        normalized_context_for_test(
+            api,
+            request.model if request is not None else model,
+            context,
+            options,
+        ),
+        options,
+        request=request,
     )
 
 

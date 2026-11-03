@@ -21,6 +21,7 @@ from loushang.appservice.discovery_ports import (
     require_discovery_context,
 )
 from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
+from loushang.appservice.managed_mux import ManagedMuxServiceBindingV1
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
@@ -94,11 +95,14 @@ class HostedApplicationRequestV1:
     service_id_factory: Callable[[], str] | None = None
     discovery: HostedSessionDiscoveryBindingV1 | None = None
     execution: HostedExecutionServiceBindingV1 | None = None
+    managed_mux: ManagedMuxServiceBindingV1 | None = None
 
     def __post_init__(self) -> None:
         require_discovery_context(self.discovery, self.product_id, self.generation_id)
         if self.execution is not None and type(self.execution) is not HostedExecutionServiceBindingV1:
             raise TypeError("invalid execution activation")
+        if self.managed_mux is not None and type(self.managed_mux) is not ManagedMuxServiceBindingV1:
+            raise TypeError("invalid managed Mux activation")
         if type(self.activation) is not HostedApplicationActivationV1:
             raise TypeError("hosted application requires explicit activation")
         if _STABLE_ID.fullmatch(self.product_id) is None:
@@ -244,6 +248,16 @@ class HostedApplicationRuntimeV1:
     @property
     def execution_enabled(self) -> bool:
         return self._service is not None and self._service._execution_registry is not None
+
+    @property
+    def managed_mux_instance(self) -> str | None:
+        binding = None if self._service is None else self._service._managed_mux
+        return None if binding is None else binding.instance_id
+
+    @property
+    def managed_mux_close_enabled(self) -> bool:
+        binding = None if self._service is None else self._service._managed_mux
+        return binding is not None and binding.closing is not None
 
     def enable_client_scopes(self) -> None:
         """Select scoped authority after recovery and before borrowing any client.
@@ -428,6 +442,8 @@ def create_hosted_application_runtime(
 
     if type(request) is not HostedApplicationRequestV1:
         raise TypeError("invalid hosted application request")
+    if request.managed_mux is not None:
+        raise ValueError("managed Mux requires application continuity")
     service = AppServiceV1(
         product_id=request.product_id,
         resolver=request.resolver,

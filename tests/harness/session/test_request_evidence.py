@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,12 +27,563 @@ from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogSummary,
 )
 from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
     RESOURCE_EVIDENCE_METADATA_KEY,
     RESOURCE_EVIDENCE_SCHEMA_ID,
     PreparedResourceEvidence,
     RequestEvidenceIntegrityError,
     SessionRequestEvidenceRuntime,
 )
+from loushang.harness.transcript.model_input_types import (
+    ModelInputComponent,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
+    hash_model_input_json,
+)
+
+
+def _snapshot(
+    *,
+    snapshot_id: str,
+    additional_components: tuple[ModelInputComponentReference, ...] = (),
+) -> ModelInputSnapshot:
+    fingerprint = "a" * 64
+    logical = tuple(
+        ModelInputComponentReference(name, "component", fingerprint)
+        for name in ("system_prompt", "messages", "tools", "request_options")
+    )
+    return ModelInputSnapshot(
+        snapshot_id=snapshot_id,
+        invocation_id="invocation",
+        attempt=1,
+        purpose="continuation",
+        product_id="coding",
+        runtime_id="session",
+        mount_generation=0,
+        profile_fingerprint=fingerprint,
+        registration_revision=fingerprint,
+        conversation_id="conversation",
+        source_leaf_id="message",
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider",
+        model_id="model",
+        api_id="api",
+        endpoint_id="endpoint",
+        logical_components=logical + additional_components,
+        prepared_payload_components=(),
+        model_visible_headers_component=ModelInputComponentReference(
+            "model_visible_headers", "component", fingerprint
+        ),
+        logical_input_hash=fingerprint,
+        prepared_payload_hash=fingerprint,
+    )
+
+
+def test_evidence_free_resume_does_not_rebuild_historical_requests() -> None:
+    snapshot = _snapshot(snapshot_id="snapshot-0")
+    records = [
+        ConversationRecord(
+            record_id=f"snapshot-record-{index}",
+            parent_id=(f"snapshot-record-{index - 1}" if index else None),
+            kind="model.input.prepared",
+            payload_version=1,
+            created_at="2026-09-28T00:00:00Z",
+            payload=replace(snapshot, snapshot_id=f"snapshot-{index}"),
+            metadata={},
+        )
+        for index in range(700)
+    ]
+
+    def unexpected_rebuild(snapshot_id: str) -> None:
+        pytest.fail(f"unrelated historical request was rebuilt: {snapshot_id}")
+
+    def unexpected_bindings():
+        pytest.fail("evidence-free request replayed the full context")
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=unexpected_bindings,
+        get_active_records=lambda: records,
+        rebuild_model_input=unexpected_rebuild,
+    )
+    assert runtime.project_model_input(_preparation([])) is None
+    assert runtime.project_model_input(_preparation([])) is None
+
+
+def test_evidence_free_async_recovery_skips_context_replay() -> None:
+    import asyncio
+
+    snapshot = _snapshot(snapshot_id="snapshot-0")
+    records = [
+        ConversationRecord(
+            record_id="snapshot-record",
+            parent_id=None,
+            kind="model.input.prepared",
+            payload_version=1,
+            created_at="2026-10-21T00:00:00Z",
+            payload=snapshot,
+            metadata={},
+        )
+    ]
+
+    def unexpected_bindings():
+        pytest.fail("evidence-free snapshot replayed the full context")
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=unexpected_bindings,
+        get_active_records=lambda: records,
+        rebuild_model_input=lambda snapshot_id: pytest.fail(
+            f"evidence-free snapshot was rebuilt: {snapshot_id}"
+        ),
+    )
+    asyncio.run(runtime.prepare_model_input_async())
+    assert runtime._hydrated_record_ids == ("snapshot-record",)
+
+
+def test_append_recovery_scans_only_new_snapshot_records(monkeypatch) -> None:
+    import loushang.harness.session.request_evidence as evidence_module
+
+    class CountedRecord:
+        def __init__(self, record: ConversationRecord) -> None:
+            self.record = record
+            self.payload_reads = 0
+            self.record_id_reads = 0
+
+        def __getattr__(self, name: str):
+            if name == "payload":
+                self.payload_reads += 1
+            elif name == "record_id":
+                self.record_id_reads += 1
+            return getattr(self.record, name)
+
+    snapshot = _snapshot(snapshot_id="historical")
+    history = [
+        CountedRecord(
+            ConversationRecord(
+                record_id=f"snapshot-{index}",
+                parent_id=f"snapshot-{index - 1}" if index else None,
+                kind="model.input.prepared",
+                payload_version=1,
+                created_at="2026-10-22T00:00:00Z",
+                payload=replace(snapshot, snapshot_id=f"historical-{index}"),
+                metadata={},
+            )
+        )
+        for index in range(100)
+    ]
+    records = list(history)
+    runtime = _runtime(records, [])
+    assert runtime.project_model_input(_preparation([])) is None
+    for record in history:
+        record.payload_reads = 0
+        record.record_id_reads = 0
+    records.append(
+        CountedRecord(
+            ConversationRecord(
+                record_id="tool-result",
+                parent_id="snapshot-99",
+                kind="test.tool-result",
+                payload_version=1,
+                created_at="2026-10-22T00:00:01Z",
+                payload={},
+                metadata={},
+            )
+        )
+    )
+    scanned: list[int] = []
+    original_enumerate = enumerate
+
+    def count_snapshot_scan(items, *args):
+        iterator = original_enumerate(items, *args)
+        if len(items) != len(records) or not isinstance(items[0], CountedRecord):
+            return iterator
+
+        def counted():
+            for index, item in iterator:
+                scanned.append(index)
+                yield index, item
+
+        return counted()
+
+    monkeypatch.setattr(evidence_module, "enumerate", count_snapshot_scan, raising=False)
+    import asyncio
+
+    asyncio.run(runtime.prepare_model_input_async())
+    assert sum(record.record_id_reads for record in history) <= len(history)
+    assert runtime.project_model_input(_preparation([])) is None
+    assert sum(record.payload_reads for record in history) == 0
+    assert len(scanned) <= 1
+
+
+def test_certified_evidence_free_append_skips_historical_path_recovery() -> None:
+    import asyncio
+
+    template = _snapshot(snapshot_id="snapshot-0")
+    records = [
+        ConversationRecord(
+            record_id=f"record-{index}",
+            parent_id=f"record-{index - 1}" if index else None,
+            kind="model.input.prepared",
+            payload_version=1,
+            created_at="2026-10-22T00:00:00Z",
+            payload=replace(template, snapshot_id=f"snapshot-{index}"),
+            metadata={},
+        )
+        for index in range(100)
+    ]
+    reads = 0
+
+    def active_records():
+        nonlocal reads
+        reads += 1
+        return records
+
+    def append_suffix(previous_id: str):
+        positions = [
+            index for index, record in enumerate(records) if record.record_id == previous_id
+        ]
+        return tuple(records[positions[0] + 1 :]) if len(positions) == 1 else None
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda: pytest.fail("no Resource evidence"),
+        get_active_records=active_records,
+        get_append_only_records_since=append_suffix,
+        rebuild_model_input=lambda snapshot_id: pytest.fail(
+            f"evidence-free snapshot was rebuilt: {snapshot_id}"
+        ),
+    )
+    assert runtime.project_model_input(_preparation([])) is None
+    before = reads
+    records.append(
+        replace(
+            records[-1],
+            record_id="certified-record",
+            parent_id=records[-1].record_id,
+            payload=replace(template, snapshot_id="certified-snapshot"),
+        )
+    )
+    runtime.note_committed_model_input(
+        "certified-snapshot", has_resource_evidence=False
+    )
+    asyncio.run(runtime.prepare_model_input_async())
+    assert runtime.project_model_input(_preparation([])) is None
+    assert reads == before
+
+    records.append(
+        replace(
+            records[-1],
+            record_id="unknown-record",
+            parent_id=records[-1].record_id,
+            payload=replace(template, snapshot_id="unknown-snapshot"),
+        )
+    )
+    asyncio.run(runtime.prepare_model_input_async())
+    assert reads > before
+
+
+@pytest.mark.parametrize(
+    "outcome", ["complete", "cancel", "close", "corrupt", "append_corrupt"]
+)
+def test_evidence_recovery_yields_and_never_publishes_partial_or_stale_state(
+    monkeypatch, outcome: str
+) -> None:
+    import asyncio
+
+    import loushang.harness.session.request_evidence as evidence_module
+
+    async def scenario() -> None:
+        snapshot = _snapshot(snapshot_id="historical")
+        records = [
+            ConversationRecord(
+                record_id=f"snapshot-{index}",
+                parent_id=f"snapshot-{index - 1}" if index else None,
+                kind="model.input.prepared",
+                payload_version=1,
+                created_at="2026-10-21T00:00:00Z",
+                payload=replace(snapshot, snapshot_id=f"historical-{index}"),
+                metadata={},
+            )
+            for index in range(120)
+        ]
+        runtime = _runtime(records, [])
+        clock = [0.0]
+        reads = []
+        fault = [outcome]
+        original_read = evidence_module.ModelInputLogicalComponentReader.read
+
+        def read(reader, record, name):
+            clock[0] += 0.005
+            reads.append(record.record_id)
+            if fault[0] == "corrupt" and len(reads) == 7:
+                raise RequestEvidenceIntegrityError("corrupt historical component")
+            return original_read(reader, record, name)
+
+        monkeypatch.setattr(
+            evidence_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+        )
+        monkeypatch.setattr(
+            evidence_module.ModelInputLogicalComponentReader, "read", read
+        )
+        existing = asyncio.all_tasks()
+        job = asyncio.create_task(runtime.prepare_model_input_async())
+
+        async def input_or_interrupt():
+            while not reads:
+                await asyncio.sleep(0)
+            assert len(reads) < 120, "input did not run during historical recovery"
+            assert runtime._hydrated_record_ids is None
+            if outcome == "cancel":
+                job.cancel()
+            elif outcome == "close":
+                runtime.close()
+            elif outcome == "append_corrupt":
+                records.append(
+                    replace(
+                        records[-1],
+                        record_id="bad-suffix",
+                        parent_id=records[-1].record_id,
+                        metadata={RESOURCE_EVIDENCE_METADATA_KEY: {}},
+                    )
+                )
+
+        observer = asyncio.create_task(input_or_interrupt())
+        (result,) = await asyncio.gather(job, return_exceptions=True)
+        await observer
+        if outcome == "close":
+            assert isinstance(result, RuntimeError) and "closed" in str(result)
+        elif outcome == "corrupt":
+            assert isinstance(result, RequestEvidenceIntegrityError)
+        elif outcome == "cancel":
+            assert isinstance(result, asyncio.CancelledError)
+        else:
+            assert result is None
+        if outcome in {"cancel", "close", "corrupt"}:
+            assert runtime._hydrated_record_ids is None
+            assert runtime._recovered == {}
+        if outcome == "append_corrupt":
+            with pytest.raises(RequestEvidenceIntegrityError, match="non-message"):
+                runtime.project_model_input(_preparation([]))
+        elif outcome != "close":
+            fault[0] = "complete"
+            await runtime.prepare_model_input_async()
+            before = len(reads)
+            assert runtime.project_model_input(_preparation([])) is None
+            assert len(reads) == before
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(scenario())
+
+
+def test_snapshot_only_evidence_follows_its_source_branch() -> None:
+    import asyncio
+
+    message = _user_message("branch message")
+    message_record = _message_record("message", message)
+    evidence = _runtime([], []).prepare(
+        PromptPreflightResult(
+            text="branch message", loaded_skills=(_loaded_skill(),)
+        )
+    )
+    assert evidence is not None
+    payload = {
+        "contextComplete": True,
+        "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+        "schemaVersion": 1,
+        "messages": [
+            evidence.to_message_payload(message_record_id="message", message_index=0)
+        ],
+    }
+    component_hash = hash_model_input_json(payload, name="branch Resource evidence")
+    component_record = ConversationRecord(
+        record_id="component",
+        parent_id="message",
+        kind="model.input.component",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=ModelInputComponent(content_hash=component_hash, content=payload),
+        metadata={},
+    )
+    snapshot_record = ConversationRecord(
+        record_id="snapshot-record",
+        parent_id="component",
+        kind="model.input.prepared",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=_snapshot(
+            snapshot_id="snapshot",
+            additional_components=(
+                ModelInputComponentReference(
+                    RESOURCE_EVIDENCE_COMPONENT, "component", component_hash
+                ),
+            ),
+        ),
+        metadata={},
+    )
+    other_branch = ConversationRecord(
+        record_id="other-branch",
+        parent_id="message",
+        kind="test.branch",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=None,
+        metadata={},
+    )
+    active = [message_record, component_record, snapshot_record]
+    rebuilds: list[str] = []
+
+    def rebuild(snapshot_id: str) -> SimpleNamespace:
+        rebuilds.append(snapshot_id)
+        return SimpleNamespace(
+            logical_input={
+                RESOURCE_EVIDENCE_COMPONENT: payload,
+                "messages": [message],
+            }
+        )
+
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (active if records is None else records)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=rebuild,
+    )
+    preparation = _preparation([message])
+    asyncio.run(runtime.prepare_model_input_async())
+    assert runtime.project_model_input(preparation) == payload
+    active[:] = [message_record]
+    assert runtime.project_model_input(preparation) is None
+    active[:] = [message_record, other_branch]
+    assert runtime.project_model_input(preparation) is None
+    active[:] = [message_record, component_record, snapshot_record]
+    assert runtime.project_model_input(preparation) == payload
+    assert rebuilds == ["snapshot", "snapshot"]
+
+
+def test_anchor_hydration_is_atomic_after_invalid_metadata() -> None:
+    first = _user_message("first")
+    second = _user_message("second")
+    evidence = _runtime([], []).prepare(
+        PromptPreflightResult(text="first", loaded_skills=(_loaded_skill(),))
+    )
+    assert evidence is not None
+    records = [
+        _message_record(
+            "first",
+            first,
+            metadata={RESOURCE_EVIDENCE_METADATA_KEY: evidence.to_message_metadata()},
+        ),
+        _message_record(
+            "second",
+            second,
+            parent_id="first",
+            metadata={RESOURCE_EVIDENCE_METADATA_KEY: {"schemaId": "invalid"}},
+        ),
+    ]
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (records if records is not None else active)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=lambda _snapshot_id: pytest.fail("no snapshot exists"),
+    )
+    active = records
+    with pytest.raises((RequestEvidenceIntegrityError, ValueError, TypeError)):
+        runtime.project_model_input(_preparation([first, second]))
+    assert runtime._recovered == {}
+    assert runtime._hydrated_record_ids is None
+    active = [records[0], replace(records[1], metadata={})]
+    projected = runtime.project_model_input(_preparation([first, second]))
+    assert projected is not None
+    assert projected["messages"] == [
+        evidence.to_message_payload(message_record_id="first", message_index=0)
+    ]
+
+
+def test_mixed_anchor_and_legacy_conflict_does_not_poison_retry() -> None:
+    first = _user_message("first")
+    second = _user_message("second")
+    anchor = _runtime([], []).prepare(
+        PromptPreflightResult(text="first", loaded_skills=(_loaded_skill(),))
+    )
+    legacy = _runtime([], []).prepare(
+        PromptPreflightResult(text="second", loaded_skills=(_loaded_skill(),))
+    )
+    assert anchor is not None and legacy is not None
+    conflicting_skill = dict(anchor.skills[0])
+    conflicting_skill["catalogGeneration"] = 8
+    conflicting = PreparedResourceEvidence(
+        model_visible_text="first", skills=(conflicting_skill,)
+    )
+    payload = {
+        "contextComplete": True,
+        "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+        "schemaVersion": 1,
+        "messages": [
+            conflicting.to_message_payload(message_record_id="first", message_index=0),
+            legacy.to_message_payload(message_record_id="second", message_index=1),
+        ],
+    }
+    component_hash = hash_model_input_json(payload, name="mixed Resource evidence")
+    first_record = _message_record(
+        "first",
+        first,
+        metadata={RESOURCE_EVIDENCE_METADATA_KEY: anchor.to_message_metadata()},
+    )
+    second_record = _message_record("second", second, parent_id="first")
+    component_record = ConversationRecord(
+        record_id="component",
+        parent_id="second",
+        kind="model.input.component",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=ModelInputComponent(content_hash=component_hash, content=payload),
+        metadata={},
+    )
+    snapshot_record = ConversationRecord(
+        record_id="snapshot-record",
+        parent_id="component",
+        kind="model.input.prepared",
+        payload_version=1,
+        created_at="2026-09-28T00:00:00Z",
+        payload=_snapshot(
+            snapshot_id="snapshot",
+            additional_components=(
+                ModelInputComponentReference(
+                    RESOURCE_EVIDENCE_COMPONENT, "component", component_hash
+                ),
+            ),
+        ),
+        metadata={},
+    )
+    active = [first_record, second_record, component_record, snapshot_record]
+    runtime = SessionRequestEvidenceRuntime(
+        get_context_message_bindings=lambda records=None: tuple(
+            (record.record_id, record.payload)
+            for record in (active if records is None else records)
+            if record.kind == "agent.message"
+        ),
+        get_active_records=lambda: active,
+        rebuild_model_input=lambda _snapshot_id: SimpleNamespace(
+            logical_input={
+                RESOURCE_EVIDENCE_COMPONENT: payload,
+                "messages": [first, second],
+            }
+        ),
+    )
+    with pytest.raises(RequestEvidenceIntegrityError, match="disagrees"):
+        runtime.project_model_input(_preparation([first, second]))
+    assert runtime._recovered == {}
+    assert runtime._hydrated_record_ids is None
+    active[:] = [first_record, second_record]
+    projected = runtime.project_model_input(_preparation([first, second]))
+    assert projected is not None
+    assert projected["messages"] == [
+        anchor.to_message_payload(message_record_id="first", message_index=0)
+    ]
 
 
 def test_loaded_skill_projects_only_json_safe_exact_receipt_evidence() -> None:

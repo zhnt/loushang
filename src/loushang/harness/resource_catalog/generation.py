@@ -38,6 +38,9 @@ from loushang.harness.resource_catalog._owner_authority import (
     _restore_recorded_resource_owner_cleanup_shadow,
 )
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resource_catalog.shadow import (
     UnpublishedResourceCatalogShadowGeneration,
     run_first_party_resource_catalog_shadow,
@@ -541,6 +544,7 @@ async def prepare_first_party_resource_owner_generation(
     catalog_generation: int = 1,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     issued_at: int,
     expires_at: int,
@@ -569,6 +573,7 @@ async def prepare_first_party_resource_owner_generation(
         catalog_generation=catalog_generation,
         root_handles=root_handles,
         package_resources=package_resources,
+        product_snapshot_resources=product_snapshot_resources,
         embedded_collections=embedded_collections,
         issued_at=issued_at,
         expires_at=expires_at,

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
+
+from tests.architecture._source_imports import resolved_imports
 
 APPHOST = Path("src/loushang/apphost")
 APPSERVER = Path("src/loushang/appserver")
@@ -30,25 +31,7 @@ def _source(path: Path) -> str:
 
 
 def _imports(path: Path) -> set[str]:
-    imports: set[str] = set()
-    package = path.parent.relative_to("src").parts
-    for node in ast.walk(ast.parse(_source(path), filename=str(path))):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            retained = len(package) - (node.level - 1) if node.level else 0
-            base = (
-                (*package[:retained], *(node.module or "").split("."))
-                if node.level
-                else tuple((node.module or "").split("."))
-            )
-            normalized = tuple(part for part in base if part)
-            if normalized:
-                imports.add(".".join(normalized))
-            imports.update(
-                ".".join((*normalized, alias.name)) for alias in node.names
-            )
-    return imports
+    return resolved_imports(path, reject_invalid_relative=False)
 
 
 def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
@@ -135,11 +118,24 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             consumer == Path("src/loushang/coding/appservice_adapter.py")
             or consumer == Path("src/loushang/coding/hosted_application.py")
             or consumer == Path("src/loushang/coding/hosted_catalog.py")
+            or consumer == Path("src/loushang/coding/hosted_resume.py")
+            or consumer == Path("src/loushang/coding/managed_catalog.py")
+            or consumer == Path("src/loushang/coding/managed_bootstrap.py")
+            or consumer == Path("src/loushang/coding/managed_local.py")
             or consumer == Path("src/loushang/coding/hosted_session.py")
             or consumer == Path("src/loushang/coding/hosted_execution.py")
+            # Reviewed Method capability values and Product execution adapter.
+            or consumer == Path("src/loushang/coding/hosted_method.py")
+            or consumer == Path("src/loushang/coding/_hosted_method_config.py")
+            # COD-KD-HG-001: Goal values and shared safe Work projection.
+            or consumer == Path("src/loushang/coding/hosted_goal.py")
+            or consumer == Path("src/loushang/coding/_hosted_work_observation.py")
+            # Retained native execution and original subject borrow, no binder.
+            or consumer == Path("src/loushang/coding/_hosted_execution_work.py")
             or consumer == Path("src/loushang/coding/cli/hosted.py")
             or consumer == Path("src/loushang/coding/cli/hosted_client.py")
             or consumer == Path("src/loushang/coding/cli/mux.py")
+            or consumer == Path("src/loushang/coding/cli/lmux_command.py")
             or consumer == Path("src/loushang/coding/hosted_bootstrap.py")
             or consumer == Path("src/loushang/coding/hosted_local.py")
             or consumer == APPLICATION
@@ -147,9 +143,33 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == FOREGROUND
             or consumer == APPHOST / "local.py"
             or consumer == APPHOST / "launcher.py"
+            or consumer == APPHOST / "managed/connection.py"
+            or consumer == APPHOST / "managed/coordinator.py"
+            or consumer == APPHOST / "managed/mux_creation.py"
+            or consumer == APPHOST / "managed/mux_management.py"
+            or consumer == APPHOST / "managed/registry.py"
+            or consumer == APPHOST / "managed/mux_probe.py"
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
         ), consumer
+    # Reviewed LMUX receipt decoding and read-only authenticated discovery.
+    for filename, expected in {
+        "registry.py": {
+            "loushang.appserver.managed_mux",
+            "loushang.appserver.managed_mux.ManagedMuxCreatedV1",
+        },
+        "mux_probe.py": {
+            "loushang.appserver.local_record",
+            "loushang.appserver.local_record.require_endpoint",
+            "loushang.appserver.protocol",
+            *(f"loushang.appserver.protocol.{name}" for name in (
+                "AppErrorCodeV1", "AppServiceError", "MuxReadV1",
+                "MuxSelectorV1", "MuxSpaceV1",
+            )),
+        },
+    }.items():
+        assert {name for name in _imports(APPHOST / "managed" / filename)
+                if name.startswith("loushang.appserver")} == expected
     hosted = _source(HOSTED)
     for forbidden in (
         ".session.",

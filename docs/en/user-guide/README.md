@@ -36,6 +36,22 @@ loushang -p "Summarize the current project."
 
 For building terminal UI applications with `loushang.tui`, see [Building TUI Apps](tui.md).
 
+In the conversation screen, click **Show Detail** or **Show Less** to expand or
+collapse one tool result. Direct SSH sessions request mouse reports by default,
+even when the remote host cannot write to your local clipboard. In that case,
+copying selected text reports that the clipboard is unavailable. Set
+`LOUSHANG_TUI_OSC52=1` only if your terminal accepts OSC 52 clipboard writes,
+or set `LOUSHANG_TUI_MOUSE_POLICY=terminal` to keep the terminal's native mouse
+selection instead of clickable controls. Inside tmux, turn on its `mouse`
+option to forward clicks; with that option off, use F4 and Enter to operate
+detail controls from the keyboard. In Apple's Terminal app, enable **View →
+Allow Mouse Reporting**; the app cannot receive clicks when that terminal
+setting is off. `/terminal` shows `mouse_mode_active` and
+`mouse_event_observed` for diagnosis.
+
+For the Linux background named-Mux development preview, see the [lmux guide](lmux.md),
+including storage, reconnection, and upgrade limitations.
+
 ### Explicit Hosted Application
 
 `loushang-hosted` is an opt-in foreground stdio server for an application
@@ -78,6 +94,19 @@ common sort. `--continue` resumes the newest session in the current project,
 while `--resume <session-id-or-path>` and `/resume <session-id-or-path>` restore
 a specific session directly. Non-interactive use requires one of those explicit
 forms.
+
+Resume displays compatible saved history before it creates a writable current
+Session. New input always uses the current installation's Policy, Approval,
+Sandbox, Plugin, Tool, and resource state. Large histories can initially expose
+only a bounded, unverified tail; writable continuation stays unavailable until
+the selected history is verified within the current limit.
+
+Writable continuation requires the current Resume writer protocols:
+`coding.resume-continuation/v2` and the selected original owners'
+`resume-context/v1` capabilities. A runtime from before these protocols may be
+used to inspect or export a v2 transcript, but writing after an installation
+rollback is unsupported. Stop all Loushang processes, preserve the transcript,
+and upgrade forward before continuing it.
 
 Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/branch`, `/tree`, `/tools`, `/extensions`, `/export`, `/compact`, `/reload`, and `/quit`. `/fork` duplicates the current chat into a new session, `/clone` is a compatibility alias, and `/branch` opens a prompt picker for branching from an earlier user message.
 
@@ -213,11 +242,43 @@ repository config cannot introduce a new executable or environment override.
 
 Extensions are Python files that can register lifecycle hooks, tools, dynamic resources, commands, and flags. Start with the runnable extension examples in [examples/coding/extensions](../../../examples/coding/extensions/).
 
+For a small workspace extension, put `<name>.py` with `register(api)` in
+`.loushang/extensions/`; no Wheel build is required. A directory containing
+`extension.py` or `__init__.py` is also discovered. This is trusted Python
+executed in the Coding process. It has no independent Wheel Package lifecycle;
+the removed `--extension`/`-e` arguments are not an alternate loader.
+
+Run `loushang-coding-extension init .loushang/extensions/hello.py` to create a
+single-file template, then run the returned `smokeCommand`. It starts an offline
+Coding Session in a disposable fenced Product workspace and invokes the Tool.
+The Python Extension still runs in this process with the current user's
+permissions; the disposable workspace is not a code sandbox. Register tools
+after wrapping them with `direct_tool(...)` or `authorized_tool(...)`.
+
 An extension may include an adjacent `loushang-extension.toml` manifest to declare identity, permission level, dependencies, and expected runtime surfaces. Use `/extensions` to inspect loaded extensions, surface summaries, and diagnostics; use `/extensions <id>` for one extension. `/tools` includes source information for extension-provided tools when available.
 
 ## Packages And Plugins
 
 Packages and plugins can contribute reusable coding assets. Common lifecycle commands:
+
+For a reusable document-only Skill or Prompt Wheel, `loushang-plugin
+init-coding-skill ./reviewpack --resource-name review` (or
+`init-coding-prompt`) creates editable source and returns exact `buildCommand`
+and `smokeCommand` arrays. The smoke command installs and consumes that exact
+Wheel in a disposable offline POSIX Product workspace and reports admission,
+selection, and prepared-model-input use separately. It does not install into
+your own workspace. See the [authoring guide](../../internals/architecture/harness/plugin/plugin-authoring-guide.md)
+and [support matrix](../../internals/architecture/harness/plugin/plugin-support-matrix.md).
+
+For a Screen Theme candidate, use `loushang-plugin init-coding-theme ./themepack
+--resource-name dusk`, then its returned build and smoke commands. The Theme
+smoke checks an explicitly selected Screen style in a temporary POSIX Product
+workspace; Hosted Mux and general Theme rollout remain separate gates.
+
+In a fenced workspace, `loushang-coding-plugin-status --workspace PATH` and
+`/plugins status` show the same read-only support stages as the local SDK's
+`support_status()` query. A projected selection is still partial evidence;
+`productUse: not_checked` means no actual Session or Screen use was verified.
 
 ```bash
 loushang --list-plugins
@@ -226,6 +287,151 @@ loushang --install-package <source>
 loushang --check-package-updates
 loushang --update-packages
 ```
+
+On Linux, a fresh workspace with no prior Plugin state or legacy Plugin/Package settings can be switched offline to the fenced Product store:
+
+```bash
+loushang-package-cutover --workspace /absolute/path/to/workspace
+```
+
+Stop its Loushang processes first; the command also refuses a live pre-fence writer. The existing Loushang private home must be owned by you and inaccessible to other users; the command does not change its permissions. It installs the checked-in base, LSP, and architecture Plugins through Product transactions and can be retried after interruption. It refuses workspaces that need legacy-state adoption or settings migration. Once fenced, use a fence-aware Loushang version; an older runtime cannot safely write the workspace.
+
+Existing workspaces continue to start with their compatible Plugin storage,
+preserving settings, installed Plugins and Session history. Ordinary startup
+does not require conversion, a new project directory or clearing private state.
+Fresh workspaces use the Product store automatically; already fenced workspaces
+reopen that store. The separate offline cutover command above is fresh-only and
+refuses old inputs before changing them. Historical review/adoption commands
+are not a general automatic conversion route.
+
+On Windows, the fresh-workspace cutover is an explicit candidate command. Stop Loushang processes first, then run:
+
+```powershell
+loushang-package-cutover --workspace C:\path\to\workspace --windows-candidate
+```
+
+The offline command refuses old Plugin state and legacy Plugin/Package settings before creating a B fence. New ordinary Windows Coding Sessions enter the fenced Product store automatically in a fresh workspace; an existing B-fenced workspace reopens. Existing unfenced workspaces retain their compatible Session route. The `--windows-candidate` flag remains necessary for the separate offline cutover and GC commands. On Windows AMD64, `--worker-query-plugin` is an explicit, read-only query route for a persisted `coding-standard` print- or text-mode Session after the exact Worker release and per-install opt-in are approved. Ordinary Sessions do not select a Worker by default.
+
+The Windows AMD64 operator path uses `loushang-worker-windows-candidate --workspace PATH` before each subcommand. The old `--windows-candidate` spelling remains accepted by this command but is no longer required; the separate cutover and GC commands still require it. `candidate-capture --wheel WHEEL --contribution-id ID --owner-id coding` returns the candidate's Plugin ID and artifact digest. Pass those exact values to `candidate-install --plugin-id ID --artifact-digest DIGEST --operation-id OP`, then use its inventory revision with `candidate-enable --plugin-id ID --artifact-digest DIGEST --operation-id OP --expected-inventory-revision N`. Separately, `release-review --wheel LOUSHANG_WHEEL` returns a review ID for the installed Loushang backend Wheel. Use `release-status` to read the current approval generation, then `release-approve --wheel LOUSHANG_WHEEL --review-id ID --operation-id OP --expected-generation N` and `release-install --wheel LOUSHANG_WHEEL --review-id ID`. Finally, `candidate-status --plugin-id ID` supplies the current opt-in generation for `candidate-allow --plugin-id ID --operation-id OP --expected-generation N`. An absent approval or opt-in has generation `0`. Use a new operation ID for each change. `candidate-revoke` and `release-revoke` close the respective grants. For a version change, revoke opt-in first, capture the new Wheel, then run `candidate-update --plugin-id ID --from-artifact-digest OLD --artifact-digest NEW --operation-id OP --expected-inventory-revision N`. `candidate-disable` and `candidate-remove` take the selected artifact digest, a new operation ID, and the current inventory revision; removal also requires revoked opt-in and does not itself retire Package bytes. Every step rechecks the current Product owner; a passing artifact build alone grants no Worker execution.
+
+After a Windows Worker Session stops, its settled payload stage remains Product recovery debt. Stop all Product runtimes, use `list-attempts` to find its attempt ID and phase, then use `review-normal --attempt-id ID` to obtain a review ID and `retire-normal --attempt-id ID --review-id REVIEW` to retire that exact stage. The retirement command accepts the same review ID on retry after an interrupted deletion. A new Worker Session refuses admission while an earlier settled stage remains unretired.
+
+For a POSIX Package operation interrupted during staging, use the exact operation ID to inspect its checkpoint and request the narrow Product recovery:
+
+```sh
+loushang-package-repair --workspace /absolute/path/to/workspace inspect-staging <operation-id>
+loushang-package-repair --workspace /absolute/path/to/workspace repair-staging <operation-id>
+```
+
+Both actions activate Product recovery and open a runtime lease. `inspect-staging` does not select a repair for the requested operation. `repair-staging` selects and executes within one lease, returns a nonzero exit status unless the operation commits, and refuses changed Source, an active old lease, or mismatched staging evidence.
+
+For a `transaction_pinned` operation with no staging effect yet, use `repair-pinned <operation-id>` instead. Product rechecks the retained pin and Source before selecting and executing under one new lease. Do not use it for an operation with a staged receipt; that state uses `repair-staging`.
+
+For an A2 operation still marked `retryable_failure`, the separate `repair-retryable` action uses the Product's cross-runtime Source, cleanup, and lease checks before selecting and executing one retry. It returns a nonzero exit status unless the operation commits:
+
+```sh
+loushang-package-repair --workspace /absolute/path/to/workspace repair-retryable <operation-id>
+```
+
+For an abandoned active attempt, choose the action matching its Package phase. Each action checks the old lease and Source, settles the exact interrupted attempt through Product, and then selects and executes one retry under the same new runtime lease:
+
+```sh
+loushang-package-repair --workspace /absolute/path/to/workspace repair-unstarted <operation-id>  # classified or acquiring
+loushang-package-repair --workspace /absolute/path/to/workspace repair-acquired <operation-id>   # acquired, inspecting, or extracted
+loushang-package-repair --workspace /absolute/path/to/workspace repair-resolving <operation-id>  # resolving_closure
+loushang-package-repair --workspace /absolute/path/to/workspace repair-verified <operation-id>   # closure_verified
+```
+
+These actions refuse a mismatched phase, changed Source, or live prior lease and return nonzero unless Product commits. If a run stops after the old attempt becomes `retryable_failure`, use `repair-retryable` for that exact operation. Pinned and staged states use the separate actions above; later transaction states still need Product recovery. This is not a general Package repair command.
+
+If an update committed but its Package handoff stopped before the terminal receipt, recover that exact operation without activating general Package recovery:
+
+```sh
+loushang-package-repair --workspace /absolute/path/to/workspace repair-handoff <operation-id>
+```
+
+Product requires a terminal handoff for the requested operation ID. An unknown ID does not recover another pending operation. This action does not repair an earlier A2 transaction phase.
+
+Local Python operators can use `open_coding_package_repair_client(workspace)` from `loushang.coding.package_product_repair` and call `client.perform(action, operation_id)`. The typed result exposes `committed` and a pathless `to_dict()`; `inspect-staging` returns checkpoint evidence without a committed disposition. This is a Coding management API, separate from the Plugin author SDK.
+
+In the Coding Screen or plain TUI, `/plugins repair-package repair-retryable <operation-id>` invokes the same explicit Product repair action without sending a model prompt. Replace `repair-retryable` with one of the other actions above only when its Package phase matches. The current Session keeps its selected resources; start a new Session after a committed repair. This command is separate from `/plugins repair <operation-id>`, which repairs a pending Desired State command.
+
+On Linux, immutable Plugin roots in a fenced workspace have a separate offline GC command. Stop all Loushang Sessions first. `prepare` recovers Product transactions and durably seals GC writers; it is a one-way maintenance step. `list` shows exact candidate and reservation IDs without filesystem paths. Copy an exact candidate ID to delete one root:
+
+```bash
+loushang-package-gc --workspace /absolute/path/to/workspace prepare
+loushang-package-gc --workspace /absolute/path/to/workspace list
+loushang-package-gc --workspace /absolute/path/to/workspace delete --candidate-id <candidate-id> --attempt-key <your-attempt-key>
+```
+
+Keep the attempt key to repeat the same request safely. If deletion started but did not settle, use the reservation ID shown in the result or `list` with a new attempt key:
+
+```bash
+loushang-package-gc --workspace /absolute/path/to/workspace retry --reservation-id <reservation-id> --attempt-key <new-attempt-key>
+```
+
+This command deletes only the exact immutable Plugin root. It leaves Plugin private data untouched and makes no claim that backups have expired.
+
+On Windows, offline GC for an already fenced B workspace requires the explicit candidate flag. Stop Loushang Sessions, then prepare and list candidates before deleting one exact ID:
+
+```powershell
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate prepare
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate list
+loushang-package-gc --workspace C:\path\to\workspace --windows-candidate delete --candidate-id <candidate-id> --attempt-key <your-attempt-key>
+```
+
+The same `--windows-candidate` flag applies to `retry` with the durable reservation ID. Unflagged Windows GC commands refuse before opening Product state. Retained Worker history must have completed its Product retirement before `prepare` admits Package GC.
+
+On Linux, the separate `loushang-plugin-private-data` command handles the Installation-owned cache of `coding.arch.default`. Stop all Coding Sessions. `backup` copies and verifies that exact cache under an independent Installation backup root; `backup-status` reports `retained` only while the archive still verifies:
+
+```bash
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup > arch-backup-receipt.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-status
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-verify --backup-id EXACT_BACKUP_ID_FROM_RECEIPT
+```
+
+After the Plugin's Desired State is `absent`, save a deletion preview and enter its exact `fingerprint` value in a separate confirmation command:
+
+```bash
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default preview > arch-plan.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default confirm --plan-file arch-plan.json --accept-fingerprint EXACT_FINGERPRINT_FROM_PLAN > arch-confirmation.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default delete --plan-file arch-plan.json --confirmation-file arch-confirmation.json
+```
+
+The delete command rechecks the exact data target, separate confirmation, removed Desired State, and absence of active Product Sessions. Repeating the same command returns its durable receipt. Backup retention is projected separately and remains `retained` after source deletion. `backup-verify` reopens the exact archive named by the receipt, even after source deletion, and refuses tampered bytes.
+
+After the Installation is removed and its data deletion has a completed receipt, preview the exact backup restore and accept its fingerprint to restore into an empty data root. The command refuses changed existing data and can replay the same plan after an interrupted restore:
+
+```bash
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default restore-preview --backup-id EXACT_BACKUP_ID_FROM_RECEIPT > arch-restore-plan.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default restore --plan-file arch-restore-plan.json --accept-fingerprint EXACT_FINGERPRINT_FROM_RESTORE_PLAN
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default restore-confirm --backup-id EXACT_BACKUP_ID_FROM_RECEIPT > arch-restore-confirmation.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default restore-confirm-verify --backup-id EXACT_BACKUP_ID_FROM_RECEIPT --confirmation-id EXACT_CONFIRMATION_ID
+```
+
+Run `restore-confirm` after restoration. It rechecks the archive, completed deletion and restore records, and the restored bytes before writing a separate durable confirmation. Verification refuses a changed restored tree. This Arch Installation confirmation is not a migration restore-test receipt.
+
+After confirmation, preview the exact archive and restored-data evidence. Save the plan, separately accept its fingerprint, then expire only that backup:
+
+```bash
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-expiry-preview --backup-id EXACT_BACKUP_ID_FROM_RECEIPT --confirmation-id EXACT_CONFIRMATION_ID > arch-backup-expiry-plan.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-expiry-confirm --plan-file arch-backup-expiry-plan.json --accept-fingerprint EXACT_FINGERPRINT_FROM_EXPIRY_PLAN > arch-backup-expiry-confirmation.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-expire --plan-file arch-backup-expiry-plan.json --confirmation-file arch-backup-expiry-confirmation.json
+loushang-plugin-private-data --workspace /absolute/path/to/workspace --plugin-id coding.arch.default backup-status
+```
+
+`backup-expire` permanently deletes the verified archive. It requires the Installation to remain removed, the confirmed restored data to remain unchanged, and no active Product Sessions. An interruption leaves `expiry_pending`; repeat the same command to recover. A completed expiry reports `expired` with an independent receipt ID. The restored Installation data remains in place. Other Plugin data types are not admitted.
+
+On a B-fenced Windows AMD64 workspace, the same explicit `loushang-plugin-private-data` actions use the Windows Product owner. Use an absolute Windows workspace path and stop active Coding Sessions. Windows `restore-confirm` and `restore-confirm-verify` additionally require `--plan-file arch-restore-plan.json`, because the original accepted restore plan must be reopened. Keep the saved preview and confirmation JSON files for retries. Windows native CLI acceptance remains a separate gate for this candidate route.
+
+For a Product that has already admitted a dependency-bearing Wheel, `list` also shows `dependencyRetention`. After every holder root has a verified deletion, an `exact_target` row gives the dependency ref and settlement IDs. Use those exact IDs to delete the orphan; if deletion started without a result, retry its durable start ID:
+
+```bash
+loushang-package-gc --workspace /absolute/path/to/workspace delete-dependency --dependency-ref-id <dependency-ref-id> --settlement-id <settlement-id> --attempt-key <your-attempt-key>
+loushang-package-gc --workspace /absolute/path/to/workspace retry-dependency --start-id <start-id> --attempt-key <new-attempt-key>
+```
+
+Coding's current local-data Wheel policy does not admit dependency-bearing Wheels. These commands do not expand that admission policy.
 
 ## Methods And Skills
 

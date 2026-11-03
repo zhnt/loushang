@@ -36,6 +36,7 @@ from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeError,
     PluginInstanceRuntimeLedger,
     PluginInstanceRuntimeSnapshotV1,
+    decode_plugin_instance_runtime_capture,
 )
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.operations import (
@@ -186,9 +187,7 @@ def test_continuity_security_alias_preserves_deployed_error_codes(
         tmp_path / "corrupt-security.jsonl"
     )
     corrupt.path.write_text('{"unknown":true}\n', encoding="utf-8")
-    with pytest.raises(
-        PluginContinuitySecurityRetirementJournalError
-    ) as corrupt_error:
+    with pytest.raises(PluginContinuitySecurityRetirementJournalError) as corrupt_error:
         corrupt.records()
     assert corrupt_error.value.code == (
         "plugin_continuity_security_acceptance_journal_corrupt"
@@ -219,13 +218,9 @@ def test_continuity_security_alias_preserves_deployed_error_codes(
         context.security_acceptances.path
     ).records()
     assert isinstance(replayed, PluginContinuitySecurityRetirementAcceptanceV1)
-    with pytest.raises(
-        PluginContinuitySecurityRetirementJournalError
-    ) as conflict:
+    with pytest.raises(PluginContinuitySecurityRetirementJournalError) as conflict:
         context.security_acceptances._accept((second,))
-    assert conflict.value.code == (
-        "plugin_continuity_security_acceptance_conflict"
-    )
+    assert conflict.value.code == ("plugin_continuity_security_acceptance_conflict")
 
 
 def test_instance_runtime_restart_cannot_omit_or_replace_security_identity(
@@ -1035,3 +1030,63 @@ def test_runtime_fails_closed_when_desired_or_retirement_source_disappears(
     with pytest.raises(PluginInstanceRuntimeError) as caught:
         context.runtime.snapshot()
     assert caught.value.code == "plugin_instance_runtime_journal_corrupt"
+
+
+def test_frozen_instance_capture_replays_without_touching_old_journal(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "frozen-capture")
+
+    def decode(raw: str, *, transitions=None):  # type: ignore[no-untyped-def]
+        return decode_plugin_instance_runtime_capture(
+            raw,
+            path=context.runtime.path,
+            desired_snapshot=context.desired.snapshot(),
+            desired_transitions=(
+                context.desired.transitions() if transitions is None else transitions
+            ),
+            retirement_intents=context.intents.snapshot(),
+            retirement_sets=context.sets.snapshot(),
+        )
+
+    raw = context.runtime.path.read_text(encoding="utf-8")
+    before = context.runtime.path.read_bytes()
+    captured = decode(raw)
+    assert captured == context.runtime.snapshot()
+    assert captured.open_families == (active.activation.direct_host_family,)
+    assert context.runtime.path.read_bytes() == before
+
+    with pytest.raises(PluginInstanceRuntimeError, match="incomplete"):
+        decode(raw.rstrip("\n"))
+    with pytest.raises(PluginInstanceRuntimeError, match="cannot be decoded"):
+        decode('{"journalRevision":1,' + raw[1:])
+    with pytest.raises(PluginInstanceRuntimeError, match="not UTF-8"):
+        decode("\ud800")
+    with pytest.raises(PluginInstanceRuntimeError, match="Desired-state snapshot"):
+        decode(raw, transitions=())
+    assert context.runtime.path.read_bytes() == before
+
+    context.service.submit(_command(key, "disable", revision=2, operation=3))
+    [intent] = context.intents.snapshot().intents
+    context.runtime.begin_drain(intent)
+    context.sets.commit_plan(
+        PluginOwnerRetirementPlanV1.create(
+            retirement_id=intent.retirement_id,
+            owner_closure_reference="closure:frozen-capture",
+            targets=(),
+        )
+    )
+    context.runtime.release_family(
+        _release(active.activation.direct_host_family, sequence="frozen-capture")
+    )
+    context.runtime.complete_retirement(
+        _completion(active, coordination_id=intent.retirement_id, kind="graceful")
+    )
+    retired_raw = context.runtime.path.read_text(encoding="utf-8")
+    retired = decode(retired_raw)
+    assert retired == context.runtime.snapshot()
+    assert retired.open_families == ()
+    assert retired.instances[0].state == "RETIRED"

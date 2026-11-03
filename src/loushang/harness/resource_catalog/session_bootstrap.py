@@ -27,6 +27,9 @@ from loushang.harness.resource_catalog.joint_generation import (
     PreparedExtensionResourceJointGeneration,
     prepare_extension_resource_joint_generation,
 )
+from loushang.harness.resource_catalog.product_snapshot_source import (
+    ProductSelectedResourceInput,
+)
 from loushang.harness.resources._catalog_embedded_source import (
     EmbeddedResourceCollectionHandle,
     EmbeddedResourceDiscoveryBudget,
@@ -90,6 +93,7 @@ class InitialSessionResourceCatalogInputs:
     base_resource_bundle: ResourceBundle
     catalog_generation: int = 1
     package_resources: tuple[AdmittedPackageResource, ...] = ()
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = ()
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = ()
     discovery_budget: NativeResourceDiscoveryBudget | None = None
     discovery_deadline_monotonic_ns: int | None = None
@@ -126,6 +130,11 @@ class InitialSessionResourceCatalogInputs:
             for item in self.package_resources
         ):
             raise TypeError("initial Resource Catalog package inputs are invalid")
+        if any(
+            not isinstance(item, ProductSelectedResourceInput)
+            for item in self.product_snapshot_resources
+        ):
+            raise TypeError("initial Resource Catalog Product snapshot inputs are invalid")
         if any(
             not isinstance(item, EmbeddedResourceCollectionHandle)
             for item in self.embedded_collections
@@ -245,6 +254,7 @@ class InitialSessionResourceCatalogBootstrap:
                     catalog_generation=inputs.catalog_generation,
                     root_handles=inputs.root_handles,
                     package_resources=inputs.package_resources,
+                    product_snapshot_resources=inputs.product_snapshot_resources,
                     embedded_collections=inputs.embedded_collections,
                     issued_at=inputs.issued_at,
                     expires_at=inputs.expires_at,

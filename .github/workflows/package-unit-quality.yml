@@ -1,0 +1,92 @@
+name: Module Regression Quality
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: ${{ fromJSON(inputs.plan).module_tests }}
+    name: Module regression (${{ matrix.package }} ${{ matrix.shard }}/${{ matrix.shards }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.plan).unit_jobs }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Harness Linux sandbox dependency
+        if: ${{ matrix.package == 'harness' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: uv sync --locked --extra dev
+      - run: mkdir -p .artifacts
+      - name: Complete offline module regression
+        env:
+          PYTEST_ADDOPTS: >-
+            --junitxml=.artifacts/module-${{ matrix.package }}-${{ matrix.shard }}.xml
+            --durations=20
+        run: >-
+          uv run python scripts/ci/run_checks.py unit_${{ matrix.package }}
+          --shard ${{ matrix.shard }} --shards ${{ matrix.shards }}
+      - name: Verify nonempty passing module report
+        run: >-
+          uv run python scripts/ci/verify_module_report.py ${{ matrix.package }}
+          .artifacts/module-${{ matrix.package }}-${{ matrix.shard }}.xml
+          --shards ${{ matrix.shards }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-${{ matrix.package }}-${{ matrix.shard }}-pytest-report
+          path: .artifacts/module-${{ matrix.package }}-${{ matrix.shard }}.xml
+          if-no-files-found: error
+
+  targeted:
+    if: ${{ fromJSON(inputs.plan).targeted_tests }}
+    name: "Targeted ${{ matrix.category }} (${{ matrix.os }} #${{ matrix.id }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.plan).targeted_jobs }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    env:
+      TARGET_TEST_PATHS_JSON: ${{ toJSON(matrix.paths) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - run: mkdir -p .artifacts
+      - name: Run the changed integration or platform owner
+        env:
+          PYTEST_ADDOPTS: --junitxml=.artifacts/targeted-${{ matrix.id }}.xml
+        run: >-
+          uv run python scripts/ci/run_targeted_tests.py
+      - name: Verify targeted report
+        shell: bash
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/targeted-${{ matrix.id }}.xml --allow-skipped
+          --required-files-json "$TARGET_TEST_PATHS_JSON"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: targeted-${{ matrix.id }}-${{ matrix.os }}-pytest-report
+          path: .artifacts/targeted-${{ matrix.id }}.xml
+          if-no-files-found: error

@@ -1,0 +1,705 @@
+{
+  "version": 6,
+  "targeted_overrides": {
+    "coding": {
+      "review": "incremental review of measured real-process, installed-wheel, terminal, package migration and end-to-end plugin files; all unlisted Coding tests remain in the conservative module regression",
+      "files": {
+        "tests/coding/lsp/test_plugin_bootstrap_vertical_slice.py": {"category": "integration", "assertion": "private plugin real LSP tool execution and generation retirement", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_apphost_canary.py": {"category": "integration", "assertion": "AppHost canary process lifecycle and cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_cli_loading_boundary.py": {"category": "integration", "assertion": "isolated CLI loading process boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_cli_multiagent.py": {"category": "integration", "assertion": "real Coding CLI multi-agent composition", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_extension_author.py": {"category": "integration", "assertion": "extension author initialization and real offline tool smoke", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_headless_golden.py": {"category": "integration", "assertion": "headless public API session, policy-approved tool and transcript journey", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_boundary_process.py": {"category": "integration", "assertion": "native hosted process crash and two-turn recovery", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_client.py": {"category": "integration", "assertion": "hosted client process and protocol boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_client_terminal.py": {"category": "platform", "assertion": "real terminal picker, history resume and relaunch", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_darwin_evidence.py": {"category": "platform", "assertion": "Darwin terminal evidence implementation", "platforms": ["macos-15"]},
+        "tests/coding/test_hosted_discovery.py": {"category": "integration", "assertion": "hosted discovery process and state boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_discovery_subprocess.py": {"category": "integration", "assertion": "installed stdio discovery and resume across processes", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_discovery_workflow.py": {"category": "integration", "assertion": "hosted discovery, interaction and recovery workflow", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_entry_evidence.py": {"category": "platform", "assertion": "native terminal entry, forced exit and recovery evidence", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_execution.py": {"category": "integration", "assertion": "real hosted execution, interruption, settlement and transcript recovery", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_legacy_evidence.py": {"category": "integration", "assertion": "installed legacy profiles and embedded startup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_local.py": {"category": "integration", "assertion": "real local hosted Coding continuity across scopes", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_local_discovery.py": {"category": "integration", "assertion": "local discovery, resume, interaction and detach", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_local_discovery_subprocess.py": {"category": "integration", "assertion": "installed local discovery and detach across processes", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_owned_shutdown.py": {"category": "integration", "assertion": "owned hosted shutdown, continuity reopen and retryable cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_owned_catalog.py": {"category": "integration", "assertion": "host-owned catalog process and ownership boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_subprocess.py": {"category": "integration", "assertion": "real hosted subprocess ownership, interruption and recovery", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_hosted_workflow_terminal.py": {"category": "platform", "assertion": "real terminal discovery, approval, detach and interrupt workflow", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lane_status_script.py": {"category": "integration", "assertion": "Git subprocess lane status behavior", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lazy_facade.py": {"category": "integration", "assertion": "isolated interpreter facade loading boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_adopted_process.py": {"category": "integration", "assertion": "adopted lmux process lifecycle", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_creation_recovery.py": {"category": "integration", "assertion": "real lmux creation recovery, confirmation fencing and cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_line_terminal.py": {"category": "platform", "assertion": "lmux line terminal native behavior", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_native_body.py": {"category": "platform", "assertion": "lmux native terminal body behavior", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_pty_hangup.py": {"category": "platform", "assertion": "PTY hangup and lmux cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_lmux_terminal_process.py": {"category": "platform", "assertion": "installed lmux terminal process detach and reconnect", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_managed_application.py": {"category": "integration", "assertion": "managed real product projection, reconnect and continuity", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_managed_child.py": {"category": "integration", "assertion": "real managed child handoff, accepted work and timeout cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_managed_detached.py": {"category": "integration", "assertion": "detached Coding service process lifetime and reconnect", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_managed_process_entry.py": {"category": "integration", "assertion": "production child process admission, concurrency and warm reuse", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_managed_process_arguments.py": {"category": "integration", "assertion": "managed child process invocation contract", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_mux_installed_evidence.py": {"category": "platform", "assertion": "installed wheel mux attach and crash recovery evidence", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_mux_markdown_terminal.py": {"category": "platform", "assertion": "installed hosted markdown terminal detach and snapshot", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_mux_product_terminal.py": {"category": "platform", "assertion": "real product terminal approval, detach, reattach and process death", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_mux_subprocess.py": {"category": "integration", "assertion": "mux subprocess lifecycle and protocol", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_mux_terminal_process.py": {"category": "platform", "assertion": "mux native terminal process behavior", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_owned_runtime_import.py": {"category": "integration", "assertion": "owned runtime import, source read fencing and cleanup ownership", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_owned_session_runtime.py": {"category": "integration", "assertion": "owned persistent session runtime creation, restoration, maintenance and cleanup", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_cutover_cli.py": {"category": "integration", "assertion": "real CLI package cutover, adoption and replay", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_external_data_wheel.py": {"category": "integration", "assertion": "built external wheel installation, selection and cross-runtime recovery", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_gc_cli.py": {"category": "integration", "assertion": "real package GC CLI candidate and installed-product repair", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_installation_private_data.py": {"category": "integration", "assertion": "installed product private-data and architecture cache boundaries", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_legacy_installation_inventory.py": {"category": "integration", "assertion": "legacy installation inventory and reopened product acceptance", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_pre_b_snapshot.py": {"category": "integration", "assertion": "package pre-boundary snapshot generation", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_private_data_cli.py": {"category": "integration", "assertion": "real CLI preview, confirmation, deletion and replay", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_product_worker_activation_segments.py": {"category": "integration", "assertion": "worker activation segments across process boundaries", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_root_gc_runtime.py": {"category": "integration", "assertion": "package root GC runtime process boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_windows_pre_b_snapshot.py": {"category": "platform", "assertion": "Windows package snapshot process behavior", "platforms": ["windows-2022"]},
+        "tests/coding/test_package_worker_candidate_wheel.py": {"category": "integration", "assertion": "worker candidate wheel build and isolated execution", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_package_worker_native_cli.py": {"category": "platform", "assertion": "native worker CLI repair across processes", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_plugin_lifecycle.py": {"category": "integration", "assertion": "real product plugin management and session lifecycle", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_plugin_author_smoke.py": {"category": "integration", "assertion": "plugin author worker admission and selection smoke", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_plugin_management_cli.py": {"category": "integration", "assertion": "real plugin management CLI process", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_plugin_p0_public_journey.py": {"category": "e2e", "assertion": "public plugin author-to-target skill and prompt journey", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_plugin_p3_composition_choice.py": {"category": "integration", "assertion": "fenced product composition selection and resume", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_resource_catalog_shadow.py": {"category": "integration", "assertion": "resource catalog isolation across shared services", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_resume_session_shutdown.py": {"category": "integration", "assertion": "real resumed session disposal and preview reference release", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_runtime_resume_continuation.py": {"category": "integration", "assertion": "runtime resume continuation across process boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_sdk_surface.py": {"category": "integration", "assertion": "SDK full runtime smoke and isolated static-type subprocess", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_session_package_controller.py": {"category": "integration", "assertion": "session package controller and installed process boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_shared_store_bootstrap.py": {"category": "integration", "assertion": "real sibling workspace bootstrap and shared store family", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_scoped_hosted_session.py": {"category": "integration", "assertion": "real hosted approval broker disconnect and controller boundary", "platforms": ["ubuntu-24.04"]},
+        "tests/coding/test_startup_route.py": {"category": "integration", "assertion": "startup routing through isolated process entry", "platforms": ["ubuntu-24.04"]}
+      }
+    }
+  },
+  "targeted_nodes": {
+    "ai": {
+      "review": "complete AI directory review identified two local OAuth HTTP lifecycle nodes; all other offline AI tests remain in the module regression and vendor verification remains live-only",
+      "files": {
+        "tests/ai/test_auth_api.py": {
+          "category": "integration",
+          "assertion": "local OAuth callback listener lifecycle returns an authorization session without opening a browser",
+          "platforms": ["ubuntu-24.04"],
+          "nodes": [
+            "test_login_returns_session_without_opening_browser"
+          ]
+        },
+        "tests/ai/test_auth_oauth_lifecycle.py": {
+          "category": "integration",
+          "assertion": "real Authlib and httpx OAuth exchange over local loopback persists and refreshes credentials",
+          "platforms": ["ubuntu-24.04"],
+          "nodes": [
+            "test_real_authlib_login_store_resolve_refresh_lifecycle"
+          ]
+        }
+      }
+    },
+    "coding": {
+      "review": "measured session lifecycle and real product-composition nodes extracted from otherwise mixed unit files",
+      "files": {
+        "tests/coding/arch/test_activation.py": {
+          "category": "integration",
+          "assertion": "real Coding product composition, session creation, capability providers and tool execution",
+          "platforms": ["ubuntu-24.04"],
+          "nodes": [
+            "test_coding_config_controls_default_arch_tool_activation",
+            "test_arch_pack_remains_available_without_builtin_tools",
+            "test_production_allowlist_filters_arch_tool_without_bypassing_provider",
+            "test_arch_and_lsp_share_one_product_composition_and_session_graph",
+            "test_arch_provider_and_tool_work_when_lsp_is_disabled"
+          ]
+        },
+        "tests/coding/test_agent_session_runtime.py": {
+          "category": "integration",
+          "assertion": "persistent AgentSessionRuntime lifecycle, replacement, indexing, restore and fork behavior",
+          "platforms": ["ubuntu-24.04"],
+          "nodes": [
+            "test_session_publishes_receipt_backed_events_for_every_new_commit",
+            "test_session_uses_one_runtime_stream_with_product_projection",
+            "test_session_emits_auditable_permission_profile_changes",
+            "test_runtime_create_switch_and_list_sessions",
+            "test_runtime_clone_session_forks_current_leaf",
+            "test_runtime_finds_session_summaries",
+            "test_runtime_renames_and_deletes_sessions_by_resolved_reference",
+            "test_runtime_delete_session_refuses_current_session",
+            "test_runtime_lists_all_session_summaries_across_session_dirs",
+            "test_runtime_finds_all_session_summaries_across_session_dirs",
+            "test_runtime_exposes_indexed_session_summary_facades",
+            "test_runtime_auto_refreshes_session_index_after_replacement",
+            "test_runtime_dispose_publishes_latest_session_summary",
+            "test_runtime_fork_session_switches_to_selected_branch",
+            "test_runtime_fork_session_before_user_message_returns_selected_text",
+            "test_runtime_fork_before_requires_user_message",
+            "test_runtime_exposes_standard_lifecycle_operations",
+            "test_runtime_new_session_operation_runs_setup_and_with_session",
+            "test_runtime_restore_and_fork_operations_run_with_session",
+            "test_runtime_replacement_callbacks_require_async_callables",
+            "test_runtime_exposes_current_session_diagnostics",
+            "test_builtin_new_command_replaces_current_session_without_materializing_empty_files",
+            "test_runtime_session_replacement_keeps_shared_approval_presenter",
+            "test_runtime_direct_replacement_reactivates_shared_approval_presenter",
+            "test_runtime_exposes_current_session_and_cwd_properties",
+            "test_runtime_restore_session_accepts_session_id",
+            "test_runtime_restore_session_accepts_session_id_prefix"
+          ]
+        }
+      }
+    }
+  },
+  "modules": {
+    "channel": {
+      "complete": true,
+      "review": "reviewed current full directory; controlled unit/contract boundaries, no Product install/native session",
+      "files": {
+        "tests/channel/test_channel_types.py": {
+          "category": "unit",
+          "assertion": "envelope invariants, immutable public types and operation identity"
+        },
+        "tests/channel/test_json_codec.py": {
+          "category": "contract",
+          "assertion": "wire round trips, invalid envelope fields and error payloads"
+        },
+        "tests/channel/test_host.py": {
+          "category": "unit",
+          "assertion": "host request/cancel/delivery behavior with FakePort and StringIO; subscription release"
+        },
+        "tests/channel/test_rpc_jsonl.py": {
+          "category": "contract",
+          "assertion": "JSONL frame encoding, acknowledgements, correlation and invalid frames"
+        },
+        "tests/channel/test_session_work_adapter.py": {
+          "category": "contract",
+          "assertion": "adapter forwarding, accepted operation/event mapping with controlled session and in-memory event log"
+        },
+        "tests/channel/test_package_boundaries.py": {
+          "category": "contract",
+          "assertion": "isolated Python import/dependency boundary; no product launch or native process containment"
+        }
+      }
+    },
+    "resource": {
+      "complete": true,
+      "review": "reviewed current full directory; controlled unit/contract boundaries, no Product install/native session",
+      "files": {
+        "tests/resource/test_frontmatter.py": {
+          "category": "contract",
+          "assertion": "frontmatter facade behavior and canonical Harness owner identity"
+        },
+        "tests/resource/test_provenance.py": {
+          "category": "contract",
+          "assertion": "source-info and diagnostic facade preserve canonical ownership"
+        }
+      }
+    },
+    "work": {
+      "complete": true,
+      "review": "reviewed full directory and fixtures; controlled execution and isolated backend contracts, no Product session/CLI/service/native process",
+      "files": {
+        "tests/work/test_artifact_ref.py": {
+          "category": "unit",
+          "assertion": "immutable artifact metadata and planned/failed references; no materialization"
+        },
+        "tests/work/test_work_types.py": {
+          "category": "unit",
+          "assertion": "operation, run, step, deviation and event metadata/defaults/immutability"
+        },
+        "tests/work/test_public_api.py": {
+          "category": "contract",
+          "assertion": "public export surface, split capability ports and canonical projection ownership"
+        },
+        "tests/work/test_package_boundaries.py": {
+          "category": "contract",
+          "assertion": "static dependency/ownership inspection and product-neutral adapter delegation"
+        },
+        "tests/work/test_runtime.py": {
+          "category": "unit",
+          "assertion": "controlled executors and in-memory event log: lifecycle ordering, cancellation failure/timeout/idempotence, duplicate operations and ownership rejection"
+        },
+        "tests/work/test_event_log.py": {
+          "category": "contract",
+          "assertion": "isolated in-memory and temporary JSONL backend: serialization, immutable snapshots, invalid schema rejection, subscription and checkpoint/index contracts"
+        },
+        "tests/work/test_run_projection.py": {
+          "category": "contract",
+          "assertion": "controlled executors and isolated event logs: fresh runtime replay, strict event ordering, post-terminal rejection and orphan recovery"
+        }
+      }
+    },
+    "agent": {
+      "complete": true,
+      "review": "reviewed complete directory and owned examples contracts; synthetic streams/tools/executors, injected proxy client and controlled adapter, no live provider or Product/native session",
+      "files": {
+        "tests/agent/test_agent_loop.py": {
+          "category": "unit",
+          "assertion": "controlled stream/tools and commit callbacks: sampling/commit ordering, projection rejection, mailbox/queue boundaries, hooks, sequential/parallel termination, cancellation and event snapshots"
+        },
+        "tests/agent/test_agent_loop_scenarios.py": {
+          "category": "unit",
+          "assertion": "checkpoint-driven synthetic model and tool queues: abort, steering, follow-up consumption and clean next prompt after settlement"
+        },
+        "tests/agent/test_agent_runtime.py": {
+          "category": "unit",
+          "assertion": "controlled stream or registered standalone synthetic adapter: state folding, subscriber settlement, auth forwarding, abort/terminalization and queue semantics"
+        },
+        "tests/agent/test_json_codec.py": {
+          "category": "contract",
+          "assertion": "AI/custom message round trips, registration and role rejection, explicit tool projection and exact boolean termination"
+        },
+        "tests/agent/test_proxy.py": {
+          "category": "contract",
+          "assertion": "injected fake HTTP/SSE client: event reconstruction, transport/error handling, blocked read cancellation and listener cleanup; no real network"
+        },
+        "tests/agent/test_public_api.py": {
+          "category": "contract",
+          "assertion": "public exports and dataclass fields, omitted/null details and deepcopy/pickle/replace semantics, exact booleans and removed transport options"
+        },
+        "tests/agent/test_tool_output.py": {
+          "category": "unit",
+          "assertion": "projection snapshot/immutability and distinct boundary views, bounded diagnostics, strict content/metadata/termination validation"
+        },
+        "tests/examples/test_agent_examples.py": {
+          "category": "contract",
+          "assertion": "load existing guarded examples and build public model descriptors only; no main invocation or live calls"
+        }
+      }
+    },
+    "harnesswork": {
+      "complete": true,
+      "review": "reviewed complete directory; controlled session/executor/event objects and isolated JSONL/import contracts, no actual Product session/server/native containment",
+      "files": {
+        "tests/harnesswork/test_cli.py": {
+          "category": "contract",
+          "assertion": "direct inspection/creation API over temporary JSONL files; no CLI process"
+        },
+        "tests/harnesswork/test_runtime.py": {
+          "category": "unit",
+          "assertion": "opaque synthetic ontology executor and in-memory log; success lifecycle and emitted domain fact"
+        },
+        "tests/harnesswork/test_public_api.py": {
+          "category": "contract",
+          "assertion": "canonical exports, legacy kernel/integration symbol identity and fresh Python import order/dependency isolation; no Product process"
+        },
+        "tests/harnesswork/test_plan_projection.py": {
+          "category": "unit",
+          "assertion": "synthetic event records: completed/failed/cancelled steps, deviation/policy metadata, plan facts and ignored unowned entries"
+        },
+        "tests/harnesswork/test_plan_projection_golden.py": {
+          "category": "contract",
+          "assertion": "read-only legacy golden JSONL projection compared against exact expected plan/step metadata"
+        },
+        "tests/harnesswork/integrations/test_session.py": {
+          "category": "contract",
+          "assertion": "controlled design session and in-memory log: profile vocabulary, direct/work delivery, prepared-turn validation and ordered plan prompts"
+        },
+        "tests/harnesswork/integrations/test_transcript.py": {
+          "category": "contract",
+          "assertion": "controlled session/source reader and in-memory log: frozen prompt handoffs, confirmed cold projection, source identity/digest/expiry validation, append failure and cancellation; no actual Transcript store, Product session, subprocess or live provider"
+        },
+        "tests/harnesswork/integrations/test_agent_events.py": {
+          "category": "contract",
+          "assertion": "controlled agent/AI event objects: projected content/tools/audit/queue metadata, strict JSON/schema rejection, snapshots and custom serializer"
+        }
+      },
+      "fixtures": {
+        "tests/harnesswork/fixtures/legacy_coding_plan.jsonl": {
+          "category": "contract",
+          "assertion": "read-only historical work log for necessary plan replay contract",
+          "consumers": [
+            "tests/harnesswork/test_plan_projection_golden.py"
+          ]
+        },
+        "tests/harnesswork/fixtures/legacy_coding_plan_projection.json": {
+          "category": "contract",
+          "assertion": "exact expected plan/step projection for historical work log contract",
+          "consumers": [
+            "tests/harnesswork/test_plan_projection_golden.py"
+          ]
+        }
+      }
+    },
+    "method": {
+      "complete": true,
+      "review": "reviewed complete directory; immutable types, in-memory registries/selectors, controlled runtime and isolated temporary resource discovery; no Product session, external process or live provider",
+      "files": {
+        "tests/method/test_method_compiler.py": {
+          "category": "unit",
+          "assertion": "single-turn and fixed-plan compilation, metadata/default propagation and malformed plan rejection"
+        },
+        "tests/method/test_method_loader.py": {
+          "category": "contract",
+          "assertion": "isolated temporary method/skill resources: discovery, reload snapshots, precedence and future-manifest omission"
+        },
+        "tests/method/test_method_projection.py": {
+          "category": "unit",
+          "assertion": "stable guidance and JSON-safe plan/step facts, policy metadata, null keys and empty content"
+        },
+        "tests/method/test_method_registry.py": {
+          "category": "unit",
+          "assertion": "in-memory listing, lookup, duplicate rejection and selected state"
+        },
+        "tests/method/test_method_selector.py": {
+          "category": "unit",
+          "assertion": "exact id/name selection from registry or descriptor collection"
+        },
+        "tests/method/test_method_types.py": {
+          "category": "unit",
+          "assertion": "descriptor, context, applicability, plan, step and projection defaults and taxonomy hints"
+        },
+        "tests/method/test_package_boundaries.py": {
+          "category": "contract",
+          "assertion": "static Method package source inspection rejects Coding product dependencies"
+        },
+        "tests/method/test_public_api.py": {
+          "category": "contract",
+          "assertion": "public P1 type surface and absence of multi-agent coordination types"
+        },
+        "tests/method/test_runtime.py": {
+          "category": "contract",
+          "assertion": "temporary method resource prepares a non-Coding turn and controlled settings compose policy precedence"
+        },
+        "tests/method/test_skill_adapter.py": {
+          "category": "contract",
+          "assertion": "legacy facade identity and controlled SkillDescriptor conversion of content, applicability and optional metadata"
+        }
+      }
+    },
+    "ontology": {
+      "complete": true,
+      "review": "reviewed complete directory; in-memory and temporary SQLite stores, controlled threads and static import checks, no Product session, external process, live network or native platform dependency",
+      "files": {
+        "tests/ontology/test_action_planning.py": {
+          "category": "contract",
+          "assertion": "schema-bound action planning, preconditions, authority, deterministic identity and commit conflicts against an in-memory fact store"
+        },
+        "tests/ontology/test_action_schema.py": {
+          "category": "contract",
+          "assertion": "action schema validation, serialization, compatibility and package digest impact"
+        },
+        "tests/ontology/test_deployment_profile.py": {
+          "category": "contract",
+          "assertion": "deployment profiles, locked schema/source identities and deterministic JSON validation"
+        },
+        "tests/ontology/test_fact_model.py": {
+          "category": "unit",
+          "assertion": "fact identity, immutable values, canonical exports and validation boundaries"
+        },
+        "tests/ontology/test_fact_projection.py": {
+          "category": "unit",
+          "assertion": "fact-to-projection folding, ordering, tombstones and schema-bound value validation"
+        },
+        "tests/ontology/test_fact_schema_revalidation.py": {
+          "category": "contract",
+          "assertion": "in-memory and temporary SQLite schema revalidation, replacement and failure preservation"
+        },
+        "tests/ontology/test_fact_sqlite_v3.py": {
+          "category": "contract",
+          "assertion": "temporary SQLite fact journal v3 transactions, restart, backup, concurrency and corruption rejection"
+        },
+        "tests/ontology/test_fact_store_conformance.py": {
+          "category": "contract",
+          "assertion": "shared memory and temporary SQLite fact-store conformance for append, query, conflict and snapshots"
+        },
+        "tests/ontology/test_identity_crosswalk.py": {
+          "category": "unit",
+          "assertion": "crosswalk identity normalization, ambiguity, source binding and deterministic serialization"
+        },
+        "tests/ontology/test_import_boundaries.py": {
+          "category": "contract",
+          "assertion": "static Ontology source dependency direction and public export ownership"
+        },
+        "tests/ontology/test_mapped_source_materialization.py": {
+          "category": "contract",
+          "assertion": "controlled source records through mapping, fact persistence and memory or temporary SQLite projection materialization"
+        },
+        "tests/ontology/test_materialization_correctness.py": {
+          "category": "contract",
+          "assertion": "temporary SQLite materialization replacement, ordering, restart and corruption boundaries"
+        },
+        "tests/ontology/test_package_artifacts.py": {
+          "category": "contract",
+          "assertion": "deterministic ontology package artifacts, digests and invalid payload rejection"
+        },
+        "tests/ontology/test_projection_store_conformance.py": {
+          "category": "contract",
+          "assertion": "memory and temporary SQLite projection-store replacement, conflicts, concurrency and failure atomicity"
+        },
+        "tests/ontology/test_schema.py": {
+          "category": "unit",
+          "assertion": "schema compilation, validation, canonical v4 serialization and older format refusal"
+        },
+        "tests/ontology/test_schema_evolution.py": {
+          "category": "contract",
+          "assertion": "schema compatibility classification across identity, type, authority and constraint changes"
+        },
+        "tests/ontology/test_schema_interfaces.py": {
+          "category": "contract",
+          "assertion": "schema protocol interfaces and immutable public type surface"
+        },
+        "tests/ontology/test_source_adapter_contract.py": {
+          "category": "contract",
+          "assertion": "controlled source adapter identity, cursor and schema binding contracts"
+        },
+        "tests/ontology/test_source_materialization_contracts.py": {
+          "category": "contract",
+          "assertion": "source mapping and projection contracts with in-memory records and explicit failure cases"
+        },
+        "tests/ontology/test_sqlite_storage_compatibility.py": {
+          "category": "contract",
+          "assertion": "temporary SQLite layout versioning, metadata, backup and unsupported-store refusal"
+        },
+        "tests/ontology/test_typed_query.py": {
+          "category": "unit",
+          "assertion": "typed query predicates, ordering, limits, schema validation and deterministic evaluation"
+        }
+      }
+    },
+    "foundation": {
+      "complete": true,
+      "review": "reviewed complete directory for the Ubuntu module runner; strict JSON, isolated observability/filesystem/runtime-scope contracts and fresh Python import boundary; no Product session, service, live network or native platform matrix",
+      "files": {
+        "tests/foundation/test_json_contract.py": {
+          "category": "unit",
+          "assertion": "strict JSON copying/validation/dumping, nested paths, cycles, unicode, integer bounds and implicit-coercion rejection"
+        },
+        "tests/foundation/test_json.py": {
+          "category": "contract",
+          "assertion": "canonical public JSON surface and basic strict value behavior"
+        },
+        "tests/foundation/test_observability.py": {
+          "category": "contract",
+          "assertion": "stable root observability exports and canonical symbol ownership"
+        },
+        "tests/foundation/test_import_boundaries.py": {
+          "category": "contract",
+          "assertion": "static repository imports plus one fresh Python import isolation process; retired namespaces and optional observability loading remain absent"
+        },
+        "tests/foundation/test_runtime_scope.py": {
+          "category": "contract",
+          "assertion": "temporary runtime trees and real local file locks: private modes, lease cleanup, safe sweep/admission, symlink and ownership refusal on the Ubuntu/POSIX runner"
+        },
+        "tests/foundation/observability/test_context.py": {
+          "category": "unit",
+          "assertion": "nested log context binding, restoration and isolated context copies"
+        },
+        "tests/foundation/observability/test_identity.py": {
+          "category": "unit",
+          "assertion": "bounded stable observability identity normalization"
+        },
+        "tests/foundation/observability/test_problem_text.py": {
+          "category": "unit",
+          "assertion": "safe bounded problem text and exception rendering"
+        },
+        "tests/foundation/observability/test_projection.py": {
+          "category": "unit",
+          "assertion": "strict JSON-safe observability payload projection and fallback metadata"
+        },
+        "tests/foundation/observability/test_runtime.py": {
+          "category": "contract",
+          "assertion": "temporary-file and injected sink runtime contexts restore borrowed/global configuration across success and failure"
+        },
+        "tests/foundation/observability/test_sinks.py": {
+          "category": "contract",
+          "assertion": "temporary debug/trace sinks: routing, scope filters, exact safe wire/text shapes, latest links and failure containment"
+        }
+      }
+    },
+    "appserver": {
+      "complete": true,
+      "review": "reviewed complete directory and dedicated fixtures; protocol/state tests use controlled peers, while real loopback servers, subprocesses and native filesystem mechanics remain explicitly targeted",
+      "files": {
+        "tests/appserver/test_connection.py": {
+          "category": "contract",
+          "assertion": "controlled transports prove wire dispatch, correlation, cancellation, backpressure and bounded failure"
+        },
+        "tests/appserver/test_connection_profiles.py": {
+          "category": "contract",
+          "assertion": "controlled negotiation proves closed profile compatibility and handshake budgets"
+        },
+        "tests/appserver/test_connection_protocol.py": {
+          "category": "contract",
+          "assertion": "poll wire round trips, strict limits and bounded malformed input"
+        },
+        "tests/appserver/test_execution_connection.py": {
+          "category": "contract",
+          "assertion": "mock connection dispatch for execution submission, lookup, snapshots and interrupts"
+        },
+        "tests/appserver/test_execution_local.py": {
+          "category": "integration",
+          "assertion": "real authenticated loopback server/client joins AppServer transport to AppService execution recovery",
+          "platforms": ["ubuntu-24.04"]
+        },
+        "tests/appserver/test_execution_protocol.py": {
+          "category": "contract",
+          "assertion": "execution records, calls, snapshots, status and checked-in wire goldens"
+        },
+        "tests/appserver/test_execution_recovery.py": {
+          "category": "unit",
+          "assertion": "controlled lookup and submit ports prove replay-safe recovery state transitions"
+        },
+        "tests/appserver/test_local.py": {
+          "category": "integration",
+          "assertion": "real loopback sockets, server lifecycle, authentication, stale records and crashed writer subprocess",
+          "platforms": ["ubuntu-24.04"]
+        },
+        "tests/appserver/test_local_auth.py": {
+          "category": "contract",
+          "assertion": "controlled local transports prove mutual authentication, transcript vectors and strict frame bounds"
+        },
+        "tests/appserver/test_local_discovery.py": {
+          "category": "contract",
+          "assertion": "controlled discovery scopes prove authenticated capability selection and cleanup"
+        },
+        "tests/appserver/test_local_discovery_record.py": {
+          "category": "contract",
+          "assertion": "closed local discovery record codec and frozen G16 compatibility fixture"
+        },
+        "tests/appserver/test_local_record.py": {
+          "category": "contract",
+          "assertion": "isolated temporary record directory proves strict encoding, publication, locking and rotation"
+        },
+        "tests/appserver/test_local_record_native.py": {
+          "category": "platform",
+          "assertion": "POSIX native permissions, links, descriptor inheritance, races and cross-process lock behavior",
+          "platforms": ["ubuntu-24.04"]
+        },
+        "tests/appserver/test_local_record_windows.py": {
+          "category": "platform",
+          "assertion": "Windows native ABI, ACL, junction and handle ownership behavior",
+          "platforms": ["windows-2022"]
+        },
+        "tests/appserver/test_managed_mux_close_values.py": {
+          "category": "unit",
+          "assertion": "managed close value identity, phase and authority invariants"
+        },
+        "tests/appserver/test_managed_mux_close_wire.py": {
+          "category": "contract",
+          "assertion": "controlled close wire calls prove strict frames, capacity, correlation and scope cleanup"
+        },
+        "tests/appserver/test_managed_mux_wire.py": {
+          "category": "contract",
+          "assertion": "controlled managed mux wire codec, receipt identity, authentication and cancellation semantics"
+        },
+        "tests/appserver/test_protocol.py": {
+          "category": "contract",
+          "assertion": "public request, response, event and identity schema round trips and strict rejection"
+        },
+        "tests/appserver/test_session_discovery_connection.py": {
+          "category": "contract",
+          "assertion": "controlled connection negotiation proves discovery capability, authority and legacy compatibility"
+        },
+        "tests/appserver/test_session_discovery_protocol.py": {
+          "category": "contract",
+          "assertion": "discovery requests, bounded pages, cursors and strict codec behavior"
+        },
+        "tests/appserver/test_session_discovery_service.py": {
+          "category": "contract",
+          "assertion": "controlled service failure maps to the exact redacted wire error"
+        },
+        "tests/appserver/test_stdio_subprocess.py": {
+          "category": "integration",
+          "assertion": "real child process stdio negotiation, prompt, interrupt, EOF and parked-read exit",
+          "platforms": ["ubuntu-24.04"]
+        }
+      },
+      "fixtures": {
+        "tests/appserver/_stdio_child.py": {
+          "category": "integration",
+          "assertion": "real child server used only by the stdio process boundary test",
+          "platforms": ["ubuntu-24.04"],
+          "consumers": [
+            "tests/appserver/test_stdio_subprocess.py"
+          ]
+        },
+        "tests/appserver/fixtures/execution_v1.json": {
+          "category": "contract",
+          "assertion": "checked-in native client execution wire vectors",
+          "consumers": [
+            "tests/appserver/test_execution_protocol.py"
+          ]
+        },
+        "tests/appserver/fixtures/g16_local_record_values.py.txt": {
+          "category": "contract",
+          "assertion": "frozen G16 decoder used to prove backward-compatible record bytes",
+          "consumers": [
+            "tests/appserver/test_local_discovery_record.py"
+          ]
+        }
+      }
+    },
+    "appservice": {
+      "complete": true,
+      "review": "reviewed complete directory; controlled service state machines remain module regression, while cross-process storage and real loopback deployment stay targeted",
+      "files": {
+        "tests/appservice/test_client_scope.py": {
+          "category": "unit",
+          "assertion": "controlled scope ports prove controller authority, accepted work, bounds, lookup and stop behavior"
+        },
+        "tests/appservice/test_continuity.py": {
+          "category": "platform",
+          "assertion": "real filesystem permissions, symlinks and subprocess lease fencing for durable continuity records",
+          "platforms": ["ubuntu-24.04", "windows-2022"]
+        },
+        "tests/appservice/test_continuity_runtime.py": {
+          "category": "unit",
+          "assertion": "controlled continuity store and owners prove all-or-nothing recovery and cleanup ownership"
+        },
+        "tests/appservice/test_execution_guard.py": {
+          "category": "unit",
+          "assertion": "controlled product execution proves interrupt, cleanup, reservation and terminal ordering"
+        },
+        "tests/appservice/test_execution_port_conformance.py": {
+          "category": "contract",
+          "assertion": "optional product execution port lifecycle and composite projection conformance"
+        },
+        "tests/appservice/test_execution_registry.py": {
+          "category": "unit",
+          "assertion": "in-memory execution registry capacity, conflict, settlement, cleanup and rollback"
+        },
+        "tests/appservice/test_execution_service.py": {
+          "category": "contract",
+          "assertion": "controlled product and client scopes prove execution authority, recovery, snapshots and legacy behavior"
+        },
+        "tests/appservice/test_execution_snapshot.py": {
+          "category": "unit",
+          "assertion": "controlled event streams prove consistent execution snapshot cuts and gap recovery"
+        },
+        "tests/appservice/test_local_deployment.py": {
+          "category": "integration",
+          "assertion": "real authenticated loopback deployment joins AppServer connections to native AppService mux lifecycle",
+          "platforms": ["ubuntu-24.04"]
+        },
+        "tests/appservice/test_managed_mux.py": {
+          "category": "contract",
+          "assertion": "isolated durable store and controlled owners prove managed creation, replay and recovery receipts"
+        },
+        "tests/appservice/test_managed_mux_close_continuity.py": {
+          "category": "contract",
+          "assertion": "managed close continuity codec, bounded history and isolated durable store reopening"
+        },
+        "tests/appservice/test_managed_mux_close_recovery.py": {
+          "category": "unit",
+          "assertion": "controlled close store and owners prove settlement ordering, retries and cleanup debt"
+        },
+        "tests/appservice/test_managed_mux_close_runtime.py": {
+          "category": "unit",
+          "assertion": "controlled runtime close admission, publication, cancellation, retries and permissions"
+        },
+        "tests/appservice/test_owned_operations.py": {
+          "category": "unit",
+          "assertion": "owned task capacity, cancellation, cleanup, stop and task construction failure"
+        },
+        "tests/appservice/test_runtime.py": {
+          "category": "unit",
+          "assertion": "in-memory mux registry, attachments, events, concurrency, lifecycle and cleanup"
+        },
+        "tests/appservice/test_session_discovery.py": {
+          "category": "unit",
+          "assertion": "controlled discovery port paging, cursor generations, scope authority and retained work"
+        }
+      }
+    }
+  }
+}

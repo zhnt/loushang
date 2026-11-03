@@ -298,6 +298,7 @@ def session_capability_provider_binding(
     staged_side_question: LegacySideQuestionBinding,
     staged_transcript: AgentTranscriptCapabilityCandidate,
     bind_provider: Callable[[SideQuestionProviderFactory], SideQuestionProvider],
+    check_transcript_retirement: Callable[[], None] | None = None,
     provider_id: str = "harness.session.standard",
     source_id: str = "builtin",
 ) -> CapabilityBundleProviderBinding:
@@ -415,6 +416,10 @@ def session_capability_provider_binding(
         return value
 
     async def dispose(value: CapabilityBundleValue) -> None:
+        # Binding failure may reach this disposer before the Product's outer
+        # rollback. Never wait under Graph locks for an active output capture.
+        if check_transcript_retirement is not None:
+            check_transcript_retirement()
         facet = value.require(SIDE_QUESTION_FACET)
         if not isinstance(facet, _SideQuestionFacet):
             raise TypeError("Session Provider received an alien Bundle value")

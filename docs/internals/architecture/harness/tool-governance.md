@@ -11,6 +11,12 @@
 - P1A implementation issue: `#518`.
 - P0 prerequisite: `#516` preserves deferred positive Tool Intent when a local
   contributor performs Additive Activation.
+- The legacy assembly ceiling now uses `ToolSelection.ALL` for an explicit
+  unrestricted selection. Omitted or `None` ceilings deny every Tool and emit
+  a runtime warning; an empty collection also denies every Tool. Coding's
+  normal unrestricted profile passes `ToolSelection.ALL` explicitly at its
+  bootstrap and CLI boundary. This closes `#583` without changing the
+  separate P1B governed-intent cutover.
 - Canonical vocabulary: [Tool Governance Glossary](tool-governance-glossary.md).
 - Primary owners: `loushang.harness.capabilities.tools`,
   `loushang.harness.session.tool_runtime`, the Harness tool registry and

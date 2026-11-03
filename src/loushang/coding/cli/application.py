@@ -1,0 +1,1697 @@
+"""Coding CLI application bindings; loaded only when an invocation needs them."""
+
+from __future__ import annotations
+
+import inspect
+import json
+import os
+import platform
+import stat
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, TextIO, cast
+
+from loushang.ai.model import (
+    model_selection_ref,
+    parse_model_selection_reference,
+)
+from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding._invocation_product_profile import (
+    CodingAgentInvocationProductProfile,
+    resolve_coding_agent_invocation_product_profile,
+)
+from loushang.coding._plugin_lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding._worker_tool_identity import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
+from loushang.coding.adapters.harnesswork import (
+    create_coding_work_runtime,
+    run_coding_work_channel,
+)
+from loushang.coding.bootstrap import (
+    BootstrapServices,
+    _create_agent_invocation_session_runtime,
+    _create_agent_session_services,
+    create_agent_session_runtime,
+    create_services,
+)
+from loushang.coding.cli.apphost import (
+    extract_apphost_argv,
+    run_coding_apphost_command,
+)
+from loushang.coding.cli.args import (
+    CliArgs,
+    ExtensionFlag,
+    current_preview_option_requested,
+    help_text,
+    local_discovery_option_requested,
+    parse_args,
+    plugin_explanation_option_requested,
+    plugin_repair_option_requested,
+    removed_legacy_resource_option,
+)
+from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
+from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
+from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.coding.cli.startup_route import _cli_launch_plan
+from loushang.coding.cli.workspace import (
+    extract_workspace_argv,
+    run_coding_workspace_command,
+)
+from loushang.coding.composition_sets import resolve_coding_composition_set
+from loushang.coding.continuity import (
+    shutdown_coding_continuity,
+)
+from loushang.coding.continuity_bootstrap import (
+    bind_coding_configured_continuity,
+)
+from loushang.coding.control.settings_store import (
+    default_global_settings_path,
+    default_project_settings_path,
+)
+from loushang.coding.diagnostics.profile import (
+    coding_diagnostic_source,
+    coding_runtime_identity,
+    format_coding_runtime_identity_text,
+)
+from loushang.coding.domain import (
+    CodingDomainApp,
+    CodingDomainPreparedTurn,
+    CodingDomainRequest,
+)
+from loushang.coding.model_selection import (
+    apply_model_selection,
+    persistence_warning_message,
+)
+from loushang.coding.package_product_cli import (
+    route_coding_fenced_data_wheels,
+    uninstall_coding_fenced_data_wheels,
+)
+from loushang.coding.package_product_management_cli import (
+    coding_fenced_product_exists,
+    repair_coding_fenced_cli_desired_operation,
+)
+from loushang.coding.package_product_runtime import (
+    require_fresh_coding_product_inputs_without_writes,
+)
+from loushang.coding.plugin_local_discovery import (
+    blocked_coding_local_discovery,
+    discover_coding_local_plugins,
+    format_coding_local_discovery,
+)
+from loushang.coding.plugin_management_cli import (
+    build_coding_plugin_management_cli_binding,
+    build_coding_plugin_management_cli_read_binding,
+)
+from loushang.coding.plugin_management_explanation import (
+    CodingPluginOperationExplanationError,
+    bind_coding_plugin_operation_explanation_query,
+)
+from loushang.coding.plugin_management_preview import (
+    CodingCurrentPreviewError,
+    bind_coding_current_preview_query,
+)
+from loushang.coding.plugin_management_read_sdk import (
+    CodingPluginManagementReadClientV1,
+    CodingPluginManagementReadSdkError,
+    open_coding_plugin_management_read_client,
+)
+from loushang.coding.product_plan import CODING_PRODUCT_ID
+from loushang.coding.resource_runtime import collect_coding_package_entries
+from loushang.coding.ui.mode import run_coding_tui
+from loushang.coding.workflow import run_prompt_steps_workflow
+from loushang.harness.approval import (
+    ApprovalResolver,
+    HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
+    configure_persistent_approval_policy,
+)
+from loushang.harness.capabilities.tools import ToolSelection
+from loushang.harness.cli import (
+    AgentCliApplicationBinding,
+    AgentCliApplicationState,
+    AgentCliHostRunners,
+    AgentCliSessionHostBinding,
+    AgentCliStatePreparationContext,
+    AgentCliStatePreparationPorts,
+    CliBootstrapContext,
+    CliOperationInsertion,
+    CliOperationStage,
+    CliParseResult,
+    CliPhaseResult,
+    CliSessionContext,
+    MethodListingError,
+    MethodListingRequest,
+    PreparedAgentCliHostInput,
+    agent_cli_output_mode,
+    agent_image_auto_resize,
+    agent_standard_cli_operation_request,
+    agent_tool_selection,
+    capture_cli_parse,
+    configure_agent_cli_session,
+    configure_agent_resource_loader,
+    cwd_bound_services_factory,
+    distribution_version,
+    extract_machine_resource_argv,
+    extract_multiagent_argv,
+    format_agent_cli_help,
+    prepare_agent_cli_host_input,
+    project_domain_turns_to_cli,
+    resolve_agent_prompt_input,
+    resolve_effective_tui,
+    run_agent_cli_application,
+    run_diagnostics_export_operation,
+    run_machine_resource_command,
+    run_method_listing,
+    run_package_listing_operation,
+    run_resource_toggle_operation,
+    run_standard_cli_operations,
+)
+from loushang.harness.cli import (
+    format_cli_error as _format_cli_error,
+)
+from loushang.harness.cli.plugin_explanation import (
+    format_plugin_operation_explanation,
+)
+from loushang.harness.cli.plugin_listing import (
+    format_plugin_records,
+    list_plugin_records,
+)
+from loushang.harness.cli.plugin_preview import format_plugin_current_preview
+from loushang.harness.config.agent import SettingsManager
+from loushang.harness.continuity import consume_prepared_activation
+from loushang.harness.diagnostics.observability_runtime import (
+    session_observability_context,
+    startup_observability_context,
+)
+from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
+from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.machine_resources import (
+    prepare_private_directory_chain,
+    resolve_machine_resource_layout,
+)
+from loushang.harness.plugin_management.current_preview import (
+    PluginCurrentPreviewRequestV1,
+)
+from loushang.harness.plugin_management.desired_command import (
+    PluginDesiredCommandRepairError,
+)
+from loushang.harness.plugin_management.operation_explanation import (
+    PluginOperationExplanationRequestV1,
+    project_plugin_operation_explanation,
+)
+from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.resources.packages import (
+    record_package_source_policy_denial,
+)
+from loushang.harness.resources.packages.security import PackageSecurityPolicy
+from loushang.harness.resources.plugins import is_remote_plugin_source
+from loushang.harness.scenario import run_fake_workflow_cli
+from loushang.harness.tools import AGENT_DELEGATE_TOOL_NAME
+from loushang.harness.tools.workspace import (
+    WorkspaceToolRuntimeSettings,
+    workspace_tool_runtime_settings,
+)
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import (
+    SessionDiscoverySource,
+    session_origin_from_resource_id,
+)
+from loushang.harnesstui.continuity import run_continuity_picker
+from loushang.harnesstui.conversation.agent_binding import (
+    run_agent_mode,
+    run_agent_plain_mode,
+    run_agent_plain_plan_mode,
+)
+from loushang.harnesswork import (
+    create_work_event_log,
+    run_work_log_inspection_operation,
+)
+from loushang.harnesswork.integrations.session import (
+    SessionWorkHostPort,
+    project_prepared_session_work_turns,
+)
+from loushang.method import (
+    MethodCompiler,
+    MethodContext,
+    MethodLoader,
+    resolve_method_policy,
+)
+
+_WORK_LOG_INSPECT_LIMIT = 20
+
+
+async def run_prompt_command(
+    *,
+    runtime: Any,
+    session: Any,
+    prompt: str,
+    stdout: TextIO,
+    stderr: TextIO,
+    images: list[object] | None = None,
+    follow_up_messages: Sequence[str] = (),
+    verbose: bool = False,
+    work_event_log: Any = None,
+    work_runtime: Any = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+    dispose: bool = True,
+) -> int:
+    """Load plain prompt presentation only for a plain prompt invocation."""
+    from loushang.coding.prompt_command import run_prompt_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        prompt=prompt,
+        stdout=stdout,
+        stderr=stderr,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        verbose=verbose,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
+        dispose=dispose,
+    )
+
+
+async def run_prompt_plan_command(
+    *,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[Any],
+    stdout: TextIO,
+    stderr: TextIO,
+    work_event_log: Any,
+    work_runtime: Any = None,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    from loushang.coding.prompt_command import run_prompt_plan_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        turns=turns,
+        stdout=stdout,
+        stderr=stderr,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        verbose=verbose,
+        dispose=dispose,
+    )
+
+
+def build_default_services(project_root: Path) -> BootstrapServices:
+    settings_manager = SettingsManager(
+        global_settings_path=default_global_settings_path(),
+        project_settings_path=default_project_settings_path(project_root),
+    )
+    return create_services(
+        ai_model_registry=get_default_model_registry(),
+        settings_manager=settings_manager,
+    )
+
+
+async def _run_coding_rpc_host(
+    *,
+    runtime: object,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO,
+    render_tool_events: bool = False,
+) -> int:
+    from loushang.coding.plugin_management_rpc_scope import CodingPluginRpcSessionScope
+
+    session_scope = CodingPluginRpcSessionScope()
+    return await run_rpc_host(
+        runtime=runtime,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        render_tool_events=render_tool_events,
+        plugin_preview_factory=session_scope.bind_preview,
+        plugin_explanation_factory=session_scope.bind_explanation,
+        plugin_desired_factory=session_scope.bind_desired,
+        plugin_management_factory=session_scope.bind_management,
+        on_plugin_session_bound=session_scope.bind_session,
+        package_repair_factory=(
+            session_scope.bind_package_repair if os.name == "posix" else None
+        ),
+    )
+
+
+def build_builtin_tool_registry(
+    *,
+    diagnostics_service: object | None = None,
+    settings_manager: object | None = None,
+    approval_resolver: ApprovalResolver | None = None,
+    runtime_settings: WorkspaceToolRuntimeSettings | None = None,
+) -> WorkspaceToolRegistry:
+    resolved_runtime_settings = runtime_settings or workspace_tool_runtime_settings(
+        settings_manager, policy_factory=PolicyEngine
+    )
+    resolved_approval_resolver = (
+        approval_resolver
+        if approval_resolver is not None
+        else resolved_runtime_settings.approval_resolver
+    )
+    registry = WorkspaceToolRegistry()
+    configure_persistent_approval_policy(
+        resolved_approval_resolver,
+        settings_manager,
+    )
+    return registry
+
+
+def default_runtime_builder(
+    *,
+    args: CliArgs,
+    cwd: Path,
+    session_dir: Path,
+    services: BootstrapServices,
+    tool_registry: WorkspaceToolRegistry,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: object | None = None,
+):
+    allowed_tool_names, active_tool_names = agent_tool_selection(args)
+    runtime_tool_registry = tool_registry.copy()
+    if (
+        not getattr(args, "no_builtin_tools", False)
+        and allowed_tool_names is not None
+        and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
+    ):
+        from loushang.coding.agent_invocation import (
+            register_coding_agent_delegate_tool,
+        )
+
+        registered_parent_tools = tuple(
+            definition.name
+            for definition in runtime_tool_registry.list_enabled_definitions()
+            if definition.name in allowed_tool_names
+        )
+        register_coding_agent_delegate_tool(
+            runtime_tool_registry,
+            parent_allowed_tools=registered_parent_tools,
+        )
+    internal_profile_id = getattr(args, "agent_invocation_profile", None)
+    invocation_product_profile: CodingAgentInvocationProductProfile | None = (
+        resolve_coding_agent_invocation_product_profile(internal_profile_id)
+        if internal_profile_id is not None
+        else None
+    )
+    resource_profile_args = (
+        replace(args, no_context_files=True)
+        if invocation_product_profile is not None
+        else args
+    )
+    resource_loader_options = configure_agent_resource_loader(
+        services.resource_loader,
+        resource_profile_args,
+    )
+    services_factory = cwd_bound_services_factory(
+        services,
+        resource_loader_options,
+        create_services=_create_agent_session_services,
+        create_services_options=(
+            {
+                "resource_catalog_source_policy": (
+                    invocation_product_profile.resource_catalog_source_policy
+                )
+            }
+            if invocation_product_profile is not None
+            else None
+        ),
+    )
+    runtime_factory = (
+        _create_agent_invocation_session_runtime
+        if invocation_product_profile is not None
+        else create_agent_session_runtime
+    )
+    runtime_options = dict(
+        session_dir=session_dir,
+        services=services,
+        services_factory=services_factory,
+        tool_registry=runtime_tool_registry,
+        allowed_tool_names=(
+            ToolSelection.ALL if allowed_tool_names is None else allowed_tool_names
+        ),
+        active_tool_names=active_tool_names,
+        no_tools=(
+            "all"
+            if getattr(args, "no_tools", False)
+            else "builtin"
+            if getattr(args, "no_builtin_tools", False)
+            else None
+        ),
+        persist=not args.no_session,
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=True,
+    )
+    if invocation_product_profile is not None:
+        runtime_options["product_profile"] = invocation_product_profile
+    configured_capabilities = getattr(
+        services.settings_manager.get_settings(),
+        "capabilities",
+        {},
+    )
+    selected_composition_set: str | None = None
+    if invocation_product_profile is None:
+        selected_composition_set = resolve_cli_composition_choice(
+            getattr(args, "composition_set", None), configured_capabilities
+        )
+        runtime_options["composition_set"] = selected_composition_set
+        runtime_options["composition_set_explicit"] = (
+            getattr(args, "composition_set", None) is not None
+        )
+        runtime_options["composition_choice_from_cli"] = True
+    worker_query_plugin = getattr(args, "worker_query_plugin", None)
+    if worker_query_plugin is not None:
+        if (
+            invocation_product_profile is not None
+            or sys.platform not in {"linux", "win32"}
+            or platform.machine().lower() not in {"x86_64", "amd64"}
+            or args.mode not in {"print", "text"}
+            or args.no_session
+            or getattr(args, "no_tools", False)
+            or getattr(args, "no_builtin_tools", False)
+            or runtime_options.get("composition_set") != "coding-standard"
+            or (bool(args.tools) and CODING_WORKER_QUERY_TOOL_NAME not in args.tools)
+        ):
+            raise ValueError(
+                "Worker query requires a persisted Linux or Windows x86-64 Coding "
+                "standard print or text Session with Tools enabled"
+            )
+        runtime_options["worker_candidate_plugin_id"] = worker_query_plugin
+        runtime_options["worker_query_turn_tool"] = True
+    runtime = runtime_factory(**runtime_options)
+    if (
+        invocation_product_profile is None
+        and type(approval_resolver) is InteractiveApprovalResolver
+    ):
+        from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
+
+        if type(runtime) is AgentSessionRuntime:
+            runtime._bind_embedded_resume_approval_owner(approval_resolver)
+            policy_fingerprint = getattr(
+                tool_policy_evaluator, "configuration_fingerprint", None
+            )
+            if callable(policy_fingerprint):
+                if selected_composition_set is None:
+                    raise RuntimeError("Coding Resume composition is unavailable")
+                runtime.configure_resume_planning(
+                    current_composition=resolve_coding_composition_set(
+                        selected_composition_set
+                    ),
+                    workspace_root=cwd.resolve(strict=True),
+                    resource_loader=services.resource_loader,
+                    subject_digest=runtime._current_embedded_resume_subject_digest,
+                    policy_digest=policy_fingerprint,
+                )
+    resource_layout = resolve_machine_resource_layout(cwd=cwd)
+    platform_sessions = resource_layout.sessions
+    if session_dir.expanduser().resolve(strict=False) == platform_sessions:
+        prepare_private_directory_chain(platform_sessions)
+        platform_sessions.chmod(0o700)
+        set_authority = getattr(runtime, "set_session_authority_source", None)
+        if callable(set_authority):
+            set_authority(
+                SessionDiscoverySource(
+                    source_id="sessions.global",
+                    root=platform_sessions,
+                    mode="canonical",
+                    origin="global",
+                    priority=0,
+                )
+            )
+        add_source = getattr(runtime, "add_session_discovery_source", None)
+        if callable(add_source):
+            for resource in resource_layout.resources:
+                if not (
+                    resource.resource_id.startswith("sessions.")
+                    and resource.mode == "compatibility"
+                ):
+                    continue
+                add_source(
+                    SessionDiscoverySource(
+                        source_id=resource.resource_id,
+                        root=resource.path,
+                        mode="compatibility",
+                        origin=session_origin_from_resource_id(resource.resource_id),
+                        priority=(
+                            10
+                            if resource.resource_id == "sessions.cwd_compatibility"
+                            else 20
+                            if resource.resource_id == "sessions.home_compatibility"
+                            else 100
+                        ),
+                    )
+                )
+        else:
+            add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
+            if callable(add_legacy_source):
+                add_legacy_source(cwd / ".loushang" / "sessions")
+    return runtime
+
+
+async def run_cli(
+    argv: list[str] | tuple[str, ...] | None = None,
+    *,
+    stdin: TextIO | None = None,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+    cwd: str | Path | None = None,
+    services: BootstrapServices | Any | None = None,
+    runtime_builder=default_runtime_builder,
+    mode_runner=run_agent_mode,
+    prompt_runner=run_prompt_command,
+    workflow_runner=run_prompt_steps_workflow,
+    print_runner=run_agent_plain_mode,
+    rpc_runner=run_rpc_host,
+    channel_runner=run_coding_work_channel,
+    tui_runner=run_coding_tui,
+    continuity_runner=run_continuity_picker,
+    multiagent_runner=run_coding_multiagent_command,
+    workspace_runner=run_coding_workspace_command,
+    lsp_runner=run_coding_lsp_command,
+    machine_resource_runner=run_machine_resource_command,
+    apphost_runner=run_coding_apphost_command,
+    _prepared_screen_runner: Any = None,
+) -> int:
+    raw_argv = tuple(argv or ())
+    resolved_stderr = stderr or sys.stderr
+    if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
+        return 2
+    if any(
+        argument == option or argument.startswith(f"{option}=")
+        for option in ("--install-package", "--update-package", "--uninstall-package")
+        for argument in raw_argv
+    ):
+        candidate = _parse_application_args(raw_argv, resolved_stderr, None, True)
+        # Wheels use the fenced Product installer. Existing source-package
+        # commands keep their compatible owner in an unfenced workspace.
+        if candidate.args is not None and any(
+            Path(source).suffix == ".whl"
+            for source in (
+                *candidate.args.install_packages, *candidate.args.update_packages,
+            )
+        ):
+            try:
+                project_root = (
+                    Path(cwd or candidate.args.cwd or Path.cwd())
+                    .expanduser()
+                    .resolve(strict=True)
+                )
+                layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+                if not coding_fenced_product_exists(layout):
+                    supplied_settings = getattr(services, "settings_manager", None)
+                    require_fresh_coding_product_inputs_without_writes(
+                        layout,
+                        workspace=project_root,
+                        settings_manager=(
+                            supplied_settings
+                            if isinstance(supplied_settings, SettingsManager)
+                            else None
+                        ),
+                    )
+            except (OSError, RuntimeError, ValueError) as error:
+                resolved_stderr.write(f"Error: {error}\n")
+                return 1
+    if (
+        current_preview_option_requested(raw_argv)
+        or local_discovery_option_requested(raw_argv)
+        or plugin_explanation_option_requested(raw_argv)
+        or plugin_repair_option_requested(raw_argv)
+    ):
+        parsed = _parse_application_args(raw_argv, resolved_stderr, None, False)
+        if parsed.args is None:
+            return parsed.exit_code or 2
+        args = parsed.args
+        if args.help:
+            (stdout or sys.stdout).write(help_text())
+            return 0
+        try:
+            project_root = (
+                Path(cwd or args.cwd or Path.cwd()).expanduser().resolve(strict=True)
+            )
+            workspace_stat = project_root.lstat()
+            if not stat.S_ISDIR(workspace_stat.st_mode):
+                raise ValueError("Coding management workspace is unavailable")
+            workspace_client = open_coding_plugin_management_read_client(
+                project_root,
+                expected_workspace_identity=(
+                    workspace_stat.st_dev,
+                    workspace_stat.st_ino,
+                ),
+            )
+        except CodingPluginManagementReadSdkError as error:
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(error.code),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
+            resolved_stderr.write(f"Error: {error.code}\n")
+            return 1
+        except (OSError, RuntimeError, ValueError):
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(
+                            "local_discovery_workspace_unavailable"
+                        ),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
+            code = (
+                "plugin_repair_workspace_unavailable"
+                if args.repair_plugin_desired_operation is not None
+                else (
+                    "plugin_explanation_workspace_unavailable"
+                    if args.explain_plugin_operation is not None
+                    else "plugin_preview_workspace_unavailable"
+                )
+            )
+            resolved_stderr.write(f"Error: {code}\n")
+            return 1
+        if args.repair_plugin_desired_operation is not None:
+            return _run_coding_plugin_desired_repair_cli(
+                args,
+                project_root=project_root,
+                workspace_guard=workspace_client.assert_workspace_current,
+                stdout=stdout or sys.stdout,
+                stderr=resolved_stderr,
+            )
+        if args.discover_local_plugins:
+            return _run_coding_local_discovery_cli(
+                args,
+                client=workspace_client,
+                stdout=stdout or sys.stdout,
+                stderr=resolved_stderr,
+            )
+        if args.explain_plugin_operation is not None:
+            return _run_coding_plugin_operation_explanation_cli(
+                args,
+                project_root=project_root,
+                workspace_guard=workspace_client.assert_workspace_current,
+                stdout=stdout or sys.stdout,
+                stderr=resolved_stderr,
+            )
+        return _run_coding_current_preview_cli(
+            args,
+            project_root=project_root,
+            workspace_guard=workspace_client.assert_workspace_current,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+        )
+    apphost_argv = extract_apphost_argv(raw_argv)
+    if apphost_argv is not None:
+        return await apphost_runner(
+            apphost_argv,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+        )
+    machine_resource_argv = extract_machine_resource_argv(raw_argv)
+    if machine_resource_argv is not None:
+        return await machine_resource_runner(
+            machine_resource_argv,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+        )
+    workspace_argv = extract_workspace_argv(raw_argv)
+    if workspace_argv is not None:
+        return await workspace_runner(
+            workspace_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+        )
+    lsp_argv = extract_lsp_argv(raw_argv)
+    if lsp_argv is not None:
+        return await lsp_runner(
+            lsp_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+            services=services,
+            build_services=build_default_services,
+        )
+    multiagent_argv = extract_multiagent_argv(raw_argv)
+    if multiagent_argv is not None:
+        return await multiagent_runner(
+            multiagent_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+            services=services,
+            build_services=build_default_services,
+            build_tool_registry=build_builtin_tool_registry,
+        )
+    host_lifecycle = ProductHostLifecycle.resolve(
+        stdin=stdin,
+        stdout=stdout,
+        stderr=resolved_stderr,
+    )
+    state_preparation_ports = _coding_state_preparation_ports(workflow_runner)
+    host_binding = AgentCliSessionHostBinding[
+        CliArgs,
+        AgentCliApplicationState[CliArgs],
+    ](
+        stream_is_tty=stream_is_tty,
+        resolve_work_event_log=lambda args, project_root: create_work_event_log(
+            args.work_log, project_root
+        ),
+        build_work_runtime=lambda session, event_log: create_coding_work_runtime(
+            session=session,
+            event_log=event_log,
+            session_id=lambda: session.session_id,
+        ),
+        bind_plain_work_port=SessionWorkHostPort,
+        workflow_path=lambda args: (
+            Path(args.prompt_steps) if args.prompt_steps is not None else None
+        ),
+        workflow_output_mode=agent_cli_output_mode,
+        prepare_host_input=_prepare_coding_host_input,
+        observability_context=lambda args, session, project_root, mode: (
+            session_observability_context(
+                args=args,
+                session=session,
+                cwd=project_root,
+                mode=mode,
+                source_resolver=coding_diagnostic_source,
+            )
+        ),
+    )
+    host_runners = AgentCliHostRunners(
+        run_turns=host_lifecycle.run_turns,
+        mode=mode_runner,
+        prompt=prompt_runner,
+        workflow=workflow_runner,
+        plain=print_runner,
+        rpc=(
+            _run_coding_rpc_host
+            if rpc_runner is run_rpc_host and mode_runner is run_agent_mode
+            else rpc_runner
+        ),
+        channel=channel_runner,
+        tui=tui_runner,
+        prompt_plan=run_prompt_plan_command,
+        plain_plan=run_agent_plain_plan_mode,
+        default_mode=run_agent_mode,
+        default_prompt=run_prompt_command,
+        default_plain=run_agent_plain_mode,
+        default_rpc=run_rpc_host,
+    )
+    binding = AgentCliApplicationBinding(
+        parse_args=_parse_application_args,
+        launch_plan=_cli_launch_plan,
+        state_ports=state_preparation_ports,
+        runtime_builder=runtime_builder,
+        format_help=_help_text,
+        package_version=lambda: distribution_version("loushang"),
+        runtime_identity=lambda project_root: coding_runtime_identity(cwd=project_root),
+        format_runtime_identity=format_coding_runtime_identity_text,
+        validated_operation=_run_work_log_inspect,
+        startup_context=lambda context, state: startup_observability_context(
+            args=context.args,
+            services=state.services,
+            cwd=context.project_root,
+            source_resolver=coding_diagnostic_source,
+        ),
+        configure_session=_configure_coding_cli_session,
+        session_operations=_run_coding_cli_operations,
+        run_host=host_binding.bind(host_runners),
+        host_lifecycle=host_lifecycle,
+        dispose_runtime=_dispose_coding_cli_runtime,
+        services=services,
+        session_resolution_error=_coding_session_resolution_error,
+        pre_session_bootstrap=lambda context: _run_coding_pre_session_bootstrap(
+            context,
+            continuity_runner=continuity_runner,
+        ),
+    )
+    if _prepared_screen_runner is not None:
+        return await _prepared_screen_runner(binding, host_binding, host_runners)
+    if (
+        tui_runner is run_coding_tui
+        and stream_is_tty(host_lifecycle.streams.stdin)
+        and stream_is_tty(host_lifecycle.streams.stdout)
+    ):
+        from io import StringIO
+
+        from loushang.coding.cli.screen_startup import (
+            run_screen_first_cli,
+            screen_startup_eligible,
+        )
+
+        candidate = _parse_application_args(raw_argv, StringIO(), None, True)
+        if candidate.args is not None and screen_startup_eligible(
+            candidate.args,
+            _cli_launch_plan(candidate.args),
+            stdin=host_lifecycle.streams.stdin,
+            stdout=host_lifecycle.streams.stdout,
+        ):
+            return await run_screen_first_cli(
+                raw_argv,
+                binding=binding,
+                host_binding=host_binding,
+                host_runners=host_runners,
+                project_root=Path(cwd or candidate.args.cwd or Path.cwd()).resolve(),
+                cwd=cwd,
+            )
+    return await run_agent_cli_application(
+        raw_argv,
+        binding=binding,
+        cwd=cwd,
+    )
+
+
+async def _dispose_coding_cli_runtime(runtime: object) -> None:
+    """Release a one-shot CLI Session and its Product runtime lease on exit."""
+
+    dispose = getattr(runtime, "dispose_session_runtime", None)
+    if callable(dispose):
+        result = dispose()
+        if inspect.isawaitable(result):
+            await result
+
+
+def _coding_session_resolution_error(context) -> str | None:
+    args = context.state.args
+    if args.resume is True and not resolve_effective_tui(
+        context.bootstrap.launch_plan,
+        stdin_is_tty=stream_is_tty(context.bootstrap.stdin),
+        stdout_is_tty=stream_is_tty(context.bootstrap.stdout),
+    ):
+        return (
+            "--resume without a session reference requires an interactive TUI; "
+            "use --continue for the latest session or --resume <session>"
+        )
+    return None
+
+
+async def _run_coding_pre_session_bootstrap(
+    context,
+    *,
+    continuity_runner,
+) -> CliPhaseResult[object] | None:
+    args = context.state.args
+    if args.resume is not True:
+        return None
+    if not resolve_effective_tui(
+        context.bootstrap.launch_plan,
+        stdin_is_tty=stream_is_tty(context.bootstrap.stdin),
+        stdout_is_tty=stream_is_tty(context.bootstrap.stdout),
+    ):
+        raise RuntimeError(
+            "--resume without a session reference requires an interactive TUI; "
+            "use --continue for the latest session or --resume <session>"
+        )
+
+    settings_manager = context.state.settings_manager
+    try:
+        composition = await bind_coding_configured_continuity(
+            context.runtime,
+            settings_manager=settings_manager,
+            session_dir=context.state.session_dir,
+            cwd=context.bootstrap.project_root,
+            all_sessions=args.all_sessions,
+            diagnostics_service=getattr(
+                context.state.services,
+                "diagnostics_service",
+                None,
+            ),
+        )
+    except BaseException as bootstrap_error:
+        try:
+            await shutdown_coding_continuity(context.runtime)
+        except BaseException as cleanup_error:
+            bootstrap_error.add_note(
+                "Coding Continuity bootstrap cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise
+    continuity_reference = composition.hub.reference()
+    activated = False
+    try:
+
+        async def activate(target):
+            lease = await continuity_reference.prepare(target)
+            return await consume_prepared_activation(lease)
+
+        selection = await continuity_runner(
+            reference=continuity_reference,
+            activate=activate,
+            stdin=context.bootstrap.stdin,
+            stdout=context.bootstrap.stdout,
+            keybindings=_continuity_keybindings(context.state.settings_manager),
+        )
+        if selection is None:
+            return CliPhaseResult.exit(0)
+        result = selection.activation_result
+        session = getattr(result, "current", None)
+        if session is None:
+            getter = getattr(context.runtime, "get_current_session", None)
+            session = getter() if callable(getter) else None
+        if session is None:
+            raise RuntimeError(
+                "Continuity activation did not publish a Product session"
+            )
+        activated = True
+        return CliPhaseResult.continue_with(session)
+    finally:
+        continuity_reference.release()
+        await composition.dispose()
+        if not activated:
+            await shutdown_coding_continuity(context.runtime)
+
+
+def _continuity_keybindings(settings_manager: object | None) -> object | None:
+    getter = getattr(settings_manager, "get_keybindings", None)
+    return getter() if callable(getter) else None
+
+
+def _parse_application_args(
+    argv: Sequence[str],
+    stderr: TextIO,
+    extension_flags: Mapping[str, object] | None,
+    allow_unknown: bool,
+) -> CliParseResult[CliArgs]:
+    if _reject_removed_legacy_resource_input(tuple(argv), stderr):
+        return CliParseResult(args=None, exit_code=2)
+    return capture_cli_parse(
+        parse_args,
+        argv,
+        stderr,
+        cast(
+            Mapping[str, ExtensionFlag] | None,
+            extension_flags,
+        ),
+        allow_unknown,
+    )
+
+
+def _reject_removed_legacy_resource_input(
+    argv: tuple[str, ...],
+    stderr: TextIO,
+) -> bool:
+    removed_option = removed_legacy_resource_option(argv)
+    if removed_option is None:
+        return False
+    stderr.write(
+        "Error: coding_legacy_resource_input_removed: "
+        f"{removed_option} is no longer supported; use native "
+        ".loushang/resources roots or a verified Plugin with exact "
+        "contribution declarations.\n"
+    )
+    return True
+
+
+def _coding_state_preparation_ports(
+    workflow_runner: Any,
+) -> AgentCliStatePreparationPorts[CliArgs]:
+    return AgentCliStatePreparationPorts(
+        build_services=build_default_services,
+        product_catalog_operation=lambda args: any(
+            (
+                args.list_methods,
+                args.show_method is not None,
+                args.show_method_plan is not None,
+            )
+        ),
+        pre_runtime_operation=lambda context: _run_coding_pre_runtime_operation(
+            context,
+            workflow_runner=workflow_runner,
+        ),
+        build_empty_tool_registry=WorkspaceToolRegistry,
+        build_tool_registry=lambda services, runtime_settings, approval_resolver: (
+            build_builtin_tool_registry(
+                diagnostics_service=getattr(
+                    services,
+                    "diagnostics_service",
+                    None,
+                ),
+                settings_manager=getattr(services, "settings_manager", None),
+                approval_resolver=cast(ApprovalResolver | None, approval_resolver),
+                runtime_settings=runtime_settings,
+            )
+        ),
+        policy_factory=PolicyEngine,
+        build_interactive_approval_resolver=lambda fallback=None: (
+            InteractiveApprovalResolver(
+                fallback=cast(
+                    ApprovalResolver,
+                    fallback or HeadlessApprovalResolver(mode="deny"),
+                )
+            )
+        ),
+        run_resource_toggle=run_resource_toggle_operation,
+        build_plugin_management=build_coding_plugin_management_cli_binding,
+        build_plugin_management_read=build_coding_plugin_management_cli_read_binding,
+        evaluate_plugin_source=_package_source_policy_reason,
+        is_remote_plugin_source=is_remote_plugin_source,
+        on_policy_denied=lambda services, package_source, reason: (
+            record_package_source_policy_denial(
+                getattr(services, "diagnostics_service", None),
+                package_source=package_source,
+                reason=reason,
+            )
+        ),
+        format_error=_format_cli_error,
+    )
+
+
+def _run_coding_local_discovery_cli(
+    args: CliArgs,
+    *,
+    client: CodingPluginManagementReadClientV1,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if (
+        replace(
+            args,
+            cwd=None,
+            discover_local_plugins=False,
+            discover_local_plugins_format=baseline.discover_local_plugins_format,
+            discover_local_query=baseline.discover_local_query,
+            discover_local_kind=baseline.discover_local_kind,
+            discover_local_source=baseline.discover_local_source,
+            discover_local_limit=baseline.discover_local_limit,
+        )
+        != baseline
+    ):
+        stderr.write("Error: local_discovery_operation_conflict\n")
+        return 2
+    try:
+        document = discover_coding_local_plugins(
+            client,
+            query=args.discover_local_query,
+            kind=args.discover_local_kind,
+            source=args.discover_local_source,
+            limit=args.discover_local_limit,
+        )
+        stdout.write(
+            format_coding_local_discovery(document, args.discover_local_plugins_format)
+        )
+        return 1 if document["disposition"] == "blocked" else 0
+    except CodingPluginManagementReadSdkError as error:
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery(error.code),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
+    except (OSError, RuntimeError, ValueError):
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery("local_discovery_unavailable"),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
+
+
+def _run_coding_current_preview_cli(
+    args: CliArgs,
+    *,
+    project_root: Path,
+    workspace_guard: Callable[[], None],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if (
+        replace(
+            args,
+            cwd=None,
+            preview_current_plugins=False,
+            composition_set=baseline.composition_set,
+            preview_composition_set=baseline.preview_composition_set,
+        )
+        != baseline
+    ):
+        stderr.write("Error: plugin_preview_operation_conflict\n")
+        return 2
+    try:
+        workspace_guard()
+        layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+        query = bind_coding_current_preview_query(
+            project_root, workspace_guard=workspace_guard
+        )
+        configured_capabilities = query.configured_capabilities()
+        if (
+            args.preview_composition_set is not None
+            and args.composition_set is not None
+            and args.preview_composition_set != args.composition_set
+        ):
+            stderr.write("Error: plugin_preview_composition_conflict\n")
+            return 2
+        selected_set = resolve_cli_composition_choice(
+            args.preview_composition_set or args.composition_set,
+            configured_capabilities,
+        )
+        projected = json.loads(
+            format_plugin_current_preview(
+                query,
+                PluginCurrentPreviewRequestV1(
+                    correlation_id="cli:preview-current-plugins",
+                    product_id=CODING_PRODUCT_ID,
+                    scope_id=layout.scope_id,
+                    composition_set_id=selected_set,
+                ),
+            )
+        )
+        plan = resolve_coding_composition_set(selected_set)
+        projected["requestedComposition"] = {
+            "setId": plan.set_id,
+            "planFingerprint": plan.fingerprint,
+            "pluginRequests": [item.to_dict() for item in plan.plugin_requests],
+        }
+        document = json.dumps(projected, ensure_ascii=False, sort_keys=True) + "\n"
+        if query.configured_capabilities() != configured_capabilities:
+            raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
+        workspace_guard()
+    except CodingPluginManagementReadSdkError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except CodingCurrentPreviewError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except Exception:
+        stderr.write("Error: plugin_preview_unavailable\n")
+        return 1
+    stdout.write(document)
+    return 0
+
+
+def _run_coding_plugin_operation_explanation_cli(
+    args: CliArgs,
+    *,
+    project_root: Path,
+    workspace_guard: Callable[[], None],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if replace(args, cwd=None, explain_plugin_operation=None) != baseline:
+        stderr.write("Error: plugin_explanation_operation_conflict\n")
+        return 2
+    operation_id = args.explain_plugin_operation
+    if operation_id is None or not operation_id or operation_id != operation_id.strip():
+        stderr.write("Error: plugin_explanation_invalid_operation\n")
+        return 2
+    try:
+        workspace_guard()
+        layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+        request = PluginOperationExplanationRequestV1(
+            correlation_id="cli:explain-plugin-operation",
+            product_id=CODING_PRODUCT_ID,
+            scope_id=layout.scope_id,
+            operation_id=operation_id,
+        )
+        document = project_plugin_operation_explanation(
+            bind_coding_plugin_operation_explanation_query(
+                project_root, workspace_guard=workspace_guard
+            ),
+            request,
+        )
+        workspace_guard()
+    except CodingPluginManagementReadSdkError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except CodingPluginOperationExplanationError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except Exception:
+        stderr.write("Error: plugin_explanation_unavailable\n")
+        return 1
+    stdout.write(format_plugin_operation_explanation(document))
+    return 0
+
+
+def _run_coding_plugin_desired_repair_cli(
+    args: CliArgs,
+    *,
+    project_root: Path,
+    workspace_guard: Callable[[], None],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if (
+        replace(
+            args,
+            cwd=None,
+            repair_plugin_desired_operation=None,
+        )
+        != baseline
+    ):
+        stderr.write("Error: plugin_repair_operation_conflict\n")
+        return 2
+    operation_id = args.repair_plugin_desired_operation
+    if operation_id is None or not operation_id or operation_id != operation_id.strip():
+        stderr.write("Error: plugin_repair_invalid_operation\n")
+        return 2
+    try:
+        workspace_guard()
+        layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+        result = repair_coding_fenced_cli_desired_operation(
+            layout,
+            operation_id,
+            workspace=project_root,
+            workspace_guard=workspace_guard,
+            correlation_id="cli:repair-plugin-desired-operation",
+        )
+        workspace_guard()
+    except CodingPluginManagementReadSdkError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except PluginDesiredCommandRepairError as error:
+        stderr.write(f"Error: {error.code}\n")
+        return 1
+    except ValueError as error:
+        if str(error) == "coding_product_not_fenced":
+            stderr.write("Error: coding_product_not_fenced\n")
+            return 1
+        if str(error) == "coding_management_workspace_changed":
+            stderr.write("Error: coding_management_workspace_changed\n")
+            return 1
+        stderr.write("Error: plugin_repair_unavailable\n")
+        return 1
+    except Exception:
+        stderr.write("Error: plugin_repair_unavailable\n")
+        return 1
+    stdout.write(json.dumps(result.to_dict(), sort_keys=True) + "\n")
+    if result.result is None:
+        return 1
+    operation_result = result.result.operation.result
+    return (
+        0
+        if operation_result is not None and operation_result.disposition == "succeeded"
+        else 1
+    )
+
+
+async def _run_coding_pre_runtime_operation(
+    context: AgentCliStatePreparationContext[CliArgs],
+    *,
+    workflow_runner: Any,
+) -> int | None:
+    args = context.args
+    layout = resolve_coding_plugin_lifecycle_state_layout(context.project_root)
+    if args.list_plugins and args.export is None:
+        try:
+            records = list_plugin_records(
+                build_coding_plugin_management_cli_read_binding(
+                    context.project_root,
+                    getattr(context.services, "settings_manager", None),
+                )
+            )
+            context.stdout.write(
+                format_plugin_records(records, args.list_plugins_format)
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as error:
+            context.stderr.write(f"Error: {error}\n")
+            return 1
+    if coding_fenced_product_exists(layout):
+        if args.install_packages:
+            return route_coding_fenced_data_wheels(
+                layout,
+                action="install",
+                workspace=context.project_root,
+                sources=args.install_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+        if args.update_packages:
+            return route_coding_fenced_data_wheels(
+                layout,
+                action="update",
+                workspace=context.project_root,
+                sources=args.update_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+        if args.uninstall_packages:
+            return uninstall_coding_fenced_data_wheels(
+                layout,
+                workspace=context.project_root,
+                plugin_ids=args.uninstall_packages,
+                scope=args.package_scope,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+    if args.capability_modes:
+        settings_manager = getattr(context.services, "settings_manager", None)
+        apply_overrides = getattr(settings_manager, "apply_overrides", None)
+        if callable(apply_overrides):
+            apply_overrides({"capabilities": dict(args.capability_modes)})
+    diagnostics_result = run_diagnostics_export_operation(
+        requested=args.diag_export,
+        project_root=context.project_root,
+        session_dir=context.session_dir,
+        output=args.diag_output,
+        diagnostics_service=getattr(
+            context.services,
+            "diagnostics_service",
+            None,
+        ),
+        debug_latest_path=args.debug_file,
+        trace_latest_path=args.trace_file,
+        stdout=context.stdout,
+        stderr=context.stderr,
+        format_error=_format_cli_error,
+    )
+    if diagnostics_result is not None or args.prompt_steps is None:
+        return diagnostics_result
+    return await run_fake_workflow_cli(
+        args.prompt_steps,
+        project_root=context.project_root,
+        runner=workflow_runner,
+        stdout=context.stdout,
+        stderr=context.stderr,
+        verbose=args.verbose,
+        output_mode=agent_cli_output_mode(args),
+        format_error=_format_cli_error,
+    )
+
+
+async def _configure_coding_cli_session(
+    context: CliSessionContext[
+        CliArgs,
+        AgentCliApplicationState[CliArgs],
+        object,
+        object,
+    ],
+) -> int | None:
+    args = context.args
+    return await configure_agent_cli_session(
+        context.session,
+        session_name=args.session_name,
+        extension_flag_values=args.extension_flag_values,
+        model_selection=None,
+        resolve_model_selection=lambda: parse_model_selection_reference(
+            args.model,
+            provider=args.provider,
+            registry=getattr(
+                getattr(context.state.services, "model_registry", None),
+                "ai_registry",
+                None,
+            ),
+        ),
+        thinking_level=args.thinking,
+        apply_model_selection=lambda session, selection: apply_model_selection(
+            session,
+            selection,
+            settings_manager=context.state.settings_manager,
+        ),
+        model_result_warning=_model_result_warning,
+        stderr=context.bootstrap.stderr,
+        format_error=_format_cli_error,
+    )
+
+
+async def _run_coding_cli_operations(
+    context: CliSessionContext[
+        CliArgs,
+        AgentCliApplicationState[CliArgs],
+        object,
+        object,
+    ],
+) -> int | None:
+    args = context.args
+    session = context.session
+    bootstrap = context.bootstrap
+    return await run_standard_cli_operations(
+        session,
+        context.state.settings_manager,
+        agent_standard_cli_operation_request(args),
+        stdout=bootstrap.stdout,
+        stderr=bootstrap.stderr,
+        additional_listing_requested=any(
+            (
+                args.list_packages,
+                args.list_methods,
+                args.show_method is not None,
+                args.show_method_plan is not None,
+            )
+        ),
+        plugin_management=context.state.plugin_management,
+        insertions=(
+            CliOperationInsertion(
+                CliOperationStage(
+                    "method_visibility",
+                    lambda: _run_method_visibility(
+                        args,
+                        bootstrap.project_root,
+                        bootstrap.stdout,
+                        bootstrap.stderr,
+                    ),
+                ),
+                target_operation_id="list_skills",
+            ),
+            CliOperationInsertion(
+                CliOperationStage(
+                    "list_packages",
+                    lambda: _run_list_packages(
+                        args,
+                        session,
+                        context.state.services,
+                        bootstrap.project_root,
+                        bootstrap.stdout,
+                        bootstrap.stderr,
+                    ),
+                ),
+                target_operation_id="list_plugins",
+            ),
+        ),
+        evaluate_install_source=_package_source_policy_reason,
+        on_policy_denied=lambda package_source, reason: (
+            record_package_source_policy_denial(
+                getattr(context.state.services, "diagnostics_service", None),
+                package_source=package_source,
+                reason=reason,
+            )
+        ),
+        format_error=_format_cli_error,
+    )
+
+
+def _prepare_coding_host_input(
+    context: CliSessionContext[
+        CliArgs,
+        AgentCliApplicationState[CliArgs],
+        object,
+        object,
+    ],
+) -> CliPhaseResult[PreparedAgentCliHostInput]:
+    args = context.args
+    bootstrap = context.bootstrap
+    domain_app = CodingDomainApp(
+        cwd=bootstrap.project_root,
+        method_loader=_coding_method_loader(),
+    )
+    return prepare_agent_cli_host_input(
+        resolve_input=lambda: resolve_agent_prompt_input(
+            args,
+            stdin=bootstrap.stdin,
+            cwd=bootstrap.project_root,
+            auto_resize_images=agent_image_auto_resize(context.state.settings_manager),
+        ),
+        prepare_turns=lambda user_input: domain_app.prepare_turns(
+            CodingDomainRequest(
+                user_input=user_input,
+                cwd=bootstrap.project_root,
+                method_policy=resolve_method_policy(
+                    explicit_method=args.method,
+                    disabled=args.no_method,
+                    settings_manager=context.state.settings_manager,
+                ),
+            )
+        ),
+        project_cli_turns=lambda turns: project_domain_turns_to_cli(
+            cast(Sequence[CodingDomainPreparedTurn], turns)
+        ),
+        project_plan_turns=lambda turns, images, follow_up_messages: (
+            project_prepared_session_work_turns(
+                cast(Sequence[CodingDomainPreparedTurn], turns),
+                images=cast(Sequence[object] | None, images),
+                follow_up_messages=follow_up_messages,
+            ),
+        ),
+        stderr=bootstrap.stderr,
+        format_error=_format_cli_error,
+        format_preparation_error=_format_method_cli_error,
+    )
+
+
+def _run_work_log_inspect(
+    context: CliBootstrapContext[CliArgs],
+) -> int | None:
+    args = context.args
+    return run_work_log_inspection_operation(
+        path=args.work_log_inspect,
+        project_root=context.project_root,
+        run_id=args.work_log_run,
+        output_format=args.work_log_inspect_format,
+        limit=_WORK_LOG_INSPECT_LIMIT,
+        stdout=context.stdout,
+        stderr=context.stderr,
+        format_error=_format_cli_error,
+    )
+
+
+def _format_method_cli_error(error: ValueError) -> str:
+    message = _format_cli_error(error)
+    if message.startswith("method not found:"):
+        return f"{message}\nRun 'loushang method list' to inspect available methods."
+    return message
+
+
+def _model_result_warning(result: object) -> str | None:
+    warning = persistence_warning_message(result)
+    if warning is None:
+        return None
+    selection = getattr(result, "selection")
+    return f"Model changed to {model_selection_ref(selection)}, but {warning}"
+
+
+def _run_method_visibility(
+    args: CliArgs,
+    project_root: Path,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int | None:
+    if (
+        not args.list_methods
+        and args.show_method is None
+        and args.show_method_plan is None
+    ):
+        return None
+
+    request = MethodListingRequest(
+        list_methods=args.list_methods,
+        list_format=args.list_methods_format,
+        show_method=args.show_method,
+        show_format=args.show_method_format,
+        show_method_plan=args.show_method_plan,
+        show_plan_format=args.show_method_plan_format,
+    )
+    if not request.has_operation:
+        return None
+    try:
+        result = run_method_listing(
+            request,
+            discover_methods=lambda: _coding_method_loader().discover_methods(
+                project_root
+            ),
+            compile_plan=lambda method: MethodCompiler().compile(
+                method, context=MethodContext(domain="coding")
+            ),
+        )
+    except MethodListingError as error:
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 1
+    stdout.write(result.output)
+    return 0
+
+
+def _coding_method_loader() -> MethodLoader:
+    return MethodLoader()
+
+
+def _run_list_packages(
+    args: CliArgs,
+    session: Any,
+    services: Any,
+    project_root: Path,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int | None:
+    get_packages = getattr(session, "get_packages", None)
+    settings_manager = getattr(services, "settings_manager", None)
+    get_settings = getattr(settings_manager, "get_settings", None)
+
+    def fallback_records() -> list[Mapping[str, object]]:
+        if not callable(get_settings):
+            return []
+        settings = get_settings()
+        return collect_coding_package_entries(
+            package_roots=tuple(getattr(settings, "package_roots", ())),
+            plugin_sources=tuple(getattr(settings, "plugin_sources", ())),
+            package_sources=tuple(getattr(settings, "package_sources", ())),
+            disabled_plugins=tuple(getattr(settings, "disabled_plugins", ())),
+            cwd=project_root,
+            settings_manager=settings_manager,
+            catalog_path=Path(args.package_catalog).expanduser().resolve()
+            if args.package_catalog
+            else None,
+            materializer=getattr(session, "_package_materializer", None),
+        )
+
+    return run_package_listing_operation(
+        requested=args.list_packages,
+        output_format=args.list_packages_format,
+        list_records=(
+            lambda: (
+                get_packages(catalog_path=args.package_catalog)
+                if callable(get_packages)
+                else []
+            )
+        )
+        if callable(get_packages)
+        else None,
+        fallback_records=fallback_records,
+        stdout=stdout,
+        stderr=stderr,
+        format_error=_format_cli_error,
+    )
+
+
+def _package_source_policy_reason(source: str) -> str | None:
+    decision = PackageSecurityPolicy().evaluate_package_source(source)
+    if decision.disposition == "deny":
+        return decision.reason or "Package source denied by policy."
+    return None
+
+
+def _help_text(extension_flags: Mapping[str, ExtensionFlag] | None = None) -> str:
+    return format_agent_cli_help(
+        help_text(),
+        extension_flags=cast(Mapping[str, object] | None, extension_flags),
+    )

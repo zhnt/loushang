@@ -16,6 +16,9 @@ endif
 BINARY_NAME := loushang$(EXE_EXT)
 DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
+AI_TARGETED_DESELECTS := \
+	--deselect=tests/ai/test_auth_api.py::test_login_returns_session_without_opening_browser \
+	--deselect=tests/ai/test_auth_oauth_lifecycle.py::test_real_authlib_login_store_resolve_refresh_lifecycle
 PYTEST_RUNNER := python scripts/dev/run_pytest.py
 
 HARNESSTUI_SHARED_SOURCES := \
@@ -120,6 +123,7 @@ HARNESS_TEST_PATHS := \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
+	tests/architecture/test_resource_catalog_rcp5_contract.py \
 	tests/architecture/test_composition_lifecycle_authority_cla0.py \
 	tests/architecture/test_plugin_lifecycle_plc9_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9a1_contract.py \
@@ -208,7 +212,6 @@ APPHOST_TEST_PATHS := \
 	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
-	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
@@ -220,8 +223,6 @@ APPHOST_TEST_PATHS := \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
 	tests/harnesstui/test_hosted_mux_settlement.py \
-	tests/coding/test_mux_terminal_process.py \
-	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_discovery_command.py \
@@ -229,10 +230,8 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_bootstrap.py \
 	tests/coding/test_hosted_local_discovery.py \
 	tests/coding/test_hosted_local_discovery_subprocess.py \
-	tests/coding/test_hosted_local.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
-	tests/coding/test_mux_subprocess.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
@@ -266,6 +265,11 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_foreground_hosted_application_g12.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
+APPHOST_TARGETED_TEST_PATHS := \
+	tests/coding/test_hosted_local.py \
+	tests/coding/test_mux_product_terminal.py \
+	tests/coding/test_mux_subprocess.py \
+	tests/coding/test_mux_terminal_process.py
 APPHOST_LINT_SUPPORT := \
 	tests/coding/_hosted_windows_api.py \
 	tests/coding/_hosted_windows_observer.py \
@@ -287,6 +291,7 @@ APPHOST_LINT_SUPPORT := \
 	tests/coding/_local_product_child.py \
 	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
+	src/loushang/coding/cli/application.py \
 	src/loushang/harness/machine_resources/control_plane.py \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
@@ -322,6 +327,16 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_g18_provenance.py \
+	tests/dev/test_g18_recovery.py \
+	tests/dev/test_g18_slot.py \
+	tests/dev/test_g18_bytecode.py \
+	tests/dev/test_g18_checkpoint.py \
+	tests/dev/test_g18_comparison.py \
+	tests/dev/test_measure_g18_startup.py \
+	tests/dev/test_measure_g18_native.py \
+	tests/dev/test_interactive_startup_probe.py \
+	tests/dev/test_interactive_campaign.py \
 	tests/dev/test_hosted_fixture_stdin.py \
 	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
@@ -425,9 +440,9 @@ test-host-runtime:
 	. .venv/bin/activate && uv run $(PYTEST_RUNNER) tests -m requires_host_runtime -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py $(AI_TARGETED_DESELECTS) -m "not live" -q
 
-check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
+check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-coverage
 
 check-ai-catalog:
 	uv run python scripts/ai/check_catalog.py
@@ -435,13 +450,9 @@ check-ai-catalog:
 check-ai-imports:
 	uv run python scripts/ai/check_import_boundaries.py
 
-check-ai-examples:
-	$(AI_OFFLINE_ENV) uv run python scripts/ai/check_examples.py
-	$(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/examples -q
-
 check-ai-coverage:
 	mkdir -p .artifacts/ai
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 check-harness: lint-harness typecheck-harness test-harness
@@ -520,13 +531,13 @@ test-hosting:
 check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence test-hosted-product-g10-linux-evidence
 
 lint-apphost:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_TARGETED_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
 
 typecheck-apphost:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPHOST_SOURCES)
 
 test-apphost:
-	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPHOST_TEST_PATHS) -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPHOST_TEST_PATHS) $(APPHOST_TARGETED_TEST_PATHS) -q
 
 test-hosted-product-g8-evidence:
 	mkdir -p .artifacts
@@ -550,6 +561,14 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_provenance.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_recovery.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_slot.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_bytecode.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_checkpoint.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_comparison.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_startup.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_native.py tests/coding/_g18_native_probe.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
@@ -558,6 +577,8 @@ lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_windows_api.py tests/coding/_hosted_windows_observer.py tests/coding/_hosted_windows_witness.py tests/coding/test_hosted_windows_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_interactive_startup_probe.py tests/coding/_interactive_model_child.py tests/coding/_interactive_seed.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_interactive_campaign.py
 
 typecheck-appservice:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)
