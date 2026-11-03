@@ -694,6 +694,106 @@ def test_model_cannot_supply_review_or_arbitrary_command():
         parse_repository_proposal(json.dumps(value).encode(), known_evidence=[])
 
 
+@pytest.mark.parametrize("legacy_input", [False, True])
+@pytest.mark.parametrize("failure", ["operation_ref", "length", "length_partial"])
+def test_planning_rejection_compact_retry_and_historical_input(
+    tmp_path, monkeypatch, legacy_input, failure
+):
+    """Replay failure shapes offline; this does not prove live model compliance."""
+    from loushang.coding.adapters._goal_repository import RepositoryPolicy
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    task = task_package(tmp_path)
+    rejection = (
+        "proposal cites unknown evidence"
+        if failure == "operation_ref"
+        else "planning assistant did not finish successfully"
+    )
+    original_material = RepositoryPolicy.planning_material
+
+    def legacy_material(self, snapshot):
+        material = original_material(self, snapshot)
+        material.pop("response_guidance")
+        return material
+
+    class PlanningAdapter(Adapter):
+        async def invoke_prepared_raw(self, request, prepared):
+            prompt = request.context.messages[-1].content
+            if isinstance(prompt, list):
+                prompt = "".join(part.text for part in prompt)
+            assert isinstance(prompt, str)
+            inputs = json.loads(prompt.rsplit("\n", 1)[-1])
+            guidance = inputs["material"].get("response_guidance")
+            if legacy_input:
+                assert guidance is None
+            else:
+                assert "evidence_refs: []" in guidance
+                assert "one short sentence" in guidance
+                assert "not evidence" in guidance
+            if self.calls == 0:
+                assert inputs["evidence"] == []
+            else:
+                assert inputs["rejections"][0]["reason"] == rejection
+            async for part in super().invoke_prepared_raw(request, prepared):
+                if self.calls == 1:
+                    if part["type"] == "text_delta":
+                        if failure == "operation_ref":
+                            proposal = json.loads(part["text"])
+                            proposal["evidence_refs"] = [
+                                prompt.split("Trusted planning operation: ", 1)[1]
+                                .split(";", 1)[0]
+                            ]
+                            part = {**part, "text": json.dumps(proposal)}
+                        elif failure == "length_partial":
+                            part = {**part, "text": part["text"][:40]}
+                    elif part["type"] == "stop_reason" and failure != "operation_ref":
+                        part = {**part, "stop_reason": "length"}
+                yield part
+
+    adapter = PlanningAdapter()
+
+    async def scenario():
+        owner = await open_repository_goal(
+            task=task, data_root=tmp_path / "data", model=model(adapter)
+        )
+        session_id = owner.session_id
+        try:
+            owner.create("g", command_id="create")
+            # Generate actual committed pre-guidance inputs, then restore today's
+            # producer before cold reading. Neither prompt nor proof is rewritten.
+            with monkeypatch.context() as patch:
+                if legacy_input:
+                    patch.setattr(RepositoryPolicy, "planning_material", legacy_material)
+                await owner.advance("g", command_id="bad", revision=1, epoch=1)
+                rejected = owner.planning_trace("g")
+                assert rejected["routes"] == []
+                assert rejected["rejections"], (rejected, owner.controller.last_error)
+                assert rejected["rejections"][0]["reason"] == rejection
+                await owner.advance("g", command_id="compact", revision=1, epoch=1)
+            trace = owner.planning_trace("g")
+            assert trace["status"] == "known"
+            assert len(trace["routes"]) == 1
+            assert len(trace["batches"]) == 2
+            assert all(batch["phase"] == "planning" for batch in trace["batches"])
+            assert trace["routes"][0]["consumed_by"] == []
+            assert (task.root / "target.py").read_text() == "VALUE = 1\n"
+            assert adapter.calls == 2
+        finally:
+            await owner.close()
+        cold = inspect_repository_goal(
+            task=task, data_root=tmp_path / "data", session_id=session_id, goal_id="g"
+        )
+        assert cold.planning == trace
+        assert not cold.execution_unresolved
+        assert cold.goal.status != "completed"
+        assert adapter.calls == 2
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        get_default_api_registry().unregister_api_adapters(adapter.api)
+
+
 @pytest.mark.parametrize("finish", [False, True])
 def test_rejected_review_reaches_next_plan_and_survives_cold_read(
     tmp_path, monkeypatch, finish
