@@ -1,0 +1,60 @@
+{
+  "name": "@loushang/harness-gui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Product-neutral native HarnessGUI shell for Loushang",
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "doctor": "node ../scripts/gui/run.mjs doctor",
+    "bootstrap": "pnpm install --frozen-lockfile",
+    "dev:web": "vite",
+    "dev": "node ../scripts/gui/run.mjs dev-native",
+    "dev:fixture-native": "node ../scripts/gui/run.mjs dev-fixture-native",
+    "build:web": "node ../scripts/gui/run.mjs build-web",
+    "test": "vitest run",
+    "test:layout": "playwright test",
+    "test:layout:install": "playwright install chromium --no-shell",
+    "test:watch": "vitest",
+    "check": "node ../scripts/gui/run.mjs check",
+    "check:full": "node ../scripts/gui/run.mjs check-full",
+    "check:contract": "tsc -p contracts/tsconfig.json && node ../scripts/gui/check-contract.mjs",
+    "contract:generate": "uv run python ../scripts/gui/generate_contract_types.py --write",
+    "contract:check-generated": "uv run python ../scripts/gui/generate_contract_types.py",
+    "check:auth-contract": "uv run python ../scripts/gui/check_auth_interop.py",
+    "check:record-contract": "uv run python ../scripts/gui/check_windows_record.py",
+    "check:record-values": "uv run python ../scripts/gui/check_record_values.py",
+    "check:connection-contract": "uv run python ../scripts/gui/check_connection_lifecycle.py",
+    "check:attachment-contract": "uv run python ../scripts/gui/check_attachment_lifecycle.py",
+    "build": "node ../scripts/gui/run.mjs build-native",
+    "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
+    "accept:live-native": "uv run python ../scripts/gui/run_live_apphost_acceptance.py",
+    "accept:live-provider": "uv run python ../scripts/gui/run_live_apphost_acceptance.py --live-provider --evidence-dir gui/test-results/live-provider-desktop",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^27.2.0",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.0.17",
+    "@tauri-apps/cli": "^2"
+  }
+}

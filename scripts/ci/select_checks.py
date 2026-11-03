@@ -63,7 +63,8 @@ SCOPED_WORKFLOWS = {
     **{
         f".github/workflows/{filename}.yml": (scope,)
         for filename, scope in (
-            ("architecture-quality", "architecture"), ("ai-quality", "ai"),
+            ("architecture-quality", "architecture"), ("gui-quality", "gui"),
+            ("ai-quality", "ai"),
             ("harness-quality", "harness"),
             ("harnesstui-quality", "harnesstui"), ("tui-render-contract", "tui"),
             ("hosting-quality", "hosting"), ("apphost-quality", "apphost"),
@@ -433,6 +434,8 @@ def select(
                     continue
         matched = False
         for rule in rules["rules"]:
+            if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule.get("exclude_paths", [])):
+                continue
             if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule["paths"]):
                 enable(rule["checks"], f"{path}: {rule['reason']}")
                 if (

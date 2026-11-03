@@ -76,8 +76,9 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
 
     groups = _partition_line_counts(line_counts)
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
-    # Preserve main's optional execution projection allowance.
-    assert sum(groups["g11"].values()) <= 420, groups["g11"]
+    # Hosted execution plus redacted, session-local model control stay in the
+    # existing AppService adapter owner.
+    assert sum(groups["g11"].values()) <= 470, groups["g11"]
     # LMUX-M0: original Product/catalog cleanup and managed activation (+84).
     # PLC9B: Product Session ownership closes the injected factory (+7).
     # Hosted SDK Method and bounded Goal integration add a net 55 lines on main.
@@ -147,7 +148,6 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
         "managed_local.py": 172,
     }.items():
         assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)
-
 
 def test_unapproved_files_stay_in_core_and_every_file_is_counted_once() -> None:
     approved = set().union(*APPROVED_SLICES.values())

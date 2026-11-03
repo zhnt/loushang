@@ -74,6 +74,8 @@ from .protocol import (
     MuxSpaceV1,
     SessionListResultV1,
     SessionListV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -435,6 +437,12 @@ class RemoteAppClientV1:
         return await self._call(
             AppOperationV1.SESSION_SNAPSHOT, request, SessionSnapshotV1
         )
+
+    async def list_session_models(self, request: SessionSnapshotRequestV1) -> SessionModelsV1:
+        return await self._call(AppOperationV1.SESSION_MODELS, request, SessionModelsV1)
+
+    async def select_session_model(self, request: SessionModelSelectV1) -> SessionModelsV1:
+        return await self._call(AppOperationV1.SESSION_MODEL_SELECT, request, SessionModelsV1)
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         return await self._call(AppOperationV1.TURN_START, request, AckV1)

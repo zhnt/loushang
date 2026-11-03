@@ -34,6 +34,8 @@
         "mux/member/open",
         "mux/member/close",
         "session/snapshot",
+        "session/models",
+        "session/model/select",
         "turn/start",
         "turn/steer",
         "turn/follow_up",
