@@ -78,3 +78,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## 操作级边界与查询清理补齐
 
 临时transport必须自行声明来源合同；继续使用原队列，校验前不消费，scope内clear不复活输入。三视角复核和200项Agent/Session/队列检查通过，提交3079d4c98。随后将query调用边界追踪收敛到Harness，关闭只等待查询自身finally，避免与调用方外层close互相等待；原reader cleanup异常保留合同不变。见[查询清理评审](refactoring-observation-review.md)，9项相关回归通过。普通Session公开接入及S4仍待完成。
+
+## 当前Session接入首切片
+
+已增加CodingGoal.attach，借用确切持久Session及历史，沿共同受理/配置/Work桥接运行，不修改原基线。新inspect_session_goal支持实际Session目录冷读；旧公开API保持。三视角关闭transport漂移、标准函数声明与目录冷读问题。7项配置组合、2项真实失败路径、174项原路径回归及175项旧兼容/包边界通过（范围部分重叠），详见[实施评审](current-session-implementation-review.md)。本切片不是所有普通Session组合的支持声明，S4双入口等价尚待完成。

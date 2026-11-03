@@ -560,7 +560,7 @@ class SessionWorkRuntime:
     def discard_binding(self, operation_id: str) -> None:
         self._resolver.discard(operation_id)
 
-    def require_goal_compatibility(self) -> None:
+    def require_goal_compatibility(self, *, require_unbounded_cancellation: bool = True) -> None:
         """Preserve the pre-refactor Goal cancellation and source contract.
 
         Keep the existing clock and original event authority. A backend-level
@@ -568,7 +568,7 @@ class SessionWorkRuntime:
         combined with Goal's own explicit per-operation source handoff.
         """
         _, timeout, source, _ = self._execution_configuration
-        if timeout is not None or source is not None:
+        if (require_unbounded_cancellation and timeout is not None) or source is not None:
             raise ValueError("existing Session Work backend is incompatible with Goal settlement or source")
 
     async def accept_operation(

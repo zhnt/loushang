@@ -26,10 +26,31 @@ class PlanningCallAllowance(ModelCallAllowance):
 
     def __init__(self, *, total_limit: int | None = None, max_output_tokens: int | None = None) -> None:
         @prepared_request_conformant
-        async def delegate(model, context, options):
+        async def delegate(model, context, options=None):
             # Resolve the original module binding at call time, as before.
             return await stream(model, context, options)
 
+        self._initialize(delegate, total_limit=total_limit, max_output_tokens=max_output_tokens)
+
+    @classmethod
+    def from_stream(cls, delegate, *, total_limit=None, max_output_tokens=None, checkpoint=None):
+        """Bind the existing Session transport without replacing its authority."""
+        from loushang.ai.api import stream as standard_stream
+
+        if delegate is standard_stream:
+            @prepared_request_conformant
+            async def standard_delegate(model, context, options=None):
+                return await delegate(model, context, options)
+
+            transport = standard_delegate
+        else:
+            transport = delegate
+        owner = cls.__new__(cls)
+        owner._initialize(transport, total_limit=total_limit, max_output_tokens=max_output_tokens)
+        owner._checkpoint = checkpoint
+        return owner
+
+    def _initialize(self, delegate, *, total_limit, max_output_tokens):
         super().__init__(phase_limits={name: LIMITS[f"{name}_calls"] for name in ("planning", "repair")},
                          provider_attempts=LIMITS["provider_attempts"], delegate=delegate,
                          total_limit=total_limit, max_output_tokens=max_output_tokens,
@@ -46,7 +67,15 @@ class PlanningCallAllowance(ModelCallAllowance):
         if self.hosted_limits is not None or self.total_calls:
             raise PlanningCallLimit("hosted budget already bound")
         self.hosted_limits = MappingProxyType(dict(limits))
-        self._budget_snapshot, self._checkpoint = snapshot, checkpoint
+        self._budget_snapshot = snapshot
+        prior_checkpoint = self._checkpoint
+        if prior_checkpoint is None:
+            self._checkpoint = checkpoint
+        else:
+            def combined_checkpoint():
+                prior_checkpoint()
+                checkpoint()
+            self._checkpoint = combined_checkpoint
 
     def model_budget(self):
         if self.hosted_limits is None:

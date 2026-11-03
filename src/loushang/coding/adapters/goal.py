@@ -1,7 +1,8 @@
-"""Opt-in Coding Goal SDK for the reviewed finite calculator profile.
+"""Opt-in Coding Goal compatibility and current-Session bindings.
 
-Constructs and owns a dedicated original SDK Session. It does not expose a raw
-Session or create another execution queue. Product disposal is writer-last.
+open owns its original SDK Session; attach borrows the supplied Session and
+preserves its baseline configuration. Both use the same Work/Goal bridge and
+writer-last resource scope without another execution queue.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from loushang.coding.adapters._goal_work_sources import (
 )
 from loushang.coding.adapters._verification_work import CodingVerificationExecutor
 from loushang.foundation.platform_paths import resolve_platform_home
-from loushang.harness.artifacts import SessionBlobStore
+from loushang.harness.artifacts import SessionBlobStore, resolve_session_blob_data_root
 from loushang.harness.policy import PolicyEvaluatorChain
 from loushang.harness.session.execution_scope import (
     ExecutionObservations,
@@ -95,7 +96,7 @@ class GoalConstructionError(RuntimeError):
         self.owner, self.error = owner, error
 
 
-def _validate_goal_session(session, workspace, model_planning):
+def _validate_goal_session(session, workspace, model_planning, *, ordinary=False):
     if Path(session.session_manager.get_cwd()).resolve() != workspace:
         raise GoalError("restored Session workspace mismatch")
     runner = session.extension_runner
@@ -110,14 +111,18 @@ def _validate_goal_session(session, workspace, model_planning):
         ]
     ):
         raise GoalError("calculator Goal does not support execution-replacing hooks")
-    if set(session.get_active_tool_names()) != {"read", "edit", "write"}:
+    selected = set(session.get_active_tool_names())
+    required = {"read", "edit", "write"}
+    if (not required <= selected if ordinary else selected != required):
         raise GoalError("calculator Goal requires original file tools")
     if runner is not None and any(
         runner.get_tool_extension_name(name) is not None
         for name in ["read", "edit", "write", "bash"]
     ):
         raise GoalError("calculator Goal does not support replacement tool providers")
-    if model_planning:
+    if ordinary and session.runtime.agent.state.provider_window is not None:
+        raise GoalError("current Session Goal requires an available invocation tool prompt")
+    if model_planning and not ordinary:
         session.set_auto_retry_enabled(False)
         session.set_auto_compaction_enabled(False)
         if session.auto_retry_enabled or session.auto_compaction_enabled:
@@ -127,10 +132,13 @@ def _validate_goal_session(session, workspace, model_planning):
 
 
 class CodingGoal:
-    """A retained Product owner. Use open(); retain exceptions with cleanup owner."""
+    """A retained profile owner. Use open() or attach(); retain failed cleanup owners."""
 
     def __init__(self, workspace: Path, data_root: Path):
         self.workspace, self.data_root = workspace, data_root
+        self._journal_directory = data_root / "sessions"
+        self._ordinary_session = False
+        self._ordinary_transport = None
         self.session_id = ""
         self._sdk: Any = None
         self._session: Any = None
@@ -181,6 +189,59 @@ class CodingGoal:
             model_planning=model_planning,
             transcript_retained_until=transcript_retained_until,
         )
+
+    @classmethod
+    async def attach(cls, *, session) -> CodingGoal:
+        """Bind the finite planning profile to an existing writable Session.
+
+        The caller retains Session ownership and its baseline configuration.
+        This explicit entry creates Goal history, never another Session.
+        """
+        from loushang.agent.model_transport import is_prepared_request_conformant
+        from loushang.ai.api import stream
+
+        from ._goal_planning_limits import PlanningCallAllowance
+        from ._goal_planning_work import PlanningToolPolicy
+        from ._goal_proposal import POLICY_ID as PLANNING_POLICY_ID
+
+        manager = session.session_manager
+        if manager.get_session_file() is None:
+            raise GoalError("current Session Goal requires a persistent Transcript")
+        directory = Path(manager.get_session_dir()).resolve()
+        delegate = session.runtime.agent.stream_fn
+        if delegate is not stream and not is_prepared_request_conformant(delegate):
+            raise GoalError("current Session planning requires a prepared-request transport")
+        owner = cls(Path(manager.get_cwd()).resolve(), resolve_session_blob_data_root(directory))
+        owner._journal_directory, owner._ordinary_session = directory, True
+        owner._session, owner.session_id = session, session.session_id
+        owner._model_planning = True
+        owner._ordinary_transport = delegate
+        owner._allowance = PlanningCallAllowance.from_stream(delegate, checkpoint=owner._check_current_transport)
+        policy = PlanningToolPolicy(owner.workspace)
+        try:
+            owner._attach_scope()
+            assert owner._scope is not None
+
+            async def initialize():
+                admission = session.runtime.execution_admission
+                reservation = admission.reserve_candidate()
+                try:
+                    _validate_goal_session(session, owner.workspace, True, ordinary=True)
+                    await owner._assemble_session(
+                        policy_id=PLANNING_POLICY_ID, create=True, planning_tool_policy=policy,
+                    )
+                    admission.validate_reservation(reservation, require_operation=False)
+                finally:
+                    reservation.release()
+
+            await owner._scope.invoke(initialize)
+            return owner
+        except BaseException as error:
+            try:
+                await owner.close()
+            except BaseException:
+                raise GoalConstructionError(owner, error) from error
+            raise
 
     @classmethod
     async def _open(
@@ -327,13 +388,13 @@ class CodingGoal:
     ):
         profile, model_planning = self._profile, self._model_planning
         self._planning_tool_policy = planning_tool_policy
-        work_path = goal_journal_path(self.data_root / "sessions", self.session_id).with_suffix(".work.jsonl")
+        work_path = goal_journal_path(self._journal_directory, self.session_id).with_suffix(".work.jsonl")
         existing = self._session.work_execution_backend
         if existing is None:
             log = JsonlEventLogBackend(work_path)
             self._session_work = create_coding_work_runtime(
                 session=self._session, event_log=log, recording_policy=WorkRecordingPolicy(),
-                cancellation_timeout=None,
+                cancellation_timeout=30.0 if self._ordinary_session else None,
             )
         else:
             if (not isinstance(existing, SessionWorkRuntime) or existing.session is not self._session
@@ -341,7 +402,7 @@ class CodingGoal:
                     or not isinstance(existing.event_log, JsonlEventLogBackend)
                     or existing.event_log.storage_path.resolve() != work_path.resolve()):
                 raise GoalError("existing Session Work backend is incompatible with this Goal history")
-            existing.require_goal_compatibility()
+            existing.require_goal_compatibility(require_unbounded_cancellation=not self._ordinary_session)
             self._session_work, log = existing, existing.event_log
         self._work = self._session_work.work_runtime
         self._execution_session = SessionGoalPrompt(
@@ -349,8 +410,10 @@ class CodingGoal:
             stop=self._stop_goal_session,
         )
         header = GoalHeader(self.session_id, self.session_id, policy_id)
-        self._store = GoalJournal(self.data_root / "sessions", header)
+        self._store = GoalJournal(self._journal_directory, header)
         self._store.open(create=create)
+        if self._ordinary_session and self._store.load()[1]:
+            raise GoalError("current Session already has Goal history; retain its original execution owner")
         transcript_source = None
         delegated = getattr(profile, "execution_policy", None) is not None
         if transcript_retained_until is not None or delegated:
@@ -610,7 +673,12 @@ class CodingGoal:
         except KeyError as error:
             raise GoalError("unprepared Coding Goal operation") from error
 
+    def _check_current_transport(self):
+        if self._ordinary_session and self._session.runtime.agent.stream_fn is not self._ordinary_transport:
+            raise GoalError("Session transport changed; current Goal requires its original execution transport")
+
     def _before_goal_prompt(self, execution):
+        self._check_current_transport()
         configuration = self._session.runtime.execution_configuration
         if configuration.is_configured(execution):
             configuration.require(execution)
@@ -698,12 +766,23 @@ def inspect_goal(
     )
 
 
-def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None):
+def inspect_session_goal(*, session, goal_id: str) -> CodingGoalView:
+    """Read Goal history at the original Session authority without advancing."""
+    manager = session.session_manager
+    directory = Path(manager.get_session_dir()).resolve()
+    return _inspect_goal(
+        workspace=Path(manager.get_cwd()), data_root=resolve_session_blob_data_root(directory),
+        session_id=session.session_id, goal_id=goal_id, session_directory=directory,
+    )
+
+
+def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None, session_directory=None):
     """Cold read without creating a model Session, dispatching or writing events."""
     header = GoalHeader(
         session_id, session_id, profile.policy_id if profile is not None else POLICY_ID
     )
-    store = GoalJournal(data_root.resolve() / "sessions", header, read_only=True)
+    directory = data_root.resolve() / "sessions" if session_directory is None else session_directory
+    store = GoalJournal(directory, header, read_only=True)
     try:
         store.open()
         actual, records = store.load()
@@ -723,7 +802,7 @@ def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None):
         ):
             return CodingGoalView(state, "not_checked", "unsupported_planning_limits")
         path = goal_journal_path(
-            data_root.resolve() / "sessions", session_id
+            directory, session_id
         ).with_suffix(".work.jsonl")
         log = JsonlEventLogBackend(path)
         runs, unresolved = _goal_work_facts(history, log.query(), session_id)
@@ -761,7 +840,7 @@ def _inspect_goal(*, workspace, data_root, session_id, goal_id, profile=None):
             from ._goal_planning_history import PlanningHistory
 
             manager = (
-                PlanningHistory(data_root.resolve() / "sessions", session_id, blobs)
+                PlanningHistory(directory, session_id, blobs)
                 if any(b.source.get("phase") == "planning" for b in history.batches)
                 else None
             )
