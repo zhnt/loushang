@@ -523,6 +523,22 @@ class RepositoryDomain:
             "acceptance": self.task.config["requirements"],
             "allowed_files": self.task.allowed,
             "inspect_files": self.task.config["inspect_files"],
+            # Persist guidance in new inputs: changing prompt() would invalidate
+            # provenance checks that reconstruct prompts for historical batches.
+            "response_guidance": (
+                "Return a compact, complete JSON object with all required keys. "
+                "Use at most one short sentence each for rationale and change_reason; "
+                "use an empty change_reason when the route has not changed. "
+                "Do not repeat requirements, file contents or implementation code. "
+                "Keep remaining_route short; one selected action is sufficient "
+                "when no later action needs to be proposed. "
+                "evidence_refs may contain only exact id values from the top-level "
+                "evidence array in this input. If that array is empty, return "
+                "evidence_refs: []. The Trusted planning operation and input sha256 "
+                "identify this request, not evidence; never cite them as evidence. "
+                "requirement_ids identify requirements, and expected_evidence names "
+                "future outputs; neither supplies evidence_refs."
+            ),
         }
         if "inspect_intents" in self.limits:
             material["host_closeout"] = {
