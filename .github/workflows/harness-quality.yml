@@ -181,18 +181,3 @@ jobs:
           name: macos-local-exec-pytest-report
           path: .artifacts/macos-local-exec.xml
           if-no-files-found: warn
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [linux-harness, macos-exec]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"linux-harness":"harness","macos-exec":"harness_native"}'

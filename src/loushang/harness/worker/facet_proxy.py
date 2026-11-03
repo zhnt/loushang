@@ -116,6 +116,23 @@ class CapabilityWorkerReadOnlyFacetProxy:
 
         self._visibility_gate.retire()
 
+    def require_current_publication(self) -> None:
+        """Revalidate original visibility/admission/owner without a query.
+
+        The original issuer may issue its current facet grant. This formal
+        validation is not a background read or external effect settlement.
+        """
+
+        if self._visibility_gate.state != "visible":
+            raise CapabilityWorkerFacetProxyError(
+                "worker_capability_facet_proxy_not_visible"
+            )
+        self._validate_publication()
+        if self._visibility_gate.state != "visible":
+            raise CapabilityWorkerFacetProxyError(
+                "worker_capability_facet_proxy_retired_during_validation"
+            )
+
     async def invoke(self, request: Mapping[str, object]) -> object:
         if self._visibility_gate.state != "visible":
             raise CapabilityWorkerFacetProxyError(

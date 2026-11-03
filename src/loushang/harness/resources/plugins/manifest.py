@@ -6,6 +6,11 @@ from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
+from loushang.harness.resources._safe_files import (
+    CapturedRegularFile,
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
     StrictPluginJsonCodec,
@@ -16,11 +21,6 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.harness.resources.plugins.engine import inspect_plugin_engine_contract
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
-from loushang.harness.resources.plugins.safe_files import (
-    CapturedRegularFile,
-    ContainedFileCaptureError,
-    capture_contained_regular_file,
-)
 from loushang.harness.resources.plugins.types import (
     PluginManifest,
     PluginSource,
@@ -105,10 +105,7 @@ class PluginManifestParser:
                 "plugin.json",
                 max_bytes=1_048_576,
             )
-            if (
-                capture.path != manifest_path
-                or capture.relative_path != "plugin.json"
-            ):
+            if capture.path != manifest_path or capture.relative_path != "plugin.json":
                 raise ContainedFileCaptureError(
                     "Captured Plugin manifest belongs to another path",
                     code="contained_file_identity_changed",
@@ -226,7 +223,10 @@ class PluginManifestParser:
                 code="invalid_plugin_manifest",
                 path=Path("plugin.json"),
             ) from exc
-        if PurePosixPath(manifest_path).name != "plugin.json" or manifest_path not in members:
+        if (
+            PurePosixPath(manifest_path).name != "plugin.json"
+            or manifest_path not in members
+        ):
             raise PluginManifestError(
                 "Selected Plugin manifest is absent from the file set",
                 code="invalid_plugin_manifest",
@@ -258,7 +258,10 @@ class PluginManifestParser:
         root = PurePosixPath(manifest_path).parent
         root_prefix = "" if root == PurePosixPath(".") else f"{root.as_posix()}/"
         package_relative = _file_set_package_root(
-            payload, manifest_path=diagnostic_path, root_prefix=root_prefix, members=members
+            payload,
+            manifest_path=diagnostic_path,
+            root_prefix=root_prefix,
+            members=members,
         )
         name = _manifest_string(payload, "name", diagnostic_path, default=None)
         version = _manifest_string(payload, "version", diagnostic_path, default=None)

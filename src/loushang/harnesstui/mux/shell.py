@@ -9,6 +9,8 @@ from secrets import token_hex
 from typing import TypeVar
 
 from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
+from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.execution.recovery import SubmissionRecoveryV1
 from loushang.appserver.protocol import (
     AckV1,
     AppErrorCodeV1,
@@ -30,7 +32,11 @@ from ..conversation.input_policy import ConversationCapabilities, ConversationOp
 from ._shell_screen import HostedMuxScreenV1, safe_text
 from ._shell_tasks import ShellActions, join, owned_task
 from .controller import HostedMuxControllerV1
-from .conversation_binding import ConversationMode, submit_hosted_conversation_action
+from .conversation_binding import (
+    ConversationMode,
+    ExecutionSubmissionKey,
+    submit_hosted_conversation_action,
+)
 from .model import HarnessWindowState, HostedMuxState
 from .projection import project_capabilities
 from .reducer import select_next, select_previous, select_window, set_active_draft
@@ -57,6 +63,7 @@ class HostedMuxShellV1:
         scopes: tuple[tuple[SessionScopeV1, str], ...],
         close_timeout: float = 5.0,
         discovery_client: SessionDiscoveryClientV1 | None = None,
+        execution_client: ExecutionClientV1 | None = None,
         exit_ends_application: bool = False,
         transcript_theme: ThemeResolver | None = None,
     ) -> None:
@@ -72,11 +79,23 @@ class HostedMuxShellV1:
         if len({scope for scope, _ in scopes}) != len(scopes):
             raise ValueError("ambiguous hosted scope")
         self._client, self._selector = client, selector
+        self._execution_client = (
+            execution_client
+            if execution_client is not None
+            else getattr(client, "execution_client", None)
+        )
         self.exit_ends_application = exit_ends_application
         self._product_id, self._scopes = product_id, dict(scopes)
-        self._controller = HostedMuxControllerV1(client, selector=selector)
+        self._controller = HostedMuxControllerV1(
+            client,
+            selector=selector,
+            execution_client=self._execution_client,
+        )
         self._actions = ShellActions(self._failed)
         self._editors: dict[tuple[str, str, str], Composer] = {}
+        self._execution_submissions: dict[
+            ExecutionSubmissionKey, SubmissionRecoveryV1
+        ] = {}
         self._completion = SlashCommandCompletionProvider(tuple(SlashCommand(name) for name in (
             "help", "question", "refresh", "sessions", "resume", "new", "close",
             "steer", "followup", "approve", "deny", "interrupt", "detach", "exit",
@@ -249,15 +268,24 @@ class HostedMuxShellV1:
         except ValueError:
             self.screen.composer.set_text(before)
             raise
+        deferred_clear = False
         if result.kind == "local":
             self._command(result.text)
         elif result.kind == "prompt" or result.kind == "steer" or result.kind == "follow_up":
             text = result.text
-            self._turn(text[1:] if text.startswith("//") else text,
-                       mode="start" if result.kind == "prompt" else "steer" if result.kind == "steer" else "followup")
+            deferred_clear = self._turn(
+                text[1:] if text.startswith("//") else text,
+                mode=(
+                    "start"
+                    if result.kind == "prompt"
+                    else "steer"
+                    if result.kind == "steer"
+                    else "followup"
+                ),
+            )
         elif result.kind == "abort":
             self._command("/interrupt")
-        if result.kind in {"local", "prompt", "steer", "follow_up"}:
+        if result.kind in {"local", "prompt", "steer", "follow_up"} and not deferred_clear:
             self.screen.composer.add_history(self.screen.composer.value)
             self.screen.composer.clear()
             self._set_draft("")
@@ -364,15 +392,58 @@ class HostedMuxShellV1:
             raise ValueError("no active member")
         return state, window
 
-    def _turn(self, text: str, *, mode: ConversationMode = "start") -> None:
+    def _turn(self, text: str, *, mode: ConversationMode = "start") -> bool:
         state, window = self._target()
         request_id = self._request_serial + 1
-        submit_hosted_conversation_action(
+        draft_revision = window.draft_revision
+        deferred_clear = submit_hosted_conversation_action(
             self._client, self._actions, state, window,
             current=lambda: None if self._closing else self.state,
             request_id=request_id, text=text, mode=mode,
+            execution_client=self._execution_client,
+            execution_submissions=self._execution_submissions,
+            execution_acknowledged=lambda recovery: self._execution_acknowledged(
+                state, window, text, draft_revision, recovery
+            ),
         )
         self._request_serial = request_id
+        return deferred_clear
+
+    def _execution_acknowledged(
+        self,
+        state: HostedMuxState,
+        window: HarnessWindowState,
+        text: str,
+        draft_revision: int,
+        recovery: SubmissionRecoveryV1,
+    ) -> None:
+        key: ExecutionSubmissionKey = (window.identity, text)
+        if self._execution_submissions.get(key) is recovery:
+            del self._execution_submissions[key]
+        current = self._controller.state
+        if current is None or current.mux_space_id != state.mux_space_id:
+            return
+        target = next(
+            (
+                item
+                for item in current.windows
+                if item.member_id == window.member_id and item.identity == window.identity
+            ),
+            None,
+        )
+        if target is None:
+            return
+        editor = self._editors.get(
+            (current.mux_space_id, target.member_id, target.session_id)
+        )
+        if editor is not None:
+            editor.add_history(text)
+        if target.draft_revision != draft_revision or target.draft != text:
+            return
+        target.draft = ""
+        target.draft_revision += 1
+        if editor is not None and editor.value == text:
+            editor.clear()
 
     def _command(self, text: str) -> None:
         parts = shlex.split(text)

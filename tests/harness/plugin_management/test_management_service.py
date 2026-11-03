@@ -284,8 +284,11 @@ def test_install_never_disables_an_already_enabled_installation(
     assert snapshot.installation(_key()).selection.desired_state == "installed_enabled"
 
 
+@pytest.mark.parametrize("admission", ["ordinary", "current", "revoked", "invalid"])
 def test_recovery_completes_crash_after_desired_state_commit(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    admission: str,
 ) -> None:
     desired_path = tmp_path / "desired.jsonl"
     operation_path = tmp_path / "operations.jsonl"
@@ -314,7 +317,40 @@ def test_recovery_completes_crash_after_desired_state_commit(
         fresh.submit(conflicting)
     assert caught.value.code == "plugin_management_installation_busy"
 
-    recovered = fresh.recover()
+    from loushang.harness.approval import (
+        DenyApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
+    current = None if admission == "ordinary" else approval.require_current_root_subject
+    if admission == "revoked":
+        load = fresh._load_and_replay_unlocked
+
+        def revoke_after_loading_pending():
+            loaded = load()
+            approval.dispose()
+            return loaded
+
+        monkeypatch.setattr(fresh, "_load_and_replay_unlocked", revoke_after_loading_pending)
+    elif admission == "invalid":
+        def invalid():
+            return True
+
+        current = invalid
+    before = (desired_path.read_bytes(), operation_path.read_bytes())
+    try:
+        if admission in {"revoked", "invalid"}:
+            expected = PermissionError if admission == "revoked" else TypeError
+            with pytest.raises(expected):
+                fresh.recover(require_current_admission=current)
+            assert (desired_path.read_bytes(), operation_path.read_bytes()) == before
+            retained = fresh.operation(command.mutation.operation_id)
+            assert retained is not None and retained.status == "running"
+            return
+        recovered = fresh.recover(require_current_admission=current)
+    finally:
+        approval.dispose()
     assert len(recovered) == 1
     terminal = recovered[0]
     assert terminal.status == "terminal"

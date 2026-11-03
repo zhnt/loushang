@@ -4,6 +4,8 @@ import ast
 import json
 from pathlib import Path
 
+from tests.architecture._source_imports import imported_modules
+
 CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
@@ -17,12 +19,63 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     CODING_ROOT / "package_product_worker_receipt.py": {
         "loushang.harness.worker.product_activation"
     },
+    # Resume binds to the original C5 owner and reads its existing settlement;
+    # neither consumer introduces a second Worker activation authority.
+    CODING_ROOT / "package_product_worker_resume.py": {
+        "loushang.harness.worker.product_activation"
+    },
+    CODING_ROOT / "resume_continuation.py": {
+        "loushang.harness.worker.activation_state_journal"
+    },
     CODING_ROOT / "package_product_worker_activation_state_journal.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_activation_base_v2.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_activation_history.py": {
         "loushang.harness.worker.activation_state_journal",
         "loushang.harness.worker.product_activation",
     },
+    CODING_ROOT / "package_product_worker_windows_activation_state_journal.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_c5_base.py": {
+        "loushang.harness.worker.activation_state_journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.contracts",
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py": {
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_crash_c5_settlement.py": {
+        "loushang.harness.worker.product_activation",
+    },
     CODING_ROOT / "package_product_worker_history_retention.py": {
-        "loushang.harness.worker.journal"
+        "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_history_prepared_v2.py": {
+        "loushang.harness.worker.activation_state_journal",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_no_effect_closure.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_registered_c5_settlement.py": {
+        "loushang.harness.worker.product_activation",
+    },
+    CODING_ROOT / "package_product_worker_registered_payload_repair.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_registered_recovery.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_posix_gc_history.py": {
+        "loushang.harness.worker.gated_start"
     },
     CODING_ROOT / "package_product_worker_start_gate.py": {
         "loushang.harness.worker._native_profile_bridge",
@@ -35,6 +88,12 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
     },
     CODING_ROOT / "package_product_worker_supervisor_journal.py": {
         "loushang.harness.worker.contracts",
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_supervisor_base_v2.py": {
+        "loushang.harness.worker.journal",
+    },
+    CODING_ROOT / "package_product_worker_windows_supervisor_base.py": {
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_start_gate_recovery.py": {
@@ -76,12 +135,20 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.gated_start",
         "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",
     },
     CODING_ROOT / "package_product_worker_pending_host.py": {
         "loushang.harness.worker._native_profile_bridge",
         "loushang.harness.worker.capability_query",
         "loushang.harness.worker.gated_start",
+        "loushang.harness.worker.hosting_adapter",
+        "loushang.harness.worker.product_activation",
+        "loushang.harness.worker.supervisor",
+    },
+    CODING_ROOT / "package_product_worker_windows_pending_host.py": {
+        "loushang.harness.worker._native_profile_bridge",
+        "loushang.harness.worker.capability_query",
         "loushang.harness.worker.hosting_adapter",
         "loushang.harness.worker.product_activation",
         "loushang.harness.worker.supervisor",
@@ -117,6 +184,7 @@ PRODUCT_WORKER_BOUNDED_IMPORTS = {
         "loushang.harness.worker.product_activation",
     },
     CODING_ROOT / "package_product_worker_windows_recovery_inventory.py": {
+        "loushang.harness.worker.activation_state_journal",
         "loushang.harness.worker.journal",
     },
     CODING_ROOT / "package_product_worker_windows_supervisor_journal.py": {
@@ -192,13 +260,7 @@ def _read(path: Path) -> str:
 
 
 def _imports(path: Path) -> set[str]:
-    imports: set[str] = set()
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.add(node.module)
-    return imports
+    return imported_modules(path)
 
 
 def _literal_collection(path: Path, name: str) -> tuple[str, ...]:

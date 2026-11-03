@@ -224,7 +224,7 @@ def commit_coding_windows_product_worker_launch_intent(
         owner_id=payload_lease.owner_id,
         supervisor_epoch=request.identity.supervisor_epoch,
     )
-    with product.gc_gate.guard():
+    with product.gc_gate.guard(require_write=True):
         product.assert_root_gc_authority_current()
         _require_coding_windows_product_bound_request(
             receipt_owner=receipt_owner,

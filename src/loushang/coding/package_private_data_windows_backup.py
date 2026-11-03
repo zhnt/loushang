@@ -65,6 +65,7 @@ from .package_private_data_windows_preview import (
     _require_same_windows_metadata,
     _require_simple_windows_metadata,
 )
+from .package_product_backup_types import require_coding_arch_backup_writer
 
 _MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 _MAX_FILE_BYTES = 16 * 1024 * 1024
@@ -76,6 +77,7 @@ class CodingWindowsArchPrivateDataBackupOwner:
     product: WindowsLocalWheelProductSessionOwner
 
     def __post_init__(self) -> None:
+        require_coding_arch_backup_writer(self.product)
         CodingWindowsArchPrivateDataReadPreview(self.layout, self.product)
 
     def retain(

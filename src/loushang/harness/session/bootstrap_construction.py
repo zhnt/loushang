@@ -17,6 +17,10 @@ from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
+from loushang.harness.capabilities.tools import (
+    ToolSelection,
+    normalize_allowed_tool_names,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.package_product.product_runtime import (
@@ -174,7 +178,7 @@ class AgentSessionConstructionRequest(Generic[BundleT, RegistryT]):
     resource_bundle: BundleT
     tools: Sequence[ToolDefinition] | None
     tool_registry: RegistryT | None
-    allowed_tool_names: Sequence[str] | None
+    allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools_mode: NoToolsMode | None
 
@@ -216,13 +220,9 @@ class AgentSessionConstructionRuntime(
         ],
     ) -> SessionT:
         resolved_registry = request.tool_registry
-        allowed_tool_names = (
-            set(request.allowed_tool_names)
-            if request.allowed_tool_names is not None
-            else None
-        )
+        allowed_tool_names = normalize_allowed_tool_names(request.allowed_tool_names)
         if request.no_tools_mode == "all":
-            allowed_tool_names = set()
+            allowed_tool_names = frozenset()
         if resolved_registry is None and request.tools:
             new_registry = registry_factory()
             for tool in request.tools:
@@ -297,7 +297,7 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
     thinking_level: object
     tools: Sequence[ToolDefinition] | None
     tool_registry: WorkspaceToolRegistry | None
-    allowed_tool_names: Sequence[str] | None
+    allowed_tool_names: Sequence[str] | ToolSelection | None
     active_tool_names: Sequence[str] | None
     no_tools: NoToolsMode | bool | None
     stream_fn: Callable[..., object] | None
@@ -504,7 +504,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         thinking_level: object | None,
         tools: Sequence[ToolDefinition] | None,
         tool_registry: WorkspaceToolRegistry | None,
-        allowed_tool_names: Sequence[str] | None,
+        allowed_tool_names: Sequence[str] | ToolSelection | None,
         active_tool_names: Sequence[str] | None,
         no_tools: NoToolsMode | bool | None,
         stream_fn: Callable[..., object] | None,

@@ -9,8 +9,7 @@ from enum import Enum
 from hashlib import sha256
 
 from .local_auth import LOCAL_PROFILE_V1, LocalAuthenticationV1
-from .protocol import APP_PROTOCOL_VERSION, SessionScopeV1
-from .protocol.connection_profile import AppConnectionProfileV1
+from .protocol import APP_PROTOCOL_VERSION, SessionScopeV1, connection_profile
 
 MAX_LOCAL_RECORD_BYTES = 8192
 _VERSION = "loushang.appserver.local-record/v1"
@@ -26,6 +25,10 @@ _CAPABILITY_VARIANTS = (
     (*_DISCOVERY_CAPABILITIES, "mux_management", "mux_closure"),
     (*_EXECUTION_CAPABILITIES, "mux_management", "mux_closure"),
     (*_COMBINED_CAPABILITIES, "mux_management", "mux_closure"),
+)
+_CAPABILITY_VARIANTS += tuple(
+    (*variant, "resume_input_lookup") for variant in _CAPABILITY_VARIANTS
+    if "session_execution" in variant
 )
 _ENDPOINT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _STABLE_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}\Z")
@@ -82,13 +85,17 @@ class LocalConnectionRecordV1:
     session_execution: bool = False
     mux_management: bool = False
     mux_closure: bool = False
+    resume_input_lookup: bool = False
 
     def __post_init__(self) -> None:
         if (type(self.session_discovery) is not bool or type(self.session_execution) is not bool
-                or type(self.mux_management) is not bool or type(self.mux_closure) is not bool):
+                or type(self.mux_management) is not bool or type(self.mux_closure) is not bool
+                or type(self.resume_input_lookup) is not bool):
             raise TypeError("invalid discovery activation")
         if self.mux_closure and not self.mux_management:
             raise ValueError("close requires managed Mux activation")
+        if self.resume_input_lookup and not self.session_execution:
+            raise ValueError("Resume lookup requires execution scope activation")
         require_endpoint(self.endpoint)
         if any(type(value) is not str or _STABLE_ID.fullmatch(value) is None
                for value in (self.application_id, self.product_id)):
@@ -105,26 +112,15 @@ class LocalConnectionRecordV1:
             raise ValueError("invalid local record scopes")
 
     @property
-    def semantic_profile(self) -> AppConnectionProfileV1:
-        if self.mux_management:
-            if self.session_execution:
-                profile = (AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED if self.session_discovery
-                        else AppConnectionProfileV1.LOCAL_EXECUTION_MANAGED)
-            else:
-                profile = (AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED if self.session_discovery
-                           else AppConnectionProfileV1.LOCAL_MANAGED)
-            return AppConnectionProfileV1(profile.value.removesuffix("/v1") + "/v2") if self.mux_closure else profile
-        if self.session_execution:
-            return (AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION if self.session_discovery
-                    else AppConnectionProfileV1.LOCAL_EXECUTION)
-        return (AppConnectionProfileV1.LOCAL_DISCOVERY if self.session_discovery
-                else AppConnectionProfileV1.LOCAL)
+    def semantic_profile(self) -> connection_profile.AppConnectionProfileV1:
+        return connection_profile._local_connection_profile(
+            self.session_discovery, self.session_execution, self.mux_management,
+            self.mux_closure, self.resume_input_lookup,
+        )
 
     @property
     def authentication(self) -> LocalAuthenticationV1:
-        return LocalAuthenticationV1(
-            self.instance, sha256(_encode(_public(self))).digest(), self.key
-        )
+        return LocalAuthenticationV1(self.instance, sha256(_encode(_public(self))).digest(), self.key)
 
 
 def _public(record: LocalConnectionRecordV1) -> dict[str, object]:
@@ -140,7 +136,8 @@ def _public(record: LocalConnectionRecordV1) -> dict[str, object]:
             if record.session_execution else
             (_DISCOVERY_CAPABILITIES if record.session_discovery else _CAPABILITIES)
         ) + (("mux_management",) if record.mux_management else ())
-          + (("mux_closure",) if record.mux_closure else ())),
+          + (("mux_closure",) if record.mux_closure else ())
+          + (("resume_input_lookup",) if record.resume_input_lookup else ())),
     }
 
 
@@ -194,6 +191,7 @@ def decode_connection_record(payload: bytes) -> LocalConnectionRecordV1:
             session_execution="session_execution" in raw["capabilities"],
             mux_management="mux_management" in raw["capabilities"],
             mux_closure="mux_closure" in raw["capabilities"],
+            resume_input_lookup="resume_input_lookup" in raw["capabilities"],
             scopes=tuple(LocalRecordScopeV1(SessionScopeV1(item["scope"]), item["fingerprint"])
                          for item in scopes),
         )

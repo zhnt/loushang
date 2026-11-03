@@ -23,6 +23,7 @@ from loushang.coding.bootstrap import (
     create_agent_session_runtime,
     create_services,
 )
+from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
 from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
     prepare_and_cutover_coding_package_store_from_legacy,
@@ -83,7 +84,7 @@ def test_unadmitted_posix_platform_keeps_existing_session_route(tmp_path: Path) 
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX platform selection")
-def test_unadmitted_posix_platform_rejects_old_settings(tmp_path: Path) -> None:
+def test_unadmitted_posix_platform_preserves_old_settings(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
@@ -104,9 +105,8 @@ def test_unadmitted_posix_platform_rejects_old_settings(tmp_path: Path) -> None:
             return_value=lifecycle,
         ),
         patch("loushang.coding.package_product_runtime.sys.platform", "darwin"),
-        pytest.raises(RuntimeError, match="pre-B workspace is unsupported"),
     ):
-        selection.factory_for_session(manager, settings_manager=settings)
+        assert selection.factory_for_session(manager, settings_manager=settings) is None
     assert not lifecycle.package_root.exists()
     selection.close()
 
@@ -251,7 +251,7 @@ def test_combined_cutover_refuses_implicit_legacy_plugin_adoption(
         "package_lock",
     ),
 )
-def test_ordinary_session_refuses_pre_b_workspace_without_writing(
+def test_ordinary_selection_preserves_pre_b_workspace_without_writing(
     tmp_path: Path, legacy_kind: str
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -333,9 +333,14 @@ def test_ordinary_session_refuses_pre_b_workspace_without_writing(
             "loushang.coding.package_product_runtime.default_global_settings_path",
             return_value=global_settings,
         ),
-        pytest.raises(RuntimeError, match="pre-B workspace is unsupported"),
     ):
-        create_agent_session(session_manager=manager, services=services)
+        selection = CodingFencedProductApplicationSelection()
+        try:
+            assert selection.factory_for_session(
+                manager, settings_manager=None if services is None else services.settings_manager,
+            ) is None
+        finally:
+            selection.close()
     assert snapshot() == before
 
 
@@ -860,7 +865,7 @@ def test_ordinary_session_requires_existing_workspace_before_first_b_writes(
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")
-def test_runtime_session_refuses_effective_old_settings_without_product_writes(
+def test_runtime_session_preserves_effective_old_settings_without_product_cutover(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -881,8 +886,8 @@ def test_runtime_session_refuses_effective_old_settings_without_product_writes(
             session_dir=tmp_path / "sessions", services=services, persist=False
         )
         try:
-            with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
-                await runtime.create_session(cwd=str(workspace))
+            session = await runtime.create_session(cwd=str(workspace))
+            assert session.package_product_binding_id is None
         finally:
             await runtime.dispose()
 
@@ -892,8 +897,8 @@ def test_runtime_session_refuses_effective_old_settings_without_product_writes(
     ):
         asyncio.run(scenario())
     assert custom_settings.read_bytes() == old_bytes
-    assert not lifecycle.root.exists()
-    assert not lifecycle.package_root.exists()
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    assert not (epoch.control_root / "epoch.jsonl").exists()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted cutover")

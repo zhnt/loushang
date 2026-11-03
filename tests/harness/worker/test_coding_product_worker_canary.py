@@ -514,7 +514,7 @@ def _policy(
     product_id: str = "coding",
     enabled: bool = True,
     owner: str = "hosting",
-    profile_id: str = "posix-static-contained-elf-v1",
+    profile_id: str = "posix-static-query-contained-elf-v1",
 ) -> ProductWorkerActivationPolicyV1:
     configuration = PluginLocalWorkerConfiguration(
         entrypoint="worker",

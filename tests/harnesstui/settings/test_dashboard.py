@@ -11,6 +11,7 @@ from loushang.harnesstui.settings.dashboard import (
     usage_lines,
 )
 from loushang.harnesstui.settings.page import ConfigSettingsPage
+from loushang.harnesstui.status.snapshot import StatusSnapshot
 from loushang.tui import InputEvent, InputIntent, RenderConstraints, TabGroup, TabPage
 from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.settings import ConfigRow
@@ -101,6 +102,22 @@ def test_dashboard_usage_view_model_contains_provider_failures() -> None:
         raise RuntimeError("secret product failure")
 
     assert usage_lines(_failed_provider) == ("Usage", "", "Usage data unavailable")
+
+
+def test_session_details_keep_the_full_id_even_when_named() -> None:
+    snapshot = StatusSnapshot(
+        model_label="model",
+        cwd="/repo",
+        branch="main",
+        session_label="Renamed",
+        thinking_level=None,
+        running=False,
+        statusline_visible=True,
+        session_id="d8525f5ecd8c42e2974dd451b640c5f8",
+    )
+    for lines in (status_lines(snapshot), stats_overview_lines(snapshot)):
+        assert "Session            Renamed" in lines
+        assert "Session ID         d8525f5ecd8c42e2974dd451b640c5f8" in lines
 
 
 def test_dashboard_usage_view_formats_context_and_cumulative_coverage() -> None:

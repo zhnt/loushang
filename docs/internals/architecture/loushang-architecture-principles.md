@@ -35,8 +35,8 @@
 
 - [Architecture Overview](./architecture-overview.md)
   - 定义整体分层与子系统地图
-- [Architecture Design And Governance Method](../architecture-method/README.md)
-  - 定义 truth plane、递归 Architecture Scope、设计流程与治理规则
+- [Loushang Architecture Governance Profile](governance-profile.md)
+  - 定义 Loushang 的 truth plane、递归 Architecture Scope 与治理规则
 - [Product And OEM Glossary](../glossary/loushang-product.md)
   - 定义 Product、OEM、Capability、Package、Plugin 与 Extension 等跨层术语
 - [Capability Variation And Replacement Boundary](./harness/capability-variation-and-replacement-boundary.md)
@@ -368,6 +368,12 @@ multi-agent 可以提供独立 reviewer 的技术执行，但不拥有业务验�
 - 恢复语义应被设计进系统
 - continuation 应被视为正常能力
 - 失败信息应结构化，而不是只作为日志文本存在
+
+升级后的 Product 必须兼容已有工作区、用户配置、Plugin 选择和 Session 历史。
+存储格式演进必须保留兼容读写路径或提供可恢复迁移，不能要求用户新建工作区、
+清空状态或重置配置才能继续启动。新存储的内部代次和切换日志不得成为普通启动
+的用户前置条件。具体契约与存储所有权约束见
+[ARD-008](decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)。
 
 ---
 

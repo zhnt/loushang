@@ -1296,11 +1296,11 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
     assert session.get_active_tool_names() == ["bash", "read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["bash", "read", "grep"]
     assert (
-        "read: Read text files and images from the coding workspace."
+        "read: Read text files and images from the workspace."
         in session.agent.system_prompt
     )
     assert (
-        "grep: Search file contents for patterns in the coding workspace."
+        "grep: Search file contents for patterns in the workspace."
         in session.agent.system_prompt
     )
 
@@ -1363,11 +1363,11 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
     assert session.get_active_tool_names() == ["write", "edit"]
     assert [tool.name for tool in session.agent.tools] == ["write", "edit"]
     assert (
-        "write: Write a text file in the coding workspace."
+        "write: Write a text file in the workspace."
         in session.agent.system_prompt
     )
     assert (
-        "edit: Apply exact text replacements to a file in the coding workspace."
+        "edit: Apply exact text replacements to a file in the workspace."
         in session.agent.system_prompt
     )
 
@@ -1420,6 +1420,61 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
     assert session.get_active_tool_names() == ["show_session_cwd"]
     assert [tool.name for tool in session.agent.tools] == ["show_session_cwd"]
     assert result.content[0].text == str(workspace)
+
+
+def test_bash_partial_output_preserves_truncation_across_chunk_boundaries() -> None:
+    import random
+
+    from loushang.harness.tools.workspace.bash import _BashPartialOutput
+    from loushang.harness.tools.workspace.truncate import truncate_tail
+    from loushang.harness.workspace.exec import ExecOutputChunk
+
+    chunks = [
+        "prefix\r",
+        "\n" + "x" * 110_000,
+        "\n" + "word\n" * 2_200,
+        "\u2028suffix",
+    ]
+    chunks.extend(
+        random.Random(798).choices(
+            ("x" * 900, "a\nb\n", "\r\n", "é" * 200, "🙂" * 120, "u\n" * 40),
+            k=256,
+        )
+    )
+    partial = _BashPartialOutput()
+    complete = ""
+    for chunk in chunks:
+        complete += chunk
+        update = partial.append(ExecOutputChunk(stream="stdout", text=chunk))
+        expected = truncate_tail(complete)
+        assert update.content[0].text == expected.content
+        assert update.details["truncation"] == (
+            {
+                "content": expected.content,
+                "truncated": expected.truncated,
+                "truncatedBy": expected.truncated_by,
+                "totalLines": expected.total_lines,
+                "totalBytes": expected.total_bytes,
+                "outputLines": expected.output_lines,
+                "outputBytes": expected.output_bytes,
+                "lastLinePartial": expected.last_line_partial,
+                "firstLineExceedsLimit": expected.first_line_exceeds_limit,
+                "maxLines": expected.max_lines,
+                "maxBytes": expected.max_bytes,
+            }
+            if expected.truncated
+            else None
+        )
+
+    for _ in range(2_000):
+        chunk = "x" * 1_023 + "\n"
+        complete += chunk
+        update = partial.append(ExecOutputChunk(stream="stdout", text=chunk))
+        assert len(partial.preview.encode("utf-8")) <= 100 * 1024
+    expected = truncate_tail(complete)
+    assert update.content[0].text == expected.content
+    assert update.details["truncation"]["totalBytes"] == expected.total_bytes
+    assert update.details["truncation"]["totalLines"] == expected.total_lines
 
 
 def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
@@ -1484,6 +1539,43 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
         "stdout",
         "stderr",
     ]
+
+
+def test_bash_large_output_coalesces_intermediate_events_without_losing_result() -> None:
+    import asyncio
+
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecRequest, ExecResult
+
+    chunks = ["x" * 4_095 + "\n" for _ in range(100)]
+    output = "".join(chunks)
+    updates: list[AgentToolResult[dict[str, object]]] = []
+
+    class FakeExecService:
+        async def execute(self, request: ExecRequest, signal=None, on_update=None) -> ExecResult:
+            del request, signal
+            for chunk in chunks:
+                await on_update(ExecOutputChunk(stream="stdout", text=chunk))
+            return ExecResult(exit_code=0, stdout=output)
+
+    async def scenario() -> AgentToolResult[dict[str, object]]:
+        tool = wrap_tool_definition(
+            create_bash_tool_definition(exec_service=FakeExecService())
+        )
+        return await tool.execute(
+            "tool-call-1",
+            {"command": ["/bin/sh", "-c", "echo hi"]},
+            None,
+            updates.append,
+        )
+
+    result = asyncio.run(scenario())
+
+    assert len(updates) < len(chunks) // 2
+    assert updates[0].content == []
+    assert result.details["stdout_total_bytes"] == len(output)
+    assert result.details["stdout_total_lines"] == len(chunks)
 
 
 def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
@@ -1648,6 +1740,8 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
             "exit_code": 0,
             "cancelled": False,
             "truncated": False,
+            "stdio_complete": True,
+            "stdio_drain_reason": None,
             "full_output_path": None,
         }
 
@@ -1826,6 +1920,8 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
             "exit_code": None,
             "cancelled": True,
             "truncated": False,
+            "stdio_complete": True,
+            "stdio_drain_reason": None,
             "full_output_path": None,
         }
 

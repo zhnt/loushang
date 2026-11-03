@@ -52,7 +52,7 @@ class CodingProductWorkerStartGate:
         self._worker_identity_fingerprint = worker_request.identity.fingerprint
         self._attempt_id = attempt_id
         self._journal = CodingWorkerStartGateJournal(product)
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             self._recheck()
             self._native_closure_digest = self._current_closure_digest()
             read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
@@ -100,7 +100,9 @@ class CodingProductWorkerStartGate:
         if self._read_fd < 0 or self._write_fd < 0 or self._released:
             raise CodingWorkerStartGateError("coding_worker_start_gate_closed")
         try:
-            with self._receipt_owner.product_owner.gc_gate.guard():
+            with self._receipt_owner.product_owner.gc_gate.guard(
+                require_write=True
+            ):
                 self._recheck()
                 if self._current_closure_digest() != self._native_closure_digest:
                     raise CodingWorkerStartGateError(

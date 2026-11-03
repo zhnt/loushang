@@ -91,6 +91,7 @@ from .protocol.connection_profile import (
     supports_execution,
     supports_managed_mux,
     supports_managed_mux_close,
+    supports_resume_input_lookup,
     supports_session_discovery,
 )
 from .protocol.stdio_profile import (
@@ -98,6 +99,7 @@ from .protocol.stdio_profile import (
     MAX_CONTROL_REQUESTS,
     MAX_ORDINARY_REQUESTS,
 )
+from .resume_model import ResumeInputLookupClientV1
 
 _Result = TypeVar("_Result", bound=AppResultPayloadV1)
 _Family = Literal["app", "execution", "managed_mux", "managed_mux_close"]
@@ -140,6 +142,13 @@ class RemoteAppClientV1:
     @property
     def execution_client(self) -> RemoteExecutionClientV1 | None:
         return self._execution_client if self._ready and not self._closed else None
+
+    @property
+    def resume_input_lookup_client(self) -> ResumeInputLookupClientV1 | None:
+        """Borrow only after this exact optional read profile is negotiated."""
+
+        client = self.execution_client
+        return client if client is not None and client.resume_input_lookup_available else None
 
     @property
     def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
@@ -205,7 +214,10 @@ class RemoteAppClientV1:
                 if supports_execution(self._profile):
                     instance = decode_execution_hello(hello, self._profile.value)
                     self._hello = hello
-                    self._execution_client = RemoteExecutionClientV1(instance, self._send_execution)
+                    self._execution_client = RemoteExecutionClientV1(
+                        instance, self._send_execution,
+                        resume_input_lookup=supports_resume_input_lookup(self._profile),
+                    )
                 elif hello != self._hello:
                     raise InvalidAppMessageError()
                 await self._stream.send(self._hello)

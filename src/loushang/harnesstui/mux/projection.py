@@ -76,6 +76,7 @@ def project_active_conversation(state: HostedMuxState) -> ScreenConversationStat
             records.append(ErrorRecord(record.text, ""))
     projected.replace_transcript_window(records)
     projected.session_label = window.title
+    projected.session_id = window.session_id
     projected.request_presentation = window.request_presentation
     if window.running:
         projected.begin_run(started_at=0.0)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.architecture._source_imports import imported_modules
+
 CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/resource-catalog-rcp5-contract.md"
 )
@@ -157,18 +159,8 @@ def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
     for path in SOURCE_ROOT.rglob("*.py"):
         if path == CONSUMER_PATH:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        } | {
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        }
-        if target in imported:
+        source = path.read_text(encoding="utf-8")
+        if target in source and target in imported_modules(path, source):
             importers.add(path)
 
     assert importers == {
@@ -211,18 +203,8 @@ def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
     for path in SOURCE_ROOT.rglob("*.py"):
         if path == STATUS_PROJECTION_PATH:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        } | {
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        }
-        if target in imported:
+        source = path.read_text(encoding="utf-8")
+        if target in source and target in imported_modules(path, source):
             importers.add(path)
 
     assert importers == {

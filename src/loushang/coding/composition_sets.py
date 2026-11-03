@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -214,11 +215,22 @@ def resolve_coding_composition_set(
         raise ValueError(f"Unsupported Coding composition set: {set_id!r}") from exc
 
 
+def infer_coding_composition_set(
+    configured_capabilities: object,
+) -> CodingCompositionSetId:
+    """Preserve the ordinary CLI's historical Arch-key inference."""
+
+    if isinstance(configured_capabilities, Mapping) and "coding.arch" in configured_capabilities:
+        return "coding-architecture"
+    return "coding-standard"
+
+
 __all__ = [
     "CODING_COMPOSITION_SET_PLAN_VERSION",
     "CODING_KERNEL_PROMPT_REVISION",
     "CodingCompositionPluginRequest",
     "CodingCompositionSetId",
     "CodingCompositionSetPlan",
+    "infer_coding_composition_set",
     "resolve_coding_composition_set",
 ]

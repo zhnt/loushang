@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -412,7 +413,17 @@ def test_capability_facet_proxy_drops_in_flight_result_after_retirement(
             graph_generation=1,
             issue_grant=lambda: (grant, lambda value: value),
         )
+        with pytest.raises(CapabilityWorkerFacetProxyError):
+            facet.require_current_publication()
         facet.publish(admission=admission, owner_generation=3)
+        before_writes = tuple(transport.writes)
+        facet.require_current_publication()
+        original_authority = current[0]
+        current[0] = replace(original_authority, revocation_epoch=3)
+        with pytest.raises(CapabilityWorkerAdapterError):
+            facet.require_current_publication()
+        current[0] = original_authority
+        assert tuple(transport.writes) == before_writes
         call = asyncio.create_task(facet.invoke({"symbol": "review"}))
         await transport.wait_for_writes(3)
         invocation = transport.message(2)
@@ -430,6 +441,8 @@ def test_capability_facet_proxy_drops_in_flight_result_after_retirement(
         with pytest.raises(CapabilityWorkerFacetProxyError) as later:
             await facet.invoke({"symbol": "again"})
         assert later.value.code == "worker_capability_facet_proxy_not_visible"
+        with pytest.raises(CapabilityWorkerFacetProxyError):
+            facet.require_current_publication()
         assert len(transport.writes) == 3
         await supervisor.fence(code="test_complete")
 

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import re
+import sys
+import time
 
 import pytest
 
@@ -17,7 +21,7 @@ from loushang.tui import (
     SelectItem,
     strip_control_sequences,
 )
-from loushang.tui.transcript import AssistantMessageRecord
+from loushang.tui.transcript import AssistantMessageRecord, ToolExecutionRecord
 from tests.coding.tui_support.playback import (
     ScreenTuiInputScenario,
     ScreenTuiLoopScenario,
@@ -389,6 +393,106 @@ def test_screen_tui_loop_playback_drives_running_steer_then_escape() -> None:
         result.assert_text_contains("fresh change")
         result.assert_text_contains("Conversation interrupted")
         result.assert_no_clear_screen()
+
+
+@pytest.mark.parametrize("output_mode", ["silent", "continuous", "burst"])
+def test_screen_tui_tool_command_keeps_input_and_working_timer_live(
+    tmp_path, output_mode: str
+) -> None:
+    from loushang.harness.tools.workspace.bash import _BashPartialOutput
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
+
+    scenario = ScreenTuiLoopScenario()
+    scenario.app.now = time.monotonic
+    observed: list[tuple[bool, str, float]] = []
+    running = False
+    preview = _BashPartialOutput()
+
+    async def handle_prompt(_text: str) -> None:
+        nonlocal running
+        running = True
+
+        async def observe_input() -> None:
+            started_at = asyncio.get_running_loop().time()
+            await asyncio.sleep(0.18)
+            observed.append(
+                (
+                    running,
+                    scenario.app.composer.value,
+                    asyncio.get_running_loop().time() - started_at - 0.18,
+                )
+            )
+
+        observer = asyncio.create_task(observe_input())
+        if output_mode == "continuous":
+            program = (
+                "import sys,time; "
+                "[(sys.stdout.write('x'*8192),sys.stdout.flush(),time.sleep(.002)) "
+                "for _ in range(200)]"
+            )
+        elif output_mode == "burst":
+            program = (
+                "import sys,time; sys.stdout.write('x'*2024000); "
+                "sys.stdout.flush(); time.sleep(.35)"
+            )
+        else:
+            program = "import time; time.sleep(.35)"
+
+        def on_update(chunk) -> None:
+            partial = preview.append(chunk)
+            scenario.app.state.upsert_tool_record(
+                "bash-running",
+                ToolExecutionRecord(
+                    name="bash",
+                    tool_name="bash",
+                    state="running",
+                    elapsed_seconds=0.0,
+                    command="streaming command",
+                    output=partial.content[0].text,
+                ),
+            )
+            scenario.app.request_render("product")
+
+        try:
+            await ExecService().execute(
+                ExecRequest(
+                    command=(sys.executable, "-c", program),
+                    cwd=str(tmp_path),
+                ),
+                on_update=on_update,
+            )
+        finally:
+            running = False
+            await observer
+
+    result = (
+        scenario.type_text("run")
+        .enter()
+        .wait(0.05)
+        .type_text("next")
+        .wait(0.45)
+        .end_input()
+        .run(handle_prompt=handle_prompt)
+    )
+
+    result.assert_exit_code(0)
+    assert len(observed) == 1
+    assert observed[0][:2] == (True, "next")
+    assert observed[0][2] < 0.2
+    result.assert_text_contains("Working ")
+    result.assert_text_contains("Worked ")
+    if output_mode != "silent":
+        result.assert_text_contains("streaming command")
+        assert preview.total_bytes == (
+            2_024_000 if output_mode == "burst" else 200 * 8192
+        )
+    assert result.text.index("› next") < result.text.index("Worked ")
+    working_times = [
+        float(value) for value in re.findall(r"Working (\d+\.\d+)s", result.text)
+    ]
+    assert len(working_times) >= 2
+    assert max(working_times) - min(working_times) >= 0.1
+    result.assert_no_clear_screen()
 
 
 def _step_visible_text(result, step_index: int) -> str:

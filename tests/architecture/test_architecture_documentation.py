@@ -7,7 +7,6 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARCHITECTURE_ROOT = REPOSITORY_ROOT / "docs/internals/architecture"
-ARCHITECTURE_METHOD_ROOT = REPOSITORY_ROOT / "docs/internals/architecture-method"
 GAP_LEDGER = ARCHITECTURE_ROOT / "current-target-gap-ledger.md"
 PLUGIN_ROOT = ARCHITECTURE_ROOT / "harness/plugin"
 PLUGIN_STATUS_ENTRYPOINTS = (
@@ -16,14 +15,14 @@ PLUGIN_STATUS_ENTRYPOINTS = (
     PLUGIN_ROOT / "plugin-lifecycle-coding-pluginization-plan.md",
 )
 PLUGIN_DELIVERY_ANCHOR = (
-    "PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m internal/offline "
-    "POSIX root-GC execution, durable private-data confirmation evidence, and "
-    "pre-B workspace-snapshot status projection implemented; PLC9 remains open."
+    "PR #678 merged bounded third-party Worker admission on `main`; #509 "
+    "tracks the final PLC9 integrated acceptance."
 )
-PLUGIN_WORKER_CANARY_BOUNDARY = (
-    "explicit Linux/Windows AMD64 Coding Product opt-in only; Current remains "
-    "the default; no general third-party Worker authoring/admission surface is "
-    "published."
+PLUGIN_WORKER_BOUNDARY = (
+    "explicit Linux x86-64 and Windows AMD64 Coding Product opt-in admits "
+    "self-contained read-only query Wheels. Current remains the default; "
+    "dependency execution, effectful Tools, macOS, and default Worker "
+    "routing remain closed."
 )
 COMPLETED_PLUGIN_MILESTONES = {
     PLUGIN_ROOT / "plugin-lifecycle-plc7-contract.md": (
@@ -36,19 +35,7 @@ COMPLETED_PLUGIN_MILESTONES = {
     ),
 }
 INITIAL_GOVERNED_DOCUMENTS = (
-    ARCHITECTURE_METHOD_ROOT / "README.md",
-    ARCHITECTURE_METHOD_ROOT / "artifact-model.md",
-    ARCHITECTURE_METHOD_ROOT / "architecture-decisions.md",
-    ARCHITECTURE_METHOD_ROOT / "architecture-review.md",
-    ARCHITECTURE_METHOD_ROOT / "verification-and-validation.md",
-    ARCHITECTURE_METHOD_ROOT / "change-tailoring.md",
-    ARCHITECTURE_METHOD_ROOT / "design-guidance.md",
-    ARCHITECTURE_METHOD_ROOT / "key-designs.md",
-    ARCHITECTURE_METHOD_ROOT / "domain-data-modeling.md",
-    ARCHITECTURE_METHOD_ROOT / "deployment-views.md",
-    ARCHITECTURE_METHOD_ROOT / "component-design.md",
-    ARCHITECTURE_METHOD_ROOT / "component-identification.md",
-    ARCHITECTURE_METHOD_ROOT / "history/loushang-documentation-model-v1.md",
+    ARCHITECTURE_ROOT / "history/loushang-documentation-model-v1.md",
     ARCHITECTURE_ROOT / "README.md",
     ARCHITECTURE_ROOT / "architecture-overview.md",
     ARCHITECTURE_ROOT / "governance-profile.md",
@@ -151,10 +138,7 @@ def test_initial_governed_documents_declare_authority_and_status() -> None:
 
 def test_initial_governed_document_links_are_repository_relative_and_valid() -> None:
     errors: list[str] = []
-    link_documents = (
-        *INITIAL_GOVERNED_DOCUMENTS,
-        *sorted((ARCHITECTURE_METHOD_ROOT / "templates").glob("*.md")),
-    )
+    link_documents = INITIAL_GOVERNED_DOCUMENTS
     for path in link_documents:
         text = path.read_text(encoding="utf-8")
         for raw_target in MARKDOWN_LINK.findall(text):
@@ -278,12 +262,12 @@ def test_plugin_status_entrypoints_share_current_delivery_anchor() -> None:
     assert not errors, "\n".join(errors)
 
 
-def test_plugin_status_entrypoints_keep_worker_canaries_explicit_and_nongeneral() -> None:
+def test_plugin_status_entrypoints_keep_worker_admission_bounded() -> None:
     errors = []
     for path in PLUGIN_STATUS_ENTRYPOINTS:
         status = _normalize_markdown(_status_section(path))
-        if f"Worker canary boundary: {PLUGIN_WORKER_CANARY_BOUNDARY}" not in status:
-            errors.append(f"{_display(path)}: missing Worker canary boundary")
+        if f"Worker boundary: {PLUGIN_WORKER_BOUNDARY}" not in status:
+            errors.append(f"{_display(path)}: missing Worker boundary")
 
     assert not errors, "\n".join(errors)
 

@@ -251,6 +251,9 @@ class TranscriptReaderSurface:
         return RenderResult.from_lines(lines, constraints=constraints)
 
     def _handle_mouse(self, event: InputEvent) -> InputIntent[str]:
+        if event.mouse_action in {"scroll_up", "scroll_down"}:
+            self._scroll_by(-3 if event.mouse_action == "scroll_up" else 3)
+            return _CONSUMED
         if event.mouse_button != 0 or event.mouse_action not in {
             "press",
             "drag",

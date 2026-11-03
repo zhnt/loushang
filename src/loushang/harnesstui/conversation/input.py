@@ -76,7 +76,7 @@ class ConversationInputHandled:
     """An input event changed local interaction state and needs a render."""
 
     kind: Literal["handled"] = field(default="handled", init=False)
-    render_requested: bool = field(default=True, init=False)
+    render_requested: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +94,15 @@ class ConversationPromptResult:
     text: str
     attachments: tuple[object, ...] | None = None
     kind: Literal["prompt"] = field(default="prompt", init=False)
+    render_requested: bool = field(default=True, init=False)
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationShellResult:
+    """Run or queue an explicit user shell command."""
+
+    text: str
+    kind: Literal["shell"] = field(default="shell", init=False)
     render_requested: bool = field(default=True, init=False)
 
 
@@ -174,6 +183,7 @@ ConversationInputResult: TypeAlias = (
     ConversationInputHandled
     | ConversationInputIgnored
     | ConversationPromptResult
+    | ConversationShellResult
     | ConversationLocalResult
     | ConversationSteerResult
     | ConversationFollowupResult
@@ -239,6 +249,7 @@ class ConversationInputRouter:
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
     clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
+    transcript_scroll_handler: Callable[[int], bool] | None = None
     # Deferred is a text-only intent port: its caller accepts the action before
     # clearing/history presentation. It never consumes remote display queues.
     submission_presentation: Literal["optimistic", "deferred"] = "optimistic"
@@ -251,6 +262,10 @@ class ConversationInputRouter:
         default=False,
         init=False,
         repr=False,
+    )
+    _submission_paused: bool = field(default=False, init=False, repr=False)
+    _submission_deferred: tuple[str, tuple[PromptImageAttachment, ...]] | None = field(
+        default=None, init=False, repr=False
     )
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
     _transcript_viewport_top: int = field(default=0, init=False, repr=False)
@@ -275,11 +290,15 @@ class ConversationInputRouter:
         self._composer_target = ComposerInputTarget(app.composer)
         self._jump_mode = None
         self._transcript_viewport_top = 0
+        self._submission_deferred = None
 
     def set_transcript_viewport_top(self, row: int) -> None:
         """Map terminal mouse rows onto the committed logical conversation frame."""
 
         self._transcript_viewport_top = max(0, row)
+
+    def set_transcript_scroll_handler(self, handler: Callable[[int], bool]) -> None:
+        self.transcript_scroll_handler = handler
 
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
@@ -287,7 +306,35 @@ class ConversationInputRouter:
         if self._disposed:
             return
         self._disposed = True
+        self._submission_deferred = None
         self._clear_prompt_attachments()
+
+    def set_submission_paused(self, paused: bool) -> None:
+        """Keep the draft editable while the previous run is retiring."""
+
+        self._submission_paused = paused
+        if not paused:
+            self._submission_deferred = None
+
+    def resume_paused_submission(self) -> ConversationInputResult | None:
+        """Submit an Enter pressed during cancellation after the turn retires."""
+
+        deferred = self._submission_deferred
+        self.set_submission_paused(False)
+        if deferred is None:
+            return None
+        text, attachments = deferred
+        current_attachments = self.draft_store.select_for_text(text)
+        if (
+            self.app.composer.value != text
+            or len(current_attachments) != len(attachments)
+            or any(
+                current is not captured
+                for current, captured in zip(current_attachments, attachments)
+            )
+        ):
+            return None
+        return self._submit()
 
     def handle(self, event: InputEvent) -> ConversationInputResult:
         if self._disposed:
@@ -331,6 +378,15 @@ class ConversationInputRouter:
                 else ConversationInputIgnored()
             )
         if event.kind == "mouse":
+            if event.mouse_action in {"scroll_up", "scroll_down"}:
+                direction = -3 if event.mouse_action == "scroll_up" else 3
+                if self.transcript_scroll_handler is None or not self.transcript_scroll_handler(direction):
+                    return ConversationInputIgnored()
+                request_render = getattr(self.app, "request_render", None)
+                if callable(request_render):
+                    request_render("product")
+                    return ConversationInputHandled(render_requested=False)
+                return ConversationInputHandled()
             handler = getattr(self.app, "handle_transcript_mouse", None)
             if callable(handler):
                 if event.mouse_row is not None and self._transcript_viewport_top:
@@ -342,6 +398,11 @@ class ConversationInputRouter:
                 if copy_text:
                     return ConversationCopyTextResult(copy_text)
                 if handled:
+                    if event.mouse_action == "drag":
+                        request_render = getattr(self.app, "request_render", None)
+                        if callable(request_render):
+                            request_render("product")
+                            return ConversationInputHandled(render_requested=False)
                     return ConversationInputHandled()
             return ConversationInputIgnored()
         if event.kind == "text":
@@ -517,6 +578,12 @@ class ConversationInputRouter:
             self.app.composer.set_text(text)
 
     def _submit(self) -> ConversationInputResult:
+        if self._submission_paused:
+            text = self.app.composer.value
+            self._submission_deferred = (
+                (text, self.draft_store.select_for_text(text)) if text.strip() else None
+            )
+            return ConversationInputIgnored()
         self._check_deferred_attachments()
         text = self.app.composer.value
         if not text.strip():
@@ -526,6 +593,17 @@ class ConversationInputRouter:
                 self.app.composer.clear()
                 self._clear_prompt_attachments()
             return ConversationExitResult(exit_code=0)
+        stripped = text.strip()
+        if stripped.startswith("!"):
+            if not stripped.lstrip("!").strip():
+                self.app.state.set_status("Enter a shell command after ! or !!")
+                return ConversationInputHandled()
+            if self.draft_store.select_for_text(text):
+                self.app.state.set_status("Shell commands do not accept image attachments")
+                return ConversationInputHandled()
+            if self.submission_presentation == "optimistic":
+                self.app.composer.clear()
+            return ConversationShellResult(text=stripped)
         if self.is_local_command(text.strip()):
             if self.submission_presentation == "optimistic":
                 self.app.composer.clear()
@@ -552,6 +630,8 @@ class ConversationInputRouter:
         *,
         mode: RunningSubmitMode,
     ) -> ConversationInputResult:
+        if self._submission_paused:
+            return ConversationInputIgnored()
         self._check_deferred_attachments()
         if not self.app.state.input_capabilities.supports(mode):
             return ConversationInputIgnored()
@@ -780,6 +860,7 @@ __all__ = [
     "ConversationInputPolicy",
     "ConversationLocalResult",
     "ConversationPromptResult",
+    "ConversationShellResult",
     "ConversationScreenInputPort",
     "ConversationSteerResult",
     "ConversationSurfaceResult",

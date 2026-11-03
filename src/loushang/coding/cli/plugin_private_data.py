@@ -43,6 +43,9 @@ from loushang.coding.package_private_data_restore_journal import (
     CodingArchPrivateDataRestoreJournal,
     restore_id_for,
 )
+from loushang.coding.package_private_data_windows_backup_client import (
+    open_coding_windows_arch_backup_candidate_client,
+)
 from loushang.coding.package_product_runtime import (
     CODING_PACKAGE_PRODUCT_RUNTIME_PROTOCOL_EPOCH,
     CodingFencedProductApplicationOwner,
@@ -112,11 +115,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "restore-confirm", help="confirm one completed and verified Arch restore"
     )
     restore_confirm.add_argument("--backup-id", required=True)
+    restore_confirm.add_argument("--plan-file")
     restore_confirm_verify = commands.add_parser(
         "restore-confirm-verify", help="reopen one exact restore confirmation"
     )
     restore_confirm_verify.add_argument("--backup-id", required=True)
     restore_confirm_verify.add_argument("--confirmation-id", required=True)
+    restore_confirm_verify.add_argument("--plan-file")
     confirm = commands.add_parser(
         "confirm", help="separately confirm one unchanged preview fingerprint"
     )
@@ -129,7 +134,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     delete.add_argument("--confirmation-file", required=True)
     args = parser.parse_args(argv)
 
-    if os.name != "posix" or not sys.platform.startswith("linux"):
+    if os.name not in {"posix", "nt"} or (
+        os.name == "posix" and not sys.platform.startswith("linux")
+    ):
         sys.stderr.write("Coding private-data command refused: platform_unsupported\n")
         return 1
     if args.plugin_id != _PLUGIN_ID:
@@ -140,6 +147,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not workspace.is_dir():
             raise ValueError("Coding workspace is not a directory")
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+        if os.name == "nt":
+            result = _run_windows_action(workspace, layout, args)
+            sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
+            return 0
         if args.action == "backup-status":
             record = open_coding_arch_private_data_backup_client(workspace).status()
             sys.stdout.write(
@@ -213,7 +224,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 application.epoch_runtime, PackageProductPosixFencedRuntimeOwner
             ):
                 raise ValueError("Coding private-data Product owner is unsupported")
-            result: dict[str, object]
             if args.action == "backup":
                 key = PluginInstallationKeyV1(
                     product_id="coding",
@@ -248,6 +258,121 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
     return 0
+
+
+def _run_windows_action(
+    workspace: Path,
+    layout: CodingPluginLifecycleStateLayout,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """Route one explicit command through the fenced Windows Product client."""
+
+    client = open_coding_windows_arch_backup_candidate_client(
+        workspace, layout=layout, runtime_version=version("loushang")
+    )
+    action = args.action
+    if action == "backup-status":
+        return {"backupRetention": client.status().to_dict()}
+    if action == "backup":
+        return {"backupReceipt": client.retain().to_dict()}
+    if action == "backup-verify":
+        return {"backupReceipt": client.verify(args.backup_id).to_dict()}
+    if action == "preview":
+        deletion_plan = client.deletion_preview()
+        return {
+            "fingerprint": deletion_plan.fingerprint,
+            "plan": deletion_plan.to_dict(),
+        }
+    if action == "restore-preview":
+        restore_plan = client.restore_preview(args.backup_id)
+        return {
+            "fingerprint": restore_plan.fingerprint,
+            "restorePlan": restore_plan.to_dict(),
+        }
+    if action == "restore-confirm-verify":
+        restore_plan = _read_windows_restore_plan(args)
+        return {
+            "restoreConfirmation": client.restore_confirm_verify(
+                restore_plan, args.confirmation_id
+            ).to_dict()
+        }
+    if action == "restore-confirm":
+        restore_plan = _read_windows_restore_plan(args)
+        return {"restoreConfirmation": client.restore_confirm(restore_plan).to_dict()}
+    if action == "restore":
+        restore_plan = _read_restore_plan(Path(args.plan_file))
+        if args.accept_fingerprint != restore_plan.fingerprint:
+            raise ValueError("Coding Arch restore plan was not accepted")
+        restore_result = client.restore(restore_plan)
+        return {
+            "restore": {
+                "backupId": restore_result.backup_id,
+                "disposition": restore_result.disposition,
+                "restoreId": restore_result.restore_id,
+            }
+        }
+    if action == "backup-expiry-preview":
+        expiry_plan = client.backup_expiry_preview(args.backup_id, args.confirmation_id)
+        return {
+            "backupExpiryPlan": expiry_plan.to_dict(),
+            "fingerprint": expiry_plan.fingerprint,
+        }
+    if action == "backup-expiry-confirm":
+        expiry_plan = _read_expiry_plan(Path(args.plan_file))
+        if args.accept_fingerprint != expiry_plan.fingerprint:
+            raise ValueError("Coding Arch backup expiry plan was not accepted")
+        expiry_confirmation = client.backup_expiry_confirm(
+            expiry_plan,
+            actor_id="local-operator:windows-private-data-cli",
+            policy_revision=_EXPIRY_POLICY_REVISION,
+        )
+        return {"expiryConfirmation": expiry_confirmation.to_dict()}
+    if action == "backup-expire":
+        expiry_plan = _read_expiry_plan(Path(args.plan_file))
+        expiry_confirmation = _read_expiry_confirmation(Path(args.confirmation_file))
+        return {
+            "expiryReceipt": client.backup_expire(
+                expiry_plan, expiry_confirmation
+            ).to_dict()
+        }
+    if action == "confirm":
+        deletion_plan = _read_plan(Path(args.plan_file))
+        if (
+            args.accept_fingerprint != deletion_plan.fingerprint
+            or client.deletion_preview() != deletion_plan
+        ):
+            raise ValueError("Coding private-data plan was not accepted")
+        deletion_confirmation = PluginPrivateDataDeletionConfirmationV1(
+            plan_fingerprint=deletion_plan.fingerprint,
+            confirmation_id="arch-private-data:" + secrets.token_hex(16),
+        )
+        client.deletion_confirm(
+            deletion_plan,
+            deletion_confirmation,
+            actor_id="local-operator:windows-private-data-cli",
+            policy_revision=_POLICY_REVISION,
+        )
+        return {"confirmation": deletion_confirmation.to_dict()}
+    if action == "delete":
+        deletion_plan = _read_plan(Path(args.plan_file))
+        deletion_confirmation = _read_confirmation(Path(args.confirmation_file))
+        return {
+            "receipt": client.delete_confirmed(
+                deletion_plan, deletion_confirmation
+            ).to_dict()
+        }
+    raise ValueError("Coding private-data command action is invalid")
+
+
+def _read_windows_restore_plan(
+    args: argparse.Namespace,
+) -> CodingArchPrivateDataRestorePlanV1:
+    if args.plan_file is None:
+        raise ValueError("Windows Coding Arch restore confirmation needs its plan")
+    plan = _read_restore_plan(Path(args.plan_file))
+    if plan.backup_id != args.backup_id:
+        raise ValueError("Windows Coding Arch restore plan is foreign")
+    return plan
 
 
 def _run_restore(

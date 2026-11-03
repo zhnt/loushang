@@ -1238,6 +1238,14 @@ class StagedResourceCompositionCandidate:
         return self._require_prepared_owner_generation().catalog_snapshot
 
     @property
+    def prepared_resource_catalog_snapshot(self) -> object:
+        """Read exact prepared selection before an effectful Worker starts."""
+
+        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
+            raise RuntimeError("Resource Catalog generation is not prepared")
+        return self._require_prepared_owner_generation().catalog_snapshot
+
+    @property
     def resource_catalog_projection(self) -> object:
         if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
             raise RuntimeError("Resource Catalog generation is not retained")

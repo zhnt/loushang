@@ -7,34 +7,34 @@
 - Design status: accepted by the owner under issue `#502` after independent
   architecture, security, and developer-experience reviews passed following
   correction and same-reviewer re-review of their blocking findings.
-- Implementation status: partial. PLC0--PLC8 are complete: the strict manifest
-  and declaration codecs, immutable revision evidence, desired-state and
-  Instance ledgers, execution Approval consumption, exact Capability-owner
-  admission, Provider selection, the production `coding.lsp.default`,
-  `coding.base`, and `coding.arch.default` paths, the single Resource Catalog,
-  the stable public author SDK, and managed Skill actions are implemented and
-  terminally reviewed. PLC9 has also delivered the internal management
-  application/Product-routing contracts and explicit Linux and Windows AMD64
-  Coding `local_worker` canaries. PLC9D1/D2 add the local-candidate Package GC
-  operator projection and dark reservation/reference-writer fence. D3a--D3e
-  add the Store deletion primitive, writer and committed-set fences, exact
-  target resolution, and durable result/debt journal. D3f--D3j connect an
-  internal POSIX-tested executor and explicit offline Product root-GC command;
-  D3k--D3l add durable private-data confirmation evidence, and D3m projects
-  the pre-B workspace-snapshot status. Production private-data/backup owner
-  bindings remain absent. Remaining platform closure includes one complete
-  default CLI/RPC/UI/SDK management and repair projection, general and Windows
-  retained-version GC, shared-dependency handling and destructive-data policy,
-  removal of compatibility enablement vetoes, a
-  general third-party Worker authoring/admission experience, and an implemented
-  `remote_service` topology.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
-  internal/offline POSIX root-GC execution, durable private-data confirmation
-  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
-  remains open.
-- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
-  only; Current remains the default; no general third-party Worker
-  authoring/admission surface is published.
+- Implementation status through merged PR #678: PLC0--PLC8 are complete. Strict
+  declarations, immutable revisions, desired-state and Instance ledgers,
+  exact-owner admission, the production `coding.lsp.default`, `coding.base`,
+  and `coding.arch.default` paths, the Resource Catalog, public author SDK,
+  and managed Skill actions are implemented. PLC9 adds Product-backed
+  management query, command, preview, explanation, and bounded repair routes
+  across CLI, optional Coding RPC, TUI, and local SDK. Coding has public data
+  Skill, Prompt, and Theme Wheel recipes and explicit Linux/Windows AMD64
+  `local_worker` candidate routes. POSIX Package root and shared-dependency
+  GC, plus Coding Arch private-data backup, deletion, restore, and expiry
+  owners are implemented. The final PLC9 code head passed explicit Windows
+  Worker Session and GC native journeys and the Coding offline Package
+  regression; each Product route retains its own gate. The
+  [support matrix](plugin-support-matrix.md) records kind, platform, and
+  entry-route limits.
+- Remaining #509 closure: final integrated management conformance and
+  cross-platform non-live evidence. Windows private-data production use,
+  Windows Worker history authority cutover (#732), wider Worker V2 recovery,
+  broader Worker shapes, default Worker routing, and an implemented
+  `remote_service` topology retain separate gates. Fresh
+  B-fenced workspaces are supported; unfenced pre-B Plugin inputs refuse
+  without writes.
+- Delivery anchor: PR #678 merged bounded third-party Worker admission on
+  `main`; #509 tracks the final PLC9 integrated acceptance.
+- Worker boundary: explicit Linux x86-64 and Windows AMD64 Coding Product
+  opt-in admits self-contained read-only query Wheels. Current remains the
+  default; dependency execution, effectful Tools, macOS, and default Worker
+  routing remain closed.
 - Current-runtime authority: source, tests, and narrower accepted boundary and
   contract documents remain authoritative for implemented behavior. Target
   clauses in this document do not make an unimplemented execution shape or API
@@ -370,7 +370,8 @@ and the additive internal `local_worker` declaration topology. PLC9C1--C4
 provided a default-dark owner-only launch, bounded protocol/supervisor, and
 read-only Capability adapter. PLC9C5 C5.4/C5.5c later admitted only explicit
 Linux/Windows AMD64 Coding Product canaries; omitted policy still selects
-Current, and no general Worker authoring or Product route is published.
+Current. The explicit Product route now admits independently authored,
+self-contained read-only query Wheels on those platforms.
 `continuity_provider` is not a generic component SDK: its owner is exactly
 `harness.continuity`, and it enters the private process Continuity generation
 rather than a Runtime Profile slot or Session Graph.
@@ -516,7 +517,7 @@ does not follow a coarse label such as "destructive Plugin".
 | `none` | Resources and static declarations | no code execution | typed parser and exact owner | Implemented as `data_only` |
 | `in_process` | Narrow low-latency first-party/OEM Providers | separately established host-equivalent trust; process containment is impossible | verified Definition evaluator and Component Host | Partially implemented |
 | `one_shot` | Bounded scripts, formatters, generators, command helpers | exact action authorization; required containment for untrusted code | authorized Exec/Tool path | PLC8 native/package managed Skill facade implemented; managed execution currently admitted on Linux |
-| `local_worker` | Long-lived, stateful, streaming, native, dependency-conflicting, or third-party Providers | every non-host-equivalent executable requires proven non-downgradable containment plus narrow IPC | exact owner host over authorized Process Host | Declaration, lifecycle, supervision, recovery, and explicit Linux/Windows AMD64 Coding canaries implemented through PLC9C5 C5.5c; default remains Current and general third-party authoring/admission is not published |
+| `local_worker` | Long-lived, stateful, streaming, native, dependency-conflicting, or third-party Providers | every non-host-equivalent executable requires proven non-downgradable containment plus narrow IPC | exact owner host over authorized Process Host | Declaration, lifecycle, supervision, recovery, and explicit Linux/Windows AMD64 Coding canaries implemented through PLC9C5 C5.5c; independently authored self-contained read-only query Wheels have explicit Product routes on those platforms; default remains Current |
 | `remote_service` | managed connectors or externally hosted Providers | authenticated narrow protocol, egress policy, tenant isolation, and remote trust evidence | exact domain owner over a Host-owned client binding | Target; protocol-specific |
 
 ### Supervised Worker model
@@ -649,8 +650,8 @@ that satisfies the requirement.
 | Level | Author input | Plugin identity? | Execution | Stable target |
 | --- | --- | --- | --- | --- |
 | L0 native Resource | conventional `SKILL.md`, prompt, theme, method, assets | No | declarative; an optional managed action uses a separate strict declaration | no SDK required |
-| L1 data package | `plugin.json` plus declaration documents and Resources | Yes only when independently managed | declarative | schema + validator |
-| L2 Product build facade | small typed Python build specification | optional built-in Plugin or embedded contribution | declarative by default; only in-process code requires separately proven host-equivalent trust | public facade deferred beyond PLC8; private Product composition only |
+| L1 data package | `plugin.json` plus declaration documents and Resources, or the public `loushang.plugin` package/resource declaration facade | Yes only when independently managed | declarative | schema, validator, and public author SDK implemented |
+| L2 Product build facade | small typed Python Product composition specification | optional built-in Plugin or embedded contribution | declarative by default; only in-process code requires separately proven host-equivalent trust | embedded-without-Plugin facade deferred; Product-owned composition sets implemented |
 | L3 Worker SDK | generated domain protocol interface | usually yes | contained supervised Worker | after Worker contract stabilizes |
 
 ### SDK design rules
@@ -672,7 +673,8 @@ that satisfies the requirement.
 - Advanced APIs are owner-qualified; there is no generic `register(name,
   object)` escape hatch.
 
-Illustrative target authoring, not a current public API:
+Current public package declaration API; this produces package artifacts, not a
+Product admission or Session-use receipt:
 
 ```python
 from loushang.plugin import package, resource
@@ -681,7 +683,7 @@ plugin = package(
     id="com.example.review",
     version="1.0.0",
     contributions=[
-        resource.skill("skills/review/SKILL.md"),
+        resource.skill(contribution_id="review", locator="skills/review"),
     ],
 )
 ```
@@ -821,14 +823,14 @@ model input.
 | Manifest | canonical closed-schema `plugin.json` and engine negotiation are stable for explicit Plugin identity; native Resources remain manifest-free and legacy internal descriptors remain migration-only | preserve the closed schema and remove migration-only compatibility inputs when their deletion gates pass | PLC8/PLC9 cleanup |
 | Declaration | strict v2 IR; `data_only`, verified `in_process`, and versioned `local_worker` declarations exist | add any further execution topology only through versioned codecs | PLC8/PLC9 |
 | Package materialization | PLC9B implements the bounded Source/quarantine owner, verified wheel-only extraction, digest-locked recursive closure, transaction pins, role-separated immutable publication, commit admission, crash recovery, and capability-poor Product routing; legacy non-Plugin materializers remain compatibility substrate | activate only through an explicit Product rollout and keep source builds, unsafe Plugin-bound fallback, retained-version GC, and compatibility deletion outside this transaction | PLC9B/PLC9 closure |
-| Management | durable desired state, update, retirement, Instance and cleanup foundations | one CLI/RPC/UI/SDK projection and repair workflow | PLC9 |
-| Enablement compatibility | `manifest.enabled` and `source.enabled` can still veto a Product-selected Plugin during preflight | `manifest.enabled` becomes at most an install-time author default, `source.enabled` becomes Source Authority availability, and `PluginManagementService` desired state is the sole runtime selection writer; remove the peer preflight veto after one-time migration | PLC6/PLC9 |
+| Management | durable desired state, update, retirement, Instance and cleanup foundations; fenced Coding Product has CLI, optional RPC, TUI, and local SDK query/command/repair adapters plus partial preview and explanation | complete default-route and cross-surface conformance while retaining one Product command authority | PLC9 |
+| Enablement compatibility | Generic preflight no longer lets `manifest.enabled` or `source.enabled` veto a published revision in an exact Product selection; package, binding, Source trust, and Approval checks remain | `manifest.enabled` is at most an install-time author default, `source.enabled` describes Source availability for acquisition/update, and `PluginManagementService` desired state owns Product runtime selection; keep legacy-route removal behind its separate default-route decision | PLC6/PLC9 |
 | Capability Provider | exact admission/selection/binding plus production LSP and Arch Providers use one Product composition and Graph path | reuse unchanged for additional Providers | PLC6/PLC7 |
 | Resource Catalog | one production Catalog and typed Skill projection own the converged path | preserve the sole owner and remove only explicitly retained compatibility adapters | RCP5/PLC6 |
 | Skill scripts | strict native/package managed action declarations and the exact authorized execution path are public; managed execution is currently Linux-only | retain exact Approval, containment, revision, and Resource-owner binding; add platforms only with equivalent evidence | PLC8 |
 | Public SDK | stable data-only `loushang.plugin` authoring, validation, package, Provider, Resource, and managed Skill-action surface | keep management and future Worker authority out of the author SDK; add only versioned least-authority projections | PLC8/PLC9 |
 | Built-ins/embedded | selectable built-ins compile to common IR; the small embedded-without-Plugin-identity Product build facade remains deferred | preserve the identity distinction when the facade is delivered | PLC6/PLC8 follow-up |
-| Worker Plugins | declaration, supervised lifecycle, recovery, containment, and explicit Linux/Windows AMD64 Coding canaries exist | retain default-Current canary gating; publish a low-cost third-party authoring/admission path only after its own contract | PLC9C/PLC9 closure |
+| Worker Plugins | declaration, supervised lifecycle, recovery, containment, and bounded third-party self-contained read-only query admission on Linux x86-64 and Windows AMD64 exist | retain default-Current gating and require separate evidence for dependency execution, effectful Tools, or another platform | PLC9C/PLC9 closure |
 
 Compatibility adapters may translate old inputs into the canonical contracts,
 but they may not parse manifests again, mutate owner state, bypass admission, or

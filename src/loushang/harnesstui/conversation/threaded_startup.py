@@ -1,11 +1,9 @@
-"""Linux loading-screen coordination; Product execution stays on the main loop.
-
-Selected by Coding's screen-first adapter only for real Linux terminal input.
-"""
+"""Shared loading-screen coordination; Product execution stays on main."""
 
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import TextIO
 
 from loushang.harnesstui.conversation.loading_surface import (
@@ -23,7 +21,7 @@ from loushang.harnesstui.conversation.startup_host import (
     ScreenConversationStartup,
     join_screen_settlement,
 )
-from loushang.tui.terminal_backends.posix import PosixTerminalInputReader
+from loushang.tui.terminal_backends import native_terminal_input_backend
 from loushang.tui.terminal_session import TerminalSession
 
 
@@ -94,7 +92,7 @@ class ThreadedScreenStartup:
             else TerminalSession(stdin=stdin, stdout=stdout)
         )
         with mode as context:
-            reader = PosixTerminalInputReader(stdin.fileno())
+            reader = native_terminal_input_backend(sys.platform).open_reader(stdin)
             self.startup.defer_submission_until_input_boundary(reader.at_input_boundary)
             worker = LoadingSurfaceWorker(
                 app=self.startup.app,

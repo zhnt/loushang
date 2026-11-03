@@ -55,6 +55,7 @@ from .package_private_data_deletion_preview import (
     _capture_target_snapshot,
     _identity,
 )
+from .package_product_backup_types import require_coding_arch_backup_writer
 
 if os.name == "posix":
     _FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -73,6 +74,7 @@ class CodingArchPrivateDataBackupOwner:
     def __post_init__(self) -> None:
         if os.name != "posix":
             raise RuntimeError("Coding Arch POSIX backup owner is unavailable")
+        require_coding_arch_backup_writer(self.product)
         CodingArchPrivateDataDeletionPreview(self.layout, self.product)
 
     def retain(

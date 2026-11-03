@@ -76,7 +76,7 @@ def settle_coding_windows_product_worker_reserved_no_effect(
             raise CodingWindowsWorkerReservedSettlementError(
                 "coding_worker_reserved_settlement_runtime_active"
             )
-        with product.gc_gate.guard():
+        with product.gc_gate.guard(require_write=True):
             product.assert_root_gc_authority_current()
             current_review = _review_reserved_under_gc_guard(
                 product,

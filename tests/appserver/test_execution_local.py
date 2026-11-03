@@ -15,10 +15,67 @@ from loushang.appserver.local_record import (
 )
 from loushang.appserver.protocol import MuxAttachV1, SessionScopeV1
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
+from loushang.appserver.resume_model import (
+    ResumeInputLookupQueryV1,
+    ResumeInputLookupResultV1,
+)
 from tests.appservice.test_execution_service import fixture
 from tests.appservice.test_runtime import FINGERPRINT
 
 from .test_local import _until
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_authenticated_local_record_negotiates_resume_lookup(tmp_path, enabled):
+    async def run():
+        service, owner, first, second, selector, control, product = await fixture()
+        await first.close()
+        calls = []
+
+        async def lookup(query):
+            calls.append(query)
+            return ResumeInputLookupResultV1(query.input_id, "record-1", "committed")
+
+        product.lookup_resume_input = lookup
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server = LocalAppServerV1(
+            directory, "workspace", application_id="application", product_id="coding",
+            scopes=(LocalRecordScopeV1(SessionScopeV1.CWD, FINGERPRINT),),
+            scope_factory=owner.open_client_scope,
+            execution_scope_factory=owner.open_client_scope,
+            resume_input_lookup=enabled,
+            request_stop=lambda _: pytest.fail("lookup must not stop the application"),
+        )
+        client = LocalAppClientConnectionV1(directory, "workspace")
+        try:
+            assert client.resume_input_lookup_client is None
+            await server.start()
+            record = directory.read("workspace")
+            assert record.resume_input_lookup is enabled
+            assert decode_connection_record(encode_connection_record(record)) == record
+            await client.start()
+            borrowed = client.resume_input_lookup_client
+            assert (borrowed is not None) is enabled
+            if enabled:
+                assert borrowed is client.execution_client
+                attachment = await client.client.attach_mux(MuxAttachV1(selector))
+                selected = replace(control, attachment_id=attachment.attachment_id,
+                                   controller_generation=attachment.controller_generation)
+                query = ResumeInputLookupQueryV1("input-1", "a" * 64)
+                assert (await borrowed.lookup_resume_input(selected, "instance", query)).status == "committed"
+                assert calls == [query]
+            assert owner.pending_counts == (0, 0)
+            assert service._execution_registry.active_count == 0
+            assert product.legacy_calls == []
+            await client.close()
+            assert client.resume_input_lookup_client is None
+        finally:
+            await client.close()
+            await server.close()
+            await service.close()
+            directory.close()
+
+    asyncio.run(asyncio.wait_for(run(), 10))
 
 
 def test_authenticated_local_execution_reconnect_uses_same_registry_instance(tmp_path):

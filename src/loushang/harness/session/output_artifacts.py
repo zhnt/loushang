@@ -60,7 +60,7 @@ class SessionOutputPersistingExecService(ExecService):
             raise TypeError("session output persistence cannot wrap itself")
         if file_io is not None and (operation_scope is None or initialization_scope is None):
             raise ValueError("owned output persistence requires original operation scopes")
-        super().__init__(execution_profile=getattr(delegate, "execution_profile", None))
+        super().__init__()
         self._delegate = delegate
         self._capture_factory = capture_factory
         captured = delegate.capture_executor() if capture_factory is not None else None
@@ -80,6 +80,16 @@ class SessionOutputPersistingExecService(ExecService):
         self._temporary_root = None if self._capture is not None else prepare_private_artifact_directory(
             temporary_root or resolve_platform_paths().temporary
         )
+
+    @property
+    def execution_profile(self) -> object | None:
+        # Forward live selection; retaining the initial profile would keep a
+        # persistent session at its startup permissions after a mode change.
+        return getattr(self._delegate, "execution_profile", None)
+
+    @execution_profile.setter
+    def execution_profile(self, value: object | None) -> None:
+        self._delegate.execution_profile = value
 
     def fence(self) -> None:
         if self._capture is not None:

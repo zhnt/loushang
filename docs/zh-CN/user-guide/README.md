@@ -79,6 +79,16 @@ loushang --export
 
 交互式 `loushang --resume` 和无参数 `/resume` 会打开全屏、可搜索的 continuity 选择器。默认按键中，空格按需加载预览；安装多个 Provider 时 Ctrl+P 切换 Provider、Tab 切换 Domain；Ctrl+S 切换公共排序。`--continue` 恢复当前项目最新会话，`--resume <session-id-or-path>` 和 `/resume <session-id-or-path>` 直接恢复指定会话。非交互模式必须使用这些显式形式之一。
 
+Resume 会先显示兼容的已保存历史，再创建当前可写 Session。新输入始终使用当前安装的
+Policy、Approval、Sandbox、Plugin、Tool 和资源状态。大历史最初可能只提供有界、未经
+验证的尾部；在所选历史通过当前限制内的验证前，可写 continuation 保持 unavailable。
+
+可写 continuation 要求当前 Resume writer 协议：
+`coding.resume-continuation/v2`，以及被选择原 owner 的
+`resume-context/v1` capability。早于这些协议的 runtime 可以只读检查或导出 v2
+Transcript，但不支持在安装回滚后继续写入。应停止所有 Loushang 进程、保留
+Transcript，并升级回新版本后再继续。
+
 在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/branch`、`/tree`、`/tools`、`/extensions`、`/export`、`/compact`、`/reload` 和 `/quit`。`/fork` 把当前 chat 复制为一个新会话，`/clone` 是兼容别名，`/branch` 则打开 prompt 选择器，从较早的用户消息创建分支。
 
 ## 工具
@@ -203,6 +213,8 @@ trust 机制完成前，不能从仓库配置引入新的可执行文件或环�
 
 简单的工作区扩展可直接放在 `.loushang/extensions/<name>.py`，实现 `register(api)`；也可用包含 `extension.py` 或 `__init__.py` 的目录。无需构建 Wheel。这是 Coding 进程内运行的可信 Python，没有独立的 Wheel 安装、版本和退役生命周期。旧的 `--extension`/`-e` 参数已移除。
 
+用 `loushang-coding-extension init .loushang/extensions/hello.py` 创建单文件模板，再运行返回的 `smokeCommand`。它在一次性 Product 工作区启动离线 Coding Session 并调用模板工具；扩展 Python 代码仍以当前用户权限在进程内执行，一次性工作区不是代码沙箱。工具需用 `direct_tool(...)` 或带 Action 适配器的 `authorized_tool(...)` 包装后注册。
+
 扩展可以携带相邻的 `loushang-extension.toml` manifest，用来声明身份、权限等级、依赖和预期贡献。使用 `/extensions` 查看已加载扩展、贡献摘要和诊断；使用 `/extensions <id>` 查看单个扩展详情。`/tools` 会在可用时展示 extension tool 的来源信息。
 
 ## 包与插件
@@ -210,6 +222,10 @@ trust 机制完成前，不能从仓库配置引入新的可执行文件或环�
 包与插件可以提供可复用的 coding 资产。常见生命周期命令：
 
 文档型 Skill/Prompt Wheel 可用 `loushang-plugin init-coding-skill ./reviewpack --resource-name review`（Prompt 用 `init-coding-prompt`）创建源码；返回的 `buildCommand` 构建 Wheel，`smokeCommand` 在一次性离线 POSIX Product 工作区执行安装、选择和模型输入消费验证。结果分别报告三个阶段，不会安装到当前工作区。各类型和入口的开放状态见 [插件支持矩阵](../../internals/architecture/harness/plugin/plugin-support-matrix.md)。
+
+Screen Theme 候选可用 `loushang-plugin init-coding-theme ./themepack --resource-name dusk` 创建源码，再运行返回的构建和 smoke 命令。Theme smoke 在一次性 POSIX Product 工作区验证显式选择后的 Screen 样式；Hosted Mux 和全面上线仍需分别评估。
+
+带 fence 的工作区可用 `loushang-coding-plugin-status --workspace PATH` 或 `/plugins status` 查看与本地 SDK `support_status()` 相同的只读阶段。`projected` 只表示当前组合预览，`productUse: not_checked` 表示尚未通过真实 Session 或 Screen 验证使用。
 
 ```bash
 loushang --list-plugins
@@ -227,7 +243,10 @@ loushang-package-cutover --workspace /工作区/绝对路径
 
 先停止该工作区的 Loushang 进程；命令也会拒绝仍在运行的旧 writer。已有的 Loushang 私有主目录必须归当前用户所有、不可供其他用户访问；命令不会改写它的权限。它通过 Product 事务安装内置的 base、LSP、架构三个插件，中断后可以重试。需要旧状态采纳或设置迁移的工作区会被拒绝。写入 fence 后只能使用理解该 fence 的 Loushang 版本。
 
-包含旧 Plugin 状态、设置、Source 或 Package Store 成员的 pre-B 工作区不在当前 Product 路径的支持范围内。普通切换命令会在创建 B fence 或改写旧工作区前拒绝它们。请为 Product 插件路径创建新工作区；已有 B fence 的工作区可用理解该 fence 的版本重开。历史遗留的旧版审核与采纳命令仍保留在 CLI 中，但不构成当前候选版本支持的迁移路线。
+已有工作区继续使用兼容的插件存储启动，保留用户配置、已安装插件和会话历史。
+正常启动无需转换存储、新建项目目录或清空私有状态。全新工作区自动使用新的
+Product Store，已切换的工作区继续打开该 Store。上面的独立离线切换命令只处理
+全新工作区，遇到旧输入会在修改前拒绝；历史审核与采纳命令不构成通用自动迁移路线。
 
 在 POSIX 工作区中，如果 Package 操作在 staging 阶段中断，可用准确的操作 ID 查看检查点并请求限定范围的 Product 恢复：
 

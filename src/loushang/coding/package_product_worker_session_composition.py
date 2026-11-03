@@ -35,6 +35,9 @@ from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderSelectionPlanV1,
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.package_product.product_local_wheel_runtime import (
+    PackageProductSelectedPluginManifestV1,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityWorkerComponentRequest,
@@ -62,6 +65,10 @@ from .package_product_worker_query_consumer import (
     coding_worker_query_owner_authority,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_resume import CodingWorkerResumeSettlementBinding
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
 
 
 class CodingWorkerSessionCompositionError(RuntimeError):
@@ -74,7 +81,9 @@ def prepare_coding_product_worker_session_inputs(
     *,
     resolved_providers: ResolvedCapabilityProviderSet,
     provider_owner: CapabilityProviderOwnerAuthority,
-    receipt_owner: CodingWorkerProductReceiptOwner,
+    receipt_owner: (
+        CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+    ),
     receipt: ProductWorkerActivationReceiptV1,
     capability_authority: CodingProductWorkerCapabilityAuthority | None,
     adapter: CapabilityQueryWorkerAdapter | None,
@@ -97,7 +106,11 @@ def prepare_coding_product_worker_session_inputs(
     if (
         not isinstance(resolved_providers, ResolvedCapabilityProviderSet)
         or not isinstance(provider_owner, CapabilityProviderOwnerAuthority)
-        or not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+        or type(receipt_owner)
+        not in (
+            CodingWorkerProductReceiptOwner,
+            CodingWindowsWorkerProductReceiptOwner,
+        )
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or not isinstance(worker_admission, CapabilityWorkerAdmissionV1)
         or type(evaluated_at) is not int
@@ -589,6 +602,9 @@ class CodingProductWorkerOrdinarySessionBinding:
     ordinary: SessionCapabilityCompositionInputs
     combined: SessionCapabilityCompositionInputs
     workspace_binding: CapabilityBundleProviderBinding
+    selected_worker_manifest: PackageProductSelectedPluginManifestV1 | None = None
+    activation_receipt: ProductWorkerActivationReceiptV1 | None = None
+    resume_settlement: CodingWorkerResumeSettlementBinding | None = None
 
     def __post_init__(self) -> None:
         validate_coding_product_worker_ordinary_session_inputs(
@@ -596,6 +612,18 @@ class CodingProductWorkerOrdinarySessionBinding:
             combined=self.combined,
             workspace_binding=self.workspace_binding,
         )
+        selected = self.selected_worker_manifest
+        receipt = self.activation_receipt
+        if (selected is None) != (receipt is None):
+            raise ValueError("Coding Worker selection evidence is incomplete")
+        if self.resume_settlement is not None and receipt is None:
+            raise ValueError("Coding Worker Resume settlement lacks a receipt")
+        if selected is not None and receipt is not None and (
+            selected.snapshot.installation_key.plugin_id != receipt.policy.plugin_id
+            or selected.snapshot.root_ref.artifact_digest
+            != receipt.policy.plugin_revision_digest
+        ):
+            raise ValueError("Coding Worker selection evidence changed")
 
 
 __all__ = [

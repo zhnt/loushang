@@ -97,3 +97,16 @@ def test_G17_COMPAT_foreground_rejects_non_boolean_activation(value):
             )
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true"])
+def test_G17_COMPAT_foreground_rejects_non_boolean_execution(value):
+    async def scenario():
+        with pytest.raises(TypeError, match="invalid execution activation"):
+            HostedForegroundRuntimeV1(
+                cast(HostedApplicationContinuityRuntimeV1, _Application()),
+                _Pipe(),
+                session_execution=value,
+            )
+
+    asyncio.run(scenario())

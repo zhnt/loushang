@@ -146,6 +146,17 @@ class BoundedSessionCatalogSnapshot:
 
 
 @dataclass(frozen=True)
+class BoundedAgentTranscriptPreview:
+    """Decoded head and tail records; never a verified selected ancestry."""
+
+    header: ConversationHeader
+    records: tuple[AgentTranscriptRecord, ...]
+    tail_records: tuple[AgentTranscriptRecord, ...]
+    source_fingerprint: str
+    bytes_read: int
+
+
+@dataclass(frozen=True)
 class _BoundedSessionCandidate:
     path: Path
     size: int
@@ -869,6 +880,7 @@ class AgentTranscriptSessionCatalog:
         enrich_limit: int = _BOUNDED_ENRICH_LIMIT,
         segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
         read_budget: SessionDiscoveryReadBudget | None = None,
+        cached_items: Sequence[IndexedProjection[SessionSummary]] = (),
     ) -> BoundedSessionCatalogSnapshot:
         """Build a bounded resume view without replaying transcript authority.
 
@@ -914,6 +926,7 @@ class AgentTranscriptSessionCatalog:
         projected, bytes_read = self._project_bounded_candidates(
             selected_candidates,
             segment_bytes=segment_bytes,
+            cached_items=cached_items,
         )
 
         selected = _query_indexed_summaries(query or SessionQuery(), projected)
@@ -950,6 +963,7 @@ class AgentTranscriptSessionCatalog:
         projected, _bytes_read = self._project_bounded_candidates(
             before,
             segment_bytes=segment_bytes,
+            cached_items=self.try_query_index_snapshot().items,
         )
         if len({item.projection.session_id for item in projected}) != len(projected):
             raise RuntimeError("session authority contains duplicate identities")
@@ -984,12 +998,31 @@ class AgentTranscriptSessionCatalog:
         candidates: Sequence[_BoundedSessionCandidate],
         *,
         segment_bytes: int,
+        cached_items: Sequence[IndexedProjection[SessionSummary]] = (),
     ) -> tuple[list[IndexedProjection[SessionSummary]], int]:
         if self._layout is None:
             raise ValueError("provider-backed catalogs have no local file layout")
         projected: list[IndexedProjection[SessionSummary]] = []
         bytes_read = 0
+        cached_by_path = {
+            item.projection.session_file: item
+            for item in cached_items
+            if self._local_index_item_is_valid(item)
+        }
         for candidate in candidates:
+            cached = cached_by_path.get(candidate.path)
+            if (
+                cached is not None
+                and cached.projection.authority_fingerprint == candidate.fingerprint
+                and (current := _bounded_candidate(candidate.path)) is not None
+                and current.fingerprint == candidate.fingerprint
+            ):
+                # Directory-wide staleness must not replace an unchanged exact
+                # projection with a partial head/tail replay. A name patch may
+                # be in the omitted middle of a long conversation.
+                self._layout.bind_path(cached.locator.key, candidate.path)
+                projected.append(cached)
+                continue
             result = _project_bounded_session_summary(
                 candidate,
                 segment_bytes=segment_bytes,
@@ -1556,58 +1589,10 @@ def _project_bounded_session_summary(
     *,
     segment_bytes: int,
 ) -> tuple[SessionSummary, int] | None:
-    try:
-        head, tail = _read_bounded_segments(candidate, segment_bytes=segment_bytes)
-        current = _bounded_candidate(candidate.path)
-    except OSError:
+    bounded = _decode_bounded_candidate(candidate, segment_bytes=segment_bytes)
+    if bounded is None:
         return None
-    if current is None or current.fingerprint != candidate.fingerprint:
-        return None
-
-    lines = {
-        offset: line
-        for offset, line in (
-            *_complete_segment_lines(
-                head,
-                start=0,
-                total_size=candidate.size,
-                drop_first=False,
-            ),
-            *_complete_segment_lines(
-                tail,
-                start=max(0, candidate.size - len(tail)),
-                total_size=candidate.size,
-                drop_first=candidate.size > len(tail),
-            ),
-        )
-    }
-    header: ConversationHeader | None = None
-    records: list[AgentTranscriptRecord] = []
-    for _offset, line in sorted(lines.items()):
-        try:
-            value = json.loads(
-                line.decode("utf-8"), parse_constant=_reject_json_constant
-            )
-        except (UnicodeError, json.JSONDecodeError, ValueError):
-            continue
-        if not isinstance(value, dict):
-            continue
-        if value.get("type") == "conversation" and header is None:
-            try:
-                header = _HEADER_CODEC.decode_header(value)
-            except Exception:
-                return None
-            continue
-        if value.get("type") != "record":
-            continue
-        try:
-            records.append(
-                cast(AgentTranscriptRecord, _RECORD_CODEC.decode_record(value))
-            )
-        except Exception:
-            continue
-    if header is None:
-        return None
+    header, records = bounded.header, bounded.records
 
     name = _normalize_nonblank(header.metadata.get("name"))
     messages: list[AgentMessage] = []
@@ -1681,7 +1666,91 @@ def _project_bounded_session_summary(
             bounded=True,
             counts_exact=candidate.size <= segment_bytes * 2,
         ),
-        len(head) + len(tail),
+        bounded.bytes_read,
+    )
+
+
+def read_agent_transcript_bounded_preview(
+    path: str | Path, *, segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
+) -> BoundedAgentTranscriptPreview:
+    """Read stable bounded head/tail records without locks, indexes, or repair."""
+
+    if type(segment_bytes) is not int or not 1 <= segment_bytes <= 1024 * 1024:
+        raise ValueError("bounded transcript segment budget is invalid")
+    candidate = _bounded_candidate(Path(path))
+    if candidate is None:
+        raise OSError("bounded transcript source must be a regular file")
+    preview = _decode_bounded_candidate(candidate, segment_bytes=segment_bytes)
+    if preview is None:
+        raise ValueError("bounded transcript preview is unavailable")
+    return preview
+
+
+def _decode_bounded_candidate(
+    candidate: _BoundedSessionCandidate, *, segment_bytes: int,
+) -> BoundedAgentTranscriptPreview | None:
+    try:
+        head, tail = _read_bounded_segments(candidate, segment_bytes=segment_bytes)
+        current = _bounded_candidate(candidate.path)
+    except OSError:
+        return None
+    if current is None or current.fingerprint != candidate.fingerprint:
+        return None
+
+    lines = {
+        offset: line
+        for offset, line in (
+            *_complete_segment_lines(
+                head,
+                start=0,
+                total_size=candidate.size,
+                drop_first=False,
+            ),
+            *_complete_segment_lines(
+                tail,
+                start=max(0, candidate.size - len(tail)),
+                total_size=candidate.size,
+                drop_first=candidate.size > len(tail),
+            ),
+        )
+    }
+    header: ConversationHeader | None = None
+    records: list[AgentTranscriptRecord] = []
+    tail_records: list[AgentTranscriptRecord] = []
+    # A file that fits entirely in the head also contains its complete tail.
+    tail_start = candidate.size - len(tail) if tail else (
+        0 if candidate.size <= segment_bytes else candidate.size
+    )
+    for offset, line in sorted(lines.items()):
+        try:
+            value = json.loads(
+                line.decode("utf-8"), parse_constant=_reject_json_constant
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        if value.get("type") == "conversation" and header is None:
+            try:
+                header = _HEADER_CODEC.decode_header(value)
+            except Exception:
+                return None
+            continue
+        if value.get("type") != "record":
+            continue
+        try:
+            record = cast(AgentTranscriptRecord, _RECORD_CODEC.decode_record(value))
+        except Exception:
+            continue
+        records.append(record)
+        if offset >= tail_start:
+            tail_records.append(record)
+    if header is None:
+        return None
+    return BoundedAgentTranscriptPreview(
+        header=header, records=tuple(records), tail_records=tuple(tail_records),
+        source_fingerprint=candidate.fingerprint,
+        bytes_read=len(head) + len(tail),
     )
 
 
@@ -2159,6 +2228,7 @@ def _run_catalog(awaitable):
 
 __all__ = [
     "AgentTranscriptSessionCatalog",
+    "BoundedAgentTranscriptPreview",
     "BoundedSessionCatalogSnapshot",
     "SessionMetadata",
     "SessionQuery",
@@ -2178,6 +2248,7 @@ __all__ = [
     "list_all_indexed_agent_transcript_session_summaries",
     "load_agent_transcript_session_metadata",
     "project_agent_transcript_session_summary",
+    "read_agent_transcript_bounded_preview",
     "refresh_all_agent_transcript_session_indexes",
     "same_agent_transcript_session_path",
     "session_summary_authority_is_current",

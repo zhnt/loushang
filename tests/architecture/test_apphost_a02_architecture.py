@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.architecture._source_imports import resolved_imports
+
 APPHOST = Path("src/loushang/apphost")
 CORE = {
     APPHOST / "__init__.py",
@@ -32,23 +34,7 @@ def _source(path: Path) -> str:
 
 
 def _imports(path: Path) -> set[str]:
-    imports: set[str] = set()
-    package = path.parent.relative_to("src").parts
-    for node in ast.walk(ast.parse(_source(path), filename=str(path))):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            retained = len(package) - (node.level - 1) if node.level else 0
-            base = (
-                (*package[:retained], *(node.module or "").split("."))
-                if node.level
-                else tuple((node.module or "").split("."))
-            )
-            normalized = tuple(part for part in base if part)
-            if normalized:
-                imports.add(".".join(normalized))
-            imports.update(".".join((*normalized, alias.name)) for alias in node.names)
-    return imports
+    return resolved_imports(path, reject_invalid_relative=False)
 
 
 def test_a0_2_core_is_small_stdlib_only_and_optional_integration_is_separate() -> None:
@@ -170,6 +156,10 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicit application-local Method composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
+        # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
+        Path("src/loushang/coding/hosted_goal_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),

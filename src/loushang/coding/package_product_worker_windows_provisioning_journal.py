@@ -44,6 +44,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 from loushang.harness.resources.plugins.locators import canonical_plugin_relative_path
 from loushang.harness.worker._native_profile_bridge import (
     _WINDOWS_LPAC_PROFILE_ID,
+    _document_fingerprint,
     _require_opaque,
     _validate_windows_journal,
 )
@@ -92,6 +93,8 @@ class WindowsWorkerProvisioningAttemptV1:
     phase_history: tuple[str, ...]
     witness_present_history: tuple[bool, ...]
     last_witness_state: str | None
+    settlement_fingerprint: str | None
+    records: tuple[_Record, ...] = ()
 
     @property
     def unsettled(self) -> bool:
@@ -106,6 +109,12 @@ def _canonical(value: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def windows_worker_provisioning_settlement_fingerprint(
+    document: dict[str, object],
+) -> str:
+    return _document_fingerprint("loushang.worker.windows-lpac-settlement/v1", document)
 
 
 def _inventory_identity(name: str, raw: bytes) -> dict[str, object]:
@@ -277,6 +286,14 @@ def inspect_windows_worker_provisioning_attempts(
                                 ],
                             )
                         ),
+                        settlement_fingerprint=(
+                            windows_worker_provisioning_settlement_fingerprint(
+                                current.document
+                            )
+                            if current.document["phase"] == "settled"
+                            else None
+                        ),
+                        records=records,
                     )
                 )
         if set(windows_listdir_at(directory_fd)) != set(names):
@@ -443,9 +460,7 @@ class WindowsWorkerProvisioningStateJournal:
             )
         with WindowsPrivateDirectoryAcl() as acl:
             windows_stat_at(directory_fd, lock_name)
-            with journal_file_lock_at(
-                directory_fd, lock_name, "shared"
-            ) as lock_handle:
+            with journal_file_lock_at(directory_fd, lock_name, "shared") as lock_handle:
                 initialized = self._validate_windows_lock(
                     directory_fd, acl, locked_handle=lock_handle
                 )
@@ -740,4 +755,5 @@ __all__ = [
     "WindowsWorkerProvisioningStateJournal",
     "WindowsWorkerProvisioningStateJournalError",
     "inspect_windows_worker_provisioning_attempts",
+    "windows_worker_provisioning_settlement_fingerprint",
 ]

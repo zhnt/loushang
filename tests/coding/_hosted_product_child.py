@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import faulthandler
 import os
+import sys
 
 from _hosted_boundary_trace import emit, install, text_shape
 
@@ -15,8 +16,8 @@ from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage
 from loushang.coding.cli.hosted import (
     CodingHostedCommandV1,
+    _parse_options,
     execute_hosted_command,
-    parse_launch,
 )
 from loushang.coding.session.agent_session import AgentSession
 from loushang.harness.tools.core import ToolDefinition
@@ -68,6 +69,8 @@ async def scripted_stream(model, context, options=None):
     )
     user_text = latest_text if latest.role == "user" else ""
     text = "waiting" if user_text == "hold" else "真实跨进程回复\nG14"
+    if user_text == "fresh-after-restart":
+        text = "真实跨进程恢复回复\nG14"
     if user_text == "markdown":
         text = "## Render witness\n\nUse **bold witness**.\n\n```python\nprint('code witness')\n```"
     emit("model_input", roles=[message.role for message in context.messages[-8:]],
@@ -130,14 +133,18 @@ if __name__ == "__main__":
     # Preserve the child's native thread stacks if a platform-specific block
     # prevents even asyncio deadlines from running. Never enabled by production.
     # A watchdog exit is always a failed test, never graceful-close evidence.
-    faulthandler.dump_traceback_later(30, exit=True)
+    faulthandler.dump_traceback_later(
+        90 if "--session-execution" in sys.argv else 30, exit=True
+    )
     if os.environ.get("LOUSHANG_G14_TEST_FAIL_DISPOSE") == "1":
 
         async def fail_dispose(self):
             raise RuntimeError("private-disposal-sentinel")
 
         AgentSession.dispose = fail_dispose
-    launch, _ = parse_launch()
+    launch, _, session_discovery, session_execution = _parse_options(
+        None, allow_discovery=True
+    )
     command = CodingHostedCommandV1(
         launch,
         model=Model(
@@ -151,6 +158,8 @@ if __name__ == "__main__":
         ),
         stream_fn=scripted_stream,
         tools=[_preview_tool()],
+        session_discovery=session_discovery,
+        session_execution=session_execution,
     )
     try:
         raise SystemExit(execute_hosted_command(command))

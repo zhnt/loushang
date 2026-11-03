@@ -62,6 +62,17 @@ class CodingWindowsWorkerOptInJournal:
         self, plugin_id: str, *, directory_fd: int
     ) -> CodingWorkerOptInDecisionV1 | None:
         self._require_plugin_id(plugin_id)
+        events = self.history_read_only(directory_fd=directory_fd)
+        return next(
+            (event for event in reversed(events) if event.plugin_id == plugin_id),
+            None,
+        )
+
+    def history_read_only(
+        self, *, directory_fd: int
+    ) -> tuple[CodingWorkerOptInDecisionV1, ...]:
+        """Read every retained operation without creating a journal or lock."""
+
         self._require_root(directory_fd)
         with WindowsPrivateDirectoryAcl() as acl:
             acl.validate(directory_fd)
@@ -74,13 +85,11 @@ class CodingWindowsWorkerOptInJournal:
                     windows_stat_at(directory_fd, _NAME)
                 except FileNotFoundError:
                     self._assert_visible_root(directory_fd)
-                    return None
+                    return ()
                 raise CodingWorkerOptInJournalError(
                     "coding_worker_opt_in_lock_missing"
                 ) from None
-            with journal_file_lock_at(
-                directory_fd, lock_name, "shared"
-            ) as lock_handle:
+            with journal_file_lock_at(directory_fd, lock_name, "shared") as lock_handle:
                 initialized = self._validate_lock(
                     directory_fd, acl, locked_handle=lock_handle
                 )
@@ -91,17 +100,14 @@ class CodingWindowsWorkerOptInJournal:
                             "coding_worker_opt_in_orphan_lock"
                         )
                     self._assert_visible_root(directory_fd)
-                    return None
+                    return ()
                 if not initialized:
                     raise CodingWorkerOptInJournalError(
                         "coding_worker_opt_in_lock_corrupt"
                     )
                 events = self._decode(raw)
             self._assert_visible_root(directory_fd)
-            return next(
-                (event for event in reversed(events) if event.plugin_id == plugin_id),
-                None,
-            )
+            return events
 
     def change(
         self,
@@ -276,10 +282,9 @@ class CodingWindowsWorkerOptInJournal:
             self._require_plain_stream(descriptor)
             metadata = os.fstat(descriptor)
             visible = windows_stat_at(directory_fd, _NAME + ".lock")
-            if (
-                metadata.st_size != 1
-                or (metadata.st_dev, metadata.st_ino)
-                != (visible.st_dev, visible.st_ino)
+            if metadata.st_size != 1 or (metadata.st_dev, metadata.st_ino) != (
+                visible.st_dev,
+                visible.st_ino,
             ):
                 raise CodingWorkerOptInJournalError("coding_worker_opt_in_lock_corrupt")
             if locked_handle is None:

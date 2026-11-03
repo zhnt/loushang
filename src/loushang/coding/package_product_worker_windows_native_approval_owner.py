@@ -69,7 +69,7 @@ class CodingWindowsWorkerNativeApprovalOwner:
         )
         if review.review_id != review_id:
             raise ValueError("Windows Worker backend review changed")
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root
@@ -89,7 +89,7 @@ class CodingWindowsWorkerNativeApprovalOwner:
     ) -> CodingWorkerNativeApprovalDecisionV1:
         """Fence a prior approval even after its backend material is lost."""
 
-        with self._product.gc_gate.guard():
+        with self._product.gc_gate.guard(require_write=True):
             self._product.assert_root_gc_authority_current()
             with (
                 self._product.epoch_runtime.borrow_product_state_root_descriptor() as root

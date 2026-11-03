@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 from loushang.foundation.platform_paths import PlatformPaths
@@ -188,13 +189,19 @@ def _status_fields(path: Path) -> dict[str, str]:
 
 
 def _imports(path: Path) -> set[str]:
+    source = _read(path)
+    return set(_import_facts(str(path), source))
+
+
+@cache
+def _import_facts(filename: str, source: str) -> tuple[str, ...]:
     imports: set[str] = set()
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
+    for node in ast.walk(ast.parse(source, filename=filename)):
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
             imports.add(node.module)
-    return imports
+    return tuple(sorted(imports))
 
 
 def _table_first_column(text: str) -> tuple[str, ...]:
@@ -565,6 +572,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "_local_record_values.py",
         "_posix_local_record.py",
         "_windows_local_record.py",
+        # Optional negotiated observation; no execution or retry grant.
+        "resume_model.py",
         "remote_client.py",
         "stdio.py",
         "protocol/stdio_profile.py",
@@ -578,6 +587,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution/recovery.py",
         "managed_mux.py",
         "managed_mux_wire.py",
+        # Application-local typed Method observations, no wire activation.
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux_close.py",
     }
     assert {
@@ -600,10 +612,14 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution_notifications.py",
         "execution_registry.py",
         "execution_service.py",
+        "method_work.py",
+        "goal.py",  # COD-KD-HG-001: local SDK data/bridge, no wire activation.
         "managed_mux.py",
         "session_discovery.py",
         "managed_mux_close.py",
         "ports.py",
+        # Optional data lookup and borrow of the existing controller scope.
+        "resume_ports.py",
         "runtime.py",
     }
 
@@ -642,6 +658,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         path
         for path in Path("src/loushang").rglob("*.py")
         if not path.is_relative_to(APPHOST_SOURCE)
+        if "loushang.apphost" in _read(path)
         if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
     assert reverse_apphost_consumers == {
@@ -650,6 +667,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        # COD-KD-HMW-001: explicitly selected Method application composition.
+        Path("src/loushang/coding/hosted_method_application.py"),
+        # COD-KD-HG-001: opt-in Goal application on the same AppHost owner.
+        Path("src/loushang/coding/hosted_goal_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
@@ -798,6 +819,7 @@ def test_current_worker_route_keeps_explicit_query_separate_and_no_fallback() ->
         Path("src/loushang/coding/_product_worker_canary.py"),
         Path("src/loushang/coding/package_product_worker_operator_query.py"),
         Path("src/loushang/coding/package_product_worker_pending_host.py"),
+        Path("src/loushang/coding/package_product_worker_windows_pending_host.py"),
     }
     explicit_query = _read(
         Path("src/loushang/coding/package_product_worker_operator_query.py")

@@ -29,6 +29,23 @@ LinuxServiceGroupRecoveryStatus = Literal[
 ]
 
 
+def linux_current_boot_id() -> str:
+    """Read the verified current Linux boot for pre-launch Worker custody."""
+
+    if sys.platform != "linux":
+        raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
+    try:
+        _parse_start_ticks(_read_file("/proc/self/stat"), os.getpid())
+        boot_id = _read_file("/proc/sys/kernel/random/boot_id", limit=64).strip().decode(
+            "ascii"
+        )
+        if _BOOT_ID.fullmatch(boot_id) is None:
+            raise _error(HostingFailureCategory.PREPARATION_FAILED)
+        return boot_id
+    except (OSError, UnicodeError):
+        raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
+
+
 class LinuxServiceGroupObservationV1:
     """Borrow one observer and its mutex; allocate no descriptor or close duty."""
 
@@ -140,12 +157,7 @@ def linux_service_group_recovery_status(
     if sys.platform != "linux" or not callable(getattr(os, "killpg", None)):
         raise _error(HostingFailureCategory.PLATFORM_UNSUPPORTED)
     try:
-        _parse_start_ticks(_read_file("/proc/self/stat"), os.getpid())
-        boot_id = _read_file("/proc/sys/kernel/random/boot_id", limit=64).strip().decode(
-            "ascii"
-        )
-        if _BOOT_ID.fullmatch(boot_id) is None:
-            raise _error(HostingFailureCategory.PREPARATION_FAILED)
+        boot_id = linux_current_boot_id()
         if boot_id != identity.boot_id:
             return "prior_boot_absent"
         namespace = os.stat("/proc/self/ns/pid")
@@ -172,6 +184,7 @@ def _error(category: HostingFailureCategory) -> HostingError:
 __all__ = [
     "LinuxServiceGroupObservationV1",
     "LinuxServiceGroupRecoveryStatus",
+    "linux_current_boot_id",
     "linux_service_group_absent_after_restart",
     "linux_service_group_recovery_status",
 ]

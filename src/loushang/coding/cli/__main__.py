@@ -21,6 +21,16 @@ def __getattr__(name: str) -> Any:
     return value
 
 
+def _entry_stream_is_tty(stream: Any) -> bool:
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except OSError:
+        return False
+
+
 async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
     # Only this exact invocation has no grammar/extension/dispatch decisions.
     # Explicitly materialized or replaced run_cli bindings retain their behavior.
@@ -33,6 +43,21 @@ async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
             installed_version = "0.1.0"
         sys.stdout.write(f"{installed_version}\n")
         return 0
+    # These exact forms cannot name another operation. Product still applies
+    # the canonical grammar and extension checks after the screen appears.
+    if (
+        tuple(argv) in ((), ("--tui",))
+        and "run_cli" not in globals()
+        and "loushang.coding.cli.application" not in sys.modules
+    ):
+        from pathlib import Path
+
+        if _entry_stream_is_tty(sys.stdin) and _entry_stream_is_tty(sys.stdout):
+            from loushang.coding.cli.screen_startup import run_screen_first_cli
+
+            return await run_screen_first_cli(
+                tuple(argv), project_root=Path.cwd().resolve(), cwd=None
+            )
     if (
         "run_cli" not in globals()
         and "loushang.coding.cli.application" not in sys.modules

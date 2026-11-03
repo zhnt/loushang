@@ -7,6 +7,7 @@ facet, start a Worker, construct a graph binding, or change Session routing.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from loushang.coding._base_product_composition import CodingBaseProductCompilation
 from loushang.harness.capabilities.contracts import (
@@ -37,6 +38,23 @@ from .package_product_worker_query_consumer import (
     CODING_WORKER_QUERY_PROVIDER_ID,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
+
+_CodingWorkerReceiptOwner = (
+    CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+)
+
+
+def _native_platform_for_receipt_owner(
+    owner: _CodingWorkerReceiptOwner,
+) -> Literal["linux-x86_64", "windows-amd64"]:
+    if type(owner) is CodingWorkerProductReceiptOwner:
+        return "linux-x86_64"
+    if type(owner) is CodingWindowsWorkerProductReceiptOwner:
+        return "windows-amd64"
+    raise TypeError("Coding Worker Provider receipt owner is invalid")
 
 
 class CodingWorkerProviderCandidateError(RuntimeError):
@@ -54,13 +72,17 @@ class CodingWorkerBaseCompositionPolicyBinding:
     """
 
     base: CodingBaseProductCompilation = field(repr=False)
-    receipt_owner: CodingWorkerProductReceiptOwner = field(repr=False)
+    receipt_owner: _CodingWorkerReceiptOwner = field(repr=False)
     receipt: ProductWorkerActivationReceiptV1 = field(repr=False)
 
     def __post_init__(self) -> None:
         if (
             not isinstance(self.base, CodingBaseProductCompilation)
-            or not isinstance(self.receipt_owner, CodingWorkerProductReceiptOwner)
+            or type(self.receipt_owner)
+            not in (
+                CodingWorkerProductReceiptOwner,
+                CodingWindowsWorkerProductReceiptOwner,
+            )
             or not isinstance(self.receipt, ProductWorkerActivationReceiptV1)
             or self.base.plan.context.product_id != "coding"
             or self.base.plan.context.scope_id
@@ -137,7 +159,7 @@ def coding_worker_query_capability_provider(plugin_id: str) -> CapabilityBundleP
 
 def prepare_coding_selected_worker_provider_candidate(
     *,
-    receipt_owner: CodingWorkerProductReceiptOwner,
+    receipt_owner: _CodingWorkerReceiptOwner,
     receipt: ProductWorkerActivationReceiptV1,
     definition: CapabilityDefinition,
     provider: CapabilityBundleProvider,
@@ -146,7 +168,11 @@ def prepare_coding_selected_worker_provider_candidate(
     """Capture exact Product-selected bytes and form an owner-reviewable record."""
 
     if (
-        not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+        type(receipt_owner)
+        not in (
+            CodingWorkerProductReceiptOwner,
+            CodingWindowsWorkerProductReceiptOwner,
+        )
         or not isinstance(receipt, ProductWorkerActivationReceiptV1)
         or not isinstance(definition, CapabilityDefinition)
         or not isinstance(provider, CapabilityBundleProvider)
@@ -171,10 +197,11 @@ def prepare_coding_selected_worker_provider_candidate(
             )
         selected = receipt_owner.current_selected_manifest(receipt)
         payload = receipt_owner.current_selected_payload(receipt)
+        native_platform = _native_platform_for_receipt_owner(receipt_owner)
         candidate = verify_product_selected_worker_candidate(
             selected,
             contribution_id=receipt.policy.contribution_id,
-            native_platform="linux-x86_64",
+            native_platform=native_platform,
         )
         trust = selected.source_trust_snapshot
         snapshot = selected.snapshot
@@ -221,7 +248,7 @@ def prepare_coding_selected_worker_provider_candidate(
             executable_digest=candidate.executable_digest,
             executable_size=candidate.executable_size,
             declared_required=candidate.declared_required,
-            native_platform="linux-x86_64",
+            native_platform=native_platform,
         )
         result = CapabilityProviderCandidateEnvelope(
             definition=definition,

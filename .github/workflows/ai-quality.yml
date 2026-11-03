@@ -59,18 +59,3 @@ jobs:
 
       - name: AI quality gate
         run: make check-ai
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [install-compatibility, ai-quality]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"install-compatibility":"install","ai-quality":"ai"}'

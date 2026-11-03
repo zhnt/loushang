@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from loushang.harness.resources._safe_files import (
+    ContainedFileCaptureError,
+    ResourceReadBudgetExceeded,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 from loushang.harness.resources.types import RevisionResourceRef
 
@@ -50,10 +57,13 @@ class PackageResourceMount:
     def verified(self) -> bool:
         return self.revision_handle is not None
 
-    def verify(self) -> None:
+    def verify(self, *, work_probe: Callable[[], None] | None = None) -> None:
         handle = self.revision_handle
         if handle is not None:
-            handle.verify()
+            if work_probe is None:
+                handle.verify()
+            else:
+                handle.verify(work_probe=work_probe)
 
     def close(self) -> None:
         handle = self.revision_handle
@@ -68,6 +78,32 @@ class PackageResourceMount:
         relative = candidate.relative_to(handle.root).as_posix()
         with handle.open_file(relative) as stream:
             return stream.read().decode(encoding)
+
+    def capture_text(
+        self, path: str | Path, *, max_bytes: int,
+        encoding: str = "utf-8", work_probe: Callable[[], None] | None = None,
+    ) -> tuple[str, int]:
+        """Capture bounded bytes via this owner, preserving ordinary text semantics."""
+
+        candidate = self._contained_path(path)
+        handle = self.revision_handle
+        if handle is not None:
+            relative = candidate.relative_to(handle.root).as_posix()
+            with handle.open_file(relative, max_bytes=max_bytes, work_probe=work_probe) as stream:
+                body = stream.read()
+            return body.decode(encoding), len(body)
+        try:
+            captured = capture_contained_regular_file(
+                self.root, candidate.relative_to(self.root).as_posix(),
+                max_bytes=max_bytes, read_probe=work_probe,
+            )
+        except ContainedFileCaptureError as error:
+            if error.code == "contained_file_too_large":
+                raise ResourceReadBudgetExceeded("Package text exceeds its byte budget") from error
+            raise
+        with TextIOWrapper(BytesIO(captured.body), encoding=encoding) as text_stream:
+            text = text_stream.read()
+        return text, len(captured.body)
 
     def reference(
         self,

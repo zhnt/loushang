@@ -7,6 +7,7 @@ from dataclasses import replace
 import pytest
 
 from loushang.agent import synthetic_model_transport
+from loushang.ai.types import ImagePart
 from loushang.appserver.protocol import (
     AppServiceError,
     MuxCreateV1,
@@ -24,13 +25,15 @@ from loushang.coding.managed_bootstrap import (
     CodingManagedApplicationLaunchV1,
     create_coding_managed_attempt,
 )
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.transcript.writer_lease import TranscriptWriterError
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
+from ._hosted_composition_seed import seed_hosted_history
 from ._hosted_product_child import scripted_stream
 from .test_hosted_catalog import _intent
 from .test_hosted_local import _model
-from .test_managed_catalog import catalog, ordinary, tree
+from .test_managed_catalog import catalog, tree
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux managed application")
 
@@ -96,8 +99,24 @@ def test_managed_real_product_scope_projection_reconnect_and_continuity(tmp_path
         monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
         source = catalog(tmp_path)
         if history == "ordinary":
-            path = await ordinary(source, image=True)
             selected = source.scopes[0]
+            manager = await SessionManager.new_with_composition(
+                session_dir=selected.session_dir,
+                cwd=str(selected.cwd),
+                defer_materialization=False,
+            )
+            path = manager.get_session_file()
+            assert path is not None
+            session_id = manager.get_header().conversation_id
+            await manager.dispose_runtime_profile()
+            await seed_hosted_history(
+                selected,
+                [ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")],
+                session_id=session_id,
+                catalog=source,
+                model=_model(),
+                tools=[],
+            )
         else:
             original_scope = source.scopes[0 if history == "v1_cwd" else 1]
             created = await source.create_candidate(_intent(original_scope))

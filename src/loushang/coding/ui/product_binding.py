@@ -21,8 +21,10 @@ from loushang.coding.plugin_management_read_sdk import (
 from loushang.coding.plugin_management_ui import (
     execute_coding_plugin_management_ui_command,
 )
+from loushang.coding.plugin_operation_guidance import coding_desired_repair_command
 from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
+from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
     SessionControlPort,
@@ -43,6 +45,7 @@ from loushang.harnesstui.conversation.agent_binding import (
 )
 from loushang.harnesstui.conversation.controller import (
     ConversationUiController,
+    bind_user_bash_executor,
     build_standard_conversation_ui_controller,
 )
 from loushang.harnesstui.conversation.intents import (
@@ -52,7 +55,7 @@ from loushang.harnesstui.conversation.intents import (
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
 _PLUGIN_USAGE = (
-    "Usage: /plugins [list | explain OPERATION_ID | enable ID | disable ID | "
+    "Usage: /plugins [list | status | explain OPERATION_ID | enable ID | disable ID | "
     "remove ID | repair OPERATION_ID | repair-package ACTION OPERATION_ID]"
 )
 
@@ -75,9 +78,11 @@ def build_coding_ui_controller(
     plugin_workspace: str | Path | None = None,
     plugin_preview: Callable[[], dict[str, object]] | None = None,
     plugin_management_snapshot: Callable[[], dict[str, object]] | None = None,
+    plugin_support_status: Callable[[], dict[str, object]] | None = None,
     plugin_operation_explanation: Callable[[str], dict[str, object]] | None = None,
     plugin_command: Callable[[str], HostActionResult] | None = None,
     plugin_package_repair_command: Callable[[str], HostActionResult] | None = None,
+    on_bash_record: Callable[[CommandExecutionRecord], None] | None = None,
 ) -> ConversationUiController:
     get_operations = build_coding_session_operation_resolver(
         session=session,
@@ -118,7 +123,7 @@ def build_coding_ui_controller(
                 return HostActionResult(
                     error_message="/plugins conflicts with a selected Session command."
                 )
-            if text not in {"/plugins", "/plugins list"}:
+            if text not in {"/plugins", "/plugins list", "/plugins status"}:
                 words = text.split()
                 if len(words) == 4 and words[1] == "repair-package":
                     package_command = plugin_package_repair_command
@@ -208,6 +213,8 @@ def build_coding_ui_controller(
                 plugin_preview
                 if text == "/plugins"
                 else plugin_management_snapshot
+                if text == "/plugins list"
+                else plugin_support_status
             )
             if read is None and plugin_workspace is not None:
                 if text == "/plugins":
@@ -221,7 +228,7 @@ def build_coding_ui_controller(
                         assert_plugin_scope(bound_session, workspace)
                         return result
 
-                else:
+                elif text == "/plugins list":
 
                     def read() -> dict[str, object]:
                         bound_session, workspace = plugin_scope()
@@ -235,6 +242,18 @@ def build_coding_ui_controller(
                         )
                         assert_plugin_scope(bound_session, workspace)
                         return result
+                else:
+
+                    def read() -> dict[str, object]:
+                        bound_session, workspace = plugin_scope()
+                        assert_plugin_scope(bound_session, workspace)
+                        result = open_coding_plugin_management_read_client(
+                            workspace
+                        ).support_status(
+                            correlation_id="coding:tui:plugins:status"
+                        )
+                        assert_plugin_scope(bound_session, workspace)
+                        return result
             if read is None:
                 return HostActionResult(error_message="Plugin preview is unavailable.")
             try:
@@ -244,6 +263,8 @@ def build_coding_ui_controller(
                         _format_coding_plugin_preview(document)
                         if text == "/plugins"
                         else _format_coding_plugin_management_list(document)
+                        if text == "/plugins list"
+                        else _format_coding_plugin_support_status(document)
                     )
                 )
             except Exception:
@@ -273,14 +294,6 @@ def build_coding_ui_controller(
             invocation_name=invocation_name,
         )
 
-    async def execute_bash(command: str) -> None:
-        execution = current_session().execute_bash(
-            command,
-            exclude_from_context=True,
-        )
-        if inspect.isawaitable(execution):
-            await execution
-
     def abort_command() -> None:
         current = current_session()
         command_execution = getattr(current, "command_execution", None)
@@ -293,7 +306,9 @@ def build_coding_ui_controller(
     return build_standard_conversation_ui_controller(
         get_operations=get_operations,
         dispatch_session_command=dispatch_session_command,
-        execute_bash=execute_bash,
+        execute_bash=bind_user_bash_executor(
+            current_session, on_record=on_bash_record
+        ),
         abort_command=abort_command,
         verbose=verbose,
         problem_code_prefix="coding_ui",
@@ -398,6 +413,98 @@ def _format_coding_plugin_preview(preview: dict[str, object]) -> str:
     return " | ".join(parts)
 
 
+def _format_coding_plugin_support_status(document: dict[str, object]) -> str:
+    """Show owner-observed stages without claiming a live Session used them."""
+
+    if document.get("supportStatusVersion") not in {1, 2} or document.get("snapshotStatus") not in {
+        "partial_evidence", "stale_evidence"
+    }:
+        raise ValueError("Plugin support status is invalid")
+    entries = document.get("installations")
+    gaps = document.get("evidenceGaps")
+    if not isinstance(entries, list) or not isinstance(gaps, list):
+        raise ValueError("Plugin support status is invalid")
+    lines = [f"Plugin support ({document['snapshotStatus']}; live use not checked)"]
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ValueError("Plugin support Installation is invalid")
+        plugin_id = item.get("pluginId")
+        desired = item.get("desiredState")
+        admission = item.get("productAdmission")
+        selection = item.get("productSelection")
+        use = item.get("productUse")
+        reasons = item.get("reasonCodes")
+        pending = item.get("pendingOperations", [])
+        revision = item.get("packageRevisionFingerprint")
+        instance = item.get("instanceRevisionRef")
+        debt = item.get("cleanupDebtIds", [])
+        retirement = item.get("retirementStates", [])
+        if any(
+            not isinstance(value, str) or not value.isprintable()
+            for value in (plugin_id, desired, admission, selection, use)
+        ) or not isinstance(reasons, list) or any(
+            not isinstance(code, str) or not code.isprintable() for code in reasons
+        ) or not isinstance(pending, list) or any(
+            not isinstance(values, list)
+            or any(not isinstance(value, str) or not value.isprintable() for value in values)
+            for values in (debt, retirement)
+        ) or (revision is not None and (
+            not isinstance(revision, str)
+            or len(revision) != 64
+            or any(character not in "0123456789abcdef" for character in revision)
+        )):
+            raise ValueError("Plugin support Installation is invalid")
+        line = (
+            f"{plugin_id}: {desired}; admission={admission}; "
+            f"selection={selection}; use={use}"
+        )
+        if reasons:
+            line += "; reasons=" + ", ".join(reasons)
+        if revision is not None:
+            line += f"; package-revision={revision[:12]}"
+        if instance is not None:
+            if (
+                not isinstance(instance, dict)
+                or not isinstance(instance.get("instanceId"), str)
+                or not instance["instanceId"].isprintable()
+                or type(instance.get("revision")) is not int
+            ):
+                raise ValueError("Plugin support Instance revision is invalid")
+            line += f"; instance={instance['instanceId']}@{instance['revision']}"
+        if retirement:
+            line += "; retirement=" + ", ".join(retirement)
+        if debt:
+            line += "; cleanup-debt=" + ", ".join(debt)
+        lines.append(line)
+        for operation in pending:
+            if not isinstance(operation, dict):
+                raise ValueError("Plugin support pending operation is invalid")
+            kind = operation.get("operationKind")
+            actor = operation.get("actorId")
+            operation_id = operation.get("operationId")
+            repair = operation.get("repairCommand")
+            if (
+                kind != "a1_desired"
+                or any(
+                    not isinstance(value, str) or not value or not value.isprintable()
+                    for value in (actor, operation_id)
+                )
+                or (repair is not None and (not isinstance(repair, str) or not repair.isprintable()))
+            ):
+                raise ValueError("Plugin support pending operation is invalid")
+            pending_line = f"  pending {kind} {operation_id} (actor={actor})"
+            if repair is not None:
+                pending_line += f"; repair: {repair}"
+            lines.append(pending_line)
+    if len(lines) == 1:
+        lines.append("No installations")
+    if gaps:
+        if any(not isinstance(item, str) or not item.isprintable() for item in gaps):
+            raise ValueError("Plugin support evidence gap is invalid")
+        lines.append("Evidence gaps: " + ", ".join(gaps))
+    return "\n".join(lines)
+
+
 def _format_coding_plugin_operation_explanation(
     document: dict[str, object], *, operation_id: str
 ) -> str:
@@ -438,9 +545,23 @@ def _format_coding_plugin_operation_explanation(
     failure = package.get("failureCode")
     owner_action = package.get("operatorAction")
     management_disposition = document.get("managementDisposition")
+    management_actor = document.get("managementActorId")
+    repair_command = document.get("repairCommand")
     for value in (phase, disposition, failure, owner_action, management_disposition):
         if value is not None and not _safe_plugin_explanation_code(value):
             raise ValueError("Plugin operation owner code is invalid")
+    if management_actor is not None and (
+        not isinstance(management_actor, str)
+        or not management_actor
+        or not management_actor.isprintable()
+    ):
+        raise ValueError("Plugin operation actor is invalid")
+    if repair_command is not None and (
+        not isinstance(repair_command, str)
+        or not repair_command
+        or not repair_command.isprintable()
+    ):
+        raise ValueError("Plugin operation repair command is invalid")
     if package_status == "observed" and (phase is None or disposition is None):
         raise ValueError("Observed Package operation lacks status")
     package_text = (
@@ -457,6 +578,10 @@ def _format_coding_plugin_operation_explanation(
         f"Management: {management_text}",
         f"Handoff: {handoff}; join: {join}",
     ]
+    if management_actor is not None:
+        parts.append(f"Management actor: {management_actor}")
+    if repair_command is not None:
+        parts.append(f"Repair: {repair_command}")
     if failure is not None:
         suffix = f"; owner action: {owner_action}" if owner_action is not None else ""
         parts.append(f"Package failure: {failure}{suffix}")
@@ -514,12 +639,19 @@ def _format_coding_plugin_management_list(document: dict[str, object]) -> str:
                 raise ValueError("Plugin management operation is invalid")
             if operation.get("status") in {"accepted", "running"}:
                 operation_id = operation.get("operationId")
+                actor_id = operation.get("actorId")
                 if (
                     not isinstance(operation_id, str)
                     or not operation_id.isprintable()
+                    or not isinstance(actor_id, str)
+                    or not actor_id.isprintable()
                 ):
                     raise ValueError("Plugin management operation is invalid")
-                pending.append(operation_id)
+                hint = coding_desired_repair_command(actor_id, operation_id)
+                detail = f"actor={actor_id}"
+                if hint is not None:
+                    detail += f"; repair={hint}"
+                pending.append(f"{operation_id} ({detail})")
         suffix = f" ({convergence}"
         if unknown:
             suffix += "; unknown: " + ", ".join(unknown)
@@ -547,6 +679,18 @@ def _format_coding_plugin_management_list(document: dict[str, object]) -> str:
             suffix += f"; backup: {backup_status}"
         if pending:
             suffix += "; pending: " + ", ".join(pending)
+        retirement = item.get("retirementStates", [])
+        debt = item.get("cleanupDebtIds", [])
+        if any(
+            not isinstance(values, list)
+            or any(not isinstance(value, str) or not value.isprintable() for value in values)
+            for values in (retirement, debt)
+        ):
+            raise ValueError("Plugin management cleanup evidence is invalid")
+        if retirement:
+            suffix += "; retirement: " + ", ".join(retirement)
+        if debt:
+            suffix += "; cleanup debt: " + ", ".join(debt)
         entries.append(f"{plugin_id}: {desired}{suffix})")
     skew = document.get("skew")
     if not isinstance(skew, list):

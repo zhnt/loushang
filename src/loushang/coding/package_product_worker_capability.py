@@ -22,6 +22,9 @@ from loushang.harness.worker.facet_owner import (
 from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
 
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_windows_receipt import (
+    CodingWindowsWorkerProductReceiptOwner,
+)
 
 
 class CodingWorkerCapabilityBindingError(RuntimeError):
@@ -36,14 +39,20 @@ class CodingProductWorkerCapabilityAuthority:
     def __init__(
         self,
         *,
-        receipt_owner: CodingWorkerProductReceiptOwner,
+        receipt_owner: (
+            CodingWorkerProductReceiptOwner | CodingWindowsWorkerProductReceiptOwner
+        ),
         receipt: ProductWorkerActivationReceiptV1,
         request: ManagedWorkerLaunchRequestV1,
         binding: CapabilityWorkerBindingV1,
         owner_policy: CapabilityWorkerFacetOwnerPolicy,
     ) -> None:
         if (
-            not isinstance(receipt_owner, CodingWorkerProductReceiptOwner)
+            type(receipt_owner)
+            not in (
+                CodingWorkerProductReceiptOwner,
+                CodingWindowsWorkerProductReceiptOwner,
+            )
             or not isinstance(receipt, ProductWorkerActivationReceiptV1)
             or not isinstance(request, ManagedWorkerLaunchRequestV1)
             or not isinstance(binding, CapabilityWorkerBindingV1)

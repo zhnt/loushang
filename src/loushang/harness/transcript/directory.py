@@ -589,6 +589,7 @@ class AgentTranscriptDirectoryRuntime:
             catalogs[0][1].bounded_index_snapshot(
                 unfiltered,
                 read_budget=discovery_budget,
+                cached_items=current_snapshot.items,
             )
             if current_bounded
             else None
@@ -621,6 +622,7 @@ class AgentTranscriptDirectoryRuntime:
                 catalog.bounded_index_snapshot(
                     unfiltered,
                     read_budget=discovery_budget,
+                    cached_items=snapshot.items,
                 )
                 if bounded
                 else None

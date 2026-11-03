@@ -6,6 +6,7 @@ import importlib
 import threading
 import time
 import weakref
+from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -125,6 +126,15 @@ class WindowsConsoleInput:
         asyncio.AbstractEventLoop, asyncio.Future[str]
     ] = field(default_factory=weakref.WeakKeyDictionary, init=False, repr=False)
 
+    def open_reader(self, stdin: Any) -> WindowsTerminalInputReader:
+        kernel32 = _load_kernel32()
+        if kernel32 is None:
+            raise RuntimeError("native Windows console input is unavailable")
+        handle = _windows_stream_handle(
+            stdin, kernel32, _STD_INPUT_HANDLE, self.module_loader
+        )
+        return WindowsTerminalInputReader(WindowsConsoleInputUnits(kernel32, handle))
+
     async def read_chunk(self, stdin: Any) -> str:
         console = self.module_loader()
         loop = asyncio.get_running_loop()
@@ -223,6 +233,149 @@ class WindowsConsoleInput:
 
 
 WINDOWS_CONSOLE_INPUT = WindowsConsoleInput()
+
+
+class WindowsConsoleInputUnits:
+    """Read available Win32 records without the CRT's blocking getwch filter.
+
+    VT responses can have a UnicodeChar but no virtual-key/scan code. The CRT
+    may report readiness then wait for a different record; that prevents a
+    joined loading owner from exiting. This exclusive source consumes exactly
+    one already-peeked record and preserves such VT characters directly.
+    """
+
+    def __init__(self, kernel32: Any, handle: int) -> None:
+        self._kernel32 = kernel32
+        self._handle = ctypes.c_void_p(handle)
+        self._repeated: deque[str] = deque()
+
+    def _peek(self) -> tuple[Any, int]:
+        records = (_WindowsInputRecord * 64)()
+        count = ctypes.c_uint32()
+        if not self._kernel32.PeekConsoleInputW(
+            self._handle, records, len(records), ctypes.byref(count)
+        ):
+            raise OSError("PeekConsoleInputW failed")
+        return records, count.value
+
+    def kbhit(self) -> bool:
+        return bool(self._repeated or self._peek()[1])
+
+    def at_input_boundary(self) -> bool:
+        if self._repeated:
+            return False
+        records, count = self._peek()
+        # A full window cannot establish that later queued input is empty.
+        return count < len(records) and not any(
+            self._text(record) for record in records[:count]
+        )
+
+    def getwch(self) -> str:
+        if self._repeated:
+            return self._repeated.popleft()
+        record = _WindowsInputRecord()
+        count = ctypes.c_uint32()
+        if not self._kernel32.ReadConsoleInputW(
+            self._handle, ctypes.byref(record), 1, ctypes.byref(count)
+        ):
+            raise OSError("ReadConsoleInputW failed")
+        if not count.value:
+            return ""
+        text = self._text(record)
+        if text:
+            self._repeated.extend(
+                [text] * max(0, int(record.Event.KeyEvent.wRepeatCount) - 1)
+            )
+        return text
+
+    @staticmethod
+    def _text(record: _WindowsInputRecord) -> str:
+        if record.EventType != _KEY_EVENT:
+            return ""
+        key = record.Event.KeyEvent
+        char = key.uChar.UnicodeChar
+        # Alt-numpad characters may be delivered on Alt key release.
+        if not key.bKeyDown and not (key.wVirtualKeyCode == _VK_MENU and char != "\0"):
+            return ""
+        alt = bool(key.dwControlKeyState & (_LEFT_ALT_PRESSED | _RIGHT_ALT_PRESSED))
+        if alt and key.wVirtualKeyCode == _VK_V and char.lower() == "v":
+            return "\x1bv"
+        if char != "\0":
+            return char
+        return _EXTENDED_KEY_SEQUENCES.get(chr(key.wVirtualScanCode), "")
+
+
+class WindowsTerminalInputReader:
+    """Cancellable console polling with state that survives loop/thread handoff.
+
+    Unlike the legacy one-shot reader, this never launches an unjoined blocking
+    getwch thread. Each native unit is read only after kbhit; incomplete UTF-16
+    pairs and VT bursts stay with this exclusive reader.
+    """
+
+    def __init__(self, console: Any) -> None:
+        self._console = console
+        self._read_lock = threading.Lock()
+        self._pending_unit = ""
+        self._text = ""
+        self._burst_deadline: float | None = None
+
+    def at_input_boundary(self) -> bool:
+        if not self._read_lock.acquire(blocking=False):
+            raise RuntimeError("cannot inspect boundary while terminal read is active")
+        try:
+            return not (self._pending_unit or self._text) and bool(
+                self._console.at_input_boundary()
+            )
+        finally:
+            self._read_lock.release()
+
+    def _decode_unit(self, char: str) -> str:
+        pending, self._pending_unit = self._pending_unit, ""
+        if pending and _is_low_surrogate(char):
+            return chr(
+                0x10000
+                + ((ord(pending) - _HIGH_SURROGATE_START) << 10)
+                + ord(char)
+                - _LOW_SURROGATE_START
+            )
+        prefix = _REPLACEMENT_CHARACTER if pending else ""
+        if _is_high_surrogate(char):
+            self._pending_unit = char
+            return prefix
+        if _is_low_surrogate(char):
+            return prefix + _REPLACEMENT_CHARACTER
+        return prefix + char
+
+    async def read_chunk(self) -> str:
+        if not self._read_lock.acquire(blocking=False):
+            raise RuntimeError("terminal input reader is already active")
+        try:
+            while True:
+                # Bound each batch so a continuous paste cannot starve cancel.
+                for _ in range(64):
+                    if not self._console.kbhit():
+                        break
+                    char = self._console.getwch()
+                    if not char:
+                        continue
+                    chunk = self._decode_unit(char)
+                    self._text += chunk
+                    if _ESCAPE in chunk or self._burst_deadline is not None:
+                        self._burst_deadline = (
+                            time.monotonic() + _ESCAPE_BURST_IDLE_SECONDS
+                        )
+                if self._text and (
+                    self._burst_deadline is None
+                    or time.monotonic() >= self._burst_deadline
+                    or len(self._text) >= _ESCAPE_BURST_MAX_CHARS
+                ):
+                    text, self._text = self._text, ""
+                    self._burst_deadline = None
+                    return text
+                await asyncio.sleep(_INPUT_POLL_INTERVAL_SECONDS)
+        finally:
+            self._read_lock.release()
 
 
 @dataclass(slots=True)

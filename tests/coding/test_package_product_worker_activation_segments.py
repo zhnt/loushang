@@ -95,12 +95,16 @@ def test_activation_state_reopens_multiple_sealed_generations_and_refuses_change
     monkeypatch.setattr(activation_module, "_MAX_REVISIONS", 1)
     journal = _journal(tmp_path)
     assert journal.load_read_only() is None
+    assert journal.initialized_read_only() is False
+    assert journal.load_with_presence_read_only() == (False, None)
     assert tuple(journal.path.parent.iterdir()) == ()
 
     initial = _initial_state(restart_budget=3)
     second = _next_state(initial)
     third = _next_state(second)
     assert journal.compare_and_swap(expected_revision=0, document=initial)
+    assert journal.initialized_read_only() is True
+    assert journal.load_with_presence_read_only() == (True, initial)
     assert journal.compare_and_swap(expected_revision=1, document=second)
     assert journal.compare_and_swap(expected_revision=2, document=third)
     manifest = journal.path.parent / "worker-activation-state.segments.json"
@@ -263,6 +267,17 @@ def test_activation_state_refuses_compacted_attempt_reuse_across_generations(
     assert CodingProductWorkerActivationStateJournal(journal.path).load_read_only() == (
         compacted
     )
+    retained = CodingProductWorkerActivationStateJournal(
+        journal.path
+    ).retained_attempts_read_only()
+    assert len(retained) == 1
+    assert retained[0].attempt_id == attempt_id
+    assert retained[0].receipt_fingerprint == receipt
+    assert retained[0].owner_generation == 1
+    assert retained[0].cleanup_contract_version == 1
+    assert retained[0].phase == "settled"
+    assert retained[0].last_seen_revision == 3
+    assert not retained[0].current
 
     monkeypatch.setattr(activation_module, "_MAX_REVISIONS", 2)
     active = journal.path.parent / "worker-activation-state.g00000003.jsonl"
@@ -276,9 +291,16 @@ def test_activation_state_refuses_compacted_attempt_reuse_across_generations(
     assert changed.value.code == "worker_activation_state_corrupt"
 
 
-@pytest.mark.parametrize("field", ("hostIdentity", "bootIdentity"))
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("hostIdentity", "different-owner"),
+        ("bootIdentity", "different-owner"),
+        ("cleanupContractVersion", 2),
+    ),
+)
 def test_activation_state_refuses_rebinding_existing_attempt_identity(
-    tmp_path: Path, field: str
+    tmp_path: Path, field: str, value: str | int
 ) -> None:
     journal = _journal(tmp_path)
     receipt = "a" * 64
@@ -293,7 +315,7 @@ def test_activation_state_refuses_rebinding_existing_attempt_identity(
 
     rebound = _next_state(registered)
     attempt = dict(registered_attempt)
-    attempt[field] = "different-owner"
+    attempt[field] = value
     rebound["attempts"] = {key: attempt}
     with pytest.raises(WorkerActivationStateJournalError) as conflict:
         journal.compare_and_swap(expected_revision=2, document=rebound)
@@ -307,6 +329,36 @@ def test_activation_state_refuses_rebinding_existing_attempt_identity(
     with pytest.raises(WorkerActivationStateJournalError) as corrupt:
         CodingProductWorkerActivationStateJournal(journal.path).load_read_only()
     assert corrupt.value.code == "worker_activation_state_corrupt"
+
+
+def test_activation_state_refuses_first_observation_as_settled(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    receipt = "a" * 64
+    attempt_id = "b" * 32
+    initial = _initial_state(restart_budget=3)
+    settled = _next_state(initial)
+    attempt = _registered_attempt(receipt=receipt, attempt_id=attempt_id)
+    attempt.update(
+        phase="settled",
+        domainRetired=True,
+        protocolTerminal=True,
+        cleanupSettlement=WorkerCleanupSettlementV1(
+            receipt_fingerprint=receipt,
+            attempt_id=attempt_id,
+            owner_generation=1,
+            host_identity="host-a",
+            boot_identity="boot-a",
+            protocol_terminal=True,
+            domain_retired=True,
+            tree_settled=True,
+        ).to_dict(),
+    )
+    settled["attempts"] = {_AttemptKey(receipt, attempt_id, 1).encoded: attempt}
+    assert journal.compare_and_swap(expected_revision=0, document=initial)
+    with pytest.raises(WorkerActivationStateJournalError) as conflict:
+        journal.compare_and_swap(expected_revision=1, document=settled)
+    assert conflict.value.code == "worker_activation_state_history_conflict"
+    assert journal.load_read_only() == initial
 
 
 def test_activation_state_product_journal_runs_real_c5_lifecycle_across_seals(

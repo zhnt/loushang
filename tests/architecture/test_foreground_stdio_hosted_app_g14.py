@@ -71,9 +71,12 @@ def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() 
     allowed = {
         "loushang.apphost.application",
         "loushang.apphost.continuity",
+        "loushang.appserver.client",
         "loushang.appserver.connection",
+        "loushang.appserver.execution.client",
         "loushang.appserver.framing",
         "loushang.appserver.protocol.connection_profile",
+        "loushang.appservice.client_scope",
     }
     assert (
         imports

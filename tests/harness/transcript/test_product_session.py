@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from loushang.ai.types import UserMessage
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
 from loushang.harness.transcript import (
@@ -11,6 +13,7 @@ from loushang.harness.transcript import (
     AgentTranscriptProfile,
     AgentTranscriptRuntimeBinding,
     AgentTranscriptSessionFactory,
+    ModelInputRuntimeReferences,
     ProductTranscriptSession,
     create_agent_transcript_file_store,
 )
@@ -28,7 +31,7 @@ class _ExampleProductSession(ProductTranscriptSession[str, str]):
 
 
 def test_product_transcript_session_owns_standard_session_operations(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> None:
         disposed: list[str] = []
@@ -73,6 +76,32 @@ def test_product_transcript_session_owns_standard_session_operations(
         await session.append_message(
             UserMessage(role="user", content="hello", timestamp=1.0)
         )
+
+        def eagerly_opened_codec(*, active_only: bool):
+            raise AssertionError("plain Model Input opened blob authority eagerly")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                session,
+                "_model_input_binary_codec",
+                eagerly_opened_codec,
+            )
+            session.create_model_input_committer(
+                purpose="main_turn",
+                logical_input={
+                    "system_prompt": None,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "tools": [],
+                    "request_options": {},
+                },
+                runtime_references=ModelInputRuntimeReferences(
+                    product_id="test",
+                    runtime_id="test",
+                    mount_generation=1,
+                    profile_fingerprint="sha256:" + "0" * 64,
+                    registration_revision="sha256:" + "0" * 64,
+                ),
+            )
         await session.append_session_info("Example")
 
         assert session.get_session_record().session_id == "example-session"

@@ -14,6 +14,7 @@ from loushang.harness.capabilities.prompt_assembly import (
     assemble_prompt,
 )
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
@@ -63,10 +64,12 @@ class ToolActivationProfile:
     def default_names(
         self,
         definitions: Iterable[ToolDefinition],
-        allowed_names: set[str] | None = None,
+        allowed_names: set[str] | ToolSelection | None = None,
     ) -> list[str]:
         available = [definition.name for definition in definitions]
-        if allowed_names is not None:
+        if allowed_names is None:
+            return []
+        if allowed_names is not ToolSelection.ALL:
             return [name for name in available if name in allowed_names]
         available_set = set(available)
         selected = [name for name in self.preferred_names if name in available_set]
@@ -128,9 +131,7 @@ def create_tool_prompt_rebuilder(
             tool_prompt=tool_prompt,
             resource_activation=activation.activate(bundle),
             skill_summaries=(
-                get_effective_skills()
-                if get_effective_skills is not None
-                else None
+                get_effective_skills() if get_effective_skills is not None else None
             ),
             prompt_section_composer=composer,
         )
@@ -146,7 +147,7 @@ class SessionToolController:
     agent: AgentPort
     get_cwd: Callable[[], str]
     tool_registry: WorkspaceToolRegistry | None
-    allowed_tool_names: set[str] | None
+    allowed_tool_names: set[str] | ToolSelection | None
     initial_active_tool_names: list[str]
     base_prompt: str
     get_resource_bundle: Callable[[], ResourceBundle | None]
@@ -166,9 +167,9 @@ class SessionToolController:
     get_approval_resolver: Callable[[], ApprovalResolver | None] | None = None
     policy_evaluator: ToolPolicyEvaluator | None = None
     operation_bindings: Mapping[str, object] = field(default_factory=dict)
-    get_effective_skills: (
-        Callable[[], Sequence[SkillPromptSummary] | None] | None
-    ) = None
+    get_effective_skills: Callable[[], Sequence[SkillPromptSummary] | None] | None = (
+        None
+    )
     _runtime: SessionToolRuntime = field(init=False, repr=False)
     _execution_host: ToolExecutionHost = field(init=False, repr=False)
 
@@ -218,13 +219,13 @@ class SessionToolController:
                 for definition in tool_registry.list_enabled_definitions():
                     if definition.name not in names:
                         names.append(definition.name)
-            if self.allowed_tool_names is not None:
+            if self.allowed_tool_names is None:
+                names = []
+            elif self.allowed_tool_names is not ToolSelection.ALL:
                 names = [name for name in names if name in self.allowed_tool_names]
             return names
 
-        excluded_automatic_names = frozenset(
-            profile.automatic_selection_excluded_names
-        )
+        excluded_automatic_names = frozenset(profile.automatic_selection_excluded_names)
 
         self._runtime = SessionToolRuntime(
             agent=self.agent,
@@ -436,12 +437,11 @@ class ToolController(SessionToolController):
                 profile_id="legacy.harness.tools.default",
                 profile_revision=0,
                 static_default_names=tuple(self.initial_active_tool_names),
-                automatic_selection_policy_fingerprint=(
-                    "legacy.harness.tools.auto.v1"
-                ),
+                automatic_selection_policy_fingerprint=("legacy.harness.tools.auto.v1"),
                 automatic_selection_enabled=self.default_activate_new_tools,
             )
         super().__post_init__()
+
 
 __all__ = [
     "AgentPort",

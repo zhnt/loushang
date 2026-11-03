@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loushang.coding._plugin_lifecycle import (
@@ -14,6 +14,11 @@ from loushang.coding._plugin_lifecycle import (
 from loushang.coding.package_product_management_cli import (
     coding_fenced_product_exists,
     explain_coding_fenced_plugin_operation,
+    read_coding_fenced_handoff_desired_commit,
+    read_coding_fenced_package_handoff,
+)
+from loushang.coding.plugin_operation_guidance import (
+    project_coding_plugin_operation_guidance,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.plugin_management.operation_explanation import (
@@ -55,12 +60,43 @@ class CodingPluginOperationExplanationQuery:
             raise CodingPluginOperationExplanationError(
                 code="plugin_explanation_product_not_fenced"
             )
-        return explain_coding_fenced_plugin_operation(
+        explanation = explain_coding_fenced_plugin_operation(
             self.layout,
             request.operation_id,
             correlation_id=request.correlation_id,
             workspace_guard=self.workspace_guard,
         )
+        if (
+            explanation.package.status == "observed"
+            and explanation.package.disposition == "committed"
+            and explanation.handoff_evidence == "incomplete"
+            and explanation.join_status == "same_identity"
+        ):
+            handoff = read_coding_fenced_package_handoff(
+                self.layout, request.operation_id
+            )
+            if (
+                handoff is not None
+                and handoff.receipt_id == explanation.handoff_receipt_id
+                and handoff.request.desired_request.operation_id == request.operation_id
+                and handoff.request.desired_request.command_id
+                == explanation.management_operation_id
+                and handoff.request.desired_request.request_fingerprint
+                == explanation.package.request_fingerprint
+            ):
+                commit = read_coding_fenced_handoff_desired_commit(
+                    self.layout, handoff
+                )
+                if commit is not None:
+                    explanation = replace(
+                        explanation, desired_commit_evidence=commit[2]
+                    )
+        if self.workspace_guard is not None:
+            self.workspace_guard()
+        guidance = project_coding_plugin_operation_guidance(explanation.to_dict())
+        repair = guidance["repairCommand"]
+        assert repair is None or isinstance(repair, str)
+        return replace(explanation, repair_command=repair)
 
 
 def bind_coding_plugin_operation_explanation_query(

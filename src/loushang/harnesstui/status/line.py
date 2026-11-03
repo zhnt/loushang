@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from loushang.harnesstui.status.identity import session_display_label
 from loushang.tui import StatusField
 
 StatusLineAutoValue = Literal["auto", "true", "false"]
@@ -34,11 +35,14 @@ class StatusLinePreviewSnapshot:
     branch: str | None
     session_label: str | None
     running: bool
+    reasoning_label: str | None = None
     permission_profile: str | None = None
     pending_followups: int = 0
     pending_steers: int = 0
     status_message: str | None = None
     context_usage: object | None = None
+    session_id: str | None = None
+    sdk_preparing: bool = False
 
 
 def status_line_fields(
@@ -47,25 +51,45 @@ def status_line_fields(
 ) -> tuple[StatusField, ...]:
     fields: list[StatusField] = []
     if settings.model:
-        fields.append(StatusField(snapshot.model_label or "model", priority=100, token="model"))
+        fields.append(
+            StatusField(
+                _status_line_model_label(snapshot.model_label, snapshot.reasoning_label),
+                priority=100,
+                token="model",
+            )
+        )
     if settings.workspace:
         fields.append(StatusField(cwd_label(snapshot.cwd), priority=90, token="workspace"))
     if settings.branch:
         fields.append(StatusField(snapshot.branch or "no-branch", priority=80, token="branch"))
     if settings.session:
-        fields.append(StatusField(snapshot.session_label or "no-session", priority=70, token="session"))
+        fields.append(
+            StatusField(
+                session_display_label(snapshot.session_label, snapshot.session_id),
+                priority=70,
+                token="session",
+            )
+        )
     if settings.permissions:
         fields.append(
             StatusField(
-                f"perm={snapshot.permission_profile or 'standard'}",
+                snapshot.permission_profile or "standard",
                 priority=35,
                 token="permissions",
             )
         )
     if settings.runtime:
         runtime_text = "running" if snapshot.running else "idle"
+        if snapshot.sdk_preparing and not snapshot.running:
+            runtime_text += " · preparing model"
         runtime_token = "runtime.running" if snapshot.running else "runtime.idle"
-        fields.append(StatusField(runtime_text, priority=60, token=runtime_token))
+        fields.append(
+            StatusField(
+                runtime_text,
+                priority=75 if snapshot.sdk_preparing and not snapshot.running else 60,
+                token=runtime_token,
+            )
+        )
     if _show_auto_field(settings.queue, snapshot.pending_followups > 0 or snapshot.pending_steers > 0):
         fields.append(
             StatusField(
@@ -139,6 +163,16 @@ def cwd_label(cwd: str) -> str:
     return cwd.rstrip("/").rsplit("/", 1)[-1] or cwd
 
 
+def _status_line_model_label(
+    model_label: str | None, reasoning_label: str | None = None
+) -> str:
+    if not model_label:
+        return "model"
+    identity = model_label.split(":", 2)
+    label = identity[2] if len(identity) == 3 and all(identity) else model_label
+    return f"{label} {reasoning_label}" if reasoning_label else label
+
+
 def _setting_value(settings: object, key: str, default: object) -> object:
     if isinstance(settings, Mapping):
         return settings.get(key, default)
@@ -165,20 +199,20 @@ def _context_status(value: object | None) -> tuple[str, str]:
         return "ctx ?", "context.unknown"
     remaining = max(0, min(100, round(100 - float(percent))))
     if stale:
-        return f"ctx ≈{remaining}% left stale", "context.stale"
+        return f"{remaining}% left stale", "context.stale"
     if isinstance(envelope_status, str) and envelope_status in {
         "mismatched",
         "logical_mismatch",
     }:
-        return f"ctx ≈{remaining}% left changed", "context.estimated"
+        return f"{remaining}% left changed", "context.estimated"
     if accuracy is None and source == "assistant_usage":
-        return f"ctx {remaining}% left", "context.measured"
+        return f"{remaining}% left", "context.measured"
     if (
         (not isinstance(accuracy, str) or accuracy not in {"projected", "estimated", "unknown"})
         and source == "assistant_usage"
     ):
-        return f"ctx {remaining}% left", "context.measured"
-    return f"ctx ≈{remaining}% left", "context.estimated"
+        return f"{remaining}% left", "context.measured"
+    return f"{remaining}% left", "context.estimated"
 
 
 def _usage_value(value: object | None, *names: str) -> object:

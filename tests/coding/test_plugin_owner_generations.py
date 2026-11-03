@@ -5,8 +5,15 @@ from pathlib import Path
 import pytest
 
 from loushang.coding._plugin_owner_generations import (
+    CODING_OWNER_GENERATION_EVIDENCE_CODEC,
     CodingOwnerGenerationEvidenceError,
+    CodingOwnerGenerationEvidenceEventV1,
     CodingOwnerGenerationEvidenceLedger,
+)
+from loushang.harness.journal import (
+    DURABLE_LOCKED_JOURNAL,
+    SORTED_UNICODE_JSONL_FORMAT,
+    append_jsonl_record,
 )
 from loushang.harness.resources.plugins import PluginInstanceRevisionRef
 from loushang.harness.runtime.registration import (
@@ -22,6 +29,12 @@ def test_owner_generation_evidence_survives_restart_and_replays_idempotently(
     receipts = (_receipt("session-a", "tools.workspace", "coding.builtin"),)
     ledger = CodingOwnerGenerationEvidenceLedger(path)
 
+    ledger.prepare(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        preparation_reference="preparation:a",
+    )
     published = ledger.publish(
         family_id="family-a",
         instance_revision_ref=ref,
@@ -37,7 +50,7 @@ def test_owner_generation_evidence_survives_restart_and_replays_idempotently(
 
     assert repeated == published
     assert published.retired is False
-    assert len(path.read_text(encoding="utf-8").splitlines()) == 1
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
 
     restarted = CodingOwnerGenerationEvidenceLedger(path)
     retired = restarted.retire(
@@ -56,18 +69,22 @@ def test_owner_generation_evidence_survives_restart_and_replays_idempotently(
     assert repeated_retirement == retired
     assert retired.retired is True
     assert retired.retirement_outcome_reference == "disposed:a"
-    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 3
     assert restarted.retired_receipts_for_instance(ref) == receipts
 
 
 def test_owner_generation_evidence_rejects_conflicting_family_reuse(
     tmp_path: Path,
 ) -> None:
-    ledger = CodingOwnerGenerationEvidenceLedger(
-        tmp_path / "owner-generations.jsonl"
-    )
+    ledger = CodingOwnerGenerationEvidenceLedger(tmp_path / "owner-generations.jsonl")
     ref = _instance_ref()
     original = (_receipt("session-a", "commands.session", "coding.standard"),)
+    ledger.prepare(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=original,
+        preparation_reference="preparation:a",
+    )
     ledger.publish(
         family_id="family-a",
         instance_revision_ref=ref,
@@ -79,9 +96,7 @@ def test_owner_generation_evidence_rejects_conflicting_family_reuse(
         ledger.publish(
             family_id="family-a",
             instance_revision_ref=ref,
-            receipts=(
-                _receipt("session-a", "tools.workspace", "coding.builtin"),
-            ),
+            receipts=(_receipt("session-a", "tools.workspace", "coding.builtin"),),
             publication_reference="publication:conflict",
         )
 
@@ -129,9 +144,7 @@ def test_owner_generation_evidence_preflights_cross_family_receipt_conflict(
 
 
 def test_owner_generation_evidence_rejects_empty_publication(tmp_path: Path) -> None:
-    ledger = CodingOwnerGenerationEvidenceLedger(
-        tmp_path / "owner-generations.jsonl"
-    )
+    ledger = CodingOwnerGenerationEvidenceLedger(tmp_path / "owner-generations.jsonl")
 
     with pytest.raises(ValueError, match="must not be empty"):
         ledger.publish(
@@ -147,12 +160,18 @@ def test_owner_generation_evidence_fails_closed_on_corrupt_restart(
 ) -> None:
     path = tmp_path / "owner-generations.jsonl"
     ledger = CodingOwnerGenerationEvidenceLedger(path)
+    ref = _instance_ref()
+    receipts = (_receipt("session-a", "commands.session", "coding.standard"),)
+    ledger.prepare(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        preparation_reference="preparation:a",
+    )
     ledger.publish(
         family_id="family-a",
-        instance_revision_ref=_instance_ref(),
-        receipts=(
-            _receipt("session-a", "commands.session", "coding.standard"),
-        ),
+        instance_revision_ref=ref,
+        receipts=receipts,
         publication_reference="publication:a",
     )
     path.write_text("not-json\n", encoding="utf-8")
@@ -161,6 +180,48 @@ def test_owner_generation_evidence_fails_closed_on_corrupt_restart(
         CodingOwnerGenerationEvidenceLedger(path).family("family-a")
 
     assert caught.value.code == "coding_owner_generation_evidence_corrupt"
+
+
+def test_legacy_published_first_record_replays_without_reopening_writer(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "owner-generations.jsonl"
+    ref = _instance_ref()
+    receipts = (_receipt("session-a", "commands.session", "coding.standard"),)
+    legacy = CodingOwnerGenerationEvidenceEventV1.create(
+        journal_revision=1,
+        event_kind="published",
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        outcome_reference="legacy-publication:a",
+    )
+    append_jsonl_record(
+        path,
+        legacy,
+        record_codec=CODING_OWNER_GENERATION_EVIDENCE_CODEC,
+        format_profile=SORTED_UNICODE_JSONL_FORMAT,
+        durability=DURABLE_LOCKED_JOURNAL,
+    )
+    ledger = CodingOwnerGenerationEvidenceLedger(path)
+    observed = ledger.family("family-a")
+    assert observed is not None and observed.publication_state == "published"
+    assert (
+        ledger.publish(
+            family_id="family-a",
+            instance_revision_ref=ref,
+            receipts=receipts,
+            publication_reference="replay:a",
+        )
+        == observed
+    )
+    retired = ledger.retire(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        outcome_reference="disposed:a",
+    )
+    assert retired.retired
 
 
 def _instance_ref() -> PluginInstanceRevisionRef:

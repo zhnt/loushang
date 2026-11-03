@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import sys
 import time
 from contextlib import contextmanager
 from threading import Event, get_ident
@@ -18,7 +17,7 @@ from loushang.harnesstui.conversation.threaded_startup import ThreadedScreenStar
 from loushang.tui.terminal import TerminalSize
 from tests.harnesstui.conversation.test_loading_surface import Output, Screen
 
-pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux loading owner")
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX pipe transport")
 
 
 def test_repeated_cancel_joins_live_worker_and_product_before_restore():

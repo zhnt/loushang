@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from loushang.agent.types import AgentToolResult, TextPart
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentPath,
@@ -123,6 +124,10 @@ def test_limits_count_only_open_agents_and_close_releases_capacity() -> None:
         "/root/first",
     ]
     assert error.value.tool_result_details["code"] == "agent_limit_reached"
+    assert AgentToolResult(
+        content=[TextPart(type="text", text=str(error.value))],
+        details=dict(error.value.tool_result_details),
+    ).hook_details()["code"] == "agent_limit_reached"
 
     _close_tree(control, first.path)
     second = _spawn(control, "second")
@@ -160,18 +165,22 @@ def test_per_type_child_limit_is_released_on_close() -> None:
     assert error.value.code == "agent_type_limit_reached"
     assert error.value.details["parent_path"] == "/root"
     assert error.value.details["open_count"] == 1
-    assert error.value.details["open_children"] == (
+    assert error.value.details["open_children"] == [
         {
             "path": "/root/first",
             "agent_type": "reviewer",
             "status": "completed",
             "round_id": 1,
         },
-    )
+    ]
     assert error.value.tool_result_details == {
         "code": "agent_type_limit_reached",
         **error.value.details,
     }
+    assert AgentToolResult(
+        content=[TextPart(type="text", text=str(error.value))],
+        details=dict(error.value.tool_result_details),
+    ).hook_details()["code"] == "agent_type_limit_reached"
 
     _close_tree(control, first.path)
     second = control.spawn(
@@ -424,3 +433,21 @@ def test_live_fact_subscription_can_be_removed_without_changing_control_state() 
         "spawned",
         "status_changed",
     ]
+
+
+def test_spawn_preflight_is_read_only_and_uses_actual_admission_rules():
+    control = _control(limits=ControlLimits(max_open_agents=2))
+    args = dict(caller=HOST, parent_path=AgentPath.root(), agent_type="reviewer")
+    for _ in range(2):
+        assert control.check_spawn(**args).ref == control.root_ref
+    assert control.registry.open_count == 1
+    assert control.registry.reserved_count == 0
+    assert control.facts() == ()
+    record = control.spawn(**args, name="one")
+    assert record.ref.incarnation == 1
+    with pytest.raises(MultiAgentError) as preflight:
+        control.check_spawn(**args)
+    with pytest.raises(MultiAgentError) as dispatch:
+        control.spawn(**args, name="two")
+    assert preflight.value.code == dispatch.value.code == "agent_limit_reached"
+    assert control.registry.reserved_count == 0

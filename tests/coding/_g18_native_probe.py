@@ -1463,12 +1463,28 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         )
         == identity.session_id
     ), "canonical create identity mismatch"
+    from loushang.coding.composition_provenance import (
+        pinned_composition_plan,
+        startup_composition_record,
+    )
+    from loushang.harness.transcript.types import ExtensionData
+
     history = f"G17 canonical history recovered in {scope_name}"
-    assert len(records) == 1, "recovery history workload changed"
-    (message,) = records
-    assert message.kind == "agent.message" and message.parent_id is None
+    assert len(records) == 2, "recovery history workload changed"
+    startup, message = records
+    assert startup.kind == "extension.data" and startup.parent_id is None
+    assert startup.payload_version == 1 and not startup.metadata
+    assert isinstance(startup.payload, ExtensionData)
+    assert startup.payload.extension_type == "coding.composition-startup/v1"
+    pinned = pinned_composition_plan(header.metadata)
+    assert pinned is not None
+    startup_data = startup_composition_record(records)
+    assert startup_data is not None
+    assert startup_data["setId"] == pinned.set_id
+    assert startup_data["planFingerprint"] == pinned.fingerprint
+    assert message.kind == "agent.message" and message.parent_id == startup.record_id
     assert message.payload_version == 1 and not message.metadata
-    assert len(raw.splitlines()) == 2, "unexpected transcript lines"
+    assert len(raw.splitlines()) == 3, "unexpected transcript lines"
     assert isinstance(message.payload, UserMessage)
     assert message.payload.role == "user" and message.payload.content == history
     assert message.payload.timestamp == 1.0
@@ -1500,7 +1516,39 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
         store["create_operation_id"]
         == f"create:{scope.session_dir}:{identity.session_id}"
     )
-    allowed = {application, session_path, index_path, store_path}
+    # The Windows Product gives its decision journals a private ACL leaf.
+    # Other hosts retain the existing five-part state-root layout.
+    decision_depth = 6 if sys.platform == "win32" else 5
+    decision_files = {
+        path
+        for path in files
+        if len((parts := path.relative_to(root).parts)) == decision_depth
+        and parts[0] in {"cwd", "home"}
+        and parts[1:3] == ("plugin-state", "coding-capability-plugins")
+        and re.fullmatch(r"[0-9a-f]{64}", parts[3]) is not None
+        and (sys.platform != "win32" or parts[4] == "product-private")
+        and parts[-1] in {"activation-decisions.jsonl", "definition-decisions.jsonl"}
+    }
+    from loushang.coding._capability_plugin_specs import CODING_CAPABILITY_PLUGIN_IDS
+
+    capability_selected = any(
+        revision["pluginId"] in CODING_CAPABILITY_PLUGIN_IDS
+        for revision in startup_data["selectedRevisions"]
+    )
+    # A dormant on-demand capability has no startup effects to journal.
+    # Derive the expected workload from the validated receipt, not today's
+    # configuration, and retain the exact inventory for eager startup.
+    if capability_selected:
+        assert len({path.parent for path in decision_files}) == 1, (
+            "Coding startup decision roots changed: "
+            + repr(sorted(str(path.relative_to(root)) for path in decision_files))
+        )
+        assert {path.name for path in decision_files} == {
+            "activation-decisions.jsonl", "definition-decisions.jsonl"
+        }, "Coding startup decision workload changed"
+    else:
+        assert not decision_files, "dormant startup has unexpected capability decisions"
+    allowed = {application, session_path, index_path, store_path} | decision_files
     checked = (
         [
             path
@@ -1539,12 +1587,13 @@ def validate_recovery_seed(root, scope_name, *, opaque_input=False):
             "record_revision": record.record_revision,
             "muxes": muxes,
             "record_kinds": [item.kind for item in records],
-            "record_payload_versions": [message.payload_version],
-            "record_metadata": [{}],
+            "record_payload_versions": [item.payload_version for item in records],
+            "record_metadata": [dict(item.metadata) for item in records],
             "history_timestamp": message.payload.timestamp,
             "restoration_index": "complete-current",
             "store_head": "complete-current",
             "session_directory_index": "absent",
+            "capability_decisions": "eager" if capability_selected else "dormant",
             "header_version": header.version,
             "header_metadata": metadata,
             "asset_lock_count": sum(

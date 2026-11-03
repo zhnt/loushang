@@ -311,11 +311,14 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
         "active_tool_names",
         "no_tools",
         "composition_set",
+        "composition_set_explicit",
+        "composition_choice_from_cli",
         "services",
         "services_factory",
         "agent_factory",
         "persist",
         "worker_candidate_plugin_id",
+        "worker_query_turn_tool",
         "append_system_prompt",
         "approval_resolver",
         "tool_policy_evaluator",
@@ -412,6 +415,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "package_materializer",
         "package_product_runtime_factory",
         "worker_candidate_plugin_id",
+        "worker_query_turn_tool",
         "resource_catalog_source_policy",
         "append_system_prompt",
         "extension_flag_values",
@@ -465,11 +469,14 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "active_tool_names",
         "no_tools",
         "composition_set",
+        "composition_set_explicit",
+        "composition_choice_from_cli",
         "services",
         "services_factory",
         "agent_factory",
         "persist",
         "worker_candidate_plugin_id",
+        "worker_query_turn_tool",
         "append_system_prompt",
         "approval_resolver",
         "tool_policy_evaluator",
@@ -589,14 +596,21 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
             fork_entry = created.session_manager.get_entries()[0].record_id
             forked = await runtime.fork_session(fork_entry)
 
-            imported_manager = await coding.SessionManager.new(
+            imported_manager = await coding.SessionManager.new_with_composition(
                 session_dir=import_dir,
                 cwd=str(project_root),
                 persist=True,
             )
+            imported_session = coding.create_agent_session(
+                session_manager=imported_manager,
+                model=_model(),
+                services=services,
+            )
+            await imported_session.prepare_model_call_runtime()
             await imported_manager.append_message(_user_message("imported"))
             imported_file = imported_manager.session_file
             assert imported_file is not None
+            await imported_session.dispose()
 
             import_result = await runtime.import_from_jsonl(str(imported_file))
             imported = runtime.get_current_session()

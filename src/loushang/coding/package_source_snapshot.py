@@ -235,6 +235,15 @@ def read_coding_settings_patch_without_writes(
 def require_coding_fresh_settings_without_writes(*paths: Path) -> None:
     """Refuse legacy Plugin settings before SettingsManager writes lock files."""
 
+    if coding_settings_have_pre_b_inputs_without_writes(*paths):
+        raise RuntimeError(
+            "Coding pre-B workspace is unsupported; use a fresh workspace"
+        )
+
+
+def coding_settings_have_pre_b_inputs_without_writes(*paths: Path) -> bool:
+    """Recognize settings needing the compatible Session storage route."""
+
     for path in paths:
         _, _, patch = read_coding_settings_patch_without_writes(path)
         for key in _PRE_B_SETTINGS_KEYS:
@@ -242,9 +251,8 @@ def require_coding_fresh_settings_without_writes(*paths: Path) -> None:
                 continue
             value = patch[key]
             if not isinstance(value, list) or value:
-                raise RuntimeError(
-                    "Coding pre-B workspace is unsupported; use a fresh workspace"
-                )
+                return True
+    return False
 
 
 def _stable_file_identity(

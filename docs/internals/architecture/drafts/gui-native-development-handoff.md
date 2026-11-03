@@ -34,7 +34,7 @@ git pull --ff-only origin main
 按以下顺序阅读，不依赖其他机器未提交的笔记或文件：
 
 1. 仓库根 [AGENTS.md](../../../../AGENTS.md) 与
-   [已提交架构方法](../../architecture-method/README.md)。lane 的物理路径适配
+   [Loushang Architecture Governance Profile](../governance-profile.md)。lane 的物理路径适配
    本机 checkout；不要把文档中的 Linux 开发者绝对路径当作 Windows/macOS 路径。
 2. [GUI 需求](gui-requirements.md)：首期需求、质量约束、后续候选和待定项。
 3. [系统上下文与边界合同](gui-system-context-and-boundary-contract.md)：权限、状态、

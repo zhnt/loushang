@@ -108,6 +108,21 @@ def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom
     assert rendered[-1].startswith("Ctrl+T/q/Esc close   / search")
 
 
+def test_transcript_reader_mouse_wheel_scrolls_visible_history() -> None:
+    reader = TranscriptReaderSurface(
+        _Source((AssistantMessageRecord("\n".join(f"line {index}" for index in range(12))),))
+    )
+    tail = _render_text(reader, height=7)
+    assert any("line 11" in line for line in tail)
+
+    reader.handle_input(InputEvent(kind="mouse", mouse_action="scroll_up", mouse_button=0))
+    older = _render_text(reader, height=7)
+    assert older != tail
+
+    reader.handle_input(InputEvent(kind="mouse", mouse_action="scroll_down", mouse_button=1))
+    assert _render_text(reader, height=7) == tail
+
+
 def test_transcript_reader_opens_at_tail_and_scrolls_by_page() -> None:
     source = _Source(
         (AssistantMessageRecord("\n".join(f"line {index}" for index in range(8))),)

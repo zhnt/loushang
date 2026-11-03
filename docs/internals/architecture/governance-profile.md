@@ -9,20 +9,20 @@
 
 ## Purpose
 
-This document binds the project-neutral
-[Architecture Design And Governance Method](../architecture-method/README.md)
-to the Loushang repository. The method defines how architecture work is done;
-this profile defines which Loushang artifacts, scopes, owners, evidence, and
-local practices realize that method.
+This profile defines Loushang's architecture governance: artifact authority,
+scopes, owners, acceptance evidence, and local review practices. It is the
+product-specific application of architecture method governance, not a copy of
+reusable process or templates. Changes to the governing method require an
+explicit review of affected Loushang scopes and this profile; they do not
+silently change accepted architecture.
 
-The profile is deliberately separate from both the method and the
+The profile is deliberately separate from the
 [Architecture Overview](architecture-overview.md):
 
-- `architecture-method/` owns reusable process, artifact semantics and
-  templates;
-- this profile owns Loushang-specific adoption and governance policy;
+- this profile owns Loushang-specific governance policy;
 - `architecture/` owns Loushang Current, Target, Delta and History;
-- source, generated facts and executable tests establish repository Facts.
+- source, generated facts and executable tests establish repository Facts;
+- [local historical records](history/loushang-documentation-model-v1.md) preserve superseded Loushang rationale.
 
 ## Adopted Local Practices
 
@@ -95,7 +95,7 @@ over them rather than copy their definitions into one large file.
 
 ## Target Acceptance In Loushang
 
-Apply the method's [Target acceptance rule](../architecture-method/README.md#target-acceptance)
+Apply the Target acceptance rule
 to the AOD, scope summaries, traceability and gap ledgers. Accepted scope
 placement or an implemented prerequisite does not accept an entire proposal,
 a later extension, or default activation.
@@ -127,8 +127,7 @@ relevant boundaries or summaries change; this does not promote their proposals.
 
 ## Architecture Decision Adoption
 
-Loushang adopts the [Architecture Decision Method](../architecture-method/architecture-decisions.md)
-and [ARD template](../architecture-method/templates/architecture-decision.md).
+Loushang records architecture decisions as ARDs.
 Background/drivers, options/comparison and decision/rationale are parts of one
 ARD, linked to existing requirements and validation. A decision selecting
 Current is accepted like any other selected option; losing options do not
@@ -137,18 +136,47 @@ receive separate rejected records.
 New identified ARDs belong in the owning scope's `decisions/<design-status>/`.
 The default state directories are `draft/`, `proposed/`, `accepted/` and
 `superseded/`; create them on demand. `rejected/` is optional only for retained
-whole-record rejections. The scope index groups records by state using the
-[decision index template](../architecture-method/templates/decision-index-README.md).
+whole-record rejections. The scope index groups records by state.
 Cross-scope records belong to the nearest common parent; the
 [cross-scope catalog](decisions/README.md) owns top-level decisions.
 
-The scope owner records acceptance; changes crossing scopes retain the affected
-owners and common-parent review requirements. A small decision may use one
-owner's recorded self-review and acceptance. For a customer-facing adoption,
-the project's participation policy must identify the contracts requiring
-customer confirmation, the confirming role and the recorded revision/scope.
-This profile creates no blanket customer-confirmation requirement for Loushang
-internal decisions. Review completion never substitutes for acceptance.
+### Acceptance Responsibilities And User Confirmation
+
+Within an already authorized task, the implementation agent must complete the
+required technical review, record internal design acceptance and continue the
+work, unless an applicable policy explicitly reserves that decision for another
+accepting role. The agent acts within the task's delegated project
+responsibilities. Record the actual agent/reviewer, the responsible scope,
+the reviewed revision, the decision and the evidence; do not attribute an
+acceptance statement to the user unless the user made it.
+
+For cross-scope decisions, review the affected owners' contracts and record the
+decision at their nearest common parent. Owner and common-parent terminology
+identifies responsibility and the location of the record. It does not itself
+require a separate human approver or another user confirmation. Review depth
+follows the change's risk; material findings must be resolved before acceptance.
+Separate reviewers are required only when an applicable policy says so.
+
+Wait for user confirmation only when:
+
+- an applicable project policy or task instruction explicitly requires user
+  confirmation for this contract, revision and scope; or
+- the proposed decision requires authorization beyond the existing task,
+  including an action requiring approval under the governing permissions.
+
+When confirmation is required, cite the specific instruction or policy, name
+the decision and confirming role, and present the concrete reviewed proposal.
+Existing task authorization and user decisions remain effective; request a new
+decision only for a material change outside their accepted scope. Continue
+independent authorized work while that decision is pending.
+
+An ARD's `proposed` status, a new protocol/schema version, a cross-scope change
+or incomplete acceptance paperwork is not by itself a reason to wait for the
+user or mark a task blocked. Complete the internal decision record as part of
+the authorized work. Unresolved technical findings still prevent design
+acceptance; passing review alone does not create an acceptance record. Design
+acceptance does not establish implementation completion, runtime activation
+permission or delivery acceptance.
 
 Existing root-level or scope-local ARDs and unresolved material keep their
 canonical paths and recorded status until migrated. The cross-scope catalog
@@ -160,23 +188,18 @@ exploration and delivery plans continue to use their own draft/plan locations.
 
 Each scope migration includes checks for directory/status/index agreement,
 ID uniqueness across states, link validity and replacement references. Current
-documentation checks validate the method, templates and catalog links; full
+documentation checks validate governed documents and catalog links; full
 state-directory adoption and its consistency gates remain an explicit part of
-the architecture-documentation delta. The reusable method change does not
+the architecture-documentation delta. A governance change does not
 silently relocate existing records or accept their candidate content.
 
 ## Governance Evidence
 
-- [Architecture Artifact Model](../architecture-method/artifact-model.md)
-- [Architecture Scope README Template](../architecture-method/templates/architecture-scope-README.md)
-- [Architecture Decision Method](../architecture-method/architecture-decisions.md)
-- [Architecture Decision Template](../architecture-method/templates/architecture-decision.md)
-- [Decision Index Template](../architecture-method/templates/decision-index-README.md)
 - [Current Package Dependency Facts](generated/current-package-dependencies.md)
 - [Current-To-Target Gap Ledger](current-target-gap-ledger.md)
 - `tests/architecture/`
 - `make check-architecture-docs`
 
-Changes to the reusable method do not automatically change Loushang
+Changes to method governance do not automatically change Loushang
 architecture. Changes to this profile must identify the affected Loushang
 scopes, gates and remaining Current-to-Target Delta.

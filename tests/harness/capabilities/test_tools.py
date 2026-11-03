@@ -10,6 +10,7 @@ from loushang.harness.capabilities.tools import (
     StaleToolActivationPublicationError,
     ToolActivationChange,
     ToolActivationCoordinator,
+    ToolSelection,
 )
 
 
@@ -17,6 +18,30 @@ from loushang.harness.capabilities.tools import (
 class Tool:
     name: str
     version: int = 1
+
+
+def test_tool_ceiling_defaults_closed_and_unrestricted_is_explicit() -> None:
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        omitted = ToolActivationCoordinator(
+            available=(Tool("read"),), requested_names=("read",)
+        )
+    assert omitted.snapshot().active_names == ()
+    assert not omitted.is_allowed("read")
+
+    with pytest.warns(RuntimeWarning, match="denies all tools"):
+        explicit_none = ToolActivationCoordinator(
+            available=(Tool("read"),),
+            requested_names=("read",),
+            allowed_names=None,
+        )
+    assert explicit_none.snapshot().active_names == ()
+
+    unrestricted = ToolActivationCoordinator(
+        available=(Tool("read"),),
+        requested_names=("read",),
+        allowed_names=ToolSelection.ALL,
+    )
+    assert unrestricted.snapshot().active_names == ("read",)
 
 
 def test_tool_activation_tracks_allowed_requested_active_and_missing() -> None:
@@ -41,6 +66,7 @@ def test_tool_activation_tracks_allowed_requested_active_and_missing() -> None:
 def test_requested_missing_tool_reactivates_after_deterministic_refresh() -> None:
     rebound: list[ToolActivationChange[Tool]] = []
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("report")),
         requested_names=("read", "late"),
         rebind=rebound.append,
@@ -63,6 +89,7 @@ def test_requested_missing_tool_reactivates_after_deterministic_refresh() -> Non
 
 def test_activate_adds_names_without_dropping_missing_requests() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("spawn_agent"),),
         requested_names=("read", "bash"),
     )
@@ -85,6 +112,7 @@ def test_activate_adds_names_without_dropping_missing_requests() -> None:
 
 def test_activate_does_not_restore_names_removed_by_exact_request() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("spawn_agent")),
         requested_names=("read",),
     )
@@ -111,6 +139,7 @@ def test_activate_respects_allowed_names() -> None:
 
 def test_refresh_and_default_reconciliation_are_separate_transitions() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"),),
         requested_names=("read",),
         should_activate_new=lambda name, tool: (
@@ -150,6 +179,7 @@ def test_failed_legacy_predicate_does_not_consume_first_seen_decision() -> None:
         return True
 
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         should_activate_new=select,
     )
     publication = coordinator.refresh((Tool("plugin"),), rebind=False)
@@ -164,6 +194,7 @@ def test_failed_legacy_predicate_does_not_consume_first_seen_decision() -> None:
 
 def test_stale_legacy_publication_cannot_consume_republished_first_seen() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         should_activate_new=lambda _name, _tool: True,
     )
     stale = coordinator.refresh((Tool("plugin"),), rebind=False)
@@ -181,6 +212,7 @@ def test_stale_legacy_publication_cannot_consume_republished_first_seen() -> Non
 
 def test_legacy_checkpoint_cannot_overwrite_a_newer_mutation() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("manual")),
         requested_names=("read",),
     )
@@ -201,6 +233,7 @@ def test_legacy_checkpoint_cannot_overwrite_a_newer_mutation() -> None:
 
 def test_legacy_checkpoint_rollback_keeps_revision_monotonic() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("manual")),
         requested_names=("read",),
     )
@@ -219,10 +252,9 @@ def test_legacy_checkpoint_rollback_keeps_revision_monotonic() -> None:
     assert restored.requested_names == ("read",)
 
 
-def test_failed_publication_compensation_preserves_intervening_user_intent() -> (
-    None
-):
+def test_failed_publication_compensation_preserves_intervening_user_intent() -> None:
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         should_activate_new=lambda _name, _tool: True,
     )
     checkpoint = coordinator.checkpoint()
@@ -260,11 +292,10 @@ def test_failed_publication_compensation_preserves_intervening_user_intent() -> 
     assert republished.current.active_names == ()
 
 
-def test_failed_publication_never_consumes_first_seen_after_explicit_touch() -> (
-    None
-):
+def test_failed_publication_never_consumes_first_seen_after_explicit_touch() -> None:
     calls: list[str] = []
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         should_activate_new=lambda name, _tool: calls.append(name) or True,
     )
     checkpoint = coordinator.checkpoint()
@@ -294,9 +325,7 @@ def test_failed_publication_never_consumes_first_seen_after_explicit_touch() -> 
     assert republished.current.requested_names == ("plugin",)
 
 
-def test_rebind_failure_receipt_keeps_origin_separate_from_chased_revision() -> (
-    None
-):
+def test_rebind_failure_receipt_keeps_origin_separate_from_chased_revision() -> None:
     calls: list[int] = []
     coordinator: ToolActivationCoordinator[Tool]
 
@@ -308,6 +337,7 @@ def test_rebind_failure_receipt_keeps_origin_separate_from_chased_revision() -> 
         raise RuntimeError("newer rebind failed")
 
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("manual")),
         rebind=rebind,
     )
@@ -331,7 +361,9 @@ def test_legacy_selector_reentrant_mutation_is_preserved_by_retry() -> None:
             coordinator.activate(("manual",), rebind=False)
         return True
 
-    coordinator = ToolActivationCoordinator(should_activate_new=select)
+    coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL, should_activate_new=select
+    )
 
     change = coordinator.refresh_and_reconcile_default_selection(
         (Tool("plugin"),),
@@ -359,6 +391,7 @@ def test_legacy_rebind_does_not_hold_the_state_lock() -> None:
         assert snapshot_completed.wait(1)
 
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"),),
         rebind=rebind,
     )
@@ -375,6 +408,7 @@ def test_replacement_rebinds_even_when_activation_names_do_not_change() -> None:
     original = Tool("read", 1)
     replacement = Tool("read", 2)
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(original,),
         requested_names=("read",),
         rebind=rebound.append,
@@ -397,6 +431,7 @@ def test_request_reports_activation_diff_and_rebinds_after_commit() -> None:
         observed_snapshots.append((coordinator.snapshot(), change))
 
     coordinator = ToolActivationCoordinator(
+        allowed_names=ToolSelection.ALL,
         available=(Tool("read"), Tool("bash")),
         requested_names=("read",),
         rebind=rebind,
@@ -412,4 +447,7 @@ def test_request_reports_activation_diff_and_rebinds_after_commit() -> None:
 
 def test_duplicate_available_names_are_rejected() -> None:
     with pytest.raises(ValueError, match="duplicate available tool name"):
-        ToolActivationCoordinator(available=(Tool("read", 1), Tool("read", 2)))
+        ToolActivationCoordinator(
+            allowed_names=ToolSelection.ALL,
+            available=(Tool("read", 1), Tool("read", 2)),
+        )

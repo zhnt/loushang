@@ -36,6 +36,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginDeclarationSourceGroup,
     PluginExecutionStartPermit,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 _MAX_JOURNAL_CAS_ATTEMPTS = 16
 _HOST_API_PREFIXES = (
@@ -69,6 +70,7 @@ class PluginDefinitionEvaluator:
         distribution_evidence_resolver: (
             InstalledPythonDistributionEvidenceResolver | None
         ) = None,
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> None:
         if not isinstance(decision_journal, PluginExecutionDecisionJournal):
             raise TypeError("Plugin Definition evaluator requires a decision journal")
@@ -76,6 +78,14 @@ class PluginDefinitionEvaluator:
             raise TypeError("Plugin Definition evaluator requires an import realm")
         if not callable(clock):
             raise TypeError("Plugin Definition evaluator requires a durable clock")
+        if (
+            resume_parent_context is not None
+            and type(resume_parent_context) is not ResumeEffectParentContextV1
+        ):
+            raise TypeError(
+                "Plugin Definition evaluator requires a typed Resume parent"
+            )
+        self._resume_parent_context = resume_parent_context
         self._decision_journal = decision_journal
         self._import_realm = import_realm
         self._clock = clock
@@ -227,7 +237,14 @@ class PluginDefinitionEvaluator:
         permit: PluginExecutionStartPermit,
     ) -> PluginExecutionUseReservationV1:
         for _attempt in range(_MAX_JOURNAL_CAS_ATTEMPTS):
-            snapshot = self._decision_journal.snapshot()
+            snapshot = (
+                self._decision_journal.snapshot(
+                    resume_parent_context=self._resume_parent_context,
+                    require_open_resume=True,
+                )
+                if self._resume_parent_context is not None
+                else self._decision_journal.snapshot()
+            )
             decision = _decision_for_gate(snapshot.decisions, gate)
             try:
                 return self._decision_journal.consume_execution_decision(
@@ -243,6 +260,7 @@ class PluginDefinitionEvaluator:
                         gate.subject.source_trust_policy_revision
                     ),
                     expected_journal_revision=snapshot.journal_revision,
+                    parent_context=self._resume_parent_context,
                 )
             except PluginExecutionJournalError as exc:
                 if exc.code != "plugin_execution_journal_revision_conflict":

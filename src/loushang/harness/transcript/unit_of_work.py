@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from loushang.agent.types import AgentMessage
@@ -98,6 +98,16 @@ AgentTranscriptOpenDiagnostic = ConversationSourceDiagnostic | ConversationDiagn
 MaterializationPolicy = Callable[[AgentTranscriptRecord], bool]
 
 
+@dataclass(frozen=True)
+class _CachedTranscriptReplay:
+    profile: AgentTranscriptProfile
+    profile_revision: int
+    repository: ConversationRepository[ConversationHeader, AgentTranscriptRecord]
+    leaf_id: str | None
+    records: tuple[AgentTranscriptRecord, ...]
+    projection: ConversationReplayProjection[AgentMessage, AgentTranscriptState]
+
+
 class AgentTranscriptUnitOfWork:
     """One Agent transcript stream with optional deferred materialization."""
 
@@ -135,6 +145,12 @@ class AgentTranscriptUnitOfWork:
         )
         self._clock = clock or _utc_now
         self._commit_lock = asyncio.Lock()
+        self._replay_cache: _CachedTranscriptReplay | None = None
+        self._model_call_outcome_invocation_ids = {
+            record.payload.invocation_id
+            for record in repository.records
+            if isinstance(record.payload, ModelCallOutcome)
+        }
 
     @classmethod
     async def create(
@@ -276,6 +292,27 @@ class AgentTranscriptUnitOfWork:
     def header(self) -> ConversationHeader:
         return self._repository.header
 
+    def bind_unmaterialized_header_metadata(
+        self, metadata: Mapping[str, JSONValue]
+    ) -> None:
+        """Bind Product creation facts before any transcript write can publish them."""
+
+        self._require_idle_commit("bind transcript creation metadata")
+        if self._materialized or self._revision != 0 or self._repository.records:
+            raise RuntimeError("Transcript creation metadata is already sealed")
+        if not isinstance(metadata, Mapping) or not metadata:
+            raise ValueError("Transcript creation metadata is invalid")
+        if any(
+            not isinstance(key, str)
+            or not key
+            or key in self.header.metadata
+            for key in metadata
+        ):
+            raise ValueError("Transcript creation metadata conflicts with its header")
+        self._repository.set_header(
+            replace(self.header, metadata={**self.header.metadata, **metadata})
+        )
+
     @property
     def records(self) -> tuple[AgentTranscriptRecord, ...]:
         return self._repository.records
@@ -322,7 +359,22 @@ class AgentTranscriptUnitOfWork:
         return self._repository.branch_delta(from_id, target_id)
 
     def replay_context(self) -> AgentTranscriptContext:
-        return self._profile.replay(self.active_path())
+        if not self._profile.has_default_replay_semantics:
+            return self._profile.replay(self.active_path())
+        projection = self.replay_projection()
+        if projection.item_record_ids:
+            first_record = self.get(projection.item_record_ids[0])
+            if (
+                first_record is not None
+                and isinstance(first_record.payload, ContextCompactionCheckpoint)
+                and first_record.payload.provider_window is not None
+            ):
+                return AgentTranscriptContext(
+                    projection.items[1:],
+                    projection.state,
+                    first_record.payload.provider_window,
+                )
+        return AgentTranscriptContext(projection.items, projection.state)
 
     def replay_projection(
         self,
@@ -330,8 +382,62 @@ class AgentTranscriptUnitOfWork:
     ) -> ConversationReplayProjection[AgentMessage, AgentTranscriptState]:
         """Return the selected context items with exact transcript record ids."""
 
-        selected = self.active_path() if records is None else tuple(records)
-        return self._profile.replay_projection(selected)
+        profile = self._profile
+        if records is not None:
+            return profile.replay_projection(tuple(records))
+        if not profile.has_default_replay_semantics:
+            self._replay_cache = None
+            return profile.replay_projection(self.active_path())
+        repository = self._repository
+        leaf_id = repository.leaf_id
+        policy_revision = profile.replay_revision
+        cache = self._replay_cache
+        same_policy = (
+            cache is not None
+            and cache.profile is profile
+            and cache.profile_revision == policy_revision
+        )
+        if same_policy and cache is not None and (
+            cache.repository is repository and cache.leaf_id == leaf_id
+        ):
+            return cache.projection
+        # Capture the leaf explicitly: a read-only background observer may
+        # overlap a later branch selection on the same repository object.
+        selected = repository.records_to(leaf_id) if leaf_id is not None else ()
+        suffix = (
+            selected[len(cache.records) :]
+            if same_policy and cache is not None
+            and len(selected) >= len(cache.records)
+            and all(old is new for old, new in zip(cache.records, selected))
+            else None
+        )
+        if suffix is not None and cache is not None and (
+            profile.supports_incremental_replay(suffix)
+            and not any(profile.resolve_checkpoint(record) is not None for record in suffix)
+        ):
+            state = cache.projection.state
+            items = list(cache.projection.items)
+            item_record_ids = list(cache.projection.item_record_ids)
+            for record in suffix:
+                state = profile.reduce_state(state, record)
+                item = profile.record_to_context_item(record)
+                if item is not None:
+                    items.append(item)
+                    item_record_ids.append(record.record_id)
+            projection = ConversationReplayProjection(
+                items=tuple(items), state=state, item_record_ids=tuple(item_record_ids)
+            )
+            cacheable = True
+        else:
+            projection = profile.replay_projection(selected)
+            cacheable = profile.supports_incremental_replay(selected)
+        if cacheable and profile.replay_revision == policy_revision:
+            self._replay_cache = _CachedTranscriptReplay(
+                profile, policy_revision, repository, leaf_id, selected, projection
+            )
+        else:
+            self._replay_cache = None
+        return projection
 
     async def commit(self, record: AgentTranscriptRecord) -> AgentTranscriptCommit:
         """Durably append one prebuilt record, then advance runtime state."""
@@ -499,11 +605,7 @@ class AgentTranscriptUnitOfWork:
             )
 
     def _require_model_call_outcome(self, outcome: ModelCallOutcome) -> None:
-        if any(
-            isinstance(record.payload, ModelCallOutcome)
-            and record.payload.invocation_id == outcome.invocation_id
-            for record in self.records
-        ):
+        if outcome.invocation_id in self._model_call_outcome_invocation_ids:
             raise ModelInputIntegrityError(
                 "model call invocation already has a terminal outcome"
             )
@@ -660,6 +762,69 @@ class AgentTranscriptUnitOfWork:
                 propagate_cancellation=True,
             )
 
+    def stage_model_input_node_bundles(
+        self,
+        bundles: Sequence[ModelInputNodeBundle],
+        *,
+        max_encoded_record_bytes: int,
+        parent_id: str,
+    ) -> tuple[AgentTranscriptRecord, ...]:
+        """Build validated graph facts without publishing them to the Store."""
+
+        records: list[AgentTranscriptRecord] = []
+        for bundle in bundles:
+            record = self._record_factory.create(
+                MODEL_INPUT_COMPONENT_KIND,
+                bundle,
+                parent_id=parent_id,
+                payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+            )
+            self._require_record_size(record, max_encoded_record_bytes)
+            records.append(record)
+            parent_id = record.record_id
+        return tuple(records)
+
+    async def append_staged_model_input_snapshot(
+        self,
+        components: Sequence[AgentTranscriptRecord],
+        snapshot: ModelInputSnapshotV2,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        """Commit a complete, previously validated v2 graph and snapshot."""
+
+        async with self._commit_lock:
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            parent_id = expected_leaf_id
+            for component in components:
+                if (
+                    component.kind != MODEL_INPUT_COMPONENT_KIND
+                    or component.payload_version != MODEL_INPUT_V2_PAYLOAD_VERSION
+                    or not isinstance(component.payload, ModelInputNodeBundle)
+                    or component.parent_id != parent_id
+                ):
+                    raise ModelInputIntegrityError("staged Model Input graph changed")
+                self._require_record_size(component, max_encoded_record_bytes)
+                parent_id = component.record_id
+            if snapshot.commit_revision != expected_revision + len(components) + 1:
+                raise ModelInputIntegrityError("staged Model Input revision changed")
+            record = self._record_factory.create(
+                MODEL_INPUT_PREPARED_KIND,
+                snapshot,
+                parent_id=parent_id,
+                payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+            )
+            self._require_record_size(record, max_encoded_record_bytes)
+            return await self._finish_batch_commit_atomically(
+                (*components, record),
+                propagate_cancellation=True,
+            )
+
     async def append_model_input_snapshot(
         self,
         snapshot: ModelInputSnapshot | ModelInputSnapshotV2,
@@ -719,6 +884,60 @@ class AgentTranscriptUnitOfWork:
             expected_revision=expected_revision,
             expected_leaf_id=expected_leaf_id,
         )
+
+    async def _append_model_call_terminal_batch(
+        self,
+        usage: ModelCallAttemptUsage,
+        outcome: ModelCallOutcome,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> tuple[AgentTranscriptCommit, AgentTranscriptCommit]:
+        """Persist facts whose lineage the owning Model Input committer proved.
+
+        This private path requires its current-revision and snapshot-identity
+        checks. The global outcome index still rejects duplicates on other
+        branches; the lock closes the gap between proof and append.
+        """
+
+        async with self._commit_lock:
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            if (
+                usage.invocation_id != outcome.invocation_id
+                or not outcome.model_input_snapshot_ids
+                or outcome.model_input_snapshot_ids[-1]
+                != usage.model_input_snapshot_id
+            ):
+                raise ModelInputIntegrityError(
+                    "terminal usage does not match the final outcome attempt"
+                )
+            if outcome.invocation_id in self._model_call_outcome_invocation_ids:
+                raise ModelInputIntegrityError(
+                    "model call invocation already has a terminal outcome"
+                )
+            usage_record = self._record_factory.create(
+                MODEL_CALL_ATTEMPT_USAGE_KIND,
+                usage,
+                parent_id=expected_leaf_id,
+                payload_version=STANDARD_PAYLOAD_VERSION,
+            )
+            self._require_record_size(usage_record, max_encoded_record_bytes)
+            outcome_record = self._record_factory.create(
+                MODEL_CALL_OUTCOME_KIND,
+                outcome,
+                parent_id=usage_record.record_id,
+                payload_version=STANDARD_PAYLOAD_VERSION,
+            )
+            commits = await self._finish_batch_commit_atomically(
+                (usage_record, outcome_record),
+                propagate_cancellation=True,
+                lineage_verified=True,
+            )
+            return commits[0], commits[1]
 
     async def _append_model_input_fact(
         self,
@@ -854,14 +1073,23 @@ class AgentTranscriptUnitOfWork:
                 "transcript record parent must match the selected leaf: "
                 f"expected {self.leaf_id!r}, got {record.parent_id!r}"
             )
-        candidate = _create_repository(
-            header=self.header,
-            records=(*self.records, record),
-            leaf_id=record.record_id,
+        # A materialized strict transcript can validate the new link without
+        # copying historical indexes. Publish it only after the Store receipt.
+        plan = (
+            self._repository.prepare_incremental_append((record,))
+            if self._materialized
+            else None
+        )
+        candidate = (
+            await asyncio.to_thread(self._repository.with_appended, record)
+            if plan is None
+            else None
         )
         if not self._materialized:
+            assert candidate is not None
             if not self._materialization_policy(record):
                 self._repository = candidate
+                self._observe_model_call_outcomes((record,))
                 self._revision += 1
                 return AgentTranscriptCommit(record=record, receipt=None)
             return await self._materialize_locked(record, candidate)
@@ -897,7 +1125,12 @@ class AgentTranscriptUnitOfWork:
             raise commit_uncertainty or StoreCommitOutcomeUnknown(
                 "conversation backend returned a different committed record id"
             )
-        self._repository = candidate
+        if plan is None:
+            assert candidate is not None
+            self._repository = candidate
+        else:
+            self._repository.publish_incremental_append(plan)
+        self._observe_model_call_outcomes((record,))
         self._revision = receipt.revision
         self._diagnostics = (*self._diagnostics, *commit_result.diagnostics)
         return AgentTranscriptCommit(
@@ -928,10 +1161,11 @@ class AgentTranscriptUnitOfWork:
                 commits.append(await self._commit_locked(record))
             return tuple(commits)
 
-        candidate = _create_repository(
-            header=self.header,
-            records=(*self.records, *records),
-            leaf_id=records[-1].record_id,
+        plan = self._repository.prepare_incremental_append(records)
+        candidate = (
+            await asyncio.to_thread(self._repository.with_appended_records, records)
+            if plan is None
+            else None
         )
         expected_revision = self._revision
         operation_ids = tuple(record.record_id for record in records)
@@ -979,7 +1213,12 @@ class AgentTranscriptUnitOfWork:
                     diagnostics=(result.diagnostics if index == len(records) else ()),
                 )
             )
-        self._repository = candidate
+        if plan is None:
+            assert candidate is not None
+            self._repository = candidate
+        else:
+            self._repository.publish_incremental_append(plan)
+        self._observe_model_call_outcomes(records)
         self._revision = result.receipts[-1].revision
         self._diagnostics = (*self._diagnostics, *result.diagnostics)
         return tuple(batch_commits)
@@ -1026,12 +1265,14 @@ class AgentTranscriptUnitOfWork:
         records: Sequence[AgentTranscriptRecord],
         *,
         propagate_cancellation: bool = False,
+        lineage_verified: bool = False,
     ) -> tuple[AgentTranscriptCommit, ...]:
         durable_records = tuple(records)
         if not durable_records:
             return ()
         for record in durable_records:
-            self._require_record_model_input_lineage(record)
+            if not lineage_verified:
+                self._require_record_model_input_lineage(record)
             _require_model_input_record_size(record, self._profile)
         operation = asyncio.create_task(self._commit_batch_locked(durable_records))
         caller = asyncio.current_task()
@@ -1094,6 +1335,7 @@ class AgentTranscriptUnitOfWork:
             record_id=record.record_id,
         )
         self._repository = candidate
+        self._observe_model_call_outcomes((record,))
         self._revision = snapshot.revision
         self._materialized = True
         self._diagnostics = (*self._diagnostics, *diagnostics)
@@ -1102,6 +1344,16 @@ class AgentTranscriptUnitOfWork:
             receipt=receipt,
             diagnostics=diagnostics,
         )
+
+    def _observe_model_call_outcomes(
+        self,
+        records: Sequence[AgentTranscriptRecord],
+    ) -> None:
+        for record in records:
+            if isinstance(record.payload, ModelCallOutcome):
+                self._model_call_outcome_invocation_ids.add(
+                    record.payload.invocation_id
+                )
 
     def _require_idle_commit(self, operation: str) -> None:
         if self._commit_lock.locked():

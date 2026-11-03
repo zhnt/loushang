@@ -331,7 +331,10 @@ class CodingWorkerNativeApprovalJournal:
         return self._path
 
     def current(self) -> CodingWorkerNativeApprovalDecisionV1 | None:
-        with self._product_owner.gc_gate.guard(), self._bound_journal() as rooted:
+        with (
+            self._product_owner.gc_gate.guard(),
+            self._bound_journal(read_only=True) as rooted,
+        ):
             self._product_owner.assert_root_gc_authority_current()
             events = self._load(rooted)
             return events[-1] if events else None
@@ -353,7 +356,10 @@ class CodingWorkerNativeApprovalJournal:
             != isinstance(approval, CodingWorkerNativeReleaseApprovalV1)
         ):
             raise ValueError("Worker native approval command is invalid")
-        with self._product_owner.gc_gate.guard(), self._bound_journal() as rooted:
+        with (
+            self._product_owner.gc_gate.guard(require_write=True),
+            self._bound_journal() as rooted,
+        ):
             self._product_owner.assert_root_gc_authority_current()
             events = self._load(rooted)
             replay = next(
@@ -404,7 +410,7 @@ class CodingWorkerNativeApprovalJournal:
             return decision
 
     @contextmanager
-    def _bound_journal(self) -> Iterator[RootedFile]:
+    def _bound_journal(self, *, read_only: bool = False) -> Iterator[RootedFile]:
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         parent_fd = os.open(self._path.parent, flags)
         try:
@@ -421,8 +427,9 @@ class CodingWorkerNativeApprovalJournal:
                 )
             file_io = RootedFileIO(self._path.parent, parent_fd)
             try:
-                with file_io.bind(self._path, durable=True) as rooted:
-                    rooted.acquire_lock(exclusive=True, suffix=".lock")
+                with file_io.bind(self._path, durable=not read_only) as rooted:
+                    if not read_only:
+                        rooted.acquire_lock(exclusive=True, suffix=".lock")
                     yield rooted
             finally:
                 file_io.cleanup()

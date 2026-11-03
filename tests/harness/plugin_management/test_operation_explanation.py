@@ -15,10 +15,14 @@ from loushang.harness.plugin_management.operation_explanation import (
 from loushang.harness.plugin_management.operations import (
     PluginManagementCommandV1,
     PluginManagementOperationEventV1,
+    PluginManagementOperationResultV1,
 )
 from loushang.harness.plugin_management.records import (
+    PluginDesiredSelectionV1,
     PluginDesiredStateMutationV1,
+    PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
+    PluginInstallationStateV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
@@ -31,6 +35,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.product_handoff import (
     package_product_command_identity,
 )
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 
 def _package_operation(plugin_id: str):
@@ -183,3 +188,78 @@ def test_operation_explanation_transport_rejects_cross_scope_owner_facts() -> No
                 operation_id="test:install",
             ),
         )
+
+
+def test_successful_a1_enable_has_no_package_handoff_gap() -> None:
+    installed = _ManagementCommands()
+    key = installed.event.command.mutation.installation_key
+    package = installed.event.command.mutation.package_revision
+    assert package is not None
+    instance = PluginInstanceRevisionRef(
+        instance_id="reviewpack-instance", plugin_id="reviewpack", revision=1
+    )
+    mutation = PluginDesiredStateMutationV1(
+        operation_id="test:enable",
+        idempotency_key="test:enable",
+        expected_inventory_revision=1,
+        installation_key=key,
+        desired_state="installed_enabled",
+        package_revision=None,
+        actor_id="coding:cli",
+        policy_revision="test:management",
+    )
+    transition = PluginDesiredStateTransitionV1(
+        inventory_revision=2,
+        transition_kind="enable",
+        mutation=mutation,
+        previous_state=PluginInstallationStateV1(
+            installation_key=key,
+            selection=PluginDesiredSelectionV1(
+                desired_state="installed_disabled",
+                package_revision=package,
+                instance_revision_ref=None,
+            ),
+            latest_instance_revision_ref=None,
+        ),
+        committed_state=PluginInstallationStateV1(
+            installation_key=key,
+            selection=PluginDesiredSelectionV1(
+                desired_state="installed_enabled",
+                package_revision=package,
+                instance_revision_ref=instance,
+            ),
+            latest_instance_revision_ref=instance,
+        ),
+    )
+    event = PluginManagementOperationEventV1.terminal(
+        journal_revision=3,
+        command=PluginManagementCommandV1(action="enable", mutation=mutation),
+        result=PluginManagementOperationResultV1(
+            disposition="succeeded", transition=transition, error_code=None
+        ),
+    )
+
+    class NoPackage:
+        def read_operation(self, _operation_id: str):
+            return None
+
+    class Management:
+        def operation(self, operation_id: str, *, correlation_id: str):
+            return (
+                PluginManagementApplicationResultV1(
+                    correlation_id=correlation_id, operation=event
+                )
+                if operation_id == "test:enable"
+                else None
+            )
+
+    result = PluginOperationExplanationProjector(
+        package_operations=NoPackage(), management_commands=Management()
+    ).explain_operation("test:enable", correlation_id="test:a1-enable")
+    assert result.to_dict()["operationKind"] == "a1_desired"
+    assert result.join_status == "management_only"
+    assert result.management_disposition == "succeeded"
+    assert result.management_actor_id == "coding:cli"
+    assert result.handoff_evidence == "not_queried"
+    assert "package_operation" not in result.evidence_gaps
+    assert "package_product_handoff" not in result.evidence_gaps

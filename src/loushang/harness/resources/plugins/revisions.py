@@ -7,7 +7,7 @@ import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import BinaryIO, Literal, cast
 
+from loushang.harness.resources._safe_files import ResourceReadBudgetExceeded
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
 )
@@ -134,8 +135,27 @@ class VerifiedRevisionHandle:
     def closed(self) -> bool:
         return self._closed
 
-    def verify(self) -> None:
+    def verify(self, *, work_probe: Callable[[], None] | None = None) -> None:
+        """Verify through the same owner, with optional cooperative scan checkpoints.
+
+        Probe failures retain their original type and never become evidence of
+        changed content. Cancellation releases temporary descriptors while the
+        original revision handle remains owned and available for another scan.
+        """
+
         self._require_open()
+        probe_failure: BaseException | None = None
+
+        def probe() -> None:
+            nonlocal probe_failure
+            try:
+                if work_probe is not None:
+                    work_probe()
+            except BaseException as error:
+                probe_failure = error
+                raise
+
+        checkpoint = probe if work_probe is not None else None
         try:
             if self._descriptor_backed:
                 root_fd = self._require_root_fd()
@@ -144,12 +164,12 @@ class VerifiedRevisionHandle:
                     current_identity = _stat_identity(os.fstat(current_fd))
                 finally:
                     os.close(current_fd)
-                entries = _capture_tree(root_fd)
+                entries = _capture_tree(root_fd, work_probe=checkpoint)
             else:
                 current_identity = _stat_identity(
                     _portable_directory_metadata(self.root)
                 )
-                entries = _capture_tree_portable(self.root)
+                entries = _capture_tree_portable(self.root, work_probe=checkpoint)
             if current_identity != self._root_identity:
                 raise OSError(
                     errno.ESTALE,
@@ -157,6 +177,8 @@ class VerifiedRevisionHandle:
                     self.root,
                 )
         except Exception as exc:
+            if probe_failure is not None:
+                raise probe_failure
             raise PluginRevisionError(
                 f"Plugin revision could not be verified: {self.root}: {exc}",
                 code="plugin_revision_changed",
@@ -170,7 +192,12 @@ class VerifiedRevisionHandle:
                 path=self.root,
             )
 
-    def open_file(self, relative_path: str | PurePosixPath) -> BinaryIO:
+    def open_file(
+        self, relative_path: str | PurePosixPath, *,
+        max_bytes: int | None = None, work_probe: Callable[[], None] | None = None,
+    ) -> BinaryIO:
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
+            raise ValueError("Plugin revision read byte limit must be positive")
         logical_path = _logical_relative_path(relative_path, root=self.root)
         key = logical_path.as_posix()
         expected = self._entries.get(key)
@@ -185,6 +212,7 @@ class VerifiedRevisionHandle:
                 data, executable = _read_relative_file(
                     self._require_root_fd(),
                     logical_path,
+                    max_bytes=max_bytes, work_probe=work_probe,
                 )
             else:
                 self._require_open()
@@ -192,6 +220,7 @@ class VerifiedRevisionHandle:
                     self.root,
                     logical_path,
                     expected_root_identity=self._root_identity,
+                    max_bytes=max_bytes, work_probe=work_probe,
                 )
         except (OSError, PluginRevisionError) as exc:
             raise PluginRevisionError(
@@ -253,6 +282,17 @@ class VerifiedRevisionHandle:
         """Acquire an independently disposable lease over the same revision."""
 
         self.verify()
+        return self.acquire_readonly_capture()
+
+    def acquire_readonly_capture(self) -> VerifiedRevisionHandle:
+        """Pin existing immutable read facts without an eager content scan.
+
+        This read pin grants no Plugin activation or current integrity proof.
+        The capturing owner must verify it during its bounded computation and
+        retain it until actual native completion, including on cancellation.
+        """
+
+        self._require_open()
         root_fd: int | None = None
         if self._descriptor_backed:
             try:
@@ -266,7 +306,7 @@ class VerifiedRevisionHandle:
         handle = object.__new__(VerifiedRevisionHandle)
         handle.root = self.root
         handle.content_digest = self.content_digest
-        handle._entries = MappingProxyType(dict(self._entries))
+        handle._entries = self._entries
         handle._root_fd = root_fd
         handle._root_identity = self._root_identity
         handle._descriptor_backed = self._descriptor_backed
@@ -508,10 +548,24 @@ def _is_sha256_digest(value: object) -> bool:
     )
 
 
+def _revision_directory_names(
+    directory: int | Path, work_probe: Callable[[], None] | None,
+) -> list[str]:
+    if work_probe is None:
+        return sorted(os.listdir(directory), key=os.fsencode)
+    names: list[str] = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            work_probe()
+            names.append(entry.name)
+    return sorted(names, key=os.fsencode)
+
+
 def _capture_tree_portable(
     root: Path,
     *,
     destination: Path | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> dict[str, _RevisionEntry]:
     """Capture on hosts without directory-fd traversal, rejecting reparse points."""
 
@@ -521,6 +575,7 @@ def _capture_tree_portable(
         relative=PurePosixPath(),
         destination=destination,
         entries=entries,
+        work_probe=work_probe,
     )
     return entries
 
@@ -531,10 +586,11 @@ def _capture_directory_portable(
     relative: PurePosixPath,
     destination: Path | None,
     entries: dict[str, _RevisionEntry],
+    work_probe: Callable[[], None] | None = None,
 ) -> None:
     directory_before = _portable_directory_metadata(directory)
     try:
-        names = sorted(os.listdir(directory), key=os.fsencode)
+        names = _revision_directory_names(directory, work_probe)
     except OSError as exc:
         raise PluginRevisionError(
             f"Plugin revision directory could not be listed: {relative}: {exc}",
@@ -542,6 +598,8 @@ def _capture_directory_portable(
             path=Path(relative.as_posix()),
         ) from exc
     for name in names:
+        if work_probe is not None:
+            work_probe()
         if not relative.parts and name in _IGNORED_ROOT_ENTRIES:
             continue
         logical_path = relative / name
@@ -560,12 +618,14 @@ def _capture_directory_portable(
                 relative=logical_path,
                 destination=destination,
                 entries=entries,
+                work_probe=work_probe,
             )
             continue
         file_digest, executable = _digest_file_portable(
             source_path,
             expected=metadata,
             destination=destination_path,
+            work_probe=work_probe,
         )
         entries[key] = _RevisionEntry(
             kind="file",
@@ -593,6 +653,7 @@ def _read_relative_file_portable(
     relative_path: PurePosixPath,
     *,
     expected_root_identity: tuple[int, int],
+    max_bytes: int | None = None, work_probe: Callable[[], None] | None = None,
 ) -> tuple[bytes, bool]:
     root_metadata = _portable_directory_metadata(root)
     if _stat_identity(root_metadata) != expected_root_identity:
@@ -614,7 +675,9 @@ def _read_relative_file_portable(
             code="plugin_revision_changed",
             path=Path(relative_path.as_posix()),
         )
-    result = _read_file_portable(file_path, expected=metadata)
+    result = _read_file_portable(
+        file_path, expected=metadata, max_bytes=max_bytes, work_probe=work_probe,
+    )
     for path, before in reversed(directory_chain):
         after = _portable_directory_metadata(path)
         if _stable_directory_identity(before) != _stable_directory_identity(after):
@@ -630,15 +693,14 @@ def _read_file_portable(
     path: Path,
     *,
     expected: os.stat_result,
+    max_bytes: int | None = None, work_probe: Callable[[], None] | None = None,
 ) -> tuple[bytes, bool]:
     file_fd, before = _open_regular_file_portable(path, expected=expected)
     try:
-        chunks: list[bytes] = []
-        while chunk := os.read(file_fd, 1024 * 1024):
-            chunks.append(chunk)
+        body = _read_revision_file_body(file_fd, max_bytes=max_bytes, work_probe=work_probe)
         _assert_file_stable(file_fd, before, name=str(path))
         _assert_portable_path_stable(path, expected=expected)
-        return b"".join(chunks), bool(before.st_mode & 0o111)
+        return body, bool(before.st_mode & 0o111)
     finally:
         os.close(file_fd)
 
@@ -648,6 +710,7 @@ def _digest_file_portable(
     *,
     expected: os.stat_result,
     destination: Path | None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[str, bool]:
     file_fd, before = _open_regular_file_portable(path, expected=expected)
     destination_fd: int | None = None
@@ -657,7 +720,12 @@ def _digest_file_portable(
             flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
             destination_fd = os.open(destination, flags, 0o600)
         digest = sha256()
-        while chunk := os.read(file_fd, 1024 * 1024):
+        while True:
+            if work_probe is not None:
+                work_probe()
+            chunk = os.read(file_fd, 64 * 1024 if work_probe is not None else 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
             if destination_fd is not None:
                 _write_all(destination_fd, chunk)
@@ -753,6 +821,7 @@ def _capture_tree(
     root_fd: int,
     *,
     destination: Path | None = None,
+    work_probe: Callable[[], None] | None = None,
 ) -> dict[str, _RevisionEntry]:
     entries: dict[str, _RevisionEntry] = {}
     _capture_directory(
@@ -760,6 +829,7 @@ def _capture_tree(
         relative=PurePosixPath(),
         destination=destination,
         entries=entries,
+        work_probe=work_probe,
     )
     return entries
 
@@ -770,10 +840,11 @@ def _capture_directory(
     relative: PurePosixPath,
     destination: Path | None,
     entries: dict[str, _RevisionEntry],
+    work_probe: Callable[[], None] | None = None,
 ) -> None:
     try:
         directory_before = os.fstat(directory_fd)
-        names = sorted(os.listdir(directory_fd), key=os.fsencode)
+        names = _revision_directory_names(directory_fd, work_probe)
     except OSError as exc:
         raise PluginRevisionError(
             f"Plugin revision directory could not be listed: {relative}: {exc}",
@@ -781,6 +852,8 @@ def _capture_directory(
             path=Path(relative.as_posix()),
         ) from exc
     for name in names:
+        if work_probe is not None:
+            work_probe()
         if not relative.parts and name in _IGNORED_ROOT_ENTRIES:
             continue
         logical_path = relative / name
@@ -815,6 +888,7 @@ def _capture_directory(
                     relative=logical_path,
                     destination=destination,
                     entries=entries,
+                    work_probe=work_probe,
                 )
             finally:
                 os.close(child_fd)
@@ -824,6 +898,7 @@ def _capture_directory(
             name,
             expected=metadata,
             destination=destination_path,
+            work_probe=work_probe,
         )
         entries[key] = _RevisionEntry(
             kind="file",
@@ -856,6 +931,7 @@ def _capture_directory(
 def _read_relative_file(
     root_fd: int,
     relative_path: PurePosixPath,
+    *, max_bytes: int | None = None, work_probe: Callable[[], None] | None = None,
 ) -> tuple[bytes, bool]:
     current_fd = os.dup(root_fd)
     try:
@@ -871,7 +947,9 @@ def _read_relative_file(
                 code="plugin_revision_changed",
                 path=Path(relative_path.as_posix()),
             )
-        return _read_file(current_fd, name, expected=metadata)
+        return _read_file(
+            current_fd, name, expected=metadata, max_bytes=max_bytes, work_probe=work_probe,
+        )
     finally:
         os.close(current_fd)
 
@@ -881,16 +959,38 @@ def _read_file(
     name: str,
     *,
     expected: os.stat_result,
+    max_bytes: int | None = None, work_probe: Callable[[], None] | None = None,
 ) -> tuple[bytes, bool]:
     file_fd, before = _open_regular_file(directory_fd, name, expected=expected)
     try:
-        chunks: list[bytes] = []
-        while chunk := os.read(file_fd, 1024 * 1024):
-            chunks.append(chunk)
+        body = _read_revision_file_body(file_fd, max_bytes=max_bytes, work_probe=work_probe)
         _assert_file_stable(file_fd, before, name=name)
-        return b"".join(chunks), bool(before.st_mode & 0o111)
+        return body, bool(before.st_mode & 0o111)
     finally:
         os.close(file_fd)
+
+
+def _read_revision_file_body(
+    descriptor: int, *, max_bytes: int | None, work_probe: Callable[[], None] | None,
+) -> bytes:
+    if max_bytes is not None and os.fstat(descriptor).st_size > max_bytes:
+        raise ResourceReadBudgetExceeded("Package text exceeds its byte budget")
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        if work_probe is not None:
+            work_probe()
+        chunk_size = 64 * 1024 if work_probe is not None else 1024 * 1024
+        if max_bytes is not None:
+            chunk_size = min(chunk_size, max_bytes - size + 1)
+        chunk = os.read(descriptor, chunk_size)
+        if not chunk:
+            break
+        size += len(chunk)
+        if max_bytes is not None and size > max_bytes:
+            raise ResourceReadBudgetExceeded("Package text exceeds its byte budget")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _digest_file(
@@ -899,6 +999,7 @@ def _digest_file(
     *,
     expected: os.stat_result,
     destination: Path | None,
+    work_probe: Callable[[], None] | None = None,
 ) -> tuple[str, bool]:
     file_fd, before = _open_regular_file(directory_fd, name, expected=expected)
     destination_fd: int | None = None
@@ -908,7 +1009,12 @@ def _digest_file(
             flags |= _required_open_flag("O_NOFOLLOW") | getattr(os, "O_CLOEXEC", 0)
             destination_fd = os.open(destination, flags, 0o600)
         digest = sha256()
-        while chunk := os.read(file_fd, 1024 * 1024):
+        while True:
+            if work_probe is not None:
+                work_probe()
+            chunk = os.read(file_fd, 64 * 1024 if work_probe is not None else 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
             if destination_fd is not None:
                 _write_all(destination_fd, chunk)

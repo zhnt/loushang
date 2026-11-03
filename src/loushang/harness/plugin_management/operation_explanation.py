@@ -75,6 +75,7 @@ class PluginOperationExplanationV1:
     management_status: Literal["observed", "unknown"]
     management_installation_key: PluginInstallationKeyV1 | None
     management_action: str | None
+    management_actor_id: str | None
     management_progress_code: str | None
     management_disposition: str | None
     management_journal_revision: int | None
@@ -91,6 +92,10 @@ class PluginOperationExplanationV1:
         "identity_conflict",
     ]
     evidence_gaps: tuple[str, ...]
+    desired_commit_evidence: Literal[
+        "not_checked", "owner_receipt", "verified_transition"
+    ] = "not_checked"
+    repair_command: str | None = None
     snapshot_status: Literal["partial_evidence"] = "partial_evidence"
     explanation_version: int = PLUGIN_OPERATION_EXPLANATION_VERSION
 
@@ -119,6 +124,7 @@ class PluginOperationExplanationV1:
         management_facts = (
             self.management_installation_key,
             self.management_action,
+            self.management_actor_id,
             self.management_progress_code,
             self.management_disposition,
             self.management_journal_revision,
@@ -152,7 +158,15 @@ class PluginOperationExplanationV1:
         )
         if self.join_status != expected_join:
             raise ValueError("Cross-owner operation join status is inconsistent")
-        if self.handoff_evidence == "settled":
+        if self.package.status == "unknown":
+            if (
+                self.handoff_evidence != "not_queried"
+                or self.handoff_receipt_id is not None
+                or self.handoff_revision is not None
+                or "package_product_handoff" in self.evidence_gaps
+            ):
+                raise ValueError("A1-only explanation cannot assert Package handoff")
+        elif self.handoff_evidence == "settled":
             if (
                 self.join_status != "same_identity"
                 or self.package.disposition != "committed"
@@ -170,6 +184,22 @@ class PluginOperationExplanationV1:
             raise ValueError("Absent handoff cannot assert a receipt")
         if self.snapshot_status != "partial_evidence":
             raise ValueError("Cross-owner operation explanation remains partial")
+        if self.desired_commit_evidence not in {
+            "not_checked", "owner_receipt", "verified_transition"
+        }:
+            raise ValueError("Plugin desired commit evidence is invalid")
+        if self.desired_commit_evidence != "not_checked" and (
+            self.package.status != "observed"
+            or self.package.disposition != "committed"
+            or self.handoff_evidence not in {"incomplete", "settled"}
+        ):
+            raise ValueError("Plugin desired commit evidence changed Package stage")
+        if self.repair_command is not None and (
+            not self.repair_command
+            or not self.repair_command.isprintable()
+            or "\n" in self.repair_command
+        ):
+            raise ValueError("Plugin operation repair command is invalid")
         if self.explanation_version != PLUGIN_OPERATION_EXPLANATION_VERSION:
             raise ValueError("Unsupported Plugin operation explanation")
 
@@ -187,6 +217,14 @@ class PluginOperationExplanationV1:
                 else self.management_installation_key.to_dict()
             ),
             "managementAction": self.management_action,
+            "managementActorId": self.management_actor_id,
+            "operationKind": (
+                "a2_package"
+                if self.package.status == "observed"
+                else "a1_desired"
+                if self.management_status == "observed"
+                else "unknown"
+            ),
             "managementProgressCode": self.management_progress_code,
             "managementDisposition": self.management_disposition,
             "managementJournalRevision": self.management_journal_revision,
@@ -195,6 +233,8 @@ class PluginOperationExplanationV1:
             "handoffRevision": self.handoff_revision,
             "joinStatus": self.join_status,
             "evidenceGaps": list(self.evidence_gaps),
+            "desiredCommitEvidence": self.desired_commit_evidence,
+            "repairCommand": self.repair_command,
             "snapshotStatus": self.snapshot_status,
             "explanationVersion": self.explanation_version,
         }
@@ -273,15 +313,12 @@ class PluginOperationExplanationProjector:
             join_status = "same_identity"
         else:
             join_status = "identity_conflict"
-        gaps = {
-            "package_product_handoff",
-            "product_selection",
-            "session_capture",
-            "owner_atomic_snapshot",
-        }
+        gaps = {"product_selection", "session_capture", "owner_atomic_snapshot"}
+        if package.status == "observed":
+            gaps.add("package_product_handoff")
         if event is None:
             gaps.add("management_operation")
-        if package.status == "unknown":
+        if package.status == "unknown" and event is None:
             gaps.add("package_operation")
         if join_status == "identity_conflict":
             gaps.add("owner_identity_conflict")
@@ -293,7 +330,7 @@ class PluginOperationExplanationProjector:
         handoff_evidence: Literal[
             "not_queried", "absent", "incomplete", "settled", "identity_conflict"
         ]
-        if self._handoffs is None:
+        if package.status == "unknown" or self._handoffs is None:
             handoff_evidence = "not_queried"
         elif receipt is None:
             handoff_evidence = "absent"
@@ -351,6 +388,13 @@ class PluginOperationExplanationProjector:
             management_status="unknown" if event is None else "observed",
             management_installation_key=key,
             management_action=None if event is None else event.command.action,
+            management_actor_id=(
+                None
+                if event is None
+                else event.command.mutation.actor_id
+                if isinstance(event.command, PluginManagementCommandV1)
+                else event.command.actor_id
+            ),
             management_progress_code=None if event is None else event.progress_code,
             management_disposition=(
                 None

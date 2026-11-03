@@ -84,12 +84,38 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     assert sum(groups["g12"].values()) <= 800 + 84 + 7, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
     # LMUX-M0: original catalog ownership, readonly hooks and validation (+205).
-    assert sum(groups["g14"].values()) <= 1_300 + 205, groups["g14"]
-    assert sum(groups["g16"].values()) <= 900, groups["g16"]
+    # P3: seal canonical composition before Hosted candidate materialization (+8).
+    # PLC9: admit the Windows ordinary Product route in Hosted construction (+3).
+    # ARD-004/005/006 R2.1: detached history, source-fenced recovery reads,
+    # stable first-input execution and narrow adapter data validation stay on
+    # these same original owners. Exact net delta from current main: catalog
+    # +334, session +195 and CLI +34. The catalog delta includes the
+    # lifecycle-observation proxies required by the Resume wrapper.
+    # Issue #696 correction: share the 64 MiB verified-history cap (+1).
+    # See foreground-stdio-hosted-app-g14.md, R2.1 reviewability supplement.
+    assert sum(groups["g14"].values()) <= 1_300 + 205 + 8 + 3 + 334 + 195 + 34 + 1, groups["g14"]
+    for path, limit in {
+        "cli/hosted.py": 290,
+        "hosted_catalog.py": 1_221,
+        "hosted_session.py": 569,
+    }.items():
+        assert groups["g14"][path] <= limit, (path, groups["g14"][path], limit)
+    # R2.1 extends the existing detachable owners with explicit execution
+    # composition and admitted owned-root preparation. Exact net delta from
+    # current main: mux +1, bootstrap +37 and local command +15.
+    assert sum(groups["g16"].values()) <= 900 + 53, groups["g16"]
+    for path, limit in {
+        "cli/mux.py": 258,
+        "hosted_bootstrap.py": 288,
+        "hosted_local.py": 402,
+    }.items():
+        assert groups["g16"][path] <= limit, (path, groups["g16"][path], limit)
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
     assert sum(groups["g18"].values()) <= 200, groups["g18"]
     assert sum(groups["execution"].values()) <= 400, groups["execution"]
-    assert max(groups["execution"].values()) <= 250, groups["execution"]
+    # R2.1 deferred and read-only bindings add eight lines above the original per-file ceiling;
+    # the existing combined execution ceiling remains unchanged.
+    assert max(groups["execution"].values()) <= 258, groups["execution"]
     # Exact reviewed optional Product composition baseline; not an exemption
     # for any future managed/CLI module, nor a general core-budget increase.
     # Reviewed single-candidate selection adds 13 lines to the same CLI owner.
@@ -105,10 +131,19 @@ def test_coding_product_slices_stay_within_wave_a_budget() -> None:
     # PLC9B hosted routing adds managed-bootstrap +7 and managed-local +12/-2
     # for the same Product Session binding; no new LMUX path is approved.
     plc9b_hosted_lmux_allowance = 7 + (12 - 2)
+    # R2.1 passes execution through the installed client (+1) and keeps managed
+    # startup outside the ordinary owned-root/execution path (+7).
+    r21_resume_lmux_allowance = 1 + 7
     assert sum(groups["lmux"].values()) <= (
         1_579 + 13 + managed_composition_allowance + creation_recovery_composition_allowance
         + child_import_boundary_allowance + plc9b_hosted_lmux_allowance
+        + r21_resume_lmux_allowance
     ), groups["lmux"]
+    for path, limit in {
+        "cli/lmux_command.py": 811,
+        "managed_local.py": 172,
+    }.items():
+        assert groups["lmux"][path] <= limit, (path, groups["lmux"][path], limit)
 
 def test_unapproved_files_stay_in_core_and_every_file_is_counted_once() -> None:
     approved = set().union(*APPROVED_SLICES.values())

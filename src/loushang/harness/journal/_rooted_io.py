@@ -604,6 +604,50 @@ class RootedFile:
             os.fsync(fd)
             self.sync_directory()
 
+    def truncate_exact_prefix(self, *, expected: bytes, keep_bytes: int) -> None:
+        """Durably discard only an exact, witnessed suffix of one pinned file."""
+
+        self._require_active()
+        if (
+            type(expected) is not bytes
+            or type(keep_bytes) is not int
+            or not 0 <= keep_bytes < len(expected)
+        ):
+            raise ValueError("rooted IO exact truncate input is invalid")
+        fd = RootedFileIO._open(
+            self._operation, self._parent, self._name, os.O_RDWR
+        )
+        before = os.fstat(fd)
+        if before.st_size != len(expected):
+            raise OSError("rooted IO exact truncate size changed")
+        chunks: list[bytes] = []
+        remaining = len(expected)
+        while remaining:
+            data = os.read(fd, min(remaining, 1024 * 1024))
+            if not data:
+                raise OSError("rooted IO exact truncate source changed")
+            chunks.append(data)
+            remaining -= len(data)
+        named = os.stat(self._name, dir_fd=self._parent, follow_symlinks=False)
+        if (
+            b"".join(chunks) != expected
+            or _version(before) != _version(os.fstat(fd))
+            or _version(before) != _version(named)
+        ):
+            raise OSError("rooted IO exact truncate source changed")
+        os.ftruncate(fd, keep_bytes)
+        os.fsync(fd)
+        after = os.fstat(fd)
+        named_after = os.stat(
+            self._name, dir_fd=self._parent, follow_symlinks=False
+        )
+        if (
+            after.st_size != keep_bytes
+            or (after.st_dev, after.st_ino) != (named_after.st_dev, named_after.st_ino)
+        ):
+            raise OSError("rooted IO exact truncate target changed")
+        self.sync_directory()
+
     def create_new(self, data: bytes) -> tuple[int, int]:
         """Create an unpublished object exclusively; failures retain cleanup."""
         self._require_active()
@@ -713,7 +757,8 @@ class RootedFile:
         create: bool = True,
         expected_identity: tuple[int, int] | None = None,
         initialize_empty_target_if_new: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Return whether this call created the lock and empty first target."""
         import fcntl
 
         self._require_active()
@@ -725,7 +770,9 @@ class RootedFile:
             or any(type(value) is not int or value < 0 for value in expected_identity)
         ):
             raise ValueError("rooted IO lock identity is invalid")
-        if initialize_empty_target_if_new and (not exclusive or not create or not suffix):
+        if initialize_empty_target_if_new and (
+            not exclusive or not create or not suffix
+        ):
             raise ValueError(
                 "rooted IO target initialization requires a separate new exclusive lock"
             )
@@ -772,6 +819,7 @@ class RootedFile:
             self.sync_directory()
             self.create_new(b"")
         # Closing this independent OFD releases the lock, never LOCK_UN.
+        return created
 
 
 @dataclass(frozen=True)

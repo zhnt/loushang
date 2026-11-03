@@ -30,6 +30,8 @@ from loushang.harness.policy.subjects import (
     ToolPolicySubject,
 )
 
+from ._git import git_operation as _git_operation
+from ._git import literal_git_commands
 from ._powershell import parse_simple_powershell_command
 
 PolicyEffectKind = Literal[
@@ -139,44 +141,6 @@ _POWERSHELL_SECURITY_TRANSLATION: dict[int, str] = {
     ord("\u201c"): '"',
     ord("\u201d"): '"',
 }
-_POWERSHELL_CLASSIFIED_GIT_OPERATIONS = frozenset(
-    {
-        "add",
-        "blame",
-        "cat-file",
-        "clean",
-        "commit",
-        "describe",
-        "diff",
-        "fetch",
-        "for-each-ref",
-        "grep",
-        "log",
-        "ls-files",
-        "ls-tree",
-        "merge",
-        "merge-base",
-        "name-rev",
-        "pull",
-        "push",
-        "reset",
-        "rev-parse",
-        "shortlog",
-        "show",
-        "show-ref",
-        "status",
-        "switch",
-        "version",
-        "whatchanged",
-    }
-)
-_POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS = frozenset(
-    {"--literal-pathspecs", "--no-optional-locks", "--no-pager"}
-)
-_POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS = frozenset(
-    {"--discard-changes", "--force", "-f"}
-)
-_POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS = frozenset({"--ext-diff", "--textconv"})
 _POWERSHELL_ROUTINE_LITERAL_COMMANDS = frozenset(
     {
         "echo",
@@ -279,6 +243,17 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
     if command is None:
         return tuple(effects)
 
+    # All shells use the same Git semantics. In particular, literal messages
+    # containing words such as "rm" are data, not PowerShell operations. Only
+    # take this route when the entire sequence consists of understood Git calls.
+    git_commands = (
+        None if _has_privilege_wrapper(command) else literal_git_commands(command)
+    )
+    if git_commands is not None:
+        for arguments in git_commands:
+            _detect_git_effects(arguments, effects)
+        return tuple(effects)
+
     if command.dialect == "powershell":
         _detect_powershell_effects(command, effects)
         return tuple(effects)
@@ -295,8 +270,7 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
 
     invocations, has_pipeline = _command_invocations(command)
     if _has_privilege_wrapper(command) or any(
-        invocation.executable in _PRIVILEGED_EXECUTABLES
-        for invocation in invocations
+        invocation.executable in _PRIVILEGED_EXECUTABLES for invocation in invocations
     ):
         _append_effect(
             effects,
@@ -310,10 +284,12 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
     for invocation in invocations:
         _detect_invocation_effects(invocation, effects)
 
-    if has_pipeline and any(
-        invocation.executable in {"curl", "wget"} for invocation in invocations
-    ) and any(
-        invocation.executable in _SHELL_EXECUTABLES for invocation in invocations
+    if (
+        has_pipeline
+        and any(invocation.executable in {"curl", "wget"} for invocation in invocations)
+        and any(
+            invocation.executable in _SHELL_EXECUTABLES for invocation in invocations
+        )
     ):
         _append_effect(
             effects,
@@ -441,28 +417,7 @@ def _is_classified_powershell_invocation(invocation: _Invocation) -> bool:
         return _is_classified_python_check(invocation.arguments)
     if executable in _POWERSHELL_UV_COMMANDS:
         return _is_classified_uv_run(invocation.arguments)
-    if executable != "git":
-        return False
-    operation_and_arguments = _powershell_git_operation(invocation.arguments)
-    if operation_and_arguments is None:
-        return False
-    operation, arguments = operation_and_arguments
-    if operation not in _POWERSHELL_CLASSIFIED_GIT_OPERATIONS:
-        return _is_classified_git_inspection(operation, arguments)
-    if operation == "switch" and any(
-        argument in _POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS for argument in arguments
-    ):
-        return False
-    if operation == "clean" and not any(
-        argument == "--dry-run" or (argument.startswith("-") and "n" in argument[1:])
-        for argument in arguments
-    ):
-        return False
-    if operation in {"diff", "log", "show", "whatchanged"} and any(
-        argument in _POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS for argument in arguments
-    ):
-        return False
-    return True
+    return False
 
 
 def _powershell_literal_arguments_are_safe(invocation: _Invocation) -> bool:
@@ -592,61 +547,6 @@ def _powershell_provider_name(value: str) -> str | None:
     # A single-letter prefix is a Windows filesystem drive, not a PowerShell
     # provider such as Env:, Variable:, Cert:, HKCU:, or HKLM:.
     return None if len(name) == 1 else name
-
-
-def _powershell_git_operation(
-    arguments: tuple[str, ...],
-) -> tuple[str, tuple[str, ...]] | None:
-    values = list(arguments)
-    while values and values[0] in _POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS:
-        values.pop(0)
-    if len(values) == 1 and values[0] in {"--version", "-v"}:
-        return "version", ()
-    if not values or values[0].startswith("-"):
-        return None
-    # Git subcommands and aliases are case-sensitive even on Windows.  Folding
-    # here could misclassify a user-defined ``STATUS`` shell alias as builtin
-    # ``status`` and execute it without approval.
-    return values[0], tuple(values[1:])
-
-
-def _is_classified_git_inspection(
-    operation: str,
-    arguments: tuple[str, ...],
-) -> bool:
-    if operation == "branch":
-        return not any(
-            argument
-            in {
-                "--copy",
-                "--delete",
-                "--edit-description",
-                "--force",
-                "--move",
-                "--set-upstream-to",
-                "--unset-upstream",
-                "-C",
-                "-D",
-                "-M",
-                "-c",
-                "-d",
-                "-f",
-                "-m",
-                "-u",
-            }
-            for argument in arguments
-        )
-    if operation == "tag":
-        return not any(
-            argument in {"--delete", "--force", "-d", "-f"} for argument in arguments
-        )
-    if operation == "remote":
-        return not arguments or arguments[0] in {"-v", "get-url", "show"}
-    if operation == "worktree":
-        return bool(arguments) and arguments[0] == "list"
-    if operation == "stash":
-        return bool(arguments) and arguments[0] in {"list", "show"}
-    return False
 
 
 def _append_unclassified_powershell(
@@ -893,9 +793,24 @@ def _detect_git_effects(
     effects: list[DetectedPolicyEffect],
 ) -> None:
     operation, operation_arguments = _git_operation(arguments)
-    if operation == "push":
+    # Pathspec operands and option values are data, even when named like a
+    # flag. In particular a file named --cached must not hide a forced rm.
+    option_arguments: list[str] = []
+    skip_value = False
+    for value in operation_arguments:
+        if skip_value:
+            skip_value = False
+            continue
+        if value == "--":
+            break
+        option_arguments.append(value)
+        if value == "--pathspec-from-file" or (
+            operation == "restore" and value in {"--source", "-s", "--conflict"}
+        ):
+            skip_value = True
+    if operation == "push" and not _git_dry_run(operation_arguments, operation="push"):
         _append_publication(effects, "Commits or refs would be published")
-    if operation == "reset" and "--hard" in operation_arguments:
+    if operation == "reset" and "--hard" in option_arguments:
         _append_effect(
             effects,
             DetectedPolicyEffect(
@@ -904,12 +819,8 @@ def _detect_git_effects(
                 "Local repository or working-tree changes could be discarded",
             ),
         )
-    if operation == "clean" and any(
-        value == "--force" or (value.startswith("-") and "f" in value[1:])
-        for value in operation_arguments
-    ) and not any(
-        value == "--dry-run" or (value.startswith("-") and "n" in value[1:])
-        for value in operation_arguments
+    if operation == "clean" and not _git_dry_run(
+        operation_arguments, operation="clean"
     ):
         _append_effect(
             effects,
@@ -919,20 +830,12 @@ def _detect_git_effects(
                 "Untracked repository content would be deleted",
             ),
         )
+    # Moving or deleting local branch/tag refs does not discard workspace
+    # content or prune Git objects. Do not ask merely for a local ref change.
     if (
-        operation == "branch"
-        and (
-            "-D" in operation_arguments
-            or _has_short_or_long_flag(operation_arguments, "f", "--force")
-        )
-    ) or (
-        operation == "tag" and any(value in {"-d", "--delete"} for value in operation_arguments)
-    ) or (
-        operation == "stash" and _first_operand(operation_arguments) in {"clear", "drop"}
-    ) or (
         operation == "worktree"
         and _first_operand(operation_arguments) == "remove"
-        and _has_short_or_long_flag(operation_arguments, "f", "--force")
+        and _has_short_or_long_flag(tuple(option_arguments), "f", "--force")
     ):
         _append_effect(
             effects,
@@ -942,6 +845,124 @@ def _detect_git_effects(
                 "Repository state would be deleted",
             ),
         )
+
+    if (
+        (
+            operation in {"switch", "checkout"}
+            and _has_short_or_long_flag(tuple(option_arguments), "f", "--force")
+        )
+        or (operation == "switch" and "--discard-changes" in option_arguments)
+        or (operation == "checkout" and "--" in operation_arguments)
+        or (
+            operation == "restore"
+            and (
+                "--staged" not in option_arguments
+                and "-S" not in option_arguments
+                or "--worktree" in option_arguments
+                or "-W" in option_arguments
+            )
+        )
+        or (
+            operation == "checkout-index"
+            and (_has_short_or_long_flag(tuple(option_arguments), "f", "--force"))
+        )
+        or (operation == "read-tree" and "-u" in option_arguments)
+        or (
+            operation in {"rm", "mv"}
+            and _has_short_or_long_flag(tuple(option_arguments), "f", "--force")
+            and not (operation == "rm" and "--cached" in option_arguments)
+        )
+    ):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "destructive",
+                "repository_worktree_discard",
+                "Uncommitted working-tree content could be discarded",
+            ),
+        )
+    if (
+        operation in {"gc", "repack"}
+        or (
+            operation == "prune"
+            and not _git_dry_run(operation_arguments, operation="prune")
+        )
+        or (
+            operation == "reflog"
+            and _first_operand(operation_arguments) in {"expire", "delete", "drop"}
+            and not _git_dry_run(operation_arguments, operation="reflog")
+        )
+    ):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "destructive",
+                "repository_recovery_prune",
+                "Git recovery objects or reflogs could be removed",
+            ),
+        )
+    if (
+        operation in {"difftool", "mergetool"}
+        or (
+            operation == "submodule"
+            and _first_operand(operation_arguments) == "foreach"
+        )
+        or (operation == "bisect" and _first_operand(operation_arguments) == "run")
+        or (
+            operation in {"diff", "log", "show"}
+            and any(
+                value in {"--ext-diff", "--textconv"} for value in operation_arguments
+            )
+        )
+        or (
+            operation == "rebase"
+            and any(
+                value in {"-x", "--exec"} or value.startswith(("--exec=", "-x"))
+                for value in operation_arguments
+            )
+        )
+    ):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "git_external_execution",
+                "Git would execute an additional command",
+            ),
+        )
+
+
+def _git_dry_run(arguments: tuple[str, ...], *, operation: str) -> bool:
+    """Read real dry-run flags, excluding option values and honoring negation."""
+
+    value_options = {
+        "push": {"--push-option", "--receive-pack", "--exec", "--repo"},
+        "clean": {"--exclude"},
+        "prune": {"--expire"},
+        "reflog": {"--expire", "--expire-unreachable"},
+    }[operation]
+    short_value_options = {"push": "o", "clean": "e"}.get(operation, "")
+    dry_run = skip_value = False
+    for value in arguments:
+        if skip_value:
+            skip_value = False
+            continue
+        if value == "--":
+            break
+        if value in value_options:
+            skip_value = True
+        elif value == "--dry-run":
+            dry_run = True
+        elif value == "--no-dry-run":
+            dry_run = False
+        elif value.startswith("-") and not value.startswith("--"):
+            for index, flag in enumerate(value[1:], start=1):
+                if flag in short_value_options:
+                    skip_value = index == len(value) - 1
+                    break
+                if flag == "n":
+                    dry_run = True
+    return dry_run
 
 
 def _has_short_or_long_flag(
@@ -1240,22 +1261,6 @@ def _operation(arguments: tuple[str, ...]) -> tuple[str | None, tuple[str, ...]]
         if value.startswith("-"):
             continue
         return value, arguments[index + 1 :]
-    return None, ()
-
-
-def _git_operation(arguments: tuple[str, ...]) -> tuple[str | None, tuple[str, ...]]:
-    values = list(arguments)
-    value_options = {"-C", "-c", "--exec-path", "--git-dir", "--namespace", "--work-tree"}
-    while values:
-        value = values.pop(0)
-        option = value.partition("=")[0]
-        if option in value_options:
-            if "=" not in value and values:
-                values.pop(0)
-            continue
-        if value.startswith("-"):
-            continue
-        return value, tuple(values)
     return None, ()
 
 

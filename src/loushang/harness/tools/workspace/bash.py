@@ -1,7 +1,8 @@
 import inspect
 import os
+import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from loushang.agent.types import AgentToolResult, TextPart
@@ -38,6 +39,8 @@ from .runtime import (
     resolve_tool_argument_alias,
 )
 from .truncate import (
+    DEFAULT_MAX_BYTES,
+    DEFAULT_MAX_LINES,
     TruncationKind,
     TruncationResult,
     truncate_tail,
@@ -298,13 +301,26 @@ class _BashAuthorizedHandler:
             raise TypeError("bash_operations binding must expose execute()")
         selected_operations = cast(BashOperations, selected_bash_operations)
         partial_output = _BashPartialOutput()
+        last_preview_at: float | None = None
+        last_preview_bytes = 0
 
         async def _forward_exec_update(update: ExecOutputChunk) -> None:
+            nonlocal last_preview_at, last_preview_bytes
             partial_result = partial_output.append(update)
+            now = time.monotonic()
+            if (
+                partial_output.total_bytes > DEFAULT_MAX_BYTES
+                and last_preview_at is not None
+                and now - last_preview_at < 0.1
+                and partial_output.total_bytes - last_preview_bytes < 64 * 1024
+            ):
+                return
             await emit_tool_update(
                 context.on_update,
                 partial_result,
             )
+            last_preview_at = now
+            last_preview_bytes = partial_output.total_bytes
 
         await emit_tool_update(
             context.on_update,
@@ -558,11 +574,37 @@ def create_bash_tool_definition(
 
 @dataclass
 class _BashPartialOutput:
-    chunks: list[str] = field(default_factory=list)
+    preview: str = ""
+    total_bytes: int = 0
+    total_lines: int = 0
+    last_character: str = ""
 
     def append(self, update: ExecOutputChunk) -> AgentToolResult[dict[str, Any]]:
-        self.chunks.append(update.text)
-        truncation = truncate_tail("".join(self.chunks))
+        text = update.text
+        if text:
+            lines = len(text.splitlines())
+            if self.last_character and (
+                self.last_character not in "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+                or (self.last_character == "\r" and text.startswith("\n"))
+            ):
+                lines -= 1
+            self.total_lines += lines
+            self.total_bytes += len(text.encode("utf-8", errors="surrogateescape"))
+            self.last_character = text[-1]
+        combined = self.preview + text
+        truncation = truncate_tail(combined)
+        truncation = replace(
+            truncation,
+            total_lines=self.total_lines,
+            total_bytes=self.total_bytes,
+        )
+        # Keep one extra window so the next update can still choose the exact
+        # line/byte boundary without rescanning the complete command output.
+        self.preview = truncate_tail(
+            combined,
+            max_lines=2 * DEFAULT_MAX_LINES + 1,
+            max_bytes=2 * DEFAULT_MAX_BYTES,
+        ).content
         return AgentToolResult(
             content=[TextPart(type="text", text=truncation.content)],
             details={

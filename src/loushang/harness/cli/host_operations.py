@@ -356,6 +356,7 @@ async def run_standard_cli_operations(
     stdout: TextIO,
     stderr: TextIO,
     insertions: Sequence[CliOperationInsertion] = (),
+    additional_listing_requested: bool = False,
     plugin_management: PluginManagementCliBinding | None = None,
     evaluate_install_source: PolicyEvaluator | None = None,
     on_policy_denied: PolicyDeniedHandler | None = None,
@@ -450,9 +451,19 @@ async def run_standard_cli_operations(
             ),
         ),
     )
+    has_listing = any(
+        (
+            additional_listing_requested,
+            request.command_listing_format is not None,
+            request.diagnostics is not None,
+            request.skill_listing_format is not None,
+            request.plugin_listing_format is not None,
+            request.model_listing is not None,
+        )
+    )
     return await CliOperationSequence(
         compose_cli_operation_stages(stages, insertions)
-    ).run()
+    ).run(continue_after=frozenset({"export"}) if has_listing else frozenset())
 
 
 def run_session_listing_operation(

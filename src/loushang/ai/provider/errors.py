@@ -122,7 +122,7 @@ def provider_error_part_from_raw(
     error_code = _provider_error_code_from_raw(code, status_code)
     info = AIErrorInfo(
         code=error_code,
-        message=_public_provider_error_message(error_code),
+        message=_public_provider_error_message(error_code, status_code=status_code),
         source=source,
         retryable=_is_retryable_provider_error(error_code),
         status_code=status_code,
@@ -156,7 +156,11 @@ def normalize_provider_error(
     code = _provider_error_code(error, status_code)
     info = AIErrorInfo(
         code=code,
-        message=_public_provider_error_message(code),
+        message=_public_provider_error_message(
+            code,
+            status_code=status_code,
+            exception_type=error.__class__.__name__,
+        ),
         source=source,
         retryable=_is_retryable_provider_error(code),
         status_code=status_code,
@@ -197,7 +201,7 @@ def provider_error_info_from_raw(
     code = _provider_error_code_from_raw(part.get("code"), outer_status_code)
     info = AIErrorInfo(
         code=code,
-        message=_public_provider_error_message(code),
+        message=_public_provider_error_message(code, status_code=outer_status_code),
         source=source,
         retryable=_is_retryable_provider_error(code),
         provider=provider,
@@ -242,7 +246,11 @@ def _canonicalize_provider_error_info(
     return replace(
         info,
         code=code,
-        message=_public_provider_error_message(code),
+        message=_public_provider_error_message(
+            code,
+            status_code=resolved_status_code,
+            exception_type=info.details.get("exceptionType"),
+        ),
         retryable=retryable,
         status_code=resolved_status_code,
         details=_safe_provider_error_details(code, info.details),
@@ -303,7 +311,12 @@ def _raw_code_details(
     return {}
 
 
-def _public_provider_error_message(code: AIErrorCode) -> str:
+def _public_provider_error_message(
+    code: AIErrorCode,
+    *,
+    status_code: int | None = None,
+    exception_type: object = None,
+) -> str:
     if code is AIErrorCode.AUTHENTICATION:
         return "Provider authentication failed."
     if code is AIErrorCode.RATE_LIMIT:
@@ -318,6 +331,16 @@ def _public_provider_error_message(code: AIErrorCode) -> str:
         return "Provider request is too large."
     if code is AIErrorCode.CONTEXT_OVERFLOW:
         return "Provider context window exceeded."
+    if code is AIErrorCode.PROVIDER:
+        if status_code == 402:
+            return "Provider quota or payment required (HTTP 402)."
+        if is_http_status_code(status_code):
+            return f"Provider request failed (HTTP {status_code})."
+        if (
+            isinstance(exception_type, str)
+            and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", exception_type)
+        ):
+            return f"Provider request failed ({exception_type})."
     return "Provider request failed."
 
 

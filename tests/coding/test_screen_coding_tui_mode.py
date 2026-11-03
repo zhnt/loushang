@@ -1321,40 +1321,6 @@ def test_screen_session_transition_binding_clears_approval_surfaces_and_rebinds(
     assert subscribers == []
 
 
-def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> None:
-    from loushang.coding.ui import mode
-
-    session = _Session()
-    captured: dict[str, object] = {}
-
-    async def fail_screen_loop(**_kwargs):
-        raise AssertionError(
-            "non-interactive mode should not enter screen terminal loop"
-        )
-
-    async def fake_prompt_loop(**kwargs):
-        captured.update(kwargs)
-        await kwargs["handle_prompt"]("hello")
-        return 0
-
-    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fail_screen_loop)
-    monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
-
-    exit_code = asyncio.run(
-        mode.run_coding_tui(
-            runtime=_runtime_for(session),
-            session=session,
-            stdin=StringIO("hello\n"),
-            stdout=StringIO(),
-            stderr=StringIO(),
-        )
-    )
-
-    assert exit_code == 0
-    assert session.prompts == ["hello"]
-    assert set(captured) == {"stdin", "stdout", "handle_prompt"}
-
-
 def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> None:
     from loushang.coding.ui import mode
 

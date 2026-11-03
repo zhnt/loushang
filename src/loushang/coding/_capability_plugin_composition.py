@@ -35,11 +35,13 @@ from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
     PluginActivationDecisionRecordV1,
+    PluginActivationJournalError,
 )
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
+    PluginExecutionJournalError,
 )
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -91,6 +93,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime.registration import OwnerGenerationRetirementReceipt
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -106,6 +109,12 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     prepare_product_plugin_composition,
+)
+
+from .resume_activation_attempt import CodingResumeRecoveryRequired
+from .resume_activation_attempt_v2 import (
+    CodingActivationAttemptV2,
+    CodingResumeEffectOwnerV1,
 )
 
 _BASE_PLUGIN_ID = "coding.base"
@@ -160,6 +169,301 @@ class CodingCapabilityPluginCompositionError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class CodingResumePluginParents:
+    """Two inert native lookups from one frozen Resume intent, without grants."""
+
+    definition: ResumeEffectParentContextV1
+    activation: ResumeEffectParentContextV1
+
+    def __post_init__(self) -> None:
+        if any(
+            type(item) is not ResumeEffectParentContextV1
+            for item in (
+                self.definition,
+                self.activation,
+            )
+        ):
+            raise TypeError("Coding Resume requires exact native parent contexts")
+        if (
+            self.definition.owner_id != "harness.plugin-execution"
+            or self.activation.owner_id != "harness.plugin-activation"
+            or any(
+                getattr(self.definition, name) != getattr(self.activation, name)
+                for name in (
+                    "product_id",
+                    "session_id",
+                    "attempt_id",
+                    "request_id",
+                    "intent_digest",
+                )
+            )
+            or self.definition.product_id != CODING_PRODUCT_ID
+        ):
+            raise ValueError("Coding Resume Plugin parents differ from one intent")
+
+    def _journals(
+        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
+    ) -> tuple[PluginExecutionDecisionJournal, PluginActivationDecisionJournal]:
+        if self.definition.session_id != session_id:
+            raise ValueError("Coding Resume Plugin parents belong to another Session")
+        scope_id = f"session:{session_id}"
+        definition = PluginExecutionDecisionJournal(
+            state_root / "definition-decisions.jsonl",
+            scope_kind="workspace",
+            scope_id=scope_id,
+            clock=clock,
+            required_writer_capabilities=frozenset(
+                {"harness.plugin-execution.resume-context/v1"}
+            ),
+        )
+        activation = PluginActivationDecisionJournal(
+            state_root / "activation-decisions.jsonl",
+            scope_id=scope_id,
+            clock=clock,
+            required_writer_capabilities=frozenset(
+                {"harness.plugin-activation.resume-context/v1"}
+            ),
+        )
+        return definition, activation
+
+    def require_open(
+        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
+    ) -> None:
+        """Read original enrollment before Definition evaluation; never enroll."""
+
+        definition, activation = self._journals(
+            session_id=session_id, state_root=state_root, clock=clock
+        )
+        # Both obligations must already be enrolled in their original journals.
+        # A missing Component enrollment cannot be discovered after Definition
+        # code has started. Original owners validate scope and contract digests.
+        if definition.resume_parent_snapshot(self.definition).sealed:
+            raise CodingCapabilityPluginCompositionError(
+                "Resume Definition enumeration is sealed.",
+                code="coding_resume_definition_parent_sealed",
+            )
+        if activation.resume_parent_snapshot(self.activation).sealed:
+            raise CodingCapabilityPluginCompositionError(
+                "Resume Component enumeration is sealed.",
+                code="coding_resume_activation_parent_sealed",
+            )
+
+    def enroll(
+        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
+    ) -> None:
+        """Idempotently enroll both original owners after intent commit."""
+
+        definition, activation = self._journals(
+            session_id=session_id, state_root=state_root, clock=clock
+        )
+        try:
+            existing_definition = definition.resume_parent_snapshot(self.definition)
+        except PluginExecutionJournalError as error:
+            if error.code != "plugin_execution_resume_parent_unknown":
+                raise
+            definition.enroll_resume_parent(
+                self.definition,
+                expected_journal_revision=definition.snapshot().journal_revision,
+            )
+        else:
+            if existing_definition.sealed:
+                raise CodingCapabilityPluginCompositionError(
+                    "Resume Definition enumeration is sealed.",
+                    code="coding_resume_definition_parent_sealed",
+                )
+        try:
+            existing_activation = activation.resume_parent_snapshot(self.activation)
+        except PluginActivationJournalError as error:
+            if error.code != "plugin_activation_resume_parent_unknown":
+                raise
+            activation.enroll_resume_parent(
+                self.activation,
+                expected_journal_revision=activation.snapshot().journal_revision,
+            )
+        else:
+            if existing_activation.sealed:
+                raise CodingCapabilityPluginCompositionError(
+                    "Resume Component enumeration is sealed.",
+                    code="coding_resume_activation_parent_sealed",
+                )
+
+    def seal(
+        self, *, session_id: str, state_root: Path, clock: Callable[[], int]
+    ) -> tuple[object, object]:
+        """Fence exact Definition and Component membership after graph preparation."""
+
+        definition, activation = self._journals(
+            session_id=session_id, state_root=state_root, clock=clock
+        )
+        definition_snapshot = definition.resume_parent_snapshot(self.definition)
+        if not definition_snapshot.sealed:
+            definition_snapshot = definition.seal_resume_parent(
+                self.definition,
+                expected_journal_revision=definition_snapshot.journal_revision,
+            )
+        activation_snapshot = activation.resume_parent_snapshot(self.activation)
+        if not activation_snapshot.sealed:
+            activation_snapshot = activation.seal_resume_parent(
+                self.activation,
+                expected_journal_revision=activation_snapshot.journal_revision,
+            )
+        return definition_snapshot, activation_snapshot
+
+
+def prepare_coding_resume_plugin_effect_owners(
+    *, session_id: str, state_root: Path
+) -> tuple[CodingResumeEffectOwnerV1, ...]:
+    """Freeze the two original Plugin journal lookup obligations without I/O."""
+
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("Coding Resume Plugin owner Session id is invalid")
+    if not isinstance(state_root, Path) or not state_root.is_absolute():
+        raise ValueError("Coding Resume Plugin owner state root is invalid")
+    scope_id = f"session:{session_id}"
+    definition = PluginExecutionDecisionJournal(
+        state_root / "definition-decisions.jsonl",
+        scope_kind="workspace",
+        scope_id=scope_id,
+    )
+    activation = PluginActivationDecisionJournal(
+        state_root / "activation-decisions.jsonl",
+        scope_id=scope_id,
+    )
+    return tuple(
+        sorted(
+            (
+                CodingResumeEffectOwnerV1(
+                    "harness.plugin-execution",
+                    definition.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
+                    definition.resume_parent_contract_digest,
+                    ("declaration",),
+                ),
+                CodingResumeEffectOwnerV1(
+                    "harness.plugin-activation",
+                    activation.resume_parent_scope_digest(product_id=CODING_PRODUCT_ID),
+                    activation.resume_parent_contract_digest,
+                    ("activation",),
+                ),
+            ),
+            key=lambda owner: owner.identity,
+        )
+    )
+
+
+def require_coding_resume_plugin_effect_settlement(
+    attempt: CodingActivationAttemptV2,
+    receipt: Mapping[str, object],
+    *,
+    state_root: Path,
+    clock: Callable[[], int],
+    allowed_external_owner_ids: frozenset[str] = frozenset(),
+) -> None:
+    """Reconcile the audited first-party startup closure in original journals.
+
+    This adapter covers only the checked-in LSP and Architecture declaration and
+    factory closures. Their factories construct lazy in-memory owners: process
+    launch, workspace scans and private-cache I/O begin only on later Tool use.
+    The surrounding candidate gate must separately prove that the receipt still
+    names the current Product-selected first-party package revisions.
+    """
+
+    if type(attempt) is not CodingActivationAttemptV2:
+        raise TypeError("Coding Resume Plugin settlement requires an exact v2 intent")
+    if not isinstance(receipt, Mapping):
+        raise TypeError("Coding Resume Plugin settlement requires a current receipt")
+    owners = {owner.owner_id: owner for owner in attempt.effect_owners}
+    plugin_owner_ids = {"harness.plugin-activation", "harness.plugin-execution"}
+    if (
+        set(owners) != plugin_owner_ids | allowed_external_owner_ids
+        or attempt.effect_classes
+        or any(owner.effect_classes for owner in attempt.effect_owners)
+    ):
+        raise CodingResumeRecoveryRequired("input.effect_owner_set_unsupported")
+    parents = CodingResumePluginParents(
+        definition=attempt.parent_context(owners["harness.plugin-execution"]),
+        activation=attempt.parent_context(owners["harness.plugin-activation"]),
+    )
+    try:
+        definition, activation = parents._journals(
+            session_id=attempt.session_id,
+            state_root=state_root,
+            clock=clock,
+        )
+        definition_snapshot = definition.resume_parent_snapshot(parents.definition)
+        activation_snapshot = activation.resume_parent_snapshot(parents.activation)
+    except (PluginExecutionJournalError, PluginActivationJournalError) as error:
+        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown") from error
+    if (
+        not definition_snapshot.sealed
+        or definition_snapshot.membership_digest is None
+        or not activation_snapshot.sealed
+        or activation_snapshot.membership_digest is None
+        or activation_snapshot.unfenced_recovered_use_ids
+        or not definition_snapshot.execution_uses
+        or not activation_snapshot.activation_uses
+        or any(
+            use.state != "EVALUATED"
+            for use in definition_snapshot.execution_uses
+        )
+        or any(
+            use.state != "COMMITTED"
+            for use in activation_snapshot.activation_uses
+        )
+    ):
+        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
+
+    raw_revisions = receipt.get("selectedRevisions")
+    if not isinstance(raw_revisions, list):
+        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
+    selected: dict[str, PluginInstanceRevisionRef] = {}
+    try:
+        for raw in raw_revisions:
+            if not isinstance(raw, Mapping) or set(raw) != {
+                "pluginId",
+                "packageRevisionFingerprint",
+                "instanceRevisionRef",
+            }:
+                raise ValueError("invalid current revision receipt")
+            plugin_id = raw["pluginId"]
+            revision_fingerprint = raw["packageRevisionFingerprint"]
+            if not isinstance(plugin_id, str) or not isinstance(
+                revision_fingerprint, str
+            ):
+                raise ValueError("invalid current revision identity")
+            if plugin_id not in CODING_CAPABILITY_PLUGIN_IDS:
+                continue
+            revision = PluginInstanceRevisionRef.from_dict(
+                raw["instanceRevisionRef"]
+            )
+            if revision.plugin_id != plugin_id or plugin_id in selected:
+                raise ValueError("current revision receipt changed")
+            selected[plugin_id] = revision
+    except (TypeError, ValueError) as error:
+        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown") from error
+
+    definition_refs = tuple(
+        sorted(
+            (use.instance_revision_ref for use in definition_snapshot.execution_uses),
+            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
+        )
+    )
+    activation_refs = tuple(
+        sorted(
+            (use.instance_revision_ref for use in activation_snapshot.activation_uses),
+            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
+        )
+    )
+    selected_refs = tuple(
+        sorted(
+            selected.values(),
+            key=lambda ref: (ref.plugin_id, ref.instance_id, ref.revision),
+        )
+    )
+    if not selected_refs or definition_refs != selected_refs or activation_refs != selected_refs:
+        raise CodingResumeRecoveryRequired("input.effect_settlement_unknown")
 
 
 @dataclass(slots=True)
@@ -704,6 +1008,7 @@ class CodingCapabilityPluginCompositionPreparation:
         repr=False,
         compare=False,
     )
+    resume_parents: CodingResumePluginParents | None = field(default=None, repr=False)
     _runtime_closed: bool = field(default=False, init=False, repr=False)
     _management_released: bool = field(default=False, init=False, repr=False)
     _state_cleaned: bool = field(default=False, init=False, repr=False)
@@ -749,6 +1054,7 @@ class CodingCapabilityPluginCompositionPreparation:
                 state_root=self.state_root,
                 host_boot_id=host_boot_id,
                 clock=clock,
+                resume_parents=self.resume_parents,
             )
             tool_owners = _build_tool_owners(
                 self.selection,
@@ -1269,11 +1575,17 @@ def _approve_activation_and_bind_inputs(
     state_root: Path,
     host_boot_id: str,
     clock: Callable[[], int],
+    resume_parents: CodingResumePluginParents | None = None,
 ) -> tuple[CapabilityComponentHost, SessionCapabilityCompositionInputs]:
     journal = PluginActivationDecisionJournal(
         state_root / "activation-decisions.jsonl",
         scope_id=scope_id,
         clock=clock,
+        required_writer_capabilities=(
+            frozenset({"harness.plugin-activation.resume-context/v1"})
+            if resume_parents is not None
+            else frozenset()
+        ),
     )
     trust_snapshots = selection.plan.source_trust_snapshots
 
@@ -1311,6 +1623,9 @@ def _approve_activation_and_bind_inputs(
         trust_snapshot_reader=read_trust,
         product_policy_revision_reader=read_product_policy,
         distribution_evidence_resolver=(coding_plugin_distribution_evidence_resolver()),
+        resume_parent_context=resume_parents.activation
+        if resume_parents is not None
+        else None,
     )
     decision_ids: dict[str, str] = {}
     for candidate in plugin_assembly.component_candidates:
@@ -1364,12 +1679,26 @@ def _finalize_selection(
     scope_id: str,
     state_root: Path,
     clock: Callable[[], int],
+    resume_parents: CodingResumePluginParents | None = None,
 ) -> PluginSelection:
+    if resume_parents is not None:
+        if type(resume_parents) is not CodingResumePluginParents:
+            raise TypeError("Coding Resume requires original Plugin parent lookups")
+        resume_parents.require_open(
+            session_id=seed.plan.context.scope_id.removeprefix("session:"),
+            state_root=state_root,
+            clock=clock,
+        )
     journal = PluginExecutionDecisionJournal(
         state_root / "definition-decisions.jsonl",
         scope_kind="workspace",
         scope_id=scope_id,
         clock=clock,
+        required_writer_capabilities=(
+            frozenset({"harness.plugin-execution.resume-context/v1"})
+            if resume_parents is not None
+            else frozenset()
+        ),
     )
     host = PluginDeclarationHost(
         execution_evaluator=PluginDefinitionEvaluator(
@@ -1379,6 +1708,9 @@ def _finalize_selection(
             distribution_evidence_resolver=(
                 coding_plugin_distribution_evidence_resolver()
             ),
+            resume_parent_context=resume_parents.definition
+            if resume_parents is not None
+            else None,
         )
     )
     outcome = host.resolve(
@@ -1851,5 +2183,7 @@ __all__ = [
     "CodingCapabilityPluginCompositionPreparation",
     "CodingCapabilityPluginCompositionRequest",
     "create_coding_capability_plugin_composition_request",
+    "prepare_coding_resume_plugin_effect_owners",
     "prepare_coding_capability_plugin_composition",
+    "require_coding_resume_plugin_effect_settlement",
 ]

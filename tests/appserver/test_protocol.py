@@ -42,6 +42,7 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
+    SessionSubmissionModeV1,
     TranscriptRecordKindV1,
     TranscriptRecordV1,
     TurnInterruptV1,
@@ -117,6 +118,21 @@ def _attachment() -> MuxAttachmentV1:
         controller_generation=1,
         sessions=(AttachedSessionV1(mux.members[0], _snapshot()),),
     )
+
+
+def test_snapshot_execution_submission_mode_is_optional_and_round_trips():
+    legacy_raw = json.loads(encode_response(AppResponseV1("legacy", _snapshot())))
+    assert "submissionMode" not in legacy_raw["result"]
+    execution = replace(
+        _snapshot(), submission_mode=SessionSubmissionModeV1.EXECUTION
+    )
+    encoded = encode_response(AppResponseV1("execution", execution))
+    assert json.loads(encoded)["result"]["submissionMode"] == "execution"
+    assert decode_response(encoded).result == execution
+    noncanonical = json.loads(encoded)
+    noncanonical["result"]["submissionMode"] = "legacy"
+    with pytest.raises(InvalidAppMessageError):
+        decode_response(json.dumps(noncanonical).encode())
 
 
 @pytest.mark.parametrize(

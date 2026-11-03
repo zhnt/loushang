@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-trusted-native-extension-author-smoke",
+      "entrypointId": "coding.extension-author.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-coding-extension",
+      "source": "src/loushang/coding/extension_author.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-managed-linux-preview",
       "entrypointId": "coding.lmux.command",
       "importsComposition": false,
@@ -62,6 +72,16 @@
       "surface": "cli"
     },
     {
+      "disposition": "explicit-read-only-fenced-plugin-support-status",
+      "entrypointId": "coding.plugin-support-status.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-coding-plugin-status",
+      "source": "src/loushang/coding/plugin_support_status.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
       "disposition": "explicit-linux-worker-native-candidate",
       "entrypointId": "coding.worker-native.command",
       "importsComposition": false,
@@ -69,6 +89,16 @@
       "packagingBinding": "project.scripts.loushang-worker-native",
       "source": "src/loushang/coding/cli/package_worker_native.py",
       "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "explicit-offline-windows-worker-candidate-recovery",
+      "entrypointId": "coding.worker-windows-candidate.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-worker-windows-candidate",
+      "source": "src/loushang/coding/cli/package_worker_windows_candidate.py",
+      "supportStatus": "installed-preview",
       "surface": "cli"
     },
     {

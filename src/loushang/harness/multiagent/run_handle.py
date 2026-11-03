@@ -110,6 +110,7 @@ class SubagentRunHandle:
         control: MultiAgentControl,
         driver: SubagentRoundDriver,
         monotonic_clock: MonotonicClock = monotonic,
+        cleanup_only: bool = False,
     ) -> None:
         record = control.registry.get(ref)
         if record is None:
@@ -124,6 +125,7 @@ class SubagentRunHandle:
         self._state_lock = asyncio.Lock()
         self._active_task: asyncio.Task[AgentTransition] | None = None
         self._close_task: asyncio.Task[HandleCloseResult] | None = None
+        self._closing = cleanup_only
         self._abort_requested_rounds: set[int] = set()
 
     @property
@@ -133,7 +135,11 @@ class SubagentRunHandle:
 
     @property
     def is_closing(self) -> bool:
-        return self._close_task is not None
+        return self._closing
+
+    def begin_close(self) -> None:
+        """Fence new deliveries before the tree owner closes descendants."""
+        self._closing = True
 
     async def deliver(self, message: AgentInputMessage) -> HandleDeliveryOutcome:
         """Queue one message and start a tracked round only when currently idle."""
@@ -223,13 +229,29 @@ class SubagentRunHandle:
         """Start one shielded close operation and share it across callers."""
 
         async with self._state_lock:
-            if self._close_task is None:
+            self._closing = True
+            task = self._close_task
+            if task is None or (
+                task.done()
+                and (
+                    task.cancelled()
+                    or task.exception() is not None
+                    or task.result().record.status != "closed"
+                )
+            ):
                 self._close_task = asyncio.create_task(
                     self._close_owned(),
                     name=f"subagent:{self.ref}:close",
                 )
+                self._close_task.add_done_callback(self._observe_close)
             task = self._close_task
+        assert task is not None
         return await asyncio.shield(task)
+
+    @staticmethod
+    def _observe_close(task: asyncio.Task[HandleCloseResult]) -> None:
+        if not task.cancelled():
+            task.exception()
 
     async def _run_owned_round(
         self,
@@ -338,10 +360,12 @@ class SubagentRunHandle:
                     "SubagentRoundDriver.dispose() must return SubagentDisposeResult"
                 )
         except Exception as error:
-            if dispose_error is None:
-                dispose_error = error
-        if dispose_result.dispose_error is not None and dispose_error is None:
-            dispose_error = dispose_result.dispose_error
+            return HandleCloseResult(record=self._current_record(), dispose_error=error)
+        if dispose_result.dispose_error is not None:
+            return HandleCloseResult(
+                record=self._current_record(),
+                dispose_error=dispose_result.dispose_error,
+            )
         if dispose_result.released_workspace is not None:
             self._control.record_workspace_snapshot(
                 self.ref,
@@ -376,7 +400,7 @@ class SubagentRunHandle:
                 "agent_message_misdirected",
                 f"message targets {message.recipient_ref}, not {self.ref}",
             )
-        if self._close_task is not None:
+        if self._closing:
             raise MultiAgentError(
                 "agent_not_addressable",
                 f"agent is closing or closed: {self.ref.path}",

@@ -21,6 +21,53 @@ pending statements; the PR records integration status separately from capability
 
 ## Outcome, Facts And Delta
 
+### R2.1 Reviewability Supplement
+
+Issue [#696](https://github.com/zhnt/loushang/issues/696) implements the
+accepted [ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md) and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md)
+on the existing Coding catalog and Session binding owners. Their original
+Wave A allowance predates these Resume responsibilities. The R2.1 slice
+accounts for the following exact source delta from the control lane's `main`
+at `b53afcb0`:
+
+| Existing file | Main lines | R2.1 net increment | File limit | Added responsibility |
+| --- | ---: | ---: | ---: | --- |
+| `coding/hosted_catalog.py` | 886 | 316 | 1,202 | Detached history claim, source-fenced Header/snapshot/outcome reads, canonical envelope projection and admitted activation |
+| `coding/hosted_session.py` | 374 | 195 | 569 | Bounded historical display, original factory dispatch, durable-input observation, activation handoff and closed adapter validation |
+| `coding/cli/hosted.py` | 256 | 34 | 290 | Explicit execution negotiation and owned transcript preparation while preserving the discovery-only default profile |
+
+The previous aggregate limit was 1,516 lines. The net 545-line increment
+sets the R2.1 aggregate limit to 2,061, with the additional file limits above.
+`tests/architecture/test_coding_wave_a_budget.py` checks both constraints.
+The file partition remains unchanged: each Coding source is counted exactly
+once, and new files remain in the core partition. There is no directory or
+basename exemption. The original G11 dependency, bridge and budget gates
+still apply.
+
+The same R2.1 route extends the existing G16 owners by 45 net lines against
+current `main`: `cli/mux.py` +1 (258 lines), `hosted_bootstrap.py` +29
+(280 lines), and `hosted_local.py` +15 (402 lines). These additions pass the
+execution client through the installed detachable client, compose the local
+execution service, and prepare owned Session roots only after startup is
+admitted. The existing 900-line G16 ceiling therefore receives a reviewed
+45-line R2.1 allowance, while per-file ceilings prevent that allowance from
+becoming a general native-scope increase. Optional execution slice limits
+also remain bounded: their combined 400-line ceiling is unchanged, while the
+execution facade's per-file ceiling rises from 250 to its current 256 lines
+for deferred Product binding support. The managed LMUX group receives a
+separate exact 8-line allowance: one line passes the negotiated execution
+client to the installed shell and seven lines keep managed startup outside
+the ordinary owned-root/execution route. Exact ceilings on those two changed
+files prevent the allowance from being reused elsewhere.
+
+This accounting describes the implemented first-party Hosted writable route,
+including stable input identity and explicit stdio execution. It does not
+establish released-version rollback, Windows native host execution or final
+performance acceptance. Those remain #696 delivery requirements; the
+historical G14 delivery record below retains its original scope.
+
 G14 makes the existing hosted application usable across a real process
 boundary. An installed, explicitly selected Coding command constructs real
 Coding Sessions and a G13 recoverable application. A transport AppClient can

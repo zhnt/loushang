@@ -8,6 +8,8 @@ import json
 import os
 import re
 import stat
+import subprocess
+import sys
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import contextmanager
 from hashlib import sha256
@@ -16,6 +18,7 @@ from io import StringIO
 from pathlib import Path
 from secrets import token_hex
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from typing import Literal
 from zipfile import BadZipFile, ZipFile
 
@@ -34,11 +37,15 @@ from loushang.coding.package_pre_b_snapshot import (
     cutover_and_bootstrap_coding_package_product,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.ui.plugin_theme import (
+    apply_coding_plugin_theme_to_screen,
+    parse_coding_plugin_theme_document,
+)
 from loushang.harness.capabilities.prompt import expand_prompt_template
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.frontmatter import strip_frontmatter
 
-CodingDataSmokeKind = Literal["skill", "prompt"]
+CodingDataSmokeKind = Literal["skill", "prompt", "theme"]
 
 _ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -49,21 +56,254 @@ _SMOKE_ARGUMENTS = "Verify the author package."
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="loushang-coding-plugin-smoke",
-        description="Prove a data Wheel in a disposable offline Coding Product.",
+        description="Check a Wheel in a disposable offline Coding Product.",
     )
     parser.add_argument("wheel_file")
-    parser.add_argument("--kind", choices=("skill", "prompt"), required=True)
-    parser.add_argument("--plugin-id", required=True)
-    parser.add_argument("--resource-name", required=True)
-    args = parser.parse_args(argv)
-    report = smoke_coding_data_wheel(
-        args.wheel_file,
-        kind=args.kind,
-        plugin_id=args.plugin_id,
-        resource_name=args.resource_name,
+    parser.add_argument(
+        "--kind", choices=("skill", "prompt", "theme", "worker"), required=True
     )
+    parser.add_argument("--plugin-id", required=True)
+    parser.add_argument("--resource-name")
+    parser.add_argument("--contribution-id")
+    parser.add_argument("--owner-id")
+    args = parser.parse_args(argv)
+    if args.kind == "worker":
+        if args.resource_name is not None:
+            parser.error("--resource-name is for data Resources only")
+        if args.contribution_id is None or args.owner_id is None:
+            parser.error("Worker smoke requires --contribution-id and --owner-id")
+        report = smoke_coding_worker_candidate_wheel(
+            args.wheel_file,
+            plugin_id=args.plugin_id,
+            contribution_id=args.contribution_id,
+            owner_id=args.owner_id,
+        )
+    else:
+        if args.resource_name is None:
+            parser.error("Data Resource smoke requires --resource-name")
+        if args.contribution_id is not None or args.owner_id is not None:
+            parser.error("--contribution-id and --owner-id are for Worker only")
+        report = smoke_coding_data_wheel(
+            args.wheel_file,
+            kind=args.kind,
+            plugin_id=args.plugin_id,
+            resource_name=args.resource_name,
+        )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
+
+
+def smoke_coding_worker_candidate_wheel(
+    wheel_path: str | Path,
+    *,
+    plugin_id: str,
+    contribution_id: str,
+    owner_id: str,
+) -> dict[str, object]:
+    """Prove inert native Worker admission and selection in a disposable Product."""
+
+    report: dict[str, object] = {
+        "status": "failed",
+        "smokeProfile": "coding-worker-candidate-selection-v1",
+        "artifactSha256": None,
+        "productAdmission": "not_checked",
+        "productSelection": "not_checked",
+        "nativeRelease": "not_checked",
+        "productUse": "not_checked",
+        "workspace": "disposable",
+    }
+    if sys.platform == "linux" and os.name == "posix":
+        native_platform = "linux-x86_64"
+    elif sys.platform == "win32" and os.name == "nt":
+        native_platform = "windows-amd64"
+    else:
+        return _failure(report, "artifact", "native_worker_candidate_required")
+    if _ID.fullmatch(plugin_id) is None:
+        return _failure(report, "artifact", "invalid_profile_identity")
+    try:
+        wheel_bytes = _capture_wheel(Path(wheel_path))
+    except (OSError, ValueError) as exc:
+        return _failure(report, "artifact", "wheel_capture_refused", str(exc))
+    report["artifactSha256"] = sha256(wheel_bytes).hexdigest()
+
+    with TemporaryDirectory(prefix="loushang-worker-author-smoke-") as scratch:
+        # Windows may expose its temporary directory through a lexical alias.
+        # Product workspace identity requires the resolved on-disk path.
+        root = Path(scratch).resolve(strict=True)
+        workspace = root / "workspace"
+        workspace.mkdir(mode=0o700)
+        workspace = workspace.resolve(strict=True)
+        captured = root / Path(wheel_path).name
+        captured.write_bytes(wheel_bytes)
+        with _temporary_home(root / "home"):
+            layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+            settings = SettingsManager(
+                global_settings_path=root / "global-settings.json",
+                project_settings_path=workspace / ".loushang" / "settings.json",
+            )
+            try:
+                cutover_and_bootstrap_coding_package_product(
+                    layout,
+                    settings,
+                    workspace=workspace,
+                    namespace_id=token_hex(32),
+                    runtime_version=version("loushang"),
+                    runtime_protocol_epoch=2,
+                    windows_candidate=native_platform == "windows-amd64",
+                )
+            except Exception as exc:
+                return _failure(
+                    report, "workspace_setup", "product_cutover_refused", str(exc), root
+                )
+            try:
+                capture = _run_worker_candidate_command(
+                    workspace,
+                    "candidate-capture",
+                    "--wheel",
+                    str(captured),
+                    "--contribution-id",
+                    contribution_id,
+                    "--owner-id",
+                    owner_id,
+                    *(
+                        ("--native-platform", native_platform)
+                        if native_platform == "linux-x86_64"
+                        else ()
+                    ),
+                )
+                binding = capture["workerCandidateBinding"]
+                if (
+                    not isinstance(binding, dict)
+                    or binding.get("pluginId") != plugin_id
+                ):
+                    raise ValueError("Captured Worker identity differs from request")
+                digest = binding["artifactDigest"]
+                if digest != report["artifactSha256"]:
+                    raise ValueError("Captured Worker differs from the author Wheel")
+                installed = _run_worker_candidate_command(
+                    workspace,
+                    "candidate-install",
+                    "--plugin-id",
+                    plugin_id,
+                    "--artifact-digest",
+                    digest,
+                    "--operation-id",
+                    "author-smoke-install",
+                )
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                subprocess.SubprocessError,
+            ) as exc:
+                return _failure(
+                    report,
+                    "product_admission",
+                    "worker_candidate_admission_refused",
+                    str(exc),
+                    root,
+                )
+            report["productAdmission"] = "passed"
+            try:
+                install_result = installed["candidateInstall"]
+                if not isinstance(install_result, dict):
+                    raise ValueError("Product install result is unavailable")
+                revision = install_result["inventoryRevision"]
+                if type(revision) is not int:
+                    raise ValueError("Product inventory revision is unavailable")
+                _run_worker_candidate_command(
+                    workspace,
+                    "candidate-enable",
+                    "--plugin-id",
+                    plugin_id,
+                    "--artifact-digest",
+                    digest,
+                    "--operation-id",
+                    "author-smoke-enable",
+                    "--expected-inventory-revision",
+                    str(revision),
+                )
+                status = _run_worker_candidate_command(
+                    workspace,
+                    "candidate-status"
+                    if native_platform == "linux-x86_64"
+                    else "candidate-selection",
+                    "--plugin-id",
+                    plugin_id,
+                )
+                selection = status["candidateSelection"]
+                if (
+                    not isinstance(selection, dict)
+                    or selection.get("stage") != "observed_in_read"
+                    or (
+                        native_platform == "linux-x86_64"
+                        and (
+                            status.get("snapshotStatus") != "partial_evidence"
+                            or status.get("candidateOptInAlignment") != "not_allowed"
+                        )
+                    )
+                    or (
+                        native_platform == "windows-amd64"
+                        and (
+                            selection.get("pluginId") != plugin_id
+                            or selection.get("artifactDigest") != digest
+                            or status.get("productUse") != "not_checked"
+                        )
+                    )
+                ):
+                    raise ValueError("Selected Worker was not observed in Product")
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                subprocess.SubprocessError,
+            ) as exc:
+                return _failure(
+                    report,
+                    "product_selection",
+                    "worker_candidate_selection_refused",
+                    str(exc),
+                    root,
+                )
+            report["productSelection"] = "passed"
+            report["selectedPluginVersion"] = selection["pluginVersion"]
+            report["status"] = "passed"
+            return report
+
+
+def _run_worker_candidate_command(
+    workspace: Path, action: str, *arguments: str
+) -> dict[str, object]:
+    windows = os.name == "nt"
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-m",
+            (
+                "loushang.coding.cli.package_worker_windows_candidate"
+                if windows
+                else "loushang.coding.cli.package_worker_native"
+            ),
+            "--workspace",
+            str(workspace),
+            *(("--windows-candidate",) if windows else ()),
+            action,
+            *arguments,
+        ),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip()[-1000:] or "Worker command refused")
+    result = json.loads(completed.stdout)
+    if not isinstance(result, dict):
+        raise ValueError("Worker command returned an invalid Product result")
+    return result
 
 
 class _OfflineAdapter:
@@ -75,7 +315,9 @@ class _OfflineAdapter:
             request,
             payload={
                 "system": request.context.system_prompt,
-                "messages": [serialize_message(item) for item in request.context.messages],
+                "messages": [
+                    serialize_message(item) for item in request.context.messages
+                ],
                 "model": request.model.id,
             },
         )
@@ -90,9 +332,7 @@ class _OfflineAdapter:
         yield {"type": "stop_reason", "stop_reason": "stop"}
         yield {"type": "response_done"}
 
-    async def invoke_raw(
-        self, request: ProviderRequest
-    ) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         prepared = self.prepare_request(request)
         async for part in self.invoke_prepared_raw(request, prepared):
             yield part
@@ -122,7 +362,7 @@ def smoke_coding_data_wheel(
     }
     if os.name != "posix":
         return _failure(report, "artifact", "ordinary_posix_product_required")
-    if kind not in {"skill", "prompt"} or _ID.fullmatch(plugin_id) is None:
+    if kind not in {"skill", "prompt", "theme"} or _ID.fullmatch(plugin_id) is None:
         return _failure(report, "artifact", "invalid_profile_identity")
     if _NAME.fullmatch(resource_name) is None:
         return _failure(report, "artifact", "invalid_resource_name")
@@ -166,7 +406,11 @@ def smoke_coding_data_wheel(
             )
             if install_error is not None:
                 return _failure(
-                    report, "product_admission", "product_install_refused", install_error, root
+                    report,
+                    "product_admission",
+                    "product_install_refused",
+                    install_error,
+                    root,
                 )
             report["productAdmission"] = "passed"
             enable_error = _run_coding_cli(
@@ -174,11 +418,20 @@ def smoke_coding_data_wheel(
             )
             if enable_error is not None:
                 return _failure(
-                    report, "product_selection", "product_enable_refused", enable_error, root
+                    report,
+                    "product_selection",
+                    "product_enable_refused",
+                    enable_error,
+                    root,
                 )
+            if kind == "theme":
+                settings.set_theme(f"plugin:{resource_name}", scope="project")
             try:
                 expected_body = _document_body(
-                    captured, kind=kind, plugin_id=plugin_id, resource_name=resource_name
+                    captured,
+                    kind=kind,
+                    plugin_id=plugin_id,
+                    resource_name=resource_name,
                 )
                 _prove_new_session_use(
                     workspace=workspace,
@@ -199,7 +452,11 @@ def smoke_coding_data_wheel(
                 )
             except Exception as exc:
                 return _failure(
-                    report, "product_selection", "resource_selection_unproven", str(exc), root
+                    report,
+                    "product_selection",
+                    "resource_selection_unproven",
+                    str(exc),
+                    root,
                 )
             report["productSelection"] = "passed"
             report["productUse"] = "passed"
@@ -223,17 +480,25 @@ def _capture_wheel(path: Path) -> bytes:
     with os.fdopen(os.open(path, flags), "rb") as stream:
         opened = os.fstat(stream.fileno())
         if not stat.S_ISREG(opened.st_mode) or (
-            opened.st_dev, opened.st_ino, opened.st_size
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
         ) != (before.st_dev, before.st_ino, before.st_size):
             raise ValueError("Wheel changed before capture")
         body = stream.read(_MAX_WHEEL_BYTES + 1)
         after = os.fstat(stream.fileno())
     if not 0 < len(body) <= _MAX_WHEEL_BYTES or (
-        opened.st_dev, opened.st_ino, opened.st_size,
-        opened.st_mtime_ns, opened.st_ctime_ns,
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_size,
+        opened.st_mtime_ns,
+        opened.st_ctime_ns,
     ) != (
-        after.st_dev, after.st_ino, after.st_size,
-        after.st_mtime_ns, after.st_ctime_ns,
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
     ):
         raise ValueError("Wheel changed during capture")
     return body
@@ -279,21 +544,28 @@ def _document_body(
         f"{plugin_id}/skills/{resource_name}/SKILL.md"
         if kind == "skill"
         else f"{plugin_id}/prompts/{resource_name}.md"
+        if kind == "prompt"
+        else f"{plugin_id}/themes/{resource_name}.json"
     )
     try:
         with ZipFile(wheel) as archive:
             info = archive.getinfo(member)
             if not 0 < info.file_size <= 1024 * 1024:
-                raise _SelectionRefusal("selected Resource document is empty or oversized")
+                raise _SelectionRefusal(
+                    "selected Resource document is empty or oversized"
+                )
             body = archive.read(info).decode("utf-8")
     except (BadZipFile, KeyError, UnicodeDecodeError) as exc:
         raise _SelectionRefusal("Wheel lacks the requested Resource document") from exc
     try:
-        body = strip_frontmatter(body).strip()
-        if kind == "prompt":
-            body = expand_prompt_template(body, _SMOKE_ARGUMENTS)
+        if kind != "theme":
+            body = strip_frontmatter(body).strip()
+            if kind == "prompt":
+                body = expand_prompt_template(body, _SMOKE_ARGUMENTS)
     except ValueError as exc:
-        raise _SelectionRefusal("requested Resource frontmatter or template is invalid") from exc
+        raise _SelectionRefusal(
+            "requested Resource frontmatter or template is invalid"
+        ) from exc
     if not body:
         raise _SelectionRefusal("selected Resource document has no body")
     return body
@@ -314,7 +586,9 @@ def _prove_new_session_use(
     session = None
     try:
         manager = asyncio.run(
-            SessionManager.new(session_dir=session_root, cwd=str(workspace), persist=True)
+            SessionManager.new(
+                session_dir=session_root, cwd=str(workspace), persist=True
+            )
         )
         session = create_agent_session(
             session_manager=manager,
@@ -340,12 +614,40 @@ def _prove_new_session_use(
         bundle = session.resource_bundle
         if bundle is None:
             raise _SelectionRefusal("new Session has no Resource bundle")
-        selected = bundle.skills if kind == "skill" else bundle.prompts
+        selected = (
+            bundle.skills
+            if kind == "skill"
+            else bundle.prompts
+            if kind == "prompt"
+            else bundle.themes
+        )
         if not any(
             item.name == resource_name and item.source_kind == "external_package"
             for item in selected
         ):
-            raise _SelectionRefusal("requested external Resource is absent from new Session")
+            raise _SelectionRefusal(
+                "requested external Resource is absent from new Session"
+            )
+        if kind == "theme":
+            try:
+                expected_tokens = parse_coding_plugin_theme_document(expected_body)
+                app = SimpleNamespace(transcript_theme=None, welcome_theme=None)
+                current = SimpleNamespace(
+                    settings_manager=settings, resource_bundle=bundle
+                )
+                apply_coding_plugin_theme_to_screen(app, current)
+                for token, style in expected_tokens.items():
+                    resolver = (
+                        app.welcome_theme
+                        if token.startswith("welcome.")
+                        else app.transcript_theme
+                    )
+                    applied = resolver.resolve(token)
+                    if any(applied.get(key) != value for key, value in style.items()):
+                        raise RuntimeError(f"Screen did not apply Theme token {token}")
+            except Exception as exc:
+                raise _UseRefusal(str(exc)) from exc
+            return
         invocation = (
             f"/skill:{resource_name} {_SMOKE_ARGUMENTS}"
             if kind == "skill"
@@ -431,7 +733,7 @@ def _failure(
     return report
 
 
-__all__ = ["main", "smoke_coding_data_wheel"]
+__all__ = ["main", "smoke_coding_data_wheel", "smoke_coding_worker_candidate_wheel"]
 
 
 if __name__ == "__main__":

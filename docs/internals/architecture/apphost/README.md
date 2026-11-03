@@ -38,6 +38,17 @@
   defaults are unchanged
 - Owner: Loushang AppHost architecture
 
+## Accepted Resume Contract
+
+AppHost retains one canonical Product binding and its final close owner. Resume readiness is an internal Product state within that binding.
+
+The project owner accepted the cross-scope #696 boundaries on 2026-10-12:
+[ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md), and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md).
+The [Delta ledger](../current-target-gap-ledger.md) records remaining work;
+acceptance does not establish writable release or performance readiness.
+
 ## Scope
 
 AppHost is the Product-neutral process-local composition root for admitted

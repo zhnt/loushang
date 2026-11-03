@@ -99,6 +99,7 @@ class MultiAgentToolPack:
         *,
         runtime: LiveMultiAgentRuntime,
         caller: AgentCaller,
+        agent_type_options: Mapping[str, str] | None = None,
         default_wait_seconds: float = 30.0,
         maximum_wait_seconds: float = 3600.0,
     ) -> None:
@@ -110,6 +111,11 @@ class MultiAgentToolPack:
             )
         self._runtime = runtime
         self._caller = caller
+        self._agent_type_options = (
+            tuple(agent_type_options.items())
+            if agent_type_options is not None
+            else None
+        )
         self._default_wait_seconds = default_wait_seconds
         self._maximum_wait_seconds = maximum_wait_seconds
         self._wait_sequence = 0
@@ -143,6 +149,21 @@ class MultiAgentToolPack:
         return registry
 
     def _spawn(self) -> ToolDefinition:
+        agent_type_schema = _string()
+        if self._agent_type_options:
+            agent_type_schema["enum"] = [
+                name for name, _description in self._agent_type_options
+            ]
+            choices = ", ".join(
+                f"{name} ({description})" if description else name
+                for name, description in self._agent_type_options
+            )
+            agent_type_schema["description"] = f"Choose an admitted type: {choices}."
+        else:
+            agent_type_schema["description"] = (
+                "Choose an admitted type from the collaboration instructions."
+            )
+
         async def execute(
             _call_id: str,
             params: dict[str, Any],
@@ -163,12 +184,23 @@ class MultiAgentToolPack:
             label="Spawn agent",
             description=(
                 "Create a bounded child agent for one focused task. A successful "
-                "call returns its canonical path; a failed call creates no child."
+                "call returns its canonical path. A failed call may retain a "
+                "cleanup-only child; inspect its error and list_agents, then retry "
+                "close_agent on that original child before reusing its capacity."
             ),
             properties={
-                "name": _string(),
-                "agent_type": _string(),
-                "prompt": _string(),
+                "name": {
+                    **_string(),
+                    "description": (
+                        "Unique new child task name; use lowercase letters, digits, "
+                        "underscores, or hyphens."
+                    ),
+                },
+                "agent_type": agent_type_schema,
+                "prompt": {
+                    **_string(),
+                    "description": "Complete standalone task instructions for the child agent.",
+                },
             },
             required=("name", "agent_type", "prompt"),
             execute=execute,
@@ -343,9 +375,24 @@ class MultiAgentToolPack:
             _update: object | None,
         ) -> AgentToolResult[dict[str, object]]:
             records = self._runtime.list_agents(caller=self._caller)
+            agents = [_record(record) for record in records]
+            model_agents = [
+                {
+                    key: agent[key]
+                    for key in (
+                        "path",
+                        "incarnation",
+                        "parent",
+                        "agent_type",
+                        "status",
+                        "round_id",
+                    )
+                }
+                for agent in agents
+            ]
             return _result(
-                f"Listed {len(records)} agents.",
-                {"agents": [_record(record) for record in records]},
+                json.dumps({"agents": model_agents}, ensure_ascii=False),
+                {"agents": agents},
             )
 
         return _definition(
@@ -393,6 +440,19 @@ class MultiAgentToolPack:
                 target=path,
             )
             closed = tuple(getattr(outcome, "closed", ()))
+            errors = tuple(getattr(outcome, "dispose_errors", ()))
+            if errors:
+                return _result(
+                    f"Closed {len(closed)} agents; cleanup failed for {len(errors)}. "
+                    "Inspect the errors; retry close_agent for retained children.",
+                    {
+                        "agents": [_record(record) for record in closed],
+                        "cleanup_errors": [
+                            {"agent_ref": str(ref), "error": str(error)}
+                            for ref, error in errors
+                        ],
+                    },
+                )
             return _result(
                 f"Closed {len(closed)} agents.",
                 {"agents": [_record(record) for record in closed]},

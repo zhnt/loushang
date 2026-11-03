@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
@@ -54,6 +54,14 @@ from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
 _PREFLIGHT_GENERATION = 1
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceCatalogBootstrapResult:
+    """Disposable projection paired with its exact Catalog selection receipt."""
+
+    bundle: ResourceBundle
+    catalog: ResourceCatalogSnapshot
+
+
 def prepare_resource_catalog_bootstrap_projection(
     *,
     product_id: str,
@@ -67,6 +75,33 @@ def prepare_resource_catalog_bootstrap_projection(
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     disabled_skill_selectors: Sequence[str] = (),
 ) -> ResourceBundle:
+    return prepare_resource_catalog_bootstrap_result(
+        product_id=product_id,
+        runtime_id=runtime_id,
+        product_policy_revision=product_policy_revision,
+        cwd=cwd,
+        root_handles=root_handles,
+        package_resources=package_resources,
+        product_snapshot_resources=product_snapshot_resources,
+        embedded_collections=embedded_collections,
+        context_file_names=context_file_names,
+        disabled_skill_selectors=disabled_skill_selectors,
+    ).bundle
+
+
+def prepare_resource_catalog_bootstrap_result(
+    *,
+    product_id: str,
+    runtime_id: str,
+    product_policy_revision: str,
+    cwd: Path,
+    root_handles: tuple[NativeResourceRootHandle, ...],
+    package_resources: tuple[AdmittedPackageResource, ...] = (),
+    product_snapshot_resources: tuple[ProductSelectedResourceInput, ...] = (),
+    embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
+    context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
+    disabled_skill_selectors: Sequence[str] = (),
+) -> ResourceCatalogBootstrapResult:
     """Build a disposable Catalog projection for synchronous Session bootstrap.
 
     This projection exists only to seed Extension activation and initial prompt
@@ -277,7 +312,7 @@ def prepare_resource_catalog_bootstrap_projection(
             )
             if (descriptor.id or descriptor.name) not in selected_skill_ids
         )
-        return bundle
+        return ResourceCatalogBootstrapResult(bundle=bundle, catalog=snapshot)
     finally:
         for source in reversed(sources):
             source.dispose()

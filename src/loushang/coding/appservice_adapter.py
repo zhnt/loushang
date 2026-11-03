@@ -7,10 +7,12 @@ import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Protocol
 
 from loushang.apphost import SessionDiscoveryScope, SessionIdentityEnvelopeV1
 from loushang.appserver.protocol import (
+    AppErrorCodeV1,
+    AppServiceError,
     InteractionOutcomeV1,
     SessionEventKindV1,
     SessionEventV1,
@@ -18,11 +20,15 @@ from loushang.appserver.protocol import (
     SessionModelChoiceV1,
     SessionModelsV1,
     SessionOpenSpecV1,
-    SessionScopeV1,
     SessionSnapshotV1,
+    SessionSubmissionModeV1,
     TranscriptRecordV1,
 )
 from loushang.appservice import HostedSessionEventListenerV1, HostedSessionPortV1
+from loushang.appservice.resume_ports import (
+    ResumeInputLookupQueryV1,
+    ResumeInputLookupResultV1,
+)
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
     SessionControlPort,
@@ -92,7 +98,7 @@ class CodingHostedSessionBindingV1(Protocol):
     def identity(self) -> SessionIdentityV1: ...
 
     @property
-    def control(self) -> SessionControlPort: ...
+    def control(self) -> SessionControlPort | None: ...
 
     def project_snapshot(self) -> CodingHostedSnapshotProjectionV1: ...
 
@@ -126,13 +132,29 @@ class CodingHostedSessionV1:
         "_listeners",
         "_operations",
         "_settled",
+        "_submission_mode",
         "_unsubscribe",
         "_unsubscribed",
         "identity",
     )
 
-    def __init__(self, binding: CodingHostedSessionBindingV1) -> None:
+    async def lookup_resume_input(
+        self, query: ResumeInputLookupQueryV1,
+    ) -> ResumeInputLookupResultV1:
+        """Adapt the optional Product observation; scoped service owns reads."""
+
+        from .hosted_session import _lookup_coding_resume_input
+
+        if self._close_task is not None:
+            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        return await _lookup_coding_resume_input(self._binding, query)
+
+    def __init__(self, binding: CodingHostedSessionBindingV1, *,
+        execution_submission: bool = False,
+    ) -> None:
         self._require_binding(binding)
+        if type(execution_submission) is not bool:
+            raise TypeError("Coding hosted submission mode is invalid")
         identity = binding.identity
         if type(identity) is not SessionIdentityV1 or identity.product_id != (
             CODING_PRODUCT_ID
@@ -140,15 +162,23 @@ class CodingHostedSessionV1:
             raise TypeError("Coding hosted Session identity is invalid")
         self.identity = identity
         self._binding = binding
-        self._operations = SessionOperationRuntime(binding.control)
+        self._submission_mode = (SessionSubmissionModeV1.EXECUTION if execution_submission
+                                 else SessionSubmissionModeV1.LEGACY)
+        control = binding.control
+        self._operations = (
+            None if control is None else SessionOperationRuntime(control)
+        )
         self._listeners: set[HostedSessionEventListenerV1] = set()
         self._cursor = 0
         self._settled = False
         self._unsubscribed = False
         self._close_task: asyncio.Task[None] | None = None
         self._close_lock = asyncio.Lock()
+        if control is None:
+            self._unsubscribe = lambda: None
+            return
         try:
-            unsubscribe = binding.control.subscribe_runtime_events(
+            unsubscribe = control.subscribe_runtime_events(
                 self._on_runtime_event
             )
         except BaseException:
@@ -172,6 +202,7 @@ class CodingHostedSessionV1:
             revision=projection.revision,
             running=projection.running,
             records=projection.records,
+            submission_mode=self._submission_mode,
         )
 
     def subscribe(
@@ -190,21 +221,21 @@ class CodingHostedSessionV1:
 
     async def start_turn(self, text: str) -> None:
         self._require_open()
-        await self._operations.prompt(
+        await self._require_operations().prompt(
             request=self._prompt_request(text),
         )
 
     def steer_turn(self, text: str) -> None:
         self._require_open()
-        self._operations.steer(text)
+        self._require_operations().steer(text)
 
     def follow_up_turn(self, text: str) -> None:
         self._require_open()
-        self._operations.follow_up(text)
+        self._require_operations().follow_up(text)
 
     def interrupt_turn(self) -> bool:
         self._require_open()
-        return self._operations.abort_turn()
+        return False if self._operations is None else self._operations.abort_turn()
 
     async def respond_interaction(
         self,
@@ -212,6 +243,8 @@ class CodingHostedSessionV1:
         outcome: InteractionOutcomeV1,
     ) -> bool:
         self._require_open()
+        if self._operations is None:
+            return False
         mapped = {
             InteractionOutcomeV1.APPROVE: "allow_once",
             InteractionOutcomeV1.DENY: "deny",
@@ -346,28 +379,18 @@ class CodingHostedSessionV1:
         if self._unsubscribed:
             raise RuntimeError("coding_hosted_session_closed")
 
+    def _require_operations(self) -> SessionOperationRuntime:
+        if self._operations is None:
+            from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+
+            raise AppServiceError(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        return self._operations
+
     @staticmethod
     def _require_binding(binding: object) -> None:
-        for name in ("project_snapshot", "project_event"):
-            if not callable(getattr(binding, name, None)):
-                raise TypeError("Coding hosted Session binding is invalid")
-        for name in ("respond_interaction", "close"):
-            if not inspect.iscoroutinefunction(getattr(binding, name, None)):
-                raise TypeError("Coding hosted Session binding is invalid")
-        try:
-            control = cast(CodingHostedSessionBindingV1, binding).control
-        except BaseException:
-            raise TypeError("Coding hosted Session binding is invalid") from None
-        for name in (
-            "subscribe_runtime_events",
-            "prompt",
-            "wait_for_idle",
-            "steer",
-            "follow_up",
-            "abort",
-        ):
-            if not callable(getattr(control, name, None)):
-                raise TypeError("Coding hosted Session control is invalid")
+        from .hosted_session import _require_coding_hosted_binding
+
+        _require_coding_hosted_binding(binding)
 
 
 def coding_hosted_identity_from_envelope(
@@ -378,23 +401,10 @@ def coding_hosted_identity_from_envelope(
 ) -> SessionIdentityV1:
     """Project a canonical path-free AppHost envelope into the App Contract."""
 
-    if type(envelope) is not SessionIdentityEnvelopeV1 or envelope.product_id != (
-        CODING_PRODUCT_ID
-    ):
-        raise ValueError("Coding hosted Session envelope is invalid")
-    if type(discovery_scope) is not SessionDiscoveryScope:
-        raise TypeError("Coding hosted discovery scope is invalid")
-    scope = (
-        SessionScopeV1.CWD
-        if discovery_scope is SessionDiscoveryScope.CURRENT_DIRECTORY
-        else SessionScopeV1.USER_HOME
-    )
-    return SessionIdentityV1(
-        product_id=envelope.product_id,
-        continuity_id=envelope.continuity_id,
-        session_id=envelope.session_id,
-        scope=scope,
-        scope_fingerprint=scope_fingerprint,
+    from .hosted_catalog import _coding_hosted_identity_from_envelope
+
+    return _coding_hosted_identity_from_envelope(
+        envelope, discovery_scope=discovery_scope, scope_fingerprint=scope_fingerprint,
     )
 
 

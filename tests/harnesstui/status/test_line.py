@@ -55,7 +55,7 @@ def test_status_line_fields_use_product_order_priority_and_tokens() -> None:
         ("loushang", 90, "workspace"),
         ("main", 80, "branch"),
         ("abcd", 70, "session"),
-        ("perm=standard", 35, "permissions"),
+        ("standard", 35, "permissions"),
         ("running", 60, "runtime.running"),
         ("queued=2 steer=1", 50, "queue"),
         ("Saved", 40, "message"),
@@ -73,10 +73,56 @@ def test_status_line_fields_keep_current_missing_value_fallbacks() -> None:
         "cwd",
         "no-branch",
         "no-session",
-        "perm=standard",
+        "standard",
         "idle",
     ]
     assert fields[5].token == "runtime.idle"
+
+
+def test_status_line_fields_show_only_model_from_full_model_identity() -> None:
+    fields = status_line_fields(
+        _snapshot(model_label="kimi-code:kimi-code-anthropic:kimi-for-coding"),
+        StatusLineSettings(),
+    )
+
+    assert fields[0].text == "kimi-for-coding"
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        (None, "d8525f5e"),
+        ("d8525f5ecd8c42e2974dd451b640c5f8", "d8525f5e"),
+        ("My session", "My session"),
+        ("deadbeef0123456789abcdef", "deadbeef0123456789abcdef"),
+    ],
+)
+def test_status_line_shortens_only_the_identity_fallback(name, expected) -> None:
+    session_id = "d8525f5ecd8c42e2974dd451b640c5f8"
+    snapshot = _snapshot(session_label=name, session_id=session_id)
+    field = next(
+        item
+        for item in status_line_fields(snapshot, StatusLineSettings())
+        if item.token == "session"
+    )
+    assert field.text == expected
+    assert snapshot.session_id == session_id
+    assert snapshot.session_label == name
+
+
+def test_context_display_preserves_the_original_usage_metadata() -> None:
+    usage = {
+        "percent": 35.6,
+        "source": "estimated_from_last_usage",
+        "accuracy": "projected",
+    }
+    original = dict(usage)
+    snapshot = _snapshot(context_usage=usage)
+    field = status_line_fields(snapshot, StatusLineSettings())[-1]
+    assert field.text == "64% left"
+    assert field.token == "context.estimated"
+    assert snapshot.context_usage == original
+    assert usage == original
 
 
 def test_status_line_fields_can_disable_regular_fields() -> None:
@@ -106,7 +152,7 @@ def test_status_line_queue_auto_true_false_behavior() -> None:
         "loushang",
         "main",
         "abcd",
-        "perm=standard",
+        "standard",
         "idle",
     ]
     assert (
@@ -179,45 +225,56 @@ def test_status_line_context_distinguishes_measurement_quality() -> None:
         StatusLineSettings(),
     )[-1]
 
-    assert (measured.text, measured.token) == ("ctx 34% left", "context.measured")
+    assert (measured.text, measured.token) == ("34% left", "context.measured")
     assert (estimated.text, estimated.token) == (
-        "ctx ≈34% left",
+        "34% left",
         "context.estimated",
     )
     assert (stale.text, stale.token) == (
-        "ctx ≈34% left stale",
+        "34% left stale",
         "context.stale",
     )
     assert (changed.text, changed.token) == (
-        "ctx ≈34% left changed",
+        "34% left changed",
         "context.estimated",
     )
-    assert status_line_fields(
-        _snapshot(context_usage=None), StatusLineSettings(context="true")
-    )[-1].text == "ctx ?"
+    assert (
+        status_line_fields(
+            _snapshot(context_usage=None), StatusLineSettings(context="true")
+        )[-1].text
+        == "ctx ?"
+    )
 
 
 @pytest.mark.parametrize("width", [120, 80, 50, 20])
 def test_status_line_context_never_displaces_higher_priority_fields(width: int) -> None:
     settings = StatusLineSettings()
-    without_context = StatusBar(
-        status_line_fields(_snapshot(), settings)
-    ).render(RenderConstraints(width=width, max_height=1)).lines[0].text
-    with_context = StatusBar(
-        status_line_fields(
-            _snapshot(
-                context_usage={
-                    "percent": 65.625,
-                    "source": "estimated_from_last_usage",
-                }
-            ),
-            settings,
+    without_context = (
+        StatusBar(status_line_fields(_snapshot(), settings))
+        .render(RenderConstraints(width=width, max_height=1))
+        .lines[0]
+        .text
+    )
+    with_context = (
+        StatusBar(
+            status_line_fields(
+                _snapshot(
+                    context_usage={
+                        "percent": 65.625,
+                        "source": "estimated_from_last_usage",
+                    }
+                ),
+                settings,
+            )
         )
-    ).render(RenderConstraints(width=width, max_height=1)).lines[0].text
+        .render(RenderConstraints(width=width, max_height=1))
+        .lines[0]
+        .text
+    )
 
     assert with_context in {
         without_context,
-        f"{without_context} | ctx ≈34% left",
+        f"{without_context} | 34% left",
     }
 
 

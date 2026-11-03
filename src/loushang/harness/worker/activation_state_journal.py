@@ -28,7 +28,7 @@ from loushang.harness.journal import (
 )
 from loushang.harness.journal._rooted_io import RootedFile, RootedFileIO
 
-from .product_activation import _validate_state
+from .product_activation import _validate_resume_state_transition, _validate_state
 
 _MAX_JOURNAL_BYTES = 32 * 1024 * 1024
 _MAX_REVISIONS = 4096
@@ -76,7 +76,9 @@ class _StateRecord:
             "document": self.document,
             "documentDigest": self.document_digest,
             "journalRevision": self.journal_revision,
-            "recordVersion": _RECORD_VERSION,
+            "recordVersion": 2
+            if self.document["stateVersion"] == 3
+            else _RECORD_VERSION,
         }
 
     @classmethod
@@ -88,9 +90,13 @@ class _StateRecord:
             "recordVersion",
         }:
             raise ValueError("Worker activation state record fields are invalid")
-        if value["recordVersion"] != _RECORD_VERSION:
-            raise ValueError("Worker activation state record version is invalid")
         document = _validate_state(value["document"])
+        expected_version = 2 if document["stateVersion"] == 3 else _RECORD_VERSION
+        if (
+            type(value["recordVersion"]) is not int
+            or value["recordVersion"] != expected_version
+        ):
+            raise ValueError("Worker activation state record version is invalid")
         revision = value["journalRevision"]
         digest = value["documentDigest"]
         if (
@@ -120,19 +126,41 @@ _CODEC = FunctionalJournalRecordCodec(
 )
 
 
+_RESUME_WRITER_CAPABILITIES = frozenset({"harness.worker-activation.resume-context/v1"})
+
+
 class WorkerActivationStateJournal:
     """One private append-only state history with cross-process revision CAS."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        required_writer_capabilities: frozenset[str] = frozenset(),
+    ) -> None:
         if (
             not isinstance(path, Path)
             or not path.is_absolute()
             or path.name != ("worker-activation-state.jsonl")
         ):
             raise ValueError("Worker activation state path is invalid")
+        if type(required_writer_capabilities) is not frozenset or any(
+            type(item) is not str for item in required_writer_capabilities
+        ):
+            raise TypeError("Writer capabilities require an exact frozenset of strings")
+        if not required_writer_capabilities <= _RESUME_WRITER_CAPABILITIES:
+            raise WorkerActivationStateJournalError(
+                "worker_activation_writer_protocol_unsupported"
+            )
         self._path = path
         self._durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="raise", create_lock=False)
+
+    @property
+    def writer_protocol_capabilities(self) -> frozenset[str]:
+        """Implemented wire support only; this value grants no authority."""
+
+        return _RESUME_WRITER_CAPABILITIES
 
     @property
     def path(self) -> Path:
@@ -164,6 +192,9 @@ class WorkerActivationStateJournal:
             current_revision = 0 if not records else records[-1].journal_revision
             if current_revision != expected_revision:
                 return False
+            _validate_resume_state_transition(
+                None if not records else records[-1].document, record.document
+            )
             if (
                 len(records) >= _MAX_REVISIONS
                 or len(raw) + len(line) > _MAX_JOURNAL_BYTES
@@ -201,7 +232,8 @@ class WorkerActivationStateJournal:
                     not stat.S_ISDIR(opened.st_mode)
                     or opened.st_uid != os.geteuid()
                     or stat.S_IMODE(opened.st_mode) & 0o077
-                    or (opened.st_dev, opened.st_ino) != (visible.st_dev, visible.st_ino)
+                    or (opened.st_dev, opened.st_ino)
+                    != (visible.st_dev, visible.st_ino)
                 ):
                     raise WorkerActivationStateJournalError(
                         "worker_activation_state_root_unsafe"
@@ -264,14 +296,28 @@ class WorkerActivationStateJournal:
                     try:
                         rooted.stat()
                     except FileNotFoundError:
-                        try:
-                            rooted.sibling(self._path.name + ".lock").stat()
-                        except FileNotFoundError:
-                            pass
+                        if self._read_only_replacement_owner_exists(rooted):
+                            try:
+                                rooted.sibling(self._path.name + ".lock").acquire_lock(
+                                    exclusive=False, suffix="", create=False
+                                )
+                            except FileNotFoundError as exc:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_lock_missing"
+                                ) from exc
+                            except BlockingIOError as exc:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_busy"
+                                ) from exc
                         else:
-                            raise WorkerActivationStateJournalError(
-                                "worker_activation_state_orphan_lock"
-                            ) from None
+                            try:
+                                rooted.sibling(self._path.name + ".lock").stat()
+                            except FileNotFoundError:
+                                pass
+                            else:
+                                raise WorkerActivationStateJournalError(
+                                    "worker_activation_state_orphan_lock"
+                                ) from None
                     else:
                         try:
                             rooted.acquire_lock(
@@ -295,6 +341,11 @@ class WorkerActivationStateJournal:
                 )
         finally:
             os.close(parent_fd)
+
+    def _read_only_replacement_owner_exists(self, rooted: RootedFile) -> bool:
+        """Subclasses may bind a different durable source under this lock."""
+
+        return False
 
     def _load(self, rooted: RootedFile) -> tuple[bytes, tuple[_StateRecord, ...]]:
         try:
@@ -320,6 +371,10 @@ class WorkerActivationStateJournal:
                 )
             ):
                 raise ValueError("Worker activation state history changed")
+            for index, record in enumerate(records):
+                _validate_resume_state_transition(
+                    records[index - 1].document if index else None, record.document
+                )
             return raw, records
         except (JournalCodecError, UnicodeError, ValueError) as exc:
             raise WorkerActivationStateJournalError(

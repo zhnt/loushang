@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import platform
 import stat
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -24,11 +25,13 @@ from loushang.coding._invocation_product_profile import (
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding._worker_tool_identity import (
+    CODING_WORKER_QUERY_TOOL_NAME,
+)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
 )
-from loushang.coding.agent_invocation import register_coding_agent_delegate_tool
 from loushang.coding.bootstrap import (
     BootstrapServices,
     _create_agent_invocation_session_runtime,
@@ -45,11 +48,13 @@ from loushang.coding.cli.args import (
     ExtensionFlag,
     current_preview_option_requested,
     help_text,
+    local_discovery_option_requested,
     parse_args,
     plugin_explanation_option_requested,
     plugin_repair_option_requested,
     removed_legacy_resource_option,
 )
+from loushang.coding.cli.composition_choice import resolve_cli_composition_choice
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.startup_route import _cli_launch_plan
@@ -57,6 +62,7 @@ from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
 )
+from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.continuity import (
     shutdown_coding_continuity,
 )
@@ -89,6 +95,14 @@ from loushang.coding.package_product_management_cli import (
     coding_fenced_product_exists,
     repair_coding_fenced_cli_desired_operation,
 )
+from loushang.coding.package_product_runtime import (
+    require_fresh_coding_product_inputs_without_writes,
+)
+from loushang.coding.plugin_local_discovery import (
+    blocked_coding_local_discovery,
+    discover_coding_local_plugins,
+    format_coding_local_discovery,
+)
 from loushang.coding.plugin_management_cli import (
     build_coding_plugin_management_cli_binding,
     build_coding_plugin_management_cli_read_binding,
@@ -102,14 +116,11 @@ from loushang.coding.plugin_management_preview import (
     bind_coding_current_preview_query,
 )
 from loushang.coding.plugin_management_read_sdk import (
+    CodingPluginManagementReadClientV1,
     CodingPluginManagementReadSdkError,
     open_coding_plugin_management_read_client,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
-from loushang.coding.prompt_command import (
-    run_prompt_command,
-    run_prompt_plan_command,
-)
 from loushang.coding.resource_runtime import collect_coding_package_entries
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
@@ -119,6 +130,7 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
     configure_persistent_approval_policy,
 )
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
@@ -199,7 +211,7 @@ from loushang.harness.resources.packages import (
 from loushang.harness.resources.packages.security import PackageSecurityPolicy
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
-from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+from loushang.harness.tools import AGENT_DELEGATE_TOOL_NAME
 from loushang.harness.tools.workspace import (
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,
@@ -231,6 +243,83 @@ from loushang.method import (
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20
+
+
+async def run_prompt_command(
+    *,
+    runtime: Any,
+    session: Any,
+    prompt: str,
+    stdout: TextIO,
+    stderr: TextIO,
+    images: list[object] | None = None,
+    follow_up_messages: Sequence[str] = (),
+    verbose: bool = False,
+    work_event_log: Any = None,
+    work_runtime: Any = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+    dispose: bool = True,
+) -> int:
+    """Load plain prompt presentation only for a plain prompt invocation."""
+    from loushang.coding.prompt_command import run_prompt_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        prompt=prompt,
+        stdout=stdout,
+        stderr=stderr,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        verbose=verbose,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
+        dispose=dispose,
+    )
+
+
+async def run_prompt_plan_command(
+    *,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[Any],
+    stdout: TextIO,
+    stderr: TextIO,
+    work_event_log: Any,
+    work_runtime: Any = None,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    from loushang.coding.prompt_command import run_prompt_plan_command as run
+
+    return await run(
+        runtime=runtime,
+        session=session,
+        turns=turns,
+        stdout=stdout,
+        stderr=stderr,
+        work_event_log=work_event_log,
+        work_runtime=work_runtime,
+        verbose=verbose,
+        dispose=dispose,
+    )
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
@@ -312,10 +401,14 @@ def default_runtime_builder(
         and allowed_tool_names is not None
         and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
     ):
+        from loushang.coding.agent_invocation import (
+            register_coding_agent_delegate_tool,
+        )
+
         registered_parent_tools = tuple(
             definition.name
             for definition in runtime_tool_registry.list_enabled_definitions()
-            if allowed_tool_names is None or definition.name in allowed_tool_names
+            if definition.name in allowed_tool_names
         )
         register_coding_agent_delegate_tool(
             runtime_tool_registry,
@@ -360,7 +453,9 @@ def default_runtime_builder(
         services=services,
         services_factory=services_factory,
         tool_registry=runtime_tool_registry,
-        allowed_tool_names=allowed_tool_names,
+        allowed_tool_names=(
+            ToolSelection.ALL if allowed_tool_names is None else allowed_tool_names
+        ),
         active_tool_names=active_tool_names,
         no_tools=(
             "all"
@@ -381,15 +476,59 @@ def default_runtime_builder(
         "capabilities",
         {},
     )
+    selected_composition_set: str | None = None
+    if invocation_product_profile is None:
+        selected_composition_set = resolve_cli_composition_choice(
+            getattr(args, "composition_set", None), configured_capabilities
+        )
+        runtime_options["composition_set"] = selected_composition_set
+        runtime_options["composition_set_explicit"] = (
+            getattr(args, "composition_set", None) is not None
+        )
+        runtime_options["composition_choice_from_cli"] = True
+    worker_query_plugin = getattr(args, "worker_query_plugin", None)
+    if worker_query_plugin is not None:
+        if (
+            invocation_product_profile is not None
+            or sys.platform not in {"linux", "win32"}
+            or platform.machine().lower() not in {"x86_64", "amd64"}
+            or args.mode not in {"print", "text"}
+            or args.no_session
+            or getattr(args, "no_tools", False)
+            or getattr(args, "no_builtin_tools", False)
+            or runtime_options.get("composition_set") != "coding-standard"
+            or (bool(args.tools) and CODING_WORKER_QUERY_TOOL_NAME not in args.tools)
+        ):
+            raise ValueError(
+                "Worker query requires a persisted Linux or Windows x86-64 Coding "
+                "standard print or text Session with Tools enabled"
+            )
+        runtime_options["worker_candidate_plugin_id"] = worker_query_plugin
+        runtime_options["worker_query_turn_tool"] = True
+    runtime = runtime_factory(**runtime_options)
     if (
         invocation_product_profile is None
-        and isinstance(configured_capabilities, Mapping)
-        and "coding.arch" in configured_capabilities
+        and type(approval_resolver) is InteractiveApprovalResolver
     ):
-        # An explicit Arch mount is a Product request for the architecture
-        # composition set; the mount value still decides whether it activates.
-        runtime_options["composition_set"] = "coding-architecture"
-    runtime = runtime_factory(**runtime_options)
+        from loushang.coding.runtime.agent_session_runtime import AgentSessionRuntime
+
+        if type(runtime) is AgentSessionRuntime:
+            runtime._bind_embedded_resume_approval_owner(approval_resolver)
+            policy_fingerprint = getattr(
+                tool_policy_evaluator, "configuration_fingerprint", None
+            )
+            if callable(policy_fingerprint):
+                if selected_composition_set is None:
+                    raise RuntimeError("Coding Resume composition is unavailable")
+                runtime.configure_resume_planning(
+                    current_composition=resolve_coding_composition_set(
+                        selected_composition_set
+                    ),
+                    workspace_root=cwd.resolve(strict=True),
+                    resource_loader=services.resource_loader,
+                    subject_digest=runtime._current_embedded_resume_subject_digest,
+                    policy_digest=policy_fingerprint,
+                )
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions
     if session_dir.expanduser().resolve(strict=False) == platform_sessions:
@@ -464,8 +603,44 @@ async def run_cli(
     resolved_stderr = stderr or sys.stderr
     if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
         return 2
+    if any(
+        argument == option or argument.startswith(f"{option}=")
+        for option in ("--install-package", "--update-package", "--uninstall-package")
+        for argument in raw_argv
+    ):
+        candidate = _parse_application_args(raw_argv, resolved_stderr, None, True)
+        # Wheels use the fenced Product installer. Existing source-package
+        # commands keep their compatible owner in an unfenced workspace.
+        if candidate.args is not None and any(
+            Path(source).suffix == ".whl"
+            for source in (
+                *candidate.args.install_packages, *candidate.args.update_packages,
+            )
+        ):
+            try:
+                project_root = (
+                    Path(cwd or candidate.args.cwd or Path.cwd())
+                    .expanduser()
+                    .resolve(strict=True)
+                )
+                layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
+                if not coding_fenced_product_exists(layout):
+                    supplied_settings = getattr(services, "settings_manager", None)
+                    require_fresh_coding_product_inputs_without_writes(
+                        layout,
+                        workspace=project_root,
+                        settings_manager=(
+                            supplied_settings
+                            if isinstance(supplied_settings, SettingsManager)
+                            else None
+                        ),
+                    )
+            except (OSError, RuntimeError, ValueError) as error:
+                resolved_stderr.write(f"Error: {error}\n")
+                return 1
     if (
         current_preview_option_requested(raw_argv)
+        or local_discovery_option_requested(raw_argv)
         or plugin_explanation_option_requested(raw_argv)
         or plugin_repair_option_requested(raw_argv)
     ):
@@ -491,9 +666,27 @@ async def run_cli(
                 ),
             )
         except CodingPluginManagementReadSdkError as error:
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(error.code),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
             resolved_stderr.write(f"Error: {error.code}\n")
             return 1
         except (OSError, RuntimeError, ValueError):
+            if args.discover_local_plugins:
+                (stdout or sys.stdout).write(
+                    format_coding_local_discovery(
+                        blocked_coding_local_discovery(
+                            "local_discovery_workspace_unavailable"
+                        ),
+                        args.discover_local_plugins_format,
+                    )
+                )
+                return 1
             code = (
                 "plugin_repair_workspace_unavailable"
                 if args.repair_plugin_desired_operation is not None
@@ -510,6 +703,13 @@ async def run_cli(
                 args,
                 project_root=project_root,
                 workspace_guard=workspace_client.assert_workspace_current,
+                stdout=stdout or sys.stdout,
+                stderr=resolved_stderr,
+            )
+        if args.discover_local_plugins:
+            return _run_coding_local_discovery_cli(
+                args,
+                client=workspace_client,
                 stdout=stdout or sys.stdout,
                 stderr=resolved_stderr,
             )
@@ -890,6 +1090,59 @@ def _coding_state_preparation_ports(
     )
 
 
+def _run_coding_local_discovery_cli(
+    args: CliArgs,
+    *,
+    client: CodingPluginManagementReadClientV1,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    baseline = parse_args([])
+    if (
+        replace(
+            args,
+            cwd=None,
+            discover_local_plugins=False,
+            discover_local_plugins_format=baseline.discover_local_plugins_format,
+            discover_local_query=baseline.discover_local_query,
+            discover_local_kind=baseline.discover_local_kind,
+            discover_local_source=baseline.discover_local_source,
+            discover_local_limit=baseline.discover_local_limit,
+        )
+        != baseline
+    ):
+        stderr.write("Error: local_discovery_operation_conflict\n")
+        return 2
+    try:
+        document = discover_coding_local_plugins(
+            client,
+            query=args.discover_local_query,
+            kind=args.discover_local_kind,
+            source=args.discover_local_source,
+            limit=args.discover_local_limit,
+        )
+        stdout.write(
+            format_coding_local_discovery(document, args.discover_local_plugins_format)
+        )
+        return 1 if document["disposition"] == "blocked" else 0
+    except CodingPluginManagementReadSdkError as error:
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery(error.code),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
+    except (OSError, RuntimeError, ValueError):
+        stdout.write(
+            format_coding_local_discovery(
+                blocked_coding_local_discovery("local_discovery_unavailable"),
+                args.discover_local_plugins_format,
+            )
+        )
+        return 1
+
+
 def _run_coding_current_preview_cli(
     args: CliArgs,
     *,
@@ -904,6 +1157,7 @@ def _run_coding_current_preview_cli(
             args,
             cwd=None,
             preview_current_plugins=False,
+            composition_set=baseline.composition_set,
             preview_composition_set=baseline.preview_composition_set,
         )
         != baseline
@@ -913,17 +1167,41 @@ def _run_coding_current_preview_cli(
     try:
         workspace_guard()
         layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
-        document = format_plugin_current_preview(
-            bind_coding_current_preview_query(
-                project_root, workspace_guard=workspace_guard
-            ),
-            PluginCurrentPreviewRequestV1(
-                correlation_id="cli:preview-current-plugins",
-                product_id=CODING_PRODUCT_ID,
-                scope_id=layout.scope_id,
-                composition_set_id=args.preview_composition_set,
-            ),
+        query = bind_coding_current_preview_query(
+            project_root, workspace_guard=workspace_guard
         )
+        configured_capabilities = query.configured_capabilities()
+        if (
+            args.preview_composition_set is not None
+            and args.composition_set is not None
+            and args.preview_composition_set != args.composition_set
+        ):
+            stderr.write("Error: plugin_preview_composition_conflict\n")
+            return 2
+        selected_set = resolve_cli_composition_choice(
+            args.preview_composition_set or args.composition_set,
+            configured_capabilities,
+        )
+        projected = json.loads(
+            format_plugin_current_preview(
+                query,
+                PluginCurrentPreviewRequestV1(
+                    correlation_id="cli:preview-current-plugins",
+                    product_id=CODING_PRODUCT_ID,
+                    scope_id=layout.scope_id,
+                    composition_set_id=selected_set,
+                ),
+            )
+        )
+        plan = resolve_coding_composition_set(selected_set)
+        projected["requestedComposition"] = {
+            "setId": plan.set_id,
+            "planFingerprint": plan.fingerprint,
+            "pluginRequests": [item.to_dict() for item in plan.plugin_requests],
+        }
+        document = json.dumps(projected, ensure_ascii=False, sort_keys=True) + "\n"
+        if query.configured_capabilities() != configured_capabilities:
+            raise CodingCurrentPreviewError(code="plugin_preview_settings_stale")
         workspace_guard()
     except CodingPluginManagementReadSdkError as error:
         stderr.write(f"Error: {error.code}\n")
@@ -1053,7 +1331,7 @@ async def _run_coding_pre_runtime_operation(
 ) -> int | None:
     args = context.args
     layout = resolve_coding_plugin_lifecycle_state_layout(context.project_root)
-    if args.list_plugins:
+    if args.list_plugins and args.export is None:
         try:
             records = list_plugin_records(
                 build_coding_plugin_management_cli_read_binding(
@@ -1092,6 +1370,7 @@ async def _run_coding_pre_runtime_operation(
         if args.uninstall_packages:
             return uninstall_coding_fenced_data_wheels(
                 layout,
+                workspace=context.project_root,
                 plugin_ids=args.uninstall_packages,
                 scope=args.package_scope,
                 stdout=context.stdout,
@@ -1184,6 +1463,14 @@ async def _run_coding_cli_operations(
         agent_standard_cli_operation_request(args),
         stdout=bootstrap.stdout,
         stderr=bootstrap.stderr,
+        additional_listing_requested=any(
+            (
+                args.list_packages,
+                args.list_methods,
+                args.show_method is not None,
+                args.show_method_plan is not None,
+            )
+        ),
         plugin_management=context.state.plugin_management,
         insertions=(
             CliOperationInsertion(

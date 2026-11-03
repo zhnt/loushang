@@ -4,6 +4,8 @@ import ast
 import re
 from pathlib import Path
 
+from tests.architecture._source_imports import resolved_imports
+
 BASELINE = Path(
     "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md"
 )
@@ -492,13 +494,22 @@ def _resolve_import_from(path: Path, node: ast.ImportFrom) -> set[str]:
 
 
 def _imports(path: Path) -> set[str]:
-    result: set[str] = set()
-    for node in ast.walk(ast.parse(_read(path), filename=str(path))):
-        if isinstance(node, ast.Import):
-            result.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            result.update(_resolve_import_from(path, node))
-    return result
+    return {
+        imported
+        for imported in resolved_imports(path)
+        if not imported.endswith(".*")
+    }
+
+
+def _imports_containing(path: Path, token: str) -> set[str]:
+    source = _read(path)
+    if token not in source:
+        return set()
+    return {
+        imported
+        for imported in resolved_imports(path, source)
+        if not imported.endswith(".*")
+    }
 
 
 def _qualified_definitions(path: Path) -> set[str]:
@@ -833,6 +844,7 @@ def test_c50_guard_transitions_are_exact_through_c54() -> None:
         CODING_CANARY,
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
     }
 
     worker_consumers = {
@@ -865,7 +877,8 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     profile_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
-        if not path.is_relative_to(HOSTING_ROOT) and _imports(path) & profile_modules
+        if not path.is_relative_to(HOSTING_ROOT)
+        and _imports_containing(path, "_launch_preparation") & profile_modules
     }
     assert profile_consumers == {NATIVE_PROFILE_BRIDGE}
 
@@ -874,7 +887,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         path
         for path in SOURCE_ROOT.rglob("*.py")
         if not path.is_relative_to(HOSTING_ROOT)
-        and private_preparation in _imports(path)
+        and private_preparation in _imports_containing(path, "_launch_preparation")
     }
     assert preparation_consumers == {HOSTING_ADAPTER}
 
@@ -887,7 +900,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         for path in CODING_ROOT.rglob("*.py")
         if any(
             imported.startswith("loushang.harness.worker")
-            for imported in _imports(path)
+            for imported in _imports_containing(path, "worker")
         )
     }
     assert coding_worker_consumers == {
@@ -895,22 +908,38 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_APPHOST_PRODUCT,
         CODING_APPHOST_CANARY,
         CODING_ROOT / "package_product_worker_capability.py",
+        CODING_ROOT / "package_product_worker_crash_c5_settlement.py",
         CODING_ROOT / "package_product_worker_activation_state_journal.py",
+        CODING_ROOT / "package_product_worker_activation_history.py",
+        CODING_ROOT / "package_product_worker_activation_base_v2.py",
+        CODING_ROOT / "package_product_worker_history_prepared_v2.py",
         CODING_ROOT / "package_product_worker_history_retention.py",
+        CODING_ROOT / "package_product_worker_no_effect_closure.py",
+        CODING_ROOT / "package_product_worker_posix_gc_history.py",
+        CODING_ROOT / "package_product_worker_registered_c5_settlement.py",
+        CODING_ROOT / "package_product_worker_registered_payload_repair.py",
+        CODING_ROOT / "package_product_worker_registered_recovery.py",
         CODING_ROOT / "package_product_worker_installed_native.py",
         CODING_ROOT / "package_product_worker_native_release.py",
         CODING_ROOT / "package_product_worker_payload.py",
         CODING_ROOT / "package_product_worker_policy.py",
+        CODING_ROOT / "package_product_worker_resume.py",
         CODING_ROOT / "package_product_worker_provider.py",
         CODING_ROOT / "package_product_worker_provider_host.py",
         CODING_ROOT / "package_product_worker_query_consumer.py",
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_activation_state_journal.py",
+        CODING_ROOT / "package_product_worker_windows_cleanup_evidence.py",
+        CODING_ROOT / "package_product_worker_windows_c5_base.py",
+        CODING_ROOT / "package_product_worker_windows_crash_c5_settlement.py",
         CODING_ROOT / "package_product_worker_session_composition.py",
         CODING_ROOT / "package_product_worker_receipt.py",
         CODING_ROOT / "package_product_worker_start_gate.py",
         CODING_ROOT / "package_product_worker_start_gate_journal.py",
         CODING_ROOT / "package_product_worker_supervisor_journal.py",
+        CODING_ROOT / "package_product_worker_supervisor_base_v2.py",
         CODING_ROOT / "package_product_worker_start_gate_recovery.py",
         CODING_ROOT / "package_product_worker_windows_provisioning.py",
         CODING_ROOT / "package_product_worker_windows_provisioning_journal.py",
@@ -924,20 +953,26 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_receipt.py",
         CODING_ROOT / "package_product_worker_windows_receipt_journal.py",
         CODING_ROOT / "package_product_worker_windows_recovery_inventory.py",
+        CODING_ROOT / "package_product_worker_windows_supervisor_base.py",
         CODING_ROOT / "package_product_worker_windows_supervisor_journal.py",
+        CODING_ROOT / "resume_continuation.py",
     }
     hosting_consumers = {
         path
         for path in (*CODING_ROOT.rglob("*.py"), *APPHOST_ROOT.rglob("*.py"))
-        if any(imported.startswith("loushang.hosting") for imported in _imports(path))
+        if any(
+            imported.startswith("loushang.hosting")
+            for imported in _imports_containing(path, "hosting")
+        )
     }
     assert hosting_consumers == {
         CODING_APPHOST_CANARY,
+        CODING_ROOT / "package_product_worker_cleanup_evidence.py",
         CODING_ROOT / "package_product_worker_operator_query.py",
         CODING_ROOT / "package_product_worker_pending_host.py",
+        CODING_ROOT / "package_product_worker_windows_pending_host.py",
         CODING_ROOT / "package_product_worker_windows_backend_release.py",
         CODING_ROOT / "package_product_worker_windows_installed_backend.py",
-        CODING_ROOT / "package_product_worker_windows_provisioning.py",
         CODING_ROOT / "package_product_worker_windows_receipt.py",
         CODING_ROOT / "package_product_worker_windows_crash_cleanup_review.py",
         CODING_ROOT / "package_product_worker_windows_crash_lease_repair.py",
@@ -945,6 +980,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "package_product_worker_windows_crash_stage_review.py",
         CODING_ROOT / "package_product_worker_windows_crash_supervisor_settlement.py",
         CODING_ROOT / "package_product_worker_windows_orphan_review.py",
+        CODING_ROOT / "package_product_worker_windows_recovery_inventory.py",
         CODING_ROOT / "cli/hosted_client.py",
         APPHOST_ROOT / "launcher.py",
         APPHOST_ROOT / "managed/handoff.py",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 from loushang.harness.resource_catalog.components import (
@@ -9,6 +8,7 @@ from loushang.harness.resource_catalog.components import (
     RESOURCE_SOURCE_COMPONENT_KIND,
     RESOURCE_SOURCE_DEFINITION,
 )
+from tests.architecture._source_imports import imported_modules as _imported_modules
 
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
 ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
@@ -42,20 +42,6 @@ CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH = Path(
     "src/loushang/coding/_capability_plugin_composition.py"
 )
 CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
-
-
-def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    } | {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
 
 
 def test_rcp2_first_party_definitions_are_owned_narrow_component_seams() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,38 @@ from types import SimpleNamespace
 import pytest
 
 from tests.coding import _hosted_darwin_observer as module
+
+
+def test_observer_reports_validated_witness_failure_without_exception_text(tmp_path, capsys):
+    (tmp_path / "failed").write_text(json.dumps({
+        "type": "OSError", "phase": "running", "site": "_hosted_darwin_api.py:42",
+    }))
+    with pytest.raises(module.WitnessFailure) as caught:
+        module._read(tmp_path, "started")
+    observation = object.__new__(module.NativeObservation)
+    observation.unknown = False
+    observation.ticket = {"path": tmp_path / "scope.json"}
+    marked = []
+    observation.ledger = {"unknown": lambda path: marked.append(path)}
+    observation.retain_failure(caught.value)
+    output = capsys.readouterr().out
+    assert "type=OSError phase=running site=_hosted_darwin_api.py:42" in output
+    assert str(tmp_path) not in output
+    assert observation.unknown and marked == [observation.ticket["path"]]
+
+
+@pytest.mark.parametrize("receipt", [
+    {"type": "OSError", "phase": "running", "site": "../../private.py:42"},
+    {"type": "OSError", "phase": "running", "site": "api.py:42\nsecret"},
+    {"type": "OSError", "phase": "running", "site": "api.py:42", "extra": "secret"},
+    {"type": "OSError", "phase": "unexpected", "site": "api.py:42"},
+    {"type": "OSError", "phase": ["running"], "site": "api.py:42"},
+])
+def test_observer_rejects_untrusted_witness_failure_receipt(tmp_path, receipt):
+    (tmp_path / "failed").write_text(json.dumps(receipt))
+    with pytest.raises(RuntimeError, match="native CLI witness failed") as caught:
+        module._read(tmp_path, "started")
+    assert "secret" not in str(caught.value)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="actual POSIX observation registry")

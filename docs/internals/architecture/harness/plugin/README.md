@@ -9,38 +9,51 @@
   contracts record implemented slices; plans remain delivery records; baselines
   are implementation evidence.
 - Implementation status: PLC0--PLC8 are complete and terminally reviewed;
-  PLC9 remains an open delivery stage. Current `main` has Product-backed
+  PLC9's final integrated acceptance is tracked in #509. Current `main` has Product-backed
   management projections and bounded repair routes across CLI, optional RPC,
   TUI, and local management SDK; public reproducible data Skill, Prompt, and
   Theme Wheels; explicit Linux Worker candidate admission, opt-in, native
   release custody, Session use, and recovery; and POSIX root/shared-dependency
   GC plus Arch private-data backup, delete, restore, and expiry owners. Each
   route retains its own Product gate. Explicit Windows candidate first-B,
-  Worker, and GC native journeys passed at the final PLC9 code head; ordinary
-  unflagged Windows routing, general third-party Worker admission, and
-  Windows private-data production use remain separately gated. The final
+  Worker, and GC native journeys passed at the final PLC9 code head. Ordinary
+  unflagged Windows B Session selection was admitted in PR #662. Linux and
+  Windows AMD64 now admit independently authored, self-contained read-only
+  Worker query Wheels through explicit Product routes; Windows private-data
+  production use retains a separate gate. The final
   Coding offline package regression passed. The
   [closure ledger](plugin-experience-and-plc9-closure-design.md) records the
   exact-head evidence and limits.
-- Workspace boundary: on 2026-10-01 the Product owner ended pre-B workspace
-  compatibility for this delivery. Fresh and verifiable B-fenced workspaces
-  remain in scope; unfenced pre-B Plugin inputs must refuse without writes.
-  Migration finalization and old-release recovery are historical work, not
-  current acceptance gates. The Product owner accepted automatic first-B
-  cutover for a genuinely fresh Linux workspace on 2026-10-01. The ordinary
+- Linux Worker history V2 has a bounded Product cutover path. Under Product
+  runtime quiescence and the GC write gate, it prepares five typed stream
+  bases, publishes one exact owner index after physical and reference proof,
+  and retires only the sealed source segments named by durable deletion debt.
+  All five journals read and append through the typed bases after cutover;
+  receipt full-history reads still refuse because retired records cannot be
+  reconstructed. A real installed Product Worker case passed owner commit,
+  physical retirement, a fresh Session query, and Package GC preparation after
+  retirement. This is candidate evidence for that Linux path. Windows V2
+  authority cutover is tracked separately in #732; backup/restore, wider
+  crash-boundary evidence, and default activation retain their separate gates.
+- Workspace compatibility: [ARD-008](../../decisions/accepted/ARD-008-workspace-upgrade-compatibility.md)
+  supersedes the 2026-10-01 fresh-only ordinary-startup boundary. Existing
+  unfenced workspaces retain their fence-aware compatible Session owner;
+  settings, Plugin choices and history remain usable without conversion.
+  Fresh and verifiable B-fenced workspaces keep the Product route. Explicit
+  fresh-only cutover is separate from ordinary startup. The Product owner
+  accepted automatic first-B cutover for a genuinely fresh Linux workspace on
+  2026-10-01. The ordinary
   Session implementation, interruption/old-snapshot regressions, and full
   Coding offline package regression have passed. Explicit Windows candidate
-  first-B and GC routes have native evidence; unflagged ordinary Windows
-  selection remains closed.
-- Delivery anchor: PLC8 closed; PLC9C5 C5.5c canaries accepted; PLC9D3f-m
-  internal/offline POSIX root-GC execution, durable private-data confirmation
-  evidence, and pre-B workspace-snapshot status projection implemented; PLC9
-  remains open. Later exact-head CI passed explicit Windows candidate journeys
-  and the final Coding offline package regression; separately gated routes
-  retain their own scope-owner decisions.
-- Worker canary boundary: explicit Linux/Windows AMD64 Coding Product opt-in
-  only; Current remains the default; no general third-party Worker
-  authoring/admission surface is published.
+  first-B and GC routes have native evidence. Direct, Session Runtime, and
+  Hosted ordinary Windows Sessions select the B Product in PR #662. Default
+  Worker routing retains a separate gate.
+- Delivery anchor: PR #678 merged bounded third-party Worker admission on
+  `main`; #509 tracks the final PLC9 integrated acceptance.
+- Worker boundary: explicit Linux x86-64 and Windows AMD64 Coding Product
+  opt-in admits self-contained read-only query Wheels. Current remains the
+  default; dependency execution, effectful Tools, macOS, and default Worker
+  routing remain closed.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
@@ -84,6 +97,11 @@ Neither may silently override a narrower implemented owner contract.
   authoring, kind-specific Product gates, and unfinished PLC9 work. It does not
   replace Architecture V2 or the PLC9 plan, and individual Product gates remain
   subject to their exact owner decisions and implementation evidence.
+- [Plugin Experience Improvements P0–P4](plugin-improvements-p0-p4-design.md)
+  is a candidate implementation design for the next data-Plugin user journey,
+  evidence presentation, author/local discovery path, Coding composition
+  choice, and separately gated third-party Worker path. It adds no authority
+  until exact Product owners accept and implement each slice.
 - [Plugin Lifecycle And Coding Pluginization Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the only coordinating PLC0-PLC9 delivery plan. Its status section tracks
   the current implementation, including the production `coding.lsp` route.
@@ -162,6 +180,9 @@ Neither may silently override a narrower implemented owner contract.
   freezes Product-owned recovery/epoch activation, one typed Package intent
   across operations/Session/CLI/RPC/startup, and explicit-non-Plugin-only
   fallback without granting transports Store or deletion authority.
+- [PLC9 A2 Later-Phase Repair Policy](plugin-lifecycle-a2-later-repair-policy.md)
+  maps existing bounded Coding repair actions to their Package phases and
+  defines the evidence and refusal gates for a general repair decision.
 - [PLC9B Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md)
   freezes the Package acquisition owner, exact entrypoint inventory, versioned
   wheel/closure/publication evidence, fail-closed recovery, and mandatory
@@ -656,6 +677,9 @@ Neither may silently override a narrower implemented owner contract.
   progression from design/guards through receipt/lifecycle, Linux native,
   Windows mechanics, and the two Product canaries. Product activation remains
   explicit and default-dark; Current is still the default.
+- [Registered Worker Recovery Contract](plugin-worker-registered-recovery.md)
+  records the Product evidence and history-retention gates for a Linux C5
+  attempt stranded before its effect-start edge.
 - [PLC9C5 C5.1 Product Worker Receipt And Lifecycle Contract](plugin-lifecycle-plc9c5-c51-contract.md)
   implements the authority-free policy/receipt join, synchronous serialized
   freshness gate, deterministic publication/retirement lifecycle, durable

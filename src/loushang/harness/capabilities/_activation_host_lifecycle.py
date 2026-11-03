@@ -9,9 +9,11 @@ from loushang.harness.approval.plugin_activation import (
     ActivationUseReservationV1,
     PluginActivationApprovalSubject,
     PluginActivationDecisionJournal,
+    PluginActivationDecisionSnapshotV1,
     PluginActivationJournalError,
     PluginActivationUseState,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 _MAX_JOURNAL_CAS_ATTEMPTS = 16
 
@@ -27,6 +29,21 @@ class DurableActivationHostLifecycle:
     import_realm_id: str
     clock: Callable[[], int]
     error_factory: ActivationHostErrorFactory
+    resume_parent_context: ResumeEffectParentContextV1 | None = None
+
+    def snapshot(
+        self, *, require_open: bool = False
+    ) -> PluginActivationDecisionSnapshotV1:
+        try:
+            return self.journal.snapshot(
+                resume_parent_context=self.resume_parent_context,
+                require_open_resume=require_open
+                and self.resume_parent_context is not None,
+            )
+        except PluginActivationJournalError as exc:
+            raise self.error_factory(
+                "Activation Resume parent was rejected.", exc.code
+            ) from exc
 
     def now(self) -> int:
         value = self.clock()
@@ -36,11 +53,12 @@ class DurableActivationHostLifecycle:
 
     def recover_incomplete_uses(self) -> None:
         for _ in range(_MAX_JOURNAL_CAS_ATTEMPTS):
-            snapshot = self.journal.snapshot()
+            snapshot = self.snapshot(require_open=True)
             try:
                 self.journal.recover_activation_uses(
                     current_host_boot_id=self.host_boot_id,
                     recovered_at_unix_ms=self.now(),
+                    parent_context=self.resume_parent_context,
                     expected_journal_revision=snapshot.journal_revision,
                 )
                 return
@@ -62,11 +80,12 @@ class DurableActivationHostLifecycle:
         decision_id: str,
     ) -> ActivationUseReservationV1:
         for _ in range(_MAX_JOURNAL_CAS_ATTEMPTS):
-            snapshot = self.journal.snapshot()
+            snapshot = self.snapshot(require_open=True)
             try:
                 return self.journal.consume_activation_decision(
                     subject,
                     decision_id=decision_id,
+                    parent_context=self.resume_parent_context,
                     host_boot_id=self.host_boot_id,
                     import_realm_id=self.import_realm_id,
                     expected_journal_revision=snapshot.journal_revision,
@@ -87,11 +106,13 @@ class DurableActivationHostLifecycle:
         reservation: ActivationUseReservationV1,
         *,
         expected_state: PluginActivationUseState,
+        started_at_unix_ms: int | None = None,
     ) -> None:
         try:
             self.journal.validate_activation_use_current(
                 reservation,
                 expected_state=expected_state,
+                started_at_unix_ms=started_at_unix_ms,
             )
         except PluginActivationJournalError as exc:
             raise self.error_factory(
@@ -107,7 +128,9 @@ class DurableActivationHostLifecycle:
         target_state: PluginActivationUseState,
     ) -> ActivationUseReservationV1:
         for _ in range(_MAX_JOURNAL_CAS_ATTEMPTS):
-            revision = self.journal.snapshot().journal_revision
+            revision = self.snapshot(
+                require_open=target_state == "STARTING"
+            ).journal_revision
             try:
                 return self.journal.transition_activation_use(
                     reservation.activation_use_id,

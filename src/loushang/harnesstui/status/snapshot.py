@@ -16,6 +16,7 @@ class StatusSnapshot:
     statusline_visible: bool
     permission_profile: str | None = None
     statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
+    session_id: str | None = None
 
 
 __all__ = ["StatusSnapshot"]

@@ -705,6 +705,133 @@ def test_graph_owned_compaction_views_follow_the_current_profile_selection(
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("admission", ["accepted", "denied", "failed_preparation"])
+def test_candidate_graph_requires_live_admission_while_execution_stays_closed(tmp_path, admission):
+    class UnpublishedSession(_ContractProductSession):
+        @property
+        def execution_available(self):
+            return False
+
+    async def scenario():
+        disposed = []
+        _bind_transcript_factory(disposed)
+        product_id = "candidate-admission"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        candidate = _capability_runtime(product_id)
+        session = UnpublishedSession(
+            product_id=product_id, transcript=transcript, capability_runtime=candidate,
+            reserve_tokens=1_111, compact_percent=61.0,
+        )
+        checks = []
+
+        def require_current_admission():
+            checks.append(admission)
+            if admission == "denied":
+                raise PermissionError("candidate admission revoked")
+
+        try:
+            with pytest.raises(RuntimeError, match="Session retirement"):
+                await session.prepare_model_call_runtime()
+            if admission == "failed_preparation":
+                session._execution_preparation_failed = True
+            if admission == "accepted":
+                consumer = await session._prepare_candidate_session_graph(
+                    require_current_admission=require_current_admission,
+                )
+                assert session._model_call_consumer is consumer
+                assert candidate.ownership_state == "graph_owned"
+                assert checks
+                assert not session.execution_available
+                with pytest.raises(RuntimeError, match="Session retirement"):
+                    await session.prepare_model_call_runtime()
+                # A cached graph still needs the caller's current admission.
+                def revoked():
+                    raise PermissionError("candidate admission revoked")
+
+                with pytest.raises(PermissionError):
+                    await session._prepare_candidate_session_graph(require_current_admission=revoked)
+            else:
+                expected = PermissionError if admission == "denied" else RuntimeError
+                with pytest.raises(expected):
+                    await session._prepare_candidate_session_graph(
+                        require_current_admission=require_current_admission,
+                    )
+                assert session._model_call_consumer is None
+                assert candidate.ownership_state == "root_owned"
+        finally:
+            await session.dispose()
+        assert candidate.ownership_state == "disposed"
+        assert disposed == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("boundary", ["lock", "bind", "delivery"])
+def test_candidate_graph_rechecks_revoked_admission_and_uses_original_rollback(tmp_path, boundary):
+    async def scenario():
+        disposed = []
+        _bind_transcript_factory(disposed)
+        product_id = "candidate-revocation"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        candidate = _capability_runtime(product_id)
+        session = _ContractProductSession(
+            product_id=product_id, transcript=transcript, capability_runtime=candidate,
+            reserve_tokens=1_111, compact_percent=61.0,
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        revoked = False
+
+        def require_current_admission():
+            if boundary == "lock":
+                entered.set()
+            if revoked:
+                raise PermissionError("candidate admission revoked")
+            if boundary == "delivery" and session._staged_resource_candidate is None:
+                raise PermissionError("candidate admission revoked before delivery")
+
+        if boundary == "lock":
+            await session._model_call_bind_lock.acquire()
+        elif boundary == "bind":
+            original = session._capability_graph_binder.bind
+
+            async def held(*args, **kwargs):
+                entered.set()
+                await release.wait()
+                return await original(*args, **kwargs)
+
+            session._capability_graph_binder.bind = held
+        task = asyncio.create_task(session._prepare_candidate_session_graph(
+            require_current_admission=require_current_admission,
+        ))
+        entering = asyncio.create_task(entered.wait())
+        try:
+            if boundary != "delivery":
+                await asyncio.wait((task, entering), return_when=asyncio.FIRST_COMPLETED)
+                if not entered.is_set():
+                    await task
+                revoked = True
+                if boundary == "lock":
+                    session._model_call_bind_lock.release()
+                release.set()
+            with pytest.raises(PermissionError):
+                await task
+            assert session._model_call_consumer is None
+            assert candidate.ownership_state == {
+                "lock": "root_owned", "bind": "disposed", "delivery": "graph_owned",
+            }[boundary]
+            if boundary == "delivery":
+                assert not session.execution_available
+        finally:
+            release.set()
+            entering.cancel()
+            await asyncio.gather(entering, task, return_exceptions=True)
+            await session.dispose()
+        assert candidate.ownership_state == "disposed"
+        assert disposed == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
 def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
     tmp_path: Path,
 ) -> None:
@@ -2303,7 +2430,24 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
 
             assert events.exists() is False
             assert activation_journal.snapshot().activation_uses == ()
+            with pytest.raises(RuntimeError):
+                session.require_current_capability_component_activations()
             await session.prepare_model_call_runtime()
+            session.require_current_capability_component_activations()
+            assert len(session._published_capability_components) == 1
+            published = session._published_capability_components
+            read_owner = component_host._owner_snapshot_reader
+
+            def replace_publication_while_reading_owner(capability_id):
+                session._published_capability_components = ()
+                return read_owner(capability_id)
+
+            component_host._owner_snapshot_reader = replace_publication_while_reading_owner
+            with pytest.raises(RuntimeError, match="component publication is unavailable"):
+                session.require_current_capability_component_activations()
+            session._published_capability_components = published
+            component_host._owner_snapshot_reader = read_owner
+            session.require_current_capability_component_activations()
 
             snapshot = session._capability_graph_runtime.snapshot
             assert snapshot is not None
@@ -2355,6 +2499,8 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
 
             await session.dispose()
 
+            with pytest.raises(RuntimeError):
+                session.require_current_capability_component_activations()
             assert events.read_text(encoding="utf-8").splitlines() == [
                 "provider-import",
                 "provider-create",
@@ -3067,6 +3213,82 @@ def dispose_provider(_value):
 def _append_event(path: Path, event: str) -> None:
     with path.open("a", encoding="utf-8") as stream:
         stream.write(event + "\n")
+
+
+@pytest.mark.parametrize("outcome", ["ready", "cancel", "superseded"])
+def test_agent_model_boundary_awaits_evidence_before_binding_current_request(
+    tmp_path, monkeypatch, outcome: str
+) -> None:
+    async def scenario() -> None:
+        disposed = []
+        _bind_transcript_factory(disposed)
+        transcript = await _new_transcript(tmp_path, product_id="evidence-ready")
+        session = _ContractProductSession(
+            product_id="evidence-ready",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("evidence-ready"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        host = SimpleNamespace(current_session=session)
+        session._extension_bridge.set_runtime_host(host)
+        entered, release = asyncio.Event(), asyncio.Event()
+        settled = asyncio.Event()
+
+        async def prepare_evidence():
+            entered.set()
+            try:
+                await release.wait()
+            finally:
+                settled.set()
+
+        monkeypatch.setattr(
+            session._request_evidence_runtime,
+            "prepare_model_input_async",
+            prepare_evidence,
+        )
+        preparation = ModelCallPreparation(
+            purpose="main",
+            sequence=1,
+            model=session.agent.model,
+            context=Context(system_prompt="evidence probe", messages=[]),
+            options=CallOptions(),
+        )
+        existing = asyncio.all_tasks()
+        job = asyncio.create_task(session.agent.prepare_model_call(preparation))
+        started = asyncio.create_task(entered.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {job, started}, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert started in done and not job.done(), (
+                "model request bypassed evidence preparation"
+            )
+            if outcome == "cancel":
+                job.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await job
+            else:
+                if outcome == "superseded":
+                    host.current_session = object()
+                release.set()
+                if outcome == "superseded":
+                    with pytest.raises(RuntimeError, match="current"):
+                        await job
+                else:
+                    options = await job
+                    assert options.prepared_request_committer is not None
+            assert settled.is_set()
+        finally:
+            job.cancel()
+            started.cancel()
+            await asyncio.gather(job, started, return_exceptions=True)
+            session._extension_bridge.set_runtime_host(None)
+            await session.dispose()
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(scenario())
 
 
 def _bind_transcript_factory(

@@ -15,6 +15,7 @@ class PromptIntent:
 @dataclass(frozen=True)
 class BashIntent:
     command: str
+    exclude_from_context: bool = True
 
 
 @dataclass(frozen=True)
@@ -121,8 +122,10 @@ def parse_conversation_intent(text: str) -> ConversationIntent | None:
         return FollowUpIntent(text=follow_text) if follow_text else None
     if stripped.startswith("!!"):
         command = stripped[2:].strip()
-        if command:
-            return BashIntent(command=command)
+        return BashIntent(command=command, exclude_from_context=False) if command else None
+    if stripped.startswith("!"):
+        command = stripped[1:].strip()
+        return BashIntent(command=command) if command else None
     return PromptIntent(text=stripped)
 
 

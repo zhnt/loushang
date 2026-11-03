@@ -18,18 +18,27 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, Self, TypeVar, cast
 
 from loushang.agent.types import AgentMessage
-from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.artifacts import (
     SessionBlobStore,
     resolve_session_blob_data_root,
 )
+from loushang.harness.conversation import ConversationRecord
 from loushang.harness.journal._owned_io import settled_io
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.transcript.capability_candidate import (
     AgentTranscriptCapabilityCandidate,
 )
-from loushang.harness.transcript.committer import CommitResult
+from loushang.harness.transcript.committer import (
+    CommitResult,
+    PrebuiltUserMessageLookupResult,
+)
 from loushang.harness.transcript.compaction import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -86,6 +95,7 @@ from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
     ApplicationMessage,
+    SessionImagePart,
 )
 
 BindingInputT = TypeVar("BindingInputT")
@@ -158,6 +168,86 @@ class ProductTranscriptSession(
                 )
                 raise
 
+    async def lookup_prebuilt_user_message(
+        self, record: AgentTranscriptRecord,
+    ) -> PrebuiltUserMessageLookupResult:
+        """Keep durable lookup under the existing Product ownership fence."""
+
+        if not self.persist:
+            raise ValueError("prebuilt user lookup requires a persistent Product session")
+        async with self._lifecycle_session.operation_scope():
+            return await super().lookup_prebuilt_user_message(record)
+
+    async def commit_prebuilt_user_message(
+        self, record: AgentTranscriptRecord,
+    ) -> CommitResult:
+        """Fence a fixed-ID input and verify its already-staged image references."""
+
+        if not self.persist:
+            raise ValueError("prebuilt user commit requires a persistent Product session")
+        async with self._lifecycle_session.operation_scope():
+            if isinstance(record.payload, UserMessage) and isinstance(
+                record.payload.content, list,
+            ):
+                parts = record.payload.content
+                if any(isinstance(part, ImagePart) for part in parts):
+                    raise ValueError("prebuilt user images must be externalized first")
+                if any(isinstance(part, SessionImagePart) for part in parts):
+                    externalize_session_message_images(
+                        record.payload,
+                        self._session_blob_store(
+                            file_io=self._lifecycle_session.blob_file_io,
+                        ),
+                    )
+            return await super().commit_prebuilt_user_message(record)
+
+    async def commit_prebuilt_extension_data(
+        self, record: AgentTranscriptRecord,
+    ) -> CommitResult:
+        """Keep a fixed-ID extension commit within the Product operation scope."""
+
+        if not self.persist:
+            raise ValueError("prebuilt extension commit requires a persistent Product session")
+        async with self._lifecycle_session.operation_scope():
+            return await super().commit_prebuilt_extension_data(record)
+
+    async def commit_prebuilt_user_message_from_message(
+        self,
+        message: UserMessage,
+        *,
+        prepare_record: Callable[[UserMessage], AgentTranscriptRecord],
+    ) -> CommitResult:
+        """Externalize images before freezing and committing one fixed-ID input.
+
+        Product preparation receives only the final persisted payload. This
+        keeps its Binding digest and request evidence on the same record.
+        """
+
+        if not self.persist:
+            raise ValueError("prebuilt user commit requires a persistent Product session")
+        if not isinstance(message, UserMessage) or not callable(prepare_record):
+            raise TypeError("prebuilt user commit requires a message and preparer")
+        async with self._lifecycle_session.operation_scope():
+            externalized = externalize_session_message_images(
+                message,
+                self._session_blob_store(file_io=self._lifecycle_session.blob_file_io),
+            )
+            revision = self._transcript.revision
+            try:
+                persisted = externalized.message
+                if not isinstance(persisted, UserMessage):
+                    raise TypeError("externalized user message has an invalid type")
+                record = prepare_record(persisted)
+                if not isinstance(record, ConversationRecord) or record.payload != persisted:
+                    raise ValueError("prebuilt user record changed the persisted payload")
+                return await super().commit_prebuilt_user_message(record)
+            except BaseException as error:
+                rollback_externalized_session_images(
+                    externalized, error,
+                    transcript_changed=self._transcript.revision != revision,
+                )
+                raise
+
     async def commit_application_message(
         self,
         message: ApplicationMessage,
@@ -199,6 +289,11 @@ class ProductTranscriptSession(
 
     def _fork_binding_input(self) -> BindingInputT:
         raise NotImplementedError("Product transcript sessions must bind fork input")
+
+    def _fork_header_metadata(self) -> Mapping[str, JSONValue] | None:
+        """Return Product-owned creation facts that must survive a fork."""
+
+        return None
 
     @classmethod
     async def _construct_product(
@@ -555,6 +650,7 @@ class ProductTranscriptSession(
             self._lifecycle_session,
             leaf_id=leaf_id,
             binding_input=self._fork_binding_input(),
+            additional_header_metadata=self._fork_header_metadata(),
         ))
 
     async def create_branched_session(self, leaf_id: str) -> Path | None:
@@ -583,6 +679,7 @@ class ProductTranscriptSession(
                 for message in context.messages
             ),
             state=context.state,
+            provider_window=context.provider_window,
         )
 
     def _session_blob_store(self, *, file_io: RootedFileIO | None = None) -> SessionBlobStore:
@@ -599,6 +696,20 @@ class ProductTranscriptSession(
     ) -> SessionModelInputBlobCodec | None:
         with self._lifecycle_session.sync_operation_scope():
             return self._build_model_input_binary_codec(active_only=active_only)
+
+    def _model_input_binary_codec_factory(
+        self,
+    ) -> Callable[[], SessionModelInputBlobCodec] | None:
+        if not self.persist:
+            return None
+
+        def open_codec() -> SessionModelInputBlobCodec:
+            codec = self._model_input_binary_codec(active_only=True)
+            if codec is None:
+                raise RuntimeError("persistent Session Model Input lost its blob codec")
+            return codec
+
+        return open_codec
 
     def _build_model_input_binary_codec(
         self, *, active_only: bool,

@@ -225,10 +225,9 @@ class CodingWindowsWorkerReceiptJournal:
             self._require_plain_stream(descriptor)
             metadata = os.fstat(descriptor)
             visible = windows_stat_at(directory_fd, _NAME + ".lock")
-            if (
-                metadata.st_size != 1
-                or (metadata.st_dev, metadata.st_ino)
-                != (visible.st_dev, visible.st_ino)
+            if metadata.st_size != 1 or (metadata.st_dev, metadata.st_ino) != (
+                visible.st_dev,
+                visible.st_ino,
             ):
                 raise CodingWorkerReceiptError("coding_worker_receipt_lock_corrupt")
             if locked_handle is None:

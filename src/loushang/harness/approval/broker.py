@@ -10,6 +10,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from loushang.harness.approval.confirmations import ApprovalConfirmation
 from loushang.harness.approval.grants import (
     ApprovalPermission,
     ApprovalPermissionsSnapshot,
@@ -313,6 +314,12 @@ class InteractiveApprovalResolver:
         tuple[str, ApprovalGrantProposal],
         asyncio.Task[ApprovalDecision],
     ] = field(default_factory=dict, init=False, repr=False)
+    _confirmation_requests: dict[str, ApprovalRequest | None] = field(
+        default_factory=dict, init=False, repr=False,
+    )
+    _confirmations: dict[str, ApprovalConfirmation] = field(
+        default_factory=dict, init=False, repr=False,
+    )
 
     def __post_init__(self) -> None:
         stores = dict(self.policy_stores)
@@ -376,6 +383,87 @@ class InteractiveApprovalResolver:
 
             task.add_done_callback(remove)
         return await asyncio.shield(task)
+
+    async def confirm(self, request: ApprovalRequest) -> ApprovalConfirmation | None:
+        """Obtain an exact action fact for revalidation across owner awaits.
+
+        A live retained grant/rule may satisfy the request. Otherwise only an
+        accepted interactive response can issue a fact: headless fallback's
+        plain allow result is insufficient. This retains no Writer or effect.
+        """
+
+        if not self._session_open:
+            return None
+        request = ensure_approval_action_id(request)
+        action_id = request.action_id
+        assert action_id is not None
+        if action_id in self._confirmation_requests or action_id in self._confirmations:
+            raise ApprovalRequestCollisionError(action_id)
+        if len(self._confirmation_requests.keys() | self._confirmations.keys()) >= 64:
+            raise RuntimeError("approval confirmation capacity exceeded")
+        self._confirmation_requests[action_id] = request
+        try:
+            decision = await self.resolve(request)
+            if (
+                not self._session_open or decision.disposition != "allow"
+                or self._confirmation_requests.get(action_id) is not request
+            ):
+                self._confirmations.pop(action_id, None)
+                return None
+            confirmation = self._confirmations.get(action_id)
+            if confirmation is None:
+                # Reused grants and coalesced session approvals must still be
+                # present in the original store. A returned allow is not proof.
+                if self.preauthorize(request) != decision:
+                    return None
+                confirmation = ApprovalConfirmation(request, decision)
+                self._confirmations[action_id] = confirmation
+            self.require_current_confirmation(confirmation, request=request)
+            return confirmation
+        except BaseException:
+            self._confirmations.pop(action_id, None)
+            raise
+        finally:
+            self._confirmation_requests.pop(action_id, None)
+
+    def require_current_root_subject(self) -> None:
+        """Check the original Root approval lifetime, without issuing a grant.
+
+        Products must bind this exact owner at their native Root ingress. This
+        observation alone does not authenticate a caller or confirm an action.
+        """
+
+        if not self._session_open:
+            raise PermissionError("Root approval subject is no longer current")
+
+    def require_current_confirmation(
+        self, confirmation: ApprovalConfirmation, *, request: ApprovalRequest,
+    ) -> None:
+        """Validate the issuing owner, exact action and current revocation."""
+
+        if (
+            not self._session_open
+            or not isinstance(confirmation, ApprovalConfirmation)
+            or self._confirmations.get(request.action_id or "") is not confirmation
+            or confirmation.request != request
+        ):
+            raise PermissionError("approval confirmation is no longer current")
+        decision = confirmation.decision
+        if (decision.grant_id is not None or decision.policy_rule_id is not None) and (
+            self.preauthorize(request) != decision
+        ):
+            raise PermissionError("approval confirmation authorization was revoked")
+
+    def release_confirmation(self, confirmation: ApprovalConfirmation) -> bool:
+        """Release or revoke only a fact issued by this owner."""
+
+        if not isinstance(confirmation, ApprovalConfirmation):
+            return False
+        action_id = confirmation.request.action_id or ""
+        if self._confirmations.get(action_id) is not confirmation:
+            return False
+        self._confirmations.pop(action_id)
+        return True
 
     def preauthorize(self, request: ApprovalRequest) -> ApprovalDecision | None:
         grant = self.grant_store.find(request)
@@ -506,6 +594,14 @@ class InteractiveApprovalResolver:
     ) -> int:
         """Cancel pending requests owned by one child incarnation."""
 
+        self._confirmations = {
+            key: value for key, value in self._confirmations.items()
+            if value.request.actor_id != actor_id
+        }
+        self._confirmation_requests = {
+            key: None if value is not None and value.actor_id == actor_id else value
+            for key, value in self._confirmation_requests.items()
+        }
         return self._broker.cancel_actor(
             actor_id,
             ApprovalDecision.deny(reason),
@@ -514,6 +610,10 @@ class InteractiveApprovalResolver:
     def revoke_actor_grants(self, actor_id: str) -> int:
         """Revoke retained grants owned by one child incarnation."""
 
+        self._confirmations = {
+            key: value for key, value in self._confirmations.items()
+            if value.request.actor_id != actor_id
+        }
         return self.grant_store.revoke_actor(actor_id)
 
     async def handle_result(
@@ -583,6 +683,13 @@ class InteractiveApprovalResolver:
             store = self.policy_stores.get(policy_rule.scope)
             if store is not None:
                 store.revoke(policy_rule.rule_id)
+        confirmation_request = self._confirmation_requests.get(action_id)
+        if (
+            accepted and decision.disposition == "allow"
+            and confirmation_request is not None
+            and replace(confirmation_request, policy_amendments=request.policy_amendments) == request
+        ):
+            self._confirmations[action_id] = ApprovalConfirmation(confirmation_request, decision)
         return accepted
 
     def close_session(
@@ -593,6 +700,10 @@ class InteractiveApprovalResolver:
 
         self._session_open = False
         self._session_close_reason = reason
+        self._confirmations.clear()
+        # Keep invalidated reservations until their original waiter settles.
+        # An old waiter's finally must never remove a newly reused action ID.
+        self._confirmation_requests = dict.fromkeys(self._confirmation_requests)
         return self._broker.cancel_all(ApprovalDecision.deny(reason))
 
     def end_session(
@@ -611,6 +722,8 @@ class InteractiveApprovalResolver:
         decision = ApprovalDecision.deny(reason)
         self._session_open = False
         self._session_close_reason = reason
+        self._confirmations.clear()
+        self._confirmation_requests = dict.fromkeys(self._confirmation_requests)
         self._broker.set_presenter(None)
         self._request_presenter = None
         self._request_dismisser = None

@@ -155,23 +155,32 @@ def test_document_preflight_and_coordinator_finalization_are_one_use(
     runtime.close()
 
 
-def test_preflight_rejects_disabled_plugin_without_importing_code(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("manifest_enabled", "source_enabled"),
+    ((False, True), (True, False)),
+)
+def test_preflight_uses_product_selection_without_peer_enablement_veto(
+    tmp_path: Path, manifest_enabled: bool, source_enabled: bool
 ) -> None:
-    runtime = _runtime(tmp_path, enabled=False)
+    runtime = _runtime(
+        tmp_path,
+        enabled=manifest_enabled,
+        source_enabled=source_enabled,
+        document_source=True,
+    )
     binding = runtime.bindings[0]
     resolver = PluginSelectionResolver()
 
-    outcome = resolver.preflight(
-        runtime.packages,
-        bindings=runtime.bindings,
-        plan=_plan(binding.source_identity),
-        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
     )
-
-    assert isinstance(outcome, PluginPreflightRejectedOutcome)
-    assert outcome.diagnostics[0].code == "selected_plugin_disabled"
     assert (runtime.packages[0].root / "imported.txt").exists() is False
+    resolver._abort(accepted)
     runtime.close()
 
 
@@ -849,6 +858,7 @@ def _runtime(
     tmp_path: Path,
     *,
     enabled: bool = True,
+    source_enabled: bool = True,
     include_source_sibling: bool = False,
     include_disjoint_source: bool = False,
     document_source: bool = False,
@@ -937,7 +947,7 @@ def _runtime(
         encoding="utf-8",
     )
     authority = PluginResolutionAuthority()
-    inspection = authority.inspect(PluginSource(path=root))
+    inspection = authority.inspect(PluginSource(path=root, enabled=source_enabled))
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
     return authority.publish_runtime((inspection,), binding_store=materializer)
 

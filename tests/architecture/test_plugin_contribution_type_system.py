@@ -29,8 +29,8 @@ CONTRIBUTION_TYPES = Path(
 )
 
 
-def _assigned_names(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+def _assigned_names(path: Path, source: str) -> set[str]:
+    tree = ast.parse(source, filename=str(path))
     names: set[str] = set()
     for node in tree.body:
         if isinstance(node, ast.Assign):
@@ -48,11 +48,14 @@ def test_contribution_kinds_have_one_canonical_closed_definition() -> None:
     assert set(get_args(PluginContributionKind)) == PLUGIN_CONTRIBUTION_KINDS
     assert set(get_args(PluginOwnerContributionKind)) == PLUGIN_OWNER_CONTRIBUTION_KINDS
 
-    definitions = tuple(
-        path
-        for path in Path("src/loushang").rglob("*.py")
-        if "PluginContributionKind" in _assigned_names(path)
-    )
+    definitions = []
+    for path in Path("src/loushang").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "PluginContributionKind" not in source:
+            continue
+        if "PluginContributionKind" in _assigned_names(path, source):
+            definitions.append(path)
+    definitions = tuple(definitions)
     assert definitions == (CONTRIBUTION_TYPES,)
 
     for path in (

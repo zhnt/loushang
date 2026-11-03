@@ -7,12 +7,19 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.sandbox import (
+    CodingExecutionAuthority,
     CodingSandboxScopePolicy,
     bind_coding_sandbox_runtime,
+    coding_host_execution_profile,
+    coding_workspace_execution_profile,
 )
 from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.environment import LocalHostEnvironmentProbe
+from loushang.harness.permissions import (
+    PermissionProfileCeiling,
+    permission_profile_snapshot,
+)
 from loushang.harness.sandbox import (
     SandboxBackendRegistry,
     SandboxSettings,
@@ -27,6 +34,51 @@ def _materialized_request(cwd: Path) -> ExecRequest:
         cwd=str(cwd),
         effective_environment=(),
     )
+
+
+@pytest.mark.parametrize("limited", ["none", "required", "managed", "delegated"])
+def test_live_sandbox_scope_full_and_downgrade_respect_ceilings(tmp_path: Path, limited: str) -> None:
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    workspace.mkdir()
+    outside.mkdir()
+    normal = coding_workspace_execution_profile(workspace, writable=True)
+    host = coding_host_execution_profile(workspace, writable=True)
+    requested = "standard"
+    ceiling = (
+        normal if limited == "required"
+        else EffectiveExecutionProfile(
+            readable_roots=(tmp_path,), denied_roots=(outside,), network="denied",
+        ) if limited == "delegated" else host
+    )
+    authority = CodingExecutionAuthority(
+        workspace_root=workspace,
+        workspace_profile=normal, ceiling=ceiling,
+        permission_snapshot=lambda: permission_profile_snapshot(
+            requested, PermissionProfileCeiling("standard" if limited == "managed" else "full_access"),
+        ),
+    )
+    policy = CodingSandboxScopePolicy(
+        workspace_root=workspace, execution_profile=ceiling, execution_profile_provider=authority,
+    )
+    with pytest.raises(PermissionError):
+        policy(_materialized_request(outside))
+    requested = "full_access"
+    if limited == "none":
+        scope = policy(_materialized_request(outside))
+        assert scope.readable_roots == host.readable_roots
+        assert scope.writable_roots == host.writable_roots
+    else:
+        with pytest.raises(PermissionError):
+            policy(_materialized_request(outside))
+    if limited == "delegated":
+        scope = policy(_materialized_request(workspace))
+        assert scope.writable_roots == ()
+        assert scope.network == "denied"
+        assert scope.denied_roots == (outside,)
+    requested = "standard"
+    with pytest.raises(PermissionError):
+        policy(_materialized_request(outside))
 
 
 def test_coding_scope_policy_makes_root_sessions_writable(tmp_path: Path) -> None:

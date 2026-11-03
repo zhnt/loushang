@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
+
+
+def _imports_package(path: Path, package: str) -> bool:
+    root, leaf = package.rsplit(".", 1)
+    source = path.read_text(encoding="utf-8")
+    if package not in source and f"from {root} import" not in source:
+        return False
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = (alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names = (node.module or "",)
+            if node.module == root and any(
+                alias.name == leaf for alias in node.names
+            ):
+                return True
+        else:
+            continue
+        if any(name == package or name.startswith(package + ".") for name in names):
+            return True
+    return False
 
 
 def test_work_package_has_no_coding_compatibility_module() -> None:
@@ -36,11 +58,6 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
     coding_binding = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
-    harness_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in Path("src/loushang/harness").rglob("*.py")
-    )
-
     assert "loushang.coding" not in work_runtime
     assert "loushang.agent" not in work_runtime
     assert "class WorkRuntime" in work_runtime
@@ -57,8 +74,9 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
     assert "class CodingWorkShell" not in coding_binding
     assert "SessionWorkProfile(" in coding_binding
 
-    assert "loushang.work" not in harness_source
-    assert "loushang.harnesswork" not in harness_source
+    for source in Path("src/loushang/harness").rglob("*.py"):
+        assert not _imports_package(source, "loushang.work"), source
+        assert not _imports_package(source, "loushang.harnesswork"), source
     assert not Path("src/loushang/harness/work").exists()
 
 

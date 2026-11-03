@@ -18,8 +18,10 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     AgentTranscriptSessionCatalog,
+    ConversationMetadataPatch,
     RecordAnnotationPatch,
     SessionQuery,
     build_agent_transcript_label_indexes,
@@ -475,6 +477,34 @@ def test_bounded_catalog_stats_all_and_reads_only_recent_head_tail(
     assert not tuple(tmp_path.glob("*.model-input-v2-index.json"))
 
 
+def test_bounded_transcript_preview_reads_tail_without_publishing_authority(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "large.jsonl"
+    write_agent_transcript_export(
+        path,
+        _header("large", cwd="/workspace"),
+        [
+            _record("first", "first prompt"),
+            _record("middle", "x" * 140_000, parent_id="first"),
+            _record("last", "recent message", parent_id="middle"),
+        ],
+    )
+    before = path.read_bytes()
+
+    preview = catalog_module.read_agent_transcript_bounded_preview(
+        path, segment_bytes=4096,
+    )
+
+    assert preview.header.conversation_id == "large"
+    assert [record.record_id for record in preview.records] == ["first", "last"]
+    assert [record.record_id for record in preview.tail_records] == ["last"]
+    assert preview.bytes_read <= 8192
+    assert preview.source_fingerprint == catalog_module.session_file_authority_fingerprint(path)
+    assert path.read_bytes() == before
+    assert not (tmp_path / ".session-index.json").exists()
+
+
 def test_bounded_catalog_can_publish_complete_lightweight_index(
     tmp_path: Path,
 ) -> None:
@@ -496,6 +526,73 @@ def test_bounded_catalog_can_publish_complete_lightweight_index(
     assert all(summary.authority_fingerprint for summary in loaded)
     assert all(summary.counts_exact for summary in loaded)
     assert all(not summary.all_messages_text for summary in loaded)
+
+
+@pytest.mark.parametrize("name", ["Latest name", None])
+def test_bounded_catalog_reuses_only_unchanged_summary_metadata(
+    tmp_path,
+    monkeypatch,
+    name,
+):
+    def write_named(path, identity, title):
+        write_agent_transcript_export(
+            path,
+            _header(identity, cwd="/workspace"),
+            [
+                _record("first", "First prompt"),
+                ConversationRecord(
+                    record_id="name",
+                    parent_id="first",
+                    kind=CONVERSATION_METADATA_PATCH_KIND,
+                    payload_version=1,
+                    created_at="2026-07-18T00:00:02Z",
+                    payload=ConversationMetadataPatch(values={"name": title})
+                    if title
+                    else ConversationMetadataPatch(removed_keys=("name",)),
+                ),
+            ],
+        )
+
+    stable, changed = tmp_path / "stable.jsonl", tmp_path / "changed.jsonl"
+    write_named(stable, "stable", "Keep this name")
+    write_named(changed, "changed", "Old name")
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    write_named(changed, "changed", name)
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    stale = catalog.try_query_index_snapshot()
+    assert stale.index_state == "stale"
+    reads = []
+    original = catalog_module._read_bounded_segments
+
+    def read(candidate, *, segment_bytes):
+        reads.append(candidate.path)
+        return original(candidate, segment_bytes=segment_bytes)
+
+    monkeypatch.setattr(catalog_module, "_read_bounded_segments", read)
+    snapshot = catalog.bounded_index_snapshot(cached_items=stale.items)
+    assert {
+        item.projection.session_id: item.projection.name for item in snapshot.items
+    } == {
+        "stable": "Keep this name",
+        "changed": name,
+    }
+    assert reads == [changed]
+    assert snapshot.bytes_read <= 2 * 64 * 1024
+    with monkeypatch.context() as scoped:
+        def fail_scan(_namespace):
+            raise AssertionError("selected cached rows must retain their path binding")
+
+        scoped.setattr(catalog._layout, "scan_paths", fail_scan)
+        for item in snapshot.items:
+            assert catalog.load_authoritative_revision(item.locator) == 2
+    published = catalog.refresh_bounded_index()
+    assert {item.session_id: item.name for item in published} == {
+        "stable": "Keep this name",
+        "changed": name,
+    }
+    assert reads == [changed, changed]
+    assert catalog.try_query_index_snapshot().index_state == "fresh"
 
 
 def test_bounded_index_refresh_does_not_publish_a_racing_directory(

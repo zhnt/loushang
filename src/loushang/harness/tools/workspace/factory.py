@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from loushang.agent.types import AgentTool
 from loushang.harness.approval import (
@@ -160,17 +160,19 @@ class WorkspaceToolRuntimeSettings:
     approval_resolver: ApprovalResolver | None = None
 
 
-def workspace_tool_runtime_settings(
-    settings_manager: object | None,
-    *,
-    policy_factory: Callable[..., ToolPolicyEvaluator] = PolicyEngine,
-) -> WorkspaceToolRuntimeSettings:
-    """Resolve standard tool policy and headless approval settings."""
+class _WorkspacePolicyKwargs(TypedDict):
+    blocked_tools: tuple[str, ...]
+    ask_tools: tuple[str, ...]
+    blocked_substrings: tuple[str, ...]
+    ask_substrings: tuple[str, ...]
+    blocked_path_substrings: tuple[str, ...]
+    ask_path_substrings: tuple[str, ...]
+    blocked_capabilities: tuple[str, ...]
+    ask_capabilities: tuple[str, ...]
 
-    tool_settings = _tool_settings(settings_manager)
-    if tool_settings is None:
-        return WorkspaceToolRuntimeSettings(policy_engine=policy_factory())
-    policy_kwargs = {
+
+def _workspace_policy_kwargs(tool_settings: object) -> _WorkspacePolicyKwargs:
+    return {
         "blocked_tools": _string_tuple(tool_settings, "blocked_tools"),
         "ask_tools": _string_tuple(tool_settings, "ask_tools"),
         "blocked_substrings": _string_tuple(tool_settings, "blocked_substrings"),
@@ -192,6 +194,19 @@ def workspace_tool_runtime_settings(
             capabilities_field="ask_capabilities",
         ),
     }
+
+
+def workspace_tool_runtime_settings(
+    settings_manager: object | None,
+    *,
+    policy_factory: Callable[..., ToolPolicyEvaluator] = PolicyEngine,
+) -> WorkspaceToolRuntimeSettings:
+    """Resolve standard tool policy and headless approval settings."""
+
+    tool_settings = _tool_settings(settings_manager)
+    if tool_settings is None:
+        return WorkspaceToolRuntimeSettings(policy_engine=policy_factory())
+    policy_kwargs = _workspace_policy_kwargs(tool_settings)
     base_policy_engine = policy_factory(**policy_kwargs)
     profile_getter = getattr(settings_manager, "get_permission_profile_id", None)
     ceiling_getter = getattr(
@@ -203,6 +218,9 @@ def workspace_tool_runtime_settings(
         PermissionProfilePolicyEvaluator(
             base_policy_engine,
             profile_provider=profile_getter,
+            policy_provider=(
+                lambda: policy_factory(**_workspace_policy_kwargs(_tool_settings(settings_manager)))
+            ) if policy_factory is PolicyEngine else None,
             ceiling_provider=(
                 ceiling_getter
                 if callable(ceiling_getter)

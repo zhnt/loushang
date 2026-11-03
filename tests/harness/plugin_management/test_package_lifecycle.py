@@ -24,6 +24,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
     PluginInstanceLedgerContinuityFamilyAuthority,
     PluginInstanceLedgerContinuitySecurityRetirementAuthority,
 )
+from loushang.harness.plugin_management.gc_fence import gc_reference_guard
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
     PluginInstanceLeaseFamilyReleaseV1,
@@ -115,6 +116,9 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     with pytest.raises(FileNotFoundError):
         with gate.read_guard():
             pass
+    with pytest.raises(FileNotFoundError):
+        with gate.read_snapshot_guard():
+            pass
     assert not path.exists()
     assert not lock.exists()
 
@@ -123,12 +127,34 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
     before = tuple(sorted(item.name for item in tmp_path.iterdir()))
     with gate.read_guard() as reserved:
         assert reserved == frozenset()
+    with gate.read_snapshot_guard() as snapshot:
+        assert snapshot.journal_revision == 0
+        assert snapshot.active == ()
     assert tuple(sorted(item.name for item in tmp_path.iterdir())) == before
 
     alias = PluginPackageGcReservationJournal(path)
     with gate.read_guard():
         with alias.guard() as reserved:
             assert reserved == frozenset()
+        with pytest.raises(PluginPackageGcReservationError) as reference_write:
+            with gc_reference_guard(alias):
+                pass
+        assert reference_write.value.code == "plugin_package_gc_read_guard_nested"
+        with pytest.raises(PluginPackageGcReservationError) as reservation_write:
+            alias.cancel(
+                "a" * 64,
+                operation_id="cancel-inside-read",
+                idempotency_key="cancel-inside-read",
+                reason_code="test",
+            )
+        assert reservation_write.value.code == "plugin_package_gc_read_guard_nested"
+        with pytest.raises(PluginPackageGcReservationError) as repairing_snapshot:
+            alias.snapshot()
+        assert repairing_snapshot.value.code == "plugin_package_gc_read_guard_nested"
+        with pytest.raises(PluginPackageGcReservationError) as nested_write:
+            with alias.guard(require_write=True):
+                pass
+        assert nested_write.value.code == "plugin_package_gc_read_guard_nested"
         path.write_bytes(b'{"partial":')
         with pytest.raises(PluginPackageGcReservationError) as nested_invalid:
             with alias.guard():
@@ -141,6 +167,11 @@ def test_gc_gate_read_guard_requires_existing_lock_and_never_repairs(
         with gate.read_guard():
             pass
     assert invalid.value.code == "plugin_package_gc_journal_corrupt"
+    assert path.read_bytes() == original
+    with pytest.raises(PluginPackageGcReservationError) as snapshot_invalid:
+        with gate.read_snapshot_guard():
+            pass
+    assert snapshot_invalid.value.code == "plugin_package_gc_journal_corrupt"
     assert path.read_bytes() == original
 
 
@@ -226,6 +257,9 @@ def test_gc_deletion_start_requires_sealed_writers_and_forbids_cancel(
         operation_id="reserve-gc",
         idempotency_key="reserve-gc-request",
     )
+    with gate.read_snapshot_guard() as snapshot:
+        assert snapshot.journal_revision == reservation.journal_revision
+        assert snapshot.active == (reservation,)
     target = ("a" * 64,)
     with pytest.raises(PluginPackageGcReservationError) as unsealed:
         gate.begin_delete(

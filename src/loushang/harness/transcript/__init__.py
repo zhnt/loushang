@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from loushang.harness.transcript.committer import (
         ApplicationMessageIdentityConflictError,
         CommitResult,
+        PrebuiltExtensionDataIdentityConflictError,
+        PrebuiltUserMessageIdentityConflictError,
+        PrebuiltUserMessageLookupResult,
         TranscriptCommitter,
     )
     from loushang.harness.transcript.compaction import (
@@ -394,6 +397,8 @@ _EXPORT_MODULES = {
     "ApplicationMessage": "loushang.harness.transcript.types",
     "ApplicationMessageIdFactory": "loushang.harness.transcript.session",
     "ApplicationMessageIdentityConflictError": "loushang.harness.transcript.committer",
+    "PrebuiltExtensionDataIdentityConflictError": "loushang.harness.transcript.committer",
+    "PrebuiltUserMessageIdentityConflictError": "loushang.harness.transcript.committer",
     "BranchContextSummary": "loushang.harness.transcript.types",
     "BranchSummaryDelta": "loushang.harness.transcript.summarization",
     "BranchSummaryOutput": "loushang.harness.transcript.interaction",
@@ -402,6 +407,7 @@ _EXPORT_MODULES = {
     "BindingInputResolver": "loushang.harness.transcript.session_factory",
     "Clock": "loushang.harness.transcript.writer",
     "CommitResult": "loushang.harness.transcript.committer",
+    "PrebuiltUserMessageLookupResult": "loushang.harness.transcript.committer",
     "CommitObserver": "loushang.harness.transcript.session",
     "CompactionDecision": "loushang.harness.transcript.maintenance",
     "CompactionHookDecision": "loushang.harness.transcript.maintenance",

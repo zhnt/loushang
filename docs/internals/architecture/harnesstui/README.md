@@ -22,6 +22,17 @@ Python packages, or product-specific policy. `loushang.harness` and `loushang.tu
 independent peers: Harnesstui may depend on both, but neither peer may depend on
 Harnesstui or on the other peer.
 
+## Accepted Resume Contract
+
+HarnessTUI presents verified history, readiness, and explicitly unsent pending text. Display targets and execution targets remain distinct through resume, switching, and failure.
+
+The project owner accepted the cross-scope #696 boundaries on 2026-10-12:
+[ARD-004](../decisions/accepted/ARD-004-resume-history-and-current-authority.md),
+[ARD-005](../decisions/accepted/ARD-005-resume-continuation-commit.md), and
+[ARD-006](../decisions/accepted/ARD-006-hosted-resume-readiness-and-admission.md).
+The [Delta ledger](../current-target-gap-ledger.md) records remaining work;
+acceptance does not establish writable release or performance readiness.
+
 ## Responsibilities
 
 The [G15 design](../apphost/foreground-hosted-tui-g15.md) specifies an explicit
@@ -670,6 +681,17 @@ The explicit module paths above are the stable imports. Coding binds prepared
 product data and callbacks directly, without subclassing or re-exporting these
 shared implementations; Python package initializers do not add convenience
 exports.
+
+## Loading Input Ownership
+
+Native screen-first startup uses the same independent loading input/render
+owner on Linux, macOS and Windows, before Product preparation starts on main.
+The coordinator joins that owner before Product UI binding and preserves the
+draft, input parser and native decoding state. Queued loading input is processed
+before submission is armed. TUI supplies the transferable reader adapter;
+HarnessTUI does not import a platform backend. See
+[ARD-009](../decisions/accepted/ARD-009-unified-loading-input-and-terminal-adapters.md)
+for the contract and the outstanding native macOS/Windows validation.
 
 ## Quality Gate
 

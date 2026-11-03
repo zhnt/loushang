@@ -145,6 +145,24 @@ class SegmentedRenderLines(Sequence[RenderLine]):
     ) -> SegmentedRenderLines:
         return cls(segments=segments)
 
+    @classmethod
+    def concat(
+        cls, before: SegmentedRenderLines, after: SegmentedRenderLines
+    ) -> SegmentedRenderLines:
+        if not before.segments:
+            return after
+        if not after.segments:
+            return before
+        combined = object.__new__(cls)
+        object.__setattr__(combined, "segments", before.segments + after.segments)
+        offset = len(before)
+        object.__setattr__(
+            combined,
+            "_segment_ends",
+            before._segment_ends + tuple(offset + end for end in after._segment_ends),
+        )
+        return combined
+
     @property
     def line_count(self) -> int:
         return len(self)
@@ -211,11 +229,11 @@ class SegmentedRenderLines(Sequence[RenderLine]):
             return self
 
         selected_segments: list[RenderLineSegmentLike] = []
-        segment_start = 0
-        for segment, segment_end in zip(self.segments, self._segment_ends, strict=True):
-            if segment_end <= start:
-                segment_start = segment_end
-                continue
+        first = bisect_right(self._segment_ends, start)
+        segment_start = self._segment_ends[first - 1] if first else 0
+        for segment, segment_end in zip(
+            self.segments[first:], self._segment_ends[first:], strict=True
+        ):
             if segment_start >= stop:
                 break
             local_start = max(0, start - segment_start)

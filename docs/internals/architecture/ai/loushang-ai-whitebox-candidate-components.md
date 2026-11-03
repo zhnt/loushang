@@ -7,7 +7,7 @@
 本文档从白盒视角列出 `loushang-ai` 的候选组件清单。  
 它建立在以下输入之上：
 
-- [Component Identification Method](../../architecture-method/component-identification.md)
+- [Loushang Architecture Governance Profile](../governance-profile.md)
 - [Reference AI SDK Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-whitebox-candidate-components.md)
 - [Kimi-CLI AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/kimi-cli/kimi-cli-ai-whitebox-candidate-components.md)
 - [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)

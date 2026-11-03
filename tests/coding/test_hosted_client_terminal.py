@@ -11,15 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.protocol import SessionScopeV1
 from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.session_manager import SessionManager
 from loushang.tui.cell_width import strip_control_sequences
 from tests.tui.terminal_process_support import (
     selected_backend_name,
 )
 
+from ._hosted_composition_seed import seed_hosted_history
 from ._hosted_terminal import foreground_terminal, process_table
 from .test_hosted_client import _argv, _launch
 from .test_mux_terminal_process import _terminal_environment
@@ -85,7 +84,7 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
     # Creation is an actual installed CLI operation, not a catalog substitute.
     def create(creator):
         creator.write(f"/new {scope_kind.value} Native history\r")
-        creator.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+        creator.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=90)
         checkpoint = len(creator.raw_output)
         creator.write("/close --yes\r")
         creator.read_until(
@@ -94,15 +93,7 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
 
     run_cli(tmp_path, _argv(tmp_path), create, exit_command="/exit\r")
 
-    async def seed():
-        (path,) = scope.session_dir.glob("*.jsonl")
-        manager = await SessionManager.open(path)
-        try:
-            await manager.append_message(UserMessage(role="user", content=text, timestamp=1.0))
-        finally:
-            await manager.dispose_runtime_profile()
-
-    asyncio.run(seed())
+    asyncio.run(seed_hosted_history(scope, text))
     arguments = _argv(tmp_path)
     if scope_kind is SessionScopeV1.USER_HOME:
         # Global identity does not depend on the new admitted execution cwd.

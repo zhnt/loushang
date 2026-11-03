@@ -22,7 +22,11 @@ from loushang.appserver.local_record import (
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.harness.tools.core import ToolDefinition
 
-from .hosted_bootstrap import CodingHostedLaunchV1, create_coding_hosted_attempt
+from .hosted_bootstrap import (
+    CodingHostedLaunchV1,
+    create_coding_hosted_attempt,
+    prepare_coding_hosted_session_roots,
+)
 from .hosted_continuity import CodingHostedContinuityAttemptV1
 from .hosted_session import CodingHostedProductRuntimeFactoryForSession
 
@@ -152,6 +156,13 @@ class CodingLocalCommandV1:
     def _mux_management(self) -> bool:
         return False
 
+    def _session_execution(self) -> bool:
+        return True
+
+    def _prepare_session_roots(self) -> None:
+        assert type(self._launch) is CodingLocalLaunchV1
+        prepare_coding_hosted_session_roots(self._launch.application)
+
     def _create_attempt(
         self, launch: _LocalLaunchFacts, *, model: Model | ModelSelection | None,
         stream_fn: StreamFn | None, tools: list[ToolDefinition] | None,
@@ -160,6 +171,7 @@ class CodingLocalCommandV1:
         return create_coding_hosted_attempt(
             launch.application, model=model, stream_fn=stream_fn, tools=tools,
             session_discovery=launch.session_discovery,
+            owned_transcripts=True,
             package_product_runtime_factory_for_session=(
                 self._package_product_runtime_factory_for_session
             ),
@@ -211,6 +223,8 @@ class CodingLocalCommandV1:
 
     async def _start_once(self) -> None:
         self._remaining_startup()
+        await asyncio.to_thread(self._prepare_session_roots)
+        self._remaining_startup()
         self._application = await self._attempt.open()
         self._remaining_startup()
         self._local = HostedLocalRuntimeV1(
@@ -220,6 +234,7 @@ class CodingLocalCommandV1:
             scopes=self._launch.scopes,
             settlement_timeout=self._timeout,
             session_discovery=self._launch.session_discovery,
+            session_execution=self._session_execution(),
             connection_instance=self._connection_instance(),
             mux_management=self._mux_management(),
         )

@@ -1379,6 +1379,9 @@ def test_windows_lpac_durable_attempt_native_rooted_io(tmp_path: Path) -> None:
         assert inventory[0].attempt_id == request.identity.attempt_id
         assert inventory[0].phase == "settled"
         assert not inventory[0].unsettled
+        settlement = profile.native_containment_settlement_witness()
+        assert isinstance(settlement, _WindowsNativeContainmentSettlementWitness)
+        assert inventory[0].settlement_fingerprint == settlement.journal_fingerprint
         lock_path = path.with_name(path.name + ".lock")
         assert lock_path.read_bytes() == b"\1"
         lock_path.write_bytes(b"")

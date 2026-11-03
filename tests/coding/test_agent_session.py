@@ -5,6 +5,8 @@ import inspect
 import json
 from dataclasses import replace
 from datetime import date
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -98,6 +100,73 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
         getattr(message, "role", None)
         for message in session.get_session_context().messages
     ] == ["user"]
+
+
+def test_worker_session_binding_still_rejects_unselected_inputs(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
+    try:
+        with pytest.raises(
+            ValueError, match="Coding Product Worker ordinary Session changed"
+        ):
+            AgentSession(
+                agent=Agent(),
+                session_manager=manager,
+                coding_product_worker_ordinary_binding=cast(Any, object()),
+            )
+    finally:
+        asyncio.run(manager.dispose_runtime_profile())
+
+
+def test_product_capability_route_rejects_unselected_runtime_package(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding._capability_plugin_composition import (
+        CodingCapabilityPluginCompositionAssembly,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.package_product.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+    from loushang.harness.resources.plugins import PluginRuntimeResolution
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
+    assembly = object.__new__(CodingCapabilityPluginCompositionAssembly)
+    assembly.runtime = cast(
+        PluginRuntimeResolution,
+        SimpleNamespace(
+            packages=(
+                SimpleNamespace(
+                    manifest=SimpleNamespace(name="unselected.package"),
+                    content_digest="0" * 64,
+                ),
+            )
+        ),
+    )
+    owner = SimpleNamespace(binding_id="product-graph", activate=lambda: None)
+    runtime_binding = PackageProductRuntimeBindingV1(
+        product_id="coding",
+        lifecycle=cast(Any, owner),
+        inventory=cast(Any, owner),
+        mode="enforced",
+    )
+    try:
+        with pytest.raises(ValueError, match="Coding Product Session packages changed"):
+            AgentSession(
+                agent=Agent(),
+                session_manager=manager,
+                coding_capability_plugin_assembly=assembly,
+                coding_base_product_runtime_binding=runtime_binding,
+            )
+    finally:
+        asyncio.run(manager.dispose_runtime_profile())
 
 
 def _usage() -> Usage:
@@ -1349,7 +1418,10 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     ]
 
 
-def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) -> None:
+@pytest.mark.parametrize("exclude_from_context", [True, False])
+def test_agent_session_execute_bash_uses_extension_user_bash_result(
+    tmp_path, exclude_from_context: bool
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -1363,7 +1435,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
         seen.append((event.command, event.exclude_from_context, ctx.cwd))
         return {"result": {"output": "handled by extension\n", "exitCode": 0}}
 
-    async def scenario() -> dict[str, object]:
+    async def scenario() -> tuple[dict[str, object], tuple[object, ...]]:
         session = AgentSession(
             agent=Agent(),
             session_manager=await SessionManager.new(
@@ -1379,9 +1451,12 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
                 ]
             ),
         )
-        return await session.execute_bash("pwd", exclude_from_context=True)
+        result = await session.execute_bash(
+            "pwd", exclude_from_context=exclude_from_context
+        )
+        return result, tuple(session.get_session_context().messages)
 
-    result = asyncio.run(scenario())
+    result, messages = asyncio.run(scenario())
 
     assert result == {
         "output": "handled by extension\n",
@@ -1390,7 +1465,13 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
         "truncated": False,
         "full_output_path": None,
     }
-    assert seen == [("pwd", True, "/tmp/project")]
+    assert seen == [("pwd", exclude_from_context, "/tmp/project")]
+    assert bool(messages) is not exclude_from_context
+    if messages:
+        assert isinstance(messages[0], UserMessage)
+        assert "handled by extension" in "".join(
+            part.text for part in messages[0].content if isinstance(part, TextPart)
+        )
 
 
 def test_agent_session_execute_bash_uses_extension_user_bash_operations(
@@ -1458,6 +1539,8 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
         "exit_code": 0,
         "cancelled": False,
         "truncated": False,
+        "stdio_complete": True,
+        "stdio_drain_reason": None,
         "full_output_path": None,
     }
     assert seen == ["printf remote"]
@@ -2623,6 +2706,48 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
         "endpoint_id": "responses",
         "model_id": "alt-model",
     }
+
+
+def test_agent_session_restores_selected_reasoning_level_after_resume(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+        )
+        await manager.append_message(_user_message("remember the reasoning level"))
+        await session.set_thinking_level("high")
+        assert manager.session_file is not None
+
+        restored_manager = await SessionManager.load(manager.session_file, persist=True)
+        restored = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=restored_manager,
+        )
+        assert restored.thinking_level == "high"
+        assert restored.get_state().thinking_level == "high"
+
+    asyncio.run(scenario())
 
 
 def test_agent_session_rejects_text_only_model_for_image_history_before_commit(

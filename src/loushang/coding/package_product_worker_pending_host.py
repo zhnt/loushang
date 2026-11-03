@@ -13,6 +13,7 @@ from loushang.harness.capabilities.provider_admission import (
 from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
@@ -28,11 +29,21 @@ from loushang.harness.worker.capability_query import (
 )
 from loushang.harness.worker.gated_start import bind_worker_gated_start_release
 from loushang.harness.worker.hosting_adapter import HostingManagedWorkerSessionAdapter
-from loushang.harness.worker.product_activation import ProductWorkerActivationReceiptV1
+from loushang.harness.worker.product_activation import (
+    ProductWorkerActivationCoordinator,
+    ProductWorkerActivationReceiptV1,
+    WorkerCleanupSettlementV1,
+)
 from loushang.harness.worker.supervisor import WorkerSupervisor
 from loushang.hosting.runtime import create_child_session_host
 
+from .package_product_worker_activation_state import (
+    open_coding_product_worker_activation_state_store,
+)
 from .package_product_worker_capability import CodingProductWorkerCapabilityAuthority
+from .package_product_worker_cleanup_evidence import (
+    CodingPosixWorkerCleanupEvidenceAuthority,
+)
 from .package_product_worker_payload import (
     CodingProductWorkerPendingLaunchV1,
     bind_coding_product_worker_launch_request,
@@ -53,6 +64,11 @@ from .package_product_worker_query_consumer import (
     coding_worker_query_owner_authority,
 )
 from .package_product_worker_receipt import CodingWorkerProductReceiptOwner
+from .package_product_worker_resume import (
+    CodingWorkerResumeSettlementBinding,
+    enroll_coding_worker_resume_parent,
+    seal_coding_worker_resume_parent,
+)
 from .package_product_worker_session_composition import (
     prepare_coding_product_worker_session_inputs,
 )
@@ -76,6 +92,8 @@ class CodingProductWorkerPendingHost:
     binding: CapabilityWorkerBindingV1
     base_policy_binding: CodingWorkerBaseCompositionPolicyBinding
     clock: Callable[[], int]
+    resume_parent_context: ResumeEffectParentContextV1 | None = None
+    resume_settlement: CodingWorkerResumeSettlementBinding | None = None
 
     async def prepare(self, graph_generation: int) -> CodingPreparedWorkerProvider:
         """Own all effects from payload creation through graph disposal."""
@@ -85,15 +103,79 @@ class CodingProductWorkerPendingHost:
         if self.base_policy_binding is not None:
             self.base_policy_binding.assert_current()
         stack = AsyncExitStack()
+        coordinator: ProductWorkerActivationCoordinator | None = None
+        cleanup_evidence: CodingPosixWorkerCleanupEvidenceAuthority | None = None
+        host_identity: str | None = None
+        boot_identity: str | None = None
+        effect_started = False
 
         async def release() -> None:
+            async def settle() -> None:
+                try:
+                    await stack.aclose()
+                finally:
+                    if effect_started:
+                        assert coordinator is not None
+                        assert cleanup_evidence is not None
+                        assert host_identity is not None
+                        assert boot_identity is not None
+                        attempt_id = self.pending_launch.identity.attempt_id
+                        owner_generation = self.pending_launch.identity.owner_generation
+                        coordinator.retire_exact(
+                            receipt=self.receipt,
+                            attempt_id=attempt_id,
+                            owner_generation=owner_generation,
+                        )
+                        coordinator.record_protocol_terminal(
+                            receipt=self.receipt,
+                            attempt_id=attempt_id,
+                            owner_generation=owner_generation,
+                        )
+                        coordinator.record_cleanup_settlement(
+                            WorkerCleanupSettlementV1(
+                                receipt_fingerprint=self.receipt.fingerprint,
+                                attempt_id=attempt_id,
+                                owner_generation=owner_generation,
+                                host_identity=host_identity,
+                                boot_identity=boot_identity,
+                                protocol_terminal=True,
+                                domain_retired=True,
+                                tree_settled=True,
+                            ),
+                            witness=cleanup_evidence.current_tree_witness(
+                                attempt_id=attempt_id
+                            ),
+                        )
+
             task = asyncio.create_task(
-                stack.aclose(),
+                settle(),
                 name=f"coding-worker-release-{self.pending_launch.identity.attempt_id}",
             )
             await _await_cancellation_atomic(task)
 
         try:
+            if self.resume_parent_context is not None:
+                cleanup_evidence = CodingPosixWorkerCleanupEvidenceAuthority(
+                    self.receipt_owner.product_owner
+                )
+                coordinator = ProductWorkerActivationCoordinator(
+                    authority=self.receipt_owner,
+                    evidence_authority=cleanup_evidence,
+                    trusted_evidence_authority_id=cleanup_evidence.authority_id,
+                    trusted_evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+                    state_store=open_coding_product_worker_activation_state_store(
+                        self.receipt_owner.product_owner
+                    ),
+                )
+                if coordinator.evaluate(self.receipt.policy, self.receipt).get("reason") != "admitted":
+                    raise CodingWorkerPendingHostError(
+                        "coding_worker_pending_c5_admission_refused"
+                    )
+                enroll_coding_worker_resume_parent(
+                    coordinator=coordinator,
+                    receipt=self.receipt,
+                    context=self.resume_parent_context,
+                )
             payload = stack.enter_context(
                 materialize_coding_product_worker_payload(
                     receipt_owner=self.receipt_owner,
@@ -165,6 +247,40 @@ class CodingProductWorkerPendingHost:
                             await supervisor.settle_failed_process()
 
             stack.push_async_callback(settle_supervisor)
+            if coordinator is None:
+                cleanup_evidence = CodingPosixWorkerCleanupEvidenceAuthority(
+                    self.receipt_owner.product_owner
+                )
+                coordinator = ProductWorkerActivationCoordinator(
+                    authority=self.receipt_owner,
+                    evidence_authority=cleanup_evidence,
+                    trusted_evidence_authority_id=cleanup_evidence.authority_id,
+                    trusted_evidence_authority_fingerprint=cleanup_evidence.authority_fingerprint,
+                    state_store=open_coding_product_worker_activation_state_store(
+                        self.receipt_owner.product_owner
+                    ),
+                )
+                if coordinator.evaluate(self.receipt.policy, self.receipt).get("reason") != "admitted":
+                    raise CodingWorkerPendingHostError(
+                        "coding_worker_pending_c5_admission_refused"
+                    )
+            if self.resume_settlement is not None:
+                self.resume_settlement.bind(coordinator)
+            assert cleanup_evidence is not None
+            host_identity = cleanup_evidence.host_identity
+            boot_identity = cleanup_evidence.boot_identity
+            with coordinator.admission(
+                policy=self.receipt.policy,
+                receipt=self.receipt,
+                attempt_id=request.identity.attempt_id,
+                owner_generation=request.identity.owner_generation,
+                host_identity=host_identity,
+                boot_identity=boot_identity,
+                cleanup_contract_version=profile.cleanup_contract_version,
+                parent_context=self.resume_parent_context,
+            ) as admission:
+                admission.begin_effect()
+                effect_started = True
             await supervisor.start_session(
                 session_port=HostingManagedWorkerSessionAdapter(
                     hosting=host,
@@ -206,6 +322,26 @@ class CodingProductWorkerPendingHost:
                 raise CodingWorkerPendingHostError(
                     "coding_worker_pending_descriptor_mismatch"
                 )
+
+            def commit_c5() -> None:
+                assert coordinator is not None
+                coordinator.publish(
+                    receipt=self.receipt,
+                    attempt_id=request.identity.attempt_id,
+                    owner_generation=request.identity.owner_generation,
+                    realized_native_policy_closure_fingerprint=(
+                        profile.realized_native_policy_closure_fingerprint
+                    ),
+                    native_profile_catalog_revision=(
+                        profile.native_profile_catalog_revision
+                    ),
+                    native_profile_id=profile.native_profile_id,
+                )
+                seal_coding_worker_resume_parent(
+                    coordinator=coordinator,
+                    context=self.resume_parent_context,
+                )
+
             [resolved] = self.resolved_providers.entries
             return prepare_coding_worker_provider_binding(
                 resolved=resolved,
@@ -219,6 +355,7 @@ class CodingProductWorkerPendingHost:
                 release_attempt=release,
                 base_policy_binding=self.base_policy_binding,
                 renewing_provider_owner=self.provider_owner,
+                on_graph_publication=commit_c5,
             )
         except BaseException as error:
             try:
@@ -241,11 +378,31 @@ def prepare_coding_product_worker_pending_session_inputs(
     evaluated_at: int,
     clock: Callable[[], int],
     base_policy_binding: CodingWorkerBaseCompositionPolicyBinding,
+    resume_parent_context: ResumeEffectParentContextV1 | None = None,
+    resume_settlement: CodingWorkerResumeSettlementBinding | None = None,
 ) -> SessionCapabilityCompositionInputs:
     """Compile a Worker request whose native effects start during graph prepare."""
 
     if (
         not isinstance(pending_launch, CodingProductWorkerPendingLaunchV1)
+        or (
+            resume_parent_context is not None
+            and type(resume_parent_context) is not ResumeEffectParentContextV1
+        )
+        or ((resume_parent_context is None) != (resume_settlement is None))
+        or (
+            resume_settlement is not None
+            and (
+                not isinstance(
+                    resume_settlement, CodingWorkerResumeSettlementBinding
+                )
+                or resume_parent_context is None
+                or not resume_settlement.matches(
+                    receipt=receipt,
+                    context=resume_parent_context,
+                )
+            )
+        )
         or pending_launch.receipt_fingerprint != receipt.fingerprint
         or not isinstance(base_policy_binding, CodingWorkerBaseCompositionPolicyBinding)
         or len(resolved_providers.entries) != 1
@@ -290,6 +447,8 @@ def prepare_coding_product_worker_pending_session_inputs(
         binding=binding,
         base_policy_binding=base_policy_binding,
         clock=clock,
+        resume_parent_context=resume_parent_context,
+        resume_settlement=resume_settlement,
     )
     return prepare_coding_product_worker_session_inputs(
         resolved_providers=resolved_providers,

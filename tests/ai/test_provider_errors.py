@@ -55,6 +55,7 @@ AnthropicAPITimeoutError = type(
         (401, AIErrorCode.AUTHENTICATION, False, "Provider authentication failed."),
         (403, AIErrorCode.AUTHENTICATION, False, "Provider authentication failed."),
         (408, AIErrorCode.TIMEOUT, True, "Provider request timed out."),
+        (402, AIErrorCode.PROVIDER, False, "Provider quota or payment required (HTTP 402)."),
         (413, AIErrorCode.REQUEST_TOO_LARGE, False, "Provider request is too large."),
         (429, AIErrorCode.RATE_LIMIT, True, "Provider rate limit exceeded."),
         (500, AIErrorCode.SERVICE_UNAVAILABLE, True, "Provider service unavailable."),
@@ -114,6 +115,38 @@ def test_provider_error_part_omits_non_http_status_code() -> None:
     assert "code" not in part
     assert part["error_info"]["code"] == "provider"
     assert part["error_info"]["retryable"] is False
+
+
+def test_generic_provider_error_shows_safe_status_or_exception_type() -> None:
+    http_part = provider_error_part(
+        _HttpError("Authorization: Bearer secret-token", 400), source="openai"
+    )
+    local_part = provider_error_part(
+        ValueError("Authorization: Bearer secret-token"), source="anthropic-messages"
+    )
+
+    assert http_part["message"] == "Provider request failed (HTTP 400)."
+    assert local_part["message"] == "Provider request failed (ValueError)."
+    assert "secret-token" not in repr(http_part)
+    assert "secret-token" not in repr(local_part)
+
+
+def test_raw_exception_type_cannot_inject_provider_message() -> None:
+    info = provider_error_info_from_raw(
+        {
+            "type": "response_error",
+            "error_info": {
+                "code": "provider",
+                "message": "unsafe",
+                "source": "anthropic-messages",
+                "retryable": False,
+                "details": {"exceptionType": "ValueError; Bearer secret-token"},
+            },
+        },
+        source="anthropic-messages",
+    )
+
+    assert info.message == "Provider request failed."
 
 
 @pytest.mark.parametrize(

@@ -85,7 +85,8 @@ def test_windows_crash_native_effect_requires_package_then_product_guards(
                 events.append("package.exit")
 
     @contextmanager
-    def gc_guard():
+    def gc_guard(*, require_write: bool):
+        assert require_write
         events.append("gc.enter")
         try:
             yield

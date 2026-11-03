@@ -8,7 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-from loushang.ai.types import UserMessage
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.appserver.protocol import (
@@ -18,9 +17,9 @@ from loushang.appserver.protocol import (
     SessionOpenSpecV1,
 )
 from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
-from loushang.coding.session_manager import SessionManager
 from loushang.harnesstui.mux import open_hosted_mux_profile
 
+from ._hosted_composition_seed import seed_hosted_history
 from .test_hosted_discovery import _create
 from .test_hosted_local import _local_launch
 from .test_hosted_subprocess import _environment
@@ -28,23 +27,17 @@ from .test_mux_command import _serve
 from .test_mux_subprocess import _errors
 
 
-def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(tmp_path):
+def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
+
     async def scenario():
         launch = _local_launch(tmp_path)
         for scope in launch.application.scopes:
             await _create(CodingHostedSessionCatalogV1((scope,)), scope)
-            (path,) = scope.session_dir.glob("*.jsonl")
-            manager = await SessionManager.open(path)
-            try:
-                await manager.append_message(
-                    UserMessage(
-                        role="user",
-                        content=f"Historical {scope.scope.value}",
-                        timestamp=1.0,
-                    )
-                )
-            finally:
-                await manager.dispose_runtime_profile()
+            await seed_hosted_history(scope, f"Historical {scope.scope.value}")
         executable = Path(sys.executable).parent / (
             "loushang-mux.exe" if os.name == "nt" else "loushang-mux"
         )
@@ -100,9 +93,14 @@ def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(tmp_path):
                     )
                 )
                 assert state.active_window is not None
-                assert [record.text for record in state.active_window.records] == [
-                    f"Historical {name}"
-                ]
+                expected_records = [f"Historical {name}"]
+                if sys.platform == "linux":
+                    expected_records.append(
+                        "Historical session is read-only; continuing requires current runtime activation."
+                    )
+                assert [
+                    record.text for record in state.active_window.records
+                ] == expected_records
                 await controller.close()
                 await client.close()
             replacement = LocalAppClientConnectionV1(directory, launch.endpoint)
@@ -117,9 +115,14 @@ def test_G17_COMPAT_installed_local_discovery_history_detach_and_stop(tmp_path):
             assert (
                 restored.state is not None and restored.state.active_window is not None
             )
-            assert [record.text for record in restored.state.active_window.records] == [
-                "Historical cwd",
-            ]
+            expected_records = ["Historical cwd"]
+            if sys.platform == "linux":
+                expected_records.append(
+                    "Historical session is read-only; continuing requires current runtime activation."
+                )
+            assert [
+                record.text for record in restored.state.active_window.records
+            ] == expected_records
             await restored.close()
             assert process.returncode is None
             await stop.start()

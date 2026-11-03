@@ -30,6 +30,7 @@ from loushang.harnesstui.conversation.agent_binding import (
     agent_session_history_records,
     build_agent_plain_conversation_projection,
     build_agent_screen_conversation_projection,
+    cooperative_agent_screen_event_listener,
 )
 from loushang.harnesstui.conversation.application_host import (
     InstalledConversationHistory,
@@ -171,6 +172,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     stdout: TextIO
     now: Callable[[], float]
     completion_provider: object | None = None
+    cooperative_large_deltas: bool = field(default=False, kw_only=True)
     capability_provider: Callable[[], ConversationCapabilities] | None = field(default=None, kw_only=True)
     bind_presenter: Callable[[SurfaceT], Cleanup] = _ignore_surface
     bind_transition: Callable[[SurfaceT], Cleanup] = _ignore_surface
@@ -184,6 +186,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     runtime: object | None = None
     completion_provider_loader: _AgentScreenCompletionProviderLoader | None = None
     report_rebind_problem: _AgentScreenRebindProblemReporter | None = None
+    on_session_rebound: Callable[[], None] | None = None
 
     def prepare(self) -> PreparedScreenConversationRun:
         session = self.session
@@ -223,6 +226,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
 
         def refresh_session_label() -> None:
             self.app.state.session_label = session_label(active_session())
+            self.app.state.session_id = session_observability_id(active_session())
             self.app.request_render("product")
 
         approval_interaction = self.approval_interaction_provider or (lambda: None)
@@ -234,6 +238,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             cwd=self.startup.cwd,
             branch=self.startup.branch,
             session_label=lambda: session_label(active_session()),
+            session_id=lambda: session_observability_id(active_session()),
             thinking_level=lambda: thinking_level(active_session()),
             running=lambda: self.app.state.running or is_running(active_session()),
             permission_profile=lambda: permission_profile_id(
@@ -245,6 +250,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             ),
         )
         self.app.set_statusline_settings(status_provider.statusline_settings())
+        self.app.state.session_id = session_observability_id(active_session())
         surface = self.build_surface(status_provider)
         history_records = materialize_history()
         event_source = self.event_source or session
@@ -255,25 +261,31 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             event_source=event_source,
         )
 
+        def make_event_listener() -> object:
+            projection = build_agent_screen_conversation_projection(
+                self.app,
+                tool_definition_resolver=resolve_tool,
+                read_pending_steers=stable_string_queue_reader(
+                    lambda: read_pending("steering")
+                ),
+                read_pending_followups=stable_string_queue_reader(
+                    lambda: read_pending("follow_up")
+                ),
+                on_session_info_changed=refresh_session_label,
+                now=self.now,
+            )
+            return (
+                cooperative_agent_screen_event_listener(projection)
+                if self.cooperative_large_deltas
+                else projection.handle
+            )
+
         return PreparedScreenConversationRun(
             app=self.app,
             action_host=self.action_host,
             surface=surface,
             event_source=event_source,
-            event_listener_factory=lambda: (
-                build_agent_screen_conversation_projection(
-                    self.app,
-                    tool_definition_resolver=resolve_tool,
-                    read_pending_steers=stable_string_queue_reader(
-                        lambda: read_pending("steering")
-                    ),
-                    read_pending_followups=stable_string_queue_reader(
-                        lambda: read_pending("follow_up")
-                    ),
-                    on_session_info_changed=refresh_session_label,
-                    now=self.now,
-                ).handle
-            ),
+            event_listener_factory=make_event_listener,
             interaction_context=self.interaction_context,
             profile=self.profile,
             should_exit=_screen_should_exit,
@@ -356,12 +368,15 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                     (), reason="resume_refresh_failed"
                 )
                 self.app.state.session_label = session_label(next_session)
+                self.app.state.session_id = session_observability_id(next_session)
                 report_problem(
                     "session_rebind_failed",
                     "Session changed, but the TUI could not refresh its history.",
                     error,
                 )
                 return
+            if self.on_session_rebound is not None:
+                self.on_session_rebound()
             if event_source.last_rebind_error is not None:
                 report_problem(
                     "event_rebind_failed",
@@ -465,6 +480,8 @@ def build_agent_screen_surface_workflow_ports(
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
         SessionModelSelectorSurfaceProfile()
     ),
+    build_reasoning_selector: Callable[[], ScreenSurfaceView | None] | None = None,
+    select_reasoning_level: Callable[[str], Awaitable[str]] | None = None,
 ) -> ScreenSurfaceWorkflowPorts:
     """Bind a structural Agent session to the existing screen-surface workflow."""
 
@@ -568,6 +585,8 @@ def build_agent_screen_surface_workflow_ports(
         build_permissions_surface=build_permissions_surface,
         apply_permission_action=apply_permission_action,
         build_side_question_surface=build_side_question_surface,
+        build_reasoning_selector=build_reasoning_selector,
+        select_reasoning_level=select_reasoning_level,
     )
 
 
@@ -812,6 +831,7 @@ async def refresh_agent_screen_session(
     app.state.cwd = snapshot.cwd
     app.state.branch = snapshot.branch
     app.state.session_label = snapshot.session_label
+    app.state.session_id = snapshot.session_observability_id
     app.state.permission_profile = permission_profile_id(approval_interaction)
     app.install_resumed_history(history)
     event_source.rebind(session)

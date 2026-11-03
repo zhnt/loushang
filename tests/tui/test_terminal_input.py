@@ -224,6 +224,160 @@ def test_read_input_chunk_or_render_tick_wakes_for_terminal_runtime_deadline() -
     assert rendered == 0
 
 
+@pytest.mark.parametrize("wake", ["turn_completed", "terminal_deadline"])
+@pytest.mark.parametrize("chunk", ["\x1b", "next prompt", ""])
+def test_input_completed_during_render_waiter_cleanup_is_delivered(
+    wake: str, chunk: str
+) -> None:
+    async def run() -> None:
+        existing = asyncio.all_tasks()
+        render_waiting = asyncio.Event()
+        input_ready = asyncio.Event()
+        input_completed = asyncio.Event()
+
+        class RenderWakeup(asyncio.Event):
+            async def wait(self) -> bool:
+                render_waiting.set()
+                try:
+                    return await super().wait()
+                finally:
+                    # A real terminal read can finish while the cancelled
+                    # render waiter is being joined. Coordinate that ordering
+                    # without relying on wall-clock delays or asyncio.wait mocks.
+                    input_ready.set()
+                    await input_completed.wait()
+
+        async def read(_stdin: object) -> str:
+            await input_ready.wait()
+            input_completed.set()
+            return chunk
+
+        async def turn() -> None:
+            await render_waiting.wait()
+
+        active = asyncio.create_task(turn()) if wake == "turn_completed" else None
+        try:
+            assert await read_input_chunk_or_render_tick(
+                StringIO(),
+                runtime=_Runtime(),
+                active_task=active,
+                input_chunk_reader=read,
+                render_wakeup=RenderWakeup(),
+                idle_wakeup_ms=0 if wake == "terminal_deadline" else None,
+            ) == chunk
+            assert input_completed.is_set()
+            assert not asyncio.all_tasks() - existing
+        finally:
+            if active is not None:
+                active.cancel()
+                await asyncio.gather(active, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("chunk", ["x", "\x1b", ""])
+def test_ready_input_is_delivered_before_the_next_preparation_phase(chunk):
+    async def run():
+        existing = asyncio.all_tasks()
+        render_waiting = asyncio.Event()
+        render_settled = asyncio.Event()
+        input_ready = asyncio.Event()
+
+        class RenderWakeup(asyncio.Event):
+            async def wait(self):
+                render_waiting.set()
+                try:
+                    return await super().wait()
+                finally:
+                    render_settled.set()
+
+        async def read(_stdin):
+            await input_ready.wait()
+            return chunk
+
+        task = asyncio.create_task(
+            read_input_chunk_or_render_tick(
+                StringIO(),
+                runtime=_Runtime(),
+                active_task=None,
+                input_chunk_reader=read,
+                render_wakeup=RenderWakeup(),
+            )
+        )
+        try:
+            await render_waiting.wait()
+            input_ready.set()
+            # Match the existing three-turn CPU preparation boundary. Ready
+            # input must leave the helper before the next synchronous phase.
+            for _ in range(3):
+                await asyncio.sleep(0)
+            assert task.done(), "ready input waited through the next CPU phase"
+            assert task.result() == chunk
+            assert render_settled.is_set(), "input bypassed owned waiter cleanup"
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("deadline_kind", ["pending_input_idle_ms", "idle_wakeup_ms"])
+@pytest.mark.parametrize("refresh_kind", ["wakeup", "immediate", "scheduled"])
+def test_input_deadline_is_not_restarted_by_render_activity(
+    monkeypatch, deadline_kind: str, refresh_kind: str
+) -> None:
+    import types
+
+    import loushang.tui.terminal_input as terminal_input
+
+    async def scenario() -> None:
+        clock = [10.0]
+        monkeypatch.setattr(
+            terminal_input, "time", types.SimpleNamespace(monotonic=lambda: clock[0])
+        )
+        wakeup = asyncio.Event()
+        late_input = asyncio.Event()
+        existing = asyncio.all_tasks()
+
+        class Runtime:
+            decisions = 0
+
+            def request_next_animation_frame(self):
+                self.decisions += 1
+                clock[0] += 0.02
+                if self.decisions == 6:
+                    late_input.set()
+                if refresh_kind == "wakeup":
+                    wakeup.set()
+                return types.SimpleNamespace(
+                    render_now=refresh_kind == "immediate",
+                    delay_ms=1 if refresh_kind == "scheduled" else 1000,
+                )
+
+            def render_now(self):
+                pass
+
+        async def read(_stdin):
+            await late_input.wait()
+            return "late tail"
+
+        runtime = Runtime()
+        result = await terminal_input.read_input_chunk_or_render_tick(
+            StringIO(),
+            runtime=runtime,
+            active_task=None,
+            input_chunk_reader=read,
+            render_wakeup=wakeup,
+            **{deadline_kind: 30},
+        )
+        assert result is None
+        assert runtime.decisions <= 2
+        assert not asyncio.all_tasks() - existing
+
+    asyncio.run(scenario())
+
+
 def test_drain_input_consumes_buffered_stringio_text() -> None:
     stdin = StringIO("leftover")
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
+
+from tests.architecture._source_imports import imported_modules
 
 SOURCE_ROOT = Path("src/loushang")
 HARNESS_DOC_ROOT = Path("docs/internals/architecture/harness")
@@ -10,16 +11,14 @@ HARNESS_DOC_ROOT = Path("docs/internals/architecture/harness")
 def _loushang_dependencies(package: str) -> set[str]:
     dependencies: set[str] = set()
     for source_path in (SOURCE_ROOT / package).rglob("*.py"):
-        tree = ast.parse(source_path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module.startswith("loushang."):
-                    dependencies.add(module.split(".", 2)[1])
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith("loushang."):
-                        dependencies.add(alias.name.split(".", 2)[1])
+        source = source_path.read_text(encoding="utf-8")
+        if "loushang." not in source:
+            continue
+        dependencies.update(
+            module.split(".", 2)[1]
+            for module in imported_modules(source_path, source)
+            if module.startswith("loushang.")
+        )
     dependencies.discard(package)
     return dependencies
 

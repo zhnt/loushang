@@ -160,6 +160,67 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
     assert rendered.rfind("Working") < rendered.rfind("Worked for")
 
 
+def test_screen_loop_queues_shell_behind_active_prompt_instead_of_steering() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    submitted: list[str] = []
+    steered: list[str] = []
+    read_count = 0
+
+    async def read_input(_stdin: StringIO) -> str:
+        nonlocal read_count
+        read_count += 1
+        if read_count == 1:
+            return "hello\r"
+        if read_count == 2:
+            await started.wait()
+            return "!! echo hi\r"
+        return ""
+
+    async def submit(text: str) -> None:
+        submitted.append(text)
+        if text == "hello":
+            started.set()
+            await release.wait()
+
+    async def release_after_queue() -> None:
+        await started.wait()
+        while app.state.pending_shell_commands != ["!! echo hi"]:
+            await asyncio.sleep(0)
+        release.set()
+
+    async def scenario() -> int:
+        release_task = asyncio.create_task(release_after_queue())
+        try:
+            return await asyncio.wait_for(
+                run_coding_test_screen(
+                    app=app,
+                    stdin=StringIO(),
+                    stdout=StringIO(),
+                    action_host=_action_host(submit=submit, steer=steered.append),
+                    input_chunk_reader=read_input,
+                    should_exit=lambda _text: False,
+                ),
+                timeout=2,
+            )
+        finally:
+            release_task.cancel()
+            await asyncio.gather(release_task, return_exceptions=True)
+
+    assert asyncio.run(scenario()) == 0
+    assert submitted == ["hello", "!! echo hi"]
+    assert steered == []
+    assert app.state.pending_shell_commands == []
+
+
 def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> None:
     from loushang.harnesstui.conversation.host import (
         bind_action_host_to_screen_runner,
@@ -690,6 +751,104 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
 
     assert result == 0
     assert prompts == ["follow"]
+
+
+def test_screen_loop_acknowledges_escape_before_slow_abort_settlement() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    stdout = StringIO()
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=time.monotonic,
+    )
+    settled = asyncio.Event()
+    observed_acknowledgement: list[bool] = []
+
+    async def handle_prompt(_text: str) -> None:
+        await settled.wait()
+
+    async def slow_abort() -> None:
+        observed_acknowledgement.append(
+            "Stopping…" in strip_control_sequences(stdout.getvalue())
+        )
+        await asyncio.sleep(0.1)
+        settled.set()
+
+    result = asyncio.run(
+        run_coding_test_screen(
+            app=app,
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
+                (0.0, "run\r"),
+                (0.01, "\x1b"),
+                (0.2, ""),
+            ),
+            stdout=stdout,
+            action_host=_action_host(submit=handle_prompt, abort=slow_abort),
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
+            should_exit=lambda text: False,
+        )
+    )
+
+    assert result == 0
+    assert observed_acknowledgement == [True]
+    assert app.state.running is False
+
+
+def test_screen_loop_keeps_editor_responsive_while_escape_settles() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    stdout = StringIO()
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=time.monotonic,
+    )
+    settled = asyncio.Event()
+    prompts: list[str] = []
+    observed_before_settlement: list[tuple[str, bool]] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        if text == "run":
+            await settled.wait()
+
+    async def slow_abort() -> None:
+        await asyncio.sleep(0.18)
+        observed_before_settlement.append(
+            (
+                app.composer.value,
+                "next" in strip_control_sequences(stdout.getvalue()),
+            )
+        )
+        settled.set()
+
+    result = asyncio.run(
+        run_coding_test_screen(
+            app=app,
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
+                (0.0, "run\r"),
+                (0.01, "\x1b"),
+                (0.06, "next\r"),
+                (0.25, "\r"),
+                (0.35, ""),
+            ),
+            stdout=stdout,
+            action_host=_action_host(submit=handle_prompt, abort=slow_abort),
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
+            should_exit=lambda text: False,
+        )
+    )
+
+    assert result == 0
+    assert observed_before_settlement == [("next", True)]
+    assert prompts == ["run", "next"]
 
 
 def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> None:

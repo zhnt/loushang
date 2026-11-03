@@ -150,6 +150,11 @@ def test_registry_reports_all_live_leases_and_refuses_old_protocol(
         }
         with pytest.raises(PackageEpochRuntimeLeaseRegistryError, match="live"):
             registry.repair_orphan(first.lease.lease_id)
+        with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as other_active:
+            registry.repair_orphan(
+                first.lease.lease_id, require_exclusive_active=True
+            )
+        assert other_active.value.code == "package_epoch_lease_other_runtime_active"
     finally:
         first.release()
         second.release()
@@ -476,6 +481,9 @@ os._exit(0)
     before_review = registry.path.read_bytes()
     (orphan,) = registry.review_orphans(store_id=registry.store_id)
     assert orphan.lease_id == lease_id
+    assert registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:crashed"
+    ) is None
     assert registry.path.read_bytes() == before_review
     lock_path = registry._lease_lock_path(lease_id)
     moved_lock = lock_path.with_name(lock_path.name + ".held")
@@ -487,7 +495,16 @@ os._exit(0)
         assert not lock_path.exists()
     finally:
         moved_lock.rename(lock_path)
-    registry.repair_orphan(lease_id)
+    registry.repair_orphan(lease_id, require_exclusive_active=True)
+    repaired = registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:crashed"
+    )
+    assert repaired is not None
+    assert repaired[0] > 0
+    assert repaired[1] == orphan
+    assert registry.repaired_orphan_for_runtime(
+        store_id=registry.store_id, runtime_id="runtime:other"
+    ) is None
     assert registry.review_orphans(store_id=registry.store_id) == ()
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as absent:
         registry.snapshot(store_id="package-store:test")

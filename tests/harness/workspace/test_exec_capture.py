@@ -300,7 +300,7 @@ async def _local_captured_process_tasks_bypass_factory_and_settle(tmp_path, monk
     assert capability is not None
     try:
         operation = capability.execute(ExecRequest(
-            (sys.executable, "-c", code), cwd=str(tmp_path), stdin="input", timeout_seconds=3,
+            (sys.executable, "-c", code), cwd=str(tmp_path), stdin="input", timeout_seconds=1,
         ), capture=Capture(), signal=SimpleNamespace(aborted=False))
         if reader_failure:
             with pytest.raises(ValueError, match="original reader failure"):

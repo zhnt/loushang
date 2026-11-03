@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import subprocess
@@ -15,6 +16,22 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.harness.runtime import SessionOperationResult
+
+
+def test_lazy_plain_prompt_runners_preserve_keyword_contract() -> None:
+    from loushang.coding import prompt_command
+    from loushang.coding.cli import application
+
+    for name in ("run_prompt_command", "run_prompt_plan_command"):
+        wrapper = inspect.signature(getattr(application, name))
+        implementation = inspect.signature(getattr(prompt_command, name))
+        assert tuple(
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in wrapper.parameters.values()
+        ) == tuple(
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in implementation.parameters.values()
+        )
 
 
 def _model() -> Model:
@@ -1356,13 +1373,15 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
             "home-session",
         }
 
-        prepared = await runtime.prepare_restore_session_operation("cwd-session")
-        result = await prepared.consume()
-        assert result.current is not None
-        restored = result.current.session_manager.get_session_file()
-        assert restored is not None
-        assert restored.parent == runtime.session_dir.resolve()
-        assert restored != cwd_file
+        legacy_bytes = cwd_file.read_bytes()
+        authority_files = tuple(sorted(runtime.session_dir.glob("*.jsonl")))
+        with pytest.raises(
+            ValueError, match="no proven composition choice; create a new Session"
+        ):
+            await runtime.prepare_restore_session_operation("cwd-session")
+        assert cwd_file.read_bytes() == legacy_bytes
+        assert tuple(sorted(runtime.session_dir.glob("*.jsonl"))) == authority_files
+        assert runtime.get_current_session() is global_session
         await shutdown_coding_continuity(runtime)
         await runtime.dispose_session_runtime()
 
@@ -2920,6 +2939,172 @@ def test_run_cli_exports_session_and_exits_early(tmp_path) -> None:
         assert stderr.getvalue() == ""
 
     asyncio.run(scenario())
+
+
+def test_run_cli_exports_session_and_lists_models(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    class ModelSession(FakeSession):
+        def get_available_models(self):
+            self.get_available_models_calls += 1
+            return [
+                SimpleNamespace(
+                    provider="anthropic",
+                    endpoint_id="anthropic-messages",
+                    model_id="claude-3-opus",
+                )
+            ]
+
+    session = ModelSession("session-1")
+    runtime = FakeRuntime(session)
+    export_path = str(tmp_path / "export.html")
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        result = await run_cli(
+            ["--list-models", "--export", export_path],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert result == 0
+
+    asyncio.run(scenario())
+
+    assert session.set_export_calls == [export_path]
+    assert session.get_available_models_calls == 1
+    assert stdout.getvalue() == (
+        f"Exported to: {export_path}\nanthropic:anthropic-messages:claude-3-opus\n"
+    )
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_sessions_and_exports_session(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(
+        session,
+        records=[
+            SimpleNamespace(
+                session_id="session-1",
+                cwd=str(tmp_path),
+                session_file=Path("/tmp/session-1.jsonl"),
+                parent_session=None,
+                leaf_id=None,
+                metadata=SimpleNamespace(
+                    created_at="2026-05-20T10:00:00Z",
+                    updated_at="2026-05-21T10:00:00Z",
+                    name=None,
+                ),
+            )
+        ],
+    )
+    export_path = str(tmp_path / "export.html")
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        result = await run_cli(
+            ["--list-sessions", "--export", export_path],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert result == 0
+
+    asyncio.run(scenario())
+
+    assert len(runtime.find_session_summaries_calls) == 1
+    assert session.set_export_calls == [export_path]
+    assert stdout.getvalue() == (
+        "session-1\t/tmp/session-1.jsonl\t"
+        f"{tmp_path}\t2026-05-21T10:00:00Z\t\n"
+        f"Exported to: {export_path}\n"
+    )
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_exports_session_and_lists_plugins(tmp_path, monkeypatch) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    plugin_root = tmp_path / "plugins" / "debug-pack"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "debug-pack", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    export_path = str(tmp_path / "export.html")
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        result = await run_cli(
+            ["--export", export_path, "--list-plugins"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(plugin_sources=(str(plugin_root),)),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert result == 0
+
+    asyncio.run(scenario())
+
+    assert session.set_export_calls == [export_path]
+    assert stdout.getvalue() == (
+        f"Exported to: {export_path}\n"
+        f"debug-pack\t1.0.0\t{plugin_root.resolve()}\tunknown\n"
+    )
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_exports_session_and_lists_packages(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    session = FakeSession("session-1")
+    session.packages_payload = [{"name": "review-pack", "version": "1.2.3"}]
+    runtime = FakeRuntime(session)
+    export_path = str(tmp_path / "export.html")
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        result = await run_cli(
+            [
+                "--export",
+                export_path,
+                "--list-packages",
+                "--list-packages-format",
+                "json",
+            ],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert result == 0
+
+    asyncio.run(scenario())
+
+    assert session.set_export_calls == [export_path]
+    export_line, packages_line = stdout.getvalue().splitlines()
+    assert export_line == f"Exported to: {export_path}"
+    assert json.loads(packages_line) == session.packages_payload
+    assert stderr.getvalue() == ""
 
 
 def test_run_cli_diag_export_exits_before_runtime_creation(
@@ -9571,7 +9756,8 @@ def test_run_cli_rejects_insecure_remote_plugin_source(tmp_path) -> None:
     }
 
 
-def test_run_cli_runs_explicit_package_lifecycle_commands(tmp_path) -> None:
+@pytest.mark.parametrize("legacy_settings", (False, True))
+def test_run_cli_runs_explicit_package_lifecycle_commands(tmp_path, legacy_settings) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -9579,6 +9765,11 @@ def test_run_cli_runs_explicit_package_lifecycle_commands(tmp_path) -> None:
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
+    settings = tmp_path / ".loushang" / "settings.json"
+    old_bytes = b'{"disabled_plugins":["coding.arch.default"]}'
+    if legacy_settings:
+        settings.parent.mkdir()
+        settings.write_bytes(old_bytes)
 
     async def scenario() -> None:
         exit_code = await run_cli(
@@ -9633,6 +9824,8 @@ def test_run_cli_runs_explicit_package_lifecycle_commands(tmp_path) -> None:
         },
     ]
     assert stderr.getvalue() == ""
+    if legacy_settings:
+        assert settings.read_bytes() == old_bytes
 
 
 def test_run_cli_package_lifecycle_failed_record_returns_error(tmp_path) -> None:

@@ -16,11 +16,13 @@ from loushang.ai.model.domain import (
     OpenAICompletionsConfig,
     Pricing,
 )
+from loushang.ai.types import ProviderCompactionWindow
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.harness.transcript import CompactionResult
 from tests.coding.rpc_support import (
     FakeModelRegistry,
     FakeRuntime,
@@ -366,6 +368,52 @@ def test_rpc_mode_passes_custom_instructions_to_compact_command() -> None:
     assert [line["command"] for line in _parse_jsonl(stdout)] == ["compact", "compact"]
 
 
+def test_rpc_compact_omits_opaque_provider_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.host.rpc import RpcHost as RpcMode
+
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+
+    async def compact_with_provider(
+        custom_instructions: str | None = None,
+    ) -> CompactionResult:
+        return CompactionResult(
+            summary="Provider context compacted",
+            first_kept_entry_id="entry-1",
+            tokens_before=42,
+            provider_window=ProviderCompactionWindow.from_items(
+                provider="openai",
+                endpoint="responses",
+                model="gpt-6",
+                items=[{"type": "compaction", "encrypted_content": "secret-token"}],
+            ),
+        )
+
+    monkeypatch.setattr(session, "compact", compact_with_provider)
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        mode = RpcMode(
+            runtime=FakeRuntime(session),
+            stdin=StringIO('{"id":"compact","type":"compact"}\n'),
+            stdout=stdout,
+        )
+        assert await mode.run() == 0
+
+    asyncio.run(scenario())
+
+    records = _parse_jsonl(stdout)
+    assert records[0]["data"] == {
+        "summary": "Provider context compacted",
+        "firstKeptEntryId": "entry-1",
+        "tokensBefore": 42,
+        "details": None,
+        "modelInputSnapshotIds": [],
+    }
+    assert "secret-token" not in stdout.getvalue()
+
+
 def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
@@ -378,12 +426,8 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
     )
     session.model_registry = FakeModelRegistry(
         [
-            ModelSelection(
-                endpoint_id="coding", provider="faux", model_id="alpha"
-            ),
-            ModelSelection(
-                endpoint_id="coding", provider="openai", model_id="gpt-5"
-            ),
+            ModelSelection(endpoint_id="coding", provider="faux", model_id="alpha"),
+            ModelSelection(endpoint_id="coding", provider="openai", model_id="gpt-5"),
         ],
         resolved_models={
             ("faux", "coding", "alpha"): Model(

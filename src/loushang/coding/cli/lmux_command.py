@@ -731,6 +731,7 @@ class ManagedMuxCommand:
                 connection.client, selector=selector, product_id="coding",
                 scopes=tuple((item.scope, item.fingerprint) for item in connection.scopes),
                 discovery_client=connection.discovery_client,
+                execution_client=connection.execution_client,
                 transcript_theme=terminal_transcript_theme(),
             )
             status = await run_hosted_mux_shell(self.shell, stdin=self.stdin, stdout=self.stdout,

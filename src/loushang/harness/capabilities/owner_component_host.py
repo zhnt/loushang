@@ -41,6 +41,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.resume_effects import ResumeEffectParentContextV1
 
 _COMPONENT_HOST_API_PREFIXES = (
     "loushang.harness.capabilities",
@@ -72,15 +73,14 @@ class CapabilityOwnerComponentHost:
         import_realm: PluginImportRealm,
         host_boot_id: str,
         clock: Callable[[], int],
-        owner_snapshot_reader: Callable[
-            [str, str], CapabilityComponentOwnerSnapshot
-        ],
+        owner_snapshot_reader: Callable[[str, str], CapabilityComponentOwnerSnapshot],
         trust_snapshot_reader: Callable[[str, str], PluginSourceTrustSnapshotV1],
         product_policy_revision_reader: Callable[[str, str], str],
         payload_validator_reader: Callable[
             [CapabilityComponentDefinition],
             CapabilityOwnerComponentPayloadValidator,
         ],
+        resume_parent_context: ResumeEffectParentContextV1 | None = None,
     ) -> None:
         if not isinstance(decision_journal, PluginActivationDecisionJournal):
             raise TypeError("Owner Component Host requires an activation journal")
@@ -111,6 +111,7 @@ class CapabilityOwnerComponentHost:
             import_realm_id=import_realm.import_realm_id,
             clock=clock,
             error_factory=_owner_host_error,
+            resume_parent_context=resume_parent_context,
         )
         self._lifecycle.recover_incomplete_uses()
 
@@ -161,9 +162,7 @@ class CapabilityOwnerComponentHost:
             instance_revision_ref=candidate.instance_revision_ref,
             package_source_identity=candidate.package_source_identity,
             source_trust_class=trust_snapshot.source_trust_class,
-            source_trust_policy_revision=(
-                trust_snapshot.source_trust_policy_revision
-            ),
+            source_trust_policy_revision=(trust_snapshot.source_trust_policy_revision),
             product_policy_revision=candidate.product_policy_revision,
             owner_policy_revision=owner_snapshot.policy_revision,
             revocation_epoch=owner_snapshot.revocation_epoch,
@@ -293,6 +292,7 @@ class CapabilityOwnerComponentHost:
                 "capability_component_product_policy_stale",
                 "Current Product policy changed after component selection.",
             )
+
 
 @dataclass(slots=True)
 class _PreparedOwnerComponentAttempt:
@@ -439,7 +439,9 @@ class _PreparedOwnerComponentAttempt:
             cast(_PluginComponentDisposer | None, disposer),
         )
 
-    def _load_module(self, relative_path: str, *, suffix: str) -> VerifiedPluginPythonModule:
+    def _load_module(
+        self, relative_path: str, *, suffix: str
+    ) -> VerifiedPluginPythonModule:
         return load_verified_plugin_python_module(
             revision_handle=self.package.revision_handle,
             dependency_lock=self.package.dependency_lock,
@@ -531,8 +533,7 @@ def _validate_current_authorities(
         candidate.package_source_identity is None
         or not trust_snapshot.trusted
         or trust_snapshot.plugin_id != spec.plugin_id
-        or trust_snapshot.package_source_identity
-        != candidate.package_source_identity
+        or trust_snapshot.package_source_identity != candidate.package_source_identity
         or trust_snapshot.source_trust_class != candidate.source_trust_class
         or trust_snapshot.source_trust_policy_revision
         != candidate.source_trust_policy_revision

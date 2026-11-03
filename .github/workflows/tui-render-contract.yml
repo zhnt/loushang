@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: ${{ fromJSON(inputs.plan).windows.tui_full && fromJSON('["ubuntu-24.04","windows-2022"]') || fromJSON('["ubuntu-24.04"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,61 +60,9 @@ jobs:
       - name: Reject empty, skipped, or failing report
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/deterministic-render.xml
 
-  terminal-platform-unit:
-    if: ${{ fromJSON(inputs.plan).checks.tui_native }}
-    name: terminal-platform-unit (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: astral-sh/setup-uv@v5
-
-      - name: Install locked dependencies
-        run: uv sync --locked --extra dev
-
-      - name: Create report directory
-        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
-
-      - name: Shared terminal platform units
-        run: >-
-          uv run python scripts/run_tui_platform_tests.py shared
-          --junitxml=.artifacts/terminal-platform-shared.xml -q
-
-      - name: Reject empty, skipped, or failing shared report
-        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-shared.xml
-
-      - name: POSIX terminal platform units
-        if: runner.os == 'Linux'
-        run: >-
-          uv run python scripts/run_tui_platform_tests.py posix
-          --junitxml=.artifacts/terminal-platform-posix.xml -q
-
-      - name: Reject empty, skipped, or failing POSIX report
-        if: runner.os == 'Linux'
-        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-posix.xml
-
-      - name: Windows terminal platform units
-        if: runner.os == 'Windows'
-        run: >-
-          uv run python scripts/run_tui_platform_tests.py windows
-          --junitxml=.artifacts/terminal-platform-windows.xml -q
-
-      - name: Reject empty, skipped, or failing Windows report
-        if: runner.os == 'Windows'
-        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-windows.xml
-
   native-terminal:
     if: ${{ fromJSON(inputs.plan).checks.tui_native }}
-    name: native-terminal (${{ matrix.backend }})
+    name: native-terminal-and-platform (${{ matrix.backend }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -136,40 +84,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Install locked dependencies
-        run: uv sync --locked --extra dev
-
-      - name: Create report directory
-        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
-
-      - name: Native backend conformance and shared CLI contract
-        env:
-          LOUSHANG_REQUIRED_TERMINAL_BACKEND: ${{ matrix.backend }}
-        run: >-
-          uv run python scripts/run_tui_native_tests.py ${{ matrix.profile }}
-          --junitxml=.artifacts/native-terminal.xml -q
-
-      - name: Reject empty, skipped, failing, or wrong-backend report
-        run: >-
-          uv run python scripts/dev/verify_pytest_xml.py
-          .artifacts/native-terminal.xml
-          --require-property terminal_backend=${{ matrix.backend }}
-
-  tmux-scrollback:
-    if: ${{ fromJSON(inputs.plan).checks.tui_native }}
-    name: tmux-scrollback (ubuntu-24.04)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - uses: astral-sh/setup-uv@v5
-
       - name: Install tmux
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes tmux
@@ -181,7 +97,54 @@ jobs:
       - name: Create report directory
         run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
 
+      # The Ubuntu tui-unit job already runs these unmarked files in the same
+      # source/Python environment. Keep the shared profile here only for the
+      # distinct Windows platform configuration.
+      - name: Shared terminal platform units
+        if: ${{ runner.os == 'Windows' && fromJSON(inputs.plan).windows.tui_full }}
+        run: >-
+          uv run python scripts/run_tui_platform_tests.py shared
+          --junitxml=.artifacts/terminal-platform-shared.xml -q
+
+      - name: Reject empty, skipped, or failing shared report
+        if: ${{ runner.os == 'Windows' && fromJSON(inputs.plan).windows.tui_full }}
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-shared.xml
+
+      - name: Windows terminal platform units
+        if: ${{ runner.os == 'Windows' && fromJSON(inputs.plan).windows.tui_full }}
+        run: >-
+          uv run python scripts/run_tui_platform_tests.py windows
+          --junitxml=.artifacts/terminal-platform-windows.xml -q
+
+      - name: Reject empty, skipped, or failing Windows report
+        if: ${{ runner.os == 'Windows' && fromJSON(inputs.plan).windows.tui_full }}
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-windows.xml
+
+      - name: Native backend conformance and shared CLI contract
+        if: ${{ matrix.backend != 'conpty' || fromJSON(inputs.plan).windows.tui_full }}
+        env:
+          LOUSHANG_REQUIRED_TERMINAL_BACKEND: ${{ matrix.backend }}
+        run: >-
+          uv run python scripts/run_tui_native_tests.py ${{ matrix.profile }}
+          --junitxml=.artifacts/native-terminal.xml -q
+
+      - name: PR ConPTY startup and exit smoke
+        if: ${{ matrix.backend == 'conpty' && !fromJSON(inputs.plan).windows.tui_full }}
+        env:
+          LOUSHANG_REQUIRED_TERMINAL_BACKEND: conpty
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/coding/test_cli_terminal_contract_windows.py::test_windows_cli_conpty_stream_ends_with_cursor_restoration
+          --junitxml=.artifacts/native-terminal.xml -q
+
+      - name: Reject empty, skipped, failing, or wrong-backend report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/native-terminal.xml
+          --require-property terminal_backend=${{ matrix.backend }}
+
       - name: Required tmux pane and history contracts
+        if: runner.os == 'Linux'
         env:
           LOUSHANG_REQUIRE_TMUX: "1"
         run: >-
@@ -190,19 +153,5 @@ jobs:
           --junitxml=.artifacts/tmux-scrollback.xml -q
 
       - name: Reject empty, skipped, or failing report
+        if: runner.os == 'Linux'
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/tmux-scrollback.xml
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [tui-unit, deterministic-render, terminal-platform-unit, native-terminal, tmux-scrollback]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"tui-unit":"tui_unit","deterministic-render":"tui_playback","terminal-platform-unit":"tui_native","native-terminal":"tui_native","tmux-scrollback":"tui_native"}'

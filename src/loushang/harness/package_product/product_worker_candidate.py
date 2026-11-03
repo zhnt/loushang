@@ -62,4 +62,4 @@ def verify_product_selected_worker_candidate(
     return candidate
 
 
-__all__ = ["verify_product_selected_worker_candidate"]
+__all__ = ["WorkerPackageCandidateV1", "verify_product_selected_worker_candidate"]

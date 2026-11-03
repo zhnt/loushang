@@ -231,6 +231,33 @@ def load_agent_transcript_file(
     max_bytes: int | None = None,
     read_only: bool = False,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
+    content = _read_agent_transcript_file_content(
+        path, max_bytes=max_bytes, read_only=read_only,
+    )
+    return decode_agent_transcript_bytes(content, source_path=path)
+
+
+def load_agent_transcript_file_with_content_digest(
+    path: Path,
+    *,
+    max_bytes: int,
+    read_only: bool = True,
+) -> tuple[ConversationHeader, list[AgentTranscriptRecord], str]:
+    """Decode one stable read and report its exact raw byte digest."""
+
+    content = _read_agent_transcript_file_content(
+        path, max_bytes=max_bytes, read_only=read_only,
+    )
+    header, records = decode_agent_transcript_bytes(content, source_path=path)
+    return header, records, hashlib.sha256(content).hexdigest()
+
+
+def _read_agent_transcript_file_content(
+    path: Path,
+    *,
+    max_bytes: int | None,
+    read_only: bool,
+) -> bytes:
     target = Path(path)
     if type(read_only) is not bool:
         raise TypeError("read_only must be a built-in bool")
@@ -245,7 +272,7 @@ def load_agent_transcript_file(
             path=target,
             code="session_file_read_failed",
         ) from exc
-    return decode_agent_transcript_bytes(content, source_path=target)
+    return content
 
 
 def decode_agent_transcript_bytes(
@@ -614,6 +641,7 @@ def create_agent_transcript_file_store(
         read_only=read_only,
         operation_scope=operation_scope,
         file_io=layout.file_io,
+        background_head_updates=not read_only,
     )
 
 

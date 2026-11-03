@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -249,10 +250,25 @@ class PluginManagementService:
             )
 
     def recover(
-        self, *, before_replay: Callable[[], None] | None = None
+        self, *, before_replay: Callable[[], None] | None = None,
+        require_current_admission: Callable[[], None] | None = None,
     ) -> tuple[PluginManagementOperationEvent, ...]:
         """Recover accepted/running operations in original acceptance order."""
 
+        if require_current_admission is not None and (
+            not callable(require_current_admission) or inspect.iscoroutinefunction(require_current_admission)
+        ):
+            raise TypeError("Plugin recovery requires a synchronous current admission check")
+
+        def current() -> None:
+            if require_current_admission is not None:
+                result = cast(Callable[[], object], require_current_admission)()
+                if result is not None:
+                    if inspect.iscoroutine(result):
+                        result.close()
+                    raise TypeError("Plugin recovery admission check must return None")
+
+        current()
         if before_replay is not None:
             before_replay()
         with ExitStack() as locks:
@@ -263,6 +279,7 @@ class PluginManagementService:
                 locks.enter_context(gate.guard(before_load=before_replay))
             else:
                 locks.enter_context(gc_reference_guard(gate))
+            current()
             locks.enter_context(
                 journal_file_lock(
                     self._path,
@@ -271,6 +288,7 @@ class PluginManagementService:
                     create=before_replay is None,
                 )
             )
+            current()
             if before_replay is not None:
                 before_replay()
             replayed = self._load_and_replay_unlocked()
@@ -289,6 +307,7 @@ class PluginManagementService:
             recovered: list[PluginManagementOperationEvent] = []
             journal_revision = len(replayed.events)
             for event in pending:
+                current()
                 if before_replay is not None:
                     before_replay()
                 terminal = self._execute_unlocked(

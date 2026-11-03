@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+import math
+import time
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
-from functools import partial
-from typing import Literal, cast
+from dataclasses import dataclass, replace
+from typing import Literal, Protocol, Self, cast
 from weakref import WeakKeyDictionary
 
 from loushang.foundation.json import JSONValue, require_json_value
@@ -43,8 +45,8 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeReference,
     ModelInputSequenceTailNode,
     ModelInputSnapshotV2,
+    _create_model_input_json_value_from_canonical,
     create_model_input_json_chunk,
-    create_model_input_json_value,
     create_model_input_mapping_root_from_hash,
     create_model_input_sequence_tail,
     estimate_model_input_node_wire_bytes,
@@ -73,7 +75,15 @@ ModelInputV2IndexCacheStatus = Literal["hit", "extended", "rebuilt"]
 class IndexedModelInputNode:
     """One indexed node whose validated body may remain off-heap until needed."""
 
-    __slots__ = ("reference", "record_position", "_node", "_node_loader")
+    __slots__ = (
+        "_reference",
+        "record_position",
+        "_node",
+        "_node_loader",
+        "_deferred_bundle",
+        "_identity",
+        "_location",
+    )
 
     def __init__(
         self,
@@ -82,22 +92,57 @@ class IndexedModelInputNode:
         record_position: int,
         *,
         node_loader: Callable[[], ModelInputNode] | None = None,
+        deferred_bundle: DeferredModelInputNodeBundle | None = None,
+        defer_reference: bool = False,
     ) -> None:
-        if node is None and node_loader is None:
+        if node is None and node_loader is None and deferred_bundle is None:
             raise ValueError("indexed Model Input node requires a body or loader")
-        self.reference = reference
+        self._identity = (reference.node_kind, reference.content_hash)
+        self._location = (reference.record_id, reference.ordinal)
+        self._reference = None if defer_reference else reference
         self.record_position = record_position
         self._node = node
         self._node_loader = node_loader
+        self._deferred_bundle = deferred_bundle
+
+    @property
+    def reference(self) -> ModelInputNodeReference:
+        reference = self._reference
+        if reference is None:
+            reference = ModelInputNodeReference(
+                record_id=self._location[0],
+                ordinal=self._location[1],
+                node_kind=self._identity[0],
+                content_hash=self._identity[1],
+            )
+            self._reference = reference
+        return reference
+
+    @reference.setter
+    def reference(self, reference: ModelInputNodeReference) -> None:
+        self._identity = (reference.node_kind, reference.content_hash)
+        self._location = (reference.record_id, reference.ordinal)
+        self._reference = reference
+
+    @property
+    def index_identity(self) -> tuple[str, str]:
+        return self._identity
+
+    @property
+    def index_location(self) -> tuple[str, int]:
+        return self._location
 
     @property
     def node(self) -> ModelInputNode:
         node = self._node
         if node is None:
             loader = self._node_loader
-            if loader is None:  # pragma: no cover - guarded by construction
+            if loader is not None:
+                node = loader()
+            elif self._deferred_bundle is not None:
+                node = self._deferred_bundle.node_at(self._location[1])
+            else:  # pragma: no cover - guarded by construction
                 raise RuntimeError("indexed Model Input node loader is unavailable")
-            node = loader()
             if (
                 node.node_kind != self.reference.node_kind
                 or node.content_hash != self.reference.content_hash
@@ -146,10 +191,28 @@ class _SequencePlan:
     values: tuple[JSONValue, ...]
     item_plans: tuple[_ValuePlan, ...]
     prefix_hashes: tuple[str, ...]
+    item_references: tuple[ModelInputNodeReference, ...] | None = None
+    reused_prefix_count: int = 0
 
     @property
     def final_hash(self) -> str:
         return self.prefix_hashes[-1]
+
+
+class _HashState(Protocol):
+    def copy(self) -> _HashState: ...
+    def update(self, data: bytes) -> None: ...
+    def hexdigest(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class _MappingHashPrefix:
+    field_names: tuple[str, ...]
+    preceding_fields: tuple[tuple[str, str | tuple[str, ...]], ...]
+    sequence_name: str
+    item_canonicals: tuple[str, ...]
+    digest_before_close: _HashState
+    reused_item_count: int
 
 
 @dataclass(frozen=True)
@@ -173,9 +236,9 @@ class ModelInputV2NodeIndex:
             tuple[str, int],
             ModelInputSequenceTailNode | DeferredModelInputSequenceLink,
         ] = {}
-        self._sequence_link_loaders_by_location: dict[
+        self._sequence_link_bundles_by_location: dict[
             tuple[str, int],
-            Callable[[], DeferredModelInputSequenceLink],
+            DeferredModelInputNodeBundle,
         ] = {}
         self._verified_value_canonicals: dict[str, str] = {}
         self._authority_verified_value_hashes: set[str] = set()
@@ -184,12 +247,57 @@ class ModelInputV2NodeIndex:
             tuple[str, int],
             tuple[tuple[str, ...], str],
         ] = {}
+        for _ in self._index_records(records):
+            pass
+
+    def fork_for_staging(self) -> Self:
+        """Keep speculative graph locations out of the authoritative cache."""
+
+        staged = type(self).__new__(type(self))
+        staged._records = self._records
+        staged._by_identity = self._by_identity.copy()
+        staged._by_location = self._by_location.copy()
+        staged._sequence_states = self._sequence_states.copy()
+        staged._values = self._values.copy()
+        staged._value_hashes_by_location = self._value_hashes_by_location.copy()
+        staged._sequence_nodes_by_location = self._sequence_nodes_by_location.copy()
+        staged._sequence_link_bundles_by_location = (
+            self._sequence_link_bundles_by_location.copy()
+        )
+        staged._verified_value_canonicals = self._verified_value_canonicals.copy()
+        staged._authority_verified_value_hashes = (
+            self._authority_verified_value_hashes.copy()
+        )
+        staged._verified_sequence_states = self._verified_sequence_states.copy()
+        staged._verified_sequence_references = self._verified_sequence_references.copy()
+        return staged
+
+    @classmethod
+    async def build_async(cls, records: Sequence[AgentTranscriptRecord]) -> Self:
+        """Build an unpublished index, yielding between the same strict checks."""
+
+        index = cls(())
+        steps = index._index_records(records)
+        deadline = time.monotonic() + 0.008
+        try:
+            for _ in steps:
+                if time.monotonic() >= deadline:
+                    await asyncio.sleep(0)
+                    deadline = time.monotonic() + 0.008
+        finally:
+            steps.close()
+        return index
+
+    def _index_records(
+        self, records: Sequence[AgentTranscriptRecord]
+    ) -> Generator[None, None, None]:
         self._records = tuple(records)
         for position, record in enumerate(self._records):
             if record.kind != MODEL_INPUT_COMPONENT_KIND or not isinstance(
                 record.payload,
                 ModelInputNodeBundle,
             ):
+                yield
                 continue
             if record.payload_version != MODEL_INPUT_V2_PAYLOAD_VERSION:
                 raise ModelInputIntegrityError(
@@ -207,7 +315,8 @@ class ModelInputV2NodeIndex:
                         reference,
                         None,
                         position,
-                        node_loader=partial(record.payload.node_at, item.ordinal),
+                        deferred_bundle=record.payload,
+                        defer_reference=True,
                     )
                     self._add_indexed_node(
                         indexed,
@@ -220,14 +329,16 @@ class ModelInputV2NodeIndex:
                             else None
                         ),
                         sequence_node=None,
-                        sequence_link_loader=(
-                            partial(record.payload.sequence_link_at, item.ordinal)
+                        sequence_link_bundle=(
+                            record.payload
                             if item.node_kind == "sequence_tail"
                             else None
                         ),
                     )
                     if item.value_hash is not None and item.value_hash_verified:
                         self._authority_verified_value_hashes.add(item.value_hash)
+                    yield
+                yield
                 continue
             for ordinal, node in enumerate(record.payload.nodes):
                 if hash_model_input_node(node) != node.content_hash:
@@ -238,7 +349,9 @@ class ModelInputV2NodeIndex:
                     node_kind=node.node_kind,
                     content_hash=node.content_hash,
                 )
-                indexed = IndexedModelInputNode(reference, node, position)
+                indexed = IndexedModelInputNode(
+                    reference, node, position, defer_reference=True
+                )
                 self._add_indexed_node(
                     indexed,
                     value_hash=(
@@ -259,8 +372,10 @@ class ModelInputV2NodeIndex:
                     sequence_node=(
                         node if isinstance(node, ModelInputSequenceTailNode) else None
                     ),
-                    sequence_link_loader=None,
+                    sequence_link_bundle=None,
                 )
+                yield
+            yield
 
     def _add_indexed_node(
         self,
@@ -272,10 +387,10 @@ class ModelInputV2NodeIndex:
         sequence_node: ModelInputSequenceTailNode
         | DeferredModelInputSequenceLink
         | None,
-        sequence_link_loader: Callable[[], DeferredModelInputSequenceLink] | None,
+        sequence_link_bundle: DeferredModelInputNodeBundle | None,
     ) -> None:
-        reference = indexed.reference
-        identity = (reference.node_kind, reference.content_hash)
+        identity = indexed.index_identity
+        location = indexed.index_location
         existing = self._by_identity.get(identity)
         if (
             existing is not None
@@ -287,14 +402,9 @@ class ModelInputV2NodeIndex:
             raise ModelInputIntegrityError("Model Input v2 typed node hash collision")
         self._by_identity.setdefault(identity, indexed)
         if value_hash is not None:
-            self._value_hashes_by_location[(reference.record_id, reference.ordinal)] = (
-                value_hash
-            )
+            self._value_hashes_by_location[location] = value_hash
             prior_value = self._values.get(value_hash)
-            if (
-                prior_value is not None
-                and prior_value.reference.content_hash != reference.content_hash
-            ):
+            if prior_value is not None and prior_value.index_identity[1] != identity[1]:
                 raise ModelInputIntegrityError(
                     "Model Input v2 JSON value hash is ambiguous"
                 )
@@ -303,23 +413,16 @@ class ModelInputV2NodeIndex:
                 self.mark_value_verified(value_hash, inline_json)
         if sequence_state is not None:
             prior = self._sequence_states.get(sequence_state)
-            if (
-                prior is not None
-                and prior.reference.content_hash != reference.content_hash
-            ):
+            if prior is not None and prior.index_identity[1] != identity[1]:
                 raise ModelInputIntegrityError(
                     "Model Input v2 sequence state is ambiguous"
                 )
             self._sequence_states.setdefault(sequence_state, indexed)
         if sequence_node is not None:
-            self._sequence_nodes_by_location[
-                (reference.record_id, reference.ordinal)
-            ] = sequence_node
-        if sequence_link_loader is not None:
-            self._sequence_link_loaders_by_location[
-                (reference.record_id, reference.ordinal)
-            ] = sequence_link_loader
-        self._by_location[(reference.record_id, reference.ordinal)] = indexed
+            self._sequence_nodes_by_location[location] = sequence_node
+        if sequence_link_bundle is not None:
+            self._sequence_link_bundles_by_location[location] = sequence_link_bundle
+        self._by_location[location] = indexed
 
     def find_node(self, node: ModelInputNode) -> IndexedModelInputNode | None:
         indexed = self._by_identity.get((node.node_kind, node.content_hash))
@@ -427,7 +530,7 @@ class ModelInputV2NodeIndex:
                 sequence_node=(
                     node if isinstance(node, ModelInputSequenceTailNode) else None
                 ),
-                sequence_link_loader=None,
+                sequence_link_bundle=None,
             )
             references.append(reference)
         return tuple(references)
@@ -502,13 +605,13 @@ class ModelInputV2NodeIndex:
         self,
         indexed: IndexedModelInputNode,
     ) -> ModelInputSequenceTailNode | DeferredModelInputSequenceLink:
-        key = (indexed.reference.record_id, indexed.reference.ordinal)
+        key = indexed.index_location
         projected = self._sequence_nodes_by_location.get(key)
         if projected is not None:
             return projected
-        loader = self._sequence_link_loaders_by_location.get(key)
-        if loader is not None:
-            projected = loader()
+        bundle = self._sequence_link_bundles_by_location.get(key)
+        if bundle is not None:
+            projected = bundle.sequence_link_at(key[1])
             self._sequence_nodes_by_location[key] = projected
             return projected
         node = indexed.node
@@ -519,7 +622,7 @@ class ModelInputV2NodeIndex:
         return node
 
     def _verified_value_hash(self, indexed: IndexedModelInputNode) -> str:
-        key = (indexed.reference.record_id, indexed.reference.ordinal)
+        key = indexed.index_location
         projected = self._value_hashes_by_location.get(key)
         if projected is not None and (
             projected in self._authority_verified_value_hashes
@@ -545,8 +648,8 @@ class ModelInputV2NodeIndex:
                 "Model Input v2 node is outside reference ancestry"
             )
         if (
-            indexed.reference.node_kind != reference.node_kind
-            or indexed.reference.content_hash != reference.content_hash
+            indexed.index_identity[0] != reference.node_kind
+            or indexed.index_identity[1] != reference.content_hash
         ):
             raise ModelInputIntegrityError("Model Input v2 node reference changed")
         return indexed
@@ -560,6 +663,9 @@ class _ModelInputV2IndexCache:
     records: tuple[AgentTranscriptRecord, ...]
     index: ModelInputV2NodeIndex
     sequence_plans: dict[tuple[int, str], _SequencePlan]
+    immutable_sequence_sources: dict[tuple[int, str], tuple[object, ...]]
+    mapping_hash_prefixes: dict[int, _MappingHashPrefix]
+    resolver: ModelInputV2Resolver | None = None
 
     def resolve(
         self,
@@ -574,6 +680,9 @@ class _ModelInputV2IndexCache:
             self.records = records
             self.index = ModelInputV2NodeIndex(records)
             self.sequence_plans.clear()
+            self.immutable_sequence_sources.clear()
+            self.mapping_hash_prefixes.clear()
+            self.resolver = None
             return self.index, "rebuilt"
 
         previous_count = len(self.records)
@@ -626,6 +735,8 @@ def _cached_node_index(
             records=records,
             index=index,
             sequence_plans={},
+            immutable_sequence_sources={},
+            mapping_hash_prefixes={},
         )
         _MODEL_INPUT_V2_INDEX_CACHES[transcript] = cached
         return index, cached, "rebuilt"
@@ -666,6 +777,8 @@ def _same_model_input_json(left: object, right: object) -> bool:
             _same_model_input_json(left_item, right_item)
             for left_item, right_item in zip(left_items, right_items, strict=True)
         )
+    if type(left) is float and type(right) is float and left == right == 0.0:
+        return math.copysign(1.0, left) == math.copysign(1.0, right)
     return left == right
 
 
@@ -679,6 +792,75 @@ def _optional_phase(
 class ModelInputV2Writer:
     """Materialize one v2 request using only verified active-path ancestors."""
 
+    @classmethod
+    async def prepare(
+        cls,
+        *,
+        transcript: AgentTranscriptUnitOfWork,
+        expected_revision: int,
+        expected_leaf_id: str,
+        max_encoded_record_bytes: int,
+        phase_timer: PhaseTimer | None = None,
+    ) -> Self:
+        """Prepare a cold/branched index without monopolizing the UI loop."""
+
+        def require_current() -> None:
+            if (
+                transcript.revision != expected_revision
+                or transcript.leaf_id != expected_leaf_id
+            ):
+                raise ModelInputIntegrityError(
+                    "transcript changed during Model Input index preparation"
+                )
+
+        require_current()
+        with _optional_phase(phase_timer, "active_path"):
+            records = transcript.active_path()
+        cached = _MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+        token = MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN
+        rebuild = (
+            cached is None
+            or cached.compatibility_token != token
+            or not _path_extends(cached.records, records)
+        )
+        with _optional_phase(phase_timer, "node_index_build"):
+            if rebuild:
+                index = await ModelInputV2NodeIndex.build_async(records)
+                require_current()
+                if token != MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN:
+                    raise ModelInputIntegrityError(
+                        "Model Input index compatibility changed during preparation"
+                    )
+                # Publish only a complete current-path index. A cancellation or
+                # failed check leaves the previous cache intact.
+                cached = _ModelInputV2IndexCache(
+                    compatibility_token=token,
+                    records=records,
+                    index=index,
+                    sequence_plans={},
+                    immutable_sequence_sources={},
+                    mapping_hash_prefixes={},
+                )
+                _MODEL_INPUT_V2_INDEX_CACHES[transcript] = cached
+                status: ModelInputV2IndexCacheStatus = "rebuilt"
+            else:
+                index, cached, status = _cached_node_index(transcript, records)
+        writer = cls.__new__(cls)
+        writer._index, writer._index_cache, writer._index_cache_status = (
+            index,
+            cached,
+            status,
+        )
+        writer._initialize(
+            transcript=transcript,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            phase_timer=phase_timer,
+            active_records=records,
+        )
+        return writer
+
     def __init__(
         self,
         *,
@@ -688,10 +870,6 @@ class ModelInputV2Writer:
         max_encoded_record_bytes: int,
         phase_timer: PhaseTimer | None = None,
     ) -> None:
-        self._transcript = transcript
-        self._expected_revision = expected_revision
-        self._expected_leaf_id = expected_leaf_id
-        self._max_encoded_record_bytes = max_encoded_record_bytes
         with _optional_phase(phase_timer, "active_path"):
             active_records = transcript.active_path()
         with _optional_phase(phase_timer, "node_index_build"):
@@ -700,13 +878,55 @@ class ModelInputV2Writer:
                 self._index_cache,
                 self._index_cache_status,
             ) = _cached_node_index(transcript, active_records)
+        self._initialize(
+            transcript=transcript,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            phase_timer=phase_timer,
+            active_records=active_records,
+        )
+
+    def _initialize(
+        self,
+        *,
+        transcript: AgentTranscriptUnitOfWork,
+        expected_revision: int,
+        expected_leaf_id: str,
+        max_encoded_record_bytes: int,
+        phase_timer: PhaseTimer | None,
+        active_records: tuple[AgentTranscriptRecord, ...],
+    ) -> None:
+        self._transcript = transcript
+        self._index = self._index.fork_for_staging()
+        self._expected_revision = expected_revision
+        self._expected_leaf_id = expected_leaf_id
+        self._base_revision = expected_revision
+        self._base_leaf_id = expected_leaf_id
+        self._staged_records: list[AgentTranscriptRecord] = []
+        self._staged_path = active_records
+        self._max_encoded_record_bytes = max_encoded_record_bytes
         with _optional_phase(phase_timer, "resolver_build"):
-            self._existing_resolver = ModelInputV2Resolver(active_records)
+            cached_resolver = self._index_cache.resolver
+            if cached_resolver is None:
+                self._existing_resolver = ModelInputV2Resolver(active_records)
+            else:
+                try:
+                    self._existing_resolver = cached_resolver._with_extended_ancestry(
+                        active_records
+                    )
+                except ModelInputIntegrityError:
+                    # A changed record object cannot inherit cached authority.
+                    self._existing_resolver = ModelInputV2Resolver(active_records)
         self._existing_owner_position = len(active_records)
         self._value_plans: dict[str, _ValuePlan] = {}
         self._value_references: dict[str, ModelInputNodeReference] = {}
         self._materialization_timing: PhaseTimingSnapshot | None = None
         self._sequence_plan_updates: dict[tuple[int, str], _SequencePlan] = {}
+        self._immutable_sequence_source_updates: dict[
+            tuple[int, str], tuple[object, ...]
+        ] = {}
+        self._mapping_hash_prefix_updates: dict[int, _MappingHashPrefix] = {}
         self._sequence_count = 0
         self._sequence_item_count = 0
         self._reused_prefix_item_count = 0
@@ -729,52 +949,93 @@ class ModelInputV2Writer:
             planned_item_count=self._planned_item_count,
         )
 
+    @property
+    def staged_records(self) -> tuple[AgentTranscriptRecord, ...]:
+        return tuple(self._staged_records)
+
+    def publish_committed_graph(self) -> None:
+        """Publish staged index and plans only after the Store accepted the batch."""
+
+        active_records = self._transcript.active_path()
+        if not _path_extends(self._staged_path, active_records):
+            raise ModelInputIntegrityError(
+                "committed Model Input graph left its staged ancestry"
+            )
+        plans = {
+            key: replace(
+                plan,
+                item_references=tuple(
+                    self._value_references[item.value_hash] for item in plan.item_plans
+                ),
+            )
+            for key, plan in self._sequence_plan_updates.items()
+        }
+        self._index_cache.mark_writer_extension(active_records)
+        self._index_cache.index = self._index
+        self._index_cache.sequence_plans.update(plans)
+        for key in plans:
+            source = self._immutable_sequence_source_updates.get(key)
+            if source is None:
+                self._index_cache.immutable_sequence_sources.pop(key, None)
+            else:
+                self._index_cache.immutable_sequence_sources[key] = source
+        for mapping_index in range(2):
+            prefix = self._mapping_hash_prefix_updates.get(mapping_index)
+            if prefix is None:
+                self._index_cache.mapping_hash_prefixes.pop(mapping_index, None)
+            else:
+                self._index_cache.mapping_hash_prefixes[mapping_index] = prefix
+        self._index_cache.resolver = self._existing_resolver
+
     async def materialize(
         self,
         *,
         logical_input: Mapping[str, JSONValue],
         prepared_payload: Mapping[str, JSONValue],
         model_visible_headers: Mapping[str, str],
+        logical_source: Mapping[str, object] | None = None,
+        prepared_source: Mapping[str, object] | None = None,
     ) -> ModelInputV2Materialization:
         timing = PhaseTimer()
+        self._work_deadline = time.monotonic() + 0.008
         with timing.phase("plan"):
             logical = dict(logical_input)
             prepared = dict(prepared_payload)
             headers = dict(model_visible_headers)
             mapping_values = (logical, prepared)
-            sequence_plans: dict[tuple[int, str], _SequencePlan] = {}
-            mapping_sequences: dict[tuple[int, str], tuple[int, str]] = {}
-            mapping_value_hashes: dict[tuple[int, str], str] = {}
+            immutable_sequences: dict[tuple[int, str], tuple[object, ...]] = {}
+            for mapping_index, source, mapping in (
+                (0, logical_source, logical),
+                (1, prepared_source, prepared),
+            ):
+                if source is None:
+                    continue
+                for name, source_items in source.items():
+                    current_items = mapping.get(name)
+                    if (
+                        type(source_items) is tuple
+                        and type(current_items) is list
+                        and len(source_items) == len(current_items)
+                    ):
+                        immutable_sequences[(mapping_index, name)] = source_items
+            (
+                sequence_plans,
+                mapping_sequences,
+                mapping_value_hashes,
+                headers_plan,
+            ) = await asyncio.to_thread(
+                self._plan_values,
+                mapping_values,
+                headers,
+                dict(self._index_cache.sequence_plans),
+                dict(self._index_cache.immutable_sequence_sources),
+                immutable_sequences,
+            )
+            # The worker owns only request-local plans. A cancellation discards
+            # them; a branch or external append must be rejected before writes.
+            self._require_current_transcript()
 
-            for mapping_index, mapping in enumerate(mapping_values):
-                for name, value in mapping.items():
-                    if isinstance(value, list):
-                        cache_key = (mapping_index, name)
-                        plan = self._sequence_plan(value, cache_key=cache_key)
-                        state = (len(plan.values), plan.final_hash)
-                        prior_plan = sequence_plans.get(state)
-                        if prior_plan is not None and (
-                            len(prior_plan.values) != len(plan.values)
-                            or any(
-                                not _same_model_input_json(left, right)
-                                for left, right in zip(
-                                    prior_plan.values,
-                                    plan.values,
-                                    strict=True,
-                                )
-                            )
-                        ):
-                            raise ModelInputIntegrityError(
-                                "Model Input v2 sequence hash collision"
-                            )
-                        sequence_plans.setdefault(state, plan)
-                        mapping_sequences[(mapping_index, name)] = state
-                    else:
-                        mapping_value_hashes[(mapping_index, name)] = (
-                            self._collect_value(value).value_hash
-                        )
-            headers_plan = self._collect_value(headers)
-
+        await self._yield_if_needed()
         with timing.phase("values"):
             await self._materialize_values()
 
@@ -782,6 +1043,7 @@ class ModelInputV2Writer:
             sequence_nodes: dict[tuple[int, str], ModelInputSequenceTailNode] = {}
             sequence_refs: dict[tuple[int, str], ModelInputNodeReference] = {}
             for state, plan in sequence_plans.items():
+                await self._yield_if_needed()
                 indexed_sequence = self._index.find_sequence_state(*state)
                 if indexed_sequence is not None:
                     if not self._index.sequence_state_is_verified(*state):
@@ -859,28 +1121,39 @@ class ModelInputV2Writer:
         with timing.phase("roots"):
             roots: list[ModelInputMappingRootNode] = []
             for mapping_index, mapping in enumerate(mapping_values):
+                await self._yield_if_needed()
                 entries = []
-                canonical_fields: dict[str, str] = {}
+                canonical_fields: dict[str, str | tuple[str, ...]] = {}
                 for name in mapping:
                     field_state = mapping_sequences.get((mapping_index, name))
                     if field_state is not None:
                         reference = sequence_refs[field_state]
-                        canonical_fields[name] = (
-                            "["
-                            + ",".join(
-                                item.canonical
-                                for item in sequence_plans[field_state].item_plans
-                            )
-                            + "]"
+                        canonical_fields[name] = tuple(
+                            item.canonical
+                            for item in sequence_plans[field_state].item_plans
                         )
                     else:
                         value_hash = mapping_value_hashes[(mapping_index, name)]
                         reference = self._value_references[value_hash]
                         canonical_fields[name] = self._value_plans[value_hash].canonical
                     entries.append(ModelInputMappingEntry(name, reference))
+                reused_items = {}
+                for name in mapping:
+                    sequence_state = mapping_sequences.get((mapping_index, name))
+                    if sequence_state is not None:
+                        reused_items[name] = sequence_plans[
+                            sequence_state
+                        ].reused_prefix_count
+                mapping_hash, hash_prefix = _hash_canonical_mapping_fields_incremental(
+                    canonical_fields,
+                    previous=self._index_cache.mapping_hash_prefixes.get(mapping_index),
+                    reused_items=reused_items,
+                )
+                if hash_prefix is not None:
+                    self._mapping_hash_prefix_updates[mapping_index] = hash_prefix
                 roots.append(
                     create_model_input_mapping_root_from_hash(
-                        mapping_hash=_hash_canonical_mapping_fields(canonical_fields),
+                        mapping_hash=mapping_hash,
                         entries=entries,
                     )
                 )
@@ -895,7 +1168,6 @@ class ModelInputV2Writer:
                 root_refs.append(indexed.reference)
 
         self._materialization_timing = timing.snapshot()
-        self._index_cache.sequence_plans.update(self._sequence_plan_updates)
         return ModelInputV2Materialization(
             logical_root=root_refs[0],
             prepared_payload_root=root_refs[1],
@@ -994,30 +1266,131 @@ class ModelInputV2Writer:
         self._value_plans[plan.value_hash] = plan
         return plan
 
+    async def _yield_if_needed(self) -> None:
+        if time.monotonic() < self._work_deadline:
+            return
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self._require_current_transcript()
+        self._work_deadline = time.monotonic() + 0.008
+
+    def _require_current_transcript(self) -> None:
+        if (
+            self._transcript.revision != self._base_revision
+            or self._transcript.leaf_id != self._base_leaf_id
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input transcript changed during materialization"
+            )
+
+    def _plan_values(
+        self,
+        mapping_values: tuple[dict[str, JSONValue], dict[str, JSONValue]],
+        headers: dict[str, str],
+        cached_plans: Mapping[tuple[int, str], _SequencePlan],
+        cached_sources: Mapping[tuple[int, str], tuple[object, ...]],
+        immutable_sources: Mapping[tuple[int, str], tuple[object, ...]],
+    ) -> tuple[
+        dict[tuple[int, str], _SequencePlan],
+        dict[tuple[int, str], tuple[int, str]],
+        dict[tuple[int, str], str],
+        _ValuePlan,
+    ]:
+        sequence_plans: dict[tuple[int, str], _SequencePlan] = {}
+        mapping_sequences: dict[tuple[int, str], tuple[int, str]] = {}
+        mapping_value_hashes: dict[tuple[int, str], str] = {}
+        for mapping_index, mapping in enumerate(mapping_values):
+            for name, value in mapping.items():
+                if isinstance(value, list):
+                    cache_key = (mapping_index, name)
+                    plan = self._sequence_plan(
+                        value,
+                        cache_key=cache_key,
+                        cached=cached_plans.get(cache_key),
+                        cached_source=cached_sources.get(cache_key),
+                        immutable_source=immutable_sources.get(cache_key),
+                    )
+                    state = (len(plan.values), plan.final_hash)
+                    prior_plan = sequence_plans.get(state)
+                    if prior_plan is not None and (
+                        len(prior_plan.values) != len(plan.values)
+                        or any(
+                            not _same_model_input_json(left, right)
+                            for left, right in zip(
+                                prior_plan.values,
+                                plan.values,
+                                strict=True,
+                            )
+                        )
+                    ):
+                        raise ModelInputIntegrityError(
+                            "Model Input v2 sequence hash collision"
+                        )
+                    sequence_plans.setdefault(state, plan)
+                    mapping_sequences[(mapping_index, name)] = state
+                else:
+                    mapping_value_hashes[(mapping_index, name)] = self._collect_value(
+                        value
+                    ).value_hash
+        return (
+            sequence_plans,
+            mapping_sequences,
+            mapping_value_hashes,
+            self._collect_value(headers),
+        )
+
     def _sequence_plan(
         self,
         values: Sequence[JSONValue],
         *,
         cache_key: tuple[int, str],
+        cached: _SequencePlan | None,
+        cached_source: tuple[object, ...] | None,
+        immutable_source: tuple[object, ...] | None,
     ) -> _SequencePlan:
         if len(values) > MODEL_INPUT_V2_MAX_SEQUENCE_ITEMS:
             raise ModelInputRecordSizeError(
                 "Model Input v2 sequence exceeds the item budget"
             )
-        cached = self._index_cache.sequence_plans.get(cache_key)
         reused_count = 0
         if cached is not None:
             reusable_count = min(len(values), len(cached.item_plans))
-            while reused_count < reusable_count and _same_model_input_json(
-                values[reused_count],
-                cached.item_plans[reused_count].value,
+            if (
+                cached.item_references is not None
+                and cached_source is not None
+                and immutable_source is not None
+                and len(immutable_source) == len(values)
+            ):
+                while (
+                    reused_count < reusable_count
+                    and reused_count < len(cached_source)
+                    and immutable_source[reused_count] is cached_source[reused_count]
+                ):
+                    reused_count += 1
+            while reused_count < reusable_count and (
+                canonical_model_input_json(
+                    values[reused_count],
+                    name="Model Input v2 cached sequence item",
+                )
+                == cached.item_plans[reused_count].canonical
+                if cached.item_references is not None
+                else _same_model_input_json(
+                    values[reused_count],
+                    cached.item_plans[reused_count].value,
+                )
             ):
                 reused_count += 1
 
-        item_plans = [
-            self._reuse_value_plan(plan)
-            for plan in (() if cached is None else cached.item_plans[:reused_count])
-        ]
+        item_plans = []
+        for index, plan in enumerate(
+            () if cached is None else cached.item_plans[:reused_count]
+        ):
+            item_plans.append(self._reuse_value_plan(plan))
+            if cached is not None and cached.item_references is not None:
+                self._value_references.setdefault(
+                    plan.value_hash,
+                    cached.item_references[index],
+                )
         prefix_hashes = (
             [model_input_empty_sequence_hash()]
             if cached is None
@@ -1034,8 +1407,11 @@ class ModelInputV2Writer:
             tuple(item.value for item in resolved_item_plans),
             resolved_item_plans,
             tuple(prefix_hashes),
+            reused_prefix_count=reused_count,
         )
         self._sequence_plan_updates[cache_key] = sequence_plan
+        if immutable_source is not None:
+            self._immutable_sequence_source_updates[cache_key] = immutable_source
         self._sequence_count += 1
         self._sequence_item_count += len(values)
         self._reused_prefix_item_count += reused_count
@@ -1060,7 +1436,13 @@ class ModelInputV2Writer:
                 "Model Input v2 request exceeds the decoded-byte budget"
             )
         missing_plans: list[_ValuePlan] = []
-        for plan in self._value_plans.values():
+        unresolved_plans = (
+            plan
+            for plan in self._value_plans.values()
+            if plan.value_hash not in self._value_references
+        )
+        for plan in unresolved_plans:
+            await self._yield_if_needed()
             existing = self._index.find_value(plan.value_hash)
             if existing is None:
                 missing_plans.append(plan)
@@ -1100,6 +1482,7 @@ class ModelInputV2Writer:
         chunks_by_plan: dict[str, tuple[ModelInputJsonChunkNode, ...]] = {}
         chunk_nodes: dict[tuple[str, str], ModelInputJsonChunkNode] = {}
         for plan in missing_plans:
+            await self._yield_if_needed()
             if len(plan.canonical) <= MODEL_INPUT_V2_CHUNK_CHARACTERS:
                 continue
             chunks = tuple(
@@ -1116,6 +1499,7 @@ class ModelInputV2Writer:
 
         value_nodes: dict[str, ModelInputJsonValueNode] = {}
         for plan in missing_plans:
+            await self._yield_if_needed()
             chunks = chunks_by_plan.get(plan.value_hash, ())
             chunk_refs = []
             for chunk in chunks:
@@ -1125,8 +1509,10 @@ class ModelInputV2Writer:
                         "Model Input v2 JSON chunk was not materialized"
                     )
                 chunk_refs.append(indexed.reference)
-            node = create_model_input_json_value(
-                plan.value,
+            node = _create_model_input_json_value_from_canonical(
+                plan.canonical,
+                value_hash=plan.value_hash,
+                decoded_bytes=plan.encoded_bytes,
                 chunk_refs=chunk_refs,
             )
             value_nodes[plan.value_hash] = node
@@ -1170,6 +1556,7 @@ class ModelInputV2Writer:
         return 0, None
 
     async def _materialize_nodes(self, nodes: Sequence[ModelInputNode]) -> None:
+        await self._yield_if_needed()
         missing: dict[tuple[str, str], ModelInputNode] = {}
         for node in nodes:
             if self._index.find_node(node) is None:
@@ -1177,33 +1564,29 @@ class ModelInputV2Writer:
         if not missing:
             return
         bundles = _bundle_model_input_nodes(tuple(missing.values()))
-        commits = await self._transcript.append_model_input_node_bundles(
+        records = self._transcript.stage_model_input_node_bundles(
             bundles,
             max_encoded_record_bytes=self._max_encoded_record_bytes,
-            expected_revision=self._expected_revision,
-            expected_leaf_id=self._expected_leaf_id,
+            parent_id=self._expected_leaf_id,
         )
-        if len(commits) != len(bundles):
+        if len(records) != len(bundles):
             raise ModelInputIntegrityError(
-                "Model Input v2 bundle batch returned an invalid commit count"
+                "Model Input v2 staging returned an invalid record count"
             )
-        first_position = len(self._transcript.active_path()) - len(commits)
-        for offset, commit in enumerate(commits):
-            receipt = commit.receipt
-            if receipt is None:
-                raise ModelInputIntegrityError(
-                    "Model Input v2 bundle did not reach the authoritative Store"
-                )
+        first_position = len(self._staged_path)
+        for offset, record in enumerate(records):
             self._index.add_bundle_record(
-                commit.record,
+                record,
                 record_position=first_position + offset,
             )
-            self._expected_revision = receipt.revision
-            self._expected_leaf_id = commit.record.record_id
-        active_records = self._transcript.active_path()
-        self._index_cache.mark_writer_extension(active_records)
-        self._existing_resolver = ModelInputV2Resolver(active_records)
-        self._existing_owner_position = len(active_records)
+            self._expected_revision += 1
+            self._expected_leaf_id = record.record_id
+        self._staged_records.extend(records)
+        self._staged_path = (*self._staged_path, *records)
+        self._existing_resolver = self._existing_resolver._with_extended_ancestry(
+            self._staged_path
+        )
+        self._existing_owner_position = len(self._staged_path)
 
     @staticmethod
     def _value_plan(value: object) -> _ValuePlan:
@@ -1223,18 +1606,101 @@ class ModelInputV2Writer:
         )
 
 
-def _hash_canonical_mapping_fields(fields: Mapping[str, str]) -> str:
-    canonical = (
-        "{"
-        + ",".join(
-            canonical_model_input_json(name, name="Model Input v2 mapping field")
-            + ":"
-            + fields[name]
-            for name in sorted(fields)
-        )
-        + "}"
+def _hash_canonical_mapping_fields(
+    fields: Mapping[str, str | tuple[str, ...]],
+) -> str:
+    digest, _prefix = _hash_canonical_mapping_fields_incremental(
+        fields, previous=None, reused_items={}
     )
-    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return digest
+
+
+def _hash_canonical_mapping_fields_incremental(
+    fields: Mapping[str, str | tuple[str, ...]],
+    *,
+    previous: _MappingHashPrefix | None,
+    reused_items: Mapping[str, int],
+) -> tuple[str, _MappingHashPrefix | None]:
+    names = tuple(sorted(fields))
+    sequence_name = next(
+        (
+            name
+            for name in ("messages", "input")
+            if name in fields and isinstance(fields[name], tuple)
+        ),
+        None,
+    )
+    sequence_index = names.index(sequence_name) if sequence_name is not None else -1
+    preceding = tuple((name, fields[name]) for name in names[:sequence_index])
+    sequence_items = (
+        cast(tuple[str, ...], fields[sequence_name])
+        if sequence_name is not None
+        else ()
+    )
+    can_reuse = (
+        previous is not None
+        and sequence_name == previous.sequence_name
+        and names == previous.field_names
+        and preceding == previous.preceding_fields
+        and len(sequence_items) >= len(previous.item_canonicals)
+        and reused_items.get(sequence_name, 0) >= len(previous.item_canonicals)
+        and sequence_items[: len(previous.item_canonicals)] == previous.item_canonicals
+    )
+    if can_reuse and previous is not None:
+        digest = previous.digest_before_close.copy()
+        reused_count = len(previous.item_canonicals)
+        for index, canonical in enumerate(
+            sequence_items[reused_count:], start=reused_count
+        ):
+            if index:
+                digest.update(b",")
+            digest.update(canonical.encode("utf-8"))
+        prefix_digest = digest.copy()
+        digest.update(b"]")
+        start_index = sequence_index + 1
+    else:
+        digest = hashlib.sha256()
+        digest.update(b"{")
+        prefix_digest = None
+        reused_count = 0
+        start_index = 0
+
+    for field_index in range(start_index, len(names)):
+        name = names[field_index]
+        if field_index:
+            digest.update(b",")
+        digest.update(
+            canonical_model_input_json(
+                name, name="Model Input v2 mapping field"
+            ).encode("utf-8")
+        )
+        digest.update(b":")
+        value = fields[name]
+        if isinstance(value, str):
+            digest.update(value.encode("utf-8"))
+            continue
+        digest.update(b"[")
+        for item_index, canonical in enumerate(value):
+            if item_index:
+                digest.update(b",")
+            digest.update(canonical.encode("utf-8"))
+        if name == sequence_name:
+            prefix_digest = digest.copy()
+        digest.update(b"]")
+    digest.update(b"}")
+    prefix = (
+        _MappingHashPrefix(
+            field_names=names,
+            preceding_fields=preceding,
+            sequence_name=sequence_name,
+            item_canonicals=sequence_items,
+            digest_before_close=prefix_digest,
+            reused_item_count=reused_count,
+        )
+        if sequence_name is not None and prefix_digest is not None
+        else None
+    )
+    return "sha256:" + digest.hexdigest(), prefix
 
 
 def _bundle_model_input_nodes(
@@ -1268,6 +1734,40 @@ class ModelInputV2Resolver:
             raise ModelInputIntegrityError(
                 "Model Input v2 ancestry contains duplicate record ids"
             )
+        self._reset_resolution_state()
+
+    def _with_extended_ancestry(
+        self, records: Sequence[AgentTranscriptRecord]
+    ) -> ModelInputV2Resolver:
+        """Reuse positions after this writer's immutable prefix gains commits.
+
+        Check prefix object identity rather than payload equality: a replacement
+        record must not inherit authority, or expand deferred historical nodes.
+        Resolution caches and budgets belong to the new resolver alone.
+        """
+
+        current = tuple(records)
+        previous_count = len(self._records)
+        if len(current) < previous_count or any(
+            old is not new for old, new in zip(self._records, current, strict=False)
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 resolver left its selected ancestry"
+            )
+        positions = self._positions.copy()
+        for position, record in enumerate(current[previous_count:], previous_count):
+            if record.record_id in positions:
+                raise ModelInputIntegrityError(
+                    "Model Input v2 ancestry contains duplicate record ids"
+                )
+            positions[record.record_id] = position
+        extended = type(self).__new__(type(self))
+        extended._records = current
+        extended._positions = positions
+        extended._reset_resolution_state()
+        return extended
+
+    def _reset_resolution_state(self) -> None:
         self._value_cache: dict[tuple[str, int], JSONValue] = {}
         self._sequence_cache: dict[
             tuple[str, int],

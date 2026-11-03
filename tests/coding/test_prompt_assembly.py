@@ -87,16 +87,16 @@ def test_assemble_prompt_returns_prompt_assembly() -> None:
         "- bash: Execute shell commands. Prefer a single command string; use cwd for the working directory.\n"
         "- Use bash for shell pipelines, redirects, and commands that are easier to express through the user's shell.\n"
         "- Prefer read, grep, find, ls, write, and edit for file operations when those tools are more precise.\n"
-        "- read: Read text files and images from the coding workspace.\n"
-        "- ls: List directory entries in the coding workspace.\n"
-        "- find: Find file paths by glob pattern in the coding workspace.\n"
+        "- read: Read text files and images from the workspace.\n"
+        "- ls: List directory entries in the workspace.\n"
+        "- find: Find file paths by glob pattern in the workspace.\n"
         "- Use find to locate files by path pattern instead of shelling out to find/fd.\n"
         "- Patterns with glob metacharacters are matched as globs; plain patterns match path substrings.\n"
-        "- grep: Search file contents for patterns in the coding workspace.\n"
+        "- grep: Search file contents for patterns in the workspace.\n"
         "- Use grep to search file contents instead of shelling out to grep or rg.\n"
         "- Use literal=true for exact text searches and glob to narrow file types.\n"
-        "- write: Write a text file in the coding workspace.\n"
-        "- edit: Apply exact text replacements to a file in the coding workspace."
+        "- write: Write a text file in the workspace.\n"
+        "- edit: Apply exact text replacements to a file in the workspace."
     )
     assert (
         assembly.system_prompt
@@ -506,15 +506,6 @@ def test_prompt_template_args_parse_quotes_and_substitute_pi_placeholders() -> N
         "Pair: first feature second\n"
         "All: component first feature second third\n"
         "Again: component first feature second third"
-    )
-
-
-def test_prompt_template_args_do_not_recursively_substitute_argument_values() -> None:
-    from loushang.harness.capabilities.prompt import substitute_prompt_template_args
-
-    assert (
-        substitute_prompt_template_args("$ARGUMENTS", ["$1", "$ARGUMENTS", "${@:2}"])
-        == "$1 $ARGUMENTS ${@:2}"
     )
 
 

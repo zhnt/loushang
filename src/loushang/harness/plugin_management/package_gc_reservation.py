@@ -302,14 +302,19 @@ class PluginPackageGcReservationJournal:
 
     @contextmanager
     def guard(
-        self, *, before_load: Callable[[], None] | None = None
+        self,
+        *,
+        before_load: Callable[[], None] | None = None,
+        require_write: bool = False,
     ) -> Iterator[frozenset[PluginPackageRevisionRefV1]]:
+        if type(require_write) is not bool:
+            raise TypeError("GC guard write requirement must be explicit")
         self._assert_parent_current()
         state = self._lock_state
         with state.thread_lock:
             self._assert_parent_current()
             if state.depth:
-                if state.read_only and before_load is not None:
+                if state.read_only and (before_load is not None or require_write):
                     raise self._error(
                         "GC read guard cannot run a writer preflight",
                         "plugin_package_gc_read_guard_nested",
@@ -371,6 +376,36 @@ class PluginPackageGcReservationJournal:
                     state.read_only = False
                     state.depth = 0
 
+    @contextmanager
+    def read_snapshot_guard(self) -> Iterator[PluginPackageGcReservationSnapshotV1]:
+        """Hold a strict read gate with its durable reservation revision.
+
+        A retention checkpoint needs both the exact active reservations and
+        the owner revision captured under the same GC lock. This view grants
+        no deletion or history-pruning authority by itself.
+        """
+
+        with self.read_guard() as package_refs:
+            events, active, _ = self._replay_unlocked(
+                load_policy=_READ_ONLY_LOAD_POLICY
+            )
+            snapshot = PluginPackageGcReservationSnapshotV1(
+                journal_revision=len(events),
+                active=tuple(
+                    sorted(active.values(), key=lambda item: item.reservation_id)
+                ),
+            )
+            if package_refs != frozenset(
+                item.candidate.package_revision
+                for item in snapshot.active
+                if item.candidate is not None
+            ):
+                raise self._error(
+                    "GC reservations changed during read",
+                    "plugin_package_gc_journal_corrupt",
+                )
+            yield snapshot
+
     def _assert_parent_current(self) -> None:
         expected = self._parent_identity
         if expected is None:
@@ -386,7 +421,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError("Plugin Package GC parent directory changed")
 
     def snapshot(self) -> PluginPackageGcReservationSnapshotV1:
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, _ = self._replay_unlocked()
             return PluginPackageGcReservationSnapshotV1(
                 journal_revision=len(events),
@@ -418,7 +453,7 @@ class PluginPackageGcReservationJournal:
                 "GC journal overlaps an owner", "plugin_package_gc_graph_unbound"
             )
         _require_identity(operation_id, idempotency_key)
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, _ = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -467,7 +502,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError(
                 "Exact GC reservation and cancellation reason are required"
             )
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, started = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -517,7 +552,7 @@ class PluginPackageGcReservationJournal:
             raise ValueError("Exact GC reservation is required")
         if not lifecycle.gc_reservation_graph_bound_to(self):
             raise self._error("GC owner graph is not fully fenced", "plugin_package_gc_graph_unbound")
-        with self.guard():
+        with self.guard(require_write=True):
             events, active, started = self._replay_unlocked()
             repeated = _repeated(events, operation_id, idempotency_key, path=self._path)
             if repeated is not None:
@@ -549,7 +584,7 @@ class PluginPackageGcReservationJournal:
             return event
 
     def deletion_start(self, reservation_id: str) -> PluginPackageGcDeletionStartV2 | None:
-        with self.guard():
+        with self.guard(require_write=True):
             _, _, started = self._replay_unlocked()
             return started.get(reservation_id)
 

@@ -67,8 +67,9 @@ class _ProductSelectedRevisionHandle(VerifiedRevisionHandle):
     """Read one immutable capture only while its live Product selection agrees.
 
     The root is a diagnostic name, never a filesystem source. Every read
-    recaptures through the Product Store, so neither a legacy package root nor
-    a stale Desired selection can supply executable bytes.
+    rechecks the Product selection; bytes come from the pinned, verified
+    capture, so neither a legacy root nor a stale Desired selection can
+    supply executable bytes.
     """
 
     def __init__(
@@ -108,13 +109,7 @@ class _ProductSelectedRevisionHandle(VerifiedRevisionHandle):
     def verify(self) -> None:
         self._require_open()
         try:
-            current = self._runtime.capture_selected_plugin_manifest_for(
-                self._selected.snapshot.installation_key.plugin_id,
-                max_files=_MAX_FILES,
-                max_total_bytes=_MAX_BYTES,
-            )
-            if current != self._selected:
-                raise ValueError("Product selection changed")
+            self._runtime.assert_selected_plugin_manifest_current(self._selected)
         except (
             PackageProductRuntimeActivationError,
             PackageProductRuntimeReadError,

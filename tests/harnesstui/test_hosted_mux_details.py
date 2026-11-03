@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
+from loushang.harnesstui.conversation.request_presentation import (
+    ConversationRequestPresentation,
+)
 from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.core import RenderConstraints
 from loushang.tui.input import InputEvent
@@ -15,11 +18,44 @@ def _command(shell, text):
     shell.handle(InputEvent(kind="key", key="enter"))
 
 
-def _render(shell):
-    constraints = RenderConstraints(width=60, max_height=12)
+def _render(shell, *, width=60):
+    constraints = RenderConstraints(width=width, max_height=12)
     result = shell.screen.render(constraints)
     result.validate(constraints)
     return strip_control_sequences("\n".join(line.text for line in result.lines))
+
+
+def test_pending_approval_invalidates_cached_conversation_status():
+    async def scenario():
+        shell = _shell(_Client())
+        await shell.start()
+        try:
+            assert "Approval pending" not in _render(shell)
+            window = shell.state.active_window
+            cursor = window.last_cursor
+            window.pending_interaction_id = "question-1"
+            window.pending_interaction_text = "Review this action"
+            window.request_presentation = ConversationRequestPresentation(
+                "submit", "acknowledged"
+            )
+            assert window.last_cursor == cursor
+            assert "Approval pending" in _render(shell, width=100)
+            assert shell.screen.state.status_message == (
+                "Approval pending: F2 details; /approve /deny"
+            )
+            shell.screen.show_approval()
+            assert "Review this action" in _render(shell)
+            revision = shell.screen.state.records_revision
+            shell.handle(InputEvent(kind="key", key="escape"))
+            _render(shell)
+            assert shell.screen.state.records_revision > revision
+            assert shell.screen.state.status_message == (
+                "Approval pending: F2 details; /approve /deny"
+            )
+        finally:
+            await shell.close()
+
+    asyncio.run(scenario())
 
 
 def test_G16_DETAILS_approval_requires_current_full_presentation_and_explicit_command():

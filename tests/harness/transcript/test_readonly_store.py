@@ -7,11 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from loushang.harness.conversation import StoreConflictError
+from loushang.ai.types import UserMessage
+from loushang.harness.conversation import StoreCommitOutcomeUnknown, StoreConflictError
 from loushang.harness.transcript import (
+    AGENT_MESSAGE_KIND,
+    EXTENSION_DATA_KIND,
     AgentTranscriptDirectoryRuntime,
     AgentTranscriptFileLayout,
+    AgentTranscriptRecordFactory,
     AgentTranscriptSessionCatalog,
+    AgentTranscriptUnitOfWork,
+    ExtensionData,
+    TranscriptCommitter,
     create_agent_transcript_file_store,
     write_agent_transcript_export,
 )
@@ -150,6 +157,41 @@ def test_readonly_partial_tail_preserves_bytes_and_diagnostic(tmp_path):
         assert len(result.snapshot.records) == 1
         assert result.diagnostics
         assert snapshot(tmp_path) == before
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("kind", ["user", "extension"])
+def test_partial_tail_cannot_prove_fixed_resume_record_was_absent(tmp_path, kind):
+    async def scenario():
+        paths = seed(tmp_path)
+        with paths[0].open("ab") as handle:
+            handle.write(b'{"partial":')
+        before = snapshot(tmp_path)
+        layout = AgentTranscriptFileLayout(tmp_path)
+        loaded = await AgentTranscriptUnitOfWork.load(
+            create_agent_transcript_file_store(layout, read_only=True),
+            layout.key("session-1"),
+        )
+        assert any(item.code == "partial_journal_tail" for item in loaded.diagnostics)
+        record = AgentTranscriptRecordFactory(
+            id_factory=lambda: "fixed-resume-record",
+        ).create(
+            AGENT_MESSAGE_KIND if kind == "user" else EXTENSION_DATA_KIND,
+            (
+                UserMessage(role="user", content="continue", timestamp=1.0)
+                if kind == "user"
+                else ExtensionData("coding.activation-attempt/v1", {"version": 1})
+            ),
+            parent_id="record-1",
+        )
+        with pytest.raises(StoreCommitOutcomeUnknown, match="cannot prove"):
+            committer = TranscriptCommitter(loaded)
+            if kind == "user":
+                await committer.commit_prebuilt_user_message(record)
+            else:
+                await committer.commit_prebuilt_extension_data(record)
+        assert snapshot(tmp_path) == before
+
     asyncio.run(scenario())
 
 

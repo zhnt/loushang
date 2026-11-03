@@ -11,6 +11,7 @@ from loushang.coding.package_product_worker_windows_recovery_inventory import (
     CodingWindowsWorkerRecoveryAdmissionError,
     CodingWindowsWorkerRecoveryAttemptV1,
     require_coding_windows_worker_current_attempt,
+    require_coding_windows_worker_native_release_attempt,
     require_coding_windows_worker_terminal_cleanup_attempt,
 )
 
@@ -173,6 +174,24 @@ def test_windows_worker_terminal_cleanup_requires_exact_settled_process() -> Non
 
     assert require(terminal) == terminal.native_job_name
     assert require(replace(terminal, native_phase="settled")) == terminal.native_job_name
+    fenced_before_hosting_close = replace(
+        terminal,
+        supervisor_phase="fenced",
+        supervisor_process_settled=False,
+    )
+    assert (
+        require_coding_windows_worker_native_release_attempt(
+            (fenced_before_hosting_close,),
+            attempt_id=_ATTEMPT,
+            payload_directory_identity=_STAGE,
+            request_fingerprint=_REQUEST,
+            receipt_fingerprint=_RECEIPT,
+            identity_fingerprint=_IDENTITY,
+        )
+        == terminal.native_job_name
+    )
+    with pytest.raises(CodingWindowsWorkerRecoveryAdmissionError):
+        require(fenced_before_hosting_close)
     for changed in (
         {"attempt_id": "8" * 32},
         {"payload_directory_identity": (13, 38)},

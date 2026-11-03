@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 import loushang.harness.session.inspection as inspection_module
 from loushang.agent import Agent
 from loushang.ai.json_codec import serialize_message
@@ -431,8 +433,12 @@ def test_token_totals_mark_fact_and_outcome_fallback_as_mixed() -> None:
     assert totals.incomplete_attempts is True
 
 
+@pytest.mark.parametrize(
+    "main_purpose", ["main", "main_turn", "continuation", "tool_continuation", "retry"]
+)
 def test_provider_context_anchor_skips_summary_and_caches_by_revision(
     monkeypatch,
+    main_purpose,
 ) -> None:
     attempts = (
         SimpleNamespace(
@@ -463,7 +469,9 @@ def test_provider_context_anchor_skips_summary_and_caches_by_revision(
 
     def rebuild(snapshot_id: str):
         rebuild_calls.append(snapshot_id)
-        purpose = "compaction_summary" if snapshot_id == "summary-snapshot" else "main"
+        purpose = (
+            "compaction_summary" if snapshot_id == "summary-snapshot" else main_purpose
+        )
         return SimpleNamespace(
             snapshot=SimpleNamespace(
                 purpose=purpose,

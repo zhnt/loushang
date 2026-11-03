@@ -28,6 +28,7 @@ from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
+from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -217,7 +218,7 @@ class SessionFoundationInputs:
     resource_loader: ResourceLoaderPort | None
     get_resource_bundle: Callable[[], ResourceBundle | None]
     tool_registry: WorkspaceToolRegistry | None
-    allowed_tool_names: list[str] | None
+    allowed_tool_names: list[str] | ToolSelection | None
     active_tool_names: list[str] | None
     default_tool_profile: DefaultToolProfileSnapshot
     show_empty_tool_prompt: bool
@@ -239,9 +240,9 @@ class SessionFoundationInputs:
     set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
-    get_effective_skills: (
-        Callable[[], Sequence[SkillPromptSummary] | None] | None
-    ) = None
+    get_effective_skills: Callable[[], Sequence[SkillPromptSummary] | None] | None = (
+        None
+    )
     request_evidence: RequestEvidenceRuntimePort | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
     resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None
@@ -259,6 +260,10 @@ class SessionMaintenanceInputs:
     sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
     get_compaction_capability: (
         Callable[[], AgentTranscriptCompactionCapability] | None
+    ) = None
+    single_call_capacity_probe: (
+        Callable[[CompactionPreparation, object, PreparedRequestLimits | None], bool]
+        | None
     ) = None
 
 
@@ -478,6 +483,7 @@ def _legacy_composition_inputs(
             "get_compaction_capability",
             None,
         ),
+        single_call_capacity_probe=remaining.pop("single_call_capacity_probe", None),
     )
     product = SessionProductInputs(
         model_registry=take("model_registry"),
@@ -844,6 +850,14 @@ def _build_maintenance_runtimes(
         current = current_compaction_capability()
         return current.prepare(entries, keep_recent_tokens)
 
+    capacity_probe = maintenance.single_call_capacity_probe
+
+    def check_single_call_capacity(
+        preparation: CompactionPreparation, model: object
+    ) -> bool:
+        assert capacity_probe is not None
+        return capacity_probe(preparation, model, agent.call_options.request_limits)
+
     compaction_runtime = AgentTranscriptCompactionRuntime(
         transcript=session,
         get_policy=get_compaction_policy,
@@ -859,6 +873,9 @@ def _build_maintenance_runtimes(
         ),
         dispatch_event=foundation.dispatch_event,
         has_queued_messages=agent.has_queued_messages,
+        single_call_capacity_probe=(
+            None if capacity_probe is None else check_single_call_capacity
+        ),
         before_compaction=maintenance.before_compaction,
         after_compaction=maintenance.after_compaction,
         record_runtime_exception=foundation.record_runtime_exception,
@@ -1062,7 +1079,8 @@ def _build_tool_controller(
         allowed_tool_names=(
             set(inputs.allowed_tool_names)
             if inputs.allowed_tool_names is not None
-            else None
+            and inputs.allowed_tool_names is not ToolSelection.ALL
+            else inputs.allowed_tool_names
         ),
         initial_active_tool_names=list(
             inputs.active_tool_names or [tool.name for tool in ports.agent.tools]
@@ -1158,6 +1176,11 @@ def _compaction_policy(
             settings,
             "keep_recent_tokens",
             capability.keep_recent_tokens,
+        ),
+        single_call_early_trigger=_bool_setting(
+            settings,
+            "single_call_early_trigger",
+            capability.single_call_early_trigger,
         ),
     )
 
@@ -1291,6 +1314,12 @@ async def apply_agent_session_model_selection(
         resolved = selection_runtime.resolve_model(
             cast(Model | ModelSelection, selection)
         )
+        window = agent.state.provider_window
+        if window is not None and not window.matches(resolved):
+            raise ValueError(
+                "Selected model is incompatible with the active provider "
+                "compaction checkpoint"
+            )
         validate_image_input_compatibility(resolved, agent.state.messages)
         previous = agent.model
         await selection_runtime.apply_model(resolved)

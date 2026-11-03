@@ -124,6 +124,7 @@ class LocalEndpointReservationV1:
         session_execution: bool = False,
         mux_management: bool = False,
         mux_closure: bool = False,
+        resume_input_lookup: bool = False,
         instance: str | None = None,
     ) -> LocalConnectionRecordV1:
         if self._closed or self._directory._closed:
@@ -135,6 +136,7 @@ class LocalEndpointReservationV1:
             session_execution=session_execution,
             mux_management=mux_management,
             mux_closure=mux_closure,
+            resume_input_lookup=resume_input_lookup,
         )
         if self._published or (self._record is not None and self._record != record):
             raise LocalRecordError(LocalRecordErrorCodeV1.CONFLICT)

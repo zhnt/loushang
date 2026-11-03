@@ -78,6 +78,11 @@ from .ports import (
     HostedSessionResolutionFailureV1,
     HostedSessionResolverV1,
 )
+from .resume_ports import (
+    ResumeInputLookupQueryV1,
+    ResumeInputLookupResultV1,
+    _lookup_resume_product_input,
+)
 from .session_discovery import SessionDiscoveryOwnerV1, SessionDiscoveryViewV1
 
 if TYPE_CHECKING:
@@ -285,6 +290,16 @@ class _SessionOwner:
         value = await self._invoke_async(callback, model_id)
         if type(value) is not SessionModelsV1 or value.current_id != model_id:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return value
+
+    async def lookup_resume_input(
+        self, query: ResumeInputLookupQueryV1,
+    ) -> ResumeInputLookupResultV1:
+        if not self._accepting:
+            raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        value = await _lookup_resume_product_input(self._port, query)
+        if not self._accepting:
+            raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
         return value
 
     async def start_turn(self, text: str) -> None:
@@ -560,6 +575,11 @@ class AppServiceV1:
     @property
     def continuity_enabled(self) -> bool:
         return self._continuity_lease is not None
+
+    def _require_legacy_input(self) -> None:
+        config = self._execution_config
+        if config is not None and (config.select_work_port is not None or config.select_goal_port is not None):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
     def _execution_binding(self, session: _SessionOwner) -> ExecutionBindingV1:
         config, registry = self._execution_config, self._execution_registry
@@ -1209,6 +1229,7 @@ class AppServiceV1:
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         if self._execution_registry is not None:
             try:
@@ -1224,18 +1245,21 @@ class AppServiceV1:
 
     async def steer_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.steer_turn(request.text)
         return AckV1()
 
     async def follow_up_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
+        self._require_legacy_input()
         session = await self._resolve_text_session(request)
         session.follow_up_turn(request.text)
         return AckV1()
 
     async def interrupt_turn(self, request: TurnInterruptV1) -> AckV1:
         self._require_request(request, TurnInterruptV1)
+        self._require_legacy_input()
         session = await self._resolve_member_session(
             request.attachment_id,
             request.controller_generation,

@@ -227,6 +227,22 @@ See
 The built-in catalog is `src/loushang/ai/model/models.json`. Custom files use the
 same strict shape:
 
+`capabilities.reasoningEfforts` optionally lists provider-native effort values
+in display order. Missing means the supported levels are unknown; `[]` means
+the model has no adjustable effort setting. This metadata does not by itself
+enable an adapter to send effort parameters. A model's `defaults.reasoningEffort`,
+when present, must be in the declared list. `none` is included only when the
+provider accepts it as an effort value; some providers handle disabling reasoning
+through a separate setting.
+
+For Kimi K3.1 Pro, Kimi API uses `kimi-k3.1-pro` (or
+`kimi-k3.1-pro-highspeed`) on `moonshot/openai-completions`. Kimi Code uses
+`k3.1-pro` (or `k3.1-pro-highspeed`) on its OpenAI and Anthropic endpoints.
+Both variants require reasoning. Kimi API defaults to `max` effort; Kimi Code
+defaults to `high`. Kimi Code's 1M context depends on the subscription tier.
+`capabilities.reasoningRequired: true` records models such as K3.1 that reject
+disabled reasoning. The SDK validates this before dispatching a request.
+
 ```json
 {
   "providers": {
@@ -304,6 +320,13 @@ Built-in production adapters are:
 `AIErrorInfo.code` is always an `AIErrorCode`. Provider exceptions are mapped
 to typed errors with stable retryability, status, request ID, and JSON-safe
 details.
+
+The public message includes a safe clue when a failure has no more specific
+classification. For example, HTTP 402 appears as `Provider quota or payment
+required (HTTP 402).`, HTTP 400 as `Provider request failed (HTTP 400).`, and a
+local SDK `ValueError` as `Provider request failed (ValueError).` Provider
+exception messages and response bodies are not shown in the public message;
+inspect the error code, status, and request ID for further diagnosis.
 
 Usage-only terminal chunks and provider-specific partial usage are normalized
 without double-counting reasoning tokens. Cost is unknown when required pricing

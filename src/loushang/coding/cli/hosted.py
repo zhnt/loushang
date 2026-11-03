@@ -21,7 +21,11 @@ from loushang.appserver.protocol.connection_profile import AppConnectionProfileV
 from loushang.appserver.stdio import InheritedStdioTransportV1
 from loushang.harness.tools.core import ToolDefinition
 
-from ..hosted_bootstrap import CodingHostedLaunchV1, create_coding_hosted_attempt
+from ..hosted_bootstrap import (
+    CodingHostedLaunchV1,
+    create_coding_hosted_attempt,
+    prepare_coding_hosted_session_roots,
+)
 from ..hosted_session import CodingHostedProductRuntimeFactoryForSession
 
 
@@ -42,24 +46,29 @@ class CodingHostedCommandV1:
         connection_timeout: float = 10.0,
         settlement_timeout: float = 60.0,
         session_discovery: bool = False,
+        session_execution: bool = False,
         package_product_runtime_factory_for_session: (
             CodingHostedProductRuntimeFactoryForSession | None
         ) = None,
     ) -> None:
         if type(session_discovery) is not bool:
             raise TypeError("invalid discovery activation")
+        if type(session_execution) is not bool:
+            raise TypeError("invalid execution activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
         self._launch = launch
         self._connection_timeout = connection_timeout
         self._settlement_timeout = settlement_timeout
         self._session_discovery = session_discovery
+        self._session_execution = session_execution
         self._attempt = create_coding_hosted_attempt(
             launch,
             model=model,
             stream_fn=stream_fn,
             tools=tools,
             session_discovery=session_discovery,
+            owned_transcripts=session_execution,
             package_product_runtime_factory_for_session=(
                 package_product_runtime_factory_for_session
             ),
@@ -81,6 +90,10 @@ class CodingHostedCommandV1:
             raise RuntimeError("hosted_command_closed")
         self._started = True
         try:
+            if self._session_execution:
+                await asyncio.to_thread(
+                    prepare_coding_hosted_session_roots, self._launch
+                )
             self._application = await self._attempt.open()
             self._transport = InheritedStdioTransportV1(
                 input_fd=input_fd, output_fd=output_fd
@@ -91,6 +104,7 @@ class CodingHostedCommandV1:
                 connection_timeout=self._connection_timeout,
                 settlement_timeout=self._settlement_timeout,
                 session_discovery=self._session_discovery,
+                session_execution=self._session_execution,
             )
             await self._foreground.run()
         finally:
@@ -169,6 +183,11 @@ def _parser(*, allow_discovery: bool = False) -> argparse.ArgumentParser:
             action="store_true",
             help="explicitly select the bounded session-discovery wire profile",
         )
+        parser.add_argument(
+            "--session-execution",
+            action="store_true",
+            help="explicitly select stable session-execution submission",
+        )
     return parser
 
 
@@ -176,7 +195,7 @@ def parse_launch(
     argv: Sequence[str] | None = None,
 ) -> tuple[CodingHostedLaunchV1, bool]:
     """Legacy library parser: never accept a selection this pair cannot carry."""
-    launch, describe, _ = _parse_options(argv, allow_discovery=False)
+    launch, describe, _, _ = _parse_options(argv, allow_discovery=False)
     return launch, describe
 
 
@@ -184,7 +203,7 @@ def _parse_options(
     argv: Sequence[str] | None,
     *,
     allow_discovery: bool,
-) -> tuple[CodingHostedLaunchV1, bool, bool]:
+) -> tuple[CodingHostedLaunchV1, bool, bool, bool]:
     parser = _parser(allow_discovery=allow_discovery)
     args = parser.parse_args(argv)
     try:
@@ -197,7 +216,12 @@ def _parse_options(
         )
     except (ValueError, OSError):
         parser.error("invalid hosted launch configuration")
-    return launch, args.describe, args.session_discovery if allow_discovery else False
+    return (
+        launch,
+        args.describe,
+        args.session_discovery if allow_discovery else False,
+        args.session_execution if allow_discovery else False,
+    )
 
 
 def execute_hosted_command(command: CodingHostedCommandV1) -> int:
@@ -231,10 +255,16 @@ def execute_hosted_command(command: CodingHostedCommandV1) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    launch, describe, discovery = _parse_options(argv, allow_discovery=True)
+    launch, describe, discovery, execution = _parse_options(
+        argv, allow_discovery=True
+    )
     if describe:
         profile = (
-            AppConnectionProfileV1.STDIO_DISCOVERY
+            AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION
+            if discovery and execution
+            else AppConnectionProfileV1.STDIO_EXECUTION
+            if execution
+            else AppConnectionProfileV1.STDIO_DISCOVERY
             if discovery
             else AppConnectionProfileV1.STDIO
         )
@@ -245,7 +275,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
     try:
-        command = CodingHostedCommandV1(launch, session_discovery=discovery)
+        command = CodingHostedCommandV1(
+            launch,
+            session_discovery=discovery,
+            session_execution=execution,
+        )
     except Exception:
         print("hosted_configuration_unavailable", file=sys.stderr)
         return 1

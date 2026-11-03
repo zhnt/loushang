@@ -23,6 +23,7 @@ from loushang.coding.package_legacy_classification import (
     classify_coding_legacy_workspace,
 )
 from loushang.coding.package_product_runtime import (
+    _require_current_coding_product_admission,
     bootstrap_coding_builtin_product_plugins,
     require_fresh_coding_product_inputs,
 )
@@ -206,6 +207,7 @@ def cutover_and_bootstrap_coding_package_product(
     runtime_version: str,
     runtime_protocol_epoch: int,
     windows_candidate: bool = False,
+    require_current_admission: Callable[[], None] | None = None,
 ) -> CodingPackagePreBCutover:
     """Offline first B cutover of a fresh workspace, then install builtins.
 
@@ -221,6 +223,7 @@ def cutover_and_bootstrap_coding_package_product(
         )
     if os.name == "nt" and not windows_candidate:
         raise RuntimeError("Coding Windows fresh Product bootstrap is not yet admitted")
+    _require_current_coding_product_admission(require_current_admission)
     cutover = prepare_and_cutover_coding_package_store_from_legacy(
         lifecycle,
         settings_manager,
@@ -238,6 +241,7 @@ def cutover_and_bootstrap_coding_package_product(
         runtime_version=runtime_version,
         runtime_protocol_epoch=runtime_protocol_epoch,
         windows_candidate=windows_candidate,
+        require_current_admission=require_current_admission,
     )
     return cutover
 

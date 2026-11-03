@@ -10,6 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
+class ResourceReadBudgetExceeded(RuntimeError):
+    """A discardable preview exceeded its byte budget; authority is unchanged."""
+
+    reason_code = "resource.preview_byte_budget_exceeded"
+
+
 class ContainedFileCaptureError(OSError):
     def __init__(self, message: str, *, code: str, path: Path) -> None:
         super().__init__(message)

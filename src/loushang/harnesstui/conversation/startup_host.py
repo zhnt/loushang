@@ -6,14 +6,9 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from contextvars import Context, copy_context
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from loushang.harnesstui.conversation.control import ConversationActionHost
-from loushang.harnesstui.conversation.host import (
-    ConversationScreenRunProfile,
-    bind_action_host_to_screen_runner,
-    open_conversation_screen_runtime,
-)
 from loushang.harnesstui.conversation.input import (
     ConversationInputResult,
     ConversationInputRouter,
@@ -36,6 +31,9 @@ from loushang.harnesstui.conversation.screen_runner import (
 )
 from loushang.tui.input import InputEvent
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+
+if TYPE_CHECKING:
+    from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
 
 
 def startup_failure_summary(error: BaseException) -> str:
@@ -68,6 +66,31 @@ class _StartupRouter:
         self.loading = _LoadingRouter(**kwargs)
         self.ready: ConversationInputRouterPort | None = None
         self.disposed = False
+        self._submission_paused = False
+
+    def set_submission_paused(self, paused: bool) -> None:
+        self._submission_paused = paused
+        for router in (self.loading, self.ready):
+            setter = getattr(router, "set_submission_paused", None)
+            if callable(setter):
+                setter(paused)
+
+    def resume_paused_submission(self) -> ConversationInputResult | None:
+        """Resume the attached Product's deferred Enter in its own context."""
+
+        if (
+            not self.disposed
+            and self.startup.submission_armed
+            and not self.startup.closing
+        ):
+            resume = getattr(self.ready, "resume_paused_submission", None)
+            if callable(resume):
+                self._submission_paused = False
+                self.loading.set_submission_paused(False)
+                assert self.startup.context is not None
+                return self.startup.context.copy().run(resume)
+        self.set_submission_paused(False)
+        return None
 
     def handle(self, event: InputEvent) -> ConversationInputResult:
         if event.kind == "resize":
@@ -194,6 +217,7 @@ class ScreenConversationStartup:
             self.app.state.startup_pending = False
             self.app.state.status_message = None
             self.app.request_render()
+            self.app.notify_session_ready()
             self._wake()
 
     @property
@@ -248,6 +272,11 @@ class ScreenConversationStartup:
             raise RuntimeError("invalid or late screen attachment")
         if self.router is None or self.router.disposed:
             raise RuntimeError("screen input owner is unavailable")
+        from loushang.harnesstui.conversation.host import (
+            bind_action_host_to_screen_runner,
+            open_conversation_screen_runtime,
+        )
+
         with open_conversation_screen_runtime(profile) as factory:
             callbacks = bind_action_host_to_screen_runner(action_host)
             self.handlers = {
@@ -266,12 +295,14 @@ class ScreenConversationStartup:
                 keybindings=keybindings,
             )
             self.router.ready = (factory or ConversationInputRouter)(**kwargs)
+            self.router.set_submission_paused(self.router._submission_paused)
             self.finished = asyncio.get_running_loop().create_future()
             self.attached = True
             if self.submission_armed:
                 self.app.state.startup_pending = False
                 self.app.state.status_message = None
             self.app.request_render()
+            self.app.notify_session_ready()
             self._wake()
             return await self.finished
 

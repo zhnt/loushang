@@ -14,10 +14,12 @@
     "harness",
     "harness_native",
     "hosting",
+    "hosting_sustained",
     "apphost",
     "appservice",
     "host_runtime",
     "windows_shell",
+    "registered_reboot",
     "install",
     "lsp",
     "ci",
@@ -53,6 +55,17 @@
     },
     {
       "paths": [
+        ".github/workflows/worker-registered-reboot-drill.yml",
+        "scripts/dev/worker_registered_reboot_drill.py",
+        "scripts/dev/worker_registered_qemu_reboot_drill.sh",
+        "src/loushang/coding/package_product_worker_registered_recovery.py",
+        "tests/coding/test_package_worker_candidate_wheel.py"
+      ],
+      "checks": ["registered_reboot"],
+      "reason": "registered Worker real reboot recovery evidence"
+    },
+    {
+      "paths": [
         "scripts/dev/_g18_provenance.py",
         "tests/dev/test_g18_provenance.py",
         "scripts/dev/_g18_recovery.py",
@@ -70,6 +83,25 @@
         "scripts/dev/measure_g18_native.py",
         "tests/coding/_g18_native_probe.py",
         "tests/dev/test_measure_g18_native.py",
+        "tests/dev/test_lmux_comparison.py",
+        "tests/dev/test_lmux_history_collection.py",
+        "tests/dev/test_lmux_history_confirmation.py",
+        "tests/dev/test_lmux_history_receipts.py",
+        "tests/dev/test_lmux_history_restore_validation.py",
+        "tests/dev/test_lmux_history_seed_receipts.py",
+        "tests/dev/test_lmux_history_terminal_validation.py",
+        "tests/dev/test_lmux_history_timings.py",
+        "tests/dev/test_lmux_history_warm_validation.py",
+        "tests/dev/test_lmux_native_receipt.py",
+        "tests/dev/test_lmux_native_selection.py",
+        "tests/dev/test_lmux_product_collection.py",
+        "tests/dev/test_lmux_product_confirmation.py",
+        "tests/dev/test_lmux_product_scenario.py",
+        "tests/dev/test_lmux_product_terminal_validation.py",
+        "tests/dev/test_lmux_product_timings.py",
+        "tests/dev/test_lmux_stop_measurement.py",
+        "tests/dev/test_lmux_terminal_receipts.py",
+        "tests/dev/test_screen_first_probe_readiness.py",
         "tests/coding/_interactive_startup_probe.py",
         "tests/coding/_interactive_model_child.py",
         "tests/coding/_interactive_seed.py",
@@ -83,7 +115,8 @@
         "scripts/dev/reevaluate_g18_comparison.py"
       ],
       "checks": ["appservice"],
-      "reason": "G18 installed startup evidence and collector regressions"
+      "pr_test_only": true,
+      "reason": "G18 installed startup, lmux evidence and collector regressions"
     },
     {
       "paths": ["src/loushang/coding/__init__.py"],
@@ -121,10 +154,12 @@
         "harness",
         "harness_native",
         "hosting",
+        "hosting_sustained",
         "apphost",
         "appservice",
         "host_runtime",
         "windows_shell",
+        "registered_reboot",
         "install",
         "lsp",
         "ci",
@@ -242,6 +277,24 @@
         "coding"
       ],
       "reason": "Coding implementation"
+    },
+    {
+      "paths": [
+        "src/loushang/plugin/__init__.py",
+        "src/loushang/plugin/__main__.py",
+        "src/loushang/plugin/_authoring.py",
+        "src/loushang/plugin/_coding_data_scaffold.py",
+        "src/loushang/plugin/_coding_data_skill_wheel.py",
+        "src/loushang/plugin/_coding_data_wheel_validation.py",
+        "src/loushang/plugin/_coding_local_worker_wheel.py",
+        "src/loushang/plugin/_conformance.py",
+        "src/loushang/plugin/_package.py",
+        "src/loushang/plugin/_validation.py",
+        "src/loushang/plugin/_writer.py",
+        "src/loushang/plugin/provider_runtime.py"
+      ],
+      "checks": ["harness", "coding"],
+      "reason": "public Plugin SDK and its Harness and Coding consumers"
     },
     {
       "paths": [
@@ -424,6 +477,44 @@
     },
     {
       "paths": [
+        "tests/coding/test_package_worker_candidate_wheel.py"
+      ],
+      "checks": [
+        "hosting_sustained"
+      ],
+      "reason": "Worker sustained native query test ownership"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/_tool_authority.py",
+        "src/loushang/coding/bootstrap.py",
+        "src/loushang/coding/composition_provenance.py",
+        "src/loushang/coding/composition_sets.py",
+        "src/loushang/coding/runtime/agent_session_runtime.py",
+        "src/loushang/coding/session/agent_session.py",
+        "src/loushang/coding/session_manager.py"
+      ],
+      "checks": [
+        "hosting",
+        "windows_shell"
+      ],
+      "reason": "Ordinary Coding Worker Session and composition consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/cli/application.py",
+        "src/loushang/coding/cli/args.py",
+        "src/loushang/coding/cli/composition_choice.py",
+        "src/loushang/coding/cli/profile.py",
+        "tests/coding/test_plugin_p4_worker_turn.py"
+      ],
+      "checks": [
+        "hosting"
+      ],
+      "reason": "Linux ordinary Coding Worker command entry"
+    },
+    {
+      "paths": [
         "src/loushang/harness/workspace/**",
         "src/loushang/harness/worker/**",
         "src/loushang/harness/resources/packages/**",
@@ -554,7 +645,8 @@
         "architecture",
         "docs"
       ],
-      "reason": "architecture documentation tooling"
+      "reason": "architecture documentation tooling",
+      "pr_test_only": true
     },
     {
       "paths": [
@@ -614,6 +706,9 @@
     "hosting": [
       "host_runtime"
     ],
+    "hosting_sustained": [
+      "hosting"
+    ],
     "apphost": [
       "host_runtime"
     ],
@@ -624,17 +719,11 @@
   "workflows": {
     "gui": ["gui"],
     "architecture": [
-      "docs",
       "architecture"
     ],
     "ai": [
       "ai",
       "install"
-    ],
-    "packages": [
-      "agent",
-      "coding",
-      "foundation"
     ],
     "harness": [
       "harness",
@@ -650,7 +739,8 @@
       "tui_native"
     ],
     "hosting": [
-      "hosting"
+      "hosting",
+      "hosting_sustained"
     ],
     "apphost": [
       "apphost"
@@ -663,6 +753,9 @@
     ],
     "windows-shell": [
       "windows_shell"
+    ],
+    "worker-reboot": [
+      "registered_reboot"
     ],
     "lsp": [
       "lsp"

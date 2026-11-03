@@ -2,12 +2,59 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from loushang.harness.resources._loader_discovery_filesystem import (
     _discover_extensions_from_dir,
     _discover_prompts_from_dir,
     _discover_skills_from_dir,
     _discover_themes_from_dir,
 )
+
+
+@pytest.mark.parametrize("discover", (
+    _discover_prompts_from_dir, _discover_extensions_from_dir,
+    _discover_themes_from_dir, _discover_skills_from_dir,
+))
+def test_package_directory_enumeration_can_stop_before_sorting_or_parsing(tmp_path: Path, discover) -> None:
+    from concurrent.futures import CancelledError
+
+    for index in range(20):
+        (tmp_path / f"prompt-{index}.md").write_text("prompt", encoding="utf-8")
+    calls = 0
+
+    def stop():
+        nonlocal calls
+        calls += 1
+        if calls == 5:
+            raise CancelledError("directory budget reached")
+
+    with pytest.raises(CancelledError, match="directory budget reached"):
+        discover(
+            tmp_path, source_kind="external_package", source_scope="package",
+            source_label="package", work_probe=stop,
+        )
+    assert calls == 5
+
+
+def test_recursive_package_skill_scan_checks_each_directory(tmp_path: Path) -> None:
+    from concurrent.futures import CancelledError
+
+    (tmp_path / "one" / "two" / "three").mkdir(parents=True)
+    calls = 0
+
+    def stop():
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise CancelledError("recursive scan cancelled")
+
+    with pytest.raises(CancelledError, match="recursive scan cancelled"):
+        _discover_skills_from_dir(
+            tmp_path, source_kind="external_package", source_scope="package",
+            source_label="package", work_probe=stop,
+        )
+    assert calls == 4
 
 
 def test_filesystem_discovery_scans_each_standard_resource_category(

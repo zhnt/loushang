@@ -48,6 +48,23 @@ class ModelInputIntegrityError(RuntimeError):
 
 
 def canonical_model_input_json(value: object, *, name: str) -> str:
+    # Materialization owns native JSON trees. Validate without a second copy,
+    # then use the native encoder instead of allocating a Python tuple/path
+    # for every field. Frozen/custom containers retain the general encoder
+    # below, including its existing rejection and error-path contracts.
+    if type(value) is dict or type(value) is list:
+        try:
+            validate_json_value(value, name=name)
+        except JsonValueError:
+            pass
+        else:
+            return stdlib_json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
     # Single-pass canonical encoder.  It is byte-identical to the reference
     # pipeline ``dump_json_value(thaw(freeze(value)), sort_keys=True)`` (see
     # tests/harness/transcript/test_model_input_canonical.py) but skips the
@@ -143,17 +160,31 @@ def freeze_model_input_json(
 
 
 def thaw_model_input_json(value: object) -> JSONValue:
-    if isinstance(value, Mapping):
+    value_type = type(value)
+    if (
+        value is None
+        or value_type is str
+        or value_type is bool
+        or value_type is int
+        or value_type is float
+    ):
+        return cast(JSONValue, value)
+    if value_type is list or value_type is tuple:
+        return [thaw_model_input_json(item) for item in cast("Sequence[object]", value)]
+    if (
+        value_type is dict
+        or value_type is MappingProxyType
+        or isinstance(value, Mapping)
+    ):
+        mapping = cast("Mapping[object, object]", value)
         projected: dict[str, JSONValue] = {}
-        for key, item in value.items():
+        for key, item in mapping.items():
             if not isinstance(key, str):
                 raise TypeError("model-input JSON keys must be strings")
             projected[key] = thaw_model_input_json(item)
         return projected
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
-        return [thaw_model_input_json(item) for item in value]
-    if value is None or type(value) in {str, bool, int, float}:
-        return cast(JSONValue, value)
+        return [thaw_model_input_json(item) for item in cast("Sequence[object]", value)]
     raise TypeError(f"model-input value is outside strict JSON: {type(value).__name__}")
 
 

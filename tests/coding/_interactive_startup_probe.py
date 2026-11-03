@@ -300,6 +300,97 @@ class StartupWitnesses:
             self.consumed = end + len(FRAME_END)
 
 
+def resume_milestones(
+    trace: list[dict], *, spawn_started: float, input_submitted: float
+) -> dict:
+    """Validate and project one instrumented writable Resume timeline."""
+
+    required = (
+        "resume_history_ready",
+        "resume_plan_started",
+        "resume_input_accepted",
+        "resume_plan_ready",
+        "resume_input_durable",
+        "model_input",
+        "resume_process_resources",
+    )
+    phases: dict[str, dict] = {}
+    for row in trace:
+        phase = row.get("phase")
+        if phase in required or phase == "resume_background_plan_ready":
+            if phase in phases:
+                raise RuntimeError(f"duplicate Resume milestone trace: {phase}")
+            phases[phase] = row
+    missing = set(required) - phases.keys()
+    if missing:
+        raise RuntimeError(
+            "missing Resume milestone trace: " + ", ".join(sorted(missing))
+        )
+    timestamps = []
+    for phase in required:
+        value = phases[phase].get("ns")
+        if type(value) is not int:
+            raise RuntimeError(f"invalid Resume milestone timestamp: {phase}")
+        timestamps.append(value)
+    origin_ns = int(spawn_started * 1_000_000_000)
+    submitted_ns = int(input_submitted * 1_000_000_000)
+    ordered = [
+        submitted_ns,
+        phases["resume_input_accepted"]["ns"],
+        phases["resume_plan_ready"]["ns"],
+        phases["resume_input_durable"]["ns"],
+        phases["model_input"]["ns"],
+        phases["resume_process_resources"]["ns"],
+    ]
+    if phases["resume_history_ready"]["ns"] < origin_ns or ordered != sorted(
+        ordered
+    ):
+        raise RuntimeError("Resume milestone trace is not monotonic")
+    resources = phases["resume_process_resources"]
+    if (
+        type(resources.get("cpu_seconds")) not in {int, float}
+        or type(resources.get("peak_rss_kib")) is not int
+        or type(resources.get("open_fds")) is not int
+    ):
+        raise RuntimeError("invalid Resume process resource trace")
+    return {
+        "history_ready_seconds": (
+            phases["resume_history_ready"]["ns"] - origin_ns
+        )
+        / 1_000_000_000,
+        "input_acceptance_seconds": (
+            phases["resume_input_accepted"]["ns"] - submitted_ns
+        )
+        / 1_000_000_000,
+        "plan_ready_seconds": (
+            phases["resume_plan_ready"]["ns"] - submitted_ns
+        )
+        / 1_000_000_000,
+        "input_durable_seconds": (
+            phases["resume_input_durable"]["ns"] - submitted_ns
+        )
+        / 1_000_000_000,
+        "model_transport_seconds": (
+            phases["model_input"]["ns"] - submitted_ns
+        )
+        / 1_000_000_000,
+        "background_plan_status": phases.get(
+            "resume_background_plan_ready", {}
+        ).get("status", "not_observed"),
+        "cpu_seconds": resources["cpu_seconds"],
+        "peak_rss_kib": resources["peak_rss_kib"],
+        "open_fds_at_exit": resources["open_fds"],
+        "fsync_calls": resources.get("fsync_calls"),
+        "fsync_seconds": resources.get("fsync_seconds"),
+        "resume_writer_acquire_seconds": resources.get(
+            "resume_writer_acquire_seconds"
+        ),
+        "full_model_input_rebuilds": resources.get(
+            "full_model_input_rebuilds"
+        ),
+    }
+
+
 def measure(
     root: Path,
     source: Path,
@@ -309,6 +400,7 @@ def measure(
     installed: bool = False,
     synthetic: bool = False,
     seed: Path | None = None,
+    resume: bool = False,
     workspace: Path | None = None,
     edit_train: bool = False,
 ) -> dict:
@@ -321,6 +413,8 @@ def measure(
 
     if synthetic and (not installed or profile):
         raise ValueError("synthetic pilot requires unprofiled installed entrypoint")
+    if resume and (seed is None or not synthetic):
+        raise ValueError("Resume milestones require a synthetic seeded pilot")
     if edit_train and (synthetic or profile):
         raise ValueError(
             "fixed editing is a separate unprofiled workload, not a first-turn probe"
@@ -362,9 +456,25 @@ def measure(
             "baidu-qianfan:openai-completions-cn:ernie-5.1",
         ]
     if seed is not None:
-        restored = root / "resume.jsonl"
+        # Writable Resume validates that the file name remains bound to the
+        # transcript header. Keep the generated canonical name when isolating
+        # the seed inside this sample root.
+        # The transcript store and its machine state must not share a parent
+        # domain. The private environment lives below ``root``; use a unique
+        # sibling data root so repeated samples also have distinct blob and
+        # Writer authority domains.
+        if resume:
+            data_root = root.parent / f"{root.name}-data"
+            data_root.mkdir(mode=0o700)
+            session_root = data_root / "sessions"
+            session_root.mkdir(mode=0o700)
+        else:
+            session_root = root
+        restored = session_root / seed.name
         shutil.copy2(seed, restored)
-        command.extend(["--session", str(restored)])
+        command.extend(["--resume" if resume else "--session", str(restored)])
+        if resume:
+            command.extend(["--session-dir", str(session_root)])
     result = {
         "schema": 3,
         "classification": "startup-pilot-not-performance-acceptance",
@@ -373,6 +483,7 @@ def measure(
         "instrumented": profile or synthetic,
         "synthetic": synthetic,
         "seed": str(seed) if seed is not None else None,
+        "resume": resume,
         "installation": str(python.parent.parent) if installed else None,
         "metrics": {},
         "status": "started",
@@ -493,8 +604,14 @@ def measure(
                     wait_for_frame(
                         driver,
                         lambda out: frame_matches(out, REPLY, after=submitted_after),
-                        timeout=35,
+                        timeout=60 if resume else 35,
                     )
+                    if resume:
+                        assert (
+                            "Allow this action once"
+                            not in driver.raw_output[submitted_after:]
+                        )
+                        metrics["resume_approval_prompted"] = False
                     metrics["first_reply_seconds"] = time.perf_counter() - submitted
                     metrics["spawn_through_reply_seconds"] = (
                         time.perf_counter() - spawn["start"]
@@ -502,12 +619,15 @@ def measure(
 
                     def settled(out):
                         if not frame_matches(
-                            out, " | idle", REPLY, after=submitted_after
+                            out, "› ", REPLY, after=submitted_after
                         ):
                             return False
                         lines = (root / "model-trace.jsonl").read_text().splitlines()
+                        expected_phase = (
+                            "model_input" if resume else "prompt_returned"
+                        )
                         return any(
-                            json.loads(line)["phase"] == "prompt_returned"
+                            json.loads(line)["phase"] == expected_phase
                             for line in lines
                         )
 
@@ -531,6 +651,18 @@ def measure(
                 quit_at = time.perf_counter()
                 driver.write("/quit\r")
                 assert driver.wait(timeout=25) == 0, driver.diagnostics
+                if synthetic and resume:
+                    result["synthetic_trace"] = [
+                        json.loads(line)
+                        for line in (root / "model-trace.jsonl")
+                        .read_text()
+                        .splitlines()
+                    ]
+                    metrics["resume_milestones"] = resume_milestones(
+                        result["synthetic_trace"],
+                        spawn_started=spawn["start"],
+                        input_submitted=submitted,
+                    )
                 metrics["exit_seconds"] = time.perf_counter() - quit_at
                 output = driver.raw_output
                 for mode in ("2004", "1004"):
@@ -569,6 +701,7 @@ def main() -> None:
     parser.add_argument("--installed", action="store_true")
     parser.add_argument("--synthetic", action="store_true")
     parser.add_argument("--seed", type=Path)
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--edit-train", action="store_true")
     args = parser.parse_args()
@@ -584,6 +717,7 @@ def main() -> None:
                 installed=args.installed,
                 synthetic=args.synthetic,
                 seed=args.seed,
+                resume=args.resume,
                 workspace=args.workspace,
                 edit_train=args.edit_train,
             ),

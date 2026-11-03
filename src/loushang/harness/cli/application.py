@@ -494,6 +494,26 @@ class AgentCliApplicationBinding(Generic[AgentArgsT]):
     ) = None
 
 
+def _run_agent_cli_runtime_operation(
+    context: CliRuntimeContext[
+        AgentArgsT, AgentCliApplicationState[AgentArgsT], object
+    ],
+    *,
+    format_error: Callable[[BaseException], str],
+) -> int | None:
+    result = run_agent_cli_session_listing(
+        context.state.args,
+        context.runtime,
+        stdout=context.bootstrap.stdout,
+        stderr=context.bootstrap.stderr,
+        default_cwd=context.bootstrap.project_root,
+        format_error=format_error,
+    )
+    if result == 0 and context.state.args.export is not None:
+        return None
+    return result
+
+
 def build_agent_cli_application_ports(
     binding: AgentCliApplicationBinding[AgentArgsT],
 ) -> CliApplicationPorts[
@@ -576,13 +596,8 @@ def build_agent_cli_application_ports(
             approval_resolver=state.approval_resolver,
             tool_policy_evaluator=state.tool_policy_evaluator,
         ),
-        runtime_operation=lambda context: run_agent_cli_session_listing(
-            context.state.args,
-            context.runtime,
-            stdout=context.bootstrap.stdout,
-            stderr=context.bootstrap.stderr,
-            default_cwd=context.bootstrap.project_root,
-            format_error=binding.format_error,
+        runtime_operation=lambda context: _run_agent_cli_runtime_operation(
+            context, format_error=binding.format_error
         ),
         pre_session_bootstrap=(
             binding.pre_session_bootstrap

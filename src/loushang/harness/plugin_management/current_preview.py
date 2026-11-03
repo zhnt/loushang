@@ -6,8 +6,16 @@ installation, activation, repair, or live Session authority.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal, Protocol
+
+from loushang.harness.plugin_management.records import (
+    PluginInstallationKeyV1,
+    PluginPackageRevisionRefV1,
+)
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +56,68 @@ class PluginCurrentResourceAdmissionV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PluginCurrentResourceSelectionV1:
+    """One exact Product input selected by a disposable Catalog generation."""
+
+    installation_key: PluginInstallationKeyV1
+    package_revision: PluginPackageRevisionRefV1
+    instance_revision_ref: PluginInstanceRevisionRef
+    contribution_id: str
+    resource_kind: str
+    admission_fingerprint: str
+    candidate_fingerprint: str
+    catalog_generation: int
+    catalog_snapshot_fingerprint: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.installation_key.plugin_id != self.package_revision.plugin_id
+            or self.installation_key.plugin_id != self.instance_revision_ref.plugin_id
+            or not self.contribution_id
+            or self.resource_kind not in {"skill", "prompt", "theme"}
+            or self.catalog_generation < 1
+        ):
+            raise ValueError("Plugin current selection identity is invalid")
+        for fingerprint in (
+            self.admission_fingerprint,
+            self.candidate_fingerprint,
+            self.catalog_snapshot_fingerprint,
+        ):
+            if (
+                len(fingerprint) != 64
+                or any(character not in "0123456789abcdef" for character in fingerprint)
+            ):
+                raise ValueError("Plugin current selection fingerprint is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "installationKey": self.installation_key.to_dict(),
+            "packageRevisionFingerprint": plugin_package_revision_fingerprint(
+                self.package_revision
+            ),
+            "instanceRevisionRef": self.instance_revision_ref.to_dict(),
+            "contributionId": self.contribution_id,
+            "resourceKind": self.resource_kind,
+            "admissionFingerprint": self.admission_fingerprint,
+            "candidateFingerprint": self.candidate_fingerprint,
+            "catalogGeneration": self.catalog_generation,
+            "catalogSnapshotFingerprint": self.catalog_snapshot_fingerprint,
+        }
+
+
+def plugin_package_revision_fingerprint(revision: PluginPackageRevisionRefV1) -> str:
+    """Keep Source identity inside the owner while preserving exact revision equality."""
+
+    digest = sha256(b"loushang.plugin-package-revision-fingerprint/v1\0")
+    digest.update(
+        json.dumps(
+            revision.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+    )
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
 class PluginCurrentCompositionPreviewV1:
     """Sanitized Product evidence; partial until the Session owner is joined."""
 
@@ -69,6 +139,9 @@ class PluginCurrentCompositionPreviewV1:
     blocking_code: str | None = None
     blocking_admission_fingerprints: tuple[str, ...] = ()
     disabled_skill_settings_revision: str | None = None
+    catalog_generation: int | None = None
+    catalog_snapshot_fingerprint: str | None = None
+    selected_resources: tuple[PluginCurrentResourceSelectionV1, ...] = ()
     snapshot_status: Literal["partial_evidence"] = "partial_evidence"
     preview_version: Literal[1] = 1
 
@@ -94,6 +167,36 @@ class PluginCurrentCompositionPreviewV1:
             )
         ):
             raise ValueError("Plugin current preview Skill settings revision is invalid")
+        if self.catalog_generation is None:
+            if self.catalog_snapshot_fingerprint is not None or self.selected_resources:
+                raise ValueError("Plugin current preview Catalog receipt is incomplete")
+        elif (
+            type(self.catalog_generation) is not int
+            or self.catalog_generation < 1
+            or self.catalog_snapshot_fingerprint is None
+            or len(self.catalog_snapshot_fingerprint) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.catalog_snapshot_fingerprint
+            )
+            or any(
+                item.catalog_generation != self.catalog_generation
+                or item.catalog_snapshot_fingerprint != self.catalog_snapshot_fingerprint
+                for item in self.selected_resources
+            )
+        ):
+            raise ValueError("Plugin current preview Catalog receipt is inconsistent")
+        if self.selected_resources != tuple(
+            sorted(
+                self.selected_resources,
+                key=lambda item: (
+                    item.installation_key,
+                    item.contribution_id,
+                    item.candidate_fingerprint,
+                ),
+            )
+        ):
+            raise ValueError("Plugin current preview selections are not canonical")
         for name in (
             "compiled_plugin_ids",
             "catalog_diagnostic_codes",
@@ -131,6 +234,9 @@ class PluginCurrentCompositionPreviewV1:
                 self.blocking_admission_fingerprints
             ),
             "disabledSkillSettingsRevision": self.disabled_skill_settings_revision,
+            "catalogGeneration": self.catalog_generation,
+            "catalogSnapshotFingerprint": self.catalog_snapshot_fingerprint,
+            "selectedResources": [item.to_dict() for item in self.selected_resources],
             "snapshotStatus": self.snapshot_status,
             "previewVersion": self.preview_version,
         }
@@ -170,5 +276,7 @@ __all__ = [
     "PluginCurrentPreviewRequestV1",
     "PluginCurrentCompositionPreviewV1",
     "PluginCurrentResourceAdmissionV1",
+    "PluginCurrentResourceSelectionV1",
+    "plugin_package_revision_fingerprint",
     "project_plugin_current_preview",
 ]

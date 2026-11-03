@@ -191,12 +191,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _apply_agent_transcript_context(
         self, session_context: AgentTranscriptContext
     ) -> None:
-        self.agent.state.set_messages(list(session_context.messages))
-        if self.session_manager.get_entries():
-            self.agent.thinking_level = cast(
-                ThinkingLevel,
-                session_context.thinking_level,
-            )
         resolved_model = self._session_default_model
         if session_context.model is not None and self.model_registry is not None:
             selection = ModelSelection(
@@ -206,12 +200,26 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             )
             with suppress(KeyError, ValueError):
                 resolved_model = self.model_registry.build_model(selection)
+        if (
+            session_context.provider_window is not None
+            and not session_context.provider_window.matches(resolved_model)
+        ):
+            raise ValueError(
+                "Session provider compaction checkpoint requires its original model route"
+            )
+        self.agent.state.set_messages(list(session_context.messages))
+        self.agent.state.provider_window = session_context.provider_window
+        if self.session_manager.get_entries():
+            self.agent.thinking_level = cast(
+                ThinkingLevel,
+                session_context.thinking_level,
+            )
         self.agent.model = resolved_model
 
     def _refresh_agent_messages(self) -> None:
-        self.agent.state.set_messages(
-            list(self.session_manager.build_session_context().messages)
-        )
+        context = self.session_manager.build_session_context()
+        self.agent.state.set_messages(list(context.messages))
+        self.agent.state.provider_window = context.provider_window
 
     def _get_bash_definition(self):
         if self._tool_registry is None:

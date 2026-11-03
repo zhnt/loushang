@@ -15,10 +15,69 @@ from tests.coding._interactive_startup_probe import (
     ScheduledEdits,
     StartupWitnesses,
     frame_matches,
+    resume_milestones,
     wait_for_frame,
 )
 
 START = "\x1b[?2026h\x1b[H\x1b[2J"
+
+
+def test_resume_milestones_require_unique_monotonic_durable_path():
+    phases = [
+        "resume_history_ready",
+        "resume_plan_started",
+        "resume_background_plan_ready",
+        "resume_input_accepted",
+        "resume_plan_ready",
+        "resume_input_durable",
+        "model_input",
+        "resume_process_resources",
+    ]
+    trace = [
+        {
+            "phase": phase,
+            "ns": 1_000_000_000 + index * 100_000_000,
+            **(
+                {"status": "ready"}
+                if phase == "resume_background_plan_ready"
+                else {}
+            ),
+            **(
+                {"cpu_seconds": 0.5, "peak_rss_kib": 123, "open_fds": 7}
+                if phase == "resume_process_resources"
+                else {}
+            ),
+        }
+        for index, phase in enumerate(phases)
+    ]
+    observed = resume_milestones(
+        trace, spawn_started=1.0, input_submitted=1.25
+    )
+    assert observed == {
+        "history_ready_seconds": 0.0,
+        "input_acceptance_seconds": pytest.approx(0.05),
+        "plan_ready_seconds": pytest.approx(0.15),
+        "input_durable_seconds": pytest.approx(0.25),
+        "model_transport_seconds": pytest.approx(0.35),
+        "background_plan_status": "ready",
+        "cpu_seconds": 0.5,
+        "peak_rss_kib": 123,
+        "open_fds_at_exit": 7,
+        "fsync_calls": None,
+        "fsync_seconds": None,
+        "resume_writer_acquire_seconds": None,
+        "full_model_input_rebuilds": None,
+    }
+    with pytest.raises(RuntimeError, match="duplicate"):
+        resume_milestones(
+            [*trace, trace[3]], spawn_started=1.0, input_submitted=1.25
+        )
+    reversed_trace = [dict(row) for row in trace]
+    reversed_trace[5]["ns"] = reversed_trace[4]["ns"] - 1
+    with pytest.raises(RuntimeError, match="monotonic"):
+        resume_milestones(
+            reversed_trace, spawn_started=1.0, input_submitted=1.25
+        )
 
 
 def test_input_observer_cost_excludes_pre_input_first_frame(monkeypatch):

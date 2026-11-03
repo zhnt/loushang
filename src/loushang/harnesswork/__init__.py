@@ -8,11 +8,13 @@ from loushang.harnesswork.types import (
     ArtifactStatus,
     DeliveryHint,
     WorkCancellationOutcome,
+    WorkCancellationRecord,
     WorkCancellationStatus,
     WorkEvent,
     WorkEventFact,
     WorkOperation,
     WorkPlanRun,
+    WorkRecordingPolicy,
     WorkRun,
     WorkRunSpec,
     WorkRunStatus,
@@ -23,6 +25,10 @@ from loushang.harnesswork.types import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harnesswork.cancellation_projection import (
+        WorkCancellationReplayError,
+        project_work_cancellations,
+    )
     from loushang.harnesswork.cli import (
         WorkLogInspectionError,
         create_work_event_log,
@@ -51,6 +57,14 @@ if TYPE_CHECKING:
         WorkSubscribePort,
         WorkWaitPort,
     )
+    from loushang.harnesswork.recording import (
+        WorkRecording,
+        WorkRecordingContract,
+        WorkRecordingFormatError,
+        WorkRecordingUnavailable,
+        WorkRecordingVersionError,
+        project_work_recording,
+    )
     from loushang.harnesswork.run_projection import (
         WorkRunReplayError,
         project_work_runs,
@@ -59,6 +73,7 @@ if TYPE_CHECKING:
         DuplicateWorkOperationError,
         UnknownWorkRunError,
         WorkCancellationFailedError,
+        WorkCancellationObservationUnavailable,
         WorkCancellationTimeoutError,
         WorkLifecycleOwnershipError,
         WorkRunTerminalError,
@@ -67,6 +82,36 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "project_work_recording": ("loushang.harnesswork.recording", "project_work_recording"),
+    "WorkRecording": ("loushang.harnesswork.recording", "WorkRecording"),
+    "WorkRecordingContract": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingContract",
+    ),
+    "WorkRecordingFormatError": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingFormatError",
+    ),
+    "WorkRecordingUnavailable": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingUnavailable",
+    ),
+    "WorkRecordingVersionError": (
+        "loushang.harnesswork.recording",
+        "WorkRecordingVersionError",
+    ),
+    "WorkCancellationReplayError": (
+        "loushang.harnesswork.cancellation_projection",
+        "WorkCancellationReplayError",
+    ),
+    "project_work_cancellations": (
+        "loushang.harnesswork.cancellation_projection",
+        "project_work_cancellations",
+    ),
+    "WorkCancellationObservationUnavailable": (
+        "loushang.harnesswork.runtime",
+        "WorkCancellationObservationUnavailable",
+    ),
     "WorkLogInspectionError": (
         "loushang.harnesswork.cli",
         "WorkLogInspectionError",
@@ -173,6 +218,13 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "WorkRecording",
+    "WorkRecordingContract",
+    "WorkRecordingFormatError",
+    "WorkRecordingUnavailable",
+    "WorkRecordingVersionError",
+    "WorkRecordingPolicy",
+    "project_work_recording",
     "ArtifactRef",
     "ArtifactStatus",
     "DeliveryHint",
@@ -188,6 +240,10 @@ __all__ = [
     "WorkCancelPort",
     "WorkCancellationFailedError",
     "WorkCancellationOutcome",
+    "WorkCancellationRecord",
+    "WorkCancellationReplayError",
+    "WorkCancellationObservationUnavailable",
+    "project_work_cancellations",
     "WorkCancellationStatus",
     "WorkCancellationTimeoutError",
     "WorkDomainCancellation",

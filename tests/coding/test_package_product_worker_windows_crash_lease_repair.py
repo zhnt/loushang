@@ -84,7 +84,9 @@ def test_windows_crash_lease_repair_rechecks_settlement_under_package_and_gc_loc
                 events.append("package.exit")
 
     @contextmanager
-    def gc_guard():
+    def gc_guard(*, require_write: bool = False):
+        if require_write:
+            events.append("gc.write")
         events.append("gc.enter")
         try:
             yield
@@ -164,6 +166,7 @@ def test_windows_crash_lease_repair_rechecks_settlement_under_package_and_gc_loc
         )
         is lease
     )
+    assert events.index("gc.write") < events.index("gc.enter")
     assert events.index("package.enter") < events.index("gc.enter")
     assert events.index("gc.enter") < events.index("stage.open")
     assert events.index("stage.open") < events.index("package.append")

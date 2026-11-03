@@ -16,6 +16,7 @@ from threading import RLock
 from loushang.foundation.windows_private_acl import WindowsPrivateDirectoryAcl
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
+    PackageEpochFenceReceiptV1,
     PackageEpochRuntimeAdmissionOwner,
     PackageEpochRuntimeAdmissionRequestV1,
     PackageEpochRuntimeAdmissionResultV1,
@@ -329,6 +330,16 @@ class PackageProductWindowsFencedRuntimeOwner:
         with self._close_lock:
             self._assert_current_unlocked()
 
+    def observe_current_epoch_fence(self) -> PackageEpochFenceReceiptV1:
+        """Read this original owner's current fence without repair or a lease."""
+
+        with self._close_lock:
+            self._assert_current_unlocked(observe_only=True)
+            fence = self.cutover_result.fence
+            if fence is None:
+                raise ValueError("Windows Package Product fence is unavailable")
+            return fence
+
     def issue_runtime_lease(
         self,
         *,
@@ -468,7 +479,7 @@ class PackageProductWindowsFencedRuntimeOwner:
                 finally:
                     self._assert_current_unlocked()
 
-    def _assert_current_unlocked(self) -> None:
+    def _assert_current_unlocked(self, *, observe_only: bool = False) -> None:
         if self._closed:
             raise ValueError("Windows Package Product epoch owner is closed")
         self._pinned_control.assert_visible()
@@ -476,7 +487,10 @@ class PackageProductWindowsFencedRuntimeOwner:
         observed = PackageWindowsEpochCutoverOwner.reopen_fenced(
             self._authority_root,
             store_id=self.registry.store_id,
-            epoch_journal=self.fences,
+            epoch_journal=(
+                PackageEpochFenceJournal(self.fences.path, read_only=True)
+                if observe_only else self.fences
+            ),
             epochs_root_name=self._epochs_root_name,
         )
         if observed != self.cutover_result:

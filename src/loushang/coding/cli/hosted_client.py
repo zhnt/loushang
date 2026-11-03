@@ -39,6 +39,7 @@ def _launch_request(launch: CodingHostedLaunchV1) -> ProcessLaunchRequest:
             "--cwd-sessions", str(launch.cwd_sessions),
             "--home-sessions", str(launch.home_sessions),
             "--session-discovery",
+            "--session-execution",
         ),
         str(launch.workspace),
         tuple(sorted(os.environ.items())),
@@ -113,6 +114,9 @@ class CodingHostedTuiCommandV1:
         self._remaining()
         from loushang.apphost.launcher import HostedForegroundClientV1
         from loushang.appserver.protocol import MuxSelectorV1
+        from loushang.appserver.protocol.connection_profile import (
+            AppConnectionProfileV1,
+        )
         from loushang.hosting.runtime import create_process_host
 
         self._launch = launch
@@ -123,6 +127,7 @@ class CodingHostedTuiCommandV1:
         self._owner = HostedForegroundClientV1(
             request, host=create_process_host(max_processes=1),
             preparation=preparation, startup_timeout=remaining,
+            profile=AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION,
         )
         from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
@@ -185,6 +190,7 @@ class CodingHostedTuiCommandV1:
             product_id="coding",
             scopes=tuple((scope.scope, scope.fingerprint) for scope in self._launch.scopes),
             discovery_client=discovery, close_timeout=20,
+            execution_client=self._owner.execution_client,
             exit_ends_application=True,
             transcript_theme=terminal_transcript_theme(),
         )
@@ -354,7 +360,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.cwd_sessions.expanduser().resolve(), args.home_sessions.expanduser().resolve(),
         )
         if args.describe:
-            value = launch.describe(profile=AppConnectionProfileV1.STDIO_DISCOVERY)
+            value = launch.describe(
+                profile=AppConnectionProfileV1.STDIO_DISCOVERY_EXECUTION
+            )
             value.update(exitEndsApplication=True, mux=args.mux)
             print(json.dumps(value, ensure_ascii=True, sort_keys=True))
             return 0

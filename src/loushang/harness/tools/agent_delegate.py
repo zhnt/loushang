@@ -17,6 +17,7 @@ from loushang.harness.policy import (
     executable_search_path_from_env,
     normalize_command_subject,
 )
+from loushang.harness.tools import AGENT_DELEGATE_TOOL_NAME
 from loushang.harness.tools.contribution import ToolPackDefinition
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import (
@@ -29,7 +30,6 @@ from loushang.harness.tools.execution import (
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
-AGENT_DELEGATE_TOOL_NAME = "delegate_agent"
 AGENT_DELEGATE_TOOL_PACK = ToolPackDefinition(
     name="harness.agent_delegate",
     tools=(AGENT_DELEGATE_TOOL_NAME,),

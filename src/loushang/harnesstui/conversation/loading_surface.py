@@ -32,7 +32,7 @@ from loushang.tui.input import InputEvent, InputReader
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runtime import TuiRuntime
 from loushang.tui.terminal import ProcessTerminalPort, TerminalSize
-from loushang.tui.terminal_backends.posix import PosixTerminalInputReader
+from loushang.tui.terminal_backends import NativeTerminalInputReader
 from loushang.tui.terminal_input import ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS
 
 
@@ -40,7 +40,7 @@ from loushang.tui.terminal_input import ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS
 class LoadingScreenTransfer:
     app: ConversationScreenPort
     parser: InputReader
-    byte_reader: PosixTerminalInputReader
+    byte_reader: NativeTerminalInputReader
     runtime: TuiRuntime
     terminal_context: Any
     pending_idle_deadline: float | None
@@ -59,7 +59,7 @@ class LoadingSurfaceWorker:
         self,
         *,
         app: ConversationScreenPort,
-        byte_reader: PosixTerminalInputReader,
+        byte_reader: NativeTerminalInputReader,
         stdout: TextIO,
         terminal_context: Any,
         size_provider: Callable[[], TerminalSize],

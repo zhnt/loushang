@@ -48,6 +48,35 @@ def parse_capability_mount(value: str) -> tuple[str, CapabilityMountMode]:
     return capability, cast(CapabilityMountMode, mode)
 
 
+def coding_lsp_should_defer(
+    *,
+    enabled: bool,
+    mode: CapabilityMountMode,
+    has_history: bool,
+    startup: Mapping[str, object] | None,
+    legacy_disabled: bool = False,
+) -> bool:
+    """Share the initial LSP owner decision between Resume and bootstrap.
+
+    ``startup`` is the original validated composition receipt. A dormant
+    receipt permits a fresh on-demand generation; it does not require eager
+    Plugin parents merely because LSP is allowed. Historical eager sessions
+    and older history without a receipt retain their existing eager route.
+    This decides initial assembly only, not settlement of pending effects.
+    """
+
+    if not enabled or mode != "on_demand" or legacy_disabled:
+        return False
+    if not has_history:
+        return True
+    if startup is None:
+        return False
+    return not any(
+        item["pluginId"] == "coding.lsp.default"
+        for item in cast(list[dict[str, object]], startup["selectedRevisions"])
+    )
+
+
 __all__ = [
     "CODING_ARCH_CAPABILITY",
     "CODING_LSP_CAPABILITY",

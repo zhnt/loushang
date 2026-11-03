@@ -1,10 +1,41 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass, replace
 from datetime import UTC, datetime
+from functools import wraps
 
 import pytest
+
+from loushang.harnesswork import (
+    InMemoryEventLogBackend,
+    JsonlEventLogBackend,
+    UnknownWorkRunError,
+    WorkEventFact,
+    WorkRecordingFormatError,
+    WorkRecordingPolicy,
+    WorkRecordingUnavailable,
+    WorkRecordingVersionError,
+    WorkRunReplayError,
+    WorkRuntime,
+    project_work_runs,
+)
+from loushang.harnesswork.goal import (
+    GoalAssessment,
+    GoalController,
+    GoalError,
+    GoalHeader,
+    Requirement,
+    WorkCandidate,
+)
+from loushang.harnesswork.goal.records import (
+    GoalRecord,
+    UnsupportedGoalVersion,
+    decode_record,
+    encode_record,
+    replay,
+)
+from loushang.harnesswork.types import WorkOperation, WorkRunSpec, WorkStepSpec
 
 
 def _operation():
@@ -34,6 +65,532 @@ def _spec():
 
 def _clock():
     return datetime(2026, 7, 20, 10, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    "mode,status,reason,report",
+    [
+        ("none", "unsupported", "no_capability", None),
+        ("settled", "settled", "domain_reported", "settled"),
+        ("unsupported", "unsupported", "domain_reported", "unsupported"),
+        ("failed", "failed", "domain_failure", "failed"),
+        ("exception", "failed", "domain_exception", None),
+        ("invalid", "failed", "invalid_return", None),
+        ("self", "unknown", "executor_interrupted", None),
+    ],
+)
+def test_cancellation_observation_preserves_control_and_replays(
+    tmp_path, mode, status, reason, report
+) -> None:
+    from loushang.harnesswork import (
+        JsonlEventLogBackend,
+        WorkCancellationFailedError,
+        WorkCancellationOutcome,
+        WorkEventFact,
+        WorkRunTerminalError,
+        WorkRuntime,
+        project_work_cancellations,
+    )
+
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+        context_ref = None
+        domain_error = ValueError("binding failed")
+        pending = []
+        committed = []
+
+        class Executor:
+            async def execute(self, operation, context):
+                nonlocal context_ref
+                context_ref = context
+                started.set()
+                if mode == "self":
+                    raise asyncio.CancelledError("self interrupt")
+                await release.wait()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                nonlocal calls
+                calls += 1
+                if mode == "exception":
+                    raise domain_error
+                if mode == "invalid":
+                    return None
+                if mode == "failed":
+                    return WorkCancellationOutcome.failed(domain_error)
+                if mode == "settled":
+                    release.set()
+                    return WorkCancellationOutcome.settled()
+                return WorkCancellationOutcome.unsupported()
+
+        path = tmp_path / "cancellation.jsonl"
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=None if mode == "none" else Cancellation(),
+            event_log=JsonlEventLogBackend(path),
+        )
+
+        def listener(event):
+            # Listener exceptions are intentionally suppressed by Runtime, so
+            # collect evidence here and assert outside the callback.
+            observation = runtime.get_cancellation(event.run_id)
+            if event.kind == "WorkRunCancelling":
+                pending.append(observation)
+            if event.kind in {"WorkRunCancelled", "WorkRunFailed"}:
+                rejected = False
+                try:
+                    context_ref.publish(WorkEventFact("TooLate", {}))
+                except WorkRunTerminalError:
+                    rejected = True
+                committed.append((observation, rejected, event))
+
+        runtime.subscribe_events(listener)
+        run = await runtime.accept(_operation(), spec=_spec())
+        accepted = runtime.get_cancellation(run.run_id)
+        assert (
+            accepted.basis,
+            accepted.observed_sequence,
+            accepted.source_event_id,
+        ) == ("live", 0, None)
+        await started.wait()
+        if mode != "self":
+            results = await asyncio.gather(
+                runtime.cancel(run.run_id),
+                runtime.cancel(run.run_id),
+                return_exceptions=True,
+            )
+            if status == "failed":
+                assert all(isinstance(result, Exception) for result in results)
+                if mode in {"failed", "exception"}:
+                    assert all(result is domain_error for result in results)
+                else:
+                    assert all(
+                        isinstance(result, WorkCancellationFailedError)
+                        for result in results
+                    )
+            else:
+                assert all(result.status == "cancelled" for result in results)
+        with pytest.raises((asyncio.CancelledError, Exception)) as caught:
+            await runtime.wait(run.run_id)
+        if mode == "self":
+            assert caught.value.args == ("self interrupt",)
+        assert calls == (0 if mode in {"none", "self"} else 1)
+        record = runtime.get_cancellation(run.run_id)
+        assert (record.status, record.reason_code, record.reported_status) == (
+            status,
+            reason,
+            report,
+        )
+        assert pending and pending[0].status == "pending"
+        assert pending[0].basis == "live" and pending[0].reported_status is None
+        assert len(committed) == 1
+        observed, late_rejected, event = committed[0]
+        assert observed is record and late_rejected
+        assert (record.observed_sequence, record.source_event_id) == (
+            event.sequence,
+            event.event_id,
+        )
+        assert "_harnesswork" not in event.payload
+        entries = runtime.query()
+        assert project_work_cancellations(entries) == (record,)
+        reopened = WorkRuntime(
+            executor=Executor(), event_log=JsonlEventLogBackend(path)
+        )
+        assert reopened.get_cancellation(run.run_id) == record
+        from loushang.harnesswork import UnknownWorkRunError
+
+        with pytest.raises(UnknownWorkRunError):
+            await reopened.cancel(run.run_id)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("late_report", [None, "settled", "unsupported", "failed"])
+def test_cancellation_timeout_retains_real_late_report(late_report) -> None:
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkCancellationOutcome,
+        WorkCancellationTimeoutError,
+        WorkRuntime,
+        project_work_cancellations,
+    )
+
+    async def scenario():
+        started = asyncio.Event()
+
+        class Executor:
+            async def execute(self, operation, context):
+                started.set()
+                await asyncio.Event().wait()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    if late_report is None:
+                        raise
+                    if late_report == "failed":
+                        return WorkCancellationOutcome.failed(
+                            ValueError("late failure")
+                        )
+                    return WorkCancellationOutcome(status=late_report)
+
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=Cancellation(),
+            event_log=InMemoryEventLogBackend(),
+            cancellation_timeout=0.01,
+        )
+        run = await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+        with pytest.raises(WorkCancellationTimeoutError):
+            await runtime.cancel(run.run_id)
+        with pytest.raises(WorkCancellationTimeoutError):
+            await runtime.wait(run.run_id)
+        record = runtime.get_cancellation(run.run_id)
+        assert (record.status, record.reason_code, record.reported_status) == (
+            "failed",
+            "domain_timeout",
+            late_report,
+        )
+        assert runtime.get_run(run.run_id).status == "failed"
+        assert project_work_cancellations(runtime.query()) == (record,)
+
+    asyncio.run(scenario())
+
+
+def test_execution_timeout_preserves_binding_report() -> None:
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkCancellationOutcome,
+        WorkCancellationTimeoutError,
+        WorkRuntime,
+    )
+
+    async def scenario():
+        started = asyncio.Event()
+
+        class Executor:
+            async def execute(self, operation, context):
+                started.set()
+                await asyncio.Event().wait()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                return WorkCancellationOutcome.settled()
+
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=Cancellation(),
+            event_log=InMemoryEventLogBackend(),
+            cancellation_timeout=0.01,
+        )
+        run = await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+        with pytest.raises(WorkCancellationTimeoutError):
+            await runtime.cancel(run.run_id)
+        record = runtime.get_cancellation(run.run_id)
+        assert (record.status, record.reason_code, record.reported_status) == (
+            "failed",
+            "execution_timeout",
+            "settled",
+        )
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_uncancelled_terminal_and_mutable_business_metadata(fails) -> None:
+    from dataclasses import replace
+
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        UnknownWorkRunError,
+        WorkEventFact,
+        WorkRuntime,
+        project_work_cancellations,
+    )
+
+    async def scenario():
+        business = {"_harnesswork": {"cancellation": {"status": "forged"}}}
+        events = []
+        failure = ValueError("ordinary failure")
+
+        class Executor:
+            async def execute(self, operation, context):
+                context.publish(WorkEventFact("DomainFact", business))
+                if fails:
+                    raise failure
+
+        runtime = WorkRuntime(executor=Executor(), event_log=InMemoryEventLogBackend())
+        runtime.subscribe_events(events.append)
+        run = await runtime.accept(
+            replace(_operation(), payload=business),
+            spec=replace(_spec(), run_event_payload=business),
+        )
+        assert runtime.get_cancellation(run.run_id).status == "not_requested"
+        if fails:
+            with pytest.raises(ValueError) as caught:
+                await runtime.wait(run.run_id)
+            assert caught.value is failure
+        else:
+            assert (await runtime.wait(run.run_id)).status == "completed"
+        record = runtime.get_cancellation(run.run_id)
+        assert (record.status, record.reason_code, record.reported_status) == (
+            "not_requested",
+            "none",
+            None,
+        )
+        assert events[-1].payload == business | {
+            "method_id": "method-1",
+            "plan_id": "plan-1",
+            "step_id": "step-1",
+        }
+        # Business keys remain ordinary mutable input, separate from the owner.
+        business["_harnesswork"]["cancellation"]["status"] = "changed"
+        assert runtime.get_cancellation(run.run_id) is record
+        assert project_work_cancellations(runtime.query()) == (record,)
+        with pytest.raises(UnknownWorkRunError):
+            runtime.get_cancellation("missing")
+
+    asyncio.run(scenario())
+
+
+def test_live_observation_uses_run_local_ack_before_listener() -> None:
+    from loushang.harnesswork import InMemoryEventLogBackend, WorkEventFact, WorkRuntime
+
+    async def scenario():
+        before_ack, after_ack = [], []
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class Backend(InMemoryEventLogBackend):
+            def append(self, entry):
+                if entry.payload["kind"] == "DomainFact":
+                    before_ack.append(runtime.get_cancellation(entry.run_id))
+                return super().append(entry)
+
+        class Executor:
+            async def execute(self, operation, context):
+                context.publish(WorkEventFact("DomainFact", {}))
+                started.set()
+                await release.wait()
+
+        runtime = WorkRuntime(executor=Executor(), event_log=Backend())
+        runtime.subscribe_events(
+            lambda event: after_ack.append(
+                (event, runtime.get_cancellation(event.run_id))
+            )
+        )
+        run = await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+        fact, observation = next(
+            pair for pair in after_ack if pair[0].kind == "DomainFact"
+        )
+        assert before_ack[0].observed_sequence == fact.sequence - 1
+        assert observation.observed_sequence == fact.sequence
+        assert observation.source_event_id == fact.event_id
+        release.set()
+        await runtime.wait(run.run_id)
+
+    asyncio.run(scenario())
+
+
+def test_jsonl_terminal_written_without_ack_is_not_live_confirmed(tmp_path) -> None:
+    from loushang.harnesswork import (
+        JsonlEventLogBackend,
+        WorkCancellationObservationUnavailable,
+        WorkRuntime,
+        project_work_cancellations,
+    )
+
+    async def scenario():
+        error = OSError("index update failed")
+
+        class Backend(JsonlEventLogBackend):
+            def _append_stored(self, entry):
+                if entry.payload["kind"] == "WorkRunCompleted":
+                    raise error
+                return super()._append_stored(entry)
+
+        class Executor:
+            async def execute(self, operation, context):
+                pass
+
+        path = tmp_path / "work.jsonl"
+        runtime = WorkRuntime(executor=Executor(), event_log=Backend(path))
+        run = await runtime.accept(_operation(), spec=_spec())
+        with pytest.raises(OSError) as caught:
+            await runtime.wait(run.run_id)
+        assert caught.value is error
+        with pytest.raises(WorkCancellationObservationUnavailable):
+            runtime.get_cancellation(run.run_id)
+        assert runtime.query()[-1].payload["kind"] != "WorkRunCompleted"
+        cold = JsonlEventLogBackend(path)
+        (record,) = project_work_cancellations(cold.query())
+        assert record.status == "not_requested" and record.basis == "journal"
+        reopened = WorkRuntime(executor=Executor(), event_log=cold)
+        assert reopened.get_cancellation(run.run_id) == record
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("after_write", [False, True])
+def test_cancelling_append_ack_failure_does_not_claim_missing_capability(after_write):
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkCancellationObservationUnavailable,
+        WorkCancellationOutcome,
+        WorkRunReplayError,
+        WorkRuntime,
+        project_work_cancellations,
+    )
+
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+        error = OSError("after cancelling write")
+
+        class Backend(InMemoryEventLogBackend):
+            def append(self, entry):
+                if entry.payload["kind"] == "WorkRunCancelling":
+                    if after_write:
+                        super().append(entry)
+                    raise error
+                return super().append(entry)
+
+        class Executor:
+            async def execute(self, operation, context):
+                started.set()
+                await release.wait()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                nonlocal calls
+                calls += 1
+                return WorkCancellationOutcome.settled()
+
+        backend = Backend()
+        runtime = WorkRuntime(
+            executor=Executor(), cancellation=Cancellation(), event_log=backend
+        )
+        run = await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+        with pytest.raises(OSError) as caught:
+            await runtime.cancel(run.run_id)
+        assert caught.value is error
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await runtime.wait(run.run_id)
+        assert calls == 0 and runtime.get_run(run.run_id).status == "cancelled"
+        with pytest.raises(WorkCancellationObservationUnavailable):
+            runtime.get_cancellation(run.run_id)
+        # The original control path can still write; its cold evidence must be
+        # honest about the existing capability that was never invoked.
+        if after_write:
+            (record,) = project_work_cancellations(backend.query())
+            assert (record.status, record.reason_code, record.reported_status) == (
+                "unknown",
+                "cancellation_not_driven",
+                None,
+            )
+        else:
+            with pytest.raises(WorkRunReplayError):
+                project_work_cancellations(backend.query())
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "TestOperation",
+        "WorkRunStarted",
+        "WorkPlanStarted",
+        "WorkStepStarted",
+        "DomainFact",
+        "WorkStepCompleted",
+        "WorkPlanCompleted",
+        "WorkRunCompleted",
+        "WorkRunCancelling",
+        "WorkStepCancelled",
+        "WorkPlanCancelled",
+        "WorkRunCancelled",
+        "WorkStepFailed",
+        "WorkPlanFailed",
+        "WorkRunFailed",
+    ],
+)
+@pytest.mark.parametrize("after_write", [False, True])
+def test_append_failure_invalidates_only_new_observation(kind, after_write) -> None:
+    from contextlib import suppress
+
+    from loushang.harnesswork import (
+        InMemoryEventLogBackend,
+        WorkCancellationObservationUnavailable,
+        WorkEventFact,
+        WorkRuntime,
+    )
+
+    async def scenario():
+        append_error = OSError("private backend details")
+        seen = []
+        propagated = []
+        release, started = asyncio.Event(), asyncio.Event()
+
+        class Backend(InMemoryEventLogBackend):
+            def append(self, entry):
+                if entry.payload["kind"] == kind and not seen:
+                    seen.append(entry)
+                    if after_write:
+                        super().append(entry)
+                    raise append_error
+                return super().append(entry)
+
+        class Executor:
+            async def execute(self, operation, context):
+                started.set()
+                context.publish(WorkEventFact("DomainFact", {}))
+                if kind.endswith("Failed"):
+                    raise ValueError("executor failure")
+                await release.wait()
+
+        runtime = WorkRuntime(executor=Executor(), event_log=Backend())
+        try:
+            if kind == "TestOperation":
+                with pytest.raises(OSError) as caught:
+                    await runtime.accept(_operation(), spec=_spec())
+                assert caught.value is append_error
+                propagated.append(caught.value)
+            else:
+                await runtime.accept(_operation(), spec=_spec())
+                if kind.endswith("Cancelled") or kind == "WorkRunCancelling":
+                    await started.wait()
+                    try:
+                        await runtime.cancel("run-1")
+                    except BaseException as error:
+                        propagated.append(error)
+                release.set()
+                try:
+                    await runtime.wait("run-1")
+                except BaseException as error:
+                    propagated.append(error)
+            assert len(seen) == 1
+            assert any(error is append_error for error in propagated)
+            with pytest.raises(WorkCancellationObservationUnavailable) as caught:
+                runtime.get_cancellation("run-1")
+            assert str(caught.value) == "取消观察暂不可确认。"
+            assert caught.value.__cause__ is None
+            # Old query remains available; this is no global API fence.
+            assert isinstance(runtime.query(), list)
+        finally:
+            release.set()
+            if runtime.active_runs():
+                with suppress(BaseException):
+                    await runtime.wait("run-1")
+
+    asyncio.run(scenario())
 
 
 @dataclass
@@ -383,9 +940,7 @@ def test_work_runtime_uses_domain_cancel_and_settle_once_before_terminal() -> No
 
         assert first.status == second.status == "cancelled"
         assert calls == ["abort", "executor_settled", "waited"]
-        assert runtime.query(run_id="run-1")[-1].payload["kind"] == (
-            "WorkRunCancelled"
-        )
+        assert runtime.query(run_id="run-1")[-1].payload["kind"] == ("WorkRunCancelled")
 
     asyncio.run(scenario())
 
@@ -670,3 +1225,959 @@ def test_work_runtime_allocates_unique_run_ids_and_rejects_duplicate_operations(
             raise AssertionError("expected duplicate operation rejection")
 
     asyncio.run(scenario())
+
+
+# Reviewed optional Goal contracts and finite Coding acceptance.
+def _run_goal_scenario(function):
+    def test():
+        asyncio.run(function())
+
+    test.__name__ = function.__name__
+    return test
+
+
+class _GoalStore:
+    def __init__(self, header):
+        self.header, self.records = header, []
+        self.fail = False
+
+    def load(self):
+        return self.header, tuple(self.records)
+
+    def append(self, expected_sequence, record):
+        assert expected_sequence == len(self.records)
+        self.records.append(record)
+        if self.fail:
+            raise OSError("after append")
+        return record.sequence
+
+
+class _GoalPolicy:
+    def confirm_resume(self, basis, facts):
+        return True
+
+    def __init__(self):
+        self.calls = 0
+        self.gate = None
+        self.began = asyncio.Event()
+        self.cleaned = False
+
+    async def prepare(self, basis, facts):
+        self.began.set()
+        if self.gate:
+            try:
+                await self.gate.wait()
+            finally:
+                self.cleaned = True
+        return WorkCandidate(
+            basis,
+            WorkOperation(f"op-{self.calls}", "task", "s", "test", {}),
+            WorkRunSpec(plan_id="plan", steps=(WorkStepSpec("step"),)),
+            {"version": 1},
+        )
+
+    def confirm_candidate(self, candidate):
+        return True
+
+    async def assess(self, basis, facts):
+        current = [r for r in facts.runs if r.status == "completed"]
+        return GoalAssessment(
+            basis,
+            "satisfied" if current else "more_evidence",
+            "tests",
+            ("R",) if current else (),
+            tuple(r.operation_id for r in current),
+            {"test": "proof"} if current else {},
+        )
+
+    def confirm_current(self, assessment):
+        return True
+
+    async def execute(self, operation, context):
+        self.calls += 1
+
+
+def _goal_setup():
+    header = GoalHeader("scope", "s", "test-policy")
+    store, policy = _GoalStore(header), _GoalPolicy()
+    work = WorkRuntime(event_log=InMemoryEventLogBackend(), executor=policy)
+    goal = GoalController(
+        header=header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    goal.create("g", [Requirement("R", "requirement")], command_id="create", limit=3)
+    return goal, store, work, policy
+
+
+@_run_goal_scenario
+async def test_real_work_once_completion_and_reopen_without_execution():
+    goal, store, work, policy = _goal_setup()
+    receipt = await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    assert receipt.outcome == "completed"
+    assert policy.calls == 1
+    assert goal.query("g").status == "completed"
+    assert await goal.advance("g", command_id="advance", revision=1, epoch=1) == receipt
+    reopened = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    assert reopened.query("g") == goal.query("g")
+    assert policy.calls == 1
+
+
+@_run_goal_scenario
+async def test_pause_during_prepare_rejects_late_candidate():
+    goal, store, work, policy = _goal_setup()
+    policy.gate = asyncio.Event()
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await policy.began.wait()
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    policy.gate.set()
+    assert (await task).outcome == "stale"
+    assert not work.query_runs()
+    assert goal.query("g").status == "paused"
+
+
+@_run_goal_scenario
+async def test_close_waits_for_callback_finally_before_retire():
+    goal, store, work, policy = _goal_setup()
+    policy.gate = asyncio.Event()
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await policy.began.wait()
+    await goal.quiesce()
+    assert task.cancelled() and policy.cleaned
+    await goal.settle_work()
+    goal.retire()
+    assert goal.fenced
+    assert policy.calls == 0
+
+
+@_run_goal_scenario
+async def test_append_error_after_bytes_fences_without_execution_or_false_ack():
+    goal, store, work, policy = _goal_setup()
+    store.fail = True
+    with pytest.raises(OSError):
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    assert goal.fenced and policy.calls == 0
+    with pytest.raises(GoalError, match="fenced"):
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+    assert replay(store.header, store.records).commands["advance"].outcome == "pending"
+
+
+def test_command_conflict_and_revised_requirement_invalidate_old_control():
+    goal, _, _, _ = _goal_setup()
+    receipt = goal.revise(
+        "g",
+        [Requirement("R", "new")],
+        command_id="revise",
+        revision=1,
+        epoch=1,
+        reason="change",
+    )
+    assert goal.query("g").revision == 2
+    assert goal.query("g").epoch == 2
+    assert (
+        goal.revise(
+            "g",
+            [Requirement("R", "new")],
+            command_id="revise",
+            revision=1,
+            epoch=1,
+            reason="change",
+        )
+        == receipt
+    )
+    with pytest.raises(GoalError, match="different content"):
+        goal.revise(
+            "g",
+            [Requirement("R", "other")],
+            command_id="revise",
+            revision=1,
+            epoch=1,
+            reason="change",
+        )
+    with pytest.raises(GoalError, match="stale"):
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+
+
+@_run_goal_scenario
+async def test_not_submitted_cold_replay_does_not_infer_unknown_from_empty_work():
+    goal, store, work, policy = _goal_setup()
+    checks = 0
+
+    def confirm(candidate):
+        nonlocal checks
+        checks += 1
+        return checks == 1
+
+    policy.confirm_candidate = confirm
+    assert (
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    ).outcome == "not_submitted"
+    reopened = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    assert reopened.facts().unresolved is False
+    assert reopened.history.batches[0].not_submitted
+    assert policy.calls == 0
+
+
+@_run_goal_scenario
+async def test_unknown_intent_blocks_resume_and_replacement_cannot_bypass():
+    goal, store, work, policy = _goal_setup()
+    original = work.accept
+
+    async def lost(*args, **kwargs):
+        raise OSError("outcome unknown")
+
+    work.accept = lost
+    assert (
+        await goal.advance("g", command_id="advance", revision=1, epoch=1)
+    ).outcome == "paused"
+    assert goal.facts().unresolved
+    state = goal.query("g")
+    with pytest.raises(GoalError, match="unresolved"):
+        goal.control(
+            "g",
+            "resume",
+            command_id="resume",
+            revision=1,
+            epoch=state.epoch,
+            reason="user",
+        )
+    goal.replace(
+        "g",
+        "g2",
+        [Requirement("R", "replacement")],
+        command_id="replace",
+        revision=1,
+        epoch=state.epoch,
+        reason="user",
+        limit=3,
+    )
+    with pytest.raises(GoalError, match="unresolved"):
+        await goal.advance("g2", command_id="advance2", revision=1, epoch=1)
+    work.accept = original
+
+
+@pytest.mark.parametrize("bad", [True, 0, -1, 2])
+def test_schema_version_is_exact_and_known(bad):
+    record = {
+        "version": bad,
+        "sequence": 1,
+        "scope_id": "scope",
+        "goal_id": "g",
+        "kind": "command_received",
+        "command_id": "cmd",
+        "data": {},
+    }
+    with pytest.raises(GoalError):
+        decode_record(record)
+
+
+def test_optional_fields_preserved_unknown_semantics_rejected_and_data_immutable():
+    record = GoalRecord(1, "scope", "g", "command_received", "c", {"x": [1]})
+    encoded = dict(encode_record(record), future_optional={"value": 1})
+    assert encode_record(decode_record(encoded)) == encoded
+    with pytest.raises(TypeError):
+        record.data["x"] = 2
+    with pytest.raises(UnsupportedGoalVersion):
+        decode_record(dict(encoded, required_features=["new"]))
+    with pytest.raises(UnsupportedGoalVersion):
+        decode_record(dict(encoded, kind="unknown"))
+
+
+def test_history_rejects_gaps_cross_scope_and_active_goal_duplication():
+    goal, store, _, _ = _goal_setup()
+    with pytest.raises(GoalError):
+        replay(store.header, [replace(store.records[0], sequence=2)])
+    with pytest.raises(GoalError):
+        replay(store.header, [replace(store.records[0], scope_id="other")])
+    with pytest.raises(GoalError, match="active"):
+        goal.create("g2", [Requirement("R", "another")], command_id="create2", limit=3)
+
+
+@_run_goal_scenario
+async def test_goal_current_basis_cannot_reuse_old_epoch_success():
+    from loushang.harnesswork.goal import GoalAssessment
+    from loushang.harnesswork.goal.records import basis_data
+
+    goal, store, work, policy = _goal_setup()
+
+    async def no_completion(basis, facts):
+        return GoalAssessment(basis, "more_evidence", "not_yet")
+
+    policy.assess = no_completion
+    await goal.advance("g", command_id="first", revision=1, epoch=1)
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    goal.control("g", "resume", command_id="resume", revision=1, epoch=2, reason="user")
+
+    async def stale_success(basis, facts):
+        return GoalAssessment(
+            basis, "satisfied", "old", ("R",), ("op-0",), {"proof": "old"}
+        )
+
+    policy.assess = stale_success
+    with pytest.raises(GoalError, match="old Goal basis"):
+        await goal.advance("g", command_id="second", revision=1, epoch=3)
+    state = goal.query("g")
+    record = GoalRecord(
+        goal.history.sequence + 1,
+        "scope",
+        "g",
+        "acceptance_decided",
+        "second",
+        {
+            "basis": basis_data(goal.header, state, goal.history.sequence),
+            "coverage": ["R"],
+            "operations": ["op-0"],
+            "proof": {"old": True},
+        },
+    )
+    with pytest.raises(GoalError, match="old operation"):
+        replay(goal.header, [*store.records, record])
+
+
+@_run_goal_scenario
+async def test_goal_cleanup_failure_keeps_borrowed_owner_fenced():
+    goal, _, _, policy = _goal_setup()
+    began = asyncio.Event()
+
+    async def broken_finally(basis, facts):
+        began.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            raise OSError("reader cleanup still pending")
+
+    policy.prepare = broken_finally
+    task = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await began.wait()
+    with pytest.raises(OSError, match="cleanup still pending"):
+        await goal.quiesce()
+    assert task.done() and goal.fenced
+    with pytest.raises(OSError, match="cleanup still pending"):
+        goal.retire()
+    with pytest.raises(OSError, match="cleanup still pending"):
+        await goal.quiesce()
+
+
+def test_goal_replay_rejects_changed_effect_and_repeated_revision():
+    from loushang.harnesswork.goal.records import canonical
+
+    goal, store, _, _ = _goal_setup()
+    seq = goal.history.sequence
+    command = GoalRecord(
+        seq + 1,
+        "scope",
+        "g",
+        "command_received",
+        "revise",
+        {
+            "request": canonical(
+                {
+                    "action": "revise",
+                    "goal_id": "g",
+                    "revision": 1,
+                    "epoch": 1,
+                    "data": {
+                        "requirements": [{"id": "R", "text": "new"}],
+                        "reason": "user",
+                    },
+                }
+            )
+        },
+    )
+    event = GoalRecord(
+        seq + 2,
+        "scope",
+        "g",
+        "requirements_revised",
+        "revise",
+        {"requirements": [{"id": "R", "text": "new"}], "reason": "user"},
+    )
+    with pytest.raises(GoalError, match="duplicate command effect"):
+        replay(
+            goal.header,
+            [*store.records, command, event, replace(event, sequence=seq + 3)],
+        )
+    with pytest.raises(GoalError, match="differs from accepted"):
+        replay(
+            goal.header,
+            [
+                *store.records,
+                command,
+                replace(
+                    event,
+                    data={
+                        "requirements": [{"id": "R", "text": "forged"}],
+                        "reason": "user",
+                    },
+                ),
+            ],
+        )
+
+
+@_run_goal_scenario
+async def test_goal_failed_cancellation_is_not_an_ordinary_retryable_failed_work():
+    from loushang.harnesswork import WorkCancellationOutcome
+
+    goal, store, _, policy = _goal_setup()
+    started = asyncio.Event()
+
+    class FailedCancellation:
+        async def cancel_and_wait(self, operation, context):
+            return WorkCancellationOutcome.failed(RuntimeError("domain did not settle"))
+
+    async def blocked(operation, context):
+        started.set()
+        await asyncio.Event().wait()
+
+    policy.execute = blocked
+    work = WorkRuntime(
+        event_log=InMemoryEventLogBackend(),
+        executor=policy,
+        cancellation=FailedCancellation(),
+    )
+    goal = GoalController(
+        header=goal.header, store=store, work=work, next_work=policy, acceptance=policy
+    )
+    advance = asyncio.create_task(
+        goal.advance("g", command_id="advance", revision=1, epoch=1)
+    )
+    await started.wait()
+    with pytest.raises(RuntimeError, match="did not settle"):
+        await goal.request_cancel("g")
+    await asyncio.gather(advance, return_exceptions=True)
+    assert goal.facts().unresolved is True
+    assert work.query_runs()[0].status == "failed"
+    if goal.query("g").status == "active":
+        goal.control(
+            "g", "pause", command_id="pause", revision=1, epoch=1, reason="user"
+        )
+    state = goal.query("g")
+    with pytest.raises(GoalError, match="unresolved"):
+        goal.control(
+            "g",
+            "resume",
+            command_id="resume",
+            revision=state.revision,
+            epoch=state.epoch,
+            reason="user",
+        )
+
+
+@_run_goal_scenario
+async def test_goal_retired_controller_never_calls_cancel_port():
+    goal, _, _, _ = _goal_setup()
+    await goal.quiesce()
+    await goal.settle_work()
+    goal.retire()
+    goal.retire()  # Idempotent without consulting retired borrowed ports.
+    with pytest.raises(GoalError, match="retired"):
+        await goal.request_cancel("g")
+
+
+def test_goal_header_optional_extensions_roundtrip_without_changing_authority():
+    from loushang.harnesswork.goal.records import decode_header, encode_header
+
+    header = GoalHeader("scope", "s", "test-policy")
+    encoded = dict(encode_header(header), ui_label={"color": "blue"})
+    restored = decode_header(encoded)
+    assert encode_header(restored) == encoded
+    assert restored == header
+    with pytest.raises(GoalError):
+        decode_header(dict(encoded, required_features=["future-semantics"]))
+
+
+@_run_goal_scenario
+async def test_goal_resume_requires_remaining_allowance_and_fresh_confirmation():
+    goal, _, _, policy = _goal_setup()
+
+    async def no_completion(basis, facts):
+        from loushang.harnesswork.goal import GoalAssessment
+
+        return GoalAssessment(basis, "more_evidence", "not_yet")
+
+    policy.assess = no_completion
+    await goal.advance("g", command_id="first", revision=1, epoch=1)
+    goal.control(
+        "g", "pause", command_id="pause", revision=1, epoch=1, reason="user", limit=1
+    )
+    with pytest.raises(GoalError, match="batch_limit"):
+        goal.control(
+            "g", "resume", command_id="resume", revision=1, epoch=2, reason="user"
+        )
+    assert goal.query("g").status == "paused"
+    goal.control(
+        "g",
+        "pause",
+        command_id="raise-limit",
+        revision=1,
+        epoch=2,
+        reason="explicit new allowance",
+        limit=3,
+    )
+    policy.confirm_resume = lambda basis, facts: False
+    with pytest.raises(GoalError, match="resume_not_ready"):
+        goal.control(
+            "g", "resume", command_id="resume2", revision=1, epoch=3, reason="user"
+        )
+    assert goal.query("g").status == "paused"
+    policy.confirm_resume = lambda basis, facts: True
+    assert (
+        goal.control(
+            "g", "resume", command_id="resume3", revision=1, epoch=3, reason="user"
+        ).outcome
+        == "resume"
+    )
+
+
+def test_goal_invalid_primary_command_does_not_leave_a_pending_admission():
+    goal, store, _, _ = _goal_setup()
+    count = len(store.records)
+    with pytest.raises(GoalError):
+        goal.revise("g", [], command_id="empty", revision=1, epoch=1, reason="bad")
+    assert len(store.records) == count
+    assert "empty" not in goal.history.commands
+
+
+@_run_goal_scenario
+async def test_goal_fence_blocks_resume_readers_and_close_blocks_external_cancel_admission():
+    goal, _, _, policy = _goal_setup()
+    goal.control("g", "pause", command_id="pause", revision=1, epoch=1, reason="user")
+    calls = []
+    policy.confirm_resume = lambda basis, facts: calls.append("reader") or True
+    goal.fence()
+    with pytest.raises(GoalError, match="fenced"):
+        goal.control(
+            "g", "resume", command_id="resume", revision=1, epoch=2, reason="user"
+        )
+    assert calls == []
+    goal.begin_close()
+    with pytest.raises(GoalError, match="closing"):
+        await goal.request_cancel("g")
+    assert calls == []
+
+
+# HW-KD-003: optional recording contract and append-confirmed observations.
+def _run_recording_scenario(function):
+    @wraps(function)
+    def test(*args, **kwargs):
+        return asyncio.run(function(*args, **kwargs))
+
+    return test
+
+
+def _recording_operation(name="one"):
+    return WorkOperation(name, "Execute", None, "custom", {"input": name})
+
+
+class _RecordingExecutor:
+    def __init__(self):
+        self.calls = 0
+
+    async def execute(self, operation, context):
+        self.calls += 1
+        context.publish(
+            WorkEventFact("CustomResult", {"value": operation.operation_id})
+        )
+        return object()  # Results are explicitly published, never auto-serialized.
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("persistent", [False, True])
+async def test_default_records_anonymous_work_and_unknown_facts(tmp_path, persistent):
+    log = (
+        JsonlEventLogBackend(tmp_path / "work.jsonl")
+        if persistent
+        else InMemoryEventLogBackend()
+    )
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    accepted = runtime.get_recording(run.run_id)
+    assert accepted.run.status == "accepted"
+    assert accepted.observed_sequence == 0
+    assert accepted.source_event_id is None
+    assert accepted.contract.capture == "published_facts"
+    assert accepted.contract.retention == ("persistent" if persistent else "memory")
+    assert not accepted.contract.require_persistence
+    with pytest.raises(FrozenInstanceError):
+        accepted.contract.require_persistence = True
+    await runtime.wait(run.run_id)
+    record = runtime.get_recording(run.run_id)
+    assert record.run == runtime.get_run(run.run_id)
+    assert record.run.session_id == ""
+    assert record.run.status == "completed"
+    assert record.basis == "acknowledged"
+    entries = log.query(run_id=run.run_id)
+    assert entries[-1].sequence == record.observed_sequence
+    assert entries[-1].event_id == record.source_event_id
+    assert [e.payload["kind"] for e in entries] == [
+        "Execute",
+        "WorkRunStarted",
+        "CustomResult",
+        "WorkRunCompleted",
+    ]
+    assert project_work_runs(entries) == (record.run,)
+    assert accepted.run.status == "accepted"  # No live mutation of old snapshots.
+
+
+@_run_recording_scenario
+async def test_product_lower_bound_and_per_work_strengthening(tmp_path):
+    log = JsonlEventLogBackend(tmp_path / "work.jsonl")
+    runtime = WorkRuntime(
+        event_log=log,
+        executor=_RecordingExecutor(),
+        recording_version=1,
+        recording_policy=WorkRecordingPolicy(require_persistence=True),
+    )
+    with pytest.raises(ValueError, match="weaken"):
+        await runtime.accept(
+            _recording_operation(),
+            spec=WorkRunSpec(recording_policy=WorkRecordingPolicy()),
+        )
+    assert not log.query()
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert runtime.get_recording(run.run_id).contract.require_persistence
+    second = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    strengthened = await second.accept(
+        _recording_operation("two"),
+        spec=WorkRunSpec(
+            recording_policy=WorkRecordingPolicy(require_persistence=True)
+        ),
+    )
+    await second.wait(strengthened.run_id)
+    assert second.get_recording(strengthened.run_id).contract.require_persistence
+    assert second.get_recording(run.run_id).contract.require_persistence
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("declared", [True, False])
+async def test_persistent_requirement_rejected_before_resolver_or_append(declared):
+    class Backend(InMemoryEventLogBackend):
+        @property
+        def recording_retention(self):
+            if not declared:
+                raise AttributeError("optional capability absent")
+            return "memory"
+
+    class Resolver:
+        def resolve(self, operation, spec):
+            raise AssertionError("must reject before resolving execution")
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log,
+        resolver=Resolver(),
+        recording_version=1,
+        recording_policy=WorkRecordingPolicy(require_persistence=True),
+    )
+    with pytest.raises(ValueError, match="persistent backend"):
+        await runtime.accept(_recording_operation())
+    assert not log.query()
+    with pytest.raises(UnknownWorkRunError):  # Preflight rejection did not poison.
+        runtime.get_recording("unaccepted")
+
+
+@_run_recording_scenario
+async def test_undeclared_backend_default_is_usable_and_contract_is_frozen():
+    class Backend(InMemoryEventLogBackend):
+        @property
+        def recording_retention(self):
+            raise AttributeError("optional capability absent")
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert runtime.get_recording(run.run_id).contract.retention == "unknown"
+    entry = log.query()[0]
+    entry.payload["_harnesswork"]["recording"]["retention"] = "persistent"
+    assert runtime.get_recording(run.run_id).contract.retention == "unknown"
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("kind", ["Execute", "CustomResult", "WorkRunCompleted"])
+@pytest.mark.parametrize("after_write", [False, True])
+async def test_append_failure_is_sticky_and_cold_read_uses_actual_file(
+    tmp_path, kind, after_write
+):
+    class Backend(JsonlEventLogBackend):
+        failed = False
+
+        def append(self, entry):
+            if not self.failed and entry.payload["kind"] == kind:
+                self.failed = True
+                if after_write:
+                    super().append(entry)
+                raise OSError("injected append failure")
+            return super().append(entry)
+
+    path = tmp_path / "work.jsonl"
+    log = Backend(path)
+    executor = _RecordingExecutor()
+    runtime = WorkRuntime(event_log=log, executor=executor, recording_version=1)
+    if kind == "Execute":
+        with pytest.raises(OSError):
+            await runtime.accept(
+                _recording_operation(), spec=WorkRunSpec(run_id="first")
+            )
+        assert executor.calls == 0
+    else:
+        await runtime.accept(_recording_operation(), spec=WorkRunSpec(run_id="first"))
+        with pytest.raises(OSError):
+            await runtime.wait("first")
+        assert runtime.get_run("first").status == (
+            "failed" if kind == "CustomResult" else "completed"
+        )
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording("first")
+    later = await runtime.accept(_recording_operation("later"))
+    await runtime.wait(later.run_id)
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording(later.run_id)
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording("first")
+    # All writer tasks are settled. A fresh backend actually reloads the file.
+    cold = WorkRuntime(
+        event_log=JsonlEventLogBackend(path), executor=executor, recording_version=1
+    )
+    if kind == "Execute" and not after_write:
+        with pytest.raises(UnknownWorkRunError):
+            cold.get_recording("first")
+    else:
+        record = cold.get_recording("first")
+        assert record.basis == "loaded"
+        expected = (
+            "failed"
+            if kind == "CustomResult"
+            else "completed"
+            if kind == "WorkRunCompleted" and after_write
+            else "orphaned"
+        )
+        assert record.run.status == expected
+    assert cold.get_recording(later.run_id).run.status == "completed"
+
+
+@_run_recording_scenario
+async def test_ack_boundary_and_hot_reads_do_not_rescan():
+    before = []
+    after = []
+
+    class Backend(InMemoryEventLogBackend):
+        def append(self, entry):
+            if entry.payload["kind"] == "WorkRunCompleted":
+                before.append(runtime.get_recording(entry.run_id))
+                assert runtime.get_run(entry.run_id).status == "completed"
+            return super().append(entry)
+
+    log = Backend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    runtime.subscribe_events(
+        lambda event: after.append(runtime.get_recording(event.run_id))
+    )
+    run = await runtime.accept(_recording_operation())
+    await runtime.wait(run.run_id)
+    assert before[0].run.status == "running"
+    assert after[-1].run.status == "completed"
+    assert before[0].observed_sequence < after[-1].observed_sequence
+
+    def no_query(**kwargs):
+        raise AssertionError("confirmed state must not rescan history")
+
+    log.query = no_query
+    for _ in range(10):
+        assert runtime.get_recording(run.run_id) == after[-1]
+
+
+@_run_recording_scenario
+async def test_legacy_new_mixed_and_rollback_histories(tmp_path):
+    path = tmp_path / "work.jsonl"
+    log = JsonlEventLogBackend(path)
+    legacy = WorkRuntime(event_log=log, executor=_RecordingExecutor())
+    old_run = await legacy.accept(_recording_operation("old"))
+    await legacy.wait(old_run.run_id)
+    with pytest.raises(ValueError, match="recording_version"):
+        legacy.get_recording(old_run.run_id)
+    assert "recording" not in log.query()[0].payload["_harnesswork"]
+    new = WorkRuntime(
+        event_log=JsonlEventLogBackend(path),
+        executor=_RecordingExecutor(),
+        recording_version=1,
+    )
+    assert new.get_recording(old_run.run_id).contract is None
+    new_run = await new.accept(_recording_operation("new"))
+    await new.wait(new_run.run_id)
+    rollback = WorkRuntime(
+        event_log=JsonlEventLogBackend(path), executor=_RecordingExecutor()
+    )
+    third = await rollback.accept(_recording_operation("rollback"))
+    await rollback.wait(third.run_id)
+    reader = WorkRuntime(
+        event_log=JsonlEventLogBackend(path),
+        executor=_RecordingExecutor(),
+        recording_version=1,
+    )
+    assert reader.get_recording(old_run.run_id).contract is None
+    assert reader.get_recording(new_run.run_id).contract.version == 1
+    assert reader.get_recording(third.run_id).contract is None
+    assert all(run.status == "completed" for run in project_work_runs(log.query()))
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize(
+    "change,error",
+    [
+        ({"version": 2}, WorkRecordingVersionError),
+        ({"version": True}, WorkRecordingVersionError),
+        ({"extra": True}, WorkRecordingFormatError),
+        ({"capture": "filtered"}, WorkRecordingFormatError),
+        ({"require_persistence": 1}, WorkRecordingFormatError),
+        ({"require_persistence": True}, WorkRecordingFormatError),
+    ],
+)
+async def test_contract_failure_is_scoped_to_one_run(change, error):
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    one = await runtime.accept(_recording_operation())
+    await runtime.wait(one.run_id)
+    two = await runtime.accept(_recording_operation("two"))
+    await runtime.wait(two.run_id)
+    changed = InMemoryEventLogBackend()
+    for entry in log.query():
+        if entry.run_id == one.run_id and entry.entry_type == "operation":
+            entry.payload["_harnesswork"]["recording"].update(change)
+        changed.append(entry)
+    reader = WorkRuntime(
+        event_log=changed, executor=_RecordingExecutor(), recording_version=1
+    )
+    with pytest.raises(error):
+        reader.get_recording(one.run_id)
+    assert reader.get_run(one.run_id).status == "completed"
+    assert reader.get_recording(two.run_id).run.status == "completed"
+
+
+@_run_recording_scenario
+async def test_invalid_projection_is_a_read_error_not_a_failed_append():
+    class CustomExecutor:
+        async def execute(self, operation, context):
+            context.publish(WorkEventFact("", {}))  # Existing publisher permits this.
+
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(event_log=log, executor=CustomExecutor(), recording_version=1)
+    run = await runtime.accept(_recording_operation())
+    assert (await runtime.wait(run.run_id)).status == "completed"
+    assert log.query()[-1].payload["kind"] == "WorkRunCompleted"
+    with pytest.raises(WorkRunReplayError):
+        runtime.get_recording(run.run_id)
+
+
+@pytest.mark.parametrize("version", [0, 2, True, 1.0, "1"])
+def test_recording_activation_rejects_unknown_version(version):
+    with pytest.raises(WorkRecordingVersionError):
+        WorkRuntime(
+            event_log=InMemoryEventLogBackend(),
+            executor=_RecordingExecutor(),
+            recording_version=version,
+        )
+
+
+@_run_recording_scenario
+async def test_policy_requires_explicit_activation():
+    with pytest.raises(ValueError, match="recording_version"):
+        WorkRuntime(
+            event_log=InMemoryEventLogBackend(),
+            executor=_RecordingExecutor(),
+            recording_policy=WorkRecordingPolicy(),
+        )
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(event_log=log, executor=_RecordingExecutor())
+    with pytest.raises(ValueError, match="recording_version"):
+        await runtime.accept(
+            _recording_operation(),
+            spec=WorkRunSpec(recording_policy=WorkRecordingPolicy()),
+        )
+    assert not log.query()
+
+
+@_run_recording_scenario
+async def test_new_recording_preserves_cancellation_evidence_and_subscriptions():
+    started = asyncio.Event()
+
+    class WaitingExecutor:
+        async def execute(self, operation, context):
+            started.set()
+            await asyncio.Event().wait()
+
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=WaitingExecutor(), recording_version=1
+    )
+    run = await runtime.accept(_recording_operation())
+    await started.wait()
+    await runtime.cancel(run.run_id)
+    record = runtime.get_recording(run.run_id)
+    assert record.run.status == "cancelled"
+    assert runtime.get_cancellation(run.run_id).status == "unsupported"
+    stream = runtime.subscribe(run_id=run.run_id)
+    entries = log.query(run_id=run.run_id)
+    try:
+        assert [await anext(stream) for _ in entries] == entries
+    finally:
+        await stream.aclose()
+    assert record.source_event_id == entries[-1].event_id
+    assert replace(record.run, status="cancelled") == runtime.get_run(run.run_id)
+
+
+@_run_recording_scenario
+@pytest.mark.parametrize("kind", ["Execute", "CustomResult", "WorkRunCompleted"])
+async def test_recording_observer_failure_does_not_interrupt_acknowledged_execution(
+    kind,
+):
+    log = InMemoryEventLogBackend()
+    runtime = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    original = runtime._recording._projector.apply
+
+    def broken_observer(entry):
+        if entry.payload["kind"] == kind:
+            raise RuntimeError("injected derived observer failure")
+        original(entry)
+
+    runtime._recording._projector.apply = broken_observer
+    events = []
+    runtime.subscribe_events(events.append)
+    run = await runtime.accept(_recording_operation())
+    assert (await runtime.wait(run.run_id)).status == "completed"
+    assert runtime.active_runs() == ()
+    assert (await runtime.cancel(run.run_id)).status == "completed"
+    assert runtime.get_cancellation(run.run_id).status == "not_requested"
+    with pytest.raises(WorkRecordingUnavailable):
+        runtime.get_recording(run.run_id)
+    assert [e.kind for e in events].count("WorkRunCompleted") == 1
+    assert "WorkRunCancelled" not in [e.kind for e in events]
+    cold = WorkRuntime(
+        event_log=log, executor=_RecordingExecutor(), recording_version=1
+    )
+    assert cold.get_recording(run.run_id).run.status == "completed"

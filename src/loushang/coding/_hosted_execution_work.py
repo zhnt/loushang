@@ -8,10 +8,48 @@ from collections.abc import Callable
 from loushang.agent import AbortSignal
 from loushang.agent.types import AgentEvent
 from loushang.ai.types import AssistantMessage
+from loushang.appserver.protocol import SessionSnapshotRequestV1
+from loushang.appservice.client_scope import AppClientScopeV1
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
 from loushang.appservice.execution_guard import ExecutionControlV1
 
+from .resume_activation_attempt import CodingActivationAttemptV1
 from .session.agent_session import AgentSession
+
+# Concrete original owner types for the optional Coding confirmation borrow.
+HostedResumeSubjectScope = AppClientScopeV1
+HostedResumeSubjectControl = SessionSnapshotRequestV1
+
+
+def current_coding_hosted_resume_subject() -> tuple[
+    HostedResumeSubjectScope, HostedResumeSubjectControl, str,
+]:
+    """Borrow the original scope captured by native execution admission.
+
+    This observation neither reserves execution nor confirms permissions. The
+    caller still binds exact Approval and rechecks the original owner before
+    Resume mutation, publication and transport.
+    """
+
+    return AppClientScopeV1.current_resume_subject()
+
+
+def current_coding_hosted_resume_submission_id() -> str | None:
+    """Read the initiating stable ID; legacy Ack submissions have no such ID."""
+
+    return AppClientScopeV1.current_resume_submission_id()
+
+
+def _require_current_coding_hosted_resume_subject(
+    attempt: CodingActivationAttemptV1,
+    scope: HostedResumeSubjectScope | None,
+    control: HostedResumeSubjectControl | None,
+) -> None:
+    if type(scope) is not AppClientScopeV1 or type(control) is not SessionSnapshotRequestV1:
+        raise TypeError("Coding Resume requires the original Hosted subject owner and control")
+    scope.require_current_resume_subject(
+        control, attempt.subject_digest, expected_session_id=attempt.session_id,
+    )
 
 
 class CodingExecutionWorkV1:

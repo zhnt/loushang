@@ -115,6 +115,7 @@ def test_agent_screen_application_binding_prepares_shared_state() -> None:
     prepared = binding.prepare()
 
     assert prepared.app is app
+    assert app.state.session_id == "research-session"
     assert prepared.capability_provider is capabilities
     assert prepared.event_source is session
     assert prepared.history_records == ()

@@ -747,6 +747,45 @@ def test_recovery_fails_closed_on_a_complete_invalid_event(
     assert caught.value.code == expected_code
 
 
+@pytest.mark.parametrize("failure", ["revision", "scope", "version"])
+@pytest.mark.parametrize("operation", ["snapshot", "consume"])
+def test_rejected_execution_journal_preserves_partial_tail(
+    tmp_path: Path, failure: str, operation: str,
+) -> None:
+    journal = _journal(tmp_path)
+    _issue(journal, _subject())
+    event = json.loads(journal.path.read_text(encoding="utf-8"))
+    if failure == "revision":
+        event["journalRevision"] = 2
+        event["expectedJournalRevision"] = 1
+    elif failure == "version":
+        event["eventVersion"] = 99
+    journal.path.write_text(
+        json.dumps(event) + '\n{"eventKind":"execution_consumed"',
+        encoding="utf-8",
+    )
+    original = journal.path.read_bytes()
+    reopened = (
+        PluginExecutionDecisionJournal(
+            journal.path, scope_kind="installation", scope_id="workspace",
+        )
+        if failure == "scope" else _journal(tmp_path)
+    )
+
+    with pytest.raises(PluginExecutionJournalError) as caught:
+        if operation == "snapshot":
+            reopened.snapshot()
+        else:
+            _consume(reopened, _subject(), expected_journal_revision=1)
+
+    assert caught.value.code == (
+        "unsupported_plugin_execution_journal_record_version"
+        if failure == "version" else
+        "plugin_execution_journal_corrupt"
+    )
+    assert journal.path.read_bytes() == original
+
+
 def _journal(
     tmp_path: Path,
     *,
@@ -794,6 +833,7 @@ def _consume(
     expected_revocation_epoch: int = 0,
     current_policy_revision: str = "policy-1",
     current_source_trust_policy_revision: str = "trust-1",
+    parent_context=None,
 ):
     return journal.consume_execution_decision(
         subject,
@@ -806,6 +846,7 @@ def _consume(
         current_policy_revision=current_policy_revision,
         current_source_trust_policy_revision=(current_source_trust_policy_revision),
         expected_journal_revision=expected_journal_revision,
+        parent_context=parent_context,
     )
 
 

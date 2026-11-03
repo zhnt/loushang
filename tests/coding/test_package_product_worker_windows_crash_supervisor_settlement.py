@@ -126,7 +126,8 @@ def test_windows_crash_supervisor_product_keeps_transitions_inside_locks(
                 events.append("package.exit")
 
     @contextmanager
-    def gc_guard():
+    def gc_guard(*, require_write: bool):
+        assert require_write
         events.append("gc.enter")
         try:
             yield

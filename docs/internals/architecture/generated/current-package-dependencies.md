@@ -121,7 +121,9 @@ graph TD
 | --- | --- |
 | `lmux` | `loushang.coding.cli.lmux:main` |
 | `loushang` | `loushang.coding.cli.__main__:main` |
+| `loushang-coding-extension` | `loushang.coding.extension_author:main` |
 | `loushang-coding-plugin-smoke` | `loushang.coding.plugin_author_smoke:main` |
+| `loushang-coding-plugin-status` | `loushang.coding.plugin_support_status:main` |
 | `loushang-hosted` | `loushang.coding.cli.hosted:main` |
 | `loushang-hosted-tui` | `loushang.coding.cli.hosted_client:main` |
 | `loushang-mux` | `loushang.coding.cli.mux:main` |
@@ -132,6 +134,7 @@ graph TD
 | `loushang-plugin-private-data` | `loushang.coding.cli.plugin_private_data:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
 | `loushang-worker-native` | `loushang.coding.cli.package_worker_native:main` |
+| `loushang-worker-windows-candidate` | `loushang.coding.cli.package_worker_windows_candidate:main` |
 
 ## Interpretation Rules
 

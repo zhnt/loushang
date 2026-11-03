@@ -23,18 +23,16 @@ class TTY(StringIO):
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
 @pytest.mark.parametrize("native_tty", [False, True])
-def test_threaded_loading_selection_requires_linux_native_terminal(
+def test_threaded_loading_selection_requires_native_terminal_on_every_platform(
     monkeypatch, platform, native_tty
 ):
     from loushang.coding.cli import screen_startup as module
 
-    monkeypatch.setattr(module.sys, "platform", platform)
-    monkeypatch.setattr(module.os, "isatty", lambda fd: native_tty and fd == 123)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(os, "isatty", lambda fd: native_tty and fd == 123)
     stream = SimpleNamespace(fileno=lambda: 123)
-    assert module._threaded_loading_supported(stream) == (
-        platform == "linux" and native_tty
-    )
-    assert not module._threaded_loading_supported(TTY())
+    assert module.native_terminal_input_is_tty(stream) == native_tty
+    assert not module.native_terminal_input_is_tty(TTY())
 
 
 @pytest.mark.parametrize(
@@ -102,8 +100,8 @@ def test_output_capture_preserves_tty_is_bounded_and_drains_once():
 def test_product_first_frame_runtime_owner_and_output_order(
     monkeypatch, request, phase, expected, early_entry, threaded_entry
 ):
-    if threaded_entry and sys.platform != "linux":
-        pytest.skip("Linux loading worker")
+    if threaded_entry and os.name != "posix":
+        pytest.skip("POSIX pipe transport")
     from loushang.coding.cli import screen_startup as module
     from loushang.harness.host.product_host import ProductHostLifecycle
     from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
@@ -148,7 +146,7 @@ def test_product_first_frame_runtime_owner_and_output_order(
                         os.write(write_fd, value.encode())
 
             queue = NativeQueue()
-            monkeypatch.setattr(module, "_threaded_loading_supported", lambda _: True)
+            monkeypatch.setattr(module, "native_terminal_input_is_tty", lambda _: True)
             original_threaded_run = ThreadedScreenStartup.run
 
             async def run_threaded(self, **kwargs):

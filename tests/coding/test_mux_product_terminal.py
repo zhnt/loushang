@@ -115,12 +115,19 @@ def _see(driver, text, *, after=0):
     )
 
 
-def _completed_reply_seen(output):
+def _completed_reply_seen(output, reply_text="真实跨进程回复"):
     plain = strip_control_sequences(output)
-    reply = plain.rfind("真实跨进程回复")
+    reply = plain.rfind(reply_text)
     # A text delta is not turn settlement. The member's idle projection must
     # follow the reply, not come from the initial, pre-submission screen.
     return reply >= 0 and plain.rfind("*1 |") > reply
+
+
+def _completed_reply_after_input(output, text):
+    plain = strip_control_sequences(output)
+    submitted = plain.rfind("> " + text)
+    reply = plain.rfind("真实跨进程回复")
+    return submitted >= 0 and reply > submitted and plain.rfind("*1 |") > reply
 
 
 def test_completed_reply_requires_idle_after_reply_not_initial_idle():
@@ -129,6 +136,11 @@ def test_completed_reply_requires_idle_after_reply_not_initial_idle():
     assert not _completed_reply_seen(initial)
     assert not _completed_reply_seen(streaming)
     assert _completed_reply_seen(streaming + "\ndev | \x1b[32m*1\x1b[0m | /help")
+    assert not _completed_reply_after_input(streaming, "fresh")
+    assert _completed_reply_after_input(
+        streaming + "\n> fresh\n真实跨进程回复\nG14\ndev | *1 | /help",
+        "fresh",
+    )
 
 
 def test_G16_PRODUCT_TERMINAL_two_muxes_approval_detach_reattach_and_interrupt(
@@ -249,7 +261,17 @@ def test_G16_PRODUCT_TERMINAL_process_death_recovers_history_not_execution(
             assert "*1~" not in strip_control_sequences(recovered.raw_output)
             checkpoint = len(recovered.raw_output)
             recovered.write("fresh-after-restart\r")
-            _see(recovered, "真实跨进程回复", after=checkpoint)
+            recovered.read_until(
+                lambda output: _completed_reply_seen(
+                    output[checkpoint:], "真实跨进程恢复回复"
+                ),
+                timeout=30,
+            )
+            resumed_output = strip_control_sequences(
+                recovered.raw_output[checkpoint:]
+            )
+            assert "Approval details" not in resumed_output
+            assert "*1!" not in resumed_output
             recovered.write("\x02d")
             assert recovered.wait(timeout=15) == 0, recovered.diagnostics
         _command(root, environment, "stop")

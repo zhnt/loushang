@@ -21,7 +21,12 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
     TurnInterruptV1,
 )
-from loushang.appserver.remote_client import StdioAppClientV1
+from loushang.appserver.protocol.connection_profile import (
+    AppConnectionProfileV1,
+    supports_execution,
+    supports_session_discovery,
+)
+from loushang.appserver.remote_client import RemoteAppClientV1
 from loushang.coding.cli.hosted import parse_launch
 from loushang.harnesstui.mux.profile import open_hosted_mux_profile
 
@@ -68,16 +73,25 @@ def _installed_command() -> str:
 
 @asynccontextmanager
 async def _child(
-    root: Path, *, installed: bool = False, fail_dispose: bool = False
-) -> AsyncIterator[StdioAppClientV1]:
+    root: Path,
+    *,
+    installed: bool = False,
+    fail_dispose: bool = False,
+    profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
+) -> AsyncIterator[RemoteAppClientV1]:
     executable = (
         [_installed_command()]
         if installed
         else [sys.executable, str(Path(__file__).with_name("_hosted_product_child.py"))]
     )
+    capability_flags = (
+        (["--session-discovery"] if supports_session_discovery(profile) else [])
+        + (["--session-execution"] if supports_execution(profile) else [])
+    )
     process = await asyncio.create_subprocess_exec(
         *executable,
         *_argv(root),
+        *capability_flags,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -92,8 +106,9 @@ async def _child(
         and process.stderr is not None
     )
     errors = asyncio.create_task(process.stderr.read())
-    client = StdioAppClientV1(
+    client = RemoteAppClientV1(
         AppFramedStreamV1(AsyncioStreamTransportV1(process.stdout, process.stdin)),
+        profile=profile,
         # This parent budget includes cold Product imports and G13 recovery,
         # unlike the child's hello deadline after it has become ready.
         phase_timeout=30,

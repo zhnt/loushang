@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 import sys
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -11,11 +12,13 @@ import pytest
 from loushang.ai.types import ImagePart, UserMessage
 from loushang.appserver.protocol import SessionAvailabilityV1, SessionCompatibilityV1
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
+from loushang.coding.composition_provenance import CODING_COMPOSITION_HEADER_KEY
 from loushang.coding.hosted_catalog import (
     CodingHostedCatalogError,
     CodingHostedSessionCatalogV1,
 )
 from loushang.coding.managed_catalog import CodingManagedSessionCatalogV1
+from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE_METADATA_KEY
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import StoreCommitOutcomeUnknown
 from loushang.harness.conversation.stores import file as file_module
@@ -368,6 +371,47 @@ def test_unsupported_runtime_is_observed_but_not_bound(tmp_path, monkeypatch):
         with pytest.raises(CodingHostedCatalogError):
             await owner.open_candidate(rows[0].reference)
         assert tree(tmp_path) == before and not owner._owned_factory.pending_preparations
+        await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_changed_environment_keeps_history_preview_and_allows_writable_open(
+    tmp_path,
+):
+    async def scenario():
+        owner = catalog(tmp_path)
+        path = await ordinary(owner)
+        header, records = load_agent_transcript_file(path)
+        metadata = deepcopy(dict(header.metadata))
+        metadata[CODING_COMPOSITION_HEADER_KEY] = {
+            "version": 1,
+            "setId": "retired-coding-set",
+            "planFingerprint": "a" * 64,
+        }
+        capability = metadata[CODING_CAPABILITY_PROFILE_METADATA_KEY]
+        assert isinstance(capability, dict)
+        capability["capabilities"] = []
+        write_agent_transcript_export(path, replace(header, metadata=metadata), records)
+
+        before = path.read_bytes()
+        scope = owner.scopes[1]
+        rows = await owner.list_identities((scope.discovery_scope,), limit=256)
+        preview = await owner.preview_history_header(rows[0].reference)
+        assert preview.product_identity == "coding"
+        assert preview.composition is not None
+        assert preview.composition.set_id == "retired-coding-set"
+        history = await owner.preview_history_snapshot(
+            rows[0].reference, max_bytes=1024 * 1024,
+        )
+        assert history.header_preview == preview
+        assert any(record.kind == "agent.message" for record in history.records)
+        active = await owner.open_candidate(rows[0].reference)
+        try:
+            assert path.read_bytes() == before
+        finally:
+            await active.close()
+        assert not owner._owned_factory.pending_preparations
         await owner.close()
 
     asyncio.run(scenario())

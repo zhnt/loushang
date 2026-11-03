@@ -274,6 +274,18 @@ catalog 不声明 credential source。它不是 OAuth provider，也不实现 lo
 
 ## 正确性契约
 
+Provider-native compaction is an explicit capability on one concrete model route.
+The built-in catalog currently declares `providerCompaction: "openai-responses"` only
+for documented models on the public OpenAI Responses endpoint. Unknown capability is
+unsupported. `compact_provider_window(model, context, options)` calls the standalone
+Responses compact endpoint and returns a `ProviderCompactionWindow` containing the
+entire canonical output window, including its opaque encrypted compaction item.
+To continue, pass that window as `Context(provider_window=window, messages=[...])`;
+the selected provider, endpoint, and model must match. The window already owns the
+prior system context, so a new `system_prompt` cannot accompany it. The caller owns
+durable checkpointing and should commit only after the full window is validated.
+
+
 - OpenAI Chat Completions 的最终 usage-only chunk 会产生 usage delta。
 - reasoning token 不会重复计入 output。
 - Anthropic partial usage 只更新实际出现的字段。

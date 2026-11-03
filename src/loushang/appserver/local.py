@@ -42,6 +42,7 @@ from .managed_mux import ManagedMuxCreationClientV1
 from .managed_mux_close import ManagedMuxCloseClientV1
 from .protocol import AppErrorCodeV1, AppServiceError
 from .remote_client import RemoteAppClientV1
+from .resume_model import ResumeInputLookupClientV1
 
 MAX_LOCAL_CONNECTIONS = 8
 MAX_LOCAL_APP_CONNECTIONS = 7  # One authenticated slot is reserved for stop.
@@ -92,6 +93,7 @@ class LocalAppServerV1:
         execution_scope_factory: Callable[[], OwnedLocalExecutionScopeV1] | None = None,
         managed_mux_scope_factory: Callable[[], OwnedLocalManagedMuxScopeV1] | None = None,
         mux_closure: bool = False,
+        resume_input_lookup: bool = False,
         instance: str | None = None,
     ) -> None:
         require_timeout(auth_timeout)
@@ -107,10 +109,15 @@ class LocalAppServerV1:
         if type(mux_closure) is not bool or mux_closure and managed_mux_scope_factory is None:
             raise ValueError("close requires an explicit managed scope factory")
         self._mux_closure = mux_closure
+        if type(resume_input_lookup) is not bool or resume_input_lookup and execution_scope_factory is None:
+            raise ValueError("Resume lookup requires an explicit execution scope factory")
+        self._resume_input_lookup = resume_input_lookup
         # Validate all record facts before obtaining a lock or opening IO.
         LocalConnectionRecordV1(endpoint=endpoint, application_id=application_id,
                                 product_id=product_id, scopes=scopes, port=1,
-                                instance="0" * 32 if instance is None else instance, key=bytes(32))
+                                instance="0" * 32 if instance is None else instance, key=bytes(32),
+                                session_execution=execution_scope_factory is not None,
+                                resume_input_lookup=resume_input_lookup)
         self._instance = instance
         self._directory, self._endpoint = directory, endpoint
         self._application_id, self._product_id, self._scopes = application_id, product_id, scopes
@@ -247,6 +254,7 @@ class LocalAppServerV1:
             session_execution=self._execution_factory is not None,
             mux_management=self._managed_mux_factory is not None,
             mux_closure=self._mux_closure,
+            resume_input_lookup=self._resume_input_lookup,
             instance=self._instance,
         )
         self._remaining_startup()
@@ -393,6 +401,12 @@ class LocalAppClientConnectionV1:
         return self._client.execution_client
 
     @property
+    def resume_input_lookup_client(self) -> ResumeInputLookupClientV1 | None:
+        if not self._ready or self._closed or self._client is None:
+            return None
+        return self._client.resume_input_lookup_client
+
+    @property
     def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
         if not self._ready or self._closed or self._client is None:
             return None
@@ -503,7 +517,5 @@ class LocalAppClientConnectionV1:
 __all__ = [
     "LocalAppServerV1", "LocalAppClientConnectionV1", "LocalConnectionModeV1",
     "OwnedLocalClientScopeV1", "MAX_LOCAL_CONNECTIONS", "MAX_LOCAL_APP_CONNECTIONS",
-    "OwnedLocalDiscoveryScopeV1",
-    "OwnedLocalExecutionScopeV1",
-    "MAX_LOCAL_AUTHENTICATING",
+    "OwnedLocalDiscoveryScopeV1", "OwnedLocalExecutionScopeV1", "MAX_LOCAL_AUTHENTICATING",
 ]

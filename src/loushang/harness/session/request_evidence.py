@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
-from collections.abc import Callable, Mapping, Sequence
+import time
+from collections.abc import Callable, Generator, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Protocol, cast
@@ -145,6 +147,9 @@ class RequestEvidenceRuntimePort(Protocol):
 
 ContextMessageBindings = Callable[..., tuple[tuple[str, object], ...]]
 ActiveRecordsProvider = Callable[[], Sequence[AgentTranscriptRecord]]
+AppendOnlyRecordsProvider = Callable[
+    [str], Sequence[AgentTranscriptRecord] | None
+]
 ModelInputRebuilder = Callable[[str], RebuiltModelInput]
 
 
@@ -166,6 +171,7 @@ class SessionRequestEvidenceRuntime:
         *,
         get_context_message_bindings: ContextMessageBindings,
         get_active_records: ActiveRecordsProvider,
+        get_append_only_records_since: AppendOnlyRecordsProvider | None = None,
         rebuild_model_input: ModelInputRebuilder,
     ) -> None:
         for callback, name in (
@@ -177,6 +183,11 @@ class SessionRequestEvidenceRuntime:
                 raise TypeError(f"request evidence requires {name}")
         self._get_context_message_bindings = get_context_message_bindings
         self._get_active_records = get_active_records
+        if get_append_only_records_since is not None and not callable(
+            get_append_only_records_since
+        ):
+            raise TypeError("request evidence append-only records must be callable")
+        self._get_append_only_records_since = get_append_only_records_since
         self._rebuild_model_input = rebuild_model_input
         self._pending: list[_PendingEvidence] = []
         self._committed: dict[str, PreparedResourceEvidence] = {}
@@ -184,7 +195,21 @@ class SessionRequestEvidenceRuntime:
         self._anchor_record_ids: set[str] = set()
         self._legacy_sources: dict[str, str] = {}
         self._hydrated_record_ids: tuple[str, ...] | None = None
+        self._certified_evidence_free_snapshots: set[str] = set()
         self._closed = False
+
+    def note_committed_model_input(
+        self, snapshot_id: str, *, has_resource_evidence: bool
+    ) -> None:
+        """Certify a local durable snapshot whose logical input has no evidence."""
+
+        self._require_open()
+        if not isinstance(snapshot_id, str) or not snapshot_id:
+            raise ValueError("request evidence certification requires a snapshot id")
+        if not isinstance(has_resource_evidence, bool):
+            raise TypeError("request evidence certification requires a boolean")
+        if not has_resource_evidence:
+            self._certified_evidence_free_snapshots.add(snapshot_id)
 
     def prepare(self, result: object) -> PreparedResourceEvidence | None:
         self._require_open()
@@ -282,6 +307,76 @@ class SessionRequestEvidenceRuntime:
         self._anchor_record_ids.clear()
         self._legacy_sources.clear()
         self._hydrated_record_ids = None
+        self._certified_evidence_free_snapshots.clear()
+
+    def _advance_evidence_free_append(self) -> bool:
+        """Skip history only for a proven suffix of locally certified snapshots."""
+
+        previous = self._hydrated_record_ids
+        suffix_provider = self._get_append_only_records_since
+        if (
+            previous is None
+            or not previous
+            or suffix_provider is None
+            or self._committed
+            or self._recovered
+            or self._anchor_record_ids
+            or self._legacy_sources
+        ):
+            return False
+        suffix = suffix_provider(previous[-1])
+        if suffix is None:
+            return False
+        certified: set[str] = set()
+        ids: list[str] = []
+        for record in suffix:
+            if RESOURCE_EVIDENCE_METADATA_KEY in record.metadata:
+                return False
+            if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2):
+                snapshot_id = record.payload.snapshot_id
+                if snapshot_id not in self._certified_evidence_free_snapshots:
+                    return False
+                certified.add(snapshot_id)
+            ids.append(record.record_id)
+        self._hydrated_record_ids = previous + tuple(ids)
+        self._certified_evidence_free_snapshots.difference_update(certified)
+        return True
+
+    async def prepare_model_input_async(self) -> None:
+        """Recover durable evidence cooperatively, without granting authority.
+
+        Recovery stages its caches until the captured path is fully checked.
+        The subsequent synchronous projection still reads the current path and
+        validates its message bindings before a request can be committed.
+        """
+
+        self._require_open()
+        if self._advance_evidence_free_append():
+            return
+        deadline = time.monotonic() + 0.008
+        records = tuple(self._get_active_records())
+        record_ids = tuple(record.record_id for record in records)
+        previous = self._hydrated_record_ids
+        if record_ids == previous:
+            return
+        # Resolve context bindings only if a new snapshot actually carries
+        # Resource evidence. Most model calls have snapshots but no such
+        # component, so replaying their entire context adds no validation.
+        steps = self._hydrate_selected_path_steps(
+            records,
+            lambda: {
+                record_id for record_id, _ in self._get_context_message_bindings()
+            },
+            record_ids=record_ids,
+        )
+        try:
+            for _ in steps:
+                if time.monotonic() >= deadline:
+                    await asyncio.sleep(0)
+                    self._require_open()
+                    deadline = time.monotonic() + 0.008
+        finally:
+            steps.close()
 
     def project_model_input(
         self,
@@ -292,19 +387,34 @@ class SessionRequestEvidenceRuntime:
         self._require_open()
         if not isinstance(preparation, ModelCallPreparation):
             raise TypeError("request evidence requires ModelCallPreparation")
+        if self._advance_evidence_free_append():
+            return None
         active_records = tuple(self._get_active_records())
         active_by_id = {record.record_id: record for record in active_records}
         if len(active_by_id) != len(active_records):
             raise RequestEvidenceIntegrityError(
                 "selected transcript path contains duplicate record ids"
             )
-        bindings = tuple(self._get_context_message_bindings())
-        binding_record_ids = tuple(record_id for record_id, _message in bindings)
-        if len(set(binding_record_ids)) != len(binding_record_ids):
-            raise RequestEvidenceIntegrityError(
-                "transcript context contains duplicate message record ids"
-            )
-        self._hydrate_selected_path(active_records, set(binding_record_ids))
+        bindings: tuple[tuple[str, object], ...] | None = None
+
+        def current_bindings() -> tuple[tuple[str, object], ...]:
+            nonlocal bindings
+            if bindings is None:
+                bindings = tuple(self._get_context_message_bindings())
+                binding_record_ids = tuple(record_id for record_id, _ in bindings)
+                if len(set(binding_record_ids)) != len(binding_record_ids):
+                    raise RequestEvidenceIntegrityError(
+                        "transcript context contains duplicate message record ids"
+                    )
+            return bindings
+
+        self._hydrate_selected_path(
+            active_records,
+            lambda: {record_id for record_id, _ in current_bindings()},
+        )
+        if not self._committed and not self._recovered:
+            return None
+        bindings = current_bindings()
         selected: list[tuple[int, str, PreparedResourceEvidence]] = []
         for index, (record_id, message) in enumerate(bindings):
             recovered = self._recovered.get(record_id)
@@ -422,9 +532,20 @@ class SessionRequestEvidenceRuntime:
     def _hydrate_selected_path(
         self,
         active_records: tuple[AgentTranscriptRecord, ...],
-        context_record_ids: set[str],
+        context_record_ids: set[str] | Callable[[], set[str]],
     ) -> None:
-        record_ids = tuple(record.record_id for record in active_records)
+        for _ in self._hydrate_selected_path_steps(active_records, context_record_ids):
+            pass
+
+    def _hydrate_selected_path_steps(
+        self,
+        active_records: tuple[AgentTranscriptRecord, ...],
+        context_record_ids: set[str] | Callable[[], set[str]],
+        *,
+        record_ids: tuple[str, ...] | None = None,
+    ) -> Generator[None, None, None]:
+        if record_ids is None:
+            record_ids = tuple(record.record_id for record in active_records)
         if record_ids == self._hydrated_record_ids:
             return
         previous = self._hydrated_record_ids
@@ -438,8 +559,12 @@ class SessionRequestEvidenceRuntime:
         anchors = set(self._anchor_record_ids) if append_only else set()
         sources = dict(self._legacy_sources) if append_only else {}
         selected_ids = set(record_ids)
+        resolved_context_record_ids = (
+            context_record_ids if isinstance(context_record_ids, set) else None
+        )
 
         for record in active_records[start:]:
+            yield
             component = record.metadata.get(RESOURCE_EVIDENCE_METADATA_KEY)
             if component is None:
                 continue
@@ -464,15 +589,15 @@ class SessionRequestEvidenceRuntime:
             anchors.add(record.record_id)
 
         snapshots = [
-            (index, record)
-            for index, record in enumerate(active_records)
-            if index >= start
-            and isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
+            (start + offset, record)
+            for offset, record in enumerate(active_records[start:])
+            if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
         ]
         if snapshots:
             reader = ModelInputLogicalComponentReader(active_records)
             covered = anchors | (set(self._committed) & selected_ids)
             for record_index, record in reversed(snapshots):
+                yield
                 component = reader.read(record, RESOURCE_EVIDENCE_COMPONENT)
                 if component is None:
                     continue
@@ -496,8 +621,15 @@ class SessionRequestEvidenceRuntime:
                             "Model Input Resource evidence has no message record id"
                         )
                     message_ids.append(message_id)
+                if resolved_context_record_ids is None:
+                    resolved_context_record_ids = (
+                        context_record_ids()
+                        if callable(context_record_ids)
+                        else context_record_ids
+                    )
                 if all(
-                    message_id in covered or message_id not in context_record_ids
+                    message_id in covered
+                    or message_id not in resolved_context_record_ids
                     for message_id in message_ids
                 ):
                     continue
@@ -530,10 +662,12 @@ class SessionRequestEvidenceRuntime:
                 raise RequestEvidenceIntegrityError(
                     "Resource evidence source snapshot is outside selected ancestry"
                 )
+        self._require_open()
         self._recovered = staged
         self._anchor_record_ids = anchors
         self._legacy_sources = sources
         self._hydrated_record_ids = record_ids
+        self._certified_evidence_free_snapshots.clear()
 
     def _recover_component(
         self,

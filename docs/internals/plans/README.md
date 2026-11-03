@@ -9,6 +9,15 @@ This directory contains implementation plans for documentation and development w
 
 ## Current Plans
 
+- [Optional Harness Goal Component Design](./2026-10-17-goal-component-design.md) proposes complete Goal behavior as a built-in, optional Session owner component; managed Plugin delivery is deferred until independent delivery is needed. [Three-view review](./2026-10-17-goal-component-reviews.md) records the new independent architecture, runtime and delivery assessment. The [Plugin proposal](./2026-10-16-goal-plugin-design.md), its [review evidence](./2026-10-16-goal-plugin-reviews.md), the [Coding-owned R3 proposal](./2026-10-15-goal-command-plan.md) and its [reviews](./2026-10-15-goal-command-reviews.md) remain historical inputs; implementation remains future work.
+- [Third-party Worker Admission Delivery](./2026-10-13-third-party-worker-admission-goal2.md)
+  tracks Goal 2's explicit native author/operator flow, real Session lifecycle
+  evidence and remaining delivery gates.
+- [Resume Compatibility And Background Activation Design](./2026-10-12-resume-compatibility-and-activation-design.md)
+  proposes ordinary resume under the current environment, background pure
+  planning, reuse of existing prepare owners, and shared Embedded/LMUX
+  continuation semantics. Independent GPT-6 Astra review evidence is recorded
+  in [Resume Compatibility And Activation Review](./2026-10-12-resume-compatibility-and-activation-review.md).
 - [Model Input Persistence And Capacity Recovery Tracking Draft](./2026-08-15-model-input-persistence-capacity-recovery.md)
   is the local umbrella-issue draft for the PR #451 persistence, failure,
   selection, and bounded-recovery follow-up.

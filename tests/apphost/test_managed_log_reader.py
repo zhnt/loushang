@@ -9,7 +9,7 @@ from time import monotonic
 import pytest
 
 from loushang.apphost.managed._files import ManagedStorageError, PrivateManagedDirectory
-from loushang.apphost.managed.event_log import ManagedLifecycleLogV1
+from loushang.apphost.managed.event_log import ManagedLifecycleLogV1, _encode
 from tests.apphost.test_managed_namespace_admission import tree
 
 from . import test_managed_event_log as fixtures
@@ -66,9 +66,13 @@ def test_reader_limits_actual_pread_and_handles_cut_first_frame(log, monkeypatch
     writer, directory, service_id = log
     # Use the production cap for this same charged slot.
     writer = ManagedLifecycleLogV1(directory, writer._budget, service_id)
-    for _ in range(220):
-        writer.write(fixtures.event())
-    content = (directory._root / "lifecycle-0.jsonl").read_bytes()
+    # One production write creates and binds the charged file. The case validates
+    # bounded reads, so build the remaining valid frames without 219 unrelated
+    # lock, SQLite and durability transactions.
+    assert writer.write(fixtures.event()) == 1
+    path = directory._root / "lifecycle-0.jsonl"
+    content = b"".join(_encode(fixtures.event(), sequence) for sequence in range(1, 221))
+    path.write_bytes(content)
     assert len(content) > 16384
     assert content[-16385:-16384] != b"\n"
     native = os.pread

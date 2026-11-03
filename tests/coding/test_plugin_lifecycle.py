@@ -30,6 +30,9 @@ from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
+from loushang.coding._plugin_owner_generations import (
+    CodingOwnerGenerationEvidenceError,
+)
 from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.package_epoch_layout import (
     resolve_coding_lifecycle_pre_b_members,
@@ -360,7 +363,7 @@ def _disable_or_remove(
     return event
 
 
-def test_capability_plugin_refuses_legacy_disable_before_product_writes(
+def test_capability_plugin_preserves_legacy_disable_on_ordinary_startup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -379,27 +382,34 @@ def test_capability_plugin_refuses_legacy_disable_before_product_writes(
             cwd=str(workspace),
             persist=True,
         )
-        with pytest.raises(RuntimeError, match="pre-B workspace is unsupported"):
-            create_agent_session(
-                session_manager=manager,
-                model=_model(),
-                services=create_services(
-                    settings_manager=SettingsManager(
-                        ControlConfig(
-                            capabilities={
-                                "coding.arch": "always",
-                                "coding.lsp": "disabled",
-                            },
-                            disabled_plugins=("coding.arch.default",),
-                        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "always",
+                            "coding.lsp": "disabled",
+                        },
+                        disabled_plugins=("coding.arch.default",),
                     )
-                ),
-                composition_set="coding-architecture",
-            )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+
+            assert INSPECT_IMPORT_GRAPH_TOOL_NAME not in session.get_active_tool_names()
+            assert session.package_product_binding_id is None
+        finally:
+            await session.dispose()
 
     asyncio.run(scenario())
-    assert not layout.root.exists()
-    assert not layout.package_root.exists()
+    epoch = resolve_coding_package_epoch_layout(layout)
+    assert not (epoch.control_root / "epoch.jsonl").exists()
 
 
 @pytest.mark.parametrize("action", ("disable", "remove"))
@@ -600,6 +610,64 @@ def test_product_base_lsp_and_arch_share_one_session_runtime_lease(
         finally:
             await session.dispose()
             owner.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux Product route")
+def test_product_on_demand_lsp_activates_after_dormant_startup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import INSPECT_SYMBOL_TOOL_NAME
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "disabled",
+                            "coding.lsp": "on_demand",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-standard",
+        )
+        try:
+            assert session._coding_base_product_compilation is not None
+            assert session._coding_capability_plugin_assembly is None
+            slot = session._deferred_lsp_slot
+            assert slot is not None and slot.state == "dormant"
+            await session.prepare_model_call_runtime()
+            assert slot.state == "dormant"
+            assert INSPECT_SYMBOL_TOOL_NAME not in {
+                tool.name for tool in session.get_all_tools()
+            }
+
+            await session.set_active_tools([INSPECT_SYMBOL_TOOL_NAME])
+            assert slot.state == "active"
+            assert slot.active is not None
+            assert slot.active.current_selection_check is not None
+            assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+            await session.prepare_model_call_runtime()
+        finally:
+            await session.dispose()
 
     asyncio.run(scenario())
 
@@ -1031,17 +1099,10 @@ def test_same_session_manager_rejects_concurrent_product_runtime_until_dispose(
     workspace.mkdir()
 
     async def scenario() -> None:
-        manager = await SessionManager.new(
+        manager = await SessionManager.new_with_composition(
             session_dir=tmp_path / "sessions",
             cwd=str(workspace),
             persist=True,
-        )
-        await manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="product runtime lease")],
-                timestamp=0.0,
-            )
         )
         services = create_services(
             settings_manager=SettingsManager(
@@ -1063,6 +1124,13 @@ def test_same_session_manager_rejects_concurrent_product_runtime_until_dispose(
                     services=services,
                 )
             await first.prepare_model_call_runtime()
+            await manager.append_message(
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text="product runtime lease")],
+                    timestamp=0.0,
+                )
+            )
         finally:
             await first.dispose()
         resumed_manager = await SessionManager.load(manager.get_session_file())
@@ -1180,6 +1248,7 @@ def test_concurrent_last_session_close_linearizes_exact_retirement(
             retirement_handle=f"retirement:session-{sequence}",
             contribution_ids=("coding.standard",),
         )
+        lease.prepare_owner_generations((receipt,))
         lease.publish_owner_generations((receipt,))
         lease.retire_owner_generations((receipt,))
 
@@ -1209,7 +1278,7 @@ def test_concurrent_last_session_close_linearizes_exact_retirement(
     assert len(completed.latest_outcomes) == 2
 
 
-def test_public_lease_publish_writes_prepared_evidence_first(tmp_path: Path) -> None:
+def test_public_lease_publish_requires_explicit_preparation(tmp_path: Path) -> None:
     lifecycle = _lifecycle(tmp_path)
     key = lifecycle.installation_key("coding.base")
     lifecycle.bootstrap_first_party_default(key, _package_ref())
@@ -1226,6 +1295,12 @@ def test_public_lease_publish_writes_prepared_evidence_first(tmp_path: Path) -> 
         contribution_ids=("coding.standard",),
     )
 
+    with pytest.raises(
+        CodingOwnerGenerationEvidenceError, match="requires prepared generation"
+    ):
+        lease.publish_owner_generations((receipt,))
+    assert not lifecycle.layout.owner_generation_evidence.exists()
+    lease.prepare_owner_generations((receipt,))
     lease.publish_owner_generations((receipt,))
 
     evidence = lifecycle.owner_evidence.family(lease.family.family_id)
@@ -1271,6 +1346,7 @@ def test_startup_lock_fault_injection_requires_positive_orphan_evidence(
         contribution_ids=("coding.standard",),
     )
     if publish_owner_evidence:
+        lease.prepare_owner_generations((receipt,))
         lease.publish_owner_generations((receipt,))
 
     recovered = build_coding_plugin_lifecycle(
@@ -2247,19 +2323,11 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
     session_dir = tmp_path / "sessions"
 
     async def scenario() -> None:
-        first_manager = await SessionManager.new(
+        first_manager = await SessionManager.new_with_composition(
             session_dir=session_dir,
             cwd=str(workspace),
             persist=True,
         )
-        await first_manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="resume lifecycle")],
-                timestamp=0.0,
-            )
-        )
-        session_file = first_manager.get_session_file()
         first = create_agent_session(
             session_manager=first_manager,
             model=_model(),
@@ -2270,6 +2338,14 @@ def test_product_session_resume_reacquires_lease_for_same_selected_base(
             ),
         )
         await first.prepare_model_call_runtime()
+        await first_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="resume lifecycle")],
+                timestamp=0.0,
+            )
+        )
+        session_file = first_manager.get_session_file()
         first_base = first._coding_base_product_compilation
         assert first_base is not None
         selected_revision = first_base.selected_manifest.snapshot.package_revision
@@ -2346,17 +2422,11 @@ def test_product_arch_resume_reuses_selected_revision_and_private_cache(
     )
 
     async def scenario() -> None:
-        first_manager = await SessionManager.new(
+        first_manager = await SessionManager.new_with_composition(
             session_dir=session_dir,
             cwd=str(workspace),
+            composition_set="coding-architecture",
             persist=True,
-        )
-        await first_manager.append_message(
-            UserMessage(
-                role="user",
-                content=[TextPart(type="text", text="resume Arch cache")],
-                timestamp=0.0,
-            )
         )
         first = create_agent_session(
             session_manager=first_manager,
@@ -2365,6 +2435,13 @@ def test_product_arch_resume_reuses_selected_revision_and_private_cache(
             composition_set="coding-architecture",
         )
         await first.prepare_model_call_runtime()
+        await first_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="resume Arch cache")],
+                timestamp=0.0,
+            )
+        )
         first_assembly = first._coding_capability_plugin_assembly
         assert first_assembly is not None
         assert first_assembly.tool_owner_for("coding.arch.default") is not None

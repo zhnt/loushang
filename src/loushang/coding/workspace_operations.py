@@ -6,7 +6,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    ExecutionProfileProvider,
+    select_execution_profile,
+)
 from loushang.harness.workspace.operations import (
     OperationResult,
     ToolOperations,
@@ -20,6 +24,7 @@ class CodingWorkspaceOperations:
     root: Path
     operations: ToolOperations
     execution_profile: EffectiveExecutionProfile
+    execution_profile_provider: ExecutionProfileProvider | None = None
 
     def __post_init__(self) -> None:
         root = self.root.expanduser().resolve()
@@ -81,23 +86,25 @@ class CodingWorkspaceOperations:
     def walk_files(self, path: Path) -> OperationResult[Iterable[Path]]:
         return self.operations.walk_files(self._read_path(path))
 
-    def _read_path(self, path: Path) -> Path:
+    def _read_path(self, path: Path, profile: EffectiveExecutionProfile | None = None) -> Path:
+        profile = profile or select_execution_profile(self.execution_profile, self.execution_profile_provider)
         candidate = path.expanduser().resolve()
-        if not (candidate == self.root or candidate.is_relative_to(self.root)):
+        if self.execution_profile_provider is None and not candidate.is_relative_to(self.root):
             raise PermissionError(
                 f"workspace operation path is outside the admitted root: {path}"
             )
-        if _covered(candidate, self.execution_profile.denied_roots):
+        if _covered(candidate, profile.denied_roots):
             raise PermissionError(f"workspace operation path is denied: {path}")
-        if not _covered(candidate, self.execution_profile.readable_roots):
+        if not _covered(candidate, profile.readable_roots):
             raise PermissionError(
                 f"workspace operation path is outside the admitted readable roots: {path}"
             )
         return candidate
 
     def _write_path(self, path: Path) -> Path:
-        candidate = self._read_path(path)
-        if not _covered(candidate, self.execution_profile.writable_roots):
+        profile = select_execution_profile(self.execution_profile, self.execution_profile_provider)
+        candidate = self._read_path(path, profile)
+        if not _covered(candidate, profile.writable_roots):
             raise PermissionError(
                 "workspace operation path is outside the admitted writable roots"
             )

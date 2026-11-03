@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from loushang.harness.tools.workspace.output_preview import (
+from loushang.harness.tools.output_preview import (
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
 )
@@ -26,12 +28,13 @@ from loushang.harnesstui.conversation.transcript_presentation import (
 from loushang.harnesstui.conversation.transcript_style import (
     apply_transcript_style as apply_coding_transcript_style,
 )
-from loushang.tui import (
-    Composer,
-    LoushangWelcomePanel,
-    loushang_welcome_theme,
+from loushang.tui import Composer, LoushangWelcomePanel, loushang_welcome_theme
+from loushang.tui.cell_width import (
+    TAB_WIDTH,
+    strip_control_sequences,
+    truncate_to_width,
+    wrap_cells,
 )
-from loushang.tui.cell_width import TAB_WIDTH, truncate_to_width, wrap_cells
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.transcript import (
     ToolExecutionRecord,
@@ -42,6 +45,7 @@ DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320
 DEFAULT_STABLE_RENDER_CACHE_ENTRY_LIMIT = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
 DEFAULT_TOOL_PREVIEW_SCREEN_ROWS = 7
 _TOOL_PREVIEW_HINT = "ctrl + t to view transcript"
+_NON_PLAIN_PREVIEW_CHAR = re.compile(r"[^\x20-\x7e\n]")
 
 _CODING_SCREEN_FRAME_COPY = ScreenFrameCopy(
     working_label="Working",
@@ -155,16 +159,18 @@ def _collapse_coding_tool_preview(
     if max_rows < 1:
         return ""
     text = text.replace("\t", " " * TAB_WIDTH)
-    rows = wrap_cells(text, width=width)
-    if len(rows) <= max_rows:
-        return "\n".join(rows)
+    row_count, head_rows, tail_rows = _preview_wrapped_rows(
+        text, width=width, limit=max_rows
+    )
+    if row_count <= max_rows:
+        return "\n".join(head_rows)
 
     marker_rows = 1
     while True:
         visible_budget = max(0, max_rows - marker_rows)
         head_budget = visible_budget if not tail else visible_budget // 2
         tail_budget = 0 if not tail else visible_budget - head_budget
-        hidden_rows = max(0, len(rows) - head_budget - tail_budget)
+        hidden_rows = max(0, row_count - head_budget - tail_budget)
         marker = f"… +{hidden_rows} lines ({_TOOL_PREVIEW_HINT})"
         updated_marker_rows = len(wrap_cells(marker, width=width))
         if updated_marker_rows <= marker_rows:
@@ -173,16 +179,61 @@ def _collapse_coding_tool_preview(
 
     if marker_rows > max_rows:
         compact_marker = truncate_to_width(
-            f"ctrl+t · +{len(rows)}",
+            f"ctrl+t · +{row_count}",
             max_width=width * max_rows,
             ellipsis="…",
         )
         return "\n".join(wrap_cells(compact_marker, width=width))
     if marker_rows == max_rows:
         return "\n".join(wrap_cells(marker, width=width))
-    head = rows[:head_budget]
-    tail_rows = rows[-tail_budget:] if tail_budget else []
-    return "\n".join([*head, *wrap_cells(marker, width=width), *tail_rows])
+    head = head_rows[:head_budget]
+    tail_lines = tail_rows[-tail_budget:] if tail_budget else []
+    return "\n".join([*head, *wrap_cells(marker, width=width), *tail_lines])
+
+
+def _preview_wrapped_rows(
+    text: str, *, width: int, limit: int
+) -> tuple[int, list[str], list[str]]:
+    """Count wrapped rows while retaining only the rows a preview can show."""
+
+    if width <= 0:
+        raise ValueError("width must be positive")
+    # Most command output consists of short printable lines. Count those in C
+    # and retain only the visible ends instead of visiting every line in Python.
+    if (
+        limit > 0
+        and re.search(rf"[^\n]{{{width + 1}}}", text) is None
+        and _NON_PLAIN_PREVIEW_CHAR.search(text) is None
+    ):
+        count = text.count("\n") + 1
+        return (
+            count,
+            text.split("\n", limit)[:limit],
+            text.rsplit("\n", limit)[-limit:],
+        )
+    head: list[str] = []
+    tail: deque[str] = deque(maxlen=limit)
+    count = 0
+    for line in strip_control_sequences(text).split("\n"):
+        if line.isascii() and line.isprintable():
+            rows = max(1, (len(line) + width - 1) // width)
+            if rows == 1:
+                if len(head) < limit:
+                    head.append(line)
+                tail.append(line)
+            else:
+                missing = max(0, limit - len(head))
+                for index in range(min(rows, missing)):
+                    head.append(line[index * width : (index + 1) * width])
+                for index in range(max(0, rows - limit), rows):
+                    tail.append(line[index * width : (index + 1) * width])
+        else:
+            wrapped = wrap_cells(line, width=width)
+            rows = len(wrapped)
+            head.extend(wrapped[: max(0, limit - len(head))])
+            tail.extend(wrapped[-limit:])
+        count += rows
+    return count, head, list(tail)
 
 
 def _coding_welcome_panel(

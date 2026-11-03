@@ -63,6 +63,7 @@ def test_output_debt_stops_disposal_before_graph_or_transcript_access():
         # Deliberately has no graph, side-question or model-call state: capture
         # must settle before disposal can even access those downstream owners.
         product = SimpleNamespace(
+            _resource_loader=None,
             _close_output_captures=failed_close,
             _fence_output_captures=lambda: None,
             _side_question_consumer=None,
@@ -93,6 +94,7 @@ def test_side_question_is_cancelled_before_capture_drain():
             raise AssertionError("not reached")
 
         product = SimpleNamespace(
+            _resource_loader=None,
             _fence_output_captures=lambda: calls.append("fence"),
             _side_question_consumer=SimpleNamespace(cancel_and_wait=cancel_and_wait),
             _close_output_captures=close_outputs,

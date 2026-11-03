@@ -61,6 +61,8 @@ jobs:
           src/loushang/coding/package_product_worker_start_gate.py
           src/loushang/coding/package_product_worker_start_gate_journal.py
           src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/coding/package_product_worker_cleanup_evidence.py
+          src/loushang/coding/package_product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
           src/loushang/coding/package_product_worker_capability.py
           src/loushang/coding/package_product_worker_provider.py
@@ -115,6 +117,8 @@ jobs:
           src/loushang/coding/package_product_worker_start_gate.py
           src/loushang/coding/package_product_worker_start_gate_journal.py
           src/loushang/coding/package_product_worker_start_gate_recovery.py
+          src/loushang/coding/package_product_worker_cleanup_evidence.py
+          src/loushang/coding/package_product_worker_crash_c5_settlement.py
           src/loushang/harness/resources/packages/product_epoch_guard.py
           src/loushang/coding/package_product_worker_native_approval.py
           src/loushang/coding/package_product_worker_native_release.py
@@ -197,7 +201,6 @@ jobs:
           name: h6-posix-native-pytest-report
           path: .artifacts/h6-posix-native.xml
           if-no-files-found: error
-
       - name: Create H6.3 native report directory
         if: matrix.os == 'windows-2022'
         run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
@@ -312,6 +315,7 @@ jobs:
           LOUSHANG_HOSTING_EXPECTED_ENDPOINT: ${{ matrix.endpoint }}
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
+          ${{ matrix.os == 'ubuntu-24.04' && '--ignore=tests/hosting/test_posix_launch_preparation.py --ignore=tests/hosting/test_posix_release_launcher.py' || matrix.os == 'windows-2022' && '--ignore=tests/hosting/test_windows_launch_preparation_native.py --ignore=tests/hosting/test_windows_backend_material_native.py --ignore=tests/hosting/test_plc9c5_c53_windows_mechanics.py --ignore=tests/hosting/test_plc9c5_c55b_windows_lpac_native.py' || '' }}
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
           tests/harness/worker/test_hosting_adapter.py
@@ -334,8 +338,76 @@ jobs:
           tests/architecture/test_hosting_architecture_baseline.py
           -q
 
-  worker-sustained:
+  worker-p4-ordinary:
     if: ${{ fromJSON(inputs.plan).checks.hosting }}
+    name: Worker P4 ordinary Coding Session (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run hosted Worker Session PR smoke
+        if: ${{ fromJSON(inputs.plan).hosting_worker_pr_smoke }}
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTEST_ADDOPTS: >-
+            --junitxml=.artifacts/worker-p4-ordinary.xml
+        run: |
+          mkdir -p .artifacts
+          uv run --extra dev python scripts/dev/run_pytest.py \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_hosted_first_session_reaches_installed_product \
+            -m 'not live' \
+            -vv
+
+      - name: Run installed Product ordinary Session full gate
+        if: ${{ !fromJSON(inputs.plan).hosting_worker_pr_smoke }}
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTEST_ADDOPTS: >-
+            --junitxml=.artifacts/worker-p4-ordinary.xml
+        run: |
+          mkdir -p .artifacts
+          uv run --extra dev python scripts/dev/run_pytest.py \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_reaches_installed_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_disable_fences_pinned_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_public_coding_session_update_fences_pinned_product \
+            tests/coding/test_package_worker_candidate_wheel.py::test_explicit_worker_hosted_first_session_reaches_installed_product \
+            -m 'not live' \
+            -vv
+
+      - name: Reject empty, skipped, or failing P4 PR smoke report
+        if: ${{ fromJSON(inputs.plan).hosting_worker_pr_smoke }}
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/worker-p4-ordinary.xml
+          --require-tests-count 1
+
+      - name: Reject empty, skipped, or failing P4 full report
+        if: ${{ !fromJSON(inputs.plan).hosting_worker_pr_smoke }}
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/worker-p4-ordinary.xml
+          --require-tests-count 4
+
+      - name: Upload P4 ordinary pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-p4-ordinary-pytest-report
+          path: .artifacts/worker-p4-ordinary.xml
+          if-no-files-found: error
+
+  worker-sustained:
+    if: ${{ fromJSON(inputs.plan).checks.hosting_sustained }}
     name: Worker sustained Product query (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -371,18 +443,3 @@ jobs:
           name: worker-sustained-pytest-report
           path: .artifacts/worker-sustained.xml
           if-no-files-found: error
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [hosting-quality, worker-sustained]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"hosting-quality":"hosting","worker-sustained":"hosting"}'

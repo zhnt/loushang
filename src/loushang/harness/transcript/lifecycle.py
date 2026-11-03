@@ -35,6 +35,7 @@ from loushang.harness.conversation import (
     StoreNotFoundError,
 )
 from loushang.harness.conversation.store import ConversationOperationScope
+from loushang.harness.conversation.stores.file import FileConversationStore
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -246,6 +247,8 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
                     "transcript candidate ownership changed during disposal"
                 )
             if self._writer_owner is None:
+                if isinstance(self.runtime_binding.store, FileConversationStore):
+                    await self.runtime_binding.store.drain_advisory_head_updates()
                 await self.runtime_binding.dispose()
             else:
                 await self._writer_owner._dispose_bound_resources()

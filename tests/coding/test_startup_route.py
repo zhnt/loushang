@@ -103,3 +103,46 @@ assert 'loushang.coding.cli.application' not in sys.modules
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("argv", [(), ("--tui",)])
+def test_exact_interactive_entry_skips_grammar_before_first_screen(tmp_path, argv):
+    source = Path(__file__).resolve().parents[2] / "src"
+    script = (
+        f"import sys; sys.path.insert(0, {str(source)!r})\n"
+        + f"argv = {argv!r}\n"
+        + """
+import asyncio
+from io import StringIO
+from loushang.coding.cli import __main__ as entry
+from loushang.coding.cli import screen_startup
+
+class TTY(StringIO):
+    def isatty(self):
+        return True
+
+sys.stdin, sys.stdout, sys.stderr = TTY(), TTY(), TTY()
+assert 'loushang.coding.cli.startup_route' not in sys.modules
+assert 'loushang.coding.cli.args' not in sys.modules
+
+async def screen(actual_argv, *, project_root, cwd):
+    assert actual_argv == argv
+    assert 'loushang.coding.cli.startup_route' not in sys.modules
+    assert 'loushang.coding.cli.args' not in sys.modules
+    assert 'loushang.coding.cli.application' not in sys.modules
+    assert cwd is None
+    return 7
+
+screen_startup.run_screen_first_cli = screen
+assert asyncio.run(entry._run_entry(argv)) == 7
+"""
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        cwd=tmp_path,
+        env={"HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    assert result.returncode == 0, result.stderr

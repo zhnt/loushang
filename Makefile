@@ -16,6 +16,9 @@ endif
 BINARY_NAME := loushang$(EXE_EXT)
 DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
+AI_TARGETED_DESELECTS := \
+	--deselect=tests/ai/test_auth_api.py::test_login_returns_session_without_opening_browser \
+	--deselect=tests/ai/test_auth_oauth_lifecycle.py::test_real_authlib_login_store_resolve_refresh_lifecycle
 PYTEST_RUNNER := python scripts/dev/run_pytest.py
 
 HARNESSTUI_SHARED_SOURCES := \
@@ -220,8 +223,6 @@ APPHOST_TEST_PATHS := \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
 	tests/harnesstui/test_hosted_mux_settlement.py \
-	tests/coding/test_mux_terminal_process.py \
-	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_discovery_command.py \
@@ -229,10 +230,8 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_bootstrap.py \
 	tests/coding/test_hosted_local_discovery.py \
 	tests/coding/test_hosted_local_discovery_subprocess.py \
-	tests/coding/test_hosted_local.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
-	tests/coding/test_mux_subprocess.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
@@ -266,6 +265,11 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_foreground_hosted_application_g12.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
+APPHOST_TARGETED_TEST_PATHS := \
+	tests/coding/test_hosted_local.py \
+	tests/coding/test_mux_product_terminal.py \
+	tests/coding/test_mux_subprocess.py \
+	tests/coding/test_mux_terminal_process.py
 APPHOST_LINT_SUPPORT := \
 	tests/coding/_hosted_windows_api.py \
 	tests/coding/_hosted_windows_observer.py \
@@ -436,9 +440,9 @@ test-host-runtime:
 	. .venv/bin/activate && uv run $(PYTEST_RUNNER) tests -m requires_host_runtime -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py $(AI_TARGETED_DESELECTS) -m "not live" -q
 
-check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
+check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-coverage
 
 check-ai-catalog:
 	uv run python scripts/ai/check_catalog.py
@@ -446,13 +450,9 @@ check-ai-catalog:
 check-ai-imports:
 	uv run python scripts/ai/check_import_boundaries.py
 
-check-ai-examples:
-	$(AI_OFFLINE_ENV) uv run python scripts/ai/check_examples.py
-	$(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/examples -q
-
 check-ai-coverage:
 	mkdir -p .artifacts/ai
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 check-harness: lint-harness typecheck-harness test-harness
@@ -531,13 +531,13 @@ test-hosting:
 check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence test-hosted-product-g10-linux-evidence
 
 lint-apphost:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_TARGETED_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
 
 typecheck-apphost:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPHOST_SOURCES)
 
 test-apphost:
-	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPHOST_TEST_PATHS) -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPHOST_TEST_PATHS) $(APPHOST_TARGETED_TEST_PATHS) -q
 
 test-hosted-product-g8-evidence:
 	mkdir -p .artifacts

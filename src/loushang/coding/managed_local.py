@@ -109,6 +109,13 @@ class CodingManagedLocalCommandV1(CodingLocalCommandV1):
         assert type(self._launch) is CodingManagedLocalLaunchV1
         return self._launch.managed_mux is not None
 
+    def _session_execution(self) -> bool:
+        return False
+
+    def _prepare_session_roots(self) -> None:
+        # Managed installation/startup owns preparation of its admitted store.
+        return None
+
     def _create_attempt(
         self, launch: _LocalLaunchFacts, *, model: Model | ModelSelection | None,
         stream_fn: StreamFn | None, tools: list[ToolDefinition] | None,

@@ -92,7 +92,7 @@
 验收不包含在本次本地候选的交付范围，整体 G18 的提升目标不因此改写。
 
 继承 [governance profile](../governance-profile.md)、
-[architecture method](../../architecture-method/README.md)、
+[Loushang Architecture Governance Profile](../governance-profile.md)、
 [current owner map](current-owner-map.md) 和
 [runtime provenance boundary](runtime-provenance-boundary.md)。
 Current 由源码和测试说明；下文 Target 不等于已实现。

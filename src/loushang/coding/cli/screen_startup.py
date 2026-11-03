@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import os
-import sys
 from dataclasses import replace
 from pathlib import Path
+from threading import Lock
 from typing import Any, TextIO, cast
 
-from loushang.coding.cli.startup_route import screen_startup_eligible
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harnesstui.conversation.startup_host import (
@@ -19,15 +17,15 @@ from loushang.harnesstui.conversation.startup_host import (
     startup_failure_summary,
 )
 from loushang.tui import strip_control_sequences
+from loushang.tui.terminal_backends import native_terminal_input_is_tty
 
 
-def _threaded_loading_supported(stdin: TextIO) -> bool:
-    if sys.platform != "linux":
-        return False
-    try:
-        return os.isatty(stdin.fileno())
-    except (AttributeError, OSError, ValueError):
-        return False
+def screen_startup_eligible(
+    args: Any, plan: Any, *, stdin: TextIO, stdout: TextIO
+) -> bool:
+    from loushang.coding.cli.startup_route import screen_startup_eligible as check
+
+    return check(args, plan, stdin=stdin, stdout=stdout)
 
 
 class StartupOutput:
@@ -71,6 +69,22 @@ class StartupOutput:
         return strip_control_sequences(self._text).strip()[-1000:]
 
 
+class _StartupPhase:
+    """Share coarse Product progress with the borrowed loading screen."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._value: str | None = None
+
+    def set(self, value: str) -> None:
+        with self._lock:
+            self._value = value
+
+    def current(self) -> str | None:
+        with self._lock:
+            return self._value
+
+
 async def run_screen_first_cli(
     raw_argv: tuple[str, ...],
     *,
@@ -93,10 +107,13 @@ async def run_screen_first_cli(
         branch=None,
         session_label=None,
     )
+    phase = _StartupPhase()
+    app.startup_phase_provider = phase.current
     owned_runtime: Any = None
     threaded_startup: Any = None
 
     async def run_tui(**kwargs: Any) -> int:
+        phase.set("opening interface")
         if threaded_startup is not None:
             await threaded_startup.before_product_ui()
         from loushang.coding.ui.mode import run_coding_tui
@@ -117,8 +134,10 @@ async def run_screen_first_cli(
 
         async def build_runtime(**kwargs: Any) -> Any:
             nonlocal owned_runtime
+            phase.set("initializing runtime")
             result = invoke_agent_cli_runtime_builder(binding.runtime_builder, **kwargs)
             owned_runtime = await result if inspect.isawaitable(result) else result
+            phase.set("opening session")
             return owned_runtime
 
         prepared_binding = replace(
@@ -179,7 +198,7 @@ async def run_screen_first_cli(
         return detail or f"Session preparation failed (exit {exit_code})."
 
     startup = ScreenConversationStartup(app, prepare, failure_summary=failure_summary)
-    if _threaded_loading_supported(streams.stdin):
+    if native_terminal_input_is_tty(streams.stdin):
         from loushang.harnesstui.conversation.threaded_startup import (
             ThreadedScreenStartup,
         )

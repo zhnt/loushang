@@ -150,6 +150,9 @@ class HostedMuxScreenV1(ScreenConversationApp):
     def dismiss_details(self) -> None:
         self._help_capabilities = None
         self._detail, self._detail_key = None, None
+        # The detail surface replaced the conversation frame. Rebuild that
+        # frame even when its underlying transcript cursor did not change.
+        self._view_key = None
 
     def invalidate_binding(self) -> None:
         """Explicit rebind/refresh revokes presentation, unlike ordinary Esc."""
@@ -187,6 +190,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
             mux.attachment_id,
             self.shell.notice,
             mux.active_index,
+            self._approval_key(),
             None
             if window is None
             else (window.last_cursor, window.scroll_anchor, window.title, window.request_presentation),
@@ -228,7 +232,11 @@ class HostedMuxScreenV1(ScreenConversationApp):
                 permissions=False,
             )
             self.state.status_message = safe_text(self.shell.notice)
-            if window is not None and window.pending_interaction_text:
+            if self._approval_key() is not None:
+                # The accepted submit has progressed to an approval boundary.
+                # Keep the current approval visible instead of combining it
+                # with the older delivery receipt and dropping both for width.
+                self.state.request_presentation = None
                 self.state.status_message = (
                     "Approval pending: F2 details; /approve /deny"
                 )

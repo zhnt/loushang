@@ -48,7 +48,7 @@ TokenUsageTotalsSource = Literal[
     "mixed_derived",
 ]
 _PROVIDER_CONTEXT_ANCHOR_PURPOSES = frozenset(
-    {"main", "main_turn", "continuation", "retry"}
+    {"main", "main_turn", "continuation", "tool_continuation", "retry"}
 )
 
 

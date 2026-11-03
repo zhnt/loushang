@@ -209,7 +209,10 @@ def test_G13_PLATFORM_GATES_retain_linux_macos_and_windows_evidence() -> None:
     appservice = _read(APPSERVICE_WORKFLOW)
     for platform in ("ubuntu-24.04", "macos-15", "windows-latest"):
         assert platform in appservice
-    assert "make check-appservice" in appservice
+    assert "native-service:" in appservice
+    assert "installed-service:" in appservice
+    assert "run_g16_installed_evidence.py" in appservice
+    assert "run_g17_installed_evidence.py" in appservice
     apphost = _read(APPHOST_WORKFLOW)
     assert "Prove G13 durable continuity on Windows" in apphost
     assert "hosted-application-g13-windows.xml" in apphost

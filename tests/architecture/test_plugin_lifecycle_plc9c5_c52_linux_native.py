@@ -176,17 +176,23 @@ def test_c52_private_imports_are_exact_lazy_and_one_way() -> None:
     posix_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
-        if not path.is_relative_to(HOSTING_ROOT) and private_posix in _imports(path)
+        if not path.is_relative_to(HOSTING_ROOT)
+        and private_posix in _read(path)
+        and private_posix in _imports(path)
     }
     windows_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
-        if not path.is_relative_to(HOSTING_ROOT) and private_windows in _imports(path)
+        if not path.is_relative_to(HOSTING_ROOT)
+        and private_windows in _read(path)
+        and private_windows in _imports(path)
     }
     managed_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
-        if not path.is_relative_to(HOSTING_ROOT) and private_managed in _imports(path)
+        if not path.is_relative_to(HOSTING_ROOT)
+        and private_managed in _read(path)
+        and private_managed in _imports(path)
     }
     assert posix_consumers == {BRIDGE}
     assert windows_consumers == {BRIDGE}

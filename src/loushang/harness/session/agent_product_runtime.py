@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Generic, TypeVar, cast
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticPhase
 from loushang.harness.extensions.context import (
@@ -159,6 +160,7 @@ def build_agent_product_session_runtime_ports(
     session_factory: Callable[..., SessionT],
     persist: bool,
     materialize_new_transcript: bool = False,
+    new_session_header_metadata: Mapping[str, JSONValue] | None = None,
     diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
     record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
     copy_file: FileCopy,
@@ -179,6 +181,7 @@ def build_agent_product_session_runtime_ports(
         persist=persist,
         resolve_cwd_override=resolve_existing_cwd,
         materialize_new_transcript=materialize_new_transcript,
+        new_session_header_metadata=new_session_header_metadata,
     )
 
     def build_session(
@@ -292,6 +295,7 @@ class AgentProductSessionRuntime(
         session_factory: Callable[..., SessionT],
         persist: bool = True,
         materialize_new_transcript: bool = False,
+        new_session_header_metadata: Mapping[str, JSONValue] | None = None,
         current_session: SessionT | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         copy_file: FileCopy = copy_file_exclusive,
@@ -315,6 +319,7 @@ class AgentProductSessionRuntime(
                 session_factory=session_factory,
                 persist=persist,
                 materialize_new_transcript=materialize_new_transcript,
+                new_session_header_metadata=new_session_header_metadata,
                 copy_file=copy_file,
                 verified_copy_file=verified_copy_file,
                 diagnostics_runtime=self._agent_session_diagnostics_runtime,

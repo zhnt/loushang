@@ -452,7 +452,14 @@ def load_jsonl(
     lock_factory: LockFactory | None = None,
     file_io: RootedFileIO | None = None,
     bound_file: RootedFile | None = None,
+    validate_snapshot: Callable[[JsonlSnapshot[H, R]], None] | None = None,
 ) -> JsonlSnapshot[H, R]:
+    """Load records, validating owner semantics before any partial-tail repair.
+
+    The optional validator runs under the same journal lock on the decoded
+    snapshot. Its failure propagates without modifying the journal. It must
+    only inspect the snapshot and must not reopen or mutate the locked journal.
+    """
     target = Path(path)
     lock_mode: LockMode = (
         "exclusive" if load_policy.partial_tail == "repair" else "shared"
@@ -476,6 +483,8 @@ def load_jsonl(
             header_codec=header_codec,
             load_policy=load_policy,
         )
+        if validate_snapshot is not None:
+            validate_snapshot(snapshot)
         partial_tail = next(
             (
                 diagnostic

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-CodingDataKind = Literal["skill", "prompt"]
+CodingDataKind = Literal["skill", "prompt", "theme"]
 
 _SIMPLE_ID = re.compile(r"[a-z][a-z0-9]*\Z")
 _RESOURCE_NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -39,8 +39,8 @@ def create_coding_data_scaffold(
     deliberately limited to the currently admitted Skill and Prompt profiles.
     """
 
-    if kind not in {"skill", "prompt"}:
-        raise ValueError("Coding data scaffold kind must be skill or prompt")
+    if kind not in {"skill", "prompt", "theme"}:
+        raise ValueError("Coding data scaffold kind must be skill, prompt, or theme")
     root = Path(destination).expanduser().absolute()
     resolved_plugin_id = plugin_id if plugin_id is not None else root.name
     if _SIMPLE_ID.fullmatch(resolved_plugin_id) is None:
@@ -57,6 +57,8 @@ def create_coding_data_scaffold(
         Path("skills") / name / "SKILL.md"
         if kind == "skill"
         else Path("prompts") / f"{name}.md"
+        if kind == "prompt"
+        else Path("themes") / f"{name}.json"
     )
     source = root / relative_source
     source_body = (
@@ -64,6 +66,8 @@ def create_coding_data_scaffold(
         f"---\n# {name}\n\nWrite the steps this Skill should guide.\n"
         if kind == "skill"
         else f"# {name}\n\nWrite the task and expected output here.\n"
+        if kind == "prompt"
+        else '{"schemaVersion":1,"tokens":{"welcome.title":{"color":"red","bold":true}}}\n'
     )
     root.mkdir(mode=0o700)
     source.parent.mkdir(parents=True)

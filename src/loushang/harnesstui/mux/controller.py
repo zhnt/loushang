@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from secrets import token_hex
+
 from loushang.appserver.client import AppClientV1, AppConnectionClosedError
+from loushang.appserver.execution.client import ExecutionClientV1
+from loushang.appserver.execution.recovery import (
+    PendingSubmissionV1,
+    SubmissionDeliveryV1,
+    SubmissionRecoveryV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
+    AppFailureV1,
     AppServiceError,
     InteractionOutcomeV1,
     InteractionRespondV1,
@@ -14,6 +23,8 @@ from loushang.appserver.protocol import (
     MuxMemberOpenV1,
     MuxSelectorV1,
     SessionOpenSpecV1,
+    SessionSnapshotRequestV1,
+    SessionSubmissionModeV1,
     TurnInterruptV1,
     TurnTextV1,
 )
@@ -25,7 +36,14 @@ from .reducer import preserve_local_state, reduce_events, state_from_attachment
 class HostedMuxControllerV1:
     """Coordinate explicit hosted actions; local window actions stay local."""
 
-    __slots__ = ("_client", "_mailbox_capacity", "_selector", "state")
+    __slots__ = (
+        "_client",
+        "_execution_client",
+        "_mailbox_capacity",
+        "_selector",
+        "_submissions",
+        "state",
+    )
 
     def __init__(
         self,
@@ -33,6 +51,7 @@ class HostedMuxControllerV1:
         *,
         selector: MuxSelectorV1,
         mailbox_capacity: int = 256,
+        execution_client: ExecutionClientV1 | None = None,
     ) -> None:
         for method in (
             "attach_mux",
@@ -49,8 +68,10 @@ class HostedMuxControllerV1:
             if not callable(getattr(client, method, None)):
                 raise TypeError("client does not implement AppClientV1")
         self._client = client
+        self._execution_client = execution_client
         self._selector = selector
         self._mailbox_capacity = mailbox_capacity
+        self._submissions: dict[tuple[object, str], SubmissionRecoveryV1] = {}
         self.state: HostedMuxState | None = None
 
     async def start(self) -> HostedMuxState:
@@ -127,7 +148,46 @@ class HostedMuxControllerV1:
             window.member_id,
             selected,
         )
-        await self._client.start_turn(request)
+        if window.submission_mode is SessionSubmissionModeV1.LEGACY:
+            await self._client.start_turn(request)
+        else:
+            execution_client = self._execution_client
+            if execution_client is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            # Keep the v1 validation bound while changing only delivery semantics.
+            key = (window.identity, selected)
+            recovery = self._submissions.get(key)
+            if recovery is not None and recovery.delivery not in {
+                SubmissionDeliveryV1.UNKNOWN,
+                SubmissionDeliveryV1.NOT_FOUND,
+            }:
+                recovery = None
+            if recovery is None:
+                recovery = SubmissionRecoveryV1(
+                    PendingSubmissionV1(
+                        execution_client.service_instance_id,
+                        window.identity,
+                        token_hex(16),
+                        selected,
+                    )
+                )
+                self._submissions[key] = recovery
+            await recovery.submit(
+                execution_client,
+                SessionSnapshotRequestV1(
+                    state.attachment_id,
+                    state.controller_generation,
+                    window.member_id,
+                ),
+            )
+            record = recovery.record
+            if record is None:
+                raise RuntimeError("execution submission has no record")
+            outcome = record.state.outcome
+            if outcome is not None and isinstance(outcome.legacy_result, AppFailureV1):
+                raise AppServiceError(outcome.legacy_result.code)
+            if self._submissions.get(key) is recovery:
+                del self._submissions[key]
         current = self.state
         if current is not None and current.mux_space_id == state.mux_space_id:
             for item in current.windows:

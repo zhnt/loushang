@@ -57,6 +57,7 @@ from .protocol.connection_profile import (
     supports_execution,
     supports_managed_mux,
     supports_managed_mux_close,
+    supports_resume_input_lookup,
 )
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
@@ -158,6 +159,7 @@ class AppServerConnectionV1:
             self._last_id = number
             control = request.operation in CONTROL_OPERATIONS or request.operation in {
                 ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GET, ExecutionOperationV1.FIND,
+                ExecutionOperationV1.RESUME_INPUT_LOOKUP,
             } or isinstance(request, ManagedMuxCloseCallV1) and request.read_result
             maximum = MAX_CONTROL_REQUESTS if control else MAX_ORDINARY_REQUESTS
             if self._counts[control] >= maximum:
@@ -242,6 +244,11 @@ class AppServerConnectionV1:
         assert self._execution is not None
         result: ExecutionResultV1
         try:
+            if (
+                request.operation is ExecutionOperationV1.RESUME_INPUT_LOOKUP
+                and not supports_resume_input_lookup(self._profile)
+            ):
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             result = await dispatch_execution(self._execution, request)
         except ExecutionServiceErrorV1 as error:
             result = ExecutionFailureV1(error.code)

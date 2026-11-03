@@ -173,6 +173,16 @@ class PackageProductPosixFencedRuntimeOwner:
         with self._close_lock:
             self._assert_current_unlocked()
 
+    def observe_current_epoch_fence(self) -> PackageEpochFenceReceiptV1:
+        """Read this original owner's current fence without repair or a lease."""
+
+        with self._close_lock:
+            self._assert_current_unlocked(observe_only=True)
+            fence = self.cutover_result.fence
+            if fence is None:
+                raise ValueError("Package Product fence is unavailable")
+            return fence
+
     @property
     def control_root(self) -> Path:
         return self._file_io.root
@@ -267,7 +277,7 @@ class PackageProductPosixFencedRuntimeOwner:
         with self._local_lease_lock:
             self._local_lease_ids.discard(lease_id)
 
-    def _assert_current_unlocked(self) -> None:
+    def _assert_current_unlocked(self, *, observe_only: bool = False) -> None:
         if self._closed:
             raise ValueError("Package Product epoch owner is closed")
         metadata = os.fstat(self._root_fd)
@@ -280,7 +290,7 @@ class PackageProductPosixFencedRuntimeOwner:
             control_root=self._file_io.root,
             store_id=self.registry.store_id,
             epochs_root_name=self._epochs_root_name,
-            read_only=self._read_only,
+            read_only=self._read_only or observe_only,
         )
         if observed != self.cutover_result:
             raise ValueError("Package Product epoch changed")

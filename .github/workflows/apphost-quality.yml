@@ -128,7 +128,10 @@ jobs:
           src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
-      - name: Test AppHost G8 through G13
+      - name: Prepare regression reports
+        run: mkdir -p .artifacts
+
+      - name: Run AppHost regression once
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/dev/test_run_g16_installed_evidence.py
@@ -140,21 +143,18 @@ jobs:
           tests/coding/test_apphost_canary_control.py
           tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_product.py
+          tests/harness/worker/test_coding_product_worker_canary.py::test_product_normal_close_retires_exact_attempt_without_global_rollback
           tests/coding/test_appservice_adapter.py
           tests/coding/test_hosted_application.py
           tests/coding/test_hosted_bootstrap.py
-          tests/coding/test_hosted_local.py
           tests/coding/test_hosted_local_ownership.py
           tests/coding/test_mux_command.py
-          tests/coding/test_mux_terminal_process.py
-          tests/coding/test_mux_product_terminal.py
           tests/harnesstui/test_hosted_mux_shell.py
           tests/harnesstui/test_hosted_mux_details.py
           tests/tui/test_text_pager.py
           tests/harnesstui/test_hosted_mux_terminal.py
           tests/tui/test_terminal_session.py
           tests/tui/test_composer_edit_buffer.py
-          tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
@@ -174,11 +174,11 @@ jobs:
           tests/architecture/test_durable_hosted_application_continuity_g13_design.py
           tests/architecture/test_durable_hosted_application_continuity_g13.py
           -q
+          --junitxml=.artifacts/apphost-regression.xml
 
-      - name: Retain Hosted Product G8 evidence
+      - name: Derive Product join evidence
         run: |
-          mkdir -p .artifacts
-          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_product.py tests/harness/worker/test_coding_product_worker_canary.py::test_product_normal_close_retires_exact_attempt_without_global_rollback -q --junitxml=.artifacts/hosted-product-g8.xml
+          uv run --extra dev python scripts/ci/derive_junit.py .artifacts/apphost-regression.xml .artifacts/hosted-product-g8.xml --class tests.coding.test_apphost_product --case tests.harness.worker.test_coding_product_worker_canary::test_product_normal_close_retires_exact_attempt_without_global_rollback
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
 
@@ -189,10 +189,9 @@ jobs:
           name: hosted-product-g8-linux-junit
           path: .artifacts/hosted-product-g8.xml
           if-no-files-found: error
-
-      - name: Retain Hosted Product G9 Linux evidence
+      - name: Derive composition and rollback evidence
         run: |
-          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_composition.py -q --junitxml=.artifacts/hosted-product-g9-linux.xml
+          uv run --extra dev python scripts/ci/derive_junit.py .artifacts/apphost-regression.xml .artifacts/hosted-product-g9-linux.xml --class tests.coding.test_apphost_composition
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-linux.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-LINUX .artifacts/hosted-product-g9-linux.xml
 
@@ -204,12 +203,20 @@ jobs:
           path: .artifacts/hosted-product-g9-linux.xml
           if-no-files-found: error
 
-      - name: Retain Hosted Product G10 Linux evidence
+      - name: Derive canary evidence and verify installed runtime
         run: |
-          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_canary_control.py tests/coding/test_apphost_canary.py tests/coding/test_cli_apphost.py tests/architecture/test_hosted_product_g10_explicit_canary.py -k G10 -q --junitxml=.artifacts/hosted-product-g10-linux.xml
+          uv run --extra dev python scripts/ci/derive_junit.py .artifacts/apphost-regression.xml .artifacts/hosted-product-g10-linux.xml --class tests.coding.test_apphost_canary_control --class tests.coding.test_apphost_canary --class tests.coding.test_cli_apphost --class tests.architecture.test_hosted_product_g10_explicit_canary --name-contains G10
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-linux.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-LINUX .artifacts/hosted-product-g10-linux.xml
           uv run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend posix-process-group-v1
+
+      - name: Upload complete AppHost regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apphost-regression-linux-junit
+          path: .artifacts/apphost-regression.xml
+          if-no-files-found: error
 
       - name: Upload Hosted Product G10 Linux JUnit
         if: always()
@@ -220,7 +227,7 @@ jobs:
           if-no-files-found: error
 
   apphost-windows-native-gate:
-    if: ${{ fromJSON(inputs.plan).checks.apphost }}
+    if: ${{ fromJSON(inputs.plan).checks.apphost && fromJSON(inputs.plan).e2e }}
     name: apphost-windows-native-gate
     runs-on: windows-2022
     timeout-minutes: 10
@@ -275,18 +282,3 @@ jobs:
             .artifacts/hosted-product-g10-windows.xml
             .artifacts/hosted-application-g13-windows.xml
           if-no-files-found: error
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [apphost-quality, apphost-windows-native-gate]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"apphost-quality":"apphost","apphost-windows-native-gate":"apphost"}'

@@ -64,7 +64,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
         # Match the recovery inventory's Product-gate-before-journal order.
-        with self._product.gc_gate.guard(), self._thread_lock:
+        with self._product.gc_gate.guard(require_write=True), self._thread_lock:
             self._product.assert_root_gc_authority_current()
             with (
                 WindowsPrivateDirectoryAcl() as acl,
@@ -77,9 +77,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                     self._active_acl = acl
                     self._active_lock = lock
                     try:
-                        initialized = self._validate_lock(
-                            root, acl, locked_handle=lock
-                        )
+                        initialized = self._validate_lock(root, acl, locked_handle=lock)
                         raw = self._read_raw(root, acl)
                         self._require_lock_history(initialized, raw)
                         self._active_raw = raw
@@ -105,9 +103,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             raise TypeError("Windows Worker Supervisor requires an exact record")
         root, acl, lock = self._active()
         expected = self._active_raw
-        if expected is None and self._validate_lock(
-            root, acl, locked_handle=lock
-        ):
+        if expected is None and self._validate_lock(root, acl, locked_handle=lock):
             raise self._error(
                 "Windows Worker Supervisor lock is orphaned",
                 code="worker_supervisor_journal_corrupt",
@@ -149,9 +145,7 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
                         code="worker_supervisor_journal_corrupt",
                     ) from None
                 with journal_file_lock_at(root, _LOCK, "shared") as lock:
-                    initialized = self._validate_lock(
-                        root, acl, locked_handle=lock
-                    )
+                    initialized = self._validate_lock(root, acl, locked_handle=lock)
                     raw = self._read_raw(root, acl)
                     self._require_lock_history(initialized, raw)
                     records = self._decode(raw)
@@ -224,10 +218,9 @@ class CodingWindowsProductWorkerSupervisorJournal(WorkerSupervisorJournal):
             self._require_plain_stream(descriptor)
             metadata = os.fstat(descriptor)
             visible = windows_stat_at(root, _LOCK)
-            if (
-                metadata.st_size != 1
-                or (metadata.st_dev, metadata.st_ino)
-                != (visible.st_dev, visible.st_ino)
+            if metadata.st_size != 1 or (metadata.st_dev, metadata.st_ino) != (
+                visible.st_dev,
+                visible.st_ino,
             ):
                 raise self._error(
                     "Windows Worker Supervisor lock is invalid",

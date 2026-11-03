@@ -15,6 +15,9 @@ from loushang.harnesstui.conversation.tool_transcript import (
     ToolTranscriptBlock,
     ToolTranscriptProjector,
 )
+from loushang.tui.core import RenderResult
+from loushang.tui.markdown.renderer import AtomicMarkdownRenderSpec
+from loushang.tui.markdown.types import _MarkdownBlock
 from loushang.tui.transcript import ToolExecutionRecord, UserPromptRecord
 
 ProjectionEventT = TypeVar("ProjectionEventT")
@@ -166,6 +169,42 @@ class ScreenConversationProjectionTarget:
 
     def assistant_delta(self, delta: str) -> None:
         self.app.append_assistant_chunk(delta)
+
+    def prepare_assistant_markdown(
+        self,
+        markdown: str,
+        blocks: tuple[_MarkdownBlock, ...],
+        *,
+        rendered: tuple[AtomicMarkdownRenderSpec, RenderResult] | None = None,
+    ) -> None:
+        prepare = getattr(self.app, "prepare_assistant_markdown", None)
+        if callable(prepare):
+            if rendered is None:
+                prepare(markdown, blocks)
+            else:
+                prepare(markdown, blocks, rendered=rendered)
+
+    def atomic_markdown_render_spec(
+        self, markdown: str
+    ) -> AtomicMarkdownRenderSpec | None:
+        capture = getattr(self.app, "atomic_markdown_render_spec", None)
+        return capture(markdown) if callable(capture) else None
+
+    def unrendered_assistant_markdown_spec(
+        self,
+    ) -> tuple[str, AtomicMarkdownRenderSpec] | None:
+        capture = getattr(self.app, "unrendered_assistant_markdown_spec", None)
+        return capture() if callable(capture) else None
+
+    def prepare_assistant_markdown_render(
+        self,
+        markdown: str,
+        spec: AtomicMarkdownRenderSpec,
+        result: RenderResult,
+    ) -> None:
+        prepare = getattr(self.app, "prepare_assistant_markdown_render", None)
+        if callable(prepare):
+            prepare(markdown, spec, result)
 
     def assistant_finished(
         self,

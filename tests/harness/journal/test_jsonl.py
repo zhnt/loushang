@@ -427,6 +427,65 @@ def test_unterminated_whitespace_tail_never_removes_committed_record(
     assert path.read_text(encoding="utf-8") == committed
 
 
+def test_owner_validation_runs_under_lock_before_partial_tail_repair(
+    tmp_path: Path,
+) -> None:
+    from contextlib import contextmanager
+
+    import pytest
+
+    from loushang.harness.journal import JournalLoadPolicy, load_jsonl
+
+    path = tmp_path / "records.jsonl"
+    committed = '{"recordId":"one","text":"committed"}\n'
+    tail = '{"recordId":"two"'
+    original = (committed + tail).encode()
+    path.write_bytes(original)
+    locked = False
+    reject = True
+    calls = 0
+
+    @contextmanager
+    def lock_factory(target, mode):
+        nonlocal locked
+        assert target == path
+        assert mode == "exclusive"
+        locked = True
+        try:
+            yield
+        finally:
+            locked = False
+
+    def validate_snapshot(snapshot):
+        nonlocal calls
+        calls += 1
+        assert locked
+        assert snapshot.records == (_Record("one", "committed"),)
+        assert path.read_bytes() == original
+        if reject:
+            raise ValueError("owner cannot reconcile this snapshot")
+
+    with pytest.raises(ValueError, match="owner cannot reconcile"):
+        load_jsonl(
+            path, record_codec=_RecordCodec(), lock_factory=lock_factory,
+            load_policy=JournalLoadPolicy(partial_tail="repair"),
+            validate_snapshot=validate_snapshot,
+        )
+    assert not locked
+    assert path.read_bytes() == original
+
+    reject = False
+    snapshot = load_jsonl(
+        path, record_codec=_RecordCodec(), lock_factory=lock_factory,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+        validate_snapshot=validate_snapshot,
+    )
+    assert calls == 2
+    assert not locked
+    assert snapshot.records == (_Record("one", "committed"),)
+    assert path.read_bytes() == committed.encode()
+
+
 def test_repair_partial_tail_atomically_removes_only_incomplete_line(
     tmp_path: Path,
 ) -> None:

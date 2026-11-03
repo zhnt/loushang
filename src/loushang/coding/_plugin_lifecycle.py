@@ -499,20 +499,11 @@ class CodingPluginLifecycle:
         family: PluginInstanceLeaseFamilyV1,
         receipts: tuple[OwnerGenerationRetirementReceipt, ...],
     ) -> None:
-        """Bind actual live owner generations to their exact Session family."""
+        """Publish only owner generations with prior durable preparation."""
 
         if not isinstance(family, PluginInstanceLeaseFamilyV1):
             raise TypeError("Coding owner publication requires a Session family")
         [member] = family.members
-        # Preserve the write-ahead invariant for legacy/public callers that
-        # still invoke publish directly.  Ledger replay remains compatible
-        # with historical journals whose first record was already published.
-        self.owner_evidence.prepare(
-            family_id=family.family_id,
-            instance_revision_ref=member.instance_revision_ref,
-            receipts=receipts,
-            preparation_reference=f"coding-session-preparation:{family.family_id}",
-        )
         self.owner_evidence.publish(
             family_id=family.family_id,
             instance_revision_ref=member.instance_revision_ref,

@@ -85,6 +85,7 @@ class _ClientCommand:
                         for item in self._connection.scopes
                     ),
                     discovery_client=self._connection.discovery_client,
+                    execution_client=self._connection.execution_client,
                     transcript_theme=terminal_transcript_theme(),
                 )
                 status = await run_hosted_mux_shell(

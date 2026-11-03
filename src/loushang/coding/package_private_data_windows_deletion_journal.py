@@ -92,7 +92,7 @@ class CodingWindowsArchPrivateDataDeletionJournal:
             if quiescence.active_runtime_lease_ids:
                 raise ValueError("Windows Coding Arch deletion runtime is active")
             self.product.assert_root_gc_authority_current()
-            with self.product.gc_gate.guard():
+            with self.product.gc_gate.guard(require_write=True):
                 with (
                     self.product.epoch_runtime.borrow_product_state_root_descriptor() as fd
                 ):

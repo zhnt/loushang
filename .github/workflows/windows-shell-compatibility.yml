@@ -11,8 +11,81 @@ permissions:
   contents: read
 
 jobs:
+  windows-pr-smoke:
+    if: ${{ fromJSON(inputs.plan).windows.smoke }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+      - name: Exercise native shell and ordinary Session
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          PYTEST_ADDOPTS: >-
+            --tb=short
+            --junitxml=.artifacts/windows-pr-smoke.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/workspace/test_shell.py::test_native_windows_shell_executes_utf8_and_preserves_failure_exit_code
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_public_ordinary_session_enters_fresh_b_product
+          --maxfail=1 -q
+      - name: Reject empty, skipped, or failing smoke report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-pr-smoke.xml --require-tests-count 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-pr-smoke
+          path: .artifacts/windows-pr-smoke.xml
+          if-no-files-found: error
+
+  windows-worker-pr-query:
+    if: ${{ fromJSON(inputs.plan).windows.worker_pr }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+      - name: Build current Loushang Wheel
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+      - name: Install, query, and close native Worker Session
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          PYTEST_ADDOPTS: --tb=short --junitxml=.artifacts/windows-worker-pr-query.xml
+        run: uv run python scripts/ci/windows_worker_session_cases.py query
+      - name: Verify one passing query case
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-worker-pr-query.xml --require-tests-count 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-worker-pr-query-pytest-report
+          path: .artifacts/windows-worker-pr-query.xml
+          if-no-files-found: warn
   windows-worker:
-    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    if: ${{ fromJSON(inputs.plan).windows.worker_full }}
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
@@ -49,6 +122,8 @@ jobs:
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_candidate_requires_explicit_windows_product_flag
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_wheel_transaction_requires_exact_native_platform
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
+          tests/coding/test_package_worker_windows_candidate_cli.py::test_native_windows_worker_operator_accepts_command_without_candidate_switch
+          tests/coding/test_plugin_author_smoke.py::test_windows_author_worker_smoke_proves_selected_bytes_without_use
           tests/coding/test_package_product_worker_windows_crash_cleanup_review.py
           tests/coding/test_package_product_worker_windows_crash_native_settlement.py
           tests/coding/test_package_product_worker_windows_crash_supervisor_settlement.py
@@ -73,8 +148,71 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+  windows-worker-session:
+    if: ${{ fromJSON(inputs.plan).windows.worker_full }}
+    name: Windows Worker Session (${{ matrix.group }})
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: direct
+            expected_count: 1
+          - group: recovery_hosted
+            expected_count: 2
+          - group: recovery_direct
+            expected_count: 2
+          - group: lifecycle
+            expected_count: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Build current Loushang Wheel for Windows backend review
+        run: |
+          uv build --sdist --quiet --out-dir .artifacts/windows-backend-source
+          $source = @(Get-ChildItem .artifacts/windows-backend-source/*.tar.gz)
+          if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
+          uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
+
+      - name: Run native Windows Worker public Session cases
+        env:
+          LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
+          LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
+          PYTEST_ADDOPTS: >-
+            --tb=short
+            --junitxml=.artifacts/windows-worker-session-${{ matrix.group }}.xml
+        run: uv run python scripts/ci/windows_worker_session_cases.py ${{ matrix.group }}
+
+      - name: Reject empty, skipped, or failing Windows Worker Session report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-worker-session-${{ matrix.group }}.xml
+          --require-tests-count ${{ matrix.expected_count }}
+
+      - name: Upload Windows Worker Session pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-worker-session-${{ matrix.group }}-pytest-report
+          path: .artifacts/windows-worker-session-${{ matrix.group }}.xml
+          include-hidden-files: true
+          if-no-files-found: warn
+
   windows-worker-gc-normal:
-    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    if: ${{ fromJSON(inputs.plan).windows.worker_full }}
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
@@ -99,7 +237,7 @@ jobs:
           if ($source.Count -ne 1) { throw 'Expected one Loushang source archive' }
           uv build $source[0].FullName --wheel --quiet --out-dir .artifacts/windows-backend-wheel
 
-      - name: Verify settled normal and partial Worker histories allow exact Package GC
+      - name: Verify Worker retirement and update allow exact Package GC
         env:
           LOUSHANG_WINDOWS_BACKEND_REVIEW: "1"
           LOUSHANG_PYTEST_TRACE_CLEANUP: "1"
@@ -109,6 +247,8 @@ jobs:
         run: >-
           uv run python scripts/dev/run_pytest.py
           tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
+          tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_update_gc_keeps_selected_revision
+          tests/coding/test_package_product_worker_windows_gc_names.py::test_windows_worker_history_source_capture_is_private_and_fail_closed
           --maxfail=1
           -vv
 
@@ -116,6 +256,7 @@ jobs:
         run: >-
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-worker-gc-normal-native.xml
+          --require-tests-count 3
 
       - name: Upload normal Worker GC pytest report
         if: always()
@@ -127,7 +268,7 @@ jobs:
           if-no-files-found: warn
 
   windows-worker-gc-crash:
-    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    if: ${{ fromJSON(inputs.plan).windows.worker_full }}
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
@@ -180,7 +321,7 @@ jobs:
           if-no-files-found: warn
 
   windows-shell:
-    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
+    if: ${{ fromJSON(inputs.plan).windows.shell_full }}
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -231,10 +372,16 @@ jobs:
           tests/coding/test_package_private_data_windows_backup_expiry_recovery.py
           tests/coding/test_package_private_data_windows_backup_expiry_projection.py
           tests/coding/test_package_private_data_windows_backup_expiry_owner.py
-          tests/coding/test_hosted_session.py::test_hosted_default_refuses_effective_old_settings_before_plugin_writes
+          tests/coding/test_hosted_session.py::test_hosted_default_preserves_effective_old_settings_without_product_cutover
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_clean_retirement_allows_fresh_product_launch
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_update_gc_keeps_selected_revision
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_host_crash_reopens_and_retires_product_attempt
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_coding_session_reaches_selected_product
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_hosted_first_session_reaches_selected_product
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_crash_reopens_and_retires_product_attempt
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_public_session_disable_fences_pinned_product
           --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_selected_dependency_closure_remains_inert
+          --deselect=tests/coding/test_package_windows_pre_b_snapshot.py::test_windows_worker_native_normal_exit_c5_cleanup_evidence
           -q
 
       - name: Reject empty, skipped, or failing PLC9B native report
@@ -362,18 +509,3 @@ jobs:
             .artifacts/windows-runtime-lifecycle.xml
           include-hidden-files: true
           if-no-files-found: warn
-
-  selected-checks:
-    name: Selected checks
-    if: always()
-    needs: [windows-shell, windows-worker, windows-worker-gc-normal, windows-worker-gc-crash]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify selected jobs
-        env:
-          CI_PLAN: ${{ inputs.plan }}
-          CI_NEEDS: ${{ toJSON(needs) }}
-        run: >-
-          python scripts/ci/verify_gate.py
-          --jobs '{"windows-shell":"windows_shell","windows-worker":"windows_shell","windows-worker-gc-normal":"windows_shell","windows-worker-gc-crash":"windows_shell"}'

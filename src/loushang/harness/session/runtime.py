@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from inspect import iscoroutine, iscoroutinefunction
 from typing import Protocol, cast
 
 from loushang.agent import AbortSignal
@@ -148,6 +149,7 @@ class SessionRuntime:
 
     def __post_init__(self) -> None:
         self._closed = False
+        self._committed_input_recovery_suppressed = False
         self._event_bus: OrderedEventBus[RuntimeEvent[object]] = OrderedEventBus(
             async_listener_error=(
                 "Async runtime event listeners require a running event loop."
@@ -212,6 +214,7 @@ class SessionRuntime:
                 self.after_turn_policy.record_assistant_response_error
             ),
             check_auto_compaction=self.check_auto_compaction,
+            allow_automatic_recovery=lambda: not self._committed_input_recovery_suppressed,
             schedule_continue_run=lambda: self.schedule_continue_run(
                 model_call_purpose="retry"
             ),
@@ -281,6 +284,31 @@ class SessionRuntime:
 
     async def continue_run(self) -> None:
         await self._host_runtime.run_after_idle(self.agent.continue_run)
+
+    async def run_committed_input(self, *, prepare_current_input: Callable[[], None]) -> None:
+        """Run an owned committed input without submitting another user message.
+
+        The Product checks and installs the current input inside the original
+        host claim. This explicit run suppresses automatic retry/compaction
+        recovery; their normal policy is restored on exit.
+        """
+
+        if not callable(prepare_current_input) or iscoroutinefunction(prepare_current_input):
+            raise TypeError("committed input preparation must be synchronous")
+
+        async def operation() -> None:
+            result = cast(Callable[[], object], prepare_current_input)()
+            if result is not None:
+                if iscoroutine(result):
+                    result.close()
+                raise TypeError("committed input preparation must return None")
+            self._committed_input_recovery_suppressed = True
+            try:
+                await self.agent.continue_run(model_call_purpose="main")
+            finally:
+                self._committed_input_recovery_suppressed = False
+
+        await self._host_runtime.run(operation)
 
     def schedule_continue_run(
         self,
