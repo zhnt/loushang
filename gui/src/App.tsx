@@ -537,7 +537,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 
         {environmentOpen && selected ? <aside className="environment-popover" aria-label="Environment summary">
           <header><span>Environment</span><button type="button" className="icon-close" aria-label="Close environment" onClick={() => setEnvironmentOpen(false)}><UiIcon name="close" /></button></header>
-          {hasCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} /> : <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />}
+          {hasCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} />
+            : state.remote.source.kind === "live" ? <LiveContextPanel state={state} session={selected} />
+              : <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />}
           <div className="environment-links">
             <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>Changes →</button>
             <button type="button" disabled={!hasCapability(state, "agents")} onClick={() => { setEnvironmentOpen(false); dispatch({ type: "dock.opened", tab: "agents" }); }}>Subagents →</button>
@@ -589,7 +591,19 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession
       <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? "Fixture data · no backend" : "Live AppHost · controlled"}</div>
 
       <nav className="workspace-scroll" aria-label="Workspaces">
-        {!hasCapability(state, "workspace") ? <>
+        {!hasCapability(state, "workspace") ? state.remote.source.kind === "live" ? (
+          <section className="workspace-group" aria-label="Attached AppHost sessions">
+            <div className="workspace-heading static">
+              <span className="folder-glyph"><UiIcon name="folder" /></span>
+              <span>{state.remote.source.muxName ?? "AppHost mux"}</span>
+            </div>
+            <div className="session-list">
+              {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
+                stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
+            </div>
+            <p className="section-label">Workspace details unavailable</p>
+          </section>
+        ) : <>
           <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
           {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
             stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
@@ -877,7 +891,9 @@ function WorkDock(props: WorkDockProps) {
         ))}
       </nav>
       <div className="dock-content">
-        {!available ? <UnavailablePanel label={`${facet} capability (missing, unavailable or incompatible)`} /> : <>
+        {!available ? state.local.dockTab === "environment" && state.remote.source.kind === "live"
+          ? <LiveContextPanel state={state} session={session} />
+          : <UnavailablePanel label={`${facet} capability (missing, unavailable or incompatible)`} /> : <>
         {state.local.dockTab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
         {state.local.dockTab === "tasks" ? (
           <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
@@ -916,6 +932,25 @@ function EnvironmentPanel({ state, session }: { readonly state: GuiState; readon
           </span>
         ))}
       </div>
+    </section>
+  );
+}
+
+function LiveContextPanel({ state, session }: { readonly state: GuiState; readonly session: SessionSnapshot }) {
+  const source = state.remote.source;
+  if (source.kind !== "live") return null;
+  return (
+    <section className="panel-stack" aria-label="AppHost session context">
+      <p className="fixture-panel-label">Accepted AppHost identity</p>
+      <dl className="detail-list">
+        <div><dt>Product</dt><dd>{session.context.project}</dd></div>
+        <div><dt>Scope</dt><dd>{session.context.scope ?? "Unavailable"}</dd></div>
+        <div><dt>Scope fingerprint</dt><dd>{session.context.scopeFingerprint ?? "Unavailable"}</dd></div>
+        <div><dt>Mux</dt><dd>{source.muxName ?? source.muxSpaceId}</dd></div>
+        <div><dt>Session</dt><dd>{session.context.sessionId}</dd></div>
+        <div><dt>Service</dt><dd>{source.serviceInstanceId}</dd></div>
+      </dl>
+      <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
     </section>
   );
 }

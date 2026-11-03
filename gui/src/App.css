@@ -79,6 +79,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .workspace-group { margin-bottom: 4px; }
 .workspace-heading { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 17px; align-items: center; gap: 4px; padding: 8px 6px; border: 0; border-radius: 7px; color: #56595c; background: transparent; text-align: left; font-size: 13px; font-weight: 500; }
 .workspace-heading:hover { background: #ececeb; }
+.workspace-heading.static:hover { background: transparent; }
 .workspace-heading > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-glyph { color: #686b6e; font-size: 16px; }
 .vcs-badge { max-width: 82px; overflow: hidden; padding: 2px 5px; border-radius: 5px; color: #59686b; background: #e8eeee; font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }

@@ -407,6 +407,7 @@ function projectSnapshot(initial: NativeInitialSnapshot): ClientSnapshot {
       kind: "live",
       serviceInstanceId: initial.serviceInstanceId,
       muxSpaceId: initial.muxSpace.muxSpaceId,
+      muxName: initial.muxSpace.name,
       connectionEpoch: initial.connectionEpoch,
     },
     capabilities: ["workspace", "changes", "artifacts", "tasks", "agents"].map((name) => ({
@@ -477,6 +478,8 @@ function projectSession(
     context: {
       project: source.identity.productId,
       rootLabel: `${source.identity.scope}:${source.identity.scopeFingerprint.slice(0, 12)}`,
+      scope: source.identity.scope,
+      scopeFingerprint: source.identity.scopeFingerprint,
       applicationId: initial.serviceInstanceId,
       muxId: initial.muxSpace.muxSpaceId,
       memberId,

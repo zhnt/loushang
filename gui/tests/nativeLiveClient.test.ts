@@ -112,9 +112,17 @@ describe("native live initial snapshot", () => {
       kind: "live",
       serviceInstanceId: "service-1",
       muxSpaceId: "mux-1",
+      muxName: "GUI work",
       connectionEpoch: "1",
     });
     expect(snapshot.workspaces).toEqual([]);
+    expect(snapshot.sessions[0].context).toMatchObject({
+      project: "coding",
+      scope: "cwd",
+      scopeFingerprint: "a".repeat(64),
+      muxId: "mux-1",
+      sessionId: "session-1",
+    });
     expect(snapshot.sessions[0].messages.map((message) => message.content)).toEqual([
       "Read the current state",
       "The state is stable.",
