@@ -7,10 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from loushang.coding._plugin_lifecycle import (
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.control import SettingsManager
 from loushang.coding.package_legacy_classification import (
     CodingScopedLegacyDisableV1,
     classify_coding_legacy_source_configuration,
+)
+from loushang.coding.package_pre_b_snapshot import (
+    hold_coding_pre_b_snapshot_owner,
+    prepare_coding_package_cutover_roots,
 )
 from loushang.coding.package_source_snapshot import (
     hold_coding_pre_b_source_configuration,
@@ -122,3 +129,27 @@ def test_windows_source_projection_refuses_session_override_before_creation(
         ):
             pytest.fail("transient Source override must be rejected")
     assert not list(parent.iterdir())
+
+
+def test_windows_snapshot_preparation_reads_long_source_projection_path(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lifecycle = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session-state", cwd=workspace
+    )
+    prepare_coding_package_cutover_roots(lifecycle)
+    manager = SettingsManager(
+        global_settings_path=tmp_path / "settings.json",
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    parent = tmp_path / ("projection-" + "x" * 90)
+    prepare_windows_product_control_root(parent)
+
+    with hold_coding_pre_b_snapshot_owner(
+        lifecycle, manager, projection_parent=parent
+    ) as prepared:
+        source = prepared.source_configuration_root / "coding-source-configuration.json"
+        assert len(str(source)) > 260
+        assert prepared.legacy_classification.kind == "fresh"
