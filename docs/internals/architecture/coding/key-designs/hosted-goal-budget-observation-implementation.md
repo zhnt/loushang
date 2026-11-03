@@ -70,3 +70,11 @@ result = await client.wait(control, submitted.handle)
 磁盘目录回归另遇Transcript目录安全拒绝：该目录祖先工作区为0775，原AdmissionWitnessLease要求私有祖先；中断时为43 failed、40 passed、7 deselected。未修改该安全规则或工作区权限。同一首例在默认私有/tmp测试目录单独运行1 passed（34.64秒），随后相关回归使用该路径继续验证。
 
 最终相关离线回归：`test_repository_goal.py`、`test_hosted_repository_goal.py`、`test_hosted_goal_budget_progress.py`及`test_work_shell.py`共271 passed、7 deselected（770.76秒），保留`not live and not requires_host_runtime`与`--skip-host-runtime`。文档检查、Ruff和diff空白检查通过。本轮线上模型调用为0；广泛Coding回归仍为上述环境失败后中断，未声明全仓通过。
+
+## 在线闭环验证（2026-11-03）
+
+运行基线7858b461f，原冻结任务、Method、验收与机械评审保持不变，240秒总期限、60秒收尾预留、最多6次模型调用、单次1024输出。首次规划受理，证据引用为空；经planning、implementation、verification、review四个Work，最终succeeded / completed / current，execution_unresolved=false，完整query与wait一致，应用正常关闭。
+
+17项独立合同测试与163项原回归全部通过，无跳过；冻结的窄机械评审approved。实际3次模型调用、3次provider尝试，从应用启动至结果约118.6秒；原Transcript记录total_tokens39368，金额未知。候选补丁与完整证据留在产品树外，临时工作树及运行目录清理完成。历史任务候选不重复合入产品。
+
+这是一次有限真实任务闭环，不代表稳定成功率。本次只受理一份计划，没有实质路线调整，不能作为动态重规划成功证据。
