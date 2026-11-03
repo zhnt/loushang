@@ -123,3 +123,13 @@ Coding 私有适配承接，复用原 Goal/Work/Blob，系统环境和关键交�
 旧试验保留。本轮反馈集成离线验证通过；真实 Kimi 运行在测试失败后新增并执行修复，
 完整验证、宿主评审与关闭后冷读均通过，GP-03 在该有界仓库任务中已证明。
 实际运行采用 7 次规划、15 个 Work；历史读取成本较高，性能与全入口扩展仍待后续工作。
+
+## 当前会话接入盘点
+
+[Product / Session接口盘点](current-session-interface-inventory.md)记录嵌入式TUI与lmux两条当前调用路径、共同职责及接入缺口；这是后续专项的事实输入，不代表普通交互Session已支持Goal。
+
+[Goal职责收敛与双入口复用重构计划](refactoring-plan.md)：阶段、兼容迁移与验证要求；待评审与用户接受。
+
+[重构计划三视角评审](refactoring-plan-review.md)：R2可呈交用户，阶段设计与验证义务仍待落实。
+
+[重构推进记录](refactoring-progress.md)记录S0—S4实际证据；[S2协同专项](session-goal-coordination.md)及[专项评审](session-goal-coordination-review.md)待用户接受后实施。

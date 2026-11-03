@@ -5,25 +5,23 @@ import asyncio
 import time
 
 from loushang.appservice.execution_contract import ExecutionOutcomeV1, ExecutionStatusV1
+from loushang.harness.runtime.execution_deadline import ExecutionDeadline
 
 
-class GoalInvocation:
+class GoalInvocation(ExecutionDeadline):
     def __init__(self, owner, session, setup, execution_id, cancel_requested):
+        super().__init__(clock=lambda: time.monotonic(), cancel_requested=cancel_requested,
+                         total_reason="goal_deadline_exceeded",
+                         phase_reason="goal_model_stage_deadline_exceeded",
+                         phase_active=setup.repository is not None)
         self.owner, self.session, self.setup = owner, session, setup
         self.execution_id, self.cancel_requested = execution_id, cancel_requested
         self.task: asyncio.Task | None = None
-        self.cancelled = False
         self.initialized = False
         self.initializing = False
         self.initialization_failed = False
         self.advances = 0
-        self.reason = "not_started"
         self.pause_attempted = False
-        self.deadline = None
-        self.model_deadline = None
-        self.model_stage = setup.repository is not None
-        self._timer = None
-        self._stop_reason = None
 
     def _bind_budget(self):
         setup = self.setup
@@ -37,34 +35,27 @@ class GoalInvocation:
                 self.budget_snapshot, self.checkpoint,
             )
 
-    def checkpoint(self):
-        if self.cancelled or self.cancel_requested():
-            raise asyncio.CancelledError
-        reason = self._deadline_reason()
-        if reason is not None:
-            self._stop_reason = self._stop_reason or reason
-            self.reason = self._stop_reason
-            raise TimeoutError(reason)
+    @property
+    def model_deadline(self):
+        return self.phase_deadline
 
-    def _deadline_reason(self):
-        now = time.monotonic()
-        if self.deadline is not None and now >= self.deadline:
-            return "goal_deadline_exceeded"
-        if self.model_stage and self.model_deadline is not None and now >= self.model_deadline:
-            return "goal_model_stage_deadline_exceeded"
-        return None
+    @model_deadline.setter
+    def model_deadline(self, value):
+        self.phase_deadline = value
+
+    @property
+    def model_stage(self):
+        return self.phase_active
+
+    @model_stage.setter
+    def model_stage(self, value):
+        self.phase_active = value
 
     def budget_snapshot(self):
         now = time.monotonic()
         return dict(advances_including_current_command=self.advances,
                     model_seconds_remaining=max(0, int(self.model_deadline - now)),
                     business_seconds_remaining=max(0, int(self.deadline - now)))
-
-    def begin_closeout(self):
-        self.checkpoint()
-        self.model_stage = False
-        if self._timer is not None:
-            self._timer.reschedule(asyncio.get_running_loop().time() + max(0, self.deadline - time.monotonic()))
 
     def _recording_available(self):
         try:
@@ -129,8 +120,8 @@ class GoalInvocation:
         return ExecutionOutcomeV1(ExecutionStatusV1.FAILED, self.reason)
 
     async def run(self, control):
-        self.deadline = time.monotonic() + self.setup.config.deadline_seconds
-        self.model_deadline = self.deadline - getattr(self.setup.config, "closeout_reserve_seconds", 0)
+        self.start_deadlines(self.setup.config.deadline_seconds,
+                             getattr(self.setup.config, "closeout_reserve_seconds", 0))
         try:
             self._bind_budget()
             # Deadline bounds business, never the retained settlement task.

@@ -1,0 +1,52 @@
+# Goal重构推进记录
+
+- Authority: descriptive；总Goal：按[重构计划R2](refactoring-plan.md)完成既有职责收敛和双入口共同能力，包含最终交付。
+- 源码基线e1601d059；隔离任务分支refactor/goal-shared-session，工作树goal-refactor。原code/harness工作树未提交材料保持原状。
+- 用户启动了完整重构Goal。S2普通Session环境、交互、联合受理、配置和资源owner须用户评审后实施；不是本记录可以自行免除的条件。
+
+## 当前状态
+
+| 阶段 | 实际进展 | 尚需完成 |
+| --- | --- | --- |
+| S0 | 冻结迁移前Goal记录、通用proof、calculator/repository真实规划input/proof/Work及公开符号签名；保存原源码快照，旧reader9例通过 | 随后续受影响切片扩充固定样本和物理并发/回退矩阵，不以当前有限fixture冒称全部历史组合 |
+| S1 | 执行控制首切片：Harness新增ModelCallAllowance与ExecutionDeadline；原Coding限额/托管Invocation委托，原异常与结果映射保留；三视角代码评审及修正完成，专项38 passed/315 deselected | 完整Coding检查4165 passed、21 skipped、62 deselected；Harness首轮6038 passed后发现依赖放置错误，修正后6389 passed、121 skipped；取消/收敛的通用资源组合待S2合同落地继续提炼；尚未远程交付 |
+| S2 | [协同专项R2](session-goal-coordination.md)及[三视角复核](session-goal-coordination-review.md)已完成，提交用户确认 | 用户接受后实施联合受理/作用域/桥接及验证；当前未实施 |
+| S3 | 旧profile fixture和解释基线已准备 | 通用来源核对、Work证据与Goal策略/方法集成实际收敛；双向兼容回归 |
+| S4a | 无实施 | 本地与application-local AppService共享装配和真实等价/权限验收，清理重复实现 |
+| S4b | 分离为后续专项 | 真实lmux Goal wire；不能因本地能力通过就宣称可达 |
+
+总体Goal未完成，S2用户评审是后续实施的前置条件；不计算没有完整权重校准的总体完成百分比。
+
+## S0固定兼容基线
+
+固定fixture位于tests/coding/fixtures/goal_refactor_v1，manifest记录e160源码摘要及各文件摘要。生成器只用原版本与确定性离线provider，没有网络调用或私有真实会话。calculator/repository各一次离线规划，非线上成功率实验。原版本source archive与旧reader校验保存在产品树外，不依赖长期工作树保持旧版本。
+
+覆盖：旧日志只读字节不变、journal路径/持久锁常量、原公开符号/签名、真实profile模板逐字节重建、提案解析、input/response/report摘要及Work归属；修改旧prompt仍拒绝。现阶段不证明每种终态、图片/损坏记录组合或后续迁移writer都兼容；这些仍按切片补齐。
+
+## S1实现与独立评审
+
+- 通用限额由参数声明phase及provider策略；Coding继续提供planning/repair限额与原错误类型，最大输出下的retry=1策略仍由Coding配置。原counter在await前增加，失败不返还，原committer/cancellation原对象转交。
+- ExecutionDeadline只提炼时钟/checkpoint/阶段转收尾；原GoalInvocation仍拥有任务、一次启动、托管结果及settlement。没有第二执行driver、状态机或记录。
+- 三视角发现通用wrapper无条件宣称prepared_request_conformant会升级不可信transport。已修为只传递已有显式声明；Coding旧closure在原可信边界显式声明。新增marked/unmarked测试，原问题复核关闭。
+- 三视角均无S1剩余代码阻塞；结论仅覆盖S1。原始独立报告保存于产品树外s1-review-ownership/runtime/data.md。
+- 专项最终38 passed、315 deselected（77.09秒）；Ruff通过，共享两文件mypy通过，生成依赖图检查通过。旧reader9例通过。首轮fixture遗漏持久锁与0600权限、首轮committer替身不满足协议，已修测试装配，未为此修改产品存储/权限检查。
+
+## 交付边界
+
+当前未迁移Goal记录、Work引擎、Method包，不改变普通会话输入/配置，不启动新的线上试验。S2用户确认 pending；其后才可按专项实施。广泛检查/提交/PR/合并/本地同步的实际结果必须后续登记，不把专项绿灯当整体Goal完成。
+
+## 本轮续跑补充
+
+S1[三视角代码评审摘要](refactoring-s1-review.md)已落盘。广泛检查首次因共享editable环境的来源校验拒绝而停止，已保存失败日志；本工作树独立uv.lock环境建立后，原失败点与关键兼容15项通过，广泛检查使用原选择器重新执行。没有改变产品来源校验或测试门禁。S0提交42096eff5只冻结测试基线，S1运行代码在下述最终检查后本地提交，远程交付仍属于完整Goal的后续义务。S2用户接受仍pending。
+
+## 最终位置修正与检查范围
+
+完整Coding离线检查通过（4165 passed、21 skipped、62 deselected，2707.57秒）。随后Harness在6038 passed、121 skipped后被既有import boundary检查阻断：调用限额器位于runtime却直接依赖AI/Agent。已迁到harness/session/call_allowance.py，仅导入ai.options并继承delegate显式conformance；期限helper留在runtime。三位独立评审均复核最终位置；没有改动allowlist。最终位置精确回归200 passed（290.66秒），包含全部import boundary检查；依赖图检查通过。完整Harness检查通过：6389 passed、121 skipped、36 warnings（1080.19秒），Ruff及780个文件mypy通过。
+
+检查命令静态对照：unit_coding与已通过coding命令仅相差额外排除e2e_smoke，因此不重复相同大套件。unit_harness的485个文件中，check-harness覆盖除两个examples测试文件外的全部路径；这两个文件另行执行，3 passed（3.39秒），保持原离线/host-runtime选择器。该文件级对照只说明范围关系，不预先代替测试结果。
+
+## 当前切点与后续前置条件
+
+S0固定基线已提交；S1限额/期限首切片及配套设计/评审材料本地保存。没有进入S2，未发布远程PR或合并。最终代码由三视角复核，精确回归200项、完整Harness6389项及额外3项通过；Coding4165项通过在最终模块位置修正之前，位置修正后已覆盖原调用限额/预算/旧profile及全部import boundary，未重复45分钟完整Coding套件。
+
+用户要求普通Session环境、组件交互、联合受理、配置作用域与资源所有权先经其评审再实施。专项R2及独立评审已就绪，用户接受尚未收到；自动Goal续跑不等于设计接受。依赖该协同合同的取消/收敛组合、后续规划集成和双入口装配继续等待该评审，不借局部绿灯推进尚未接受的接口。整个Goal尚未达到完成条件。
