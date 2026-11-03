@@ -1,0 +1,28 @@
+{
+  "baseline_commit": "e1601d0593085120078e3bc468c07756cb89fb8b",
+  "origin": "Frozen before S1 code changes using baseline codecs and deterministic offline records; no provider calls or private runtime transcripts",
+  "fixtures": {
+    "planning-response.json": "177759930cbfa79a582d4a4916f78be89a4e317b03ffe85721969e473e26871e",
+    "goal-records.json": "19d2919f706731611ce802a342f52d2a3ec930d2ee7905c5751f96d64b94f91e",
+    "repository-planning.json": "af49d5050a347e80b31ac9bed429a4e002a94a97d56cdff2f68d351144d7e363",
+    "calculator-planning.json": "68bbcae0ea5f75c4707492a49d1f2e17c648793fdecfb8fc80e46944ddfc415d",
+    "public-api.json": "62de2215e4ce030a9d25fa91d14e67a22287347c17d887d2a92de21744294111"
+  },
+  "source_hashes": {
+    "src/loushang/coding/adapters/_goal_store.py": "accbdcd03f3fa2d1bb38911adb728b1e8c52bbf0261b63b866e59309508294c7",
+    "src/loushang/coding/adapters/_goal_proposal.py": "e48b5eaef6cc67bf37f0f5691c2682511c806e8b5f315d8cca17cf3c9e7f5d51",
+    "src/loushang/coding/adapters/_goal_repository.py": "e81aa4fe9798ff2e5e63d04d85368ee5df7a31b12b19746e02e8f81817592490",
+    "src/loushang/coding/adapters/_goal_planning_response.py": "999e833f645b85677aff81b776df8330a061caff32b2a30bf62785f763f13e46",
+    "src/loushang/coding/adapters/_goal_planning_limits.py": "685ee94279839360be4f15262c32f8b01cfb164ea45eff1af09a8ae948eb0dc4",
+    "src/loushang/coding/_hosted_goal_work.py": "02f55cf3fe964538ea499a6e1df6deaed8e2ec6210606c306163dd6a7f8b5f2f",
+    "src/loushang/harnesswork/goal/contracts.py": "3ca5d7f504511f92f648bdc4be208e8a71581318406a86188db03f279ac2b457",
+    "src/loushang/harnesswork/goal/records.py": "f0aa81f00caee2a83687e00eff5056a8ac30444bf037f778b5af2a039907e859"
+  },
+  "physical_contract": {
+    "journal_suffix": ".goal.jsonl",
+    "session_path": "sha256(session_id UTF-8)",
+    "policy": "coding-calculator-model-planning/v1",
+    "record_version": 1
+  },
+  "real_profile_origin": "Original e1601d059 code/test helpers via explicit old PYTHONPATH; each one deterministic offline model invocation, complete input/proof/Work envelopes; no network or private conversations."
+}
