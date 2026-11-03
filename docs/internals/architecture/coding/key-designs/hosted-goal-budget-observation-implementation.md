@@ -52,3 +52,29 @@ result = await client.wait(control, submitted.handle)
 这是针对本次边界的分批验证，不是全仓全平台门禁通过。未运行完整Coding/AppHost、原生平台或在线路由，也未新增或扩展PR门禁。涉及本地仓库规划的兼容由既有repository suite覆盖；原prepared输入及Transcript来源链沿既有路径验证。
 
 局限：无在线Kimi结果、无物理硬截止或跨进程恢复承诺；性能验证以禁止重路径调用和有限批次数为依据，未声明固定毫秒性能。完整query仍保留原复核成本，ContentDelta记录策略未改。
+
+## 后续规划输入修正（2026-11-03）
+
+一次另行授权的有限在线试验停在规划阶段：首次响应把当前operation ID当成证据引用，第二次响应触及单次输出上限并以length结束。两次规划名额耗尽后停止；没有进入实施、完整验证或评审，不证明线上业务闭环成功，也不是总时限到期或已证实的服务商配额耗尽。冻结材料及原始响应保留在产品树外。
+
+本轮只在RepositoryDomain新生成的规划input.material中增加response_guidance：证据引用只能取当前input.evidence的id；无证据时返回空数组，operation ID、输入摘要、要求编号与预期输出类型都不能代替证据编号。要求理由各用一句短句，不复述要求、文件或实现代码；路线仍由模型选择，必要时只提出下一步。
+
+指导复用原input Blob和Transcript来源链；不改prompt构造、Proposal v1、准入校验、调用/输出预算或重试次数。历史输入没有该字段时，仍按原字节重建提示并核对来源。新指导是表达建议，不是新增硬限额，也不自动删除错误引用或补全被截断的JSON。
+
+离线专项6项通过：operation引用被拒绝、length即使携带完整JSON也被拒绝、部分JSON加length被拒绝；每种路径都验证后续简短合法计划可读取，并分别覆盖新输入和不带指导的旧输入在恢复当前producer后冷读。使用确定性离线provider，未执行线上调用。首轮测试误把文本块列表当作字符串，修正测试读取后通过，产品运行机制未为此调整。
+
+原始996字节失败响应在现有解析器中保持拒绝；手写352字节候选可解析。字节数不是token数，手写候选和离线provider不证明真实模型遵循提示，更不证明1024输出额度下的线上成功率。验证目的仅为保留拒绝边界、输入交付和历史兼容；没有增加PR门禁。
+
+变更选择检查中的文档9项与生成依赖图检查通过，变更Python文件Ruff通过。广泛Coding回归在运行目录所在的164 MB tmpfs上出现明确的ENOSPC，后续存储错误级联；人工中断时为2050 passed、350 failed、41 errors、13 skipped、62 deselected，不能声明广泛回归通过，也不将所有失败未经逐项核查都归为同一原因。通过现有LOUSHANG_RUNTIME_DIR配置将后续相关回归放在磁盘目录，不修改产品存储策略或测试门禁。
+
+磁盘目录回归另遇Transcript目录安全拒绝：该目录祖先工作区为0775，原AdmissionWitnessLease要求私有祖先；中断时为43 failed、40 passed、7 deselected。未修改该安全规则或工作区权限。同一首例在默认私有/tmp测试目录单独运行1 passed（34.64秒），随后相关回归使用该路径继续验证。
+
+最终相关离线回归：`test_repository_goal.py`、`test_hosted_repository_goal.py`、`test_hosted_goal_budget_progress.py`及`test_work_shell.py`共271 passed、7 deselected（770.76秒），保留`not live and not requires_host_runtime`与`--skip-host-runtime`。文档检查、Ruff和diff空白检查通过。本轮线上模型调用为0；广泛Coding回归仍为上述环境失败后中断，未声明全仓通过。
+
+## 在线闭环验证（2026-11-03）
+
+运行基线7858b461f，原冻结任务、Method、验收与机械评审保持不变，240秒总期限、60秒收尾预留、最多6次模型调用、单次1024输出。首次规划受理，证据引用为空；经planning、implementation、verification、review四个Work，最终succeeded / completed / current，execution_unresolved=false，完整query与wait一致，应用正常关闭。
+
+17项独立合同测试与163项原回归全部通过，无跳过；冻结的窄机械评审approved。实际3次模型调用、3次provider尝试，从应用启动至结果约118.6秒；原Transcript记录total_tokens39368，金额未知。候选补丁与完整证据留在产品树外，临时工作树及运行目录清理完成。历史任务候选不重复合入产品。
+
+这是一次有限真实任务闭环，不代表稳定成功率。本次只受理一份计划，没有实质路线调整，不能作为动态重规划成功证据。
