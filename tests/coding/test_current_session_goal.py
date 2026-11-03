@@ -198,3 +198,65 @@ def test_current_goal_refuses_changed_transport_without_restoring_old_baseline(t
         asyncio.run(scenario())
     finally:
         registry.unregister_api_adapters(adapter.api)
+
+
+def test_public_direct_application_message_cannot_enter_committed_planning_input(tmp_path, monkeypatch):
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    adapter = _PreparedAdapter()
+    registry = get_default_api_registry()
+    registry.register_api_adapter(adapter, source_id=adapter.api)
+
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+        sdk = create_agent_session_runtime(
+            session_dir=tmp_path / "data/sessions", model=_model(), enable_multiagent=False,
+            active_tool_names=["read", "edit", "write"],
+        )
+        owner = advancing = None
+        try:
+            session = await sdk.create_session(cwd=str(_goal_project(tmp_path)))
+            await session.prompt("ordinary context")
+            owner = await CodingGoal.attach(session=session)
+            owner.create("g", command_id="create")
+            original_prepare = session.prepare_model_call_runtime
+
+            async def prepare():
+                entered.set()
+                await release.wait()
+                await original_prepare()
+
+            monkeypatch.setattr(session, "prepare_model_call_runtime", prepare)
+            advancing = asyncio.create_task(owner.advance("g", command_id="plan", revision=1, epoch=1))
+            await asyncio.wait_for(entered.wait(), 10)
+            assert session.runtime.execution_admission.execution_reserved and not session.is_streaming
+            transcript = Path(session.session_manager.get_session_file())
+            before = transcript.read_bytes()
+            message = {"customType": "external_direct", "content": "ordinary application notice"}
+            with pytest.raises(SessionExecutionUnavailable):
+                await session.send_message(message)
+            assert transcript.read_bytes() == before and owner._allowance.total_calls == 0
+            release.set()
+            assert (await advancing).outcome == "work_finished"
+            trace = owner.planning_trace("g")
+            assert trace["status"] == "known" and trace["consecutive_invalid"] == 0
+            assert len(trace["routes"]) == 1 and owner._allowance.total_calls == 1
+            await owner.close()
+            await session.send_message(message)
+            assert sum(getattr(record.payload, "custom_type", None) == "external_direct"
+                       for record in session.session_manager.get_branch()) == 1
+            assert inspect_session_goal(session=session, goal_id="g").planning == trace
+            assert len(adapter.tools) == 2 and owner._allowance.total_calls == 1
+        finally:
+            release.set()
+            if advancing is not None:
+                await asyncio.gather(advancing, return_exceptions=True)
+            if owner is not None:
+                await owner.close()
+            await sdk.dispose_session_runtime()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        registry.unregister_api_adapters(adapter.api)

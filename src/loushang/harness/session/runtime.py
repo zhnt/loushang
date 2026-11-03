@@ -220,6 +220,7 @@ class SessionRuntime:
             queue=self._queue_controller,
             project_direct=self._project_direct_application_message,
             run_trigger_turn=lambda message: self.run_agent_prompt(message),
+            admission=self.execution_admission,
         )
         self._agent_event_router = AgentEventRouter(
             append_message=self.transcript.append_message,

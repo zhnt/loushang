@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
+from loushang.harness.session.execution_admission import SessionExecutionAdmission
 from loushang.harness.transcript import (
     ApplicationDeliveryMode,
     ApplicationMessage,
@@ -50,6 +52,7 @@ class ApplicationInputRuntime:
     project_direct: DirectApplicationProjector
     run_trigger_turn: TriggerTurnRunner
     visible_text: VisibleText = lambda message: _visible_text(message)
+    admission: SessionExecutionAdmission | None = None
     _projected_direct_message_ids: set[str] = field(
         default_factory=set,
         init=False,
@@ -57,11 +60,12 @@ class ApplicationInputRuntime:
     )
 
     async def deliver(self, message: ApplicationMessage) -> ApplicationInputDelivery:
-        if message.delivery_mode == "direct":
-            return await self._commit_direct(message)
-        if message.delivery_mode == "trigger_turn":
-            await self.run_trigger_turn(message)
-            return _delivery(message, disposition="triggered")
+        if message.delivery_mode in {"direct", "trigger_turn"}:
+            with self._immediate_admission():
+                if message.delivery_mode == "direct":
+                    return await self._commit_direct(message)
+                await self.run_trigger_turn(message)
+                return _delivery(message, disposition="triggered")
         if message.delivery_mode == "next_turn":
             self.queue.append_next_turn_message(message)
             return _delivery(message, disposition="queued")
@@ -74,6 +78,23 @@ class ApplicationInputRuntime:
         raise ValueError(
             f"Unsupported application delivery mode: {message.delivery_mode}"
         )
+
+    @contextmanager
+    def _immediate_admission(self) -> Iterator[None]:
+        if self.admission is None:
+            yield
+            return
+        self.admission.require_current()
+        # Immediate delivery cannot be silently reinterpreted as queued input.
+        # Refuse before persistence when another execution owns the Session;
+        # its caller can retry the same application identity after settlement.
+        self.admission.require_unbound_run()
+        ticket = self.admission.begin_input()
+        try:
+            ticket.check()
+            yield
+        finally:
+            ticket.close()
 
     def has_pending_messages(self) -> bool:
         return self.queue.has_pending_messages()

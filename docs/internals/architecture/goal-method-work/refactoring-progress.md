@@ -94,3 +94,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## 取消调用与选择检查收尾
 
 公开取消调用现复用原Harness观察调用边界，关闭不join调用方外层Task，保留原Core/Work取消和错误权威。三视角无阻断，两模式回归通过，见[取消调用评审](refactoring-cancellation-call-review.md)。非Coding selector测试移入既有Work runtime测试路由，选择器已通过，未新增门禁。旧e160 reader读取S4新产物的4个Goal、18个Work、6份真实规划proof通过且日志摘要不变；hosted独立Transcript不在该6份proof范围内，原S2 repository来源双向证据继续保留。整体检查与远程交付仍未完成。
+
+## 最终整体评审与闭合
+
+完整三视角发现应用direct输入遗漏原受理，以及Goal缺撤权/关闭失败/waiter取消组合证据。原direct/trigger已接回同一admission，冲突前拒绝、正常原commit/project持票，未增加队列；真实公共send_message来源隔离与原身份重试通过。托管组合通过，原server重试保留Goal与父Session，不重跑业务；重复prompt模板已薄再导出。三视角关闭，详见[最终评审](refactoring-final-review.md)。已合入最新main（GUI为主、文件零重叠）；整体选择检查正在收尾，尚未远程发布或宣布整个Goal完成。

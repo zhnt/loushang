@@ -385,13 +385,13 @@ async def _execute_command(name: str, args: str) -> None:
     del name, args
 
 
-def _admission_runtime(agent: Agent, *, turn_policy=None) -> SessionRuntime:
+def _admission_runtime(agent: Agent, *, turn_policy=None, application_committer=None, refresh=None) -> SessionRuntime:
     return SessionRuntime(
         agent=agent,
         transcript=TranscriptRuntimePort(
             session_id="shared-session", append_message=_append_message,
-            commit_application_message=_commit_application_message,
-            refresh_context=lambda: None, set_commit_observer=lambda observer: None,
+            commit_application_message=application_committer or _commit_application_message,
+            refresh_context=refresh or (lambda: None), set_commit_observer=lambda observer: None,
         ),
         turn_policy=turn_policy or _turn_policy(), after_turn_policy=_after_turn_policy(),
     )
@@ -1074,5 +1074,132 @@ def test_lifecycle_intent_blocks_commit_even_after_a_cancelled_transition():
             runtime.execution_admission.reserve("old-instance")
         await runtime.dispose()
         await host.current.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_immediate_application_input_invalidates_candidate_before_original_commit():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    from .test_application_input import _Committer, _message
+
+    async def scenario():
+        for mode in ("direct", "trigger_turn"):
+            committer, prompts = _Committer(), []
+            agent = Agent()
+
+            async def prompt(message, target=prompts):
+                target.append(message)
+
+            agent.prompt = prompt
+            runtime = _admission_runtime(agent, application_committer=committer.commit)
+            candidate = runtime.execution_admission.reserve("candidate-before-input")
+            message = _message("arrival", delivery_mode=mode)
+            delivered = await runtime.application_inputs.deliver(message)
+            if mode == "direct":
+                assert delivered.disposition == "committed" and list(committer.persisted) == ["arrival"]
+            else:
+                assert delivered.disposition == "triggered" and prompts == [message]
+            with pytest.raises(SessionExecutionUnavailable):
+                candidate.commit()
+            candidate.release()
+            await runtime.dispose()
+
+    asyncio.run(scenario())
+
+def test_immediate_application_commit_and_projection_hold_original_admission():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    from .test_application_input import _Committer, _message
+
+    async def scenario():
+        commit_started, commit_release = asyncio.Event(), asyncio.Event()
+        project_started, project_release = asyncio.Event(), asyncio.Event()
+        committer = _Committer()
+
+        async def commit(message):
+            commit_started.set()
+            await commit_release.wait()
+            return await committer.commit(message)
+
+        runtime = _admission_runtime(Agent(), application_committer=commit)
+
+        async def project(event):
+            if event.kind == "agent.message_start":
+                project_started.set()
+                await project_release.wait()
+
+        runtime.subscribe(project)
+        delivery = asyncio.create_task(runtime.application_inputs.deliver(_message("saving")))
+        await commit_started.wait()
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve_candidate()
+        commit_release.set()
+        await project_started.wait()
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve_candidate()
+        project_release.set()
+        await delivery
+        candidate = runtime.execution_admission.reserve_candidate()
+        candidate.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_immediate_application_input_refused_before_persistence_then_retried_once():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    from .test_application_input import _Committer, _message
+
+    async def scenario():
+        committer, refreshed = _Committer(), []
+        runtime = _admission_runtime(Agent(), application_committer=committer.commit,
+                                     refresh=lambda: refreshed.append(True))
+        permit = runtime.execution_admission.reserve("planning")
+        permit.commit()
+        assert not runtime.agent.is_streaming
+        message = _message("held-original-identity")
+        with pytest.raises(SessionExecutionUnavailable):
+            await runtime.application_inputs.deliver(message)
+        assert not committer.persisted and not refreshed
+        permit.begin_settling()
+        permit.release()
+        first = await runtime.application_inputs.deliver(message)
+        retry = await runtime.application_inputs.deliver(message)
+        assert first.disposition == "committed" and retry.disposition == "already_committed"
+        assert list(committer.persisted) == ["held-original-identity"] and refreshed == [True]
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_immediate_application_input_rejects_closed_or_stale_session():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    from .test_application_input import _Committer, _message
+
+    async def scenario():
+        for closed in (False, True):
+            committer = _Committer()
+            runtime = _admission_runtime(Agent(), application_committer=committer.commit)
+            if closed:
+                runtime.execution_admission.close_admission()
+            else:
+                runtime.execution_admission.bind_lifecycle(
+                    is_current=lambda: False, transition_pending=lambda: False,
+                )
+            with pytest.raises(SessionExecutionUnavailable):
+                await runtime.application_inputs.deliver(_message("stale"))
+            assert not committer.persisted
+            await runtime.dispose()
 
     asyncio.run(scenario())
