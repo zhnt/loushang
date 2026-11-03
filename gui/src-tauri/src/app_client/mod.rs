@@ -4,7 +4,9 @@ mod connection_epoch;
 mod record_native;
 mod request_deadline;
 mod transport_auth;
-pub(crate) use attachment::{ControlAuthority, ControlResult, ModelControlResult};
+pub(crate) use attachment::{
+    ControlAuthority, ControlResult, CreateSessionResult, ModelControlResult,
+};
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
@@ -36,6 +38,12 @@ pub(crate) struct LiveEventRound {
 }
 
 pub(crate) enum ControlCommand {
+    CreateSession {
+        source_session_id: String,
+        continuity_id: String,
+        title: String,
+        reply: SyncSender<Result<CreateSessionResult, ()>>,
+    },
     Submit {
         session_id: String,
         submission_id: String,
@@ -341,6 +349,23 @@ fn process_controls<R: Read, W: Write>(
         };
         let request_id = session.next_control_request_id()?;
         let failed = match command {
+            ControlCommand::CreateSession {
+                source_session_id,
+                continuity_id,
+                title,
+                reply,
+            } => {
+                let result = authority.create_session(
+                    channel,
+                    &source_session_id,
+                    &continuity_id,
+                    &title,
+                    &request_id,
+                );
+                let reconnect = matches!(result, Ok(CreateSessionResult::Accepted(_)) | Err(()));
+                let _ = reply.send(result);
+                reconnect
+            }
             ControlCommand::Submit {
                 session_id,
                 submission_id,

@@ -218,6 +218,10 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       });
       return { accepted: receipt.accepted, reason: receipt.reason ?? undefined };
     },
+    async createSession(input) {
+      const value = object(await invoke("live_create_session", { input }));
+      return { sessionId: identifier(value.sessionId) };
+    },
     async sessionModels(sessionId) {
       return validateSessionModels(await invoke("live_session_models", { input: { sessionId } }));
     },
@@ -379,6 +383,8 @@ function validateEventRound(
       || session.executions.revision < (executionRevisions.get(sessionId) ?? 0)) {
       throw new Error("snapshot watermark");
     }
+    contentCursors.set(sessionId, cursor);
+    executionRevisions.set(sessionId, session.executions.revision);
   });
   return { snapshot, sequence, contentCursors, executionRevisions };
 }

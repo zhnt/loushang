@@ -69,6 +69,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
   const [sessionModels, setSessionModels] = useState<SessionModels | null>(null);
   const [modelPending, setModelPending] = useState(false);
+  const [createPending, setCreatePending] = useState(false);
+  const createdSessionRef = useRef<string | null>(null);
   const controlPendingRef = useRef(false);
   const [awaitingPublication, setAwaitingPublication] = useState<{
     readonly sessionId: string;
@@ -135,7 +137,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
       dispatch({ type: "snapshot.installed", snapshot });
-      setNotice("Live AppHost event round installed.");
+      const createdSessionId = createdSessionRef.current;
+      if (createdSessionId && snapshot.sessions.some((session) => session.id === createdSessionId)) {
+        createdSessionRef.current = null;
+        dispatch({ type: "session.selected", sessionId: createdSessionId });
+        setCreatePending(false);
+        setNotice("New Session created and attached.");
+      } else {
+        setNotice("Live AppHost event round installed.");
+      }
       setSyncing(false);
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
@@ -321,6 +331,27 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     }
   }
 
+  async function createSession(): Promise<void> {
+    if (!selected || !client.createSession || createPending
+      || state.remote.connection !== "connected") return;
+    setCreatePending(true);
+    try {
+      const receipt = await client.createSession({
+        sourceSessionId: selected.id,
+        title: "New Session",
+      });
+      createdSessionRef.current = receipt.sessionId;
+      setNotice("New Session created. Reattaching to the updated workspace…");
+      // Creation replaces the mux projection and invalidates the old controller.
+      // Ask for another authoritative snapshot as a race-safe fallback in case
+      // the automatic reconnect completed before the command reply reached UI.
+      void client.requestResync?.().catch(() => undefined);
+    } catch {
+      setCreatePending(false);
+      setNotice("New Session could not be created.");
+    }
+  }
+
   function openReview(documentId: string): void {
     if (!selected) return;
     setEnvironmentOpen(false);
@@ -345,7 +376,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onUnavailable={() => setNotice("New Session is unavailable in this existing-Session slice.")}
+          onNewSession={() => { void createSession(); }}
+          newSessionEnabled={Boolean(client.createSession) && state.remote.connection === "connected"}
+          newSessionPending={createPending}
         />
         <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -532,18 +565,21 @@ interface SidebarProps {
   readonly bridgeProbe: BridgeProbe;
   readonly onSelect: (sessionId: string) => void;
   readonly onToggleWorkspace: (workspaceId: string) => void;
-  readonly onUnavailable: () => void;
+  readonly onNewSession: () => void;
+  readonly newSessionEnabled: boolean;
+  readonly newSessionPending: boolean;
 }
 
-function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailable }: SidebarProps) {
+function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onNewSession, newSessionEnabled, newSessionPending }: SidebarProps) {
   return (
     <aside className="session-rail" aria-label="Workspace and Session navigation">
       <div className="brand-row">
         <span className="brand-name"><strong>HarnessGUI</strong><UiIcon name="chevron-down" /></span>
         <button className="brand-search" type="button" aria-label="Search unavailable" title="Search is unavailable in the offline fixture" disabled><UiIcon name="search" /></button>
       </div>
-      <button className="new-session" type="button" onClick={onUnavailable}>
-        <UiIcon name="new-session" /> New Session <kbd aria-hidden="true">+</kbd>
+      <button className="new-session" type="button" onClick={onNewSession}
+        disabled={!newSessionEnabled || newSessionPending}>
+        <UiIcon name="new-session" /> {newSessionPending ? "Creating…" : "New Session"} <kbd aria-hidden="true">+</kbd>
       </button>
       <nav className="sidebar-shortcuts" aria-label="Application shortcuts">
         <button type="button" disabled title="Pull requests are unavailable in the offline fixture"><UiIcon name="pull-request" /><span>Pull requests</span></button>

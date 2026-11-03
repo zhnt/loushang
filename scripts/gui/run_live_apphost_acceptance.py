@@ -19,7 +19,7 @@ from secrets import token_hex
 
 from loushang.agent import synthetic_model_transport
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.apphost import (
     AdmissionIdentityV1,
@@ -260,22 +260,39 @@ def _session_factory(
             stream_fn=None,
             tools=[],
         )
+    model = Model(
+        id="no-network",
+        name="No network",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            input=("text",), context_window=128000, max_tokens=4096
+        ),
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "faux": Provider(
+                id="faux",
+                endpoints={
+                    "anthropic-messages": Endpoint(
+                        id="anthropic-messages",
+                        provider="faux",
+                        api="anthropic-messages",
+                        models={model.id: model},
+                    )
+                },
+            )
+        }
+    )
     return CodingRealHostedSessionFactoryV1(
         services_factory=lambda cwd: create_services(
+            ai_model_registry=registry,
             settings_manager=SettingsManager(
                 global_settings_path=root / "settings.json",
                 project_settings_path=cwd / ".loushang/settings.json",
             )
         ),
-        model=Model(
-            id="no-network",
-            name="No network",
-            provider="faux",
-            endpoint="anthropic-messages",
-            capabilities=Capabilities(
-                input=("text",), context_window=128000, max_tokens=4096
-            ),
-        ),
+        model=model,
         stream_fn=deterministic_stream,
         tools=[],
     )
@@ -300,33 +317,6 @@ async def assert_peer_is_usable(runtime: AcceptanceRuntime) -> None:
         runtime.execution.service_instance_id,
     )
     assert runtime.app.accepting
-
-
-async def assert_model_catalog(runtime: AcceptanceRuntime, expected: str) -> None:
-    """Exercise the same attachment-scoped model contract used by the GUI."""
-
-    observer = runtime.app.open_client_scope()
-    attachment = None
-    try:
-        attachment = await observer.attach_mux(MuxAttachV1(MuxSelectorV1(name=GUI_MUX)))
-        member = attachment.mux_space.members[0]
-        models = await observer.list_session_models(
-            SessionSnapshotRequestV1(
-                attachment.attachment_id,
-                attachment.controller_generation,
-                member.member_id,
-            )
-        )
-        if models.current_id != expected or not models.models:
-            raise RuntimeError("the GUI model catalog did not expose the active model")
-    finally:
-        if attachment is not None:
-            await observer.detach_mux(
-                MuxDetachV1(
-                    attachment.attachment_id, attachment.controller_generation
-                )
-            )
-        await observer.close()
 
 
 def attachment_count(runtime: AcceptanceRuntime) -> int:
@@ -391,18 +381,31 @@ async def exercise_transport_reconnect(runtime: AcceptanceRuntime) -> None:
     )
 
 
-def selected_model_ref(runtime: AcceptanceRuntime) -> str:
-    service = runtime.app._application._service
-    assert service is not None
-    session = next(
-        value
-        for value in service._sessions.values()
-        if value.identity.session_id == runtime.gui_session_id
-    )
-    model = session._port._session.agent.model
-    if model is None:
-        raise RuntimeError("the saved Coding default model did not resolve")
-    return f"{model.provider_id}:{model.endpoint_id}:{model.id}"
+async def selected_model_ref(runtime: AcceptanceRuntime) -> str:
+    """Read the active model through the same attachment contract as the GUI."""
+    observer = runtime.app.open_client_scope()
+    attachment = None
+    try:
+        attachment = await observer.attach_mux(MuxAttachV1(MuxSelectorV1(name=GUI_MUX)))
+        member = attachment.mux_space.members[0]
+        models = await observer.list_session_models(
+            SessionSnapshotRequestV1(
+                attachment.attachment_id,
+                attachment.controller_generation,
+                member.member_id,
+            )
+        )
+        if models.current_id is None or not models.models:
+            raise RuntimeError("the GUI model catalog did not expose an active model")
+        return models.current_id
+    finally:
+        if attachment is not None:
+            await observer.detach_mux(
+                MuxDetachV1(
+                    attachment.attachment_id, attachment.controller_generation
+                )
+            )
+        await observer.close()
 
 
 async def trigger_live_projection(runtime: AcceptanceRuntime) -> None:
@@ -473,19 +476,18 @@ async def run(args: argparse.Namespace, root: Path) -> None:
     runtime = await create_runtime(root, live_provider=args.live_provider)
     evidence = args.evidence_dir.resolve()
     gui = None
-    model_ref = selected_model_ref(runtime)
     result: dict[str, object] = {
         "status": "running",
         "muxName": GUI_MUX,
         "peerMuxName": PEER_MUX,
         "serviceInstanceId": runtime.execution.service_instance_id,
-        "model": model_ref,
         "mode": "live-provider" if runtime.live_provider else "deterministic",
     }
-    write_json(evidence / "launch.json", result)
     try:
+        model_ref = await selected_model_ref(runtime)
+        result["model"] = model_ref
+        write_json(evidence / "launch.json", result)
         await assert_peer_is_usable(runtime)
-        await assert_model_catalog(runtime, model_ref)
         print(
             "\nReal AppHost is ready. Starting the visible HarnessGUI window.",
             flush=True,

@@ -211,6 +211,71 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(selector).toHaveValue("provider-b:endpoint-b:shared-model");
   });
 
+  it("creates a live Session and selects it after the replacement snapshot", async () => {
+    const user = userEvent.setup();
+    const fixture = createMockAppClient();
+    const fixtureSnapshot = await fixture.snapshot();
+    const snapshot: ClientSnapshot = {
+      ...fixtureSnapshot,
+      connection: "connected",
+      source: {
+        kind: "live",
+        serviceInstanceId: "service-live",
+        muxSpaceId: "mux-live",
+        connectionEpoch: "1",
+      },
+      sessions: fixtureSnapshot.sessions.map((session) => ({
+        ...session,
+        status: "idle" as const,
+        context: { ...session.context, source: "live" as const },
+      })),
+    };
+    let publishSnapshot: ((value: ClientSnapshot) => void) | undefined;
+    const createSession = vi.fn(async () => ({ sessionId: "session-new" }));
+    render(<HarnessGui client={{
+      snapshot: async () => snapshot,
+      subscribe: () => () => undefined,
+      subscribeSnapshots: (listener) => {
+        publishSnapshot = listener;
+        return () => { publishSnapshot = undefined; };
+      },
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
+      interrupt: async () => ({ accepted: false }),
+      createSession,
+    }} />);
+
+    await screen.findByRole("heading", { name: "GUI development" });
+    await user.click(screen.getByRole("button", { name: "New Session" }));
+    expect(createSession).toHaveBeenCalledWith({
+      sourceSessionId: "session-gui",
+      title: "New Session",
+    });
+    expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+
+    const source = snapshot.sessions[0];
+    const created = {
+      ...source,
+      id: "session-new",
+      title: "New Session",
+      context: {
+        ...source.context,
+        memberId: "member-new",
+        sessionId: "session-new",
+      },
+    };
+    await act(async () => {
+      publishSnapshot?.({
+        ...snapshot,
+        generation: "2",
+        sessions: [...snapshot.sessions, created],
+        recentSessionIds: ["session-new", ...snapshot.recentSessionIds],
+        selectedSessionId: "session-new",
+      });
+    });
+    expect(screen.getByRole("heading", { name: "New Session" })).toBeVisible();
+    expect(screen.getByText("New Session created and attached.")).toBeVisible();
+  });
+
   it("navigates three Workspace kinds and preserves per-Session drafts", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);

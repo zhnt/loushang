@@ -226,7 +226,16 @@ pub(crate) struct ControlAuthority {
     attachment_id: String,
     controller_generation: String,
     instance: String,
+    mux_name: String,
     members: BTreeMap<String, String>,
+    session_templates: BTreeMap<String, SessionTemplate>,
+}
+
+#[derive(Clone)]
+struct SessionTemplate {
+    product_id: String,
+    scope: String,
+    scope_fingerprint: String,
 }
 
 pub(crate) enum ControlResult {
@@ -237,6 +246,11 @@ pub(crate) enum ControlResult {
 
 pub(crate) enum ModelControlResult {
     Accepted(Value),
+    Rejected(String),
+}
+
+pub(crate) enum CreateSessionResult {
+    Accepted(String),
     Rejected(String),
 }
 
@@ -333,11 +347,28 @@ impl ReadSession {
             return Err(());
         }
         let mut members = BTreeMap::new();
+        let mut session_templates = BTreeMap::new();
         for session in &self.attachment.sessions {
             let identity = projection::identity_value(session.member.session.get())?;
             let session_id = identity["sessionId"].as_str().ok_or(())?.to_owned();
             if members
-                .insert(session_id, session.member.member_id.clone())
+                .insert(session_id.clone(), session.member.member_id.clone())
+                .is_some()
+            {
+                return Err(());
+            }
+            if session_templates
+                .insert(
+                    session_id,
+                    SessionTemplate {
+                        product_id: identity["productId"].as_str().ok_or(())?.to_owned(),
+                        scope: identity["scope"].as_str().ok_or(())?.to_owned(),
+                        scope_fingerprint: identity["scopeFingerprint"]
+                            .as_str()
+                            .ok_or(())?
+                            .to_owned(),
+                    },
+                )
                 .is_some()
             {
                 return Err(());
@@ -347,7 +378,9 @@ impl ReadSession {
             attachment_id: self.attachment.attachment_id.clone(),
             controller_generation: self.attachment.controller_generation.get().to_owned(),
             instance: self.instance.clone(),
+            mux_name: self.attachment.mux_space.name.clone(),
             members,
+            session_templates,
         })
     }
 
@@ -412,7 +445,14 @@ impl ReadSession {
             }
             let has_events = members.iter().any(|member| !member.events.is_empty());
             let sessions = if has_events {
-                self.read_snapshots(channel, attempt)?
+                let snapshots = self.read_snapshots(channel, attempt)?;
+                if snapshots.len() != next.len() {
+                    return Err(());
+                }
+                for (reader, snapshot) in next.iter_mut().zip(&snapshots) {
+                    reader.rebase(snapshot)?;
+                }
+                snapshots
                     .iter()
                     .map(|value| value["result"].clone())
                     .collect()
@@ -525,6 +565,44 @@ impl ReadSession {
 }
 
 impl ControlAuthority {
+    pub(crate) fn create_session<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        source_session_id: &str,
+        continuity_id: &str,
+        title: &str,
+        request_id: &str,
+    ) -> Result<CreateSessionResult, ()> {
+        if !identifier(continuity_id, 512) || title.trim().is_empty() || title.chars().count() > 256
+        {
+            return Err(());
+        }
+        let template = self.session_templates.get(source_session_id).ok_or(())?;
+        let response = request(
+            channel,
+            "mux/member/open",
+            request_id,
+            json!({
+                "selector": {"muxSpaceId": null, "name": self.mux_name},
+                "session": {
+                    "productId": template.product_id,
+                    "continuityId": continuity_id,
+                    "scope": template.scope,
+                    "scopeFingerprint": template.scope_fingerprint,
+                    "title": title,
+                    "sessionId": null,
+                },
+            }),
+        )?;
+        decode_create_result(
+            &response.result_type,
+            &response.result,
+            &self.mux_name,
+            continuity_id,
+            &template.product_id,
+        )
+    }
+
     fn app_payload(&self, session_id: &str) -> Result<Value, ()> {
         let member_id = self.members.get(session_id).ok_or(())?;
         let generation: Value =
@@ -684,13 +762,8 @@ impl ControlAuthority {
 }
 
 fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
-    if result_type == "error" {
-        let error: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
-        let code = error.get("code").and_then(Value::as_str).ok_or(())?;
-        if !identifier(code, 128) {
-            return Err(());
-        }
-        return Ok(ModelControlResult::Rejected(code.to_owned()));
+    if let Some(code) = decode_app_error(result_type, result)? {
+        return Ok(ModelControlResult::Rejected(code));
     }
     if result_type != "sessionModels" {
         return Err(());
@@ -706,6 +779,51 @@ fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelCont
         return Err(());
     }
     Ok(ModelControlResult::Accepted(value))
+}
+
+fn decode_create_result(
+    result_type: &str,
+    result: &RawValue,
+    mux_name: &str,
+    continuity_id: &str,
+    product_id: &str,
+) -> Result<CreateSessionResult, ()> {
+    if let Some(code) = decode_app_error(result_type, result)? {
+        return Ok(CreateSessionResult::Rejected(code));
+    }
+    if result_type != "mux" {
+        return Err(());
+    }
+    let mux: Mux = serde_json::from_str(result.get()).map_err(|_| ())?;
+    if mux.name != mux_name
+        || !identifier(&mux.mux_space_id, 512)
+        || !positive(&mux.revision)
+        || mux.members.len() > 128
+    {
+        return Err(());
+    }
+    for member in &mux.members {
+        let value = member.value()?;
+        let identity = &value["session"];
+        if identity["continuityId"] == continuity_id && identity["productId"] == product_id {
+            return Ok(CreateSessionResult::Accepted(
+                identity["sessionId"].as_str().ok_or(())?.to_owned(),
+            ));
+        }
+    }
+    Err(())
+}
+
+fn decode_app_error(result_type: &str, result: &RawValue) -> Result<Option<String>, ()> {
+    if result_type != "error" {
+        return Ok(None);
+    }
+    let error: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
+    let code = error.get("code").and_then(Value::as_str).ok_or(())?;
+    if !identifier(code, 128) {
+        return Err(());
+    }
+    Ok(Some(code.to_owned()))
 }
 
 fn execution_request<R: Read, W: Write>(
@@ -786,6 +904,26 @@ impl EventReader {
         *self = next;
         Ok(())
     }
+    fn rebase(&mut self, snapshot: &Value) -> Result<(), ()> {
+        if !self.valid {
+            return Err(());
+        }
+        let source = &snapshot["result"]["source"]["source"];
+        let cursor = source["cursor"].as_str().ok_or(())?;
+        let revision = snapshot["result"]["executions"]["revision"]
+            .as_u64()
+            .ok_or(())?;
+        if source["identity"]["sessionId"] != self.session_id
+            || cursor.len() < self.cursor.len()
+            || (cursor.len() == self.cursor.len() && cursor < self.cursor.as_str())
+            || revision < self.revision
+        {
+            return Err(());
+        }
+        self.cursor = cursor.to_owned();
+        self.revision = revision;
+        Ok(())
+    }
     fn advance(&mut self, events: &Value) -> Result<(), ()> {
         for event in events["result"]["events"].as_array().ok_or(())? {
             if event.get("source").is_some() {
@@ -822,6 +960,43 @@ mod tests {
     }
 
     #[test]
+    fn created_session_is_identified_from_the_validated_mux_result() {
+        let fingerprint = "a".repeat(64);
+        let raw = RawValue::from_string(
+            json!({
+                "muxSpaceId": "mux-1",
+                "name": "gui",
+                "revision": 2,
+                "members": [{
+                    "memberId": "member-1",
+                    "session": {
+                        "productId": "coding",
+                        "continuityId": "continuity-1",
+                        "sessionId": "session-1",
+                        "scope": "cwd",
+                        "scopeFingerprint": fingerprint,
+                    },
+                    "title": "New Session",
+                    "position": 1,
+                }],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        match decode_create_result("mux", &raw, "gui", "continuity-1", "coding").unwrap() {
+            CreateSessionResult::Accepted(session_id) => assert_eq!(session_id, "session-1"),
+            CreateSessionResult::Rejected(code) => panic!("unexpected rejection: {code}"),
+        }
+
+        let error =
+            RawValue::from_string(r#"{"code":"operation_unavailable"}"#.to_owned()).unwrap();
+        assert!(matches!(
+            decode_create_result("error", &error, "gui", "continuity-1", "coding").unwrap(),
+            CreateSessionResult::Rejected(code) if code == "operation_unavailable"
+        ));
+    }
+
+    #[test]
     fn request_numbers_fail_closed_without_wrapping() {
         let mut next = i64::MAX as u64;
         assert_eq!(take_request_id(&mut next).unwrap(), i64::MAX.to_string());
@@ -845,6 +1020,23 @@ mod tests {
         assert!(reader.apply(&batch(&[])).is_err());
         let mut fresh = EventReader::new(&snapshot).unwrap();
         assert!(fresh.apply(&batch(&["11"])).is_err()); // Cannot reuse a later batch.
+    }
+    #[test]
+    fn authoritative_snapshot_rebases_both_event_watermarks() {
+        let initial = json!({"result":{"source":{"source":{"cursor":"4", "identity":{"sessionId":"s"}}},"executions":{"revision":3}}});
+        let mut reader = EventReader::new(&initial).unwrap();
+        let metadata = json!({"result":{"events":[{"revision":4}]}});
+        reader.apply(&metadata).unwrap();
+        let cut = json!({"result":{"source":{"source":{"cursor":"5", "identity":{"sessionId":"s"}}},"executions":{"revision":5}}});
+        reader.rebase(&cut).unwrap();
+        assert_eq!(reader.cursor, "5");
+        assert_eq!(reader.revision, 5);
+        assert!(reader
+            .apply(&json!({"result":{"events":[
+                {"source":{"sessionId":"s","cursor":"6"}}, {"revision":6}
+            ]}}))
+            .is_ok());
+        assert!(reader.rebase(&initial).is_err());
     }
     #[test]
     fn decimal_successor_is_lossless() {

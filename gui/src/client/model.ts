@@ -257,6 +257,15 @@ export interface SessionModels {
   readonly models: readonly ModelChoice[];
 }
 
+export interface CreateSessionInput {
+  readonly sourceSessionId: string;
+  readonly title: string;
+}
+
+export interface CreateSessionReceipt {
+  readonly sessionId: string;
+}
+
 export interface PlaybackStep {
   readonly label: string;
   readonly remaining: number;
@@ -270,6 +279,7 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
+  createSession?(input: CreateSessionInput): Promise<CreateSessionReceipt>;
   sessionModels?(sessionId: string): Promise<SessionModels>;
   selectModel?(sessionId: string, modelId: string): Promise<SessionModels>;
 }
