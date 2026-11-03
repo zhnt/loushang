@@ -1,0 +1,11 @@
+# 操作级模型transport边界修正
+
+Authority: descriptive。对象为dcb5dfd8b后的Agent操作级transport声明校验，属于已接受Session协同合同的实现收尾，不是普通Session公开接入完成。
+
+临时stream必须使用自身既有的prepared-request或synthetic声明，不能借用baseline transport的声明。仅在显式覆盖且存在prepare_model_call时核查；没有覆盖或没有prepare时保留原行为，不给任意provider自动加标记。错误继续走原Agent失败事件和结束处理。
+
+首次修复的运行评审发现STR-R1：continue先消费原队列，再被临时transport检查拒绝，可能丢失用户输入。已修为原队列has_items选择，进入原执行scope并通过checkpoint、上下文/配置及实际stream校验后，同步调用原drain；scope内clear使原队列变空时不再调用模型。没有复制恢复队列或新driver。
+
+三个独立视角对最终两文件复核无剩余阻断；原始报告位于产品树外architecture-analysis/goal-refactor-20261103/s4-stream-{ownership,runtime,data}-r2.md。STR-R1运行复核关闭。实施负责人依据该评审与以下检查接受本地集成，不扩大架构接受范围。
+
+验证：原始反例2 failed、4 passed；最终Agent runtime 46 passed，含三种队列拒绝后保留并一次交付、scope clear不复活。完整Agent及原Session runtime/queue组合200 passed，2.25秒；Ruff通过。没有线上调用、没有新增或扩大PR门禁。普通Session公开入口及双入口等价仍待完成。

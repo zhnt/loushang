@@ -26,6 +26,7 @@ from loushang.agent.types import (
     AgentTool,
     BeforeToolCallContext,
     BeforeToolCallResult,
+    StreamFn,
     ThinkingLevel,
     ToolExecutionMode,
 )
@@ -561,29 +562,29 @@ class Agent:
             raise RuntimeError("No messages to continue from")
 
         if getattr(last_message, "role", None) == "assistant":
-            queued_mailbox = self.mailbox_queue.drain() if run_options is None or run_options.deliver_queued_input else []
-            if queued_mailbox:
+            if (run_options is None or run_options.deliver_queued_input) and self.mailbox_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_mailbox,
+                    [],
+                    take_queued_input=self.mailbox_queue.drain,
                     model_call_purpose=model_call_purpose,
                     run_options=run_options,
                 )
                 return
 
-            queued_steering = self.steering_queue.drain() if run_options is None or run_options.deliver_queued_input else []
-            if queued_steering:
+            if (run_options is None or run_options.deliver_queued_input) and self.steering_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_steering,
+                    [],
+                    take_queued_input=self.steering_queue.drain,
                     skip_initial_steering_poll=True,
                     model_call_purpose=model_call_purpose,
                     run_options=run_options,
                 )
                 return
 
-            queued_follow_ups = self.follow_up_queue.drain() if run_options is None or run_options.deliver_queued_input else []
-            if queued_follow_ups:
+            if (run_options is None or run_options.deliver_queued_input) and self.follow_up_queue.has_items():
                 await self._run_prompt_messages(
-                    queued_follow_ups,
+                    [],
+                    take_queued_input=self.follow_up_queue.drain,
                     model_call_purpose=model_call_purpose,
                     run_options=run_options,
                 )
@@ -608,6 +609,7 @@ class Agent:
         *,
         model_call_purpose: str = "main",
         run_options: AgentRunOptions | None = None,
+        take_queued_input: Callable[[], list[AgentMessage]] | None = None,
     ) -> None:
         if run_options is not None and not isinstance(run_options, AgentRunOptions):
             raise TypeError("Agent invocation requires AgentRunOptions")
@@ -615,16 +617,26 @@ class Agent:
         async def executor(signal: AbortSignal) -> None:
             if run_options is not None and run_options.checkpoint is not None:
                 run_options.checkpoint()
+            pending = list(messages)
+            context = self._create_context_snapshot(run_options=run_options)
+            config = self._create_loop_config(
+                skip_initial_steering_poll=skip_initial_steering_poll,
+                run_options=run_options,
+            )
+            selected_stream = self._invocation_stream(run_options)
+            # Consume the original queue only after admission and invocation
+            # setup succeed. A clear during scope entry must remain effective.
+            if take_queued_input is not None:
+                pending = take_queued_input()
+                if not pending:
+                    return
             await run_agent_loop(
-                list(messages),
-                self._create_context_snapshot(run_options=run_options),
-                self._create_loop_config(
-                    skip_initial_steering_poll=skip_initial_steering_poll,
-                    run_options=run_options,
-                ),
+                pending,
+                context,
+                config,
                 self._process_event,
                 signal=signal,
-                stream_fn=run_options.stream_fn if run_options is not None and run_options.stream_fn is not None else self.stream_fn,
+                stream_fn=selected_stream,
                 model_call_purpose=model_call_purpose,
             )
 
@@ -651,11 +663,29 @@ class Agent:
                 self._create_loop_config(run_options=run_options),
                 self._process_event,
                 signal=signal,
-                stream_fn=run_options.stream_fn if run_options is not None and run_options.stream_fn is not None else self.stream_fn,
+                stream_fn=self._invocation_stream(run_options),
                 model_call_purpose=model_call_purpose,
             )
 
         await self._run_with_lifecycle(executor, run_options=run_options)
+
+    def _invocation_stream(self, run_options: AgentRunOptions | None) -> StreamFn:
+        selected = (
+            run_options.stream_fn
+            if run_options is not None and run_options.stream_fn is not None
+            else self.stream_fn
+        )
+        if (
+            run_options is not None and run_options.stream_fn is not None
+            and self.prepare_model_call is not None
+            and selected is not stream
+            and not is_prepared_request_conformant(selected)
+            and not is_synthetic_model_transport(selected)
+        ):
+            raise ValueError(
+                "invocation transport requires its own prepared-request or synthetic declaration"
+            )
+        return selected
 
     def _create_context_snapshot(self, *, run_options: AgentRunOptions | None = None) -> AgentContext:
         return AgentContext(
