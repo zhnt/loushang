@@ -462,3 +462,79 @@ def test_failed_session_preparation_retries_retirement_without_reinitialization(
             fail = False
             await app.close()
     asyncio.run(scenario())
+
+
+def test_revoked_goal_waiter_and_failed_close_keep_original_owner_for_server_retry(tmp_path, monkeypatch):
+    async def scenario():
+        launch, config = task(tmp_path)
+        adapter = CalculatorAdapter(config.workspace, block=True)
+        app, scope, control, _ = await application(launch, replace(config, max_advances=1), adapter)
+        client = scope.goal_client
+        _, binding = await client._execution._resolve(control, client.service_instance_id)
+        port, retained = binding.port, binding.port._goal
+        session = port._product_binding.control
+        waiter = None
+        try:
+            submitted = await client.start(control, client.service_instance_id, "combined-cleanup")
+            await asyncio.wait_for(adapter.entered.wait(), 20)
+            invocation = port._invocation
+            started = asyncio.Event()
+
+            async def waiting():
+                started.set()
+                return await client.wait(control, submitted.handle)
+
+            waiter = asyncio.create_task(waiting())
+            await started.wait()
+            waiter.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            assert port._invocation is invocation and not invocation.task.done()
+            await scope.close()
+            with pytest.raises(AppServiceError):
+                await client.query(control, submitted.handle)
+            with pytest.raises(AppServiceError):
+                await client.retry_settlement(control, submitted.handle)
+            adapter.release.set()
+            result = await port.wait_execution(submitted.handle.execution_id)
+            assert result.status is ExecutionStatusV1.FAILED
+            count = adapter.calls
+
+            def work_identities():
+                return tuple((batch.operation_id,
+                              retained._work.get_run_for_operation(batch.operation_id).run_id,
+                              retained._work.get_run_for_operation(batch.operation_id).status,
+                              retained._work.get_cancellation(
+                                  retained._work.get_run_for_operation(batch.operation_id).run_id).status)
+                             for batch in retained.controller.history.batches)
+
+            original_ids = work_identities()
+            original_close = retained._store.close
+            failures = 1
+
+            def close_writer():
+                nonlocal failures
+                if failures:
+                    failures -= 1
+                    raise OSError("injected Goal writer close debt")
+                original_close()
+
+            monkeypatch.setattr(retained._store, "close", close_writer)
+            with pytest.raises(RuntimeError, match="cleanup_incomplete"):
+                await app.close()
+            assert port._goal is retained and port._invocation is invocation
+            assert not retained._closed and not retained._writer_closed and not retained._scope.closed
+            assert port._product_binding._close_task is None and not session.runtime._closed
+            assert work_identities() == original_ids and adapter.calls == count
+            # Only the original server lifecycle retries; the revoked client
+            # cannot regain authority or restart the already accepted business.
+            await app.close()
+            assert retained._closed and port._goal is None and session.runtime._closed
+            assert work_identities() == original_ids and adapter.calls == count
+        finally:
+            adapter.release.set()
+            if waiter is not None:
+                await asyncio.gather(waiter, return_exceptions=True)
+            await app.close()
+
+    asyncio.run(scenario())

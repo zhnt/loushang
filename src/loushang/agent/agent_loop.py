@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
-from contextlib import suppress
+from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar
 
@@ -483,6 +483,7 @@ async def _stream_assistant_response(
             model_call_sequence=model_call_sequence,
         ),
         signal,
+        execution_scope=config.execution_scope,
     )
     if added_partial:
         context.messages[-1] = final_message
@@ -505,6 +506,8 @@ async def _collect_assistant_response(
 ) -> tuple[AssistantMessage, bool]:
     """Collect provider output without owning its durable message boundary."""
 
+    if config.checkpoint is not None:
+        config.checkpoint()
     messages = context.messages
     if config.transform_context is not None:
         messages = await config.transform_context(messages, signal)
@@ -553,6 +556,8 @@ async def _collect_assistant_response(
     if _is_aborted(signal):
         raise RuntimeError("Request aborted by user")
 
+    if config.checkpoint is not None:
+        config.checkpoint()
     try:
         response = await _resolve(call_stream(config.model, llm_context, options))
     except Exception as error:
@@ -775,7 +780,8 @@ async def _execute_tool_calls_sequential(
             finalized_messages.append(finalized.message)
             continue
         execution = _create_execution_task(
-            _execute_prepared_tool_call(preparation, emit, signal=signal), signal
+            _execute_prepared_tool_call(preparation, emit, signal=signal), signal,
+            execution_scope=config.execution_scope,
         )
         executed = await _await_execution_task(execution, signal)
         if _is_aborted(signal) and not executed.completed_before_abort:
@@ -845,6 +851,7 @@ async def _execute_tool_calls_parallel(
             _create_execution_task(
                 _execute_prepared_tool_call(prepared, emit, signal=signal),
                 signal,
+                execution_scope=config.execution_scope,
             ),
         )
         for prepared in runnable_calls
@@ -1010,8 +1017,25 @@ async def _finalize_completed_tool_tasks(
 def _create_execution_task(
     operation: Coroutine[Any, Any, ExecutionResultT],
     signal: object | None,
+    *, execution_scope: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> asyncio.Task[ExecutionResultT]:
-    task = asyncio.create_task(operation)
+    if execution_scope is None:
+        task = asyncio.create_task(operation)
+    else:
+        try:
+            scope = execution_scope()
+        except BaseException:
+            operation.close()
+            raise
+
+        async def owned_operation() -> ExecutionResultT:
+            with scope:
+                return await operation
+
+        task = asyncio.create_task(owned_operation())
+        # The original coroutine also needs closing if cancellation wins before
+        # the owned wrapper first runs. The AbortSignal still owns this task.
+        task.add_done_callback(lambda _task: operation.close())
     register = getattr(signal, "_register_execution_task", None)
     if callable(register):
         register(task)
@@ -1041,9 +1065,10 @@ async def _await_execution_task(
 async def _run_execution(
     operation: Coroutine[Any, Any, ExecutionResultT],
     signal: object | None,
+    *, execution_scope: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> ExecutionResultT:
     return await _await_execution_task(
-        _create_execution_task(operation, signal),
+        _create_execution_task(operation, signal, execution_scope=execution_scope),
         signal,
     )
 

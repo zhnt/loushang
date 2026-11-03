@@ -1215,3 +1215,250 @@ def test_initial_state_accepts_partial_mapping() -> None:
     assert agent.state.tools == []
     assert agent.state.pending_tool_calls == set()
     assert agent.state.is_streaming is False
+
+
+def test_run_options_isolate_queue_and_tools_without_restoring_old_baseline():
+    from contextlib import contextmanager
+
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        active = []
+        requests = []
+        baseline_calls = []
+
+        async def baseline(model, context, options=None):
+            baseline_calls.append(context)
+            return _stream_with_final_message(_assistant_text_message("ordinary response"))
+
+        async def scoped(model, context, options=None):
+            assert active[-1] is asyncio.current_task() and len(active) == 2
+            requests.append(context)
+            # A legal baseline update during execution must survive completion.
+            agent.tools = []
+            return _stream_with_final_message(_assistant_text_message("scoped response"))
+
+        @contextmanager
+        def scope():
+            active.append(asyncio.current_task())
+            try:
+                yield
+            finally:
+                active.pop()
+
+        agent = Agent(stream_fn=baseline, initial_state={"model": _model(), "tools": [FakeTool()]})
+        queued = agent.follow_up(UserMessage(role="user", content="ordinary queued input", timestamp=0))
+        overlay = AgentRunOptions(stream_fn=scoped, tool_names=frozenset(),
+                                  deliver_queued_input=False, execution_scope=scope)
+        await agent.prompt("scoped input", run_options=overlay)
+        assert len(requests) == 1 and not requests[0].tools
+        assert agent.stream_fn is baseline and agent.tools == [] and not active
+        assert agent.has_queued_messages()
+        assert queued not in agent.state.messages
+        await agent.continue_run()
+        assert len(baseline_calls) == 1 and not agent.has_queued_messages()
+        assert any(getattr(message, "content", None) == queued.content for message in agent.state.messages)
+
+    asyncio.run(scenario())
+
+
+def test_failed_run_scope_does_not_leave_agent_streaming_or_modify_baseline():
+    from contextlib import contextmanager
+
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentRunOptions
+
+    @contextmanager
+    def refused():
+        raise RuntimeError("configuration changed before execution")
+        yield
+
+    async def scenario():
+        calls = []
+
+        async def stream(model, context, options=None):
+            calls.append(context)
+            return _stream_with_final_message(_assistant_text_message("done"))
+
+        agent = Agent(stream_fn=stream, initial_state={"model": _model()})
+        await agent.prompt("cannot start", run_options=AgentRunOptions(execution_scope=refused))
+        assert not agent.is_streaming and not calls and agent.stream_fn is stream
+        assert agent.state.messages[-1].stop_reason == "error"
+        await agent.prompt("ordinary")
+        assert len(calls) == 1 and not agent.is_streaming
+
+    asyncio.run(scenario())
+
+
+def test_run_failure_events_keep_execution_authority_until_failure_handling_finishes():
+    from contextlib import contextmanager
+
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        admitted = set()
+        observed = []
+
+        @contextmanager
+        def scope():
+            task = asyncio.current_task()
+            admitted.add(task)
+            try:
+                yield
+            finally:
+                admitted.remove(task)
+
+        async def fail(signal):
+            raise RuntimeError("invocation failed")
+
+        async def on_event(event, signal):
+            if event["type"] == "agent_end":
+                observed.append(asyncio.current_task() in admitted)
+
+        agent = Agent(initial_state={"model": _model()})
+        agent.subscribe(on_event)
+        await agent._run_with_lifecycle(fail, run_options=AgentRunOptions(execution_scope=scope))
+        assert observed == [True]
+        assert not admitted and not agent.is_streaming
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("operation", ["prompt", "continue"])
+def test_invocation_stream_cannot_borrow_prepared_trust_from_baseline(operation):
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        calls = []
+
+        async def prepare(preparation):
+            calls.append("prepare")
+            return preparation.options
+
+        async def unmarked(model, context, options=None):
+            calls.append("unmarked transport")
+            return _stream_with_final_message(_assistant_text_message("should not run"))
+
+        agent = Agent(initial_state={"model": _model()}, prepare_model_call=prepare)
+        original = agent.stream_fn
+        assert agent.model_transport_is_prepared_request_conformant
+        overlay = AgentRunOptions(stream_fn=unmarked)
+        if operation == "prompt":
+            await agent.prompt("hi", run_options=overlay)
+        else:
+            agent.state.messages.append(UserMessage(role="user", content="hi", timestamp=0))
+            await agent.continue_run(run_options=overlay)
+        assert not calls
+        assert agent.state.messages[-1].stop_reason == "error"
+        assert agent.state.messages[-1].error_info["details"]["exceptionType"] == "ValueError"
+        assert agent.stream_fn is original and not agent.is_streaming
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("operation", ["prompt", "continue"])
+@pytest.mark.parametrize("declaration", ["prepared", "synthetic"])
+def test_invocation_uses_its_own_explicit_transport_declaration(operation, declaration):
+    from loushang.agent import (
+        Agent,
+        prepared_request_conformant,
+        synthetic_model_transport,
+    )
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        calls = []
+
+        async def baseline(model, context, options=None):
+            raise AssertionError("baseline must not run")
+
+        async def prepare(preparation):
+            calls.append("prepare")
+            return preparation.options
+
+        async def scoped(model, context, options=None):
+            calls.append("scoped")
+            return _stream_with_final_message(_assistant_text_message("done"))
+
+        (prepared_request_conformant if declaration == "prepared" else synthetic_model_transport)(scoped)
+        agent = Agent(stream_fn=baseline, initial_state={"model": _model()}, prepare_model_call=prepare)
+        assert not agent.model_transport_is_prepared_request_conformant
+        overlay = AgentRunOptions(stream_fn=scoped)
+        if operation == "prompt":
+            await agent.prompt("hi", run_options=overlay)
+        else:
+            agent.state.messages.append(UserMessage(role="user", content="hi", timestamp=0))
+            await agent.continue_run(run_options=overlay)
+        assert calls == ["prepare", "scoped"]
+        assert agent.state.messages[-1].stop_reason == "stop"
+        assert agent.stream_fn is baseline and not agent.is_streaming
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("queue_name,enqueue_name", [
+    ("mailbox_queue", "enqueue_mailbox"),
+    ("steering_queue", "steer"),
+    ("follow_up_queue", "follow_up"),
+])
+def test_refused_invocation_retains_original_queue_until_success(queue_name, enqueue_name):
+    from loushang.agent import Agent, prepared_request_conformant
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        calls = []
+
+        async def prepare(preparation):
+            return preparation.options
+
+        async def scoped(model, context, options=None):
+            calls.append(context)
+            return _stream_with_final_message(_assistant_text_message("done"))
+
+        agent = Agent(initial_state={"model": _model()}, prepare_model_call=prepare)
+        agent.state.messages.append(_assistant_text_message("prior response"))
+        queued = getattr(agent, enqueue_name)(UserMessage(role="user", content="keep me", timestamp=0))
+        overlay = AgentRunOptions(stream_fn=scoped)
+        await agent.continue_run(run_options=overlay)
+        assert not calls and getattr(agent, queue_name).has_items()
+        assert queued not in agent.state.messages
+        prepared_request_conformant(scoped)
+        await agent.continue_run(run_options=overlay)
+        assert len(calls) == 1 and not agent.has_queued_messages()
+        assert sum(message == queued for message in agent.state.messages) == 1
+        assert not agent.is_streaming
+
+    asyncio.run(scenario())
+
+
+def test_clear_during_invocation_admission_does_not_resurrect_queued_input():
+    from contextlib import contextmanager
+
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentRunOptions
+
+    async def scenario():
+        calls = []
+
+        async def scoped(model, context, options=None):
+            calls.append(context)
+            return _stream_with_final_message(_assistant_text_message("done"))
+
+        agent = Agent(stream_fn=scoped, initial_state={"model": _model()})
+        prior = _assistant_text_message("prior response")
+        agent.state.messages.append(prior)
+        agent.steer(UserMessage(role="user", content="clear me", timestamp=0))
+
+        @contextmanager
+        def scope():
+            agent.clear_all_queues()
+            yield
+
+        await agent.continue_run(run_options=AgentRunOptions(execution_scope=scope))
+        assert not calls and not agent.has_queued_messages()
+        assert agent.state.messages == [prior] and not agent.is_streaming
+
+    asyncio.run(scenario())

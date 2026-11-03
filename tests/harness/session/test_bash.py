@@ -20,6 +20,48 @@ from loushang.harness.session.bash import (
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
+def test_command_idle_waiters_join_original_execution_and_recording():
+    async def scenario():
+        entered, native_done, recording, recorded = (asyncio.Event() for _ in range(4))
+        signals = []
+
+        async def execute(definition, **kwargs):
+            signals.append(kwargs["signal"])
+            entered.set()
+            await native_done.wait()
+            return AgentToolResult(content=[], details={"exit_code": 0})
+
+        async def append(record):
+            recording.set()
+            await recorded.wait()
+
+        runtime = BashExecutionRuntime(BashExecutionPorts(
+            get_cwd=lambda: "/tmp", get_definition=lambda: object(),
+            execute_definition=execute, create_call_id=lambda: "command", append_record=append,
+            refresh_context=lambda: None,
+        ))
+        command = asyncio.create_task(runtime.execute("check"))
+        await entered.wait()
+        waiter = asyncio.create_task(runtime.wait_for_idle())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert runtime.is_running and not command.done()
+        runtime.abort()
+        assert signals[0].aborted
+        surviving_waiter = asyncio.create_task(runtime.wait_for_idle())
+        native_done.set()
+        await recording.wait()
+        assert not surviving_waiter.done() and runtime.is_running
+        recorded.set()
+        await surviving_waiter
+        await command
+        assert not runtime.is_running
+
+    asyncio.run(scenario())
+
+
 def test_bash_runtime_executes_streams_and_records_context(tmp_path) -> None:
     del tmp_path
 

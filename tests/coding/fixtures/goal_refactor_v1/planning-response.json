@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "session_id": "session",
+  "prompt": "planning operation op-1; input digest abc",
+  "response": "{\"next_action\": \"check\", \"targets\": [\"subtraction\"], \"requirement_ids\": [\"R-SUB\"], \"rationale\": \"Measure the current implementation before choosing a repair.\", \"expected_evidence\": [\"report\", \"validation\"], \"remaining_route\": [{\"action\": \"check\", \"targets\": [\"subtraction\"]}, {\"action\": \"repair\", \"targets\": [\"calculator\"]}, {\"action\": \"verify_all\", \"targets\": []}], \"change_reason\": \"\", \"evidence_refs\": []}",
+  "proof": {
+    "before_leaf_id": null,
+    "after_leaf_id": "assistant",
+    "user_record_id": "user",
+    "assistant_record_id": "assistant",
+    "invocation_id": "invocation",
+    "snapshot_ids": [
+      "snapshot"
+    ],
+    "prompt_sha256": "2a1f13674a16fc978172ed7bbe103ef6c6acaf6dcf1329aed1ebb97fc7b032d3",
+    "response_sha256": "cc10da57a5bf87e3b39ddfb3a6a530b58d075a6fd391720385fe4c5c395d3228"
+  },
+  "records": [
+    {
+      "type": "record",
+      "recordId": "user",
+      "parentId": null,
+      "kind": "agent.message",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "role": "user",
+        "content": "planning operation op-1; input digest abc",
+        "timestamp": 0.0
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "component:system_prompt",
+      "parentId": "user",
+      "kind": "model.input.component",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "contentHash": "sha256:dbf9868785714c2519824d5a01bea297a3ef16fa141bec86a4caff8320cdbc4c",
+        "content": "plan"
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "component:messages",
+      "parentId": "component:system_prompt",
+      "kind": "model.input.component",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "contentHash": "sha256:c455372ffc41e94f7dadbb9542325c41734935f15913d40a7f47042a0c209f5b",
+        "content": [
+          {
+            "role": "user",
+            "content": "planning operation op-1; input digest abc"
+          }
+        ]
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "component:tools",
+      "parentId": "component:messages",
+      "kind": "model.input.component",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "contentHash": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "content": []
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "component:request_options",
+      "parentId": "component:tools",
+      "kind": "model.input.component",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "contentHash": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "content": {}
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "component:model_visible_headers",
+      "parentId": "component:request_options",
+      "kind": "model.input.component",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "contentHash": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "content": {}
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "snapshot",
+      "parentId": "component:model_visible_headers",
+      "kind": "model.input.prepared",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "projectionVersion": "harness.model-input.v1",
+        "snapshotId": "snapshot",
+        "invocationId": "invocation",
+        "attempt": 1,
+        "purpose": "main",
+        "productId": "coding",
+        "runtimeId": "runtime",
+        "mountGeneration": 1,
+        "profileFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "registrationRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "conversationId": "session",
+        "sourceLeafId": "user",
+        "sourceRevision": 1,
+        "commitRevision": 7,
+        "providerId": "provider",
+        "modelId": "model",
+        "apiId": "api",
+        "endpointId": "endpoint",
+        "logicalComponents": [
+          {
+            "name": "system_prompt",
+            "recordId": "component:system_prompt",
+            "contentHash": "sha256:dbf9868785714c2519824d5a01bea297a3ef16fa141bec86a4caff8320cdbc4c"
+          },
+          {
+            "name": "messages",
+            "recordId": "component:messages",
+            "contentHash": "sha256:c455372ffc41e94f7dadbb9542325c41734935f15913d40a7f47042a0c209f5b"
+          },
+          {
+            "name": "tools",
+            "recordId": "component:tools",
+            "contentHash": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          {
+            "name": "request_options",
+            "recordId": "component:request_options",
+            "contentHash": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        ],
+        "preparedPayloadComponents": [
+          {
+            "name": "messages",
+            "recordId": "component:messages",
+            "contentHash": "sha256:c455372ffc41e94f7dadbb9542325c41734935f15913d40a7f47042a0c209f5b"
+          }
+        ],
+        "modelVisibleHeadersComponent": {
+          "name": "model_visible_headers",
+          "recordId": "component:model_visible_headers",
+          "contentHash": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "logicalInputHash": "sha256:11c089ba572f276998c358f265a0cb6c9eff74f2caf3e5c8ec04f30c5492e88f",
+        "preparedPayloadHash": "sha256:c1d710a272baa99f7f8148ace51f465bd98f19d98c26aebb72e894a2c7ec1ed2",
+        "outcome": "prepared"
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "outcome",
+      "parentId": "snapshot",
+      "kind": "model.call.outcome",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "schemaVersion": 1,
+        "invocationId": "invocation",
+        "modelInputSnapshotIds": [
+          "snapshot"
+        ],
+        "disposition": "completed",
+        "stopReason": "stop",
+        "usage": {
+          "input": 1,
+          "output": 1,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 2,
+          "cost": null
+        },
+        "failure": null
+      },
+      "metadata": {}
+    },
+    {
+      "type": "record",
+      "recordId": "assistant",
+      "parentId": "outcome",
+      "kind": "agent.message",
+      "payloadVersion": 1,
+      "createdAt": "2026-10-26T00:00:00Z",
+      "payload": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"next_action\": \"check\", \"targets\": [\"subtraction\"], \"requirement_ids\": [\"R-SUB\"], \"rationale\": \"Measure the current implementation before choosing a repair.\", \"expected_evidence\": [\"report\", \"validation\"], \"remaining_route\": [{\"action\": \"check\", \"targets\": [\"subtraction\"]}, {\"action\": \"repair\", \"targets\": [\"calculator\"]}, {\"action\": \"verify_all\", \"targets\": []}], \"change_reason\": \"\", \"evidence_refs\": []}",
+            "textSignature": null
+          }
+        ],
+        "api": "api",
+        "provider": "provider",
+        "endpoint": "endpoint",
+        "model": "model",
+        "responseId": null,
+        "usage": {
+          "input": 1,
+          "output": 1,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 2,
+          "cost": null
+        },
+        "stopReason": "stop",
+        "errorMessage": null,
+        "timestamp": 0.0
+      },
+      "metadata": {}
+    }
+  ]
+}

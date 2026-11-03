@@ -288,18 +288,35 @@ class AgentProductSession(AgentSessionAdapterMixin):
     ) -> None:
         """Publish the Session composition before command/model visibility."""
 
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_model_call_runtime()
+            ticket.check()
+            await super().prompt(
+                user_input, images=images, streaming_behavior=streaming_behavior,
+                source=source, preflight_result=preflight_result,
+            )
+        finally:
+            ticket.close()
+
+    async def prompt_in_execution(
+        self, execution, text: str, *, images: list[ImagePart] | None = None,
+        source: str | None = None,
+    ) -> None:
+        self.runtime.execution_admission.check_execution(execution)
         await self.prepare_model_call_runtime()
-        await super().prompt(
-            user_input,
-            images=images,
-            streaming_behavior=streaming_behavior,
-            source=source,
-            preflight_result=preflight_result,
-        )
+        self.runtime.execution_admission.check_execution(execution)
+        await super().prompt_in_execution(execution, text, images=images, source=source)
 
     async def continue_run(self) -> None:
-        await self.prepare_model_call_runtime()
-        await super().continue_run()
+        self.runtime.execution_admission.require_unbound_run()
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_model_call_runtime()
+            ticket.check()
+            await super().continue_run()
+        finally:
+            ticket.close()
 
     async def execute_prompt(
         self,
@@ -311,19 +328,24 @@ class AgentProductSession(AgentSessionAdapterMixin):
         """Opt-in full invocation input result, retaining the legacy prompt API."""
         from loushang.harness.session.prompt_execution import execute_prompt
 
-        await self.prepare_execution()
-        if check_cancelled is not None:
-            check_cancelled()
-        result = await execute_prompt(
-            self._composition.session_runtime.prompt_controller,
-            self._composition.command_controller.dispatch_command_async,
-            text,
-            source=source,
-            check_cancelled=check_cancelled,
-        )
-        await self._composition.retry_runtime.settle()
-        await self._composition.session_runtime.host_runtime.settle_runs()
-        return result
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self.prepare_execution()
+            ticket.check()
+            if check_cancelled is not None:
+                check_cancelled()
+            result = await execute_prompt(
+                self._composition.session_runtime.prompt_controller,
+                self._composition.command_controller.dispatch_command_async,
+                text,
+                source=source,
+                check_cancelled=check_cancelled,
+            )
+            await self._composition.retry_runtime.settle()
+            await self._composition.session_runtime.host_runtime.settle_runs()
+            return result
+        finally:
+            ticket.close()
 
     async def prepare_execution(self, *, start_extensions: bool = False) -> None:
         """Prepare original owners; failed setup is retired by settle_execution.
@@ -362,6 +384,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if interrupted:
             await self._composition.compaction_runtime.cancel_and_wait()
             await self._composition.navigation_runtime.cancel_and_wait()
+        await self.settle_command_execution(interrupted=interrupted)
+        await self._model_call_runtime.settle()
         if not self.execution_available:
             # Failed preparation may retain staged component/Plugin rollback
             # debt. The existing retryable owner cleanup must settle it before
@@ -1313,11 +1337,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         on_update: SideQuestionUpdate | None = None,
     ) -> SideQuestionAnswer:
-        await self._ensure_session_graph_prepared()
-        consumer = self._side_question_consumer
-        if consumer is None:
-            raise RuntimeError("Session side-question Capability was not mounted")
-        return await consumer.ask(question, on_update=on_update)
+        self.runtime.execution_admission.require_unbound_run()
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            await self._ensure_session_graph_prepared()
+            self.runtime.execution_admission.require_unbound_run()
+            consumer = self._side_question_consumer
+            if consumer is None:
+                raise RuntimeError("Session side-question Capability was not mounted")
+            return await consumer.ask(question, on_update=on_update)
+        finally:
+            ticket.close()
 
     def create_side_question_provider(self) -> AgentSideQuestionProvider:
         return AgentSideQuestionProvider(
@@ -1340,13 +1370,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
         session_shutdown_event: SessionShutdownEvent | None = None,
     ) -> None:
         self._require_external_dispose_task()
+        await self.prepare_execution_release()
         await super().dispose(session_shutdown_event)
         self._release_package_product_runtime()
+        await self.finalize_execution_release()
 
     async def _dispose_after_session_shutdown(self) -> None:
         self._require_external_dispose_task()
+        await self.prepare_execution_release()
         await super()._dispose_after_session_shutdown()
         self._release_package_product_runtime()
+        await self.finalize_execution_release()
 
     def _require_external_dispose_task(self) -> None:
         owner: str | None = None
@@ -1454,6 +1488,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         # Graph disposal can release the transcript writer too. Settle output
         # before entering that path, without holding the model-call bind lock.
         await self._close_output_captures()
+        await self._model_call_runtime.settle()
         self._restore_agent_model_call_boundary()
         owner_cleanup_failed = False
         async with self._model_call_bind_lock:

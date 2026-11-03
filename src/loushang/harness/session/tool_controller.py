@@ -16,9 +16,13 @@ from loushang.harness.capabilities.prompt_assembly import (
 from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
 from loushang.harness.capabilities.tools import ToolSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.policy import PolicyEvaluatorChain
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.registration import RegistrationLease, RegistrationOwner
+from loushang.harness.session.execution_configuration import (
+    SessionExecutionConfiguration,
+)
 from loushang.harness.session.tool_runtime import (
     AgentToolPort,
     SessionToolRuntime,
@@ -116,28 +120,30 @@ def create_tool_prompt_rebuilder(
     composer = prompt_section_composer or PromptSectionComposer()
 
     def rebuild(active_definitions: list[ToolDefinition] | None) -> None:
-        if show_empty_tool_prompt and active_definitions is None:
-            active_definitions = []
-        tool_prompt = (
-            "Available tools:\n(none)"
-            if show_empty_tool_prompt and active_definitions == []
-            else None
+        agent.system_prompt = _render_tool_prompt(
+            active_definitions, base_prompt=base_prompt, bundle=get_resource_bundle(),
+            show_empty_tool_prompt=show_empty_tool_prompt, activation=activation,
+            skills=get_effective_skills() if get_effective_skills is not None else None,
+            composer=composer,
         )
-        bundle = get_resource_bundle()
-        assembly = assemble_prompt(
-            base_prompt=base_prompt,
-            resource_bundle=bundle,
-            tool_definitions=active_definitions,
-            tool_prompt=tool_prompt,
-            resource_activation=activation.activate(bundle),
-            skill_summaries=(
-                get_effective_skills() if get_effective_skills is not None else None
-            ),
-            prompt_section_composer=composer,
-        )
-        agent.system_prompt = assembly.system_prompt
 
     return rebuild
+
+
+def _render_tool_prompt(
+    definitions: list[ToolDefinition] | None, *, base_prompt: str,
+    bundle: ResourceBundle | None, show_empty_tool_prompt: bool,
+    activation: ResourceActivationRuntime, skills: Sequence[SkillPromptSummary] | None,
+    composer: PromptSectionComposer,
+) -> str:
+    if show_empty_tool_prompt and definitions is None:
+        definitions = []
+    return assemble_prompt(
+        base_prompt=base_prompt, resource_bundle=bundle, tool_definitions=definitions,
+        tool_prompt="Available tools:\n(none)" if show_empty_tool_prompt and definitions == [] else None,
+        resource_activation=activation.activate(bundle), skill_summaries=skills,
+        prompt_section_composer=composer,
+    ).system_prompt
 
 
 @dataclass
@@ -172,6 +178,7 @@ class SessionToolController:
     )
     _runtime: SessionToolRuntime = field(init=False, repr=False)
     _execution_host: ToolExecutionHost = field(init=False, repr=False)
+    _execution_configuration: SessionExecutionConfiguration | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.tool_registry is None:
@@ -193,7 +200,7 @@ class SessionToolController:
             else None
         )
         self._execution_host = create_workspace_tool_execution_host(
-            policy_evaluator=policy_evaluator,
+            policy_evaluator=PolicyEvaluatorChain((policy_evaluator, self)),
             approval_resolver=approval_resolver,
         )
         tool_registry.bind_execution_host(self._execution_host)
@@ -256,6 +263,32 @@ class SessionToolController:
 
     def get_active_tool_names(self) -> list[str]:
         return self._runtime.get_active_tool_names()
+
+    def bind_execution_configuration(self, owner: SessionExecutionConfiguration) -> None:
+        if self._execution_configuration is not None and self._execution_configuration is not owner:
+            raise ValueError("tool controller already has an execution configuration owner")
+        self._execution_configuration = owner
+
+    async def evaluate(self, subject, /):
+        if self._execution_configuration is not None:
+            return await self._execution_configuration.evaluate(subject)
+        return None
+
+    def render_execution_prompt(self, tool_names: tuple[str, ...]) -> str:
+        """Use the original assembler without publishing a new baseline."""
+        active = set(self.get_active_tool_names())
+        if not set(tool_names) <= active:
+            raise ValueError("execution tools must restrict the current selection")
+        definitions, names = self._runtime.resolve_active_tool_definitions(tool_names)
+        if set(names) != set(tool_names):
+            raise ValueError("execution tool selection is no longer available")
+        return _render_tool_prompt(
+            definitions, base_prompt=self.base_prompt, bundle=self.get_resource_bundle(),
+            show_empty_tool_prompt=self.show_empty_tool_prompt,
+            activation=self.resource_activation_runtime,
+            skills=self.get_effective_skills() if self.get_effective_skills is not None else None,
+            composer=self.prompt_section_composer,
+        )
 
     def get_all_tools(self) -> list[ToolDefinition]:
         return self._runtime.get_all_tools()

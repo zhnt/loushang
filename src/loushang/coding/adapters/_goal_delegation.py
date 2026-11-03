@@ -421,6 +421,12 @@ class DelegatedWork:
             completion = await family.runtime.await_completion(
                 caller=HostCaller(), target=self.ref.path
             )
+            if (self.cancelled and completion.sender_ref == self.ref
+                    and completion.round_id == self.round):
+                # The domain cancellation port has stopped this exact child
+                # round. Report interruption rather than a business failure;
+                # identity mismatches and real cleanup errors remain failures.
+                raise asyncio.CancelledError
             if (
                 self.cancelled
                 or completion.sender_ref != self.ref

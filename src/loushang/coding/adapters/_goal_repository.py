@@ -403,6 +403,7 @@ class RepositoryDomain:
         tool_policy,
         history,
         transcript_source=None,
+        execution_session=None, execution=None,
     ):
         self.task, self.root, self.session, self.blobs = task, workspace, session, blobs
         self.limits = _repository_limits(task)
@@ -411,6 +412,8 @@ class RepositoryDomain:
         self.pending_review = None
         self.pending_verification = None
         self.transcript_source = transcript_source
+        self.execution_session = execution_session or session
+        self.execution = execution
         self.delegation = None
         self.source_reader = None
 
@@ -420,7 +423,7 @@ class RepositoryDomain:
         return prepare_session_work_source(
             operation,
             spec=spec,
-            session=self.session,
+            session=self.execution_session,
             executor=executor,
             source=self.transcript_source,
         )
@@ -1042,7 +1045,7 @@ class RepositoryDomain:
             ):
                 raise GoalError("protected repository Method changed")
             original = SessionTurnExecutor(
-                session=self.session,
+                session=self.execution_session,
                 profile=CODING_WORK_PROFILE,
                 project_event_facts=project_coding_runtime_event,
                 turns=prepared,
@@ -1072,12 +1075,10 @@ class RepositoryDomain:
                     session=self.session,
                     allowance=self.allowance,
                     policy=self.tool_policy,
-                    phase="repair",
+                    phase="repair", execution=self.execution,
                 )
             executor = RepositoryReport(self, snapshot, scoped)
-        self.prepared[op_id] = WorkExecutionBinding(
-            executor, executor if action.name == "implement" else None
-        )
+        self.prepared[op_id] = WorkExecutionBinding(executor, cancellation=executor)
         return WorkCandidate(
             basis,
             operation,
@@ -1179,6 +1180,12 @@ class RepositoryReport:
         )
 
     async def cancel_and_wait(self, operation, context):
+        if self.delegate is None:
+            # A local snapshot/report owns no independent execution resources;
+            # its actual invocation is joined by the Session admission bridge.
+            from loushang.harnesswork.types import WorkCancellationOutcome
+
+            return WorkCancellationOutcome.settled()
         return await self.delegate.cancel_and_wait(operation, context)
 
 

@@ -7,7 +7,7 @@ remote event binding. Its verdict describes one command, never a completed Goal.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import uuid4
@@ -32,7 +32,13 @@ from loushang.harnesswork.event_log import EventLogBackend, EventLogEntry
 from loushang.harnesswork.ports import WorkExecutionContext
 from loushang.harnesswork.run_projection import project_work_runs
 from loushang.harnesswork.runtime import UnknownWorkRunError, WorkRuntime
-from loushang.harnesswork.types import WorkOperation, WorkRun, WorkRunSpec, WorkStepSpec
+from loushang.harnesswork.types import (
+    WorkCancellationOutcome,
+    WorkOperation,
+    WorkRun,
+    WorkRunSpec,
+    WorkStepSpec,
+)
 
 _OPERATION = "VerifyCodingCommand"
 
@@ -231,12 +237,22 @@ class CodingVerificationExecutor:
         session: _CodingSession,
         blobs: SessionBlobStore,
         event_log: EventLogBackend,
+        cancel_command: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         if blobs.session_id != session_blob_authority_id(session.session_id):
             raise ValueError("verification writer belongs to another Session")
         self._session = session
         self._blobs = blobs
         self._log = event_log
+        self._cancel_command = cancel_command
+
+    async def cancel_and_wait(self, operation, context) -> WorkCancellationOutcome:
+        if self._cancel_command is None:
+            return WorkCancellationOutcome.unsupported()
+        if operation.session_id != self._session.session_id:
+            raise ValueError("verification cancellation Session changed")
+        await self._cancel_command()
+        return WorkCancellationOutcome.settled()
 
     async def execute(
         self, operation: WorkOperation, context: WorkExecutionContext
