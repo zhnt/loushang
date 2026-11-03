@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { projectNativeEventRound, projectNativeInitialSnapshot } from "../src/client/nativeLiveClient";
+import { describe, expect, it, vi } from "vitest";
+import { createNativeLiveClient, projectNativeEventRound, projectNativeInitialSnapshot } from "../src/client/nativeLiveClient";
+
+const nativeEvents = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+  isTauri: vi.fn().mockReturnValue(true),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (name: string, listener: (event: { payload: unknown }) => void) => {
+    nativeEvents.set(name, listener);
+    return () => nativeEvents.delete(name);
+  }),
+}));
 
 const identity = () => ({
   productId: "coding",
@@ -49,6 +61,50 @@ function nativeSnapshot(): any {
 }
 
 describe("native live initial snapshot", () => {
+  it("uses an accepted snapshot watermark for the next event round", async () => {
+    nativeEvents.clear();
+    const client = createNativeLiveClient();
+    const resync: string[] = [];
+    const acceptedCursors: string[] = [];
+    client.subscribeConnection!((state) => resync.push(state));
+    client.subscribeSnapshots!((snapshot) => acceptedCursors.push(snapshot.sessions[0].cursor));
+    const initial = nativeSnapshot();
+    const pending = client.snapshot();
+    await vi.waitFor(() => expect(nativeEvents.has("gui://live-initial-snapshot")).toBe(true));
+    nativeEvents.get("gui://live-initial-snapshot")!({ payload: initial });
+    await pending;
+
+    const first = structuredClone(initial);
+    first.sessions[0].source.source.cursor = "9007199254741001";
+    first.sessions[0].executions.revision = 1;
+    first.sessions[0].executions.active = {
+      executionId: "execution-1", status: "accepted", revision: 1,
+      interruptRequested: false, outcome: null,
+    };
+    nativeEvents.get("gui://live-event-round")!({ payload: {
+      connectionEpoch: "1", sequence: "1", serviceInstanceId: "service-1", muxSpaceId: "mux-1",
+      members: [{ memberId: "member-1", sessionId: "session-1", events: [{
+        revision: 1, execution: first.sessions[0].executions.active,
+      }] }],
+      sessions: first.sessions,
+    } });
+
+    const second = structuredClone(first);
+    second.sessions[0].source.source.cursor = "9007199254741002";
+    second.sessions[0].source.source.records.push({ kind: "assistant", text: "Completed." });
+    nativeEvents.get("gui://live-event-round")!({ payload: {
+      connectionEpoch: "1", sequence: "2", serviceInstanceId: "service-1", muxSpaceId: "mux-1",
+      members: [{ memberId: "member-1", sessionId: "session-1", events: [{
+        source: { sessionId: "session-1", cursor: "9007199254741002",
+          kind: "assistant_message", text: "Completed.", interactionId: null },
+        executionId: "execution-1",
+      }] }],
+      sessions: second.sessions,
+    } });
+    expect(acceptedCursors).toEqual(["9007199254741001", "9007199254741002"]);
+    expect(resync).toEqual([]);
+  });
+
   it("projects a lossless read-only snapshot without fixture or repository facts", () => {
     const snapshot = projectNativeInitialSnapshot(nativeSnapshot());
     expect(snapshot.generation).toBe("9007199254740993");

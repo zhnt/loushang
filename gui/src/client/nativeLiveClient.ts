@@ -383,6 +383,8 @@ function validateEventRound(
       || session.executions.revision < (executionRevisions.get(sessionId) ?? 0)) {
       throw new Error("snapshot watermark");
     }
+    contentCursors.set(sessionId, cursor);
+    executionRevisions.set(sessionId, session.executions.revision);
   });
   return { snapshot, sequence, contentCursors, executionRevisions };
 }

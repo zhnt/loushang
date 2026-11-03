@@ -223,7 +223,14 @@ async def control_round(root, session_id):
         rounds = []
         async with asyncio.timeout(8):
             while True:
-                value = json.loads(await process.stdout.readline())
+                line = await process.stdout.readline()
+                if not line:
+                    stdout, stderr = await process.communicate()
+                    raise AssertionError(
+                        f"control probe ended before turn completion: "
+                        f"exit={process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
+                    )
+                value = json.loads(line)
                 assert value["type"] == "round"
                 rounds.append(value["payload"])
                 if any(

@@ -445,7 +445,14 @@ impl ReadSession {
             }
             let has_events = members.iter().any(|member| !member.events.is_empty());
             let sessions = if has_events {
-                self.read_snapshots(channel, attempt)?
+                let snapshots = self.read_snapshots(channel, attempt)?;
+                if snapshots.len() != next.len() {
+                    return Err(());
+                }
+                for (reader, snapshot) in next.iter_mut().zip(&snapshots) {
+                    reader.rebase(snapshot)?;
+                }
+                snapshots
                     .iter()
                     .map(|value| value["result"].clone())
                     .collect()
@@ -897,6 +904,26 @@ impl EventReader {
         *self = next;
         Ok(())
     }
+    fn rebase(&mut self, snapshot: &Value) -> Result<(), ()> {
+        if !self.valid {
+            return Err(());
+        }
+        let source = &snapshot["result"]["source"]["source"];
+        let cursor = source["cursor"].as_str().ok_or(())?;
+        let revision = snapshot["result"]["executions"]["revision"]
+            .as_u64()
+            .ok_or(())?;
+        if source["identity"]["sessionId"] != self.session_id
+            || cursor.len() < self.cursor.len()
+            || (cursor.len() == self.cursor.len() && cursor < self.cursor.as_str())
+            || revision < self.revision
+        {
+            return Err(());
+        }
+        self.cursor = cursor.to_owned();
+        self.revision = revision;
+        Ok(())
+    }
     fn advance(&mut self, events: &Value) -> Result<(), ()> {
         for event in events["result"]["events"].as_array().ok_or(())? {
             if event.get("source").is_some() {
@@ -993,6 +1020,23 @@ mod tests {
         assert!(reader.apply(&batch(&[])).is_err());
         let mut fresh = EventReader::new(&snapshot).unwrap();
         assert!(fresh.apply(&batch(&["11"])).is_err()); // Cannot reuse a later batch.
+    }
+    #[test]
+    fn authoritative_snapshot_rebases_both_event_watermarks() {
+        let initial = json!({"result":{"source":{"source":{"cursor":"4", "identity":{"sessionId":"s"}}},"executions":{"revision":3}}});
+        let mut reader = EventReader::new(&initial).unwrap();
+        let metadata = json!({"result":{"events":[{"revision":4}]}});
+        reader.apply(&metadata).unwrap();
+        let cut = json!({"result":{"source":{"source":{"cursor":"5", "identity":{"sessionId":"s"}}},"executions":{"revision":5}}});
+        reader.rebase(&cut).unwrap();
+        assert_eq!(reader.cursor, "5");
+        assert_eq!(reader.revision, 5);
+        assert!(reader
+            .apply(&json!({"result":{"events":[
+                {"source":{"sessionId":"s","cursor":"6"}}, {"revision":6}
+            ]}}))
+            .is_ok());
+        assert!(reader.rebase(&initial).is_err());
     }
     #[test]
     fn decimal_successor_is_lossless() {
