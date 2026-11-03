@@ -227,7 +227,7 @@ class ModelPlanningPolicy(BatchPlanningPolicy, CalculatorPolicy):
                     session=self.session,
                     allowance=self.allowance,
                     policy=self.tool_policy,
-                    phase="repair",
+                    phase="repair", execution=self.execution,
                 )
                 self.prepared[candidate.operation.operation_id] = WorkExecutionBinding(
                     scoped, scoped

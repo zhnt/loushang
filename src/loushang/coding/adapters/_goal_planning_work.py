@@ -104,12 +104,14 @@ class PlanningToolPolicy:
 class ScopedSessionWork:
     """Restore tool selection even when the original turn fails or is cancelled."""
 
-    def __init__(self, delegate, *, session, allowance, policy, phase):
+    def __init__(self, delegate, *, session, allowance, policy, phase, execution=None):
         self.delegate, self.session, self.allowance = delegate, session, allowance
         self.policy, self.phase = policy, phase
+        self.execution = execution
 
     async def execute(self, operation, context):
-        prior = self.session.get_active_tool_names()
+        prior = self.session.get_active_tool_names() if self.execution is None else None
+        reservation = self.execution() if self.execution is not None else None
         self.allowance.enter(operation.operation_id, self.phase)
         step = context.step_id if self.phase == "repair" else None
         self.policy.step = step
@@ -123,9 +125,15 @@ class ScopedSessionWork:
         try:
             if self.phase == "repair" and step not in {"inspect", "repair"}:
                 raise GoalError("unsupported Method step in model-planning profile")
-            await self.session.set_active_tools(tools)
-            if set(self.session.get_active_tool_names()) != set(tools):
-                raise GoalError("Goal tool configuration did not take effect")
+            if reservation is not None:
+                self.session.configure_execution(
+                    reservation, stream_fn=self.allowance.stream, tool_names=tuple(tools),
+                    additional_policy=self.policy,
+                )
+            else:
+                await self.session.set_active_tools(tools)
+                if set(self.session.get_active_tool_names()) != set(tools):
+                    raise GoalError("Goal tool configuration did not take effect")
             result = await self.delegate.execute(operation, context)
             if self.phase == "repair" and self.allowance.failed:
                 raise GoalError("repair model allowance failed")
@@ -135,9 +143,12 @@ class ScopedSessionWork:
             try:
                 await self.session.wait_for_idle()
                 self.policy.step = None
-                await self.session.set_active_tools(prior)
-                if self.session.get_active_tool_names() != prior:
-                    raise GoalError("Goal tool configuration was not restored")
+                if reservation is not None:
+                    self.session.runtime.execution_configuration.release_execution(reservation)
+                else:
+                    await self.session.set_active_tools(prior)
+                    if self.session.get_active_tool_names() != prior:
+                        raise GoalError("Goal tool configuration was not restored")
             except BaseException:
                 self.allowance.fenced = True
                 raise
@@ -152,17 +163,26 @@ class ScopedSessionWork:
 class ScopedVerificationWork:
     """Authorize only the already admitted verifier's exact command and input."""
 
-    def __init__(self, delegate, *, policy):
+    def __init__(self, delegate, *, policy, session=None, execution=None):
         self.delegate, self.policy = delegate, policy
+        self.session, self.execution = session, execution
 
     async def execute(self, operation, context):
         if self.policy.verification is not None or self.policy.step is not None:
             raise GoalError("overlapping Goal execution scope")
         self.policy.verification = operation.payload
+        reservation = self.execution() if self.execution is not None else None
         try:
+            if reservation is not None:
+                self.session.configure_execution(reservation, additional_policy=self.policy)
             return await self.delegate.execute(operation, context)
         finally:
             self.policy.verification = None
+            if reservation is not None:
+                self.session.runtime.execution_configuration.release_execution(reservation)
+
+    async def cancel_and_wait(self, operation, context):
+        return await self.delegate.cancel_and_wait(operation, context)
 
 
 class PlanningWork:

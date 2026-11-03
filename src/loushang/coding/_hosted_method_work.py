@@ -165,6 +165,16 @@ class MethodPrompt:
     def subscribe_runtime_events(self, listener):  # type: ignore[no-untyped-def]
         return self.session.subscribe_runtime_events(listener)
 
+    @property
+    def work_execution_backend(self) -> object | None:
+        return self.session.work_execution_backend
+
+    def bind_work_execution_backend(self, backend, *, busy, settle=None):
+        self.session.bind_work_execution_backend(backend, busy=busy, settle=settle)
+
+    def before_work_accept(self) -> None:
+        self.session.before_work_accept()
+
     def abort(self) -> None:
         self.session.abort()
 

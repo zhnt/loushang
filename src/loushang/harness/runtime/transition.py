@@ -33,6 +33,16 @@ class SessionTransitionHost(Generic[S]):
         self._lock = asyncio.Lock()
         self._lock_owner: asyncio.Task[object] | None = None
         self._lock_depth = 0
+        self._pending_transitions = 0
+        self._transition_generation = 0
+
+    @property
+    def transition_generation(self) -> int:
+        return self._transition_generation
+
+    @property
+    def has_pending_transitions(self) -> bool:
+        return self._pending_transitions > 0
 
     @property
     def current(self) -> S | None:
@@ -97,16 +107,21 @@ class SessionTransitionHost(Generic[S]):
                 self._lock_depth -= 1
             return
 
-        await self._lock.acquire()
-        self._lock_owner = task
-        self._lock_depth = 1
+        self._pending_transitions += 1
+        self._transition_generation += 1
         try:
-            yield
+            await self._lock.acquire()
+            self._lock_owner = task
+            self._lock_depth = 1
+            try:
+                yield
+            finally:
+                self._lock_depth -= 1
+                if self._lock_depth == 0:
+                    self._lock_owner = None
+                    self._lock.release()
         finally:
-            self._lock_depth -= 1
-            if self._lock_depth == 0:
-                self._lock_owner = None
-                self._lock.release()
+            self._pending_transitions -= 1
 
     async def replace(
         self,
@@ -187,6 +202,11 @@ class SessionTransitionHost(Generic[S]):
                     f"Additional Session retirement failure: {additional!r}"
                 )
             raise primary
+
+    async def retry_retirements(self) -> None:
+        """Retry owned cleanup debt without disposing the active Session."""
+        async with self.transition():
+            await self._retry_pending_retirements()
 
     async def _prepare_release(
         self,

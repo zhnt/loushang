@@ -383,3 +383,696 @@ async def _commit_application_message(message: ApplicationMessage) -> CommitResu
 
 async def _execute_command(name: str, args: str) -> None:
     del name, args
+
+
+def _admission_runtime(agent: Agent, *, turn_policy=None) -> SessionRuntime:
+    return SessionRuntime(
+        agent=agent,
+        transcript=TranscriptRuntimePort(
+            session_id="shared-session", append_message=_append_message,
+            commit_application_message=_commit_application_message,
+            refresh_context=lambda: None, set_commit_observer=lambda observer: None,
+        ),
+        turn_policy=turn_policy or _turn_policy(), after_turn_policy=_after_turn_policy(),
+    )
+
+
+def test_prompt_preflight_invalidates_reserved_execution_and_clear_blocks_late_input():
+    from dataclasses import replace
+
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        agent = Agent()
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = []
+
+        async def preflight(text, **kwargs):
+            started.set()
+            await release.wait()
+            return _PreflightResult(text)
+
+        async def prompt(messages, **kwargs):
+            calls.append(messages)
+
+        agent.prompt = prompt
+        runtime = _admission_runtime(agent, turn_policy=replace(
+            _turn_policy(), preflight_user_input_async=preflight,
+        ))
+        reservation = runtime.execution_admission.reserve("candidate-awaiting-prepare")
+        ordinary = asyncio.create_task(runtime.prompt("ordinary", source="goal_planning"))
+        await started.wait()
+        assert reservation.state == "invalidated"
+        with pytest.raises(SessionExecutionUnavailable):
+            reservation.commit()
+        reservation.release()
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve("cannot-overtake-preflight")
+        runtime.queue.clear_queue()
+        release.set()
+        with pytest.raises(SessionExecutionUnavailable, match="cleared"):
+            await ordinary
+        assert calls == [] and runtime.queue.pending_message_count == 0
+        later = runtime.execution_admission.reserve("after-clear")
+        later.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_committed_execution_uses_original_host_and_holds_original_input_queue():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        agent = Agent()
+        calls = []
+        runtime = _admission_runtime(agent)
+
+        async def prompt(messages, **kwargs):
+            assert runtime.host_runtime.is_active
+            calls.append(messages)
+
+        agent.prompt = prompt
+        permit = runtime.execution_admission.reserve("accepted-work")
+        permit.commit()
+        # Text source cannot confer authority, even before the Agent starts.
+        await runtime.prompt("ordinary", source="goal_planning")
+        assert runtime.queue.get_follow_up_messages() == ["ordinary"]
+        assert not agent.has_queued_messages() and not calls
+        with permit.executing():
+            configuration = runtime.execution_configuration.install(permit)
+            await runtime.prompt_in_execution(permit, "bound")
+            with pytest.raises(SessionExecutionUnavailable, match="task"):
+                await asyncio.create_task(runtime.prompt_in_execution(permit, "child"))
+            configuration.release()
+        assert len(calls) == 1
+        assert [part.text for part in calls[0][0].content] == ["bound"]
+        with pytest.raises(SessionExecutionUnavailable, match="settle"):
+            permit.release()
+        permit.begin_settling()
+        permit.release()
+        permit.release()
+        assert agent.has_queued_messages()
+        assert runtime.queue.get_follow_up_messages() == ["ordinary"]
+        runtime.queue.clear_queue()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_clear_does_not_resurrect_delivery_when_execution_is_released():
+    async def scenario():
+        agent = Agent()
+        runtime = _admission_runtime(agent)
+        permit = runtime.execution_admission.reserve("accepted-work")
+        permit.commit()
+        await runtime.prompt("will-be-cleared")
+        assert runtime.queue.pending_message_count == 1
+        runtime.queue.clear_queue()
+        permit.begin_settling()
+        permit.release()
+        assert runtime.queue.pending_message_count == 0
+        assert not agent.has_queued_messages()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_reservation_identity_is_per_runtime_and_direct_runs_are_isolated():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        first, second = _admission_runtime(Agent()), _admission_runtime(Agent())
+        permit = first.execution_admission.reserve("same-logical-session")
+        permit.commit()
+        with permit.executing():
+            with pytest.raises(SessionExecutionUnavailable, match="foreign"):
+                await second.prompt_in_execution(permit, "wrong-instance")
+            with pytest.raises(SessionExecutionUnavailable, match="reserved"):
+                await first.run_agent_prompt("side-question")
+            pending = first.schedule_continue_run(model_call_purpose="retry")
+            await asyncio.sleep(0)
+            assert not pending.done() and not first.host_runtime.is_active
+        first.execution_admission.close_admission()
+        with pytest.raises(SessionExecutionUnavailable):
+            await pending
+        with pytest.raises(SessionExecutionUnavailable):
+            await first.prompt("after-close")
+        permit.begin_settling()
+        permit.release()
+        await first.dispose()
+        await second.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_next_turn_and_registered_deferred_runs_win_admission_priority():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        agent = Agent()
+        calls = []
+
+        async def continued(*, model_call_purpose="continuation"):
+            calls.append(model_call_purpose)
+
+        agent.continue_run = continued
+        runtime = _admission_runtime(agent)
+        runtime.queue.append_next_turn_message(object())
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve("cannot-overtake-next-turn")
+        runtime.queue.drain_next_turn_messages()
+        pending = runtime.schedule_continue_run(model_call_purpose="retry")
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve("cannot-overtake-registered-task")
+        await pending
+        permit = runtime.execution_admission.reserve("candidate")
+        pending = runtime.schedule_continue_run(model_call_purpose="retry")
+        with pytest.raises(SessionExecutionUnavailable):
+            permit.commit()
+        permit.release()
+        await pending
+        assert calls == ["retry", "retry"]
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_failed_delivery_evidence_binding_retries_without_duplicate_delivery():
+    import pytest
+
+    class Evidence:
+        fail = True
+        bindings = []
+
+        def bind(self, message, evidence, *, owner):
+            self.bindings.append((message, owner))
+            if self.fail:
+                raise RuntimeError("partial evidence binding")
+
+        def discard_owner(self, owner):
+            self.bindings[:] = [item for item in self.bindings if item[1] is not owner]
+
+    async def scenario():
+        agent = Agent()
+        runtime = _admission_runtime(agent)
+        evidence = Evidence()
+        runtime.queue.request_evidence = evidence
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+        runtime.queue.queue_prepared_follow_up("same-message", request_evidence=object())
+        queued_id = runtime.queue.get_queue_snapshot().follow_up[0].id
+        permit.begin_settling()
+        with pytest.raises(RuntimeError, match="partial evidence"):
+            permit.release()
+        assert permit.state == "settling" and len(agent.follow_up_queue._messages) == 1
+        delivered = agent.follow_up_queue._messages[0]
+        evidence.fail = False
+        permit.release()
+        assert len(agent.follow_up_queue._messages) == 1
+        assert evidence.bindings == [(delivered, evidence.bindings[0][1])]
+        assert runtime.queue.get_queue_snapshot().follow_up[0].id == queued_id
+        runtime.queue.clear_queue()
+        assert not evidence.bindings
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_disposal_retains_execution_until_original_owner_releases():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        agent = Agent()
+        runtime = _admission_runtime(agent)
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+        runtime.queue.follow_up("held")
+        with pytest.raises(SessionExecutionUnavailable, match="release"):
+            await runtime.dispose()
+        assert not runtime.host_runtime.is_disposed
+        permit.begin_settling()
+        permit.release()
+        assert not agent.has_queued_messages()  # No delivery into a closing Session.
+        await runtime.dispose()
+        assert runtime.host_runtime.is_disposed
+
+    asyncio.run(scenario())
+
+
+def test_existing_work_factory_reuses_session_backend_and_commits_at_original_resolver():
+    from dataclasses import MISSING, fields
+
+    import pytest
+
+    from loushang.coding.adapters.harnesswork import create_coding_work_runtime
+    from loushang.harness.session import SessionFacade
+    from loushang.harnesswork import InMemoryEventLogBackend
+    from loushang.harnesswork.ports import WorkExecutionBinding
+    from loushang.harnesswork.types import WorkOperation
+
+    async def scenario():
+        agent = Agent()
+        runtime = _admission_runtime(agent)
+        calls = []
+
+        async def prompt(messages, **kwargs):
+            calls.append(messages)
+
+        agent.prompt = prompt
+        unused = {field.name: None for field in fields(SessionFacade)
+                  if field.name != "runtime" and field.default is MISSING}
+        facade = SessionFacade(runtime=runtime, **unused)
+        log = InMemoryEventLogBackend()
+        backend = create_coding_work_runtime(session=facade, event_log=log)
+        assert create_coding_work_runtime(session=facade, event_log=log) is backend
+        with pytest.raises(ValueError, match="configuration differs"):
+            create_coding_work_runtime(session=facade, event_log=InMemoryEventLogBackend())
+        permit = runtime.execution_admission.reserve("model-plan")
+
+        class Executor:
+            async def execute(self, operation, context):
+                assert operation.operation_id == permit.operation_id
+                with permit.executing():
+                    handle = facade.configure_execution(permit)
+                    try:
+                        await facade.prompt_in_execution(permit, "bound original Work")
+                    finally:
+                        handle.release()
+
+        backend.prepare_binding("model-plan", WorkExecutionBinding(Executor()), commit=permit.commit)
+        run = await backend.work_runtime.accept(WorkOperation("model-plan", "DomainPlanning", "shared-session", "design", {}))
+        assert permit.state == "committed"
+        completed = await backend.work_runtime.wait(run.run_id)
+        assert completed.status == "completed" and len(calls) == 1
+        permit.begin_settling()
+        permit.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_prepared_binding_commit_refusal_does_not_execute_or_lose_original_slot():
+    import pytest
+
+    from loushang.harnesswork import InMemoryEventLogBackend
+    from loushang.harnesswork.integrations.session import (
+        SessionWorkProfile,
+        SessionWorkRuntime,
+    )
+    from loushang.harnesswork.ports import WorkExecutionBinding
+    from loushang.harnesswork.types import WorkOperation
+
+    async def scenario():
+        called = []
+
+        class Executor:
+            async def execute(self, operation, context):
+                called.append(operation.operation_id)
+
+        def refuse():
+            raise RuntimeError("input won admission")
+
+        runtime = SessionWorkRuntime(
+            session=object(), event_log=InMemoryEventLogBackend(),
+            profile=SessionWorkProfile(domain="design", operation_kind="Turn"),
+            project_event_facts=lambda event: (),
+        )
+        runtime.prepare_binding("candidate", WorkExecutionBinding(Executor()), commit=refuse)
+        operation = WorkOperation("candidate", "Planning", "same-session", "design", {})
+        with pytest.raises(RuntimeError, match="input won"):
+            await runtime.work_runtime.accept(operation)
+        assert not called and runtime.work_runtime.get_run_for_operation("candidate") is None
+        with pytest.raises(ValueError, match="already prepared"):
+            runtime.prepare_binding("candidate", WorkExecutionBinding(Executor()), commit=lambda: None)
+        runtime.discard_binding("candidate")
+
+    asyncio.run(scenario())
+
+
+def _admission_response():
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+
+    message = AssistantMessage(
+        endpoint="offline", role="assistant", content=[TextPart(type="text", text="done")],
+        api="anthropic-messages", provider="offline", model="offline", response_id=None,
+        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        stop_reason="stop", error_message=None, timestamp=0,
+    )
+    stream = AssistantMessageEventStream()
+    stream.push({"type": "done", "reason": "stop", "message": message})
+    stream.end()
+    return stream
+
+
+def test_configuration_uses_owned_agent_tasks_and_preserves_mailbox_and_baseline_updates():
+    from loushang.ai.types import UserMessage
+
+    async def scenario():
+        model_inputs = []
+
+        async def provider(model, context, options=None):
+            model_inputs.append(context)
+            if len(model_inputs) == 1:
+                await runtime.prompt("ordinary during planning")
+                runtime.queue.queue_mailbox_message(UserMessage(role="user", content="mailbox", timestamp=0))
+                agent.system_prompt = "new legal baseline"
+            return _admission_response()
+
+        agent = Agent(stream_fn=provider)
+        runtime = _admission_runtime(agent)
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+        with permit.executing():
+            handle = runtime.execution_configuration.install(permit)
+            await runtime.prompt_in_execution(permit, "planning")
+            assert agent.state.messages[-1].stop_reason == "stop"
+            assert len(model_inputs) == 1 and agent.has_queued_messages()
+            assert runtime.queue.get_follow_up_messages() == ["ordinary during planning"]
+            assert agent.system_prompt == "new legal baseline" and agent.stream_fn is provider
+            handle.release()
+        permit.begin_settling()
+        permit.release()
+        await runtime.continue_run()
+        assert len(model_inputs) > 1 and not agent.has_queued_messages()
+        assert agent.system_prompt == "new legal baseline" and agent.stream_fn is provider
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_execution_recovery_requires_explicit_task_authority():
+    async def scenario():
+        runtime = _admission_runtime(Agent())
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+        with permit.executing():
+            handle = runtime.execution_configuration.install(permit, suppress_recovery=False)
+            assert runtime.execution_configuration.recovery_allowed
+
+            async def unrelated_task():
+                return runtime.execution_configuration.recovery_allowed
+
+            assert not await asyncio.create_task(unrelated_task())
+            child_scope = runtime.execution_admission.execution_scope(permit)()
+
+            async def delegated_task():
+                with child_scope:
+                    return runtime.execution_configuration.recovery_allowed
+
+            assert await asyncio.create_task(delegated_task())
+            handle.release()
+        permit.begin_settling()
+        permit.release()
+        assert runtime.execution_configuration.recovery_allowed
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_parent_release_settles_registered_work_and_retains_unknown_cleanup():
+    from dataclasses import MISSING, fields
+
+    import pytest
+
+    from loushang.coding.adapters.harnesswork import create_coding_work_runtime
+    from loushang.harness.session import SessionFacade
+    from loushang.harnesswork import InMemoryEventLogBackend
+    from loushang.harnesswork.ports import WorkExecutionBinding
+    from loushang.harnesswork.types import WorkCancellationOutcome, WorkOperation
+
+    async def scenario(supported):
+        runtime = _admission_runtime(Agent())
+        unused = {field.name: None for field in fields(SessionFacade)
+                  if field.name != "runtime" and field.default is MISSING}
+        facade = SessionFacade(runtime=runtime, **unused)
+        backend = create_coding_work_runtime(session=facade, event_log=InMemoryEventLogBackend())
+        started, stopped = asyncio.Event(), asyncio.Event()
+
+        class Domain:
+            async def execute(self, operation, context):
+                started.set()
+                await stopped.wait()
+
+            async def cancel_and_wait(self, operation, context):
+                if not supported:
+                    return WorkCancellationOutcome.unsupported()
+                stopped.set()
+                return WorkCancellationOutcome.settled()
+
+        domain = Domain()
+        backend.prepare_binding("foreign-work", WorkExecutionBinding(domain, cancellation=domain), commit=lambda: None)
+        run = await backend.work_runtime.accept(
+            WorkOperation("foreign-work", "DomainWork", "shared-session", "design", {})
+        )
+        await started.wait()
+        if supported:
+            await asyncio.gather(facade.prepare_execution_release(), facade.prepare_execution_release())
+            assert not backend.work_runtime.active_runs() and stopped.is_set()
+            assert backend.work_runtime.get_cancellation(run.run_id).status == "settled"
+            await runtime.dispose()
+        else:
+            for _ in range(2):
+                with pytest.raises(RuntimeError, match="domain settlement"):
+                    await facade.prepare_execution_release()
+                assert not runtime.host_runtime.is_disposed
+                assert backend._settling_runs == {run.run_id}
+            # Test-only teardown: no domain task survives, but the production
+            # cleanup handle correctly remains unresolved.
+            assert not backend.work_runtime.active_runs()
+            with pytest.raises(RuntimeError, match="domain settlement"):
+                await runtime.dispose()
+            with pytest.raises(RuntimeError, match="not ready for retirement"):
+                runtime.close()
+            assert runtime.execution_admission.backend is backend
+            assert not runtime.host_runtime.is_disposed
+
+    asyncio.run(scenario(True))
+    asyncio.run(scenario(False))
+
+
+def test_held_input_with_same_text_as_bound_prompt_keeps_original_queue_identity():
+    async def scenario():
+        async def provider(model, context, options=None):
+            return _admission_response()
+
+        runtime = _admission_runtime(Agent(stream_fn=provider))
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+        await runtime.prompt("same text")
+        held = runtime.queue.get_queue_snapshot()
+        with permit.executing():
+            handle = runtime.execution_configuration.install(permit)
+            await runtime.prompt_in_execution(permit, "same text")
+            handle.release()
+        assert runtime.queue.get_queue_snapshot() == held
+        assert runtime.queue.get_follow_up_messages() == ["same text"]
+        permit.begin_settling()
+        permit.release()
+        await runtime.continue_run()
+        assert not runtime.queue.has_pending_execution_input()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_scope_close_reports_interrupted_error_then_retries_original_cleanup():
+    import pytest
+
+    from loushang.harness.session.execution_scope import (
+        ExecutionScopePorts,
+        SessionExecutionScope,
+    )
+
+    async def scenario():
+        runtime = _admission_runtime(Agent())
+        started = asyncio.Event()
+        stages = []
+
+        def stage(name):
+            async def run():
+                stages.append(name)
+            return run
+
+        scope = SessionExecutionScope(runtime.execution_admission, ExecutionScopePorts(
+            lambda: None, stage("quiesce"), stage("settle"), stage("release"), stage("finalize"),
+        ))
+
+        async def operation():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                raise RuntimeError("temporary invocation finalization failure")
+
+        invocation = asyncio.create_task(scope.invoke(operation))
+        await started.wait()
+        with pytest.raises(RuntimeError, match="temporary invocation"):
+            await scope.close()
+        with pytest.raises(RuntimeError, match="temporary invocation"):
+            await invocation
+        assert stages == [] and not scope.closed
+        await scope.close()
+        assert stages == ["quiesce", "settle", "release", "finalize"] and scope.closed
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_ordinary_command_invalidates_candidate_and_keeps_original_admission_busy():
+    from dataclasses import MISSING, fields
+
+    import pytest
+
+    from loushang.harness.session import SessionFacade
+
+    async def scenario():
+        runtime = _admission_runtime(Agent())
+        started, done = asyncio.Event(), asyncio.Event()
+
+        class Command:
+            async def execute(self, command, **kwargs):
+                started.set()
+                await done.wait()
+                return {"output": "done"}
+
+        unused = {field.name: None for field in fields(SessionFacade)
+                  if field.name not in {"runtime", "command_execution"} and field.default is MISSING}
+        facade = SessionFacade(runtime=runtime, command_execution=Command(), **unused)
+        candidate = runtime.execution_admission.reserve("candidate")
+        command = asyncio.create_task(facade.execute_bash("ordinary"))
+        await started.wait()
+        with pytest.raises(RuntimeError):
+            candidate.commit()
+        candidate.release()
+        with pytest.raises(RuntimeError):
+            runtime.execution_admission.reserve("while-command")
+        done.set()
+        assert await command == {"output": "done"}
+        next_candidate = runtime.execution_admission.reserve("after-command")
+        next_candidate.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_failed_configuration_publication_retains_original_handle_for_cleanup():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+    from loushang.harness.session.execution_configuration import (
+        ExecutionConfigurationError,
+    )
+
+    async def scenario():
+        agent = Agent()
+        runtime = _admission_runtime(agent)
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+
+        def failed_renderer(names):
+            assert not names
+            raise RuntimeError("render publication failed")
+
+        with permit.executing():
+            with pytest.raises(ExecutionConfigurationError) as error:
+                runtime.execution_configuration.install(permit, tool_names=(), render_prompt=failed_renderer)
+            handle = error.value.handle
+            assert not handle.published and not handle.released
+            with pytest.raises(SessionExecutionUnavailable, match="retained"):
+                runtime.execution_configuration.install(permit)
+            handle.release()
+            handle.release()
+            valid = runtime.execution_configuration.install(permit)
+            valid.release()
+        permit.begin_settling()
+        permit.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_configuration_release_failure_keeps_agent_dependencies_until_original_run_settles():
+    import pytest
+
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        started, finish = asyncio.Event(), asyncio.Event()
+        handles = []
+
+        async def provider(model, context, options=None):
+            started.set()
+            await finish.wait()
+            return _admission_response()
+
+        agent = Agent(stream_fn=provider)
+        runtime = _admission_runtime(agent)
+        permit = runtime.execution_admission.reserve("work")
+        permit.commit()
+
+        async def accepted_work():
+            with permit.executing():
+                handle = runtime.execution_configuration.install(permit)
+                handles.append(handle)
+                await runtime.prompt_in_execution(permit, "planning")
+                handle.release()
+
+        work = asyncio.create_task(accepted_work())
+        await started.wait()
+        with pytest.raises(SessionExecutionUnavailable, match="settle"):
+            handles[0].release()
+        assert not handles[0].released and runtime.execution_configuration.require(permit) is handles[0]
+        finish.set()
+        await work
+        assert handles[0].released
+        permit.begin_settling()
+        permit.release()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_lifecycle_intent_blocks_commit_even_after_a_cancelled_transition():
+    import pytest
+
+    from loushang.harness.runtime import SessionTransitionHost
+    from loushang.harness.session.execution_admission import SessionExecutionUnavailable
+
+    async def scenario():
+        runtime = _admission_runtime(Agent())
+        host = SessionTransitionHost(runtime, dispose=lambda session: None)
+        runtime.execution_admission.bind_lifecycle(
+            is_current=lambda: host.current is runtime,
+            transition_pending=lambda: host.has_pending_transitions,
+            generation=lambda: host.transition_generation,
+        )
+        permit = runtime.execution_admission.reserve("candidate-before-new")
+        async with host.transition():
+            assert host.has_pending_transitions
+            with pytest.raises(SessionExecutionUnavailable):
+                permit.commit()
+        assert not host.has_pending_transitions
+        with pytest.raises(SessionExecutionUnavailable):
+            permit.commit()
+        permit.release()
+        later = runtime.execution_admission.reserve("after-cancelled-transition")
+        later.release()
+        await host.replace(_admission_runtime(Agent()))
+        with pytest.raises(SessionExecutionUnavailable):
+            runtime.execution_admission.reserve("old-instance")
+        await runtime.dispose()
+        await host.current.dispose()
+
+    asyncio.run(scenario())

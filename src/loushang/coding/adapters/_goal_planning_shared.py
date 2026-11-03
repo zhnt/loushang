@@ -288,7 +288,7 @@ class BatchPlanningPolicy:
             prompt, plan_id=f"planning:{operation_id}", step_id="planning"
         )
         original = SessionTurnExecutor(
-            session=self.session,
+            session=self.execution_session,
             profile=CODING_WORK_PROFILE,
             project_event_facts=project_coding_runtime_event,
             turns=(turn,),
@@ -305,7 +305,7 @@ class BatchPlanningPolicy:
             session=self.session,
             allowance=self.allowance,
             policy=self.tool_policy,
-            phase="planning",
+            phase="planning", execution=self.execution,
         )
         executor = PlanningWork(
             scoped,

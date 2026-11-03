@@ -280,6 +280,10 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
     def pending_transcripts(self) -> tuple[TranscriptSessionT, ...]:
         return tuple(self._pending_transcripts.values())
 
+    @property
+    def closing(self) -> bool:
+        return self._closing
+
     def fence(self) -> None:
         self._closing = True
 

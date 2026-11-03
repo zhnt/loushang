@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
 
+from loushang.agent.types import StreamFn
 from loushang.ai.types import ImagePart
 from loushang.harness.approval import (
     ApprovalOutcome,
@@ -20,6 +21,10 @@ from loushang.harness.approval import (
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.permissions import PermissionProfileSnapshot
+from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.session.execution_admission import ExecutionReservation
+from loushang.harness.session.execution_configuration import ExecutionConfiguration
+from loushang.harness.session.execution_scope import SessionExecutionScope
 from loushang.harness.session.facade_optional import (
     SessionApplicationInputPort,
     SessionDiagnosticsPort,
@@ -609,6 +614,61 @@ class SessionFacade(
             preflight_result=preflight_result,
         )
 
+    async def prompt_in_execution(
+        self, execution: ExecutionReservation, text: str, *,
+        images: list[ImagePart] | None = None, source: str | None = None,
+    ) -> None:
+        await self.runtime.prompt_in_execution(execution, text, images=images, source=source)
+
+    def configure_execution(
+        self, execution: ExecutionReservation, *, stream_fn: StreamFn | None = None,
+        tool_names: tuple[str, ...] | None = None, suppress_recovery: bool = True,
+        additional_policy: PolicyEvaluator | None = None,
+    ) -> ExecutionConfiguration:
+        renderer = getattr(self.tools, "render_execution_prompt", None)
+        return self.runtime.execution_configuration.install(
+            execution, stream_fn=stream_fn, tool_names=tool_names,
+            render_prompt=renderer if callable(renderer) else None,
+            suppress_recovery=suppress_recovery,
+            additional_policy=additional_policy,
+        )
+
+    def attach_execution_scope(self, scope: SessionExecutionScope) -> None:
+        self.runtime.attach_execution_scope(scope)
+
+    async def prepare_execution_release(self) -> None:
+        self.runtime.execution_admission.close_admission()
+        scope = self.runtime.execution_scope
+        if scope is not None:
+            await scope.prepare_release()
+        await self.runtime.execution_admission.settle_backend()
+
+    async def finalize_execution_release(self) -> None:
+        scope = self.runtime.execution_scope
+        if scope is not None:
+            await scope.parent_released()
+        self.runtime.execution_admission.retire_backend()
+
+    def bind_work_execution_backend(
+        self, backend: object, *, busy: Callable[[], bool],
+        settle: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        self.runtime.execution_admission.bind_backend(backend, busy=busy, settle=settle)
+
+    @property
+    def work_execution_backend(self) -> object | None:
+        return self.runtime.execution_admission.backend
+
+    def before_work_accept(self) -> None:
+        self.runtime.execution_admission.ordinary_work_arrived()
+
+    def bind_execution_lifecycle(self, *, is_current: Callable[[], bool],
+                                 transition_pending: Callable[[], bool],
+                                 generation: Callable[[], int] = lambda: 0) -> None:
+        self.runtime.execution_admission.bind_lifecycle(
+            is_current=is_current, transition_pending=transition_pending, generation=generation,
+        )
+
     def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
         self.runtime.steer(user_input, images=images)
 
@@ -646,16 +706,22 @@ class SessionFacade(
         on_output: OutputCallback | None = None,
         operations: object | None = None,
     ) -> dict[str, object]:
-        return await self.command_execution.execute(
-            command,
-            cwd=cwd,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdin=stdin,
-            exclude_from_context=exclude_from_context,
-            on_output=on_output,
-            operations=operations,
-        )
+        admission = self.runtime.execution_admission
+        execution = admission.require_execution_actor()
+        ticket = admission.begin_input(execution)
+        try:
+            return await self.command_execution.execute(
+                command,
+                cwd=cwd,
+                env=env,
+                timeout_seconds=timeout_seconds,
+                stdin=stdin,
+                exclude_from_context=exclude_from_context,
+                on_output=on_output,
+                operations=operations,
+            )
+        finally:
+            ticket.close()
 
     async def execute_bash(
         self,
@@ -725,6 +791,15 @@ class SessionFacade(
 
         self.abort_command()
 
+    async def settle_command_execution(self, *, interrupted: bool = False) -> None:
+        if interrupted:
+            self.abort_command()
+        wait = getattr(self.command_execution, "wait_for_idle", None)
+        if callable(wait):
+            await wait()
+        elif self.command_execution.is_running:
+            raise RuntimeError("command execution has no settlement port")
+
     def abort_retry(self) -> None:
         self.retry.abort()
 
@@ -755,7 +830,12 @@ class SessionFacade(
         self.maintenance.set_auto_compaction_enabled(enabled)
 
     async def compact(self, custom_instructions: str | None = None) -> object:
-        return await self.maintenance.compact(custom_instructions)
+        self.runtime.execution_admission.require_unbound_run()
+        ticket = self.runtime.execution_admission.begin_input()
+        try:
+            return await self.maintenance.compact(custom_instructions)
+        finally:
+            ticket.close()
 
     def abort_compaction(self) -> None:
         self.maintenance.abort_compaction()

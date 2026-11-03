@@ -2782,6 +2782,59 @@ def _goal_offline_model():
     )
 
 
+def test_goal_verification_cancel_waits_for_original_command_owner_before_close(tmp_path, monkeypatch):
+    from loushang.agent.types import AgentToolResult
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+
+    async def scenario():
+        owner = await CodingGoal.open(
+            workspace=_goal_project(tmp_path), data_root=tmp_path / "data",
+            model=_goal_offline_model(), stream_fn=_goal_text_transport(),
+        )
+        entered, drained, aborted = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        signals = []
+
+        async def execute(definition, **kwargs):
+            signals.append(kwargs["signal"])
+            entered.set()
+            await drained.wait()
+            return AgentToolResult(content=[], details={
+                "exit_code": None, "cancelled": True, "truncated": False,
+                "stdio_complete": True, "stdio_drain_reason": None,
+            })
+
+        monkeypatch.setattr(owner._session.command_execution._runtime, "execute_definition", execute)
+        original_abort = owner._session.command_execution.abort
+
+        def abort():
+            original_abort()
+            aborted.set()
+
+        monkeypatch.setattr(owner._session.command_execution, "abort", abort)
+        owner.create("g", command_id="create")
+        advancing = asyncio.create_task(owner.advance("g", command_id="advance", revision=1, epoch=1))
+        await entered.wait()
+        cancellation = asyncio.create_task(owner.controller.request_cancel("g"))
+        await aborted.wait()
+        assert signals[0].aborted and not cancellation.done()
+        assert owner._session.command_execution.is_running
+        drained.set()
+        await cancellation
+        with pytest.raises(asyncio.CancelledError):
+            await advancing
+        assert not owner._session.command_execution.is_running
+        assert owner.controller.query("g").status != "completed"
+        for batch in owner.controller.history.batches:
+            run = owner._work.get_run_for_operation(batch.operation_id)
+            assert run is not None
+            assert owner._work.get_cancellation(run.run_id).status == "settled"
+        await owner.close()
+        assert owner._closed
+
+    asyncio.run(scenario())
+
+
 def _goal_text_transport():
     from loushang.agent import synthetic_model_transport
     from loushang.ai.event_stream.stream import AssistantMessageEventStream

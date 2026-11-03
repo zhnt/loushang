@@ -9,6 +9,11 @@ from uuid import uuid4
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.runtime.turn import TurnInput, TurnOrchestrator
+from loushang.harness.session.execution_admission import (
+    ExecutionReservation,
+    InputAdmission,
+    SessionExecutionAdmission,
+)
 from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.session.turn_performance import (
     TurnStartPerformanceHandle,
@@ -76,6 +81,8 @@ class PromptController:
     run_prompt: RunPrompt | None = None
     turn_performance: TurnStartPerformanceRuntime | None = None
     request_evidence: RequestEvidenceRuntimePort | None = None
+    admission: SessionExecutionAdmission | None = None
+    execution: ExecutionReservation | None = None
 
     async def prompt(
         self,
@@ -86,6 +93,36 @@ class PromptController:
         source: str | None = None,
         preflight_result: Callable[[bool], None] | None = None,
     ) -> None:
+        ticket = self.admission.begin_input(self.execution) if self.admission is not None else None
+        try:
+            await self._prompt(user_input, images, streaming_behavior=streaming_behavior,
+                               source=source, preflight_result=preflight_result, ticket=ticket)
+        finally:
+            if ticket is not None:
+                ticket.close()
+
+    async def _prompt(
+        self, user_input: str, images: list[ImagePart] | None, *,
+        streaming_behavior: str | None, source: str | None,
+        preflight_result: Callable[[bool], None] | None, ticket: InputAdmission | None,
+    ) -> None:
+        def check() -> None:
+            if ticket is not None:
+                ticket.check()
+
+        async def guarded(callback, *args, consumed=False):
+            check()
+            result = await callback(*args)
+            if not consumed or result is not None:
+                check()
+            return result
+
+        async def run(messages):
+            check()
+            if self.admission is not None and self.execution is None:
+                self.admission.require_unbound_run()
+            await self._timed_run_turn(messages, timing)
+
         timing = (
             self.turn_performance.begin(source=source)
             if self.turn_performance is not None
@@ -94,11 +131,13 @@ class PromptController:
         evidence_owner = object()
         orchestrator: TurnOrchestrator[list[ImagePart], object] = TurnOrchestrator(
             interceptors=(
-                self._intercept_extension_command,
-                self._intercept_extension_input,
+                lambda item: guarded(self._intercept_extension_command, item, consumed=True),
+                lambda item: guarded(self._intercept_extension_input, item, consumed=True),
             ),
-            preflight=lambda item: self._timed_preflight(item, timing),
-            is_running=lambda: self.agent.is_streaming,
+            preflight=lambda item: guarded(self._timed_preflight, item, timing, consumed=True),
+            is_running=lambda: self.agent.is_streaming or (
+                self.execution is None and self.admission is not None and self.admission.execution_reserved
+            ),
             queue_turn=lambda behavior, item: self._timed_queue_turn(
                 behavior,
                 item,
@@ -107,12 +146,12 @@ class PromptController:
             build_message=lambda item: self._build_message(item, evidence_owner),
             drain_pending=self.queue_controller.drain_next_turn_messages,
             before_run=(
-                (lambda: self._timed_before_run(timing))
+                (lambda: guarded(self._timed_before_run, timing))
                 if self.compact_before_prompt_async is not None
                 else None
             ),
-            before_start=lambda item: self._timed_before_start(item, timing),
-            run_turn=lambda messages: self._timed_run_turn(messages, timing),
+            before_start=lambda item: guarded(self._timed_before_start, item, timing),
+            run_turn=run,
             busy_error=(
                 "Agent is already processing. Specify streaming_behavior "
                 "('steer' or 'followUp') to queue the message."
@@ -122,7 +161,11 @@ class PromptController:
         try:
             await orchestrator.run(
                 TurnInput(text=user_input, attachments=images, source=source),
-                streaming_behavior=streaming_behavior,
+                streaming_behavior=(
+                    streaming_behavior or "follow_up"
+                    if self.execution is None and self.admission is not None and self.admission.execution_reserved
+                    else streaming_behavior
+                ),
                 report_accepted=preflight_result,
             )
         except asyncio.CancelledError:

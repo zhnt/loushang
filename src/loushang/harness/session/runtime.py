@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from inspect import iscoroutine, iscoroutinefunction
 from typing import Protocol, cast
 
 from loushang.agent import AbortSignal
-from loushang.agent.types import AgentEvent, AgentMessage
+from loushang.agent.types import AgentEvent, AgentMessage, AgentRunOptions
 from loushang.ai.types import AssistantMessage, ImagePart
 from loushang.harness.events import (
     OrderedEventBus,
@@ -35,6 +35,16 @@ from loushang.harness.session.agent_event_router import (
     RetryRouterPort,
 )
 from loushang.harness.session.application_input import ApplicationInputRuntime
+from loushang.harness.session.execution_admission import (
+    ExecutionReservation,
+    SessionExecutionAdmission,
+    SessionExecutionUnavailable,
+)
+from loushang.harness.session.execution_configuration import (
+    ExecutionAgentPort,
+    SessionExecutionConfiguration,
+)
+from loushang.harness.session.execution_scope import SessionExecutionScope
 from loushang.harness.session.prompt_controller import AgentPort, PromptController
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
 from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
@@ -82,12 +92,14 @@ class SessionAgentPort(Protocol):
         self,
         input: str | AgentMessage | list[AgentMessage],
         images: list[ImagePart] | None = None,
+        *, run_options: AgentRunOptions | None = None,
     ) -> None: ...
 
     async def continue_run(
         self,
         *,
         model_call_purpose: str = "continuation",
+        run_options: AgentRunOptions | None = None,
     ) -> None: ...
 
 
@@ -171,6 +183,14 @@ class SessionRuntime:
             emit_queue_update=self._emit_queue_update,
             request_evidence=self.request_evidence,
         )
+        self.execution_admission = SessionExecutionAdmission(
+            busy=lambda: self._host_runtime.is_active or self._host_runtime.has_pending_runs,
+            pending=self._queue_controller.has_pending_execution_input,
+            delivery_released=self._queue_controller.flush_delivery,
+        )
+        self._queue_controller.admission = self.execution_admission
+        self.execution_configuration = SessionExecutionConfiguration(cast(ExecutionAgentPort, self.agent), self.execution_admission)
+        self.execution_scope: SessionExecutionScope | None = None
         self._prompt_controller = PromptController(
             agent=cast(AgentPort, self.agent),
             queue_controller=self._queue_controller,
@@ -193,6 +213,7 @@ class SessionRuntime:
             run_prompt=self.run_agent_prompt,
             turn_performance=self.turn_policy.turn_performance,
             request_evidence=self.request_evidence,
+            admission=self.execution_admission,
         )
         self._application_inputs = ApplicationInputRuntime(
             commit_application_message=self.transcript.commit_application_message,
@@ -214,10 +235,14 @@ class SessionRuntime:
                 self.after_turn_policy.record_assistant_response_error
             ),
             check_auto_compaction=self.check_auto_compaction,
-            allow_automatic_recovery=lambda: not self._committed_input_recovery_suppressed,
+            allow_automatic_recovery=lambda: (
+                not self._committed_input_recovery_suppressed and not self.execution_admission.closed
+                and self.execution_configuration.recovery_allowed
+            ),
             schedule_continue_run=lambda: self.schedule_continue_run(
                 model_call_purpose="retry"
             ),
+            capture_continue_run=lambda: self.capture_continue_run(model_call_purpose="retry"),
             consume_queued_message=self._queue_controller.mark_message_consumed,
             request_evidence=self.request_evidence,
             complete_queued_message=(
@@ -233,6 +258,17 @@ class SessionRuntime:
     @property
     def is_active(self) -> bool:
         return self._host_runtime.is_active
+
+    def attach_execution_scope(self, scope: SessionExecutionScope) -> None:
+        if (scope.admission is not self.execution_admission or scope.closing
+                or self.execution_scope is not None and not self.execution_scope.closed):
+            raise SessionExecutionUnavailable("Session already owns an execution scope")
+        scope.bind_retirement(lambda: self._retire_execution_scope(scope))
+        self.execution_scope = scope
+
+    def _retire_execution_scope(self, scope: SessionExecutionScope) -> None:
+        if self.execution_scope is scope:
+            self.execution_scope = None
 
     @property
     def queue(self) -> QueueController:
@@ -283,7 +319,22 @@ class SessionRuntime:
         self._queue_controller.follow_up(user_input, images=images)
 
     async def continue_run(self) -> None:
-        await self._host_runtime.run_after_idle(self.agent.continue_run)
+        async def operation() -> None:
+            self.execution_admission.require_unbound_run()
+            await self.agent.continue_run()
+        self.execution_admission.require_unbound_run()
+        await self._host_runtime.run_after_idle(operation)
+
+    async def prompt_in_execution(
+        self, execution: ExecutionReservation, user_input: str,
+        images: list[ImagePart] | None = None, *, source: str | None = None,
+    ) -> None:
+        self.execution_admission.check_execution(execution)
+        controller = replace(
+            self._prompt_controller, execution=execution,
+            run_prompt=lambda messages: self.run_agent_prompt(messages, execution=execution),
+        )
+        await controller.prompt(user_input, images=images, source=source)
 
     async def run_committed_input(self, *, prepare_current_input: Callable[[], None]) -> None:
         """Run an owned committed input without submitting another user message.
@@ -297,6 +348,7 @@ class SessionRuntime:
             raise TypeError("committed input preparation must be synchronous")
 
         async def operation() -> None:
+            self.execution_admission.require_unbound_run()
             result = cast(Callable[[], object], prepare_current_input)()
             if result is not None:
                 if iscoroutine(result):
@@ -315,12 +367,34 @@ class SessionRuntime:
         *,
         model_call_purpose: str = "continuation",
     ) -> asyncio.Task[None]:
-        return self._host_runtime.defer_run(
-            lambda: self.agent.continue_run(
-                model_call_purpose=model_call_purpose
-            ),
+        return self.capture_continue_run(model_call_purpose=model_call_purpose)()
+
+    def capture_continue_run(
+        self, *, model_call_purpose: str = "continuation",
+    ) -> Callable[[], asyncio.Task[None]]:
+        handle = self.execution_configuration.current()
+        if handle is not None and handle.suppress_recovery:
+            raise SessionExecutionUnavailable("automatic continuation disabled for this execution")
+        scope = self.execution_admission.execution_scope(handle.execution)() if handle is not None else None
+        self.execution_admission.input_arrived()
+
+        async def operation() -> None:
+            if scope is None:
+                self.execution_admission.require_unbound_run()
+                await self.agent.continue_run(model_call_purpose=model_call_purpose)
+            else:
+                with scope:
+                    assert handle is not None
+                    await self.agent.continue_run(
+                        model_call_purpose=model_call_purpose, run_options=handle.run_options(),
+                    )
+
+        task = self._host_runtime.defer_run(
+            operation,
             key="agent-continue",
+            wait_until_ready=self.execution_admission.wait_for_unbound_run if scope is None else None,
         )
+        return lambda: task
 
     async def check_auto_compaction(
         self,
@@ -332,6 +406,8 @@ class SessionRuntime:
         return self._accept_auto_compaction_outcome(outcome)
 
     async def _compact_before_prompt(self) -> CompactionResult | None:
+        if not self.execution_configuration.recovery_allowed:
+            return None
         compact = self.turn_policy.compact_before_prompt_async
         if compact is None:
             return None
@@ -360,10 +436,18 @@ class SessionRuntime:
         self,
         prompt: object,
         images: list[ImagePart] | None = None,
+        *, execution: ExecutionReservation | None = None,
     ) -> None:
         normalized_prompt = cast(str | AgentMessage | list[AgentMessage], prompt)
 
         async def operation() -> None:
+            if execution is None:
+                self.execution_admission.require_unbound_run()
+            else:
+                self.execution_admission.check_execution(execution)
+                options = self.execution_configuration.require(execution).run_options()
+                await self.agent.prompt(normalized_prompt, images=images, run_options=options)
+                return
             if images is None:
                 await self.agent.prompt(normalized_prompt)
             else:
@@ -409,6 +493,10 @@ class SessionRuntime:
         )
 
     async def dispose(self) -> None:
+        self.execution_admission.close_admission()
+        await self.execution_admission.settle_backend()
+        self.execution_configuration.close()
+        self.execution_admission.require_released()
         try:
             await self._host_runtime.dispose()
         finally:
@@ -419,6 +507,10 @@ class SessionRuntime:
 
         if self._closed:
             return
+        self.execution_admission.close_admission()
+        self.execution_configuration.close()
+        self.execution_admission.require_released()
+        self.execution_admission.retire_backend()
         self._closed = True
         self._unsubscribe_agent()
         self.transcript.set_commit_observer(None)

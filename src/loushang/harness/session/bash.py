@@ -8,6 +8,7 @@ recording.  Historical command-execution names remain compatibility aliases.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -77,6 +78,7 @@ class BashCommandExecutionRuntime:
     before_execute: BashCommandHook | None = None
     operations: object | None = None
     _abort_controller: AbortController | None = field(default=None, init=False)
+    _completion: asyncio.Future[BaseException | None] | None = field(default=None, init=False)
 
     @property
     def is_running(self) -> bool:
@@ -101,6 +103,8 @@ class BashCommandExecutionRuntime:
 
         controller = AbortController()
         self._abort_controller = controller
+        completion = self._completion = asyncio.get_running_loop().create_future()
+        failure: BaseException | None = None
         streamed_chunks: list[str] = []
         try:
             effective_cwd = cwd or self.get_cwd()
@@ -217,13 +221,31 @@ class BashCommandExecutionRuntime:
                 exclude_from_context=exclude_from_context,
             )
             return result
+        except BaseException as error:
+            failure = error
+            raise
         finally:
             if self._abort_controller is controller:
                 self._abort_controller = None
+                self._completion = None
+            completion.set_result(failure)
 
     def abort(self) -> None:
         if self._abort_controller is not None:
             self._abort_controller.abort()
+
+    async def wait_for_idle(self) -> None:
+        """Join this command invocation, including native cleanup and recording.
+
+        Waiting does not join its caller's entire task, which can itself be
+        awaiting Session cleanup. Cancellation of a waiter leaves the original
+        command owner and completion handle intact.
+        """
+        completion = self._completion
+        if completion is not None:
+            error = await asyncio.shield(completion)
+            if error is not None and not isinstance(error, asyncio.CancelledError):
+                raise error
 
     async def record_result(
         self,
@@ -405,6 +427,9 @@ class BashExecutionRuntime:
 
     def abort(self) -> None:
         self._runtime.abort()
+
+    async def wait_for_idle(self) -> None:
+        await self._runtime.wait_for_idle()
 
 
 def _default_execution_params(shell_path: str) -> CommandParametersBuilder:

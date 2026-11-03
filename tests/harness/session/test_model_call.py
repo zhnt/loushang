@@ -2335,10 +2335,14 @@ def test_cancelled_model_preparation_keeps_input_responsive_and_serializes_worke
             first.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(first, 0.1)
+            settling = asyncio.create_task(runtime._runtime.settle())
+            await asyncio.sleep(0)
+            assert not settling.done()
             second = asyncio.create_task(runtime.prepare(preparation))
             await asyncio.sleep(0)
             assert calls == 1
             release.set()
+            await asyncio.wait_for(settling, 2)
             options = await asyncio.wait_for(second, 2)
             assert options.prepared_request_committer is not None
             assert calls == 2

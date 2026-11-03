@@ -2182,14 +2182,16 @@ def test_host_verification_cancelled_waiter_keeps_original_work(tmp_path, monkey
             assert owner._policy.pending_verification is None
             assert not owner._repository_busy
             assert (await owner.verify_current("g", **args)).outcome == "pending"
-            with pytest.raises(GoalError, match="unresolved"):
-                await owner.verify_current("g", **{**args, "command_id": "new"})
             assert len(owner.controller.history.batches) == 1
             release.set()
             run = owner._work.get_run_for_operation(executions[0])
             # The original Work.wait cancellation path cancels its run; a
             # cached host request must preserve that outcome, not resubmit.
             assert run.status == "cancelled"
+            # The admitted invocation and original command owner now expose
+            # actual settlement. A cancelled waiter still cannot replay its
+            # original operation; old unsupported journal facts stay unknown.
+            assert owner._work.get_cancellation(run.run_id).status == "settled"
             with pytest.raises(asyncio.CancelledError):
                 await owner._work.wait(run.run_id)
             assert len(executions) == 1 and adapter.calls == 0

@@ -10,12 +10,12 @@
 | --- | --- | --- |
 | S0 | 冻结迁移前Goal记录、通用proof、calculator/repository真实规划input/proof/Work及公开符号签名；保存原源码快照，旧reader9例通过 | 随后续受影响切片扩充固定样本和物理并发/回退矩阵，不以当前有限fixture冒称全部历史组合 |
 | S1 | 执行控制首切片：Harness新增ModelCallAllowance与ExecutionDeadline；原Coding限额/托管Invocation委托，原异常与结果映射保留；三视角代码评审及修正完成，专项38 passed/315 deselected | 完整Coding检查4165 passed、21 skipped、62 deselected；Harness首轮6038 passed后发现依赖放置错误，修正后6389 passed、121 skipped；取消/收敛的通用资源组合待S2合同落地继续提炼；尚未远程交付 |
-| S2 | [协同专项R2](session-goal-coordination.md)及[三视角复核](session-goal-coordination-review.md)已完成，提交用户确认 | 用户接受后实施联合受理/作用域/桥接及验证；当前未实施 |
+| S2 | 用户已接受[协同专项R2](session-goal-coordination.md)；现有Goal接入原Session受理、队列隔离、操作配置与原SessionWorkRuntime resolver；切片三视角问题逐项关闭 | 继续普通Session公开接入及完整阶段验收；当前没有把中间切片当整个阶段完成 |
 | S3 | 旧profile fixture和解释基线已准备 | 通用来源核对、Work证据与Goal策略/方法集成实际收敛；双向兼容回归 |
 | S4a | 无实施 | 本地与application-local AppService共享装配和真实等价/权限验收，清理重复实现 |
 | S4b | 分离为后续专项 | 真实lmux Goal wire；不能因本地能力通过就宣称可达 |
 
-总体Goal未完成，S2用户评审是后续实施的前置条件；不计算没有完整权重校准的总体完成百分比。
+总体Goal未完成，S2用户评审前置条件已解除；不计算没有完整权重校准的总体完成百分比。下文S0/S1检查记录为历史切点，不代替S2新增代码的验证。
 
 ## S0固定兼容基线
 
@@ -33,7 +33,7 @@
 
 ## 交付边界
 
-当前未迁移Goal记录、Work引擎、Method包，不改变普通会话输入/配置，不启动新的线上试验。S2用户确认 pending；其后才可按专项实施。广泛检查/提交/PR/合并/本地同步的实际结果必须后续登记，不把专项绿灯当整体Goal完成。
+当前保留Goal记录格式、Work引擎和Method包；S2正在修改原Session受理与操作级配置，不启动新的线上试验。用户已接受S2。广泛检查/提交/PR/合并/本地同步的实际结果必须后续登记，不把专项绿灯当整体Goal完成。
 
 ## 本轮续跑补充
 
@@ -45,8 +45,22 @@ S1[三视角代码评审摘要](refactoring-s1-review.md)已落盘。广泛检�
 
 检查命令静态对照：unit_coding与已通过coding命令仅相差额外排除e2e_smoke，因此不重复相同大套件。unit_harness的485个文件中，check-harness覆盖除两个examples测试文件外的全部路径；这两个文件另行执行，3 passed（3.39秒），保持原离线/host-runtime选择器。该文件级对照只说明范围关系，不预先代替测试结果。
 
-## 当前切点与后续前置条件
+## S1切点与当时的后续前置条件（历史）
 
 S0固定基线已提交；S1限额/期限首切片及配套设计/评审材料本地保存。没有进入S2，未发布远程PR或合并。最终代码由三视角复核，精确回归200项、完整Harness6389项及额外3项通过；Coding4165项通过在最终模块位置修正之前，位置修正后已覆盖原调用限额/预算/旧profile及全部import boundary，未重复45分钟完整Coding套件。
 
 用户要求普通Session环境、组件交互、联合受理、配置作用域与资源所有权先经其评审再实施。专项R2及独立评审已就绪，用户接受尚未收到；自动Goal续跑不等于设计接受。依赖该协同合同的取消/收敛组合、后续规划集成和双入口装配继续等待该评审，不借局部绿灯推进尚未接受的接口。整个Goal尚未达到完成条件。
+
+## S2实施启动
+
+用户已明确接受协同专项R2并要求继续；普通Session专项的用户评审前置条件解除。开始在原Session受理/队列/执行配置与原SessionWorkRuntime resolver中落地，目标范围不变。原R2 SHA固定，接受证据见专项评审记录；S2仍需真实原路径故障验证及代码独立评审。
+
+## S2共享执行中间切片
+
+Harness只拥有Session身份/输入受理、明确任务委托、操作配置和资源作用域；Goal桥接放在HarnessWork integrations中。原GoalController的prepare、confirm、intent、accept顺序保留，Session保留在原resolver同步提交；同Session使用原Work后端，不增加执行队列或第二runtime。
+
+本切片增加了取消后模型输入后台保存的等待：复用原prepare锁，先让原调用方停止，再等已受理保存完成。失败事件仍在原执行身份内处理；无明确身份的任务不能借自动重试进入Goal。配置使用操作级overlay，不恢复旧全局快照。
+
+中间快照三视角分别发现关闭异常永久锁存、旧Goal取消期限从None漂移至30秒、复用后端缺少期限/来源核对、同文本绑定输入误消费尚未投递的普通输入；随后补查并发收敛及命令启动前的取消窗口。已修复并完成独立复核，详见[代码评审汇总](refactoring-s2-code-review.md)。既有架构检查另外发现具体Agent依赖，已改中立只读接口，未改白名单；最终包边界、Session与Agent专项224项通过，文档9项通过。托管组合补查纯同步publisher取消声明，已修复并三视角复核；该失败点之后的25项及冻结收尾预算20项通过。旧reader读取新记录的11个Goal、30个Work、10份规划来源证明通过。整仓check-changed及最终PR检查尚未运行，不能据此声明S2全部验收。
+
+验证执行器现经原Bash完成屏障及已受理delegate退出证明收敛，启动前与执行中取消两场景通过。unsupported及未知追加仍保留未知，不能因Work cancelled而释放依赖。普通Session公开接入、S3规划/方法收敛和S4双入口等价仍未完成；本次切片仅本地保存，尚未发布S2。

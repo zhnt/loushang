@@ -86,6 +86,10 @@ class HostRuntime(Generic[T]):
     def is_disposed(self) -> bool:
         return self._status == "disposed"
 
+    @property
+    def has_pending_runs(self) -> bool:
+        return any(not task.done() for task in self._deferred_tasks)
+
     def snapshot(self) -> HostSnapshot:
         return HostSnapshot(
             status=self.status,
@@ -180,9 +184,12 @@ class HostRuntime(Generic[T]):
         operation: RunOperation[T],
         *,
         run_id: str,
+        wait_until_ready: Callable[[], Awaitable[None]] | None = None,
     ) -> T:
         current_task = asyncio.current_task()
         while True:
+            if wait_until_ready is not None:
+                await wait_until_ready()
             active_task = self._active_task
             if active_task is current_task:
                 raise HostStateError(
@@ -207,6 +214,7 @@ class HostRuntime(Generic[T]):
         *,
         key: str | None = None,
         run_id: str | None = None,
+        wait_until_ready: Callable[[], Awaitable[None]] | None = None,
     ) -> asyncio.Task[T]:
         """Schedule one operation to run after this host becomes idle.
 
@@ -220,6 +228,7 @@ class HostRuntime(Generic[T]):
             operation,
             key=key,
             run_id=run_id,
+            wait_until_ready=wait_until_ready,
         )._task
 
     def defer_run_handle(
@@ -228,6 +237,7 @@ class HostRuntime(Generic[T]):
         *,
         key: str | None = None,
         run_id: str | None = None,
+        wait_until_ready: Callable[[], Awaitable[None]] | None = None,
     ) -> HostTaskHandle[T]:
         """Schedule a deferred run and return its stable identity and controls."""
 
@@ -243,6 +253,7 @@ class HostRuntime(Generic[T]):
             self._run_after_idle_resolved(
                 operation,
                 run_id=resolved_run_id,
+                wait_until_ready=wait_until_ready,
             )
         )
         task_object = cast(asyncio.Task[object], task)

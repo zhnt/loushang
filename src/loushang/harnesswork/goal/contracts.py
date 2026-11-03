@@ -73,6 +73,7 @@ class WorkCandidate:
                 step_id=spec.step_id,
                 run_event_payload=document(spec.run_event_payload),
                 scope_event_payload=document(spec.scope_event_payload),
+                recording_policy=spec.recording_policy,
                 steps=tuple(
                     WorkStepSpec(step.step_id, document(step.payload))
                     for step in spec.steps
