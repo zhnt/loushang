@@ -51,4 +51,3 @@ def observe_work_run(runtime, run, *, max_steps=64, progress=False) -> MethodWor
     except Exception:
         errors.append("work_cancellation_unavailable")
     return MethodWorkObservationV1("present", work, recording, cancellation, tuple(errors))
-
