@@ -3696,20 +3696,19 @@ def test_goal_query_cleanup_error_is_retained_without_disposing_resources(tmp_pa
         started = asyncio.Event()
 
         async def query():
-            task = asyncio.current_task()
-            owner._queries.add(task)
             started.set()
             try:
                 await asyncio.Event().wait()
             finally:
-                owner._queries.discard(task)
                 raise OSError("query reader cleanup pending")
 
-        task = asyncio.create_task(query())
+        task = asyncio.create_task(owner._observations.invoke(query))
         await started.wait()
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert task.done() and not disposed and not owner._closed
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], OSError)
         with pytest.raises(OSError, match="reader cleanup pending"):
             await owner.close()
         assert not disposed
@@ -3834,5 +3833,66 @@ def test_goal_verifier_nonzero_uses_last_cumulative_preview_not_exception_text(
             assert output == b"actual failure\n"
         else:
             assert view.passed is None and not view.records
+
+    asyncio.run(scenario())
+
+
+def test_goal_query_outer_finally_can_join_same_close_without_deadlock(tmp_path):
+    from types import SimpleNamespace
+
+    async def scenario():
+        owner = CodingGoal(tmp_path, tmp_path / "data")
+        started = asyncio.Event()
+        released = []
+
+        class Core:
+            fenced = False
+            header = object()
+            history = SimpleNamespace(sequence=0)
+
+            def query(self, goal_id):
+                return object()
+
+            def facts(self):
+                return object()
+
+            def begin_close(self):
+                pass
+
+            async def quiesce(self):
+                pass
+
+            async def settle_work(self):
+                pass
+
+            def retire(self):
+                released.append("core")
+
+        class Policy:
+            async def assess(self, basis, facts):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    released.append("reader")
+
+        class Store:
+            def close(self):
+                released.append("writer")
+
+        owner._core, owner._policy, owner._store = Core(), Policy(), Store()
+
+        async def caller():
+            try:
+                await owner.query("goal")
+            finally:
+                await owner.close()
+
+        task = asyncio.create_task(caller())
+        await started.wait()
+        await asyncio.wait_for(owner.close(), 2)
+        result = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(result[0], asyncio.CancelledError)
+        assert released == ["reader", "core", "writer"] and owner._closed
 
     asyncio.run(scenario())

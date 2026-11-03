@@ -164,3 +164,47 @@ class SessionExecutionScope:
     def _observe(task: asyncio.Task) -> None:
         if not task.cancelled():
             task.exception()
+
+
+class ExecutionObservations:
+    """Join observer invocations without joining their callers' outer cleanup.
+
+    Observations execute in the original caller Task. Closing interrupts them,
+    waits for their own finally blocks, and retains any cleanup failure rather
+    than releasing dependencies with an unknown reader state.
+    """
+
+    def __init__(self) -> None:
+        self._pending: dict[asyncio.Task, asyncio.Future[BaseException | None]] = {}
+        self._closing: tuple[asyncio.Future[BaseException | None], ...] | None = None
+        self._error: BaseException | None = None
+
+    async def invoke(self, operation: Callable[[], Awaitable[T]]) -> T:
+        task = asyncio.current_task()
+        if self._closing is not None or task is None or task in self._pending:
+            raise SessionExecutionUnavailable("execution observation is closing or reentrant")
+        done: asyncio.Future[BaseException | None] = asyncio.get_running_loop().create_future()
+        self._pending[task] = done
+        error: BaseException | None = None
+        try:
+            return await operation()
+        except BaseException as failure:
+            error = failure
+            raise
+        finally:
+            self._pending.pop(task)
+            done.set_result(error)
+
+    async def quiesce(self) -> None:
+        if asyncio.current_task() in self._pending:
+            raise SessionExecutionUnavailable("close observations from their external owner")
+        if self._closing is None:
+            self._closing = tuple(self._pending.values())
+            for task in tuple(self._pending):
+                task.cancel()
+        results = await asyncio.gather(*(asyncio.shield(done) for done in self._closing))
+        if self._error is None:
+            self._error = next((error for error in results if error is not None
+                                and not isinstance(error, asyncio.CancelledError)), None)
+        if self._error is not None:
+            raise self._error

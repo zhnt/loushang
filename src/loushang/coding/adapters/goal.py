@@ -39,6 +39,7 @@ from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.artifacts import SessionBlobStore
 from loushang.harness.policy import PolicyEvaluatorChain
 from loushang.harness.session.execution_scope import (
+    ExecutionObservations,
     ExecutionScopePorts,
     SessionExecutionScope,
 )
@@ -138,9 +139,8 @@ class CodingGoal:
         self._policy: Any = None
         self._work: Any = None
         self._closing = self._closed = False
-        self._queries: set[asyncio.Task] = set()
+        self._observations = ExecutionObservations()
         self._close_task: asyncio.Task | None = None
-        self._query_cleanup_error: BaseException | None = None
         self._callbacks_quiet = self._work_settled = False
         self._session_retired = self._core_retired = self._writer_closed = False
         self._prepared: dict[str, WorkExecutionBinding] = {}
@@ -518,10 +518,7 @@ class CodingGoal:
         state = core.query(goal_id)
         if self._closing or self._closed or core.fenced:
             return CodingGoalView(state, "not_checked", "closing_or_fenced")
-        task = asyncio.current_task()
-        if task:
-            self._queries.add(task)
-        try:
+        async def assess():
             facts = core.facts()
             assessment = await self._policy.assess(
                 GoalBasis(core.header, state, core.history.sequence), facts
@@ -529,9 +526,7 @@ class CodingGoal:
             return _view(
                 state, assessment, unresolved=facts.unresolved, busy=facts.busy
             )
-        finally:
-            if task:
-                self._queries.discard(task)
+        return await self._observations.invoke(assess)
 
     def steer(self, goal_id: str, text: str, *, images=None) -> None:
         self._input(goal_id, "steer", text, images)
@@ -658,20 +653,7 @@ class CodingGoal:
 
     async def _quiesce_goal(self):
         if not self._callbacks_quiet:
-            if self._query_cleanup_error is not None:
-                raise self._query_cleanup_error
-            current = asyncio.current_task()
-            queries = tuple(t for t in self._queries if t is not current)
-            for task in queries:
-                task.cancel()
-            if queries:
-                results = await asyncio.gather(*queries, return_exceptions=True)
-                for result in results:
-                    if isinstance(result, BaseException) and not isinstance(
-                        result, asyncio.CancelledError
-                    ):
-                        self._query_cleanup_error = result
-                        raise result
+            await self._observations.quiesce()
             if self._core is not None:
                 await self._core.quiesce()
             self._callbacks_quiet = True

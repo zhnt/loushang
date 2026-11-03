@@ -74,3 +74,7 @@ S2共享执行中间切片本地提交3cffb4199。随后把原单次文本回复
 ## S3批次规划切片
 
 来源核对首切片已提交c93ea90ba。随后按专项R3完成批次策略和PlanningWork交接收敛，原领域工厂和提示不变。[三视角及验证记录](refactoring-s3-policy-review.md)覆盖固定12场景差分、原本地160项、仓库14项和托管3项；这些检查部分重叠，不相加。通用消费者不需要Coding上下文。当前仍无普通Session公开接入与双入口等价的完成结论。
+
+## 操作级边界与查询清理补齐
+
+临时transport必须自行声明来源合同；继续使用原队列，校验前不消费，scope内clear不复活输入。三视角复核和200项Agent/Session/队列检查通过，提交3079d4c98。随后将query调用边界追踪收敛到Harness，关闭只等待查询自身finally，避免与调用方外层close互相等待；原reader cleanup异常保留合同不变。见[查询清理评审](refactoring-observation-review.md)，9项相关回归通过。普通Session公开接入及S4仍待完成。
