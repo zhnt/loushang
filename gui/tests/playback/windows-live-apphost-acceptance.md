@@ -46,6 +46,12 @@ following in the running native window:
 The native mux selector is deliberately not exposed to the WebView, so the UI
 shows the Coding Session label rather than `gui-desktop-acceptance`.
 
+The live sidebar groups attached Sessions under the accepted mux display name.
+The environment panel shows the accepted Product, scope, scope fingerprint,
+Session, mux and service identities. It still reports Workspace details as
+unavailable because the AppHost attachment does not supply a Workspace facet,
+repository root or version-control fact.
+
 On 2026-10-08, after merging the latest `main` into the GUI lane, Windows
 accessibility inspection of the running native window observed `Connected`,
 `Live AppHost · controlled`, the `faux · no-network` model choice, and a completed

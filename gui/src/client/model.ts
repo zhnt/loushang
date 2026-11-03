@@ -39,6 +39,8 @@ export interface WorkspaceSummary {
 export interface ContextIdentity {
   readonly project: string;
   readonly rootLabel: string;
+  readonly scope?: "cwd" | "user_home";
+  readonly scopeFingerprint?: string;
   readonly applicationId: string;
   readonly muxId: string;
   readonly memberId: string;
@@ -157,6 +159,7 @@ export type ClientSource =
       readonly kind: "live";
       readonly serviceInstanceId: string;
       readonly muxSpaceId: string;
+      readonly muxName?: string;
       readonly connectionEpoch: string;
     };
 

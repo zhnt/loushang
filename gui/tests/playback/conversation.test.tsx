@@ -211,6 +211,48 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(selector).toHaveValue("provider-b:endpoint-b:shared-model");
   });
 
+  it("shows accepted AppHost context without inventing a workspace or repository", async () => {
+    const fixture = createMockAppClient();
+    const snapshot = await fixture.snapshot();
+    const session = snapshot.sessions[0];
+    render(<HarnessGui client={{
+      snapshot: async () => ({
+        ...snapshot,
+        connection: "connected",
+        source: {
+          kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live",
+          muxName: "Coding sessions", connectionEpoch: "1",
+        },
+        capabilities: snapshot.capabilities.map((capability) => ({
+          ...capability, availability: "unavailable", version: null,
+        })),
+        workspaces: [],
+        sessions: [{
+          ...session, status: "idle", documents: [], run: null, changeSet: null,
+          context: {
+            ...session.context, project: "coding", source: "live", scope: "cwd",
+            scopeFingerprint: "a".repeat(64), muxId: "mux-live",
+          },
+        }],
+        recentSessionIds: [session.id],
+        selectedSessionId: session.id,
+      }),
+      subscribe: () => () => undefined,
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
+      interrupt: async () => ({ accepted: false }),
+    }} />);
+
+    const navigation = await screen.findByLabelText("Attached AppHost sessions");
+    expect(within(navigation).getByText("Coding sessions")).toBeVisible();
+    expect(within(navigation).getByRole("button", { name: `${session.title} · Idle` })).toBeVisible();
+    expect(within(navigation).getByText("Workspace details unavailable")).toBeVisible();
+    expect(within(navigation).queryByText(/git ·/)).not.toBeInTheDocument();
+    const context = within(screen.getByLabelText("Environment summary")).getByLabelText("AppHost session context");
+    expect(within(context).getByText("cwd")).toBeVisible();
+    expect(within(context).getByText("a".repeat(64))).toBeVisible();
+    expect(within(context).getByText(/workspace capability.*unavailable/)).toBeVisible();
+  });
+
   it("creates a live Session and selects it after the replacement snapshot", async () => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
