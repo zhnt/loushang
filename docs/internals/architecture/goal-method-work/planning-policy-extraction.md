@@ -1,7 +1,7 @@
 # 既有批次规划策略的职责收敛
 
-- Authority: proposed；Revision: R2；关联重构计划R2的S3。
-- 基线：3cffb4199；来源核对的小切片已提炼并通过独立评审，批次策略本节Target尚未实施。
+- Authority: proposed；Revision: R3；关联重构计划R2的S3。
+- 基线：3cffb4199；来源核对的小切片已提炼并通过独立评审；批次策略与回复交接正在实施，尚未完成源码验收。
 - 沿用本地archmethod master 0f9bd3ff51afabeaaf76cc38dff1ceb279b7d37e；本专项只细化已授权的职责迁移，不改变普通Session专项R2或存储合同。
 
 ## 问题与边界
@@ -16,10 +16,13 @@
 | --- | --- | --- |
 | Harness response_proof | 原输入、响应、调用及事件的来源核对 | 提案解析、Goal决策、Work证据编码 |
 | HarnessWork BatchPlanningPolicy | 原提案选择、拒绝/无进展限制、一次消费、basis与Work关联、trace、candidate确认 | Session操作、文件/测试解释、具体动作名、模型/工具调用、编码Method |
+| HarnessWork PlanningWork集成 | 原临时订阅、执行后读取原回复、构造原逻辑报告；执行/取消仍委托原delegate | 自建模型调用、存储或证据codec；更改预算owner |
 | Coding兼容策略适配 | 原提示与JSON/profile、原输入上下文、动作绑定、原Work装配、Blob/证据格式与读侧错误转换 | 第二套提案选择或批次推进算法 |
 | 原领域策略与method | 仓库事实、动作语义、原Method加载/准备、约束及验收 | 授权扩张、模型自动选择Method的新能力 |
 
 原Controller调用共享策略；共享策略从原Goal/Work事实找到可用提案，经既有profile读取原证据与解析，再向领域适配请求一个WorkCandidate。领域适配仍用原SessionWorkRuntime/SessionTurnExecutor及受理桥接绑定执行。共享策略返回candidate或PolicyStop，不自行执行。后续confirm仍通过原Controller与原领域检查，原intent/accept/association顺序不变。
+
+原PlanningWork的回复交接机制作为Session/Work集成提炼，其Coding旧符号保留薄适配。原parser、错误类型、回复Blob写入和Work事实发布均由profile注入；原格式及role不搬成新的公共codec。Transcript读口在execute原取样点取得，订阅在原finally撤销，取消仍转发同一delegate，没有新增Task或完整caller Task等待。
 
 ## 最小接缝
 
@@ -41,7 +44,7 @@ prepared仍是原候选绑定槽位：保留prepare入口清理、原resolver注
 
 保持原异常分支：profile的语义拒绝进入下一份原rejections输入；来源/JSON/关联错误按原PolicyStop处理；不扩大重试或预算。现有方法和工具授权只由原适配决定。没有新持久数据，已有提案仍按原operation只消费一次，旧冷读沿原codec与proof重建。
 
-错误按产生位置保留：report.rejection以及_implementation的原ProposalRejected可计invalid；_proposal内对原bytes重parse或proof核对失败仍包原GoalError。prepare将其映射原PolicyStop，trace返回unknown，confirm返回False；不能统一变成可付费重试的语义拒绝。
+错误按产生位置保留：report.rejection以及_implementation的原ProposalRejected可计invalid；rejection_error指该专用语义拒绝类型。_proposal内对原bytes重parse或proof核对失败仍包原GoalError。prepare将其映射原PolicyStop，trace返回unknown，confirm返回False；不能统一变成可付费重试的语义拒绝。
 
 验证优先用S0固定calculator/repository输入、提案与Work样本；核对原实际提示字节、parser输出及来源proof。运行原候选过期、已消费提案、语义拒绝、无进展、缓存命令与预算用例；核实两种既有profile确实调用同一个共享选择算法。职责/运行/数据三视角先审本接缝，再审固定源码与回归范围。不为搬迁新增付费试验或PR门禁。
 

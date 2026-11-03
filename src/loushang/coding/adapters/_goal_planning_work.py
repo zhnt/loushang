@@ -11,10 +11,13 @@ from loushang.harness.effects import FilesystemEffect, ProcessEffect
 from loushang.harness.policy import PolicyDecision, ToolPolicySubject
 from loushang.harnesswork.goal import GoalError
 from loushang.harnesswork.goal.records import canonical, plain
+from loushang.harnesswork.integrations.planning import (
+    PlanningWork as _SharedPlanningWork,
+)
 
 from . import _goal_driver as driver
 from ._goal_calculator import put
-from ._goal_planning_response import ResponseBoundary, capture_response
+from ._goal_planning_response import capture_response
 from ._goal_proposal import ProposalRejected, parse_proposal
 from ._work_evidence import validate_evidence_fact, work_evidence_fact
 
@@ -185,76 +188,24 @@ class ScopedVerificationWork:
         return await self.delegate.cancel_and_wait(operation, context)
 
 
-class PlanningWork:
+class PlanningWork(_SharedPlanningWork):
+    """Legacy Coding evidence format over the shared reply handoff."""
+
     def __init__(
-        self,
-        delegate,
-        *,
-        session,
-        blobs,
-        allowance,
-        prompt,
-        input_ref,
-        known_evidence,
-        parser=parse_proposal,
+        self, delegate, *, session, blobs, allowance, prompt, input_ref,
+        known_evidence, parser=parse_proposal,
     ):
-        self.delegate, self.session, self.blobs = delegate, session, blobs
-        self.allowance, self.prompt = allowance, prompt
-        self.input_ref, self.known_evidence = input_ref, tuple(known_evidence)
-        self.parser = parser
-
-    async def execute(self, operation, context):
-        manager = self.session.session_manager
-        boundary = ResponseBoundary.capture(manager)
-        events = []
-
-        async def listen(event):
-            if event.kind == "agent.message_end":
-                events.append(event)
-
-        unsubscribe = self.session.subscribe_runtime_events(listen)
-        try:
-            await self.delegate.execute(operation, context)
-            await self.session.wait_for_idle()
-        finally:
-            unsubscribe()
-        report: dict[str, object] = {
-            "version": 1,
-            "operation_id": operation.operation_id,
-            "run_id": context.run_id,
-            "session_id": operation.session_id,
-            "input_ref": self.input_ref,
-        }
-        try:
-            if self.allowance.failed:
-                raise ProposalRejected("planning model allowance failed")
-            raw, proof = capture_response(
-                manager,
-                boundary,
-                session_id=operation.session_id,
-                prompt=self.prompt,
-                events=events,
-            )
-            report["response_ref"] = put(
-                self.blobs, raw, f"{operation.operation_id}/response.txt"
-            )
-            report["response_proof"] = proof
-            proposal = self.parser(raw, known_evidence=self.known_evidence)
-            report["proposal"] = proposal.data()
-            report["rejection"] = None
-        except ProposalRejected as error:
-            report["proposal"] = None
-            report["rejection"] = str(error)
-        publish_report(
-            self.blobs,
-            context,
-            report,
-            role="goal_planning_report",
-            session_id=operation.session_id,
+        self.blobs, self.allowance = blobs, allowance
+        super().__init__(
+            delegate, session=session, read_transcript=lambda: session.session_manager,
+            model_failed=lambda: allowance.failed, prompt=prompt, input_ref=input_ref,
+            known_evidence=known_evidence, parser=parser, capture_response=capture_response,
+            write_response=lambda operation, raw: put(blobs, raw, f"{operation.operation_id}/response.txt"),
+            publish_report=lambda context, report, session_id: publish_report(
+                blobs, context, report, role="goal_planning_report", session_id=session_id,
+            ),
+            rejection_error=ProposalRejected,
         )
-
-    async def cancel_and_wait(self, operation, context):
-        return await self.delegate.cancel_and_wait(operation, context)
 
 
 class InspectionWork:
